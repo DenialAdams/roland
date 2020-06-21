@@ -1,0 +1,11 @@
+[package]
+name = "roland_test_runner"
+version = "0.1.0"
+authors = ["Richard McCormack <brick@brick.codes>"]
+edition = "2018"
+
+[dependencies]
+difference = "2"
+os_pipe = "0.9"
+rayon = "1"
+termcolor = "1"

@@ -1,0 +1,10 @@
+[workspace]
+
+members = [
+   "rolandc",
+   "roland_test_runner",
+]
+
+[profile.release]
+lto = true
+codegen-units = 1
