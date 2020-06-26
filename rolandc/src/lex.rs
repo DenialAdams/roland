@@ -8,12 +8,18 @@ pub enum Token {
    Semicolon,
    Identifier(String),
    StringLiteral(String),
+   IntLiteral(i64),
+   Plus,
+   Minus,
+   Multiply,
+   Divide,
 }
 
 enum LexMode {
    Normal,
    Ident,
    StringLiteral,
+   IntLiteral,
 }
 
 fn extract_keyword_or_ident(s: &str) -> Token {
@@ -27,6 +33,7 @@ pub fn lex(input: String) -> Result<Vec<Token>, ()> {
    let mut tokens = Vec::new();
    let mut mode = LexMode::Normal;
    let mut str_buf = String::new();
+   let mut int_value: i64 = 0;
    let mut chars = input.chars().peekable();
    while let Some(c) = chars.peek().copied() {
       match mode {
@@ -51,6 +58,20 @@ pub fn lex(input: String) -> Result<Vec<Token>, ()> {
             } else if c == ';' {
                tokens.push(Token::Semicolon);
                let _ = chars.next().unwrap();
+            } else if c == '+' {
+               tokens.push(Token::Plus);
+               let _ = chars.next().unwrap();
+            } else if c == '-' {
+               tokens.push(Token::Minus);
+               let _ = chars.next().unwrap();
+            } else if c == '*' {
+               tokens.push(Token::Multiply);
+               let _ = chars.next().unwrap();
+            } else if c == '/' {
+               tokens.push(Token::Divide);
+               let _ = chars.next().unwrap();
+            } else if c.is_ascii_digit() {
+               mode = LexMode::IntLiteral;
             } else if c.is_alphabetic() {
                mode = LexMode::Ident;
             } else {
@@ -79,6 +100,23 @@ pub fn lex(input: String) -> Result<Vec<Token>, ()> {
             }
             let _ = chars.next().unwrap();
          }
+         LexMode::IntLiteral => {
+            if !c.is_ascii_digit() {
+               let resulting_token = Token::IntLiteral(int_value);
+               tokens.push(resulting_token);
+               int_value = 0;
+               mode = LexMode::Normal;
+            } else {
+               let new_val = int_value.checked_mul(10).and_then(|x| x.checked_add(c.to_digit(10).unwrap() as i64));
+               int_value = if let Some(v) = new_val {
+                  v
+               } else {
+                  eprintln!("Encountered number that is TOO BIG!!");
+                  return Err(());
+               };
+               let _ = chars.next().unwrap();
+            }
+         }
       }
    }
 
@@ -87,6 +125,12 @@ pub fn lex(input: String) -> Result<Vec<Token>, ()> {
       // Probably no valid program ends with a keyword or identifier, but we'll let the parser determine that
       LexMode::Ident => {
          let resulting_token = extract_keyword_or_ident(&str_buf);
+         tokens.push(resulting_token);
+         Ok(tokens)
+      }
+      // Same for numbers
+      LexMode::IntLiteral => {
+         let resulting_token = Token::IntLiteral(int_value);
          tokens.push(resulting_token);
          Ok(tokens)
       }

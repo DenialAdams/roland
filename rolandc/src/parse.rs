@@ -37,7 +37,7 @@ enum Statement {
 }
 
 struct BlockNode {
-   statements: Vec<StatementNode>,
+   statements: Vec<Statement>,
 }
 
 pub struct Program {
@@ -101,8 +101,8 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
             let _ = l.next();
             break;
          }
-         Some(Token::Identifier(x)) => {
-            let e = parse_expression(l);
+         Some(Token::Identifier(_)) | Some(Token::IntLiteral(_)) | Some(Token::OpenParen) => {
+            let e = parse_expression(l)?;
             statements.push(Statement::ExpressionStatement(e));
          }
          Some(x) => {
@@ -114,8 +114,7 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
          }
          None => {
             eprintln!(
-               "While parsing block - unexpected EOF; was expecting a statement or a }",
-               x
+               "While parsing block - unexpected EOF; was expecting a statement or a }}"
             );
             return Err(());
          }
@@ -125,5 +124,5 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
 }
 
 fn parse_expression(l: &mut Lexer) -> Result<Expression, ()> {
-
+   unimplemented!()
 }

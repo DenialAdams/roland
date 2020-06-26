@@ -1,0 +1,4 @@
+proc main() {
+   5 + 50 / 5;
+   print("we need a way to print numbers");
+}
