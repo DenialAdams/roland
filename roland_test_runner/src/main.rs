@@ -71,9 +71,9 @@ fn main() -> Result<(), &'static str> {
             let stdout = StandardStream::stdout(ColorChoice::Auto);
             let mut out_handle = stdout.lock();
             let _ = out_handle.set_color(&reset_color);
-            write!(&mut out_handle, "{}: ", entry.file_name().unwrap().to_str().unwrap());
+            write!(&mut out_handle, "{}: ", entry.file_name().unwrap().to_str().unwrap()).unwrap();
             let _ = out_handle.set_color(&pass_color);
-            writeln!(&mut out_handle, "ok");
+            writeln!(&mut out_handle, "ok").unwrap();
             let _ = out_handle.set_color(&reset_color);
          }
          Err(reason) => {
@@ -81,44 +81,44 @@ fn main() -> Result<(), &'static str> {
             let stderr = StandardStream::stderr(ColorChoice::Auto);
             let mut out_handle = stderr.lock();
             let _ = out_handle.set_color(&reset_color);
-            writeln!(&mut out_handle, "--------------------");
-            write!(&mut out_handle, "{}: ", entry.file_name().unwrap().to_str().unwrap());
+            writeln!(&mut out_handle, "--------------------").unwrap();
+            write!(&mut out_handle, "{}: ", entry.file_name().unwrap().to_str().unwrap()).unwrap();
             let _ = out_handle.set_color(&err_color);
-            writeln!(&mut out_handle, "FAILED");
+            writeln!(&mut out_handle, "FAILED").unwrap();
             let _ = out_handle.set_color(&reset_color);
             match reason {
                TestFailureReason::ExpectedCompilationFailure => {
-                  writeln!(&mut out_handle, "Compilation was supposed to fail, but it succeeded.");
+                  writeln!(&mut out_handle, "Compilation was supposed to fail, but it succeeded.").unwrap();
                }
                TestFailureReason::ExpectedCompilationSuccess => {
-                  writeln!(&mut out_handle, "Compilation was supposed to succeed, but it failed:");
-                  writeln!(&mut out_handle, "```");
-                  writeln!(&mut out_handle, "{}", String::from_utf8_lossy(&tc_output.stderr));
-                  writeln!(&mut out_handle, "```");
+                  writeln!(&mut out_handle, "Compilation was supposed to succeed, but it failed:").unwrap();
+                  writeln!(&mut out_handle, "```").unwrap();
+                  writeln!(&mut out_handle, "{}", String::from_utf8_lossy(&tc_output.stderr)).unwrap();
+                  writeln!(&mut out_handle, "```").unwrap();
                }
                TestFailureReason::ExpectedCompilationSuccessNoExecutable => {
-                  writeln!(&mut out_handle, "Compilation was supposed to succeed, but no executable was produced and there was no error output from the compiler");
+                  writeln!(&mut out_handle, "Compilation was supposed to succeed, but no executable was produced and there was no error output from the compiler").unwrap();
                }
                TestFailureReason::MismatchedExecutionOutput(diff) => {
                   writeln!(
                      &mut out_handle,
                      "Compiled OK, but execution of the program produced a different result than expected:"
-                  );
-                  writeln!(&mut out_handle, "```");
+                  ).unwrap();
+                  writeln!(&mut out_handle, "```").unwrap();
                   print_diff(&mut out_handle, &diff.diffs);
-                  writeln!(&mut out_handle, "```");
+                  writeln!(&mut out_handle, "```").unwrap();
                }
                TestFailureReason::MismatchedCompilationErrorOutput(diff) => {
                   writeln!(
                      &mut out_handle,
                      "Failed to compile, but the compilation error was different than expected:"
-                  );
-                  writeln!(&mut out_handle, "```");
+                  ).unwrap();
+                  writeln!(&mut out_handle, "```").unwrap();
                   print_diff(&mut out_handle, &diff.diffs);
-                  writeln!(&mut out_handle, "```");
+                  writeln!(&mut out_handle, "```").unwrap();
                }
             }
-            writeln!(&mut out_handle, "--------------------");
+            writeln!(&mut out_handle, "--------------------").unwrap();
          }
       }
    });
@@ -129,13 +129,13 @@ fn main() -> Result<(), &'static str> {
    let lock = output_mutex.lock().unwrap();
 
    let _ = out_handle.set_color(&pass_color);
-   write!(&mut out_handle, "{} ", lock.0);
+   write!(&mut out_handle, "{} ", lock.0).unwrap();
    let _ = out_handle.set_color(&reset_color);
-   write!(&mut out_handle, "successes, ");
+   write!(&mut out_handle, "successes, ").unwrap();
    let _ = out_handle.set_color(&err_color);
-   write!(&mut out_handle, "{} ", lock.1);
+   write!(&mut out_handle, "{} ", lock.1).unwrap();
    let _ = out_handle.set_color(&reset_color);
-   writeln!(&mut out_handle, "failures");
+   writeln!(&mut out_handle, "failures").unwrap();
 
    Ok(())
 }
@@ -145,15 +145,15 @@ fn print_diff<W: WriteColor>(t: &mut W, diffs: &[Difference]) {
       match diff {
          Difference::Same(ref x) => {
             let _ = t.set_color(ColorSpec::new().set_fg(None).set_intense(false));
-            writeln!(t, "{}", x);
+            writeln!(t, "{}", x).unwrap();
          }
          Difference::Add(ref x) => {
             let _ = t.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_intense(false));
-            writeln!(t, "+{}", x);
+            writeln!(t, "+{}", x).unwrap();
          }
          Difference::Rem(ref x) => {
             let _ = t.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_intense(false));
-            writeln!(t, "-{}", x);
+            writeln!(t, "-{}", x).unwrap();
          }
       }
    }
