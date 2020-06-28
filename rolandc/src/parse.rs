@@ -6,6 +6,12 @@ struct Lexer {
 }
 
 impl Lexer {
+   fn from_tokens(mut tokens: Vec<Token>) -> Lexer {
+      tokens.reverse();
+      Lexer { tokens }
+   }
+
+
    fn peek(&self) -> Option<&Token> {
       self.tokens.last()
    }
@@ -45,8 +51,7 @@ pub struct Program {
 }
 
 pub fn astify(mut tokens: Vec<Token>) -> Result<Program, ()> {
-   tokens.reverse();
-   let mut lexer = Lexer { tokens };
+   let mut lexer = Lexer::from_tokens(tokens);
 
    let mut procedures = vec![];
 
@@ -124,5 +129,53 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
 }
 
 fn parse_expression(l: &mut Lexer) -> Result<Expression, ()> {
+   pratt(l);
    unimplemented!()
+}
+
+fn pratt(l: &mut Lexer) -> Result<Expression, ()> {
+   let lhs = l.next();
+   let lhs = match lhs {
+      Some(x @ Token::IntLiteral(_)) | Some(x @ Token::Identifier(_)) => x,
+      x => {
+         eprintln!(
+            "While parsing expression - unexpected token {:?}; was expecting an int or identifier",
+            x
+         );
+         return Err(());
+      }
+   };
+
+   loop {
+      let op = match l.next() {
+         Some(x @ Token::Plus) |
+         Some(x @ Token::Minus) |
+         Some(x @ Token::Multiply) |
+         Some(x @ Token::Divide) => {
+           x
+         },
+         x => {
+            eprintln!(
+               "While parsing expression - unexpected token {:?}; was expecting an operator",
+               x
+            );
+            return Err(());
+         }
+      };
+
+      let (l_bp, r_b) = infix_binding_power(&op);
+
+      unimplemented!()
+   }
+
+
+   unimplemented!()
+}
+
+fn infix_binding_power(op: &Token) -> (u8, u8) {
+   match &op {
+       Token::Plus | Token::Minus => (1, 2),
+       Token::Multiply | Token::Divide => (3, 4),
+       _ => unreachable!()
+   }
 }
