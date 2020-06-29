@@ -156,17 +156,17 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
          } else {
             Expression::Variable(s)
          }
-      },
+      }
       Some(Token::OpenParen) => {
          let new_lhs = pratt(l, 0)?;
          expect(l, discriminant(&Token::CloseParen))?;
          new_lhs
       }
-      Some(x @ Token::Plus) | Some(x @ Token::Minus) | Some(x @ Token::Multiply) | Some(x  @ Token::Divide) => {
+      Some(x @ Token::Plus) | Some(x @ Token::Minus) | Some(x @ Token::Multiply) | Some(x @ Token::Divide) => {
          let ((), r_bp) = prefix_binding_power(&x);
          let rhs = pratt(l, r_bp)?;
          Expression::Negate(Box::new(rhs))
-      },
+      }
       x => {
          eprintln!(
             "While parsing expression - unexpected token {:?}; was expecting an int or identifier",
@@ -179,7 +179,9 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
    loop {
       // TODO: use something like discriminant, or maybe better a new enum type so we avoid the clone
       let op: Token = match l.peek() {
-         Some(x @ &Token::Plus) | Some(x @ &Token::Minus) | Some(x @ &Token::Multiply) | Some(x @ &Token::Divide) => x.clone(),
+         Some(x @ &Token::Plus) | Some(x @ &Token::Minus) | Some(x @ &Token::Multiply) | Some(x @ &Token::Divide) => {
+            x.clone()
+         }
          _ => break,
       };
 

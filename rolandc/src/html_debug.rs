@@ -1,4 +1,4 @@
-use crate::parse::{Program, Statement, Expression};
+use crate::parse::{Expression, Program, Statement};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 
