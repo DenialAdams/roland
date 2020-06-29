@@ -1,3 +1,4 @@
+mod html_debug;
 mod lex;
 mod parse;
 
@@ -23,6 +24,7 @@ fn main() {
       Err(()) => std::process::exit(1),
       Ok(v) => v,
    };
+   html_debug::print_ast_as_html(&ast);
    eprintln!("Next phase unimplemented");
    std::process::exit(1);
 }

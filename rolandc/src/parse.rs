@@ -11,7 +11,6 @@ impl Lexer {
       Lexer { tokens }
    }
 
-
    fn peek(&self) -> Option<&Token> {
       self.tokens.last()
    }
@@ -29,28 +28,40 @@ fn expect(l: &mut Lexer, token: Discriminant<Token>) -> Result<Token, ()> {
    Ok(lex_token.unwrap())
 }
 
-struct ProcedureNode {
-   name: String,
-   block: BlockNode,
+pub struct ProcedureNode {
+   pub name: String,
+   pub block: BlockNode,
 }
 
-enum Expression {
+#[derive(Debug)]
+pub enum BinOp {
+   Add,
+   Subtract,
+   Multiply,
+   Divide,
+}
+
+pub enum Expression {
    ProcedureCall(String),
+   Int(i64),
+   Variable(String),
+   BinaryOperator(BinOp, Box<(Expression, Expression)>),
+   Negate(Box<Expression>),
 }
 
-enum Statement {
+pub enum Statement {
    ExpressionStatement(Expression),
 }
 
-struct BlockNode {
-   statements: Vec<Statement>,
+pub struct BlockNode {
+   pub statements: Vec<Statement>,
 }
 
 pub struct Program {
-   procedures: Vec<ProcedureNode>,
+   pub procedures: Vec<ProcedureNode>,
 }
 
-pub fn astify(mut tokens: Vec<Token>) -> Result<Program, ()> {
+pub fn astify(tokens: Vec<Token>) -> Result<Program, ()> {
    let mut lexer = Lexer::from_tokens(tokens);
 
    let mut procedures = vec![];
@@ -73,7 +84,7 @@ pub fn astify(mut tokens: Vec<Token>) -> Result<Program, ()> {
       }
    }
 
-   Ok(Program { procedures: vec![] })
+   Ok(Program { procedures })
 }
 
 fn extract_identifier(t: Token) -> String {
@@ -108,6 +119,7 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
          }
          Some(Token::Identifier(_)) | Some(Token::IntLiteral(_)) | Some(Token::OpenParen) => {
             let e = parse_expression(l)?;
+            expect(l, discriminant(&Token::Semicolon))?;
             statements.push(Statement::ExpressionStatement(e));
          }
          Some(x) => {
@@ -118,25 +130,43 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
             return Err(());
          }
          None => {
-            eprintln!(
-               "While parsing block - unexpected EOF; was expecting a statement or a }}"
-            );
+            eprintln!("While parsing block - unexpected EOF; was expecting a statement or a }}");
             return Err(());
          }
       }
    }
-   Ok(BlockNode { statements: vec![] })
+   Ok(BlockNode { statements })
 }
 
 fn parse_expression(l: &mut Lexer) -> Result<Expression, ()> {
-   pratt(l);
-   unimplemented!()
+   pratt(l, 0)
 }
 
-fn pratt(l: &mut Lexer) -> Result<Expression, ()> {
+fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
    let lhs = l.next();
    let lhs = match lhs {
-      Some(x @ Token::IntLiteral(_)) | Some(x @ Token::Identifier(_)) => x,
+      Some(Token::IntLiteral(x)) => Expression::Int(x),
+      Some(Token::Identifier(s)) => {
+         if let Some(&Token::OpenParen) = l.peek() {
+            let _ = l.next();
+            // TODO arguments
+            let _ = l.next(); // "hello, world!"
+            expect(l, discriminant(&Token::CloseParen))?;
+            Expression::ProcedureCall(s)
+         } else {
+            Expression::Variable(s)
+         }
+      },
+      Some(Token::OpenParen) => {
+         let new_lhs = pratt(l, 0)?;
+         expect(l, discriminant(&Token::CloseParen))?;
+         new_lhs
+      }
+      Some(x @ Token::Plus) | Some(x @ Token::Minus) | Some(x @ Token::Multiply) | Some(x  @ Token::Divide) => {
+         let ((), r_bp) = prefix_binding_power(&x);
+         let rhs = pratt(l, r_bp)?;
+         Expression::Negate(Box::new(rhs))
+      },
       x => {
          eprintln!(
             "While parsing expression - unexpected token {:?}; was expecting an int or identifier",
@@ -147,35 +177,43 @@ fn pratt(l: &mut Lexer) -> Result<Expression, ()> {
    };
 
    loop {
-      let op = match l.next() {
-         Some(x @ Token::Plus) |
-         Some(x @ Token::Minus) |
-         Some(x @ Token::Multiply) |
-         Some(x @ Token::Divide) => {
-           x
-         },
-         x => {
-            eprintln!(
-               "While parsing expression - unexpected token {:?}; was expecting an operator",
-               x
-            );
-            return Err(());
-         }
+      // TODO: use something like discriminant, or maybe better a new enum type so we avoid the clone
+      let op: Token = match l.peek() {
+         Some(x @ &Token::Plus) | Some(x @ &Token::Minus) | Some(x @ &Token::Multiply) | Some(x @ &Token::Divide) => x.clone(),
+         _ => break,
       };
 
       let (l_bp, r_b) = infix_binding_power(&op);
+      if l_bp < min_bp {
+         break;
+      }
 
-      unimplemented!()
+      let _ = l.next();
+      let rhs = pratt(l, r_b)?;
+
+      match op {
+         Token::Plus => return Ok(Expression::BinaryOperator(BinOp::Add, Box::new((lhs, rhs)))),
+         Token::Minus => return Ok(Expression::BinaryOperator(BinOp::Subtract, Box::new((lhs, rhs)))),
+         Token::Multiply => return Ok(Expression::BinaryOperator(BinOp::Multiply, Box::new((lhs, rhs)))),
+         Token::Divide => return Ok(Expression::BinaryOperator(BinOp::Divide, Box::new((lhs, rhs)))),
+         _ => unreachable!(),
+      }
    }
 
+   Ok(lhs)
+}
 
-   unimplemented!()
+fn prefix_binding_power(op: &Token) -> ((), u8) {
+   match op {
+      Token::Minus => ((), 5),
+      _ => panic!("bad op: {:?}", op),
+   }
 }
 
 fn infix_binding_power(op: &Token) -> (u8, u8) {
    match &op {
-       Token::Plus | Token::Minus => (1, 2),
-       Token::Multiply | Token::Divide => (3, 4),
-       _ => unreachable!()
+      Token::Plus | Token::Minus => (1, 2),
+      Token::Multiply | Token::Divide => (3, 4),
+      _ => unreachable!(),
    }
 }

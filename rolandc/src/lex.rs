@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Token {
    ProcedureDef,
    OpenBrace,
@@ -107,7 +107,9 @@ pub fn lex(input: String) -> Result<Vec<Token>, ()> {
                int_value = 0;
                mode = LexMode::Normal;
             } else {
-               let new_val = int_value.checked_mul(10).and_then(|x| x.checked_add(c.to_digit(10).unwrap() as i64));
+               let new_val = int_value
+                  .checked_mul(10)
+                  .and_then(|x| x.checked_add(c.to_digit(10).unwrap() as i64));
                int_value = if let Some(v) = new_val {
                   v
                } else {
