@@ -21,6 +21,7 @@ pub enum Token {
    LessThanOrEqualTo,
    GreaterThan,
    GreaterThanOrEqualTo,
+   Comma,
 }
 
 enum LexMode {
@@ -78,6 +79,9 @@ pub fn lex(input: String) -> Result<Vec<Token>, ()> {
                let _ = chars.next().unwrap();
             } else if c == '/' {
                tokens.push(Token::Divide);
+               let _ = chars.next().unwrap();
+            } else if c == ',' {
+               tokens.push(Token::Comma);
                let _ = chars.next().unwrap();
             } else if c == '=' {
                let _ = chars.next().unwrap();

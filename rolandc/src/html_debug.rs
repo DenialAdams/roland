@@ -50,14 +50,22 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
 
 fn print_expression(out: &mut BufWriter<File>, expression: &Expression) {
    match expression {
-      Expression::Int(x) => {
+      Expression::IntLiteral(x) => {
          writeln!(out, "<li><span>{}</span>", x).unwrap();
+      }
+      Expression::StringLiteral(x) => {
+         writeln!(out, "<li><span>\"{}\"</span>", x).unwrap();
       }
       Expression::Variable(x) => {
          writeln!(out, "<li><span>{}</span>", x).unwrap();
       }
-      Expression::ProcedureCall(x) => {
+      Expression::ProcedureCall(x, args) => {
          writeln!(out, "<li><span>{}()</span>", x).unwrap();
+         writeln!(out, "<ul>").unwrap();
+         for exp in args {
+            print_expression(out, exp);
+         }
+         writeln!(out, "</ul>").unwrap()
       }
       Expression::BinaryOperator(bin_op, operands) => {
          writeln!(out, "<li><span>{:?}</span>", bin_op).unwrap();
