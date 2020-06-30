@@ -1,4 +1,4 @@
 proc main() {
-   5 + 50 / 5;
-   print("we need a way to print numbers");
+   let x = 5 + 50 / 5;
+   print_int(x);
 }

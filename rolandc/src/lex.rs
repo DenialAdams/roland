@@ -1,6 +1,7 @@
 #[derive(Clone, Debug)]
 pub enum Token {
-   ProcedureDef,
+   KeywordProcedureDef,
+   KeywordLet,
    OpenBrace,
    CloseBrace,
    OpenParen,
@@ -13,6 +14,13 @@ pub enum Token {
    Minus,
    Multiply,
    Divide,
+   Assignment,
+   Equality,
+   NotEquality,
+   LessThan,
+   LessThanOrEqualTo,
+   GreaterThan,
+   GreaterThanOrEqualTo,
 }
 
 enum LexMode {
@@ -24,7 +32,8 @@ enum LexMode {
 
 fn extract_keyword_or_ident(s: &str) -> Token {
    match s {
-      "proc" => Token::ProcedureDef,
+      "proc" => Token::KeywordProcedureDef,
+      "let" => Token::KeywordLet,
       other => Token::Identifier(other.to_string()),
    }
 }
@@ -70,6 +79,39 @@ pub fn lex(input: String) -> Result<Vec<Token>, ()> {
             } else if c == '/' {
                tokens.push(Token::Divide);
                let _ = chars.next().unwrap();
+            } else if c == '=' {
+               let _ = chars.next().unwrap();
+               if chars.peek() == Some(&'=') {
+                  tokens.push(Token::Equality);
+                  let _ = chars.next().unwrap();
+               } else {
+                  tokens.push(Token::Assignment);
+               }
+            } else if c == '>' {
+               let _ = chars.next().unwrap();
+               if chars.peek() == Some(&'=') {
+                  tokens.push(Token::GreaterThanOrEqualTo);
+                  let _ = chars.next().unwrap();
+               } else {
+                  tokens.push(Token::GreaterThan);
+               }
+            } else if c == '<' {
+               let _ = chars.next().unwrap();
+               if chars.peek() == Some(&'=') {
+                  tokens.push(Token::LessThanOrEqualTo);
+                  let _ = chars.next().unwrap();
+               } else {
+                  tokens.push(Token::LessThan);
+               }
+            } else if c == '!' {
+               let _ = chars.next().unwrap();
+               if chars.peek() == Some(&'=') {
+                  tokens.push(Token::NotEquality);
+                  let _ = chars.next().unwrap();
+               } else {
+                  eprintln!("THIS OPERATOR NOT IMPLEMENTED!");
+                  return Err(());
+               }
             } else if c.is_ascii_digit() {
                mode = LexMode::IntLiteral;
             } else if c.is_alphabetic() {
@@ -80,7 +122,7 @@ pub fn lex(input: String) -> Result<Vec<Token>, ()> {
             }
          }
          LexMode::Ident => {
-            if !c.is_alphabetic() && !c.is_alphanumeric() {
+            if !c.is_alphabetic() && !c.is_alphanumeric() && c != '_' {
                let resulting_token = extract_keyword_or_ident(&str_buf);
                tokens.push(resulting_token);
                str_buf.clear();

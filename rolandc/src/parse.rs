@@ -39,6 +39,12 @@ pub enum BinOp {
    Subtract,
    Multiply,
    Divide,
+   Equality,
+   NotEquality,
+   GreaterThan,
+   LessThan,
+   GreaterThanOrEqualTo,
+   LessThanOrEqualTo,
 }
 
 pub enum Expression {
@@ -51,6 +57,7 @@ pub enum Expression {
 
 pub enum Statement {
    ExpressionStatement(Expression),
+   VariableDeclaration(String, Expression),
 }
 
 pub struct BlockNode {
@@ -68,7 +75,7 @@ pub fn astify(tokens: Vec<Token>) -> Result<Program, ()> {
 
    while let Some(peeked_token) = lexer.peek() {
       match peeked_token {
-         Token::ProcedureDef => {
+         Token::KeywordProcedureDef => {
             match parse_procedure(&mut lexer) {
                Ok(p) => procedures.push(p),
                Err(()) => return Err(()),
@@ -95,7 +102,7 @@ fn extract_identifier(t: Token) -> String {
 }
 
 fn parse_procedure(l: &mut Lexer) -> Result<ProcedureNode, ()> {
-   expect(l, discriminant(&Token::ProcedureDef))?;
+   expect(l, discriminant(&Token::KeywordProcedureDef))?;
    let function_name = expect(l, discriminant(&Token::Identifier(String::from(""))))?;
    expect(l, discriminant(&Token::OpenParen))?;
    expect(l, discriminant(&Token::CloseParen))?;
@@ -116,6 +123,14 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
          Some(Token::CloseBrace) => {
             let _ = l.next();
             break;
+         }
+         Some(Token::KeywordLet) => {
+            let _ = l.next();
+            let variable_name = expect(l, discriminant(&Token::Identifier(String::from(""))))?;
+            expect(l, discriminant(&Token::Assignment))?;
+            let e = parse_expression(l)?;
+            expect(l, discriminant(&Token::Semicolon))?;
+            statements.push(Statement::VariableDeclaration(extract_identifier(variable_name), e));
          }
          Some(Token::Identifier(_)) | Some(Token::IntLiteral(_)) | Some(Token::OpenParen) => {
             let e = parse_expression(l)?;
@@ -193,13 +208,21 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
       let _ = l.next();
       let rhs = pratt(l, r_b)?;
 
-      match op {
-         Token::Plus => return Ok(Expression::BinaryOperator(BinOp::Add, Box::new((lhs, rhs)))),
-         Token::Minus => return Ok(Expression::BinaryOperator(BinOp::Subtract, Box::new((lhs, rhs)))),
-         Token::Multiply => return Ok(Expression::BinaryOperator(BinOp::Multiply, Box::new((lhs, rhs)))),
-         Token::Divide => return Ok(Expression::BinaryOperator(BinOp::Divide, Box::new((lhs, rhs)))),
+      let bin_op = match op {
+         Token::Plus => BinOp::Add,
+         Token::Minus => BinOp::Subtract,
+         Token::Multiply => BinOp::Multiply,
+         Token::Divide => BinOp::Divide,
+         Token::GreaterThan => BinOp::GreaterThan,
+         Token::GreaterThanOrEqualTo => BinOp::GreaterThanOrEqualTo,
+         Token::LessThan => BinOp::LessThan,
+         Token::LessThanOrEqualTo => BinOp::LessThanOrEqualTo,
+         Token::Equality => BinOp::Equality,
+         Token::NotEquality => BinOp::NotEquality,
          _ => unreachable!(),
-      }
+      };
+
+      return Ok(Expression::BinaryOperator(bin_op, Box::new((rhs, lhs))));
    }
 
    Ok(lhs)
@@ -207,15 +230,16 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
 
 fn prefix_binding_power(op: &Token) -> ((), u8) {
    match op {
-      Token::Minus => ((), 5),
+      Token::Minus => ((), 6),
       _ => panic!("bad op: {:?}", op),
    }
 }
 
 fn infix_binding_power(op: &Token) -> (u8, u8) {
    match &op {
-      Token::Plus | Token::Minus => (1, 2),
-      Token::Multiply | Token::Divide => (3, 4),
+      Token::Equality | Token::NotEquality | Token::GreaterThan | Token::GreaterThanOrEqualTo | Token::LessThan | Token::LessThanOrEqualTo => (1, 1),
+      Token::Plus | Token::Minus => (2, 3),
+      Token::Multiply | Token::Divide => (4, 5),
       _ => unreachable!(),
    }
 }
