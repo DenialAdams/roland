@@ -1,0 +1,12 @@
+proc main() {
+   myfunc();
+   print("Hello, world!");
+}
+
+func myfunc() {
+   myproc();
+}
+
+proc myproc() {
+   print("Something impure");
+}

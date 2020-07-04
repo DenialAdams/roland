@@ -1,0 +1,20 @@
+proc main() {
+   let x = -10;
+   let y = 10;
+
+   print_bool(x > y);
+   print_bool(x >= y);
+   print_bool(x < y);
+   print_bool(x <= y);
+   print_bool(x == y);
+   print_bool(x != y);
+
+   let z = 10;
+
+   print_bool(y > z);
+   print_bool(y >= z);
+   print_bool(y < z);
+   print_bool(y <= z);
+   print_bool(y == z);
+   print_bool(y != z);
+}

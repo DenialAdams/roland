@@ -1,5 +1,6 @@
 #[derive(Clone, Debug)]
 pub enum Token {
+   KeywordFuncDef,
    KeywordProcedureDef,
    KeywordLet,
    OpenBrace,
@@ -33,6 +34,7 @@ enum LexMode {
 
 fn extract_keyword_or_ident(s: &str) -> Token {
    match s {
+      "func" => Token::KeywordFuncDef,
       "proc" => Token::KeywordProcedureDef,
       "let" => Token::KeywordLet,
       other => Token::Identifier(other.to_string()),
