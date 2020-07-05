@@ -19,7 +19,12 @@ pub fn print_ast_as_html(program: &Program) {
    writeln!(out, "<li><span>Program</span>").unwrap();
    writeln!(out, "<ul>").unwrap();
    for procedure in program.procedures.iter() {
-      writeln!(out, "<li><span>Procedure «{}»</span>", procedure.name).unwrap();
+      let label = if procedure.pure {
+         "func"
+      } else {
+         "proc"
+      };
+      writeln!(out, "<li><span>{} «{}»</span>", label, procedure.name).unwrap();
       writeln!(out, "<ul>").unwrap();
       for statement in procedure.block.statements.iter() {
          print_statement(&mut out, statement);
