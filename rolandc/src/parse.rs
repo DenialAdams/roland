@@ -1,5 +1,5 @@
 use super::lex::Token;
-use std::mem::{discriminant, Discriminant};
+use std::mem::discriminant;
 
 struct Lexer {
    tokens: Vec<Token>,
@@ -49,18 +49,37 @@ pub enum BinOp {
    LessThanOrEqualTo,
 }
 
+#[derive(Debug)]
+pub enum UnOp {
+   Negate,
+   LogicalNegate,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ExpressionType {
+   Int,
+   String,
+   Bool,
+   Unit
+}
+
+pub struct ExpressionNode {
+   pub expression: Expression,
+   pub exp_type: Option<ExpressionType>,
+}
+
 pub enum Expression {
-   ProcedureCall(String, Vec<Expression>),
+   ProcedureCall(String, Vec<ExpressionNode>),
    StringLiteral(String),
    IntLiteral(i64),
    Variable(String),
-   BinaryOperator(BinOp, Box<(Expression, Expression)>),
-   Negate(Box<Expression>),
+   BinaryOperator(BinOp, Box<(ExpressionNode, ExpressionNode)>),
+   UnaryOperator(UnOp, Box<ExpressionNode>),
 }
 
 pub enum Statement {
-   ExpressionStatement(Expression),
-   VariableDeclaration(String, Expression),
+   ExpressionStatement(ExpressionNode),
+   VariableDeclaration(String, ExpressionNode),
 }
 
 pub struct BlockNode {
@@ -136,7 +155,7 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
             let _ = l.next();
             let variable_name = expect(l, &Token::Identifier(String::from("")))?;
             expect(l, &Token::Assignment)?;
-            let e = parse_expression(l)?;;
+            let e = parse_expression(l)?;
             expect(l, &Token::Semicolon)?;
             statements.push(Statement::VariableDeclaration(extract_identifier(variable_name), e));
          }
@@ -165,7 +184,7 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
    Ok(BlockNode { statements })
 }
 
-fn parse_arguments(l: &mut Lexer) -> Result<Vec<Expression>, ()> {
+fn parse_arguments(l: &mut Lexer) -> Result<Vec<ExpressionNode>, ()> {
    let mut arguments = vec![];
 
    loop {
@@ -199,8 +218,8 @@ fn parse_arguments(l: &mut Lexer) -> Result<Vec<Expression>, ()> {
    Ok(arguments)
 }
 
-fn parse_expression(l: &mut Lexer) -> Result<Expression, ()> {
-   pratt(l, 0)
+fn parse_expression(l: &mut Lexer) -> Result<ExpressionNode, ()> {
+   Ok(wrap(pratt(l, 0)?))
 }
 
 fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
@@ -226,7 +245,12 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
       Some(x @ Token::Minus) => {
          let ((), r_bp) = prefix_binding_power(&x);
          let rhs = pratt(l, r_bp)?;
-         Expression::Negate(Box::new(rhs))
+         Expression::UnaryOperator(UnOp::Negate, Box::new(wrap(rhs)))
+      }
+      Some(x @ Token::Exclam) => {
+         let ((), r_bp) = prefix_binding_power(&x);
+         let rhs = pratt(l, r_bp)?;
+         Expression::UnaryOperator(UnOp::LogicalNegate, Box::new(wrap(rhs)))
       }
       x => {
          eprintln!(
@@ -275,7 +299,7 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
          _ => unreachable!(),
       };
 
-      return Ok(Expression::BinaryOperator(bin_op, Box::new((rhs, lhs))));
+      return Ok(Expression::BinaryOperator(bin_op, Box::new((wrap(rhs), wrap(lhs)))));
    }
 
    Ok(lhs)
@@ -283,6 +307,7 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
 
 fn prefix_binding_power(op: &Token) -> ((), u8) {
    match op {
+      Token::Exclam => ((), 6),
       Token::Minus => ((), 6),
       _ => panic!("bad op: {:?}", op),
    }
@@ -299,5 +324,12 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
       Token::Plus | Token::Minus => (2, 3),
       Token::Multiply | Token::Divide => (4, 5),
       _ => unreachable!(),
+   }
+}
+
+fn wrap(expression: Expression) -> ExpressionNode {
+   ExpressionNode {
+      expression,
+      exp_type: None,
    }
 }

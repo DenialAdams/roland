@@ -1,6 +1,7 @@
 mod html_debug;
 mod lex;
 mod parse;
+mod validator;
 
 use clap::Clap;
 use std::path::PathBuf;
@@ -20,11 +21,12 @@ fn main() {
       Ok(v) => v,
    };
    println!("{:?}", tokens);
-   let ast = match parse::astify(tokens) {
+   let mut ast = match parse::astify(tokens) {
       Err(()) => std::process::exit(1),
       Ok(v) => v,
    };
    html_debug::print_ast_as_html(&ast);
+   validator::type_and_check_validity(&mut ast);
    eprintln!("Next phase unimplemented");
    std::process::exit(1);
 }

@@ -1,4 +1,4 @@
-use crate::parse::{Expression, Program, Statement};
+use crate::parse::{Expression, ExpressionNode, Program, Statement};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 
@@ -53,8 +53,8 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
    }
 }
 
-fn print_expression(out: &mut BufWriter<File>, expression: &Expression) {
-   match expression {
+fn print_expression(out: &mut BufWriter<File>, expression_node: &ExpressionNode) {
+   match &expression_node.expression {
       Expression::IntLiteral(x) => {
          writeln!(out, "<li><span>{}</span>", x).unwrap();
       }
@@ -68,7 +68,7 @@ fn print_expression(out: &mut BufWriter<File>, expression: &Expression) {
          writeln!(out, "<li><span>{}()</span>", x).unwrap();
          writeln!(out, "<ul>").unwrap();
          for exp in args {
-            print_expression(out, exp);
+            print_expression(out, &exp);
          }
          writeln!(out, "</ul>").unwrap()
       }
@@ -79,10 +79,10 @@ fn print_expression(out: &mut BufWriter<File>, expression: &Expression) {
          print_expression(out, &operands.1);
          writeln!(out, "</ul>").unwrap();
       }
-      Expression::Negate(expr) => {
-         writeln!(out, "<li><span>Negation</span>").unwrap();
+      Expression::UnaryOperator(un_op, expr) => {
+         writeln!(out, "<li><span>{:?}</span>", un_op).unwrap();
          writeln!(out, "<ul>").unwrap();
-         print_expression(out, expr);
+         print_expression(out, &expr);
          writeln!(out, "</ul>").unwrap();
       }
    }

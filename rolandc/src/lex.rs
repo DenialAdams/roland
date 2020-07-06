@@ -23,6 +23,7 @@ pub enum Token {
    GreaterThan,
    GreaterThanOrEqualTo,
    Comma,
+   Exclam,
 }
 
 enum LexMode {
@@ -115,8 +116,7 @@ pub fn lex(input: String) -> Result<Vec<Token>, ()> {
                   tokens.push(Token::NotEquality);
                   let _ = chars.next().unwrap();
                } else {
-                  eprintln!("THIS OPERATOR NOT IMPLEMENTED!");
-                  return Err(());
+                  tokens.push(Token::Exclam);
                }
             } else if c.is_ascii_digit() {
                mode = LexMode::IntLiteral;
