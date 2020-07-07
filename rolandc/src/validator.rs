@@ -4,6 +4,7 @@ pub fn type_and_check_validity(program: &mut Program) {
    for procedure in program.procedures.iter_mut() {
       for statement in procedure.block.statements.iter_mut() {
          match statement {
+            Statement::VariableDeclaration(_, en) => do_type(en),
             Statement::ExpressionStatement(en) => do_type(en),
             _ => (),
          }
@@ -65,7 +66,10 @@ fn do_type(expr_node: &mut ExpressionNode) {
       Expression::Variable(_) => {
          unimplemented!()
       }
-      Expression::ProcedureCall(_, _) => {
+      Expression::ProcedureCall(_, args) => {
+         for arg in args {
+            do_type(arg);
+         }
          expr_node.exp_type = Some(ExpressionType::Unit);
       }
    }
