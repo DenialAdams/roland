@@ -22,7 +22,11 @@ impl Lexer {
 
 fn expect(l: &mut Lexer, token: &Token) -> Result<Token, ()> {
    let lex_token = l.next();
-   if lex_token.as_ref().map(|x| discriminant(x) != discriminant(token)).unwrap_or(true) {
+   if lex_token
+      .as_ref()
+      .map(|x| discriminant(x) != discriminant(token))
+      .unwrap_or(true)
+   {
       eprintln!("got {:?} when expecting {:?}", lex_token, token);
       return Err(());
    }
@@ -60,7 +64,8 @@ pub enum ExpressionType {
    Int,
    String,
    Bool,
-   Unit
+   Unit,
+   CompileError,
 }
 
 pub struct ExpressionNode {

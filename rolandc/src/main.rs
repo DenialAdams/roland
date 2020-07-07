@@ -26,7 +26,11 @@ fn main() {
       Ok(v) => v,
    };
    html_debug::print_ast_as_html(&ast);
-   validator::type_and_check_validity(&mut ast);
+   let err_count = validator::type_and_check_validity(&mut ast);
+   if err_count > 0 {
+      eprintln!("There were {} semantic errors, bailing", err_count);
+      std::process::exit(1);
+   }
    eprintln!("Next phase unimplemented");
    std::process::exit(1);
 }
