@@ -2,7 +2,7 @@ use crate::parse::{BinOp, Expression, ExpressionNode, ExpressionType, Program, S
 use std::collections::HashMap;
 
 struct ProcedureInfo {
-   pure: bool
+   pure: bool,
 }
 
 struct ValidationContext {
@@ -21,24 +21,24 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
    };
 
    // Standard Library functions
-   let standard_lib_procs = [
-      ("print", false),
-      ("print_int", false),
-      ("print_bool", false),
-   ];
+   let standard_lib_procs = [("print", false), ("print_int", false), ("print_bool", false)];
    for p in standard_lib_procs.iter() {
-      validation_context.procedure_info.insert(p.0.to_string(), ProcedureInfo {
-         pure: p.1,
-      });
+      validation_context
+         .procedure_info
+         .insert(p.0.to_string(), ProcedureInfo { pure: p.1 });
    }
 
    for procedure in program.procedures.iter() {
-      match validation_context.procedure_info.insert(procedure.name.clone(), ProcedureInfo {
-         pure: procedure.pure
-      }) {
+      match validation_context
+         .procedure_info
+         .insert(procedure.name.clone(), ProcedureInfo { pure: procedure.pure })
+      {
          Some(_) => {
             validation_context.error_count += 1;
-            eprintln!("Encountered duplicate procedures/functions with the same name `{}`", procedure.name);
+            eprintln!(
+               "Encountered duplicate procedures/functions with the same name `{}`",
+               procedure.name
+            );
          }
          None => (),
       }
@@ -58,7 +58,9 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
          match statement {
             Statement::VariableDeclaration(id, en) => {
                do_type(en, &mut validation_context);
-               validation_context.variable_types.insert(id.clone(), en.exp_type.clone().unwrap());
+               validation_context
+                  .variable_types
+                  .insert(id.clone(), en.exp_type.clone().unwrap());
             }
             Statement::ExpressionStatement(en) => {
                do_type(en, &mut validation_context);
@@ -171,21 +173,16 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
          let defined_type = validation_context.variable_types.get(id);
 
          let result_type = match defined_type {
-            Some(t) => {
-               t.clone()
-            },
+            Some(t) => t.clone(),
             None => {
                validation_context.error_count += 1;
-               eprintln!(
-                  "Encountered undefined variable {}",
-                  id
-               );
+               eprintln!("Encountered undefined variable {}", id);
                ExpressionType::CompileError
             }
          };
 
          expr_node.exp_type = Some(result_type);
-      },
+      }
       Expression::ProcedureCall(name, args) => {
          expr_node.exp_type = Some(ExpressionType::Unit); // Will change when we parse return types
 
