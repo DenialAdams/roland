@@ -1,0 +1,11 @@
+proc main() {
+   
+}
+
+func foo() {
+
+}
+
+proc foo() {
+
+}

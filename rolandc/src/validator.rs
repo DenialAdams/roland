@@ -1,19 +1,58 @@
 use crate::parse::{BinOp, Expression, ExpressionNode, ExpressionType, Program, Statement, UnOp};
 use std::collections::HashMap;
 
+struct ProcedureInfo {
+   pure: bool
+}
+
 struct ValidationContext {
-   error_count: u64,
+   procedure_info: HashMap<String, ProcedureInfo>,
    variable_types: HashMap<String, ExpressionType>,
+   error_count: u64,
+   in_pure_func: bool,
 }
 
 pub fn type_and_check_validity(program: &mut Program) -> u64 {
    let mut validation_context = ValidationContext {
-      error_count: 0,
       variable_types: HashMap::new(),
+      error_count: 0,
+      procedure_info: HashMap::new(),
+      in_pure_func: false,
    };
+
+   // Standard Library functions
+   let standard_lib_procs = [
+      ("print", false),
+      ("print_int", false),
+      ("print_bool", false),
+   ];
+   for p in standard_lib_procs.iter() {
+      validation_context.procedure_info.insert(p.0.to_string(), ProcedureInfo {
+         pure: p.1,
+      });
+   }
+
+   for procedure in program.procedures.iter() {
+      match validation_context.procedure_info.insert(procedure.name.clone(), ProcedureInfo {
+         pure: procedure.pure
+      }) {
+         Some(_) => {
+            validation_context.error_count += 1;
+            eprintln!("Encountered duplicate procedures/functions with the same name `{}`", procedure.name);
+         }
+         None => (),
+      }
+   }
+
+   // We won't proceed with type checking because there could be false positives due to
+   // procedure definition errors.
+   if validation_context.error_count > 0 {
+      return validation_context.error_count;
+   }
 
    for procedure in program.procedures.iter_mut() {
       validation_context.variable_types.clear();
+      validation_context.in_pure_func = procedure.pure;
 
       for statement in procedure.block.statements.iter_mut() {
          match statement {
@@ -147,11 +186,27 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
 
          expr_node.exp_type = Some(result_type);
       },
-      Expression::ProcedureCall(_, args) => {
+      Expression::ProcedureCall(name, args) => {
+         expr_node.exp_type = Some(ExpressionType::Unit); // Will change when we parse return types
+
+         match validation_context.procedure_info.get(name) {
+            Some(procedure_info) => {
+               if validation_context.in_pure_func && !procedure_info.pure {
+                  validation_context.error_count += 1;
+                  eprintln!("Encountered call to procedure `{}` (impure) in func (pure)", name);
+                  expr_node.exp_type = Some(ExpressionType::CompileError);
+               }
+            }
+            None => {
+               validation_context.error_count += 1;
+               eprintln!("Encountered call to undefined procedure/function `{}`", name);
+               expr_node.exp_type = Some(ExpressionType::CompileError);
+            }
+         }
+
          for arg in args {
             do_type(arg, validation_context);
          }
-         expr_node.exp_type = Some(ExpressionType::Unit);
       }
    }
 }

@@ -1,1 +1,2 @@
-Can't call a procedure from a function
+Encountered call to procedure `myproc` (impure) in func (pure)
+There were 1 semantic errors, bailing
