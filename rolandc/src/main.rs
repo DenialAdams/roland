@@ -20,7 +20,6 @@ fn main() {
       Err(()) => std::process::exit(1),
       Ok(v) => v,
    };
-   println!("{:?}", tokens);
    let mut ast = match parse::astify(tokens) {
       Err(()) => std::process::exit(1),
       Ok(v) => v,
