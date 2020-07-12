@@ -9,6 +9,8 @@ use std::path::PathBuf;
 #[derive(Clap)]
 struct Opts {
    source_file: PathBuf,
+   #[clap(long)]
+   ouput_html_ast: bool,
    #[clap(short, long)]
    output: PathBuf,
 }
@@ -25,7 +27,9 @@ fn main() {
       Ok(v) => v,
    };
    let err_count = validator::type_and_check_validity(&mut ast);
-   html_debug::print_ast_as_html(&ast);
+   if opts.ouput_html_ast {
+      html_debug::print_ast_as_html(&ast);
+   }
    if err_count > 0 {
       eprintln!("There were {} semantic errors, bailing", err_count);
       std::process::exit(1);
