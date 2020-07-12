@@ -33,7 +33,7 @@
        .tree li:first-child:before {left: 50%;}
        .tree li:last-child:before {right: 50%;}
 
-       .tree code, .tree span {
+       .tree code, .tree span:not(#type) {
            border: solid .1em #666;
            border-radius: .2em;
            display: inline-block;
@@ -72,3 +72,9 @@
    .tree > li > span:before {
      outline: none;
    }
+
+#type {
+    font-size: 70%;
+    color: slategray;
+    font-style: italic;
+}

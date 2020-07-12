@@ -24,8 +24,8 @@ fn main() {
       Err(()) => std::process::exit(1),
       Ok(v) => v,
    };
-   html_debug::print_ast_as_html(&ast);
    let err_count = validator::type_and_check_validity(&mut ast);
+   html_debug::print_ast_as_html(&ast);
    if err_count > 0 {
       eprintln!("There were {} semantic errors, bailing", err_count);
       std::process::exit(1);

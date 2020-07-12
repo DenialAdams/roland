@@ -50,18 +50,24 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
 }
 
 fn print_expression(out: &mut BufWriter<File>, expression_node: &ExpressionNode) {
+   let type_text = match &expression_node.exp_type {
+      Some(x) => {
+         format!("<br><span id=\"type\">{:?}</span>", x)
+      }
+      None => "".to_string(),
+   };
    match &expression_node.expression {
       Expression::IntLiteral(x) => {
-         writeln!(out, "<li><span>{}</span>", x).unwrap();
+         writeln!(out, "<li><span>{}{}</span>", x, type_text).unwrap();
       }
       Expression::StringLiteral(x) => {
-         writeln!(out, "<li><span>\"{}\"</span>", x).unwrap();
+         writeln!(out, "<li><span>\"{}\"{}</span>", x, type_text).unwrap();
       }
       Expression::Variable(x) => {
-         writeln!(out, "<li><span>{}</span>", x).unwrap();
+         writeln!(out, "<li><span>{}{}</span>", x, type_text).unwrap();
       }
       Expression::ProcedureCall(x, args) => {
-         writeln!(out, "<li><span>{}()</span>", x).unwrap();
+         writeln!(out, "<li><span>{}(){}</span>", x, type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
          for exp in args {
             print_expression(out, &exp);
@@ -69,14 +75,14 @@ fn print_expression(out: &mut BufWriter<File>, expression_node: &ExpressionNode)
          writeln!(out, "</ul>").unwrap()
       }
       Expression::BinaryOperator(bin_op, operands) => {
-         writeln!(out, "<li><span>{:?}</span>", bin_op).unwrap();
+         writeln!(out, "<li><span>{:?}{}</span>", bin_op, type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
          print_expression(out, &operands.0);
          print_expression(out, &operands.1);
          writeln!(out, "</ul>").unwrap();
       }
       Expression::UnaryOperator(un_op, expr) => {
-         writeln!(out, "<li><span>{:?}</span>", un_op).unwrap();
+         writeln!(out, "<li><span>{:?}{}</span>", un_op, type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
          print_expression(out, &expr);
          writeln!(out, "</ul>").unwrap();
