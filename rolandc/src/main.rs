@@ -2,6 +2,7 @@ mod html_debug;
 mod lex;
 mod parse;
 mod validator;
+mod wasm;
 
 use clap::Clap;
 use std::path::PathBuf;
