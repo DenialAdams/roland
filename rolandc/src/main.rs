@@ -35,6 +35,6 @@ fn main() {
       eprintln!("There were {} semantic errors, bailing", err_count);
       std::process::exit(1);
    }
-   eprintln!("Next phase unimplemented");
-   std::process::exit(1);
+   let buf = wasm::emit_wasm(&ast);
+   println!("{}", String::from_utf8(buf).unwrap());
 }
