@@ -1,4 +1,5 @@
 use super::lex::Token;
+use std::collections::HashSet;
 use std::mem::discriminant;
 
 struct Lexer {
@@ -93,6 +94,7 @@ pub struct BlockNode {
 
 pub struct Program {
    pub procedures: Vec<ProcedureNode>,
+   pub literals: HashSet<String>,
 }
 
 pub fn astify(tokens: Vec<Token>) -> Result<Program, ()> {
@@ -123,7 +125,7 @@ pub fn astify(tokens: Vec<Token>) -> Result<Program, ()> {
       }
    }
 
-   Ok(Program { procedures })
+   Ok(Program { procedures, literals: HashSet::new(), })
 }
 
 fn extract_identifier(t: Token) -> String {

@@ -1,8 +1,10 @@
 use crate::parse::{BinOp, Expression, ExpressionNode, ExpressionType, Program, Statement, UnOp};
+use std::collections::HashMap;
 use std::io::Write;
 
 struct GenerationContext {
-   out: PrettyWasmWriter
+   out: PrettyWasmWriter,
+   literal_offsets: HashMap<String, u32>,
 }
 
 struct PrettyWasmWriter {
@@ -43,22 +45,31 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       out: PrettyWasmWriter {
          out: Vec::new(),
          depth: 0,
-      }
+      },
+      // todo: just reuse the same map?
+      literal_offsets: HashMap::with_capacity(program.literals.len()),
    };
 
    writeln!(&mut generation_context.out, "(module").unwrap();
    generation_context.out.indent();
 
+   // Data section
+
+   let mut offset: u32 = 0;
+   for s in program.literals.iter() {
+      writeln!(&mut generation_context.out, "(data 0 (i32.const {}) \"{}\")", offset, s).unwrap();
+      // TODO: interning to make clone cheap
+      generation_context.literal_offsets.insert(s.clone(), offset);
+      // TODO: check for overflow here
+      offset += s.len() as u32;
+   }
 
    // Standard Library functions
    // TODO add function bodies
-   /*
    let standard_lib_procs = [("print", false), ("print_int", false), ("print_bool", false)];
    for p in standard_lib_procs.iter() {
-      validation_context
-         .procedure_info
-         .insert(p.0.to_string(), ProcedureInfo { pure: p.1 });
-   } */
+      // emit body
+   }
 
    for procedure in program.procedures.iter() {
       writeln!(&mut generation_context.out, "(func ${}", procedure.name).unwrap();
@@ -86,20 +97,36 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
 fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContext) {
    match &expr_node.expression {
-      Expression::IntLiteral(_) => {
-         unimplemented!()
+      Expression::IntLiteral(x) => {
+         writeln!(&mut generation_context.out, "i64.const {}", x).unwrap();
       }
       Expression::StringLiteral(_) => {
          //unimplemented!()
       }
       Expression::BinaryOperator(bin_op, e) => {
-         unimplemented!()
+         do_emit(&e.0, generation_context);
+         do_emit(&e.1, generation_context);
+         match bin_op {
+            BinOp::Add => {
+               writeln!(&mut generation_context.out, "i64.add").unwrap();
+            }
+            BinOp::Subtract => {
+               writeln!(&mut generation_context.out, "i64.sub").unwrap();
+            }
+            BinOp::Multiply => {
+               writeln!(&mut generation_context.out, "i64.mul").unwrap();
+            }
+            BinOp::Divide => {
+               writeln!(&mut generation_context.out, "i64.div_s").unwrap();
+            }
+            _ => unimplemented!()
+         }
       }
       Expression::UnaryOperator(un_op, e) => {
          unimplemented!()
       }
       Expression::Variable(id) => {
-         unimplemented!()
+         writeln!(&mut generation_context.out, "local.get ${}", id).unwrap();
       }
       Expression::ProcedureCall(name, args) => {
          for arg in args {
