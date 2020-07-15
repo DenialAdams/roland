@@ -14,8 +14,9 @@ struct PrettyWasmWriter {
 
 impl PrettyWasmWriter {
    fn close(&mut self) {
-      self.out.push(b')');
       self.depth -= 1;
+      self.emit_spaces();
+      writeln!(self.out, ")").unwrap();
    }
 
    fn emit_spaces(&mut self) {
@@ -32,21 +33,60 @@ impl PrettyWasmWriter {
       self.depth += 1;
    }
 
+   fn emit_function_start(&mut self, name: &str, params: &[(&str, &str)]) {
+      self.emit_spaces();
+      write!(self.out, "(func ${}", name).unwrap();
+      for param in params {
+         write!(self.out, " (param ${} {})", param.0, param.1).unwrap();
+      }
+      self.out.push(b'\n');
+      self.depth += 1;
+   }
+
    fn emit_constant_sexp(&mut self, sexp: &str) {
       self.emit_spaces();
       writeln!(self.out, "{}", sexp).unwrap();
    }
-}
 
-impl Write for PrettyWasmWriter {
-   fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
-      self.out.reserve(buf.len());
-      self.out.extend_from_slice(buf);
-      Ok(buf.len())
+   fn emit_constant_instruction(&mut self, instr: &str) {
+      self.emit_spaces();
+      writeln!(self.out, "{}", instr).unwrap();
    }
 
-   fn flush(&mut self) -> Result<(), std::io::Error> {
-      self.out.flush()
+   fn emit_data(&mut self, mem_index: u32, offset: u32, literal: &str) {
+      // TODO: escape literal
+      self.emit_spaces();
+      writeln!(&mut self.out, "(data {} (i32.const {}) \"{}\")", mem_index, offset, literal).unwrap();
+   }
+
+   fn emit_local_definition(&mut self, local_name: &str, type_s: &str) {
+      self.emit_spaces();
+      writeln!(&mut self.out, "(local ${} {})", local_name, type_s).unwrap();
+   }
+
+   fn emit_set_local(&mut self, local_name: &str) {
+      self.emit_spaces();
+      writeln!(&mut self.out, "local.set ${}", local_name).unwrap();
+   }
+
+   fn emit_get_local(&mut self, local_name: &str) {
+      self.emit_spaces();
+      writeln!(&mut self.out, "local.get ${}", local_name).unwrap();
+   }
+
+   fn emit_call(&mut self, func_name: &str) {
+      self.emit_spaces();
+      writeln!(&mut self.out, "call ${}", func_name).unwrap();
+   }
+
+   fn emit_const_i32(&mut self, value: u32) {
+      self.emit_spaces();
+      writeln!(&mut self.out, "i32.const {}", value).unwrap();
+   }
+
+   fn emit_const_i64(&mut self, value: i64) {
+      self.emit_spaces();
+      writeln!(&mut self.out, "i64.const {}", value).unwrap();
    }
 }
 
@@ -79,7 +119,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
    let mut offset: u32 = 16;
    for s in std::iter::once("\\n").chain(program.literals.iter().map(|x| x.as_str())) {
-      writeln!(&mut generation_context.out, "(data 0 (i32.const {}) \"{}\")", offset, s).unwrap();
+      generation_context.out.emit_data(0, offset, s);
       //TODO: and here truncation
       let s_len = s.len() as u32;
       // TODO: interning to make clone cheap
@@ -88,56 +128,54 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       offset += s_len;
    }
 
-   // Standard Library functions
-   // TODO add function bodies
-   let standard_lib_procs = [("print_bool", false)];
-   for p in standard_lib_procs.iter() {
-      writeln!(&mut generation_context.out, "(func ${} nop", p.0).unwrap();
-      generation_context.out.indent();
-      generation_context.out.close();
-   }
-
    // print
-   writeln!(&mut generation_context.out, "(func $print (param $str_offset i32) (param $str_len i32)").unwrap();
-   generation_context.out.indent();
+   generation_context.out.emit_function_start("print", &[("str_offset", "i32"), ("str_len", "i32")]);
    // build the iovecs array
-   writeln!(&mut generation_context.out, "(i32.store (i32.const 0) (local.get $str_offset))").unwrap();
-   writeln!(&mut generation_context.out, "(i32.store (i32.const 4) (local.get $str_len))").unwrap();
-   writeln!(&mut generation_context.out, "(i32.store (i32.const 8) (i32.const 16))").unwrap();
-   writeln!(&mut generation_context.out, "(i32.store (i32.const 12) (i32.const 1))").unwrap();
-   writeln!(&mut generation_context.out, "(call $fd_write (i32.const 1) (i32.const 0) (i32.const 2) (i32.const 0))").unwrap();
-   writeln!(&mut generation_context.out, "drop").unwrap();
+   generation_context.out.emit_constant_sexp("(i32.store (i32.const 0) (local.get $str_offset))");
+   generation_context.out.emit_constant_sexp("(i32.store (i32.const 4) (local.get $str_len))");
+   generation_context.out.emit_constant_sexp("(i32.store (i32.const 8) (i32.const 16))");
+   generation_context.out.emit_constant_sexp("(i32.store (i32.const 12) (i32.const 1))");
+   generation_context.out.emit_constant_sexp("(call $fd_write (i32.const 1) (i32.const 0) (i32.const 2) (i32.const 0))");
+   generation_context.out.emit_constant_instruction("drop");
    generation_context.out.close();
 
    // print int
-   writeln!(&mut generation_context.out, "(func $print_int (param $int i64)").unwrap();
-   generation_context.out.indent();
+   generation_context.out.emit_function_start("print_int", &[("int", "i64")]);
    // build the iovecs array
    //writeln!(&mut generation_context.out, "(i32.store (i32.const 0) (local.get $str_offset))").unwrap();
    //writeln!(&mut generation_context.out, "(i32.store (i32.const 4) (local.get $str_len))").unwrap();
-   writeln!(&mut generation_context.out, "(i32.store (i32.const 8) (i32.const 16))").unwrap();
-   writeln!(&mut generation_context.out, "(i32.store (i32.const 12) (i32.const 1))").unwrap();
-   writeln!(&mut generation_context.out, "(call $fd_write (i32.const 1) (i32.const 0) (i32.const 2) (i32.const 0))").unwrap();
-   writeln!(&mut generation_context.out, "drop").unwrap();
+   generation_context.out.emit_constant_sexp("(i32.store (i32.const 8) (i32.const 16))");
+   generation_context.out.emit_constant_sexp("(i32.store (i32.const 12) (i32.const 1))");
+   generation_context.out.emit_constant_sexp("(call $fd_write (i32.const 1) (i32.const 0) (i32.const 2) (i32.const 0))");
+   generation_context.out.emit_constant_instruction("drop");
+   generation_context.out.close();
+
+   // print bool
+   generation_context.out.emit_function_start("print_bool", &[("bool", "i64")]);
+   // build the iovecs array
+   //writeln!(&mut generation_context.out, "(i32.store (i32.const 0) (local.get $str_offset))").unwrap();
+   //writeln!(&mut generation_context.out, "(i32.store (i32.const 4) (local.get $str_len))").unwrap();
+   generation_context.out.emit_constant_sexp("(i32.store (i32.const 8) (i32.const 16))");
+   generation_context.out.emit_constant_sexp("(i32.store (i32.const 12) (i32.const 1))");
+   generation_context.out.emit_constant_sexp("(call $fd_write (i32.const 1) (i32.const 0) (i32.const 2) (i32.const 0))");
+   generation_context.out.emit_constant_instruction("drop");
    generation_context.out.close();
 
    for procedure in program.procedures.iter() {
-      writeln!(&mut generation_context.out, "(func ${}", procedure.name).unwrap();
+      generation_context.out.emit_function_start(&procedure.name, &[]);
       if procedure.name == "main" {
-         writeln!(&mut generation_context.out, "(export \"_start\")").unwrap();
+         generation_context.out.emit_constant_sexp("(export \"_start\")");
       }
       // TODO params
       // TODO ret type
-      generation_context.out.indent();
       for (id, e_type) in procedure.locals.iter() {
-         write!(generation_context.out, "(local ${} {}) ", id, type_to_s(e_type)).unwrap();
+         generation_context.out.emit_local_definition(id, type_to_s(e_type));
       }
-      writeln!(generation_context.out, "").unwrap();
       for statement in procedure.block.statements.iter() {
          match statement {
             Statement::VariableDeclaration(id, en) => {
                do_emit(en, &mut generation_context);
-               writeln!(&mut generation_context.out, "local.set ${}", id).unwrap();
+               generation_context.out.emit_set_local(id);
             }
             Statement::ExpressionStatement(en) => {
                do_emit(en, &mut generation_context);
@@ -155,28 +193,28 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContext) {
    match &expr_node.expression {
       Expression::IntLiteral(x) => {
-         writeln!(&mut generation_context.out, "i64.const {}", x).unwrap();
+         generation_context.out.emit_const_i64(*x);
       }
       Expression::StringLiteral(str) => {
          let (offset, len) = generation_context.literal_offsets.get(str).unwrap();
-         writeln!(&mut generation_context.out, "i32.const {}", offset).unwrap();
-         writeln!(&mut generation_context.out, "i32.const {}", len).unwrap();
+         generation_context.out.emit_const_i32(*offset);
+         generation_context.out.emit_const_i32(*len);
       }
       Expression::BinaryOperator(bin_op, e) => {
          do_emit(&e.0, generation_context);
          do_emit(&e.1, generation_context);
          match bin_op {
             BinOp::Add => {
-               writeln!(&mut generation_context.out, "i64.add").unwrap();
+               generation_context.out.emit_constant_instruction("i64.add");
             }
             BinOp::Subtract => {
-               writeln!(&mut generation_context.out, "i64.sub").unwrap();
+               generation_context.out.emit_constant_instruction("i64.sub");
             }
             BinOp::Multiply => {
-               writeln!(&mut generation_context.out, "i64.mul").unwrap();
+               generation_context.out.emit_constant_instruction("i64.mul");
             }
             BinOp::Divide => {
-               writeln!(&mut generation_context.out, "i64.div_s").unwrap();
+               generation_context.out.emit_constant_instruction("i64.div_s");
             }
             _ => unimplemented!()
          }
@@ -185,13 +223,13 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          unimplemented!()
       }
       Expression::Variable(id) => {
-         writeln!(&mut generation_context.out, "local.get ${}", id).unwrap();
+         generation_context.out.emit_get_local(id);
       }
       Expression::ProcedureCall(name, args) => {
          for arg in args {
             do_emit(arg, generation_context);
          }
-         writeln!(&mut generation_context.out, "call ${}", name).unwrap();
+         generation_context.out.emit_call(name);
       }
    }
 }
