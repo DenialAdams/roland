@@ -12,7 +12,7 @@ struct PrettyWasmWriter {
    depth: usize,
 }
 
-impl PrettyWasmWriter {
+impl<'a> PrettyWasmWriter {
    fn close(&mut self) {
       self.depth -= 1;
       self.emit_spaces();
@@ -33,13 +33,31 @@ impl PrettyWasmWriter {
       self.depth += 1;
    }
 
-   fn emit_function_start(&mut self, name: &str, params: &[(&str, &str)]) {
+   fn emit_function_start<I: IntoIterator<Item=(&'a str, &'a str)>>(&mut self, name: &str, params: I) {
       self.emit_spaces();
       write!(self.out, "(func ${}", name).unwrap();
-      for param in params {
+      for param in params.into_iter() {
          write!(self.out, " (param ${} {})", param.0, param.1).unwrap();
       }
       self.out.push(b'\n');
+      self.depth += 1;
+   }
+
+   fn emit_if_start(&mut self) {
+      self.emit_spaces();
+      writeln!(self.out, "(if ").unwrap();
+      self.depth += 1;
+   }
+
+   fn emit_then_start(&mut self) {
+      self.emit_spaces();
+      writeln!(self.out, "(then ").unwrap();
+      self.depth += 1;
+   }
+
+   fn emit_else_start(&mut self) {
+      self.emit_spaces();
+      writeln!(self.out, "(else ").unwrap();
       self.depth += 1;
    }
 
@@ -93,7 +111,7 @@ impl PrettyWasmWriter {
 fn type_to_s(e: &ExpressionType) -> &'static str {
    match e {
       ExpressionType::Int => "i64",
-      ExpressionType::Bool => "i64",
+      ExpressionType::Bool => "i32",
       ExpressionType::String => unimplemented!(),
       ExpressionType::Unit => unreachable!(),
       ExpressionType::CompileError => unreachable!(),
@@ -129,7 +147,8 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    }
 
    // print
-   generation_context.out.emit_function_start("print", &[("str_offset", "i32"), ("str_len", "i32")]);
+   // TODO: this shouldnt be vec, but i cant generic
+   generation_context.out.emit_function_start("print", vec![("str_offset", "i32"), ("str_len", "i32")]);
    // build the iovecs array
    generation_context.out.emit_constant_sexp("(i32.store (i32.const 0) (local.get $str_offset))");
    generation_context.out.emit_constant_sexp("(i32.store (i32.const 4) (local.get $str_len))");
@@ -140,18 +159,8 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    generation_context.out.close();
 
    // print int
-   generation_context.out.emit_function_start("print_int", &[("int", "i64")]);
-   // build the iovecs array
-   //writeln!(&mut generation_context.out, "(i32.store (i32.const 0) (local.get $str_offset))").unwrap();
-   //writeln!(&mut generation_context.out, "(i32.store (i32.const 4) (local.get $str_len))").unwrap();
-   generation_context.out.emit_constant_sexp("(i32.store (i32.const 8) (i32.const 16))");
-   generation_context.out.emit_constant_sexp("(i32.store (i32.const 12) (i32.const 1))");
-   generation_context.out.emit_constant_sexp("(call $fd_write (i32.const 1) (i32.const 0) (i32.const 2) (i32.const 0))");
-   generation_context.out.emit_constant_instruction("drop");
-   generation_context.out.close();
-
-   // print bool
-   generation_context.out.emit_function_start("print_bool", &[("bool", "i64")]);
+   // TODO: this shouldnt be vec, but i cant generic
+   generation_context.out.emit_function_start("print_int", vec![("int", "i64")]);
    // build the iovecs array
    //writeln!(&mut generation_context.out, "(i32.store (i32.const 0) (local.get $str_offset))").unwrap();
    //writeln!(&mut generation_context.out, "(i32.store (i32.const 4) (local.get $str_len))").unwrap();
@@ -162,32 +171,46 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    generation_context.out.close();
 
    for procedure in program.procedures.iter() {
-      generation_context.out.emit_function_start(&procedure.name, &[]);
+      generation_context.out.emit_function_start(&procedure.name, procedure.parameters.iter().map(|x| (x.0.as_ref(), type_to_s(&x.1))));
       if procedure.name == "main" {
          generation_context.out.emit_constant_sexp("(export \"_start\")");
       }
-      // TODO params
       // TODO ret type
       for (id, e_type) in procedure.locals.iter() {
          generation_context.out.emit_local_definition(id, type_to_s(e_type));
       }
-      for statement in procedure.block.statements.iter() {
-         match statement {
-            Statement::VariableDeclaration(id, en) => {
-               do_emit(en, &mut generation_context);
-               generation_context.out.emit_set_local(id);
-            }
-            Statement::ExpressionStatement(en) => {
-               do_emit(en, &mut generation_context);
-            }
-         }
-      }
+      emit_statements(&procedure.block.statements, &mut generation_context);
       generation_context.out.close();
    }
 
    generation_context.out.close();
 
    generation_context.out.out
+}
+
+fn emit_statements(statements: &[Statement], generation_context: &mut GenerationContext) {
+   for statement in statements {
+      match statement {
+         Statement::VariableDeclaration(id, en) => {
+            do_emit(en, generation_context);
+            generation_context.out.emit_set_local(id);
+         }
+         Statement::ExpressionStatement(en) => {
+            do_emit(en, generation_context);
+         }
+         Statement::IfElseStatement(en, block_1, block_2) => {
+            generation_context.out.emit_if_start();
+            do_emit(en, generation_context);
+            generation_context.out.close();
+            generation_context.out.emit_then_start();
+            emit_statements(&block_1.statements, generation_context);
+            generation_context.out.close();
+            generation_context.out.emit_else_start();
+            emit_statements(&block_2.statements, generation_context);
+            generation_context.out.close();
+         }
+      }
+   }
 }
 
 fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContext) {
@@ -216,11 +239,39 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             BinOp::Divide => {
                generation_context.out.emit_constant_instruction("i64.div_s");
             }
-            _ => unimplemented!()
+            BinOp::Equality => {
+               generation_context.out.emit_constant_instruction("i64.eq");
+            }
+            BinOp::NotEquality => {
+               generation_context.out.emit_constant_instruction("i64.ne");
+            }
+            BinOp::GreaterThan => {
+               generation_context.out.emit_constant_instruction("i64.gt_s");
+            }
+            BinOp::GreaterThanOrEqualTo => {
+               generation_context.out.emit_constant_instruction("i64.ge_s");
+            }
+            BinOp::LessThan => {
+               generation_context.out.emit_constant_instruction("i64.lt_s");
+            }
+            BinOp::LessThanOrEqualTo => {
+               generation_context.out.emit_constant_instruction("i64.le_s");
+            }
          }
       }
-      Expression::UnaryOperator(_un_op, _e) => {
-         unimplemented!()
+      Expression::UnaryOperator(un_op, e) => {
+         do_emit(e, generation_context);
+         match un_op {
+            UnOp::LogicalNegate => {
+               generation_context.out.emit_constant_instruction("i64.eqz");
+            }
+            UnOp::Negate => {
+               generation_context.out.emit_const_i64(-1); // 0xFF_FF_...
+               generation_context.out.emit_constant_instruction("i64.xor");
+               generation_context.out.emit_const_i64(1);
+               generation_context.out.emit_constant_instruction("i64.add");
+            }
+         }
       }
       Expression::Variable(id) => {
          generation_context.out.emit_get_local(id);

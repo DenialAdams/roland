@@ -1,12 +1,15 @@
 #[derive(Clone, Debug)]
 pub enum Token {
+   KeywordElse,
    KeywordFuncDef,
+   KeywordIf,
    KeywordProcedureDef,
    KeywordLet,
    OpenBrace,
    CloseBrace,
    OpenParen,
    CloseParen,
+   Colon,
    Semicolon,
    Identifier(String),
    StringLiteral(String),
@@ -35,14 +38,16 @@ enum LexMode {
 
 fn extract_keyword_or_ident(s: &str) -> Token {
    match s {
+      "else" => Token::KeywordElse,
       "func" => Token::KeywordFuncDef,
+      "if" => Token::KeywordIf,
       "proc" => Token::KeywordProcedureDef,
       "let" => Token::KeywordLet,
       other => Token::Identifier(other.to_string()),
    }
 }
 
-pub fn lex(input: String) -> Result<Vec<Token>, ()> {
+pub fn lex(input: &str) -> Result<Vec<Token>, ()> {
    let mut tokens = Vec::new();
    let mut mode = LexMode::Normal;
    let mut str_buf = String::new();
@@ -67,6 +72,9 @@ pub fn lex(input: String) -> Result<Vec<Token>, ()> {
                let _ = chars.next().unwrap();
             } else if c == ')' {
                tokens.push(Token::CloseParen);
+               let _ = chars.next().unwrap();
+            } else if c == ':' {
+               tokens.push(Token::Colon);
                let _ = chars.next().unwrap();
             } else if c == ';' {
                tokens.push(Token::Semicolon);

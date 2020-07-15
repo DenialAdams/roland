@@ -46,6 +46,13 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
          print_expression(out, e);
          writeln!(out, "</ul>").unwrap();
       }
+      Statement::IfElseStatement(e, block_1, block_2) => {
+         writeln!(out, "<li><span>If-Else Statement</span>").unwrap();
+         writeln!(out, "<ul>").unwrap();
+         print_expression(out, e);
+         // TODO: block 1, block 2
+         writeln!(out, "</ul>").unwrap();
+      }
    }
 }
 

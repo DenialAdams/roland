@@ -1,0 +1,7 @@
+proc print_bool(value: bool) {
+   if value {
+      print("true");
+   } else {
+      print("false");
+   }
+}

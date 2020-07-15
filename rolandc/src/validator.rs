@@ -23,7 +23,7 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
    };
 
    // Standard Library functions
-   let standard_lib_procs = [("print", false), ("print_int", false), ("print_bool", false)];
+   let standard_lib_procs = [("print", false), ("print_int", false)];
    for p in standard_lib_procs.iter() {
       validation_context
          .procedure_info
@@ -61,26 +61,49 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
       validation_context.variable_types.clear();
       validation_context.in_pure_func = procedure.pure;
 
-      for statement in procedure.block.statements.iter_mut() {
-         match statement {
-            Statement::VariableDeclaration(id, en) => {
-               do_type(en, &mut validation_context);
-               validation_context
-                  .variable_types
-                  .insert(id.clone(), en.exp_type.clone().unwrap());
-               // TODO, again, interning
-               procedure.locals.push((id.clone(), en.exp_type.clone().unwrap()));
-            }
-            Statement::ExpressionStatement(en) => {
-               do_type(en, &mut validation_context);
-            }
-         }
+      for parameter in procedure.parameters.iter() {
+         validation_context
+            .variable_types
+            .insert(parameter.0.clone(), parameter.1.clone());
       }
+
+      type_statements(&mut procedure.block.statements, &mut validation_context, &mut procedure.locals)
    }
 
    program.literals = validation_context.string_literals;
 
    validation_context.error_count
+}
+
+fn type_statements(statements: &mut [Statement], validation_context: &mut ValidationContext, cur_procedure_locals: &mut Vec<(String, ExpressionType)>) {
+   for statement in statements.iter_mut() {
+      match statement {
+         Statement::VariableDeclaration(id, en) => {
+            do_type(en, validation_context);
+            validation_context
+               .variable_types
+               .insert(id.clone(), en.exp_type.clone().unwrap());
+            // TODO, again, interning
+            cur_procedure_locals.push((id.clone(), en.exp_type.clone().unwrap()));
+         }
+         Statement::ExpressionStatement(en) => {
+            do_type(en, validation_context);
+         }
+         Statement::IfElseStatement(en, block_1, block_2) => {
+            type_statements(&mut block_1.statements, validation_context, cur_procedure_locals);
+            type_statements(&mut block_2.statements, validation_context, cur_procedure_locals);
+            do_type(en, validation_context);
+            let if_exp_type = en.exp_type.as_ref().unwrap();
+            if if_exp_type != &ExpressionType::Bool && if_exp_type != &ExpressionType::CompileError {
+               validation_context.error_count += 1;
+               eprintln!(
+                  "Value of if expression must be a bool; instead got {:?}",
+                  en.exp_type.as_ref().unwrap()
+               );
+            }
+         }
+      }
+   }
 }
 
 fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationContext) {

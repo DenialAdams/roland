@@ -36,6 +36,7 @@ fn expect(l: &mut Lexer, token: &Token) -> Result<Token, ()> {
 
 pub struct ProcedureNode {
    pub name: String,
+   pub parameters: Vec<(String, ExpressionType)>,
    pub locals: Vec<(String, ExpressionType)>,
    pub block: BlockNode,
    pub pure: bool,
@@ -86,6 +87,7 @@ pub enum Expression {
 
 pub enum Statement {
    ExpressionStatement(ExpressionNode),
+   IfElseStatement(ExpressionNode, BlockNode, BlockNode),
    VariableDeclaration(String, ExpressionNode),
 }
 
@@ -139,10 +141,12 @@ fn extract_identifier(t: Token) -> String {
 fn parse_procedure(l: &mut Lexer) -> Result<ProcedureNode, ()> {
    let function_name = expect(l, &Token::Identifier(String::from("")))?;
    expect(l, &Token::OpenParen)?;
+   let parameters = parse_parameters(l)?;
    expect(l, &Token::CloseParen)?;
    let block = parse_block(l)?;
    Ok(ProcedureNode {
       name: extract_identifier(function_name),
+      parameters,
       locals: Vec::new(),
       block,
       pure: false,
@@ -167,6 +171,14 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
             let e = parse_expression(l)?;
             expect(l, &Token::Semicolon)?;
             statements.push(Statement::VariableDeclaration(extract_identifier(variable_name), e));
+         }
+         Some(Token::KeywordIf) => {
+            let _ = l.next();
+            let e = parse_expression(l)?;
+            let if_block = parse_block(l)?;
+            expect(l, &Token::KeywordElse)?;
+            let else_block = parse_block(l)?;
+            statements.push(Statement::IfElseStatement(e, if_block, else_block));
          }
          Some(Token::Identifier(_))
          | Some(Token::StringLiteral(_))
@@ -193,6 +205,50 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
    Ok(BlockNode { statements })
 }
 
+fn parse_parameters(l: &mut Lexer) -> Result<Vec<(String, ExpressionType)>, ()> {
+   let mut parameters = vec![];
+
+   loop {
+      match l.peek() {
+         Some(Token::Identifier(_)) => {
+            let id = l.next().unwrap();
+            expect(l, &Token::Colon)?;
+            let type_s = expect(l, &Token::Identifier(String::from("")))?;
+            let e_type: ExpressionType = match extract_identifier(type_s).as_ref() {
+               "bool" => ExpressionType::Bool,
+               "int" => ExpressionType::Int,
+               "String" => ExpressionType::String,
+               x => {
+                  eprintln!(
+                     "While parsing parameters - got an invalid type {}",
+                     x
+                  );
+                  return Err(());
+               }
+            };
+            parameters.push((extract_identifier(id), e_type));
+            let next_discrim = l.peek().map(|x| discriminant(x));
+            if next_discrim == Some(discriminant(&Token::CloseParen)) {
+               break;
+            }
+            expect(l, &Token::Comma)?;
+         }
+         Some(Token::CloseParen) => {
+            break;
+         }
+         x => {
+            eprintln!(
+               "While parsing parameters - unexpected token {:?}; was expecting an identifier or a )",
+               x
+            );
+            return Err(());
+         }
+      }
+   }
+
+   Ok(parameters)
+}
+
 fn parse_arguments(l: &mut Lexer) -> Result<Vec<ExpressionNode>, ()> {
    let mut arguments = vec![];
 
@@ -216,7 +272,7 @@ fn parse_arguments(l: &mut Lexer) -> Result<Vec<ExpressionNode>, ()> {
          }
          x => {
             eprintln!(
-               "While parsing arguments - unexpected token {:?}; was expecting an expression or )",
+               "While parsing arguments - unexpected token {:?}; was expecting an expression or a )",
                x
             );
             return Err(());
