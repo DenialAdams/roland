@@ -36,6 +36,7 @@ fn expect(l: &mut Lexer, token: &Token) -> Result<Token, ()> {
 
 pub struct ProcedureNode {
    pub name: String,
+   pub locals: Vec<(String, ExpressionType)>,
    pub block: BlockNode,
    pub pure: bool,
 }
@@ -125,7 +126,7 @@ pub fn astify(tokens: Vec<Token>) -> Result<Program, ()> {
       }
    }
 
-   Ok(Program { procedures, literals: HashSet::new(), })
+   Ok(Program { procedures, literals: HashSet::new() })
 }
 
 fn extract_identifier(t: Token) -> String {
@@ -142,6 +143,7 @@ fn parse_procedure(l: &mut Lexer) -> Result<ProcedureNode, ()> {
    let block = parse_block(l)?;
    Ok(ProcedureNode {
       name: extract_identifier(function_name),
+      locals: Vec::new(),
       block,
       pure: false,
    })

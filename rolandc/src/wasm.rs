@@ -4,7 +4,7 @@ use std::io::Write;
 
 struct GenerationContext {
    out: PrettyWasmWriter,
-   literal_offsets: HashMap<String, u32>,
+   literal_offsets: HashMap<String, (u32, u32)>,
 }
 
 struct PrettyWasmWriter {
@@ -40,6 +40,16 @@ impl Write for PrettyWasmWriter {
    }
 }
 
+fn type_to_s(e: &ExpressionType) -> &'static str {
+   match e {
+      ExpressionType::Int => "i64",
+      ExpressionType::Bool => "i64",
+      ExpressionType::String => unimplemented!(),
+      ExpressionType::Unit => unreachable!(),
+      ExpressionType::CompileError => unreachable!(),
+   }
+}
+
 pub fn emit_wasm(program: &Program) -> Vec<u8> {
    let mut generation_context = GenerationContext {
       out: PrettyWasmWriter {
@@ -52,30 +62,68 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
    writeln!(&mut generation_context.out, "(module").unwrap();
    generation_context.out.indent();
+   writeln!(&mut generation_context.out, "(import \"wasi_unstable\" \"fd_write\" (func $fd_write (param i32 i32 i32 i32) (result i32)))").unwrap();
+   writeln!(&mut generation_context.out, "(memory 1)").unwrap();
+   writeln!(&mut generation_context.out, "(export \"memory\" (memory 0))").unwrap();
 
    // Data section
 
-   let mut offset: u32 = 0;
-   for s in program.literals.iter() {
+   let mut offset: u32 = 16;
+   for s in std::iter::once("\\n").chain(program.literals.iter().map(|x| x.as_str())) {
       writeln!(&mut generation_context.out, "(data 0 (i32.const {}) \"{}\")", offset, s).unwrap();
+      //TODO: and here truncation
+      let s_len = s.len() as u32;
       // TODO: interning to make clone cheap
-      generation_context.literal_offsets.insert(s.clone(), offset);
+      generation_context.literal_offsets.insert(s.to_string(), (offset, s_len));
       // TODO: check for overflow here
-      offset += s.len() as u32;
+      offset += s_len;
    }
 
    // Standard Library functions
    // TODO add function bodies
-   let standard_lib_procs = [("print", false), ("print_int", false), ("print_bool", false)];
+   let standard_lib_procs = [("print_bool", false)];
    for p in standard_lib_procs.iter() {
-      // emit body
+      writeln!(&mut generation_context.out, "(func ${} nop", p.0).unwrap();
+      generation_context.out.indent();
+      generation_context.out.close();
    }
+
+   // print
+   writeln!(&mut generation_context.out, "(func $print (param $str_offset i32) (param $str_len i32)").unwrap();
+   generation_context.out.indent();
+   // build the iovecs array
+   writeln!(&mut generation_context.out, "(i32.store (i32.const 0) (local.get $str_offset))").unwrap();
+   writeln!(&mut generation_context.out, "(i32.store (i32.const 4) (local.get $str_len))").unwrap();
+   writeln!(&mut generation_context.out, "(i32.store (i32.const 8) (i32.const 16))").unwrap();
+   writeln!(&mut generation_context.out, "(i32.store (i32.const 12) (i32.const 1))").unwrap();
+   writeln!(&mut generation_context.out, "(call $fd_write (i32.const 1) (i32.const 0) (i32.const 2) (i32.const 0))").unwrap();
+   writeln!(&mut generation_context.out, "drop").unwrap();
+   generation_context.out.close();
+
+   // print int
+   writeln!(&mut generation_context.out, "(func $print_int (param $int i64)").unwrap();
+   generation_context.out.indent();
+   // build the iovecs array
+   //writeln!(&mut generation_context.out, "(i32.store (i32.const 0) (local.get $str_offset))").unwrap();
+   //writeln!(&mut generation_context.out, "(i32.store (i32.const 4) (local.get $str_len))").unwrap();
+   writeln!(&mut generation_context.out, "(i32.store (i32.const 8) (i32.const 16))").unwrap();
+   writeln!(&mut generation_context.out, "(i32.store (i32.const 12) (i32.const 1))").unwrap();
+   writeln!(&mut generation_context.out, "(call $fd_write (i32.const 1) (i32.const 0) (i32.const 2) (i32.const 0))").unwrap();
+   writeln!(&mut generation_context.out, "drop").unwrap();
+   generation_context.out.close();
 
    for procedure in program.procedures.iter() {
       writeln!(&mut generation_context.out, "(func ${}", procedure.name).unwrap();
+      if procedure.name == "main" {
+         writeln!(&mut generation_context.out, "(export \"_start\")").unwrap();
+      }
       // TODO params
       // TODO ret type
       generation_context.out.indent();
+      for (id, e_type) in procedure.locals.iter() {
+         write!(generation_context.out, "(local ${} {}) ", id, type_to_s(e_type));
+      }
+      writeln!(generation_context.out, "");
       for statement in procedure.block.statements.iter() {
          match statement {
             Statement::VariableDeclaration(id, en) => {
@@ -100,8 +148,10 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       Expression::IntLiteral(x) => {
          writeln!(&mut generation_context.out, "i64.const {}", x).unwrap();
       }
-      Expression::StringLiteral(_) => {
-         //unimplemented!()
+      Expression::StringLiteral(str) => {
+         let (offset, len) = generation_context.literal_offsets.get(str).unwrap();
+         writeln!(&mut generation_context.out, "i32.const {}", offset).unwrap();
+         writeln!(&mut generation_context.out, "i32.const {}", len).unwrap();
       }
       Expression::BinaryOperator(bin_op, e) => {
          do_emit(&e.0, generation_context);

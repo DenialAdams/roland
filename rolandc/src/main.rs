@@ -5,6 +5,8 @@ mod validator;
 mod wasm;
 
 use clap::Clap;
+use std::io::Write;
+use std::fs::File;
 use std::path::PathBuf;
 
 #[derive(Clap)]
@@ -17,7 +19,7 @@ struct Opts {
 }
 
 fn main() {
-   let opts: Opts = Opts::parse();
+   let mut opts: Opts = Opts::parse();
    let s = std::fs::read_to_string(opts.source_file).unwrap();
    let tokens = match lex::lex(s) {
       Err(()) => std::process::exit(1),
@@ -35,6 +37,10 @@ fn main() {
       eprintln!("There were {} semantic errors, bailing", err_count);
       std::process::exit(1);
    }
-   let buf = wasm::emit_wasm(&ast);
-   println!("{}", String::from_utf8(buf).unwrap());
+   let wasm_text = wasm::emit_wasm(&ast);
+   println!("{}", String::from_utf8(wasm_text.clone()).unwrap());
+   //let wasm_bin = wabt::wat2wasm(wasm_text).unwrap();
+   opts.output.set_extension("wast");
+   let mut wasm_out = File::create(opts.output).unwrap();
+   wasm_out.write_all(&wasm_text).unwrap();
 }

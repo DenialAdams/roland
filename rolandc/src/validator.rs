@@ -46,6 +46,11 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
       }
    }
 
+   if !validation_context.procedure_info.contains_key("main") {
+      validation_context.error_count += 1;
+      eprintln!("A procedure with the name `main` must be present");
+   }
+
    // We won't proceed with type checking because there could be false positives due to
    // procedure definition errors.
    if validation_context.error_count > 0 {
@@ -63,6 +68,8 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
                validation_context
                   .variable_types
                   .insert(id.clone(), en.exp_type.clone().unwrap());
+               // TODO, again, interning
+               procedure.locals.push((id.clone(), en.exp_type.clone().unwrap()));
             }
             Statement::ExpressionStatement(en) => {
                do_type(en, &mut validation_context);

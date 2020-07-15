@@ -165,13 +165,14 @@ fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Res
 
    if tc_output.stderr.is_empty() {
       let mut prog_path = t_file_path.to_path_buf();
-      prog_path.set_extension("");
+      prog_path.set_extension("wast");
       let out_file = open_result_file(result_dir, t_file_path, "out");
       if let Ok(mut handle) = out_file {
          handle.read_to_string(&mut desired_result).unwrap();
          let mut prog_output = String::new();
          {
-            let mut prog_command = Command::new(prog_path.clone());
+            let mut prog_command = Command::new("wasmtime");
+            prog_command.arg(prog_path.as_os_str());
             // It's desirable to combine stdout and stderr, so an output test can test either or both
             let mut prog_output_stream = {
                let (reader, writer) = pipe().unwrap();
