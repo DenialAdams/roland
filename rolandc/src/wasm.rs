@@ -18,13 +18,23 @@ impl PrettyWasmWriter {
       self.depth -= 1;
    }
 
-   fn indent(&mut self) {
-      self.depth += 1;
+   fn emit_spaces(&mut self) {
       let num_spaces = self.depth * 2;
       self.out.reserve(num_spaces);
       for _ in 0..num_spaces {
          self.out.push(b' ');
       }
+   }
+
+   fn emit_module_start(&mut self) {
+      self.emit_spaces();
+      writeln!(self.out, "(module").unwrap();
+      self.depth += 1;
+   }
+
+   fn emit_constant_sexp(&mut self, sexp: &str) {
+      self.emit_spaces();
+      writeln!(self.out, "{}", sexp).unwrap();
    }
 }
 
@@ -60,11 +70,10 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       literal_offsets: HashMap::with_capacity(program.literals.len()),
    };
 
-   writeln!(&mut generation_context.out, "(module").unwrap();
-   generation_context.out.indent();
-   writeln!(&mut generation_context.out, "(import \"wasi_unstable\" \"fd_write\" (func $fd_write (param i32 i32 i32 i32) (result i32)))").unwrap();
-   writeln!(&mut generation_context.out, "(memory 1)").unwrap();
-   writeln!(&mut generation_context.out, "(export \"memory\" (memory 0))").unwrap();
+   generation_context.out.emit_module_start();
+   generation_context.out.emit_constant_sexp("(import \"wasi_unstable\" \"fd_write\" (func $fd_write (param i32 i32 i32 i32) (result i32)))");
+   generation_context.out.emit_constant_sexp("(memory 1)");
+   generation_context.out.emit_constant_sexp("(export \"memory\" (memory 0))");
 
    // Data section
 
@@ -121,9 +130,9 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       // TODO ret type
       generation_context.out.indent();
       for (id, e_type) in procedure.locals.iter() {
-         write!(generation_context.out, "(local ${} {}) ", id, type_to_s(e_type));
+         write!(generation_context.out, "(local ${} {}) ", id, type_to_s(e_type)).unwrap();
       }
-      writeln!(generation_context.out, "");
+      writeln!(generation_context.out, "").unwrap();
       for statement in procedure.block.statements.iter() {
          match statement {
             Statement::VariableDeclaration(id, en) => {
@@ -172,7 +181,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             _ => unimplemented!()
          }
       }
-      Expression::UnaryOperator(un_op, e) => {
+      Expression::UnaryOperator(_un_op, _e) => {
          unimplemented!()
       }
       Expression::Variable(id) => {
