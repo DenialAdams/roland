@@ -194,6 +194,9 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 fn emit_statements(statements: &[Statement], generation_context: &mut GenerationContext) {
    for statement in statements {
       match statement {
+         Statement::BlockStatement(bn) => {
+            emit_statements(&bn.statements, generation_context);
+         }
          Statement::VariableDeclaration(id, en) => {
             do_emit(en, generation_context);
             generation_context.out.emit_set_local(id);

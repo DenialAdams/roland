@@ -1,0 +1,9 @@
+proc main() {
+   {
+      {
+         {
+            print("Hello world, I'm in a block!");
+         }
+      }
+   }
+}

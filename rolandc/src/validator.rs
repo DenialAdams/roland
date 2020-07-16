@@ -83,6 +83,9 @@ fn type_block(bn: &mut BlockNode, validation_context: &mut ValidationContext, cu
 
    for statement in bn.statements.iter_mut() {
       match statement {
+         Statement::BlockStatement(bn) => {
+            type_block(bn, validation_context, cur_procedure_locals);
+         }
          Statement::VariableDeclaration(id, en) => {
             do_type(en, validation_context);
             if validation_context.variable_types.contains_key(id) {

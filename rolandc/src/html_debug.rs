@@ -58,6 +58,11 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
          }
          writeln!(out, "</ul></li>").unwrap();
       }
+      Statement::BlockStatement(bn) => {
+         for statement in bn.statements.iter() {
+            print_statement(out, statement);
+         }
+      }
    }
 }
 

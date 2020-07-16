@@ -87,6 +87,7 @@ pub enum Expression {
 }
 
 pub enum Statement {
+   BlockStatement(BlockNode),
    ExpressionStatement(ExpressionNode),
    IfElseStatement(ExpressionNode, BlockNode, BlockNode),
    VariableDeclaration(String, ExpressionNode),
@@ -161,6 +162,10 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
 
    loop {
       match l.peek() {
+         Some(Token::OpenBrace) => {
+            let new_block = parse_block(l)?;
+            statements.push(Statement::BlockStatement(new_block));
+         }
          Some(Token::CloseBrace) => {
             let _ = l.next();
             break;
