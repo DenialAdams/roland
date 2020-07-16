@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 
 struct ProcedureInfo {
    pure: bool,
+   parameters: Vec<ExpressionType>,
 }
 
 struct ValidationContext {
@@ -22,18 +23,18 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
       in_pure_func: false,
    };
 
-   // Standard Library functions
-   let standard_lib_procs = [("print", false), ("print_int", false)];
+   // Built-In functions
+   let standard_lib_procs = [("print", false, &[ExpressionType::String]), ("print_int", false, &[ExpressionType::Int])];
    for p in standard_lib_procs.iter() {
       validation_context
          .procedure_info
-         .insert(p.0.to_string(), ProcedureInfo { pure: p.1 });
+         .insert(p.0.to_string(), ProcedureInfo { pure: p.1, parameters: p.2.to_vec() });
    }
 
    for procedure in program.procedures.iter() {
       match validation_context
          .procedure_info
-         .insert(procedure.name.clone(), ProcedureInfo { pure: procedure.pure })
+         .insert(procedure.name.clone(), ProcedureInfo { pure: procedure.pure, parameters: procedure.parameters.iter().map(|x| x.1.clone()).collect() })
       {
          Some(_) => {
             validation_context.error_count += 1;
@@ -222,6 +223,10 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
       Expression::ProcedureCall(name, args) => {
          expr_node.exp_type = Some(ExpressionType::Unit); // Will change when we parse return types
 
+         for arg in args.iter_mut() {
+            do_type(arg, validation_context);
+         }
+
          match validation_context.procedure_info.get(name) {
             Some(procedure_info) => {
                if validation_context.in_pure_func && !procedure_info.pure {
@@ -229,16 +234,27 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
                   eprintln!("Encountered call to procedure `{}` (impure) in func (pure)", name);
                   expr_node.exp_type = Some(ExpressionType::CompileError);
                }
+
+               if procedure_info.parameters.len() != args.len() {
+                  validation_context.error_count += 1;
+                  eprintln!("In call to `{}`, mismatched arity. Expected {} arguments but got {}", name, procedure_info.parameters.len(), args.len());
+                  // We shortcircuit here, because there will likely be lots of mistmatched types if an arg was forgotten
+               } else {
+                  let actual_types = args.iter().map(|x| x.exp_type.as_ref().unwrap());
+                  let expected_types = procedure_info.parameters.iter();
+                  for (actual, expected) in actual_types.zip(expected_types) {
+                     if actual != expected && *actual != ExpressionType::CompileError {
+                        validation_context.error_count += 1;
+                        eprintln!("In call to `{}`, encountered argument of type {:?} when we expected {:?}", name, actual, expected);
+                     }
+                  }
+               }
             }
             None => {
                validation_context.error_count += 1;
                eprintln!("Encountered call to undefined procedure/function `{}`", name);
                expr_node.exp_type = Some(ExpressionType::CompileError);
             }
-         }
-
-         for arg in args {
-            do_type(arg, validation_context);
          }
       }
    }

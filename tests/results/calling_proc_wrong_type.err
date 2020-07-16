@@ -1,0 +1,2 @@
+In call to `print`, encountered argument of type Int when we expected String
+There were 1 semantic errors, bailing
