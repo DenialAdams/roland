@@ -364,7 +364,7 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
          _ => unreachable!(),
       };
 
-      return Ok(Expression::BinaryOperator(bin_op, Box::new((wrap(rhs), wrap(lhs)))));
+      return Ok(Expression::BinaryOperator(bin_op, Box::new((wrap(lhs), wrap(rhs)))));
    }
 
    Ok(lhs)

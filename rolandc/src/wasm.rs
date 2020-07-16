@@ -47,6 +47,9 @@ impl<'a> PrettyWasmWriter {
       self.emit_spaces();
       writeln!(self.out, "(if ").unwrap();
       self.depth += 1;
+      self.emit_spaces();
+      writeln!(self.out, "(").unwrap();
+      self.depth += 1;
    }
 
    fn emit_then_start(&mut self) {
@@ -200,13 +203,18 @@ fn emit_statements(statements: &[Statement], generation_context: &mut Generation
          }
          Statement::IfElseStatement(en, block_1, block_2) => {
             generation_context.out.emit_if_start();
+            // expression
             do_emit(en, generation_context);
             generation_context.out.close();
+            // then
             generation_context.out.emit_then_start();
             emit_statements(&block_1.statements, generation_context);
             generation_context.out.close();
+            // else
             generation_context.out.emit_else_start();
             emit_statements(&block_2.statements, generation_context);
+            generation_context.out.close();
+            // finish if
             generation_context.out.close();
          }
       }
