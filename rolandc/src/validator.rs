@@ -85,11 +85,19 @@ fn type_block(bn: &mut BlockNode, validation_context: &mut ValidationContext, cu
       match statement {
          Statement::VariableDeclaration(id, en) => {
             do_type(en, validation_context);
-            validation_context
+            if validation_context.variable_types.contains_key(id) {
+               validation_context.error_count += 1;
+               eprintln!(
+                  "Variable shadowing is not supported at this time (`{}`)",
+                  id
+               );
+            } else {
+               validation_context
                .variable_types
                .insert(id.clone(), (en.exp_type.clone().unwrap(), validation_context.block_depth));
-            // TODO, again, interning
-            cur_procedure_locals.push((id.clone(), en.exp_type.clone().unwrap()));
+               // TODO, again, interning
+               cur_procedure_locals.push((id.clone(), en.exp_type.clone().unwrap()));
+            }
          }
          Statement::ExpressionStatement(en) => {
             do_type(en, validation_context);
