@@ -25,7 +25,7 @@ pub fn print_ast_as_html(program: &Program) {
       for statement in procedure.block.statements.iter() {
          print_statement(&mut out, statement);
       }
-      writeln!(out, "</ul>").unwrap();
+      writeln!(out, "</ul></li>").unwrap();
    }
    writeln!(out, "</ul>").unwrap();
    writeln!(out, "</li>").unwrap();
@@ -44,7 +44,7 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
          writeln!(out, "<ul>").unwrap();
          writeln!(out, "<li><span>{}</span>", ident).unwrap();
          print_expression(out, e);
-         writeln!(out, "</ul>").unwrap();
+         writeln!(out, "</ul></li>").unwrap();
       }
       Statement::IfElseStatement(e, block_1, block_2) => {
          writeln!(out, "<li><span>If-Else Statement</span>").unwrap();
@@ -56,7 +56,7 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
          for statement in block_2.statements.iter() {
             print_statement(out, statement);
          }
-         writeln!(out, "</ul>").unwrap();
+         writeln!(out, "</ul></li>").unwrap();
       }
    }
 }
@@ -68,16 +68,16 @@ fn print_expression(out: &mut BufWriter<File>, expression_node: &ExpressionNode)
    };
    match &expression_node.expression {
       Expression::BoolLiteral(x) => {
-         writeln!(out, "<li><span>{}{}</span>", x, type_text).unwrap();
+         writeln!(out, "<li><span>{}{}</span></li>", x, type_text).unwrap();
       }
       Expression::IntLiteral(x) => {
-         writeln!(out, "<li><span>{}{}</span>", x, type_text).unwrap();
+         writeln!(out, "<li><span>{}{}</span></li>", x, type_text).unwrap();
       }
       Expression::StringLiteral(x) => {
-         writeln!(out, "<li><span>\"{}\"{}</span>", x, type_text).unwrap();
+         writeln!(out, "<li><span>\"{}\"{}</span></li>", x, type_text).unwrap();
       }
       Expression::Variable(x) => {
-         writeln!(out, "<li><span>{}{}</span>", x, type_text).unwrap();
+         writeln!(out, "<li><span>{}{}</span></li>", x, type_text).unwrap();
       }
       Expression::ProcedureCall(x, args) => {
          writeln!(out, "<li><span>{}(){}</span>", x, type_text).unwrap();
@@ -85,20 +85,20 @@ fn print_expression(out: &mut BufWriter<File>, expression_node: &ExpressionNode)
          for exp in args {
             print_expression(out, &exp);
          }
-         writeln!(out, "</ul>").unwrap()
+         writeln!(out, "</ul></li>").unwrap()
       }
       Expression::BinaryOperator(bin_op, operands) => {
          writeln!(out, "<li><span>{:?}{}</span>", bin_op, type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
          print_expression(out, &operands.0);
          print_expression(out, &operands.1);
-         writeln!(out, "</ul>").unwrap();
+         writeln!(out, "</ul></li>").unwrap();
       }
       Expression::UnaryOperator(un_op, expr) => {
          writeln!(out, "<li><span>{:?}{}</span>", un_op, type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
          print_expression(out, &expr);
-         writeln!(out, "</ul>").unwrap();
+         writeln!(out, "</ul></li>").unwrap();
       }
    }
 }
