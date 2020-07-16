@@ -53,7 +53,7 @@ fn main() -> Result<(), &'static str> {
       .read_dir()
       .unwrap()
       .map(|x| x.unwrap().path())
-      .filter(|e| e.extension().and_then(OsStr::to_str) == Some("ro"))
+      .filter(|e| e.extension().and_then(OsStr::to_str) == Some("rol"))
       .collect();
 
    entries.par_iter().for_each(|entry| {
