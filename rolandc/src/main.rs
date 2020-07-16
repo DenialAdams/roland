@@ -14,7 +14,7 @@ use parse::Program;
 struct Opts {
    source_file: PathBuf,
    #[clap(long)]
-   ouput_html_ast: bool,
+   output_html_ast: bool,
    #[clap(short, long)]
    output: PathBuf,
 }
@@ -27,7 +27,7 @@ fn main() {
    let std_lib = lex_and_parse(std_lib_s);
    merge_programs(&mut user_program, &mut [std_lib]);
    let err_count = validator::type_and_check_validity(&mut user_program);
-   if opts.ouput_html_ast {
+   if opts.output_html_ast {
       html_debug::print_ast_as_html(&user_program);
    }
    if err_count > 0 {
