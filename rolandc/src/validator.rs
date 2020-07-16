@@ -1,4 +1,4 @@
-use crate::parse::{BinOp, Expression, ExpressionNode, ExpressionType, Program, Statement, UnOp};
+use crate::parse::{BinOp, Expression, ExpressionNode, ExpressionType, Program, Statement, UnOp, BlockNode};
 use std::collections::{HashMap, HashSet};
 
 struct ProcedureInfo {
@@ -9,9 +9,10 @@ struct ProcedureInfo {
 struct ValidationContext {
    string_literals: HashSet<String>,
    procedure_info: HashMap<String, ProcedureInfo>,
-   variable_types: HashMap<String, ExpressionType>,
+   variable_types: HashMap<String, (ExpressionType, u64)>,
    error_count: u64,
    in_pure_func: bool,
+   block_depth: u64,
 }
 
 pub fn type_and_check_validity(program: &mut Program) -> u64 {
@@ -21,6 +22,7 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
       error_count: 0,
       procedure_info: HashMap::new(),
       in_pure_func: false,
+      block_depth: 0,
    };
 
    // Built-In functions
@@ -65,10 +67,10 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
       for parameter in procedure.parameters.iter() {
          validation_context
             .variable_types
-            .insert(parameter.0.clone(), parameter.1.clone());
+            .insert(parameter.0.clone(), (parameter.1.clone(), 0));
       }
 
-      type_statements(&mut procedure.block.statements, &mut validation_context, &mut procedure.locals)
+      type_block(&mut procedure.block, &mut validation_context, &mut procedure.locals)
    }
 
    program.literals = validation_context.string_literals;
@@ -76,14 +78,16 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
    validation_context.error_count
 }
 
-fn type_statements(statements: &mut [Statement], validation_context: &mut ValidationContext, cur_procedure_locals: &mut Vec<(String, ExpressionType)>) {
-   for statement in statements.iter_mut() {
+fn type_block(bn: &mut BlockNode, validation_context: &mut ValidationContext, cur_procedure_locals: &mut Vec<(String, ExpressionType)>) {
+   validation_context.block_depth += 1;
+
+   for statement in bn.statements.iter_mut() {
       match statement {
          Statement::VariableDeclaration(id, en) => {
             do_type(en, validation_context);
             validation_context
                .variable_types
-               .insert(id.clone(), en.exp_type.clone().unwrap());
+               .insert(id.clone(), (en.exp_type.clone().unwrap(), validation_context.block_depth));
             // TODO, again, interning
             cur_procedure_locals.push((id.clone(), en.exp_type.clone().unwrap()));
          }
@@ -91,8 +95,8 @@ fn type_statements(statements: &mut [Statement], validation_context: &mut Valida
             do_type(en, validation_context);
          }
          Statement::IfElseStatement(en, block_1, block_2) => {
-            type_statements(&mut block_1.statements, validation_context, cur_procedure_locals);
-            type_statements(&mut block_2.statements, validation_context, cur_procedure_locals);
+            type_block(block_1, validation_context, cur_procedure_locals);
+            type_block(block_2, validation_context, cur_procedure_locals);
             do_type(en, validation_context);
             let if_exp_type = en.exp_type.as_ref().unwrap();
             if if_exp_type != &ExpressionType::Bool && if_exp_type != &ExpressionType::CompileError {
@@ -105,10 +109,17 @@ fn type_statements(statements: &mut [Statement], validation_context: &mut Valida
          }
       }
    }
+
+   validation_context.block_depth -= 1;
+   let cur_block_depth = validation_context.block_depth;
+   validation_context.variable_types.retain(|_, v| v.1 <= cur_block_depth);
 }
 
 fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationContext) {
    match &mut expr_node.expression {
+      Expression::BoolLiteral(_) => {
+         expr_node.exp_type = Some(ExpressionType::Bool);
+      }
       Expression::IntLiteral(_) => {
          expr_node.exp_type = Some(ExpressionType::Int);
       }
@@ -210,7 +221,7 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
          let defined_type = validation_context.variable_types.get(id);
 
          let result_type = match defined_type {
-            Some(t) => t.clone(),
+            Some(t) => t.0.clone(),
             None => {
                validation_context.error_count += 1;
                eprintln!("Encountered undefined variable {}", id);

@@ -67,6 +67,9 @@ fn print_expression(out: &mut BufWriter<File>, expression_node: &ExpressionNode)
       None => "".to_string(),
    };
    match &expression_node.expression {
+      Expression::BoolLiteral(x) => {
+         writeln!(out, "<li><span>\"{}\"{}</span>", x, type_text).unwrap();
+      }
       Expression::IntLiteral(x) => {
          writeln!(out, "<li><span>{}{}</span>", x, type_text).unwrap();
       }

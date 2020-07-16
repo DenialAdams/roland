@@ -12,6 +12,7 @@ pub enum Token {
    Colon,
    Semicolon,
    Identifier(String),
+   BoolLiteral(bool),
    StringLiteral(String),
    IntLiteral(i64),
    Plus,
@@ -38,6 +39,8 @@ enum LexMode {
 
 fn extract_keyword_or_ident(s: &str) -> Token {
    match s {
+      "true" => Token::BoolLiteral(true),
+      "false" => Token::BoolLiteral(false),
       "else" => Token::KeywordElse,
       "func" => Token::KeywordFuncDef,
       "if" => Token::KeywordIf,

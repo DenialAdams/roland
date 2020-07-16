@@ -223,6 +223,9 @@ fn emit_statements(statements: &[Statement], generation_context: &mut Generation
 
 fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContext) {
    match &expr_node.expression {
+      Expression::BoolLiteral(x) => {
+         generation_context.out.emit_const_i32(*x as u32);
+      }
       Expression::IntLiteral(x) => {
          generation_context.out.emit_const_i64(*x);
       }

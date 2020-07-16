@@ -78,6 +78,7 @@ pub struct ExpressionNode {
 
 pub enum Expression {
    ProcedureCall(String, Vec<ExpressionNode>),
+   BoolLiteral(bool),
    StringLiteral(String),
    IntLiteral(i64),
    Variable(String),
@@ -181,6 +182,7 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
             statements.push(Statement::IfElseStatement(e, if_block, else_block));
          }
          Some(Token::Identifier(_))
+         | Some(Token::BoolLiteral(_))
          | Some(Token::StringLiteral(_))
          | Some(Token::IntLiteral(_))
          | Some(Token::OpenParen)
@@ -255,6 +257,7 @@ fn parse_arguments(l: &mut Lexer) -> Result<Vec<ExpressionNode>, ()> {
    loop {
       match l.peek() {
          Some(Token::Identifier(_))
+         | Some(Token::BoolLiteral(_))
          | Some(Token::StringLiteral(_))
          | Some(Token::IntLiteral(_))
          | Some(Token::OpenParen)
@@ -290,6 +293,7 @@ fn parse_expression(l: &mut Lexer) -> Result<ExpressionNode, ()> {
 fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
    let lhs = l.next();
    let lhs = match lhs {
+      Some(Token::BoolLiteral(x)) => Expression::BoolLiteral(x),
       Some(Token::IntLiteral(x)) => Expression::IntLiteral(x),
       Some(Token::StringLiteral(x)) => Expression::StringLiteral(x),
       Some(Token::Identifier(s)) => {
