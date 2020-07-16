@@ -177,8 +177,15 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
             let _ = l.next();
             let e = parse_expression(l)?;
             let if_block = parse_block(l)?;
-            expect(l, &Token::KeywordElse)?;
-            let else_block = parse_block(l)?;
+            let else_block = match l.peek() {
+               Some(&Token::KeywordElse) => {
+                  let _ = l.next();
+                  parse_block(l)?
+               }
+               _=> BlockNode {
+                  statements: vec![],
+               },
+            };
             statements.push(Statement::IfElseStatement(e, if_block, else_block));
          }
          Some(Token::Identifier(_))

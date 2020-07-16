@@ -1,8 +1,6 @@
 proc main() {
    if true {
       let y = "out of scope";
-   } else {
-
    }
    print(y);
 }
