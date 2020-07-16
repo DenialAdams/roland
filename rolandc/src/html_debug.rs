@@ -50,7 +50,12 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
          writeln!(out, "<li><span>If-Else Statement</span>").unwrap();
          writeln!(out, "<ul>").unwrap();
          print_expression(out, e);
-         // TODO: block 1, block 2
+         for statement in block_1.statements.iter() {
+            print_statement(out, statement);
+         }
+         for statement in block_2.statements.iter() {
+            print_statement(out, statement);
+         }
          writeln!(out, "</ul>").unwrap();
       }
    }
