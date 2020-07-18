@@ -57,7 +57,7 @@ fn main() -> Result<(), &'static str> {
       .collect();
 
    entries.par_iter().for_each(|entry| {
-      let tc_output = Command::new(tc_path.clone())
+      let tc_output = Command::new(tc_path.as_str())
          .arg("-o")
          .arg(entry.file_stem().unwrap())
          .arg(entry.file_name().unwrap())
