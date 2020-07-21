@@ -245,50 +245,76 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       Expression::BinaryOperator(bin_op, e) => {
          do_emit(&e.0, generation_context);
          do_emit(&e.1, generation_context);
+         let (wasm_type, suffix) = match expr_node.exp_type.as_ref().unwrap() {
+            ExpressionType::Int(x) => {
+               let wasm_type = match x.width {
+                  IntWidth::Eight => "i64",
+                  _ => "i32"
+               };
+               let suffix = if x.signed {
+                  "_s"
+               } else {
+                  "_u"
+               };
+               (wasm_type, suffix)
+            },
+            _ => unreachable!(),
+         };
+         generation_context.out.emit_spaces();
          match bin_op {
             BinOp::Add => {
-               generation_context.out.emit_constant_instruction("i64.add");
+               writeln!(generation_context.out.out, "{}.add", wasm_type).unwrap();
             }
             BinOp::Subtract => {
-               generation_context.out.emit_constant_instruction("i64.sub");
+               writeln!(generation_context.out.out, "{}.sub", wasm_type).unwrap();
             }
             BinOp::Multiply => {
-               generation_context.out.emit_constant_instruction("i64.mul");
+               writeln!(generation_context.out.out, "{}.mul", wasm_type).unwrap();
             }
             BinOp::Divide => {
-               generation_context.out.emit_constant_instruction("i64.div_s");
+               writeln!(generation_context.out.out, "{}.div{}", wasm_type, suffix).unwrap();
             }
             BinOp::Equality => {
-               generation_context.out.emit_constant_instruction("i64.eq");
+               writeln!(generation_context.out.out, "{}.eq", wasm_type).unwrap();
             }
             BinOp::NotEquality => {
-               generation_context.out.emit_constant_instruction("i64.ne");
+               writeln!(generation_context.out.out, "{}.ne", wasm_type).unwrap();
             }
             BinOp::GreaterThan => {
-               generation_context.out.emit_constant_instruction("i64.gt_s");
+               writeln!(generation_context.out.out, "{}.gt{}", wasm_type, suffix).unwrap();
             }
             BinOp::GreaterThanOrEqualTo => {
-               generation_context.out.emit_constant_instruction("i64.ge_s");
+               writeln!(generation_context.out.out, "{}.ge{}", wasm_type, suffix).unwrap();
             }
             BinOp::LessThan => {
-               generation_context.out.emit_constant_instruction("i64.lt_s");
+               writeln!(generation_context.out.out, "{}.lt{}", wasm_type, suffix).unwrap();
             }
             BinOp::LessThanOrEqualTo => {
-               generation_context.out.emit_constant_instruction("i64.le_s");
+               writeln!(generation_context.out.out, "{}.le{}", wasm_type, suffix).unwrap();
             }
          }
       }
       Expression::UnaryOperator(un_op, e) => {
          do_emit(e, generation_context);
+         let wasm_type = match expr_node.exp_type.as_ref().unwrap() {
+            ExpressionType::Int(x) => {
+              match x.width {
+                  IntWidth::Eight => "i64",
+                  _ => "i32"
+               }
+            },
+            _ => unreachable!(),
+         };
+         generation_context.out.emit_spaces();
          match un_op {
             UnOp::LogicalNegate => {
-               generation_context.out.emit_constant_instruction("i64.eqz");
+               writeln!(generation_context.out.out, "{}.eqz", wasm_type).unwrap();
             }
             UnOp::Negate => {
-               generation_context.out.emit_const_i64(-1); // 0xFF_FF_...
-               generation_context.out.emit_constant_instruction("i64.xor");
-               generation_context.out.emit_const_i64(1);
-               generation_context.out.emit_constant_instruction("i64.add");
+               writeln!(generation_context.out.out, "{}.const -1", wasm_type).unwrap(); // 0xFF_FF_...
+               writeln!(generation_context.out.out, "{}.xor", wasm_type).unwrap();
+               writeln!(generation_context.out.out, "{}.const 1", wasm_type).unwrap();
+               writeln!(generation_context.out.out, "{}.add", wasm_type).unwrap();
             }
          }
       }
