@@ -1,5 +1,5 @@
 use crate::parse::{
-   BinOp, BlockNode, Expression, ExpressionNode, ExpressionType, IntType, IntWidth, Program, Statement, UnOp,
+   BinOp, BlockNode, Expression, ExpressionNode, ExpressionType, Program, Statement, UnOp,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -13,6 +13,7 @@ fn matches(type_validation: &TypeValidator, et: &ExpressionType) -> bool {
    match (type_validation, et) {
       (TypeValidator::Bool, ExpressionType::Bool) => true,
       (TypeValidator::AnyInt, ExpressionType::Int(_)) => true,
+      (TypeValidator::AnyInt, ExpressionType::UnknownInt) => true,
       _ => false,
    }
 }
@@ -37,6 +38,7 @@ struct ValidationContext {
    error_count: u64,
    in_pure_func: bool,
    block_depth: u64,
+   unknown_ints: u64,
 }
 
 pub fn type_and_check_validity(program: &mut Program) -> u64 {
@@ -47,6 +49,7 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
       procedure_info: HashMap::new(),
       in_pure_func: false,
       block_depth: 0,
+      unknown_ints: 0,
    };
 
    // Built-In functions
@@ -104,6 +107,11 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
       type_block(&mut procedure.block, &mut validation_context, &mut procedure.locals)
    }
 
+   if validation_context.unknown_ints > 0 {
+      validation_context.error_count += 1;
+      eprintln!("We weren't able to determine the types of {} int literals", validation_context.unknown_ints);
+   }
+
    program.literals = validation_context.string_literals;
 
    validation_context.error_count
@@ -121,8 +129,22 @@ fn type_block(
          Statement::BlockStatement(bn) => {
             type_block(bn, validation_context, cur_procedure_locals);
          }
-         Statement::VariableDeclaration(id, en) => {
+         Statement::VariableDeclaration(id, en, dt) => {
+            let declared_type_is_known_int = dt.as_ref().map(|x| x.is_any_known_int()).unwrap_or(false);
+
             do_type(en, validation_context);
+
+            let result_type = if en.exp_type.as_ref().unwrap() == &ExpressionType::UnknownInt && declared_type_is_known_int {
+               set_inferred_type(dt.as_ref().unwrap(), en, validation_context);
+               dt.clone().unwrap()
+            } else if dt.is_some() && *dt != en.exp_type {
+               validation_context.error_count += 1;
+               eprintln!("Declared type {} does not match actual expression type {}", dt.as_ref().unwrap().as_roland_type(), en.exp_type.as_ref().unwrap().as_roland_type());
+               ExpressionType::CompileError
+            } else {
+               en.exp_type.clone().unwrap()
+            };
+
             if validation_context.variable_types.contains_key(id) {
                validation_context.error_count += 1;
                eprintln!("Variable shadowing is not supported at this time (`{}`)", id);
@@ -132,7 +154,7 @@ fn type_block(
                   (en.exp_type.clone().unwrap(), validation_context.block_depth),
                );
                // TODO, again, interning
-               cur_procedure_locals.push((id.clone(), en.exp_type.clone().unwrap()));
+               cur_procedure_locals.push((id.clone(), result_type));
             }
          }
          Statement::ExpressionStatement(en) => {
@@ -165,10 +187,8 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
          expr_node.exp_type = Some(ExpressionType::Bool);
       }
       Expression::IntLiteral(_) => {
-         expr_node.exp_type = Some(ExpressionType::Int(IntType {
-            signed: false,
-            width: IntWidth::Eight,
-         }));
+         validation_context.unknown_ints += 1;
+         expr_node.exp_type = Some(ExpressionType::UnknownInt);
       }
       Expression::StringLiteral(lit) => {
          // This clone will become cheap when we intern everywhere
@@ -197,6 +217,14 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
          let result_type = if lhs_type == &ExpressionType::CompileError || rhs_type == &ExpressionType::CompileError {
             // Avoid cascading errors
             ExpressionType::CompileError
+         } else if lhs_type == &ExpressionType::UnknownInt && rhs_type.is_any_known_int() {
+            // todo - do we want to keep this? currently never hit, would require special syntax such as 1234i64
+            set_inferred_type(rhs_type, &mut e.0, validation_context);
+            rhs_type.clone()
+         } else if lhs_type.is_any_known_int() && rhs_type == &ExpressionType::UnknownInt {
+            // todo - do we want to keep this? currently never hit, would require special syntax such as 1234i64
+            set_inferred_type(lhs_type, &mut e.1, validation_context);
+            lhs_type.clone()
          } else if !any_match(correct_arg_types, lhs_type) {
             validation_context.error_count += 1;
             eprintln!(
@@ -325,5 +353,30 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             }
          }
       }
+   }
+}
+
+fn set_inferred_type(e_type: &ExpressionType, expr_node: &mut ExpressionNode, validation_context: &mut ValidationContext) {
+   if expr_node.exp_type.as_ref().unwrap() != &ExpressionType::UnknownInt {
+      return;
+   }
+   match &mut expr_node.expression {
+      Expression::BoolLiteral(_) => unreachable!(),
+      Expression::IntLiteral(_) => {
+         validation_context.unknown_ints -= 1;
+         expr_node.exp_type = Some(e_type.clone());
+      }
+      Expression::StringLiteral(_) => unreachable!(),
+      Expression::BinaryOperator(_, e) => {
+         set_inferred_type(e_type, &mut e.0, validation_context);
+         set_inferred_type(e_type, &mut e.1, validation_context);
+         expr_node.exp_type = Some(e_type.clone());
+      }
+      Expression::UnaryOperator(_, e) => {
+         set_inferred_type(e_type, e, validation_context);
+         expr_node.exp_type = Some(e_type.clone());
+      }
+      Expression::Variable(_) => unreachable!(),
+      Expression::ProcedureCall(_, _) => unreachable!(),
    }
 }

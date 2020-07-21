@@ -1,2 +1,2 @@
-In call to `print`, encountered argument of type u64 when we expected String
+In call to `print`, encountered argument of type bool when we expected String
 There were 1 semantic errors, bailing

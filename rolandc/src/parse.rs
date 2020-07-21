@@ -79,6 +79,7 @@ pub struct IntType {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExpressionType {
+   UnknownInt,
    Int(IntType),
    String,
    Bool,
@@ -87,8 +88,16 @@ pub enum ExpressionType {
 }
 
 impl ExpressionType {
+   pub fn is_any_known_int(&self) -> bool {
+      match self {
+         ExpressionType::Int(_) => true,
+         _ => false,
+      }
+   }
+
    pub fn as_roland_type(&self) -> &str {
       match self {
+         ExpressionType::UnknownInt => "?? Int",
          ExpressionType::Int(x) => match (x.signed, &x.width) {
             (true, IntWidth::Eight) => "i64",
             (true, IntWidth::Four) => "i32",
@@ -126,7 +135,7 @@ pub enum Statement {
    BlockStatement(BlockNode),
    ExpressionStatement(ExpressionNode),
    IfElseStatement(ExpressionNode, BlockNode, BlockNode),
-   VariableDeclaration(String, ExpressionNode),
+   VariableDeclaration(String, ExpressionNode, Option<ExpressionType>),
 }
 
 pub struct BlockNode {
@@ -210,12 +219,26 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
             break;
          }
          Some(Token::KeywordLet) => {
+            let mut declared_type = None;
             let _ = l.next();
             let variable_name = expect(l, &Token::Identifier(String::from("")))?;
+            let next_discrim = l.peek().map(|x| discriminant(x));
+            if next_discrim == Some(discriminant(&Token::Colon)) {
+               let _ = l.next();
+               let type_token = expect(l, &Token::Identifier(String::from("")))?;
+               let type_s = extract_identifier(type_token);
+               declared_type = match parse_type(&type_s) {
+                  Some(v) => Some(v),
+                  None => {
+                     eprintln!("While parsing variable declaration - got an invalid type `{}`", type_s);
+                     return Err(());
+                  }
+               };
+            }
             expect(l, &Token::Assignment)?;
             let e = parse_expression(l)?;
             expect(l, &Token::Semicolon)?;
-            statements.push(Statement::VariableDeclaration(extract_identifier(variable_name), e));
+            statements.push(Statement::VariableDeclaration(extract_identifier(variable_name), e, declared_type));
          }
          Some(Token::KeywordIf) => {
             let _ = l.next();
@@ -264,44 +287,12 @@ fn parse_parameters(l: &mut Lexer) -> Result<Vec<(String, ExpressionType)>, ()> 
          Some(Token::Identifier(_)) => {
             let id = l.next().unwrap();
             expect(l, &Token::Colon)?;
-            let type_s = expect(l, &Token::Identifier(String::from("")))?;
-            let e_type: ExpressionType = match extract_identifier(type_s).as_ref() {
-               "bool" => ExpressionType::Bool,
-               "i64" => ExpressionType::Int(IntType {
-                  signed: true,
-                  width: IntWidth::Eight,
-               }),
-               "i32" => ExpressionType::Int(IntType {
-                  signed: true,
-                  width: IntWidth::Four,
-               }),
-               "i16" => ExpressionType::Int(IntType {
-                  signed: true,
-                  width: IntWidth::Two,
-               }),
-               "i8" => ExpressionType::Int(IntType {
-                  signed: true,
-                  width: IntWidth::One,
-               }),
-               "u64" => ExpressionType::Int(IntType {
-                  signed: false,
-                  width: IntWidth::Eight,
-               }),
-               "u32" => ExpressionType::Int(IntType {
-                  signed: false,
-                  width: IntWidth::Four,
-               }),
-               "u16" => ExpressionType::Int(IntType {
-                  signed: false,
-                  width: IntWidth::Two,
-               }),
-               "u8" => ExpressionType::Int(IntType {
-                  signed: false,
-                  width: IntWidth::One,
-               }),
-               "String" => ExpressionType::String,
-               x => {
-                  eprintln!("While parsing parameters - got an invalid type {}", x);
+            let type_token = expect(l, &Token::Identifier(String::from("")))?;
+            let type_s = extract_identifier(type_token);
+            let e_type = match parse_type(&type_s) {
+               Some(v) => v,
+               None => {
+                  eprintln!("While parsing parameters - got an invalid type `{}`", type_s);
                   return Err(());
                }
             };
@@ -470,6 +461,46 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
       Token::Plus | Token::Minus => (2, 3),
       Token::Multiply | Token::Divide => (4, 5),
       _ => unreachable!(),
+   }
+}
+
+fn parse_type(type_s: &str) -> Option<ExpressionType> {
+   match type_s {
+      "bool" => Some(ExpressionType::Bool),
+      "i64" => Some(ExpressionType::Int(IntType {
+         signed: true,
+         width: IntWidth::Eight,
+      })),
+      "i32" => Some(ExpressionType::Int(IntType {
+         signed: true,
+         width: IntWidth::Four,
+      })),
+      "i16" => Some(ExpressionType::Int(IntType {
+         signed: true,
+         width: IntWidth::Two,
+      })),
+      "i8" => Some(ExpressionType::Int(IntType {
+         signed: true,
+         width: IntWidth::One,
+      })),
+      "u64" => Some(ExpressionType::Int(IntType {
+         signed: false,
+         width: IntWidth::Eight,
+      })),
+      "u32" => Some(ExpressionType::Int(IntType {
+         signed: false,
+         width: IntWidth::Four,
+      })),
+      "u16" => Some(ExpressionType::Int(IntType {
+         signed: false,
+         width: IntWidth::Two,
+      })),
+      "u8" => Some(ExpressionType::Int(IntType {
+         signed: false,
+         width: IntWidth::One,
+      })),
+      "String" => Some(ExpressionType::String),
+      _ => None,
    }
 }
 

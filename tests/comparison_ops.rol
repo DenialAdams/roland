@@ -1,6 +1,6 @@
 proc main() {
-   let x = -10;
-   let y = 10;
+   let x: i64 = -10;
+   let y: i64 = 10;
 
    print_bool(x > y);
    print_bool(x >= y);
@@ -9,7 +9,7 @@ proc main() {
    print_bool(x == y);
    print_bool(x != y);
 
-   let z = 10;
+   let z: i64 = 10;
 
    print_bool(y > z);
    print_bool(y >= z);

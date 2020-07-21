@@ -118,6 +118,7 @@ impl<'a> PrettyWasmWriter {
 
 fn type_to_s(e: &ExpressionType) -> &'static str {
    match e {
+      ExpressionType::UnknownInt => unreachable!(),
       ExpressionType::Int(x) => match x.width {
          IntWidth::Eight => "i64",
          _ => "i32",
@@ -234,7 +235,7 @@ fn emit_statements(statements: &[Statement], generation_context: &mut Generation
          Statement::BlockStatement(bn) => {
             emit_statements(&bn.statements, generation_context);
          }
-         Statement::VariableDeclaration(id, en) => {
+         Statement::VariableDeclaration(id, en, _) => {
             do_emit(en, generation_context);
             generation_context.out.emit_set_local(id);
          }
@@ -277,7 +278,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       Expression::BinaryOperator(bin_op, e) => {
          do_emit(&e.0, generation_context);
          do_emit(&e.1, generation_context);
-         let (wasm_type, suffix) = match expr_node.exp_type.as_ref().unwrap() {
+         let (wasm_type, suffix) = match e.0.exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => {
                let wasm_type = match x.width {
                   IntWidth::Eight => "i64",
@@ -285,6 +286,9 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                };
                let suffix = if x.signed { "_s" } else { "_u" };
                (wasm_type, suffix)
+            }
+            ExpressionType::Bool => {
+               ("i32", "_u")
             }
             _ => unreachable!(),
          };
@@ -329,17 +333,24 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                IntWidth::Eight => "i64",
                _ => "i32",
             },
+            ExpressionType::Bool => {
+               "i32"
+            }
             _ => unreachable!(),
          };
-         generation_context.out.emit_spaces();
          match un_op {
             UnOp::LogicalNegate => {
+               generation_context.out.emit_spaces();
                writeln!(generation_context.out.out, "{}.eqz", wasm_type).unwrap();
             }
             UnOp::Negate => {
+               generation_context.out.emit_spaces();
                writeln!(generation_context.out.out, "{}.const -1", wasm_type).unwrap(); // 0xFF_FF_...
+               generation_context.out.emit_spaces();
                writeln!(generation_context.out.out, "{}.xor", wasm_type).unwrap();
+               generation_context.out.emit_spaces();
                writeln!(generation_context.out.out, "{}.const 1", wasm_type).unwrap();
+               generation_context.out.emit_spaces();
                writeln!(generation_context.out.out, "{}.add", wasm_type).unwrap();
             }
          }

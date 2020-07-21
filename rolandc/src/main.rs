@@ -35,7 +35,6 @@ fn main() {
       std::process::exit(1);
    }
    let wasm_text = wasm::emit_wasm(&user_program);
-   println!("{}", String::from_utf8(wasm_text.clone()).unwrap());
    //let wasm_bin = wabt::wat2wasm(wasm_text).unwrap();
    opts.output.set_extension("wast");
    let mut wasm_out = File::create(opts.output).unwrap();

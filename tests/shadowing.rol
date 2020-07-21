@@ -1,4 +1,4 @@
 proc main() {
-   let x = 10;
+   let x = "hello";
    let x = false;
 }
