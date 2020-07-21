@@ -1,5 +1,27 @@
-use crate::parse::{BinOp, Expression, ExpressionNode, ExpressionType, Program, Statement, UnOp, BlockNode};
+use crate::parse::{BinOp, Expression, ExpressionNode, ExpressionType, Program, Statement, UnOp, BlockNode, IntType, IntWidth};
 use std::collections::{HashMap, HashSet};
+
+#[derive(Debug)]
+enum TypeValidator {
+   Bool,
+   AnyInt,
+}
+
+fn matches(type_validation: &TypeValidator, et: &ExpressionType) -> bool {
+   match (type_validation, et) {
+      (TypeValidator::Bool, ExpressionType::Bool) => true,
+      (TypeValidator::AnyInt, ExpressionType::Int(_)) => true,
+      _ => false,
+   }
+}
+
+fn any_match(type_validations: &[TypeValidator], et: &ExpressionType) -> bool {
+   let mut any_match = false;
+   for type_validation in type_validations.iter() {
+      any_match |= matches(type_validation, et);
+   }
+   any_match
+}
 
 struct ProcedureInfo {
    pure: bool,
@@ -26,7 +48,7 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
    };
 
    // Built-In functions
-   let standard_lib_procs = [("print", false, &[ExpressionType::String]), ("print_int", false, &[ExpressionType::Int])];
+   let standard_lib_procs = [("print", false, &[ExpressionType::String])];
    for p in standard_lib_procs.iter() {
       validation_context
          .procedure_info
@@ -113,8 +135,8 @@ fn type_block(bn: &mut BlockNode, validation_context: &mut ValidationContext, cu
             if if_exp_type != &ExpressionType::Bool && if_exp_type != &ExpressionType::CompileError {
                validation_context.error_count += 1;
                eprintln!(
-                  "Value of if expression must be a bool; instead got {:?}",
-                  en.exp_type.as_ref().unwrap()
+                  "Value of if expression must be a bool; instead got {}",
+                  en.exp_type.as_ref().unwrap().as_roland_type()
                );
             }
          }
@@ -132,7 +154,10 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
          expr_node.exp_type = Some(ExpressionType::Bool);
       }
       Expression::IntLiteral(_) => {
-         expr_node.exp_type = Some(ExpressionType::Int);
+         expr_node.exp_type = Some(ExpressionType::Int(IntType {
+            signed: false,
+            width: IntWidth::Eight,
+         }));
       }
       Expression::StringLiteral(lit) => {
          // This clone will become cheap when we intern everywhere
@@ -143,7 +168,7 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
          do_type(&mut e.0, validation_context);
          do_type(&mut e.1, validation_context);
 
-         let correct_arg_types: &[ExpressionType] = match bin_op {
+         let correct_arg_types: &[TypeValidator] = match bin_op {
             BinOp::Add
             | BinOp::Subtract
             | BinOp::Multiply
@@ -151,8 +176,8 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             | BinOp::GreaterThan
             | BinOp::GreaterThanOrEqualTo
             | BinOp::LessThan
-            | BinOp::LessThanOrEqualTo => &[ExpressionType::Int],
-            BinOp::Equality | BinOp::NotEquality => &[ExpressionType::Int, ExpressionType::Bool],
+            | BinOp::LessThanOrEqualTo => &[TypeValidator::AnyInt],
+            BinOp::Equality | BinOp::NotEquality => &[TypeValidator::AnyInt, TypeValidator::Bool],
          };
 
          let lhs_type = e.0.exp_type.as_ref().unwrap();
@@ -161,36 +186,36 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
          let result_type = if lhs_type == &ExpressionType::CompileError || rhs_type == &ExpressionType::CompileError {
             // Avoid cascading errors
             ExpressionType::CompileError
-         } else if !correct_arg_types.contains(lhs_type) {
+         } else if !any_match(correct_arg_types, lhs_type) {
             validation_context.error_count += 1;
             eprintln!(
-               "Binary operator {:?} requires LHS to have type matching {:?}; instead got {:?}",
+               "Binary operator {:?} requires LHS to have type matching {:?}; instead got {}",
                bin_op,
                correct_arg_types,
-               e.0.exp_type.as_ref().unwrap()
+               e.0.exp_type.as_ref().unwrap().as_roland_type()
             );
             ExpressionType::CompileError
-         } else if !correct_arg_types.contains(rhs_type) {
+         } else if !any_match(correct_arg_types, rhs_type) {
             validation_context.error_count += 1;
             eprintln!(
-               "Binary operator {:?} requires LHS to have type matching {:?}; instead got {:?}",
+               "Binary operator {:?} requires LHS to have type matching {:?}; instead got {}",
                bin_op,
                correct_arg_types,
-               e.1.exp_type.as_ref().unwrap()
+               e.1.exp_type.as_ref().unwrap().as_roland_type()
             );
             ExpressionType::CompileError
          } else if lhs_type != rhs_type {
             validation_context.error_count += 1;
             eprintln!(
-               "Binary operator {:?} requires LHS and RHS to have identical type; instead got {:?} and {:?}",
+               "Binary operator {:?} requires LHS and RHS to have identical type; instead got {} and {}",
                bin_op,
-               e.0.exp_type.as_ref().unwrap(),
-               e.1.exp_type.as_ref().unwrap()
+               e.0.exp_type.as_ref().unwrap().as_roland_type(),
+               e.1.exp_type.as_ref().unwrap().as_roland_type()
             );
             ExpressionType::CompileError
          } else {
             match bin_op {
-               BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide => ExpressionType::Int,
+               BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide => lhs_type.clone(),
                BinOp::Equality
                | BinOp::NotEquality
                | BinOp::GreaterThan
@@ -206,24 +231,24 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
          do_type(e, validation_context);
 
          let correct_type = match un_op {
-            UnOp::Negate => ExpressionType::Int,
-            UnOp::LogicalNegate => ExpressionType::Bool,
+            UnOp::Negate => TypeValidator::AnyInt,
+            UnOp::LogicalNegate => TypeValidator::Bool,
          };
 
          let result_type = if e.exp_type.as_ref().unwrap() == &ExpressionType::CompileError {
             // Avoid cascading errors
             ExpressionType::CompileError
-         } else if e.exp_type.as_ref().unwrap() != &correct_type {
+         } else if !matches(&correct_type, e.exp_type.as_ref().unwrap()) {
             validation_context.error_count += 1;
             eprintln!(
-               "Expected type {:?} for expression {:?}; instead got {:?}",
+               "Expected type {:?} for expression {:?}; instead got {}",
                correct_type,
                un_op,
-               e.exp_type.as_ref().unwrap()
+               e.exp_type.as_ref().unwrap().as_roland_type()
             );
             ExpressionType::CompileError
          } else {
-            correct_type
+            e.exp_type.clone().unwrap()
          };
 
          expr_node.exp_type = Some(result_type);
@@ -267,7 +292,7 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
                   for (actual, expected) in actual_types.zip(expected_types) {
                      if actual != expected && *actual != ExpressionType::CompileError {
                         validation_context.error_count += 1;
-                        eprintln!("In call to `{}`, encountered argument of type {:?} when we expected {:?}", name, actual, expected);
+                        eprintln!("In call to `{}`, encountered argument of type {} when we expected {}", name, actual.as_roland_type(), expected.as_roland_type());
                      }
                   }
                }

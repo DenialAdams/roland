@@ -63,12 +63,48 @@ pub enum UnOp {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+
+pub enum IntWidth {
+   Eight,
+   Four,
+   Two,
+   One
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct IntType {
+   pub signed: bool,
+   pub width: IntWidth,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum ExpressionType {
-   Int,
+   Int(IntType),
    String,
    Bool,
    Unit,
    CompileError,
+}
+
+impl ExpressionType {
+   pub fn as_roland_type(&self) -> &str {
+      match self {
+         ExpressionType::Int(x) => match (x.signed, &x.width) {
+            (true, IntWidth::Eight) => "i64",
+            (true, IntWidth::Four) => "i32",
+            (true, IntWidth::Two) => "i16",
+            (true, IntWidth::One) => "i8",
+            (false, IntWidth::Eight) => "u64",
+            (false, IntWidth::Four) => "u32",
+            (false, IntWidth::Two) => "u16",
+            (false, IntWidth::One) => "u8",
+         },
+         ExpressionType::String => "String",
+         ExpressionType::Bool => "bool",
+         ExpressionType::Unit => "()",
+         ExpressionType::CompileError => "ERROR",
+      }
+   }
 }
 
 pub struct ExpressionNode {
@@ -230,7 +266,38 @@ fn parse_parameters(l: &mut Lexer) -> Result<Vec<(String, ExpressionType)>, ()> 
             let type_s = expect(l, &Token::Identifier(String::from("")))?;
             let e_type: ExpressionType = match extract_identifier(type_s).as_ref() {
                "bool" => ExpressionType::Bool,
-               "int" => ExpressionType::Int,
+               "i64" => ExpressionType::Int(IntType {
+                  signed: true,
+                  width: IntWidth::Eight,
+               }),
+               "i32" => ExpressionType::Int(IntType {
+                  signed: true,
+                  width: IntWidth::Four,
+               }),
+               "i16" => ExpressionType::Int(IntType {
+                  signed: true,
+                  width: IntWidth::Two,
+               }),
+               "i8" => ExpressionType::Int(IntType {
+                  signed: true,
+                  width: IntWidth::One,
+               }),
+               "u64" => ExpressionType::Int(IntType {
+                  signed: false,
+                  width: IntWidth::Eight,
+               }),
+               "u32" => ExpressionType::Int(IntType {
+                  signed: false,
+                  width: IntWidth::Four,
+               }),
+               "u16" => ExpressionType::Int(IntType {
+                  signed: false,
+                  width: IntWidth::Two,
+               }),
+               "u8" => ExpressionType::Int(IntType {
+                  signed: false,
+                  width: IntWidth::One,
+               }),
                "String" => ExpressionType::String,
                x => {
                   eprintln!(

@@ -23,7 +23,7 @@ fn main() {
    let mut opts: Opts = Opts::parse();
    let user_program_s = std::fs::read_to_string(opts.source_file).unwrap();
    let mut user_program = lex_and_parse(&user_program_s);
-   let std_lib_s = include_str!("../../lib/print.ro");
+   let std_lib_s = include_str!("../../lib/print.rol");
    let std_lib = lex_and_parse(std_lib_s);
    merge_programs(&mut user_program, &mut [std_lib]);
    let err_count = validator::type_and_check_validity(&mut user_program);

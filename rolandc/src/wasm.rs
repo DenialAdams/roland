@@ -1,4 +1,4 @@
-use crate::parse::{BinOp, Expression, ExpressionNode, ExpressionType, Program, Statement, UnOp};
+use crate::parse::{BinOp, Expression, ExpressionNode, ExpressionType, Program, Statement, UnOp, IntWidth};
 use std::collections::HashMap;
 use std::io::Write;
 
@@ -113,7 +113,12 @@ impl<'a> PrettyWasmWriter {
 
 fn type_to_s(e: &ExpressionType) -> &'static str {
    match e {
-      ExpressionType::Int => "i64",
+      ExpressionType::Int(x) => {
+         match x.width {
+            IntWidth::Eight => "i64",
+            _ => "i32",
+         }
+      },
       ExpressionType::Bool => "i32",
       ExpressionType::String => unimplemented!(),
       ExpressionType::Unit => unreachable!(),
