@@ -5,10 +5,10 @@ mod validator;
 mod wasm;
 
 use clap::Clap;
-use std::io::Write;
-use std::fs::File;
-use std::path::PathBuf;
 use parse::Program;
+use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
 
 #[derive(Clap)]
 struct Opts {
@@ -54,7 +54,7 @@ fn lex_and_parse(s: &str) -> Program {
       Err(()) => std::process::exit(1),
       Ok(v) => v,
    };
-    match parse::astify(tokens) {
+   match parse::astify(tokens) {
       Err(()) => std::process::exit(1),
       Ok(v) => v,
    }

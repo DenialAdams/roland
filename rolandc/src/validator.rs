@@ -1,4 +1,6 @@
-use crate::parse::{BinOp, Expression, ExpressionNode, ExpressionType, Program, Statement, UnOp, BlockNode, IntType, IntWidth};
+use crate::parse::{
+   BinOp, BlockNode, Expression, ExpressionNode, ExpressionType, IntType, IntWidth, Program, Statement, UnOp,
+};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
@@ -50,16 +52,23 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
    // Built-In functions
    let standard_lib_procs = [("print", false, &[ExpressionType::String])];
    for p in standard_lib_procs.iter() {
-      validation_context
-         .procedure_info
-         .insert(p.0.to_string(), ProcedureInfo { pure: p.1, parameters: p.2.to_vec() });
+      validation_context.procedure_info.insert(
+         p.0.to_string(),
+         ProcedureInfo {
+            pure: p.1,
+            parameters: p.2.to_vec(),
+         },
+      );
    }
 
    for procedure in program.procedures.iter() {
-      match validation_context
-         .procedure_info
-         .insert(procedure.name.clone(), ProcedureInfo { pure: procedure.pure, parameters: procedure.parameters.iter().map(|x| x.1.clone()).collect() })
-      {
+      match validation_context.procedure_info.insert(
+         procedure.name.clone(),
+         ProcedureInfo {
+            pure: procedure.pure,
+            parameters: procedure.parameters.iter().map(|x| x.1.clone()).collect(),
+         },
+      ) {
          Some(_) => {
             validation_context.error_count += 1;
             eprintln!(
@@ -100,7 +109,11 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
    validation_context.error_count
 }
 
-fn type_block(bn: &mut BlockNode, validation_context: &mut ValidationContext, cur_procedure_locals: &mut Vec<(String, ExpressionType)>) {
+fn type_block(
+   bn: &mut BlockNode,
+   validation_context: &mut ValidationContext,
+   cur_procedure_locals: &mut Vec<(String, ExpressionType)>,
+) {
    validation_context.block_depth += 1;
 
    for statement in bn.statements.iter_mut() {
@@ -112,14 +125,12 @@ fn type_block(bn: &mut BlockNode, validation_context: &mut ValidationContext, cu
             do_type(en, validation_context);
             if validation_context.variable_types.contains_key(id) {
                validation_context.error_count += 1;
-               eprintln!(
-                  "Variable shadowing is not supported at this time (`{}`)",
-                  id
-               );
+               eprintln!("Variable shadowing is not supported at this time (`{}`)", id);
             } else {
-               validation_context
-               .variable_types
-               .insert(id.clone(), (en.exp_type.clone().unwrap(), validation_context.block_depth));
+               validation_context.variable_types.insert(
+                  id.clone(),
+                  (en.exp_type.clone().unwrap(), validation_context.block_depth),
+               );
                // TODO, again, interning
                cur_procedure_locals.push((id.clone(), en.exp_type.clone().unwrap()));
             }
@@ -284,15 +295,25 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
 
                if procedure_info.parameters.len() != args.len() {
                   validation_context.error_count += 1;
-                  eprintln!("In call to `{}`, mismatched arity. Expected {} arguments but got {}", name, procedure_info.parameters.len(), args.len());
-                  // We shortcircuit here, because there will likely be lots of mistmatched types if an arg was forgotten
+                  eprintln!(
+                     "In call to `{}`, mismatched arity. Expected {} arguments but got {}",
+                     name,
+                     procedure_info.parameters.len(),
+                     args.len()
+                  );
+               // We shortcircuit here, because there will likely be lots of mistmatched types if an arg was forgotten
                } else {
                   let actual_types = args.iter().map(|x| x.exp_type.as_ref().unwrap());
                   let expected_types = procedure_info.parameters.iter();
                   for (actual, expected) in actual_types.zip(expected_types) {
                      if actual != expected && *actual != ExpressionType::CompileError {
                         validation_context.error_count += 1;
-                        eprintln!("In call to `{}`, encountered argument of type {} when we expected {}", name, actual.as_roland_type(), expected.as_roland_type());
+                        eprintln!(
+                           "In call to `{}`, encountered argument of type {} when we expected {}",
+                           name,
+                           actual.as_roland_type(),
+                           expected.as_roland_type()
+                        );
                      }
                   }
                }

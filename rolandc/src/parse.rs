@@ -68,7 +68,7 @@ pub enum IntWidth {
    Eight,
    Four,
    Two,
-   One
+   One,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -166,7 +166,10 @@ pub fn astify(tokens: Vec<Token>) -> Result<Program, ()> {
       }
    }
 
-   Ok(Program { procedures, literals: HashSet::new() })
+   Ok(Program {
+      procedures,
+      literals: HashSet::new(),
+   })
 }
 
 fn extract_identifier(t: Token) -> String {
@@ -223,9 +226,7 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
                   let _ = l.next();
                   parse_block(l)?
                }
-               _=> BlockNode {
-                  statements: vec![],
-               },
+               _ => BlockNode { statements: vec![] },
             };
             statements.push(Statement::IfElseStatement(e, if_block, else_block));
          }
@@ -300,10 +301,7 @@ fn parse_parameters(l: &mut Lexer) -> Result<Vec<(String, ExpressionType)>, ()> 
                }),
                "String" => ExpressionType::String,
                x => {
-                  eprintln!(
-                     "While parsing parameters - got an invalid type {}",
-                     x
-                  );
+                  eprintln!("While parsing parameters - got an invalid type {}", x);
                   return Err(());
                }
             };
