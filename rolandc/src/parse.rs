@@ -16,6 +16,14 @@ impl Lexer {
       self.tokens.last()
    }
 
+   fn double_peek(&self) -> Option<&Token> {
+      if self.tokens.len() <= 1 {
+         return None;
+      }
+
+      self.tokens.get(self.tokens.len() - 2)
+   }
+
    fn next(&mut self) -> Option<Token> {
       self.tokens.pop()
    }
@@ -132,6 +140,7 @@ pub enum Expression {
 }
 
 pub enum Statement {
+   AssignmentStatement(String, ExpressionNode),
    BlockStatement(BlockNode),
    ExpressionStatement(ExpressionNode),
    IfElseStatement(ExpressionNode, BlockNode, BlockNode),
@@ -253,8 +262,23 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
             };
             statements.push(Statement::IfElseStatement(e, if_block, else_block));
          }
-         Some(Token::Identifier(_))
-         | Some(Token::BoolLiteral(_))
+         Some(Token::Identifier(_)) => {
+            match l.double_peek() {
+               Some(&Token::Assignment) => {
+                  let variable_name = expect(l, &Token::Identifier(String::from("")))?;
+                  expect(l, &Token::Assignment)?;
+                  let e = parse_expression(l)?;
+                  expect(l, &Token::Semicolon)?;
+                  statements.push(Statement::AssignmentStatement(extract_identifier(variable_name), e));
+               }
+               _ => {
+                  let e = parse_expression(l)?;
+                  expect(l, &Token::Semicolon)?;
+                  statements.push(Statement::ExpressionStatement(e));
+               }
+            }
+         }
+         Some(Token::BoolLiteral(_))
          | Some(Token::StringLiteral(_))
          | Some(Token::IntLiteral(_))
          | Some(Token::OpenParen)

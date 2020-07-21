@@ -39,6 +39,13 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
       Statement::ExpressionStatement(e) => {
          print_expression(out, e);
       }
+      Statement::AssignmentStatement(ident, e) => {
+         writeln!(out, "<li><span>Assignment</span>").unwrap();
+         writeln!(out, "<ul>").unwrap();
+         writeln!(out, "<li><span>{}</span>", ident).unwrap();
+         print_expression(out, e);
+         writeln!(out, "</ul></li>").unwrap();
+      }
       Statement::VariableDeclaration(ident, e, _) => {
          writeln!(out, "<li><span>Variable Declaration</span>").unwrap();
          writeln!(out, "<ul>").unwrap();

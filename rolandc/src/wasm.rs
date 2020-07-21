@@ -235,6 +235,10 @@ fn emit_statements(statements: &[Statement], generation_context: &mut Generation
          Statement::BlockStatement(bn) => {
             emit_statements(&bn.statements, generation_context);
          }
+         Statement::AssignmentStatement(id, en) => {
+            do_emit(en, generation_context);
+            generation_context.out.emit_set_local(id);
+         }
          Statement::VariableDeclaration(id, en, _) => {
             do_emit(en, generation_context);
             generation_context.out.emit_set_local(id);

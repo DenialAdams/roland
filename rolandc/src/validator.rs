@@ -129,6 +129,20 @@ fn type_block(
          Statement::BlockStatement(bn) => {
             type_block(bn, validation_context, cur_procedure_locals);
          }
+         Statement::AssignmentStatement(id, en) => {
+            do_type(en, validation_context);
+
+            let exp_type = en.exp_type.clone().unwrap();
+            let declared_type = validation_context.variable_types.get(id);
+
+            if declared_type.is_none() {
+               validation_context.error_count += 1;
+               eprintln!("Encountered undefined variable `{}`", id);
+            } else if exp_type != declared_type.unwrap().0 {
+               validation_context.error_count += 1;
+               eprintln!("Encountered assignment to variable `{}`, but the expression type {} does not match the declared type {}", id, exp_type.as_roland_type(), declared_type.unwrap().0.as_roland_type());
+            };
+         }
          Statement::VariableDeclaration(id, en, dt) => {
             let declared_type_is_known_int = dt.as_ref().map(|x| x.is_any_known_int()).unwrap_or(false);
 
@@ -299,7 +313,7 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             Some(t) => t.0.clone(),
             None => {
                validation_context.error_count += 1;
-               eprintln!("Encountered undefined variable {}", id);
+               eprintln!("Encountered undefined variable `{}`", id);
                ExpressionType::CompileError
             }
          };
