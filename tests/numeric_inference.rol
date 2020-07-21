@@ -1,0 +1,6 @@
+proc main() {
+   let x: u8 = 5;
+   let y = 4 + x;
+   let z = x + 4;
+   print("Compiled succesfully");
+}

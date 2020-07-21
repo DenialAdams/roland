@@ -232,11 +232,9 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             // Avoid cascading errors
             ExpressionType::CompileError
          } else if lhs_type == &ExpressionType::UnknownInt && rhs_type.is_any_known_int() {
-            // todo - do we want to keep this? currently never hit, would require special syntax such as 1234i64
             set_inferred_type(rhs_type, &mut e.0, validation_context);
             rhs_type.clone()
          } else if lhs_type.is_any_known_int() && rhs_type == &ExpressionType::UnknownInt {
-            // todo - do we want to keep this? currently never hit, would require special syntax such as 1234i64
             set_inferred_type(lhs_type, &mut e.1, validation_context);
             lhs_type.clone()
          } else if !any_match(correct_arg_types, lhs_type) {
