@@ -183,26 +183,6 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    generation_context.out.emit_constant_instruction("drop");
    generation_context.out.close();
 
-   // print int
-   // TODO: this shouldnt be vec, but i cant generic
-   generation_context
-      .out
-      .emit_function_start("print_int", vec![("int", "i64")]);
-   // build the iovecs array
-   //writeln!(&mut generation_context.out, "(i32.store (i32.const 0) (local.get $str_offset))").unwrap();
-   //writeln!(&mut generation_context.out, "(i32.store (i32.const 4) (local.get $str_len))").unwrap();
-   generation_context
-      .out
-      .emit_constant_sexp("(i32.store (i32.const 8) (i32.const 16))");
-   generation_context
-      .out
-      .emit_constant_sexp("(i32.store (i32.const 12) (i32.const 1))");
-   generation_context
-      .out
-      .emit_constant_sexp("(call $fd_write (i32.const 1) (i32.const 0) (i32.const 2) (i32.const 0))");
-   generation_context.out.emit_constant_instruction("drop");
-   generation_context.out.close();
-
    for procedure in program.procedures.iter() {
       generation_context.out.emit_function_start(
          &procedure.name,
