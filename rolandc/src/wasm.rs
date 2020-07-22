@@ -274,6 +274,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             }
             _ => unreachable!(),
          };
+         generation_context.out.emit_spaces();
          writeln!(generation_context.out.out, "{}.const {}", wasm_type, x).unwrap();
       }
       Expression::StringLiteral(str) => {
