@@ -109,11 +109,6 @@ impl<'a> PrettyWasmWriter {
       self.emit_spaces();
       writeln!(&mut self.out, "i32.const {}", value).unwrap();
    }
-
-   fn emit_const_i64(&mut self, value: i64) {
-      self.emit_spaces();
-      writeln!(&mut self.out, "i64.const {}", value).unwrap();
-   }
 }
 
 fn type_to_s(e: &ExpressionType) -> &'static str {
@@ -272,7 +267,14 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          generation_context.out.emit_const_i32(*x as u32);
       }
       Expression::IntLiteral(x) => {
-         generation_context.out.emit_const_i64(*x);
+         let wasm_type = match expr_node.exp_type.as_ref().unwrap() {
+            ExpressionType::Int(x) => match x.width {
+               IntWidth::Eight => "i64",
+               _ => "i32",
+            }
+            _ => unreachable!(),
+         };
+         writeln!(generation_context.out.out, "{}.const {}", wasm_type, x).unwrap();
       }
       Expression::StringLiteral(str) => {
          let (offset, len) = generation_context.literal_offsets.get(str).unwrap();
