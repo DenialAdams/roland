@@ -1,4 +1,4 @@
 proc main() {
-   let x = 5 + 50 / 5;
+   let x: i64 = 5 + 50 / 5;
    print_int(x);
 }
