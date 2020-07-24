@@ -208,18 +208,14 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
 fn emit_statement(statement: &Statement, generation_context: &mut GenerationContext) {
    match statement {
-      Statement::BlockStatement(bn) => {
-         for statement in &bn.statements {
-            emit_statement(statement, generation_context)
-         }
-      }
       Statement::AssignmentStatement(id, en) => {
          do_emit(en, generation_context);
          generation_context.out.emit_set_local(id);
       }
-      Statement::VariableDeclaration(id, en, _) => {
-         do_emit(en, generation_context);
-         generation_context.out.emit_set_local(id);
+      Statement::BlockStatement(bn) => {
+         for statement in &bn.statements {
+            emit_statement(statement, generation_context)
+         }
       }
       Statement::ExpressionStatement(en) => {
          do_emit(en, generation_context);
@@ -241,6 +237,13 @@ fn emit_statement(statement: &Statement, generation_context: &mut GenerationCont
          generation_context.out.close();
          // finish if
          generation_context.out.close();
+      }
+      Statement::ReturnStatement(en) => {
+         unimplemented!()
+      }
+      Statement::VariableDeclaration(id, en, _) => {
+         do_emit(en, generation_context);
+         generation_context.out.emit_set_local(id);
       }
    }
 }

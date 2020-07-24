@@ -36,13 +36,34 @@ pub fn print_ast_as_html(program: &Program) {
 
 fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
    match statement {
-      Statement::ExpressionStatement(e) => {
-         print_expression(out, e);
-      }
       Statement::AssignmentStatement(ident, e) => {
          writeln!(out, "<li><span>Assignment</span>").unwrap();
          writeln!(out, "<ul>").unwrap();
          writeln!(out, "<li><span>{}</span>", ident).unwrap();
+         print_expression(out, e);
+         writeln!(out, "</ul></li>").unwrap();
+      }
+      Statement::BlockStatement(bn) => {
+         for statement in bn.statements.iter() {
+            print_statement(out, statement);
+         }
+      }
+      Statement::ExpressionStatement(e) => {
+         print_expression(out, e);
+      }
+      Statement::IfElseStatement(e, block_1, block_2) => {
+         writeln!(out, "<li><span>If-Else</span>").unwrap();
+         writeln!(out, "<ul>").unwrap();
+         print_expression(out, e);
+         for statement in block_1.statements.iter() {
+            print_statement(out, statement);
+         }
+         print_statement(out, block_2);
+         writeln!(out, "</ul></li>").unwrap();
+      }
+      Statement::ReturnStatement(e) => {
+         writeln!(out, "<li><span>Return</span>").unwrap();
+         writeln!(out, "<ul>").unwrap();
          print_expression(out, e);
          writeln!(out, "</ul></li>").unwrap();
       }
@@ -52,21 +73,6 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
          writeln!(out, "<li><span>{}</span>", ident).unwrap();
          print_expression(out, e);
          writeln!(out, "</ul></li>").unwrap();
-      }
-      Statement::IfElseStatement(e, block_1, block_2) => {
-         writeln!(out, "<li><span>If-Else Statement</span>").unwrap();
-         writeln!(out, "<ul>").unwrap();
-         print_expression(out, e);
-         for statement in block_1.statements.iter() {
-            print_statement(out, statement);
-         }
-         print_statement(out, block_2);
-         writeln!(out, "</ul></li>").unwrap();
-      }
-      Statement::BlockStatement(bn) => {
-         for statement in bn.statements.iter() {
-            print_statement(out, statement);
-         }
       }
    }
 }

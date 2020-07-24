@@ -47,6 +47,7 @@ pub struct ProcedureNode {
    pub parameters: Vec<(String, ExpressionType)>,
    pub locals: Vec<(String, ExpressionType)>,
    pub block: BlockNode,
+   pub ret_type: ExpressionType,
    pub pure: bool,
 }
 
@@ -144,6 +145,7 @@ pub enum Statement {
    BlockStatement(BlockNode),
    ExpressionStatement(ExpressionNode),
    IfElseStatement(ExpressionNode, BlockNode, Box<Statement>),
+   ReturnStatement(ExpressionNode),
    VariableDeclaration(String, ExpressionNode, Option<ExpressionType>),
 }
 
@@ -202,12 +204,27 @@ fn parse_procedure(l: &mut Lexer) -> Result<ProcedureNode, ()> {
    expect(l, &Token::OpenParen)?;
    let parameters = parse_parameters(l)?;
    expect(l, &Token::CloseParen)?;
+   let ret_type = if let Some(&Token::Arrow) = l.peek() {
+      let _ = l.next();
+      let type_token = expect(l, &Token::Identifier(String::from("")))?;
+      let type_s = extract_identifier(type_token);
+      match parse_type(&type_s) {
+         Some(v) => v,
+         None => {
+            eprintln!("While parsing variable declaration - got an invalid type `{}`", type_s);
+            return Err(());
+         }
+      }
+   } else {
+      ExpressionType::Unit
+   };
    let block = parse_block(l)?;
    Ok(ProcedureNode {
       name: extract_identifier(function_name),
       parameters,
       locals: Vec::new(),
       block,
+      ret_type,
       pure: false,
    })
 }
@@ -226,6 +243,12 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
          Some(Token::CloseBrace) => {
             let _ = l.next();
             break;
+         }
+         Some(Token::KeywordReturn) => {
+            let _ = l.next();
+            let e = parse_expression(l)?;
+            expect(l, &Token::Semicolon)?;
+            statements.push(Statement::ReturnStatement(e));
          }
          Some(Token::KeywordLet) => {
             let mut declared_type = None;

@@ -1,0 +1,7 @@
+proc main() {
+   print(get_a_cool_string());
+}
+
+func get_a_cool_string() -> String {
+   return false;
+}

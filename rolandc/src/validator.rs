@@ -27,51 +27,46 @@ fn any_match(type_validations: &[TypeValidator], et: &ExpressionType) -> bool {
 struct ProcedureInfo {
    pure: bool,
    parameters: Vec<ExpressionType>,
+   ret_type: ExpressionType,
 }
 
-struct ValidationContext {
+struct ValidationContext<'a> {
+   procedure_info: &'a HashMap<String, ProcedureInfo>,
+   cur_procedure_info: Option<&'a ProcedureInfo>,
    string_literals: HashSet<String>,
-   procedure_info: HashMap<String, ProcedureInfo>,
    variable_types: HashMap<String, (ExpressionType, u64)>,
    error_count: u64,
-   in_pure_func: bool,
    block_depth: u64,
    unknown_ints: u64,
 }
 
 pub fn type_and_check_validity(program: &mut Program) -> u64 {
-   let mut validation_context = ValidationContext {
-      string_literals: HashSet::new(),
-      variable_types: HashMap::new(),
-      error_count: 0,
-      procedure_info: HashMap::new(),
-      in_pure_func: false,
-      block_depth: 0,
-      unknown_ints: 0,
-   };
-
+   let mut procedure_info = HashMap::new();
+   let mut error_count = 0;
    // Built-In functions
-   let standard_lib_procs = [("print", false, &[ExpressionType::String])];
+   let standard_lib_procs = [("print", false, &[ExpressionType::String], ExpressionType::Unit)];
    for p in standard_lib_procs.iter() {
-      validation_context.procedure_info.insert(
+      procedure_info.insert(
          p.0.to_string(),
          ProcedureInfo {
             pure: p.1,
             parameters: p.2.to_vec(),
+            ret_type: p.3.clone(),
          },
       );
    }
 
    for procedure in program.procedures.iter() {
-      match validation_context.procedure_info.insert(
+      match procedure_info.insert(
          procedure.name.clone(),
          ProcedureInfo {
             pure: procedure.pure,
             parameters: procedure.parameters.iter().map(|x| x.1.clone()).collect(),
+            ret_type: procedure.ret_type.clone(),
          },
       ) {
          Some(_) => {
-            validation_context.error_count += 1;
+            error_count += 1;
             eprintln!(
                "Encountered duplicate procedures/functions with the same name `{}`",
                procedure.name
@@ -81,9 +76,22 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
       }
    }
 
+   let mut validation_context = ValidationContext {
+      string_literals: HashSet::new(),
+      variable_types: HashMap::new(),
+      error_count,
+      procedure_info: &procedure_info,
+      cur_procedure_info: None,
+      block_depth: 0,
+      unknown_ints: 0,
+   };
+
    if !validation_context.procedure_info.contains_key("main") {
       validation_context.error_count += 1;
       eprintln!("A procedure with the name `main` must be present");
+   } else if validation_context.procedure_info.get("main").unwrap().ret_type != ExpressionType::Unit {
+      validation_context.error_count += 1;
+      eprintln!("`main` is a special procedure and is not allowed to return a value");
    }
 
    // We won't proceed with type checking because there could be false positives due to
@@ -94,7 +102,7 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
 
    for procedure in program.procedures.iter_mut() {
       validation_context.variable_types.clear();
-      validation_context.in_pure_func = procedure.pure;
+      validation_context.cur_procedure_info = procedure_info.get(procedure.name.as_str());
 
       for parameter in procedure.parameters.iter() {
          validation_context
@@ -102,7 +110,22 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
             .insert(parameter.0.clone(), (parameter.1.clone(), 0));
       }
 
-      type_block(&mut procedure.block, &mut validation_context, &mut procedure.locals)
+      type_block(&mut procedure.block, &mut validation_context, &mut procedure.locals);
+
+      // Ensure that the last statement is a return statement
+      // (it has already been type checked, so we don't have to check that)
+      match (&procedure.ret_type, procedure.block.statements.last()) {
+         (ExpressionType::Unit, _) => (),
+         (_, Some(Statement::ReturnStatement(_))) => (),
+         (x, _) => {
+            validation_context.error_count += 1;
+            eprintln!(
+               "Procedure/function `{}` is declared to return type {} but is missing a final return statement",
+               procedure.name,
+               x.as_roland_type()
+            );
+         }
+      }
    }
 
    if validation_context.unknown_ints > 0 {
@@ -124,9 +147,6 @@ fn type_statement(
    cur_procedure_locals: &mut Vec<(String, ExpressionType)>,
 ) {
    match statement {
-      Statement::BlockStatement(bn) => {
-         type_block(bn, validation_context, cur_procedure_locals);
-      }
       Statement::AssignmentStatement(id, en) => {
          do_type(en, validation_context);
 
@@ -140,6 +160,37 @@ fn type_statement(
             validation_context.error_count += 1;
             eprintln!("Encountered assignment to variable `{}`, but the expression type {} does not match the declared type {}", id, exp_type.as_roland_type(), declared_type.unwrap().0.as_roland_type());
          };
+      }
+      Statement::BlockStatement(bn) => {
+         type_block(bn, validation_context, cur_procedure_locals);
+      }
+      Statement::ExpressionStatement(en) => {
+         do_type(en, validation_context);
+      }
+      Statement::IfElseStatement(en, block_1, block_2) => {
+         type_block(block_1, validation_context, cur_procedure_locals);
+         type_statement(block_2, validation_context, cur_procedure_locals);
+         do_type(en, validation_context);
+         let if_exp_type = en.exp_type.as_ref().unwrap();
+         if if_exp_type != &ExpressionType::Bool && if_exp_type != &ExpressionType::CompileError {
+            validation_context.error_count += 1;
+            eprintln!(
+               "Value of if expression must be a bool; instead got {}",
+               en.exp_type.as_ref().unwrap().as_roland_type()
+            );
+         }
+      }
+      Statement::ReturnStatement(en) => {
+         do_type(en, validation_context);
+         let cur_procedure_info = validation_context.cur_procedure_info.unwrap();
+         if en.exp_type.as_ref().unwrap() != &cur_procedure_info.ret_type {
+            validation_context.error_count += 1;
+            eprintln!(
+               "Value of return statement must match declared return type {}; got {}",
+               cur_procedure_info.ret_type.as_roland_type(),
+               en.exp_type.as_ref().unwrap().as_roland_type()
+            );
+         }
       }
       Statement::VariableDeclaration(id, en, dt) => {
          let declared_type_is_known_int = dt.as_ref().map(|x| x.is_any_known_int()).unwrap_or(false);
@@ -172,22 +223,6 @@ fn type_statement(
             );
             // TODO, again, interning
             cur_procedure_locals.push((id.clone(), result_type));
-         }
-      }
-      Statement::ExpressionStatement(en) => {
-         do_type(en, validation_context);
-      }
-      Statement::IfElseStatement(en, block_1, block_2) => {
-         type_block(block_1, validation_context, cur_procedure_locals);
-         type_statement(block_2, validation_context, cur_procedure_locals);
-         do_type(en, validation_context);
-         let if_exp_type = en.exp_type.as_ref().unwrap();
-         if if_exp_type != &ExpressionType::Bool && if_exp_type != &ExpressionType::CompileError {
-            validation_context.error_count += 1;
-            eprintln!(
-               "Value of if expression must be a bool; instead got {}",
-               en.exp_type.as_ref().unwrap().as_roland_type()
-            );
          }
       }
    }
@@ -333,18 +368,22 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
          expr_node.exp_type = Some(result_type);
       }
       Expression::ProcedureCall(name, args) => {
-         expr_node.exp_type = Some(ExpressionType::Unit); // Will change when we parse return types
-
          for arg in args.iter_mut() {
             do_type(arg, validation_context);
          }
 
+         if name == "main" {
+            validation_context.error_count += 1;
+            eprintln!("`main` is a special procedure and is not allowed to be called");
+         }
+
          match validation_context.procedure_info.get(name) {
             Some(procedure_info) => {
-               if validation_context.in_pure_func && !procedure_info.pure {
+               expr_node.exp_type = Some(procedure_info.ret_type.clone());
+
+               if validation_context.cur_procedure_info.unwrap().pure && !procedure_info.pure {
                   validation_context.error_count += 1;
                   eprintln!("Encountered call to procedure `{}` (impure) in func (pure)", name);
-                  expr_node.exp_type = Some(ExpressionType::CompileError);
                }
 
                if procedure_info.parameters.len() != args.len() {

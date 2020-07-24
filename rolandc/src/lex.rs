@@ -6,6 +6,7 @@ pub enum Token {
    KeywordIf,
    KeywordProcedureDef,
    KeywordLet,
+   KeywordReturn,
    OpenBrace,
    CloseBrace,
    OpenParen,
@@ -47,6 +48,7 @@ fn extract_keyword_or_ident(s: &str) -> Token {
       "if" => Token::KeywordIf,
       "proc" => Token::KeywordProcedureDef,
       "let" => Token::KeywordLet,
+      "return" => Token::KeywordReturn,
       other => Token::Identifier(other.to_string()),
    }
 }

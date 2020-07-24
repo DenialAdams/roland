@@ -1,0 +1,2 @@
+Value of return statement must match declared return type String; got bool
+There were 1 semantic errors, bailing

@@ -1,0 +1,7 @@
+proc main() {
+   let x = foo();
+}
+
+proc foo() -> u8 {
+   print("i'm not returning anything");
+}
