@@ -143,7 +143,7 @@ pub enum Statement {
    AssignmentStatement(String, ExpressionNode),
    BlockStatement(BlockNode),
    ExpressionStatement(ExpressionNode),
-   IfElseStatement(ExpressionNode, BlockNode, BlockNode),
+   IfElseStatement(ExpressionNode, BlockNode, Box<Statement>),
    VariableDeclaration(String, ExpressionNode, Option<ExpressionType>),
 }
 
@@ -247,7 +247,11 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
             expect(l, &Token::Assignment)?;
             let e = parse_expression(l)?;
             expect(l, &Token::Semicolon)?;
-            statements.push(Statement::VariableDeclaration(extract_identifier(variable_name), e, declared_type));
+            statements.push(Statement::VariableDeclaration(
+               extract_identifier(variable_name),
+               e,
+               declared_type,
+            ));
          }
          Some(Token::KeywordIf) => {
             let _ = l.next();
@@ -260,24 +264,26 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
                }
                _ => BlockNode { statements: vec![] },
             };
-            statements.push(Statement::IfElseStatement(e, if_block, else_block));
+            statements.push(Statement::IfElseStatement(
+               e,
+               if_block,
+               Box::new(Statement::BlockStatement(else_block)),
+            ));
          }
-         Some(Token::Identifier(_)) => {
-            match l.double_peek() {
-               Some(&Token::Assignment) => {
-                  let variable_name = expect(l, &Token::Identifier(String::from("")))?;
-                  expect(l, &Token::Assignment)?;
-                  let e = parse_expression(l)?;
-                  expect(l, &Token::Semicolon)?;
-                  statements.push(Statement::AssignmentStatement(extract_identifier(variable_name), e));
-               }
-               _ => {
-                  let e = parse_expression(l)?;
-                  expect(l, &Token::Semicolon)?;
-                  statements.push(Statement::ExpressionStatement(e));
-               }
+         Some(Token::Identifier(_)) => match l.double_peek() {
+            Some(&Token::Assignment) => {
+               let variable_name = expect(l, &Token::Identifier(String::from("")))?;
+               expect(l, &Token::Assignment)?;
+               let e = parse_expression(l)?;
+               expect(l, &Token::Semicolon)?;
+               statements.push(Statement::AssignmentStatement(extract_identifier(variable_name), e));
             }
-         }
+            _ => {
+               let e = parse_expression(l)?;
+               expect(l, &Token::Semicolon)?;
+               statements.push(Statement::ExpressionStatement(e));
+            }
+         },
          Some(Token::BoolLiteral(_))
          | Some(Token::StringLiteral(_))
          | Some(Token::IntLiteral(_))

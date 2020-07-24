@@ -1,6 +1,4 @@
-use crate::parse::{
-   BinOp, BlockNode, Expression, ExpressionNode, ExpressionType, Program, Statement, UnOp,
-};
+use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, ExpressionType, Program, Statement, UnOp};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
@@ -109,12 +107,90 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
 
    if validation_context.unknown_ints > 0 {
       validation_context.error_count += 1;
-      eprintln!("We weren't able to determine the types of {} int literals", validation_context.unknown_ints);
+      eprintln!(
+         "We weren't able to determine the types of {} int literals",
+         validation_context.unknown_ints
+      );
    }
 
    program.literals = validation_context.string_literals;
 
    validation_context.error_count
+}
+
+fn type_statement(
+   statement: &mut Statement,
+   validation_context: &mut ValidationContext,
+   cur_procedure_locals: &mut Vec<(String, ExpressionType)>,
+) {
+   match statement {
+      Statement::BlockStatement(bn) => {
+         type_block(bn, validation_context, cur_procedure_locals);
+      }
+      Statement::AssignmentStatement(id, en) => {
+         do_type(en, validation_context);
+
+         let exp_type = en.exp_type.clone().unwrap();
+         let declared_type = validation_context.variable_types.get(id);
+
+         if declared_type.is_none() {
+            validation_context.error_count += 1;
+            eprintln!("Encountered undefined variable `{}`", id);
+         } else if exp_type != declared_type.unwrap().0 {
+            validation_context.error_count += 1;
+            eprintln!("Encountered assignment to variable `{}`, but the expression type {} does not match the declared type {}", id, exp_type.as_roland_type(), declared_type.unwrap().0.as_roland_type());
+         };
+      }
+      Statement::VariableDeclaration(id, en, dt) => {
+         let declared_type_is_known_int = dt.as_ref().map(|x| x.is_any_known_int()).unwrap_or(false);
+
+         do_type(en, validation_context);
+
+         let result_type = if en.exp_type.as_ref().unwrap() == &ExpressionType::UnknownInt && declared_type_is_known_int
+         {
+            set_inferred_type(dt.as_ref().unwrap(), en, validation_context);
+            dt.clone().unwrap()
+         } else if dt.is_some() && *dt != en.exp_type {
+            validation_context.error_count += 1;
+            eprintln!(
+               "Declared type {} does not match actual expression type {}",
+               dt.as_ref().unwrap().as_roland_type(),
+               en.exp_type.as_ref().unwrap().as_roland_type()
+            );
+            ExpressionType::CompileError
+         } else {
+            en.exp_type.clone().unwrap()
+         };
+
+         if validation_context.variable_types.contains_key(id) {
+            validation_context.error_count += 1;
+            eprintln!("Variable shadowing is not supported at this time (`{}`)", id);
+         } else {
+            validation_context.variable_types.insert(
+               id.clone(),
+               (en.exp_type.clone().unwrap(), validation_context.block_depth),
+            );
+            // TODO, again, interning
+            cur_procedure_locals.push((id.clone(), result_type));
+         }
+      }
+      Statement::ExpressionStatement(en) => {
+         do_type(en, validation_context);
+      }
+      Statement::IfElseStatement(en, block_1, block_2) => {
+         type_block(block_1, validation_context, cur_procedure_locals);
+         type_statement(block_2, validation_context, cur_procedure_locals);
+         do_type(en, validation_context);
+         let if_exp_type = en.exp_type.as_ref().unwrap();
+         if if_exp_type != &ExpressionType::Bool && if_exp_type != &ExpressionType::CompileError {
+            validation_context.error_count += 1;
+            eprintln!(
+               "Value of if expression must be a bool; instead got {}",
+               en.exp_type.as_ref().unwrap().as_roland_type()
+            );
+         }
+      }
+   }
 }
 
 fn type_block(
@@ -125,69 +201,7 @@ fn type_block(
    validation_context.block_depth += 1;
 
    for statement in bn.statements.iter_mut() {
-      match statement {
-         Statement::BlockStatement(bn) => {
-            type_block(bn, validation_context, cur_procedure_locals);
-         }
-         Statement::AssignmentStatement(id, en) => {
-            do_type(en, validation_context);
-
-            let exp_type = en.exp_type.clone().unwrap();
-            let declared_type = validation_context.variable_types.get(id);
-
-            if declared_type.is_none() {
-               validation_context.error_count += 1;
-               eprintln!("Encountered undefined variable `{}`", id);
-            } else if exp_type != declared_type.unwrap().0 {
-               validation_context.error_count += 1;
-               eprintln!("Encountered assignment to variable `{}`, but the expression type {} does not match the declared type {}", id, exp_type.as_roland_type(), declared_type.unwrap().0.as_roland_type());
-            };
-         }
-         Statement::VariableDeclaration(id, en, dt) => {
-            let declared_type_is_known_int = dt.as_ref().map(|x| x.is_any_known_int()).unwrap_or(false);
-
-            do_type(en, validation_context);
-
-            let result_type = if en.exp_type.as_ref().unwrap() == &ExpressionType::UnknownInt && declared_type_is_known_int {
-               set_inferred_type(dt.as_ref().unwrap(), en, validation_context);
-               dt.clone().unwrap()
-            } else if dt.is_some() && *dt != en.exp_type {
-               validation_context.error_count += 1;
-               eprintln!("Declared type {} does not match actual expression type {}", dt.as_ref().unwrap().as_roland_type(), en.exp_type.as_ref().unwrap().as_roland_type());
-               ExpressionType::CompileError
-            } else {
-               en.exp_type.clone().unwrap()
-            };
-
-            if validation_context.variable_types.contains_key(id) {
-               validation_context.error_count += 1;
-               eprintln!("Variable shadowing is not supported at this time (`{}`)", id);
-            } else {
-               validation_context.variable_types.insert(
-                  id.clone(),
-                  (en.exp_type.clone().unwrap(), validation_context.block_depth),
-               );
-               // TODO, again, interning
-               cur_procedure_locals.push((id.clone(), result_type));
-            }
-         }
-         Statement::ExpressionStatement(en) => {
-            do_type(en, validation_context);
-         }
-         Statement::IfElseStatement(en, block_1, block_2) => {
-            type_block(block_1, validation_context, cur_procedure_locals);
-            type_block(block_2, validation_context, cur_procedure_locals);
-            do_type(en, validation_context);
-            let if_exp_type = en.exp_type.as_ref().unwrap();
-            if if_exp_type != &ExpressionType::Bool && if_exp_type != &ExpressionType::CompileError {
-               validation_context.error_count += 1;
-               eprintln!(
-                  "Value of if expression must be a bool; instead got {}",
-                  en.exp_type.as_ref().unwrap().as_roland_type()
-               );
-            }
-         }
-      }
+      type_statement(statement, validation_context, cur_procedure_locals);
    }
 
    validation_context.block_depth -= 1;
@@ -368,7 +382,11 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
    }
 }
 
-fn set_inferred_type(e_type: &ExpressionType, expr_node: &mut ExpressionNode, validation_context: &mut ValidationContext) {
+fn set_inferred_type(
+   e_type: &ExpressionType,
+   expr_node: &mut ExpressionNode,
+   validation_context: &mut ValidationContext,
+) {
    if expr_node.exp_type.as_ref().unwrap() != &ExpressionType::UnknownInt {
       return;
    }

@@ -195,7 +195,9 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       for (id, e_type) in procedure.locals.iter() {
          generation_context.out.emit_local_definition(id, type_to_s(e_type));
       }
-      emit_statements(&procedure.block.statements, &mut generation_context);
+      for statement in &procedure.block.statements {
+         emit_statement(statement, &mut generation_context);
+      }
       generation_context.out.close();
    }
 
@@ -204,39 +206,41 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    generation_context.out.out
 }
 
-fn emit_statements(statements: &[Statement], generation_context: &mut GenerationContext) {
-   for statement in statements {
-      match statement {
-         Statement::BlockStatement(bn) => {
-            emit_statements(&bn.statements, generation_context);
+fn emit_statement(statement: &Statement, generation_context: &mut GenerationContext) {
+   match statement {
+      Statement::BlockStatement(bn) => {
+         for statement in &bn.statements {
+            emit_statement(statement, generation_context)
          }
-         Statement::AssignmentStatement(id, en) => {
-            do_emit(en, generation_context);
-            generation_context.out.emit_set_local(id);
+      }
+      Statement::AssignmentStatement(id, en) => {
+         do_emit(en, generation_context);
+         generation_context.out.emit_set_local(id);
+      }
+      Statement::VariableDeclaration(id, en, _) => {
+         do_emit(en, generation_context);
+         generation_context.out.emit_set_local(id);
+      }
+      Statement::ExpressionStatement(en) => {
+         do_emit(en, generation_context);
+      }
+      Statement::IfElseStatement(en, block_1, block_2) => {
+         generation_context.out.emit_if_start();
+         // expression
+         do_emit(en, generation_context);
+         generation_context.out.close();
+         // then
+         generation_context.out.emit_then_start();
+         for statement in &block_1.statements {
+            emit_statement(statement, generation_context);
          }
-         Statement::VariableDeclaration(id, en, _) => {
-            do_emit(en, generation_context);
-            generation_context.out.emit_set_local(id);
-         }
-         Statement::ExpressionStatement(en) => {
-            do_emit(en, generation_context);
-         }
-         Statement::IfElseStatement(en, block_1, block_2) => {
-            generation_context.out.emit_if_start();
-            // expression
-            do_emit(en, generation_context);
-            generation_context.out.close();
-            // then
-            generation_context.out.emit_then_start();
-            emit_statements(&block_1.statements, generation_context);
-            generation_context.out.close();
-            // else
-            generation_context.out.emit_else_start();
-            emit_statements(&block_2.statements, generation_context);
-            generation_context.out.close();
-            // finish if
-            generation_context.out.close();
-         }
+         generation_context.out.close();
+         // else
+         generation_context.out.emit_else_start();
+         emit_statement(block_2, generation_context);
+         generation_context.out.close();
+         // finish if
+         generation_context.out.close();
       }
    }
 }
@@ -251,7 +255,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             ExpressionType::Int(x) => match x.width {
                IntWidth::Eight => "i64",
                _ => "i32",
-            }
+            },
             _ => unreachable!(),
          };
          generation_context.out.emit_spaces();
@@ -274,9 +278,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                let suffix = if x.signed { "_s" } else { "_u" };
                (wasm_type, suffix)
             }
-            ExpressionType::Bool => {
-               ("i32", "_u")
-            }
+            ExpressionType::Bool => ("i32", "_u"),
             _ => unreachable!(),
          };
          generation_context.out.emit_spaces();
@@ -320,9 +322,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                IntWidth::Eight => "i64",
                _ => "i32",
             },
-            ExpressionType::Bool => {
-               "i32"
-            }
+            ExpressionType::Bool => "i32",
             _ => unreachable!(),
          };
          match un_op {

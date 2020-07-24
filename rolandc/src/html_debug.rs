@@ -60,9 +60,7 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
          for statement in block_1.statements.iter() {
             print_statement(out, statement);
          }
-         for statement in block_2.statements.iter() {
-            print_statement(out, statement);
-         }
+         print_statement(out, block_2);
          writeln!(out, "</ul></li>").unwrap();
       }
       Statement::BlockStatement(bn) => {
