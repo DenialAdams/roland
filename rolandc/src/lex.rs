@@ -1,5 +1,6 @@
 #[derive(Clone, Debug)]
 pub enum Token {
+   Arrow,
    KeywordElse,
    KeywordFuncDef,
    KeywordIf,
@@ -86,7 +87,13 @@ pub fn lex(input: &str) -> Result<Vec<Token>, ()> {
                tokens.push(Token::Plus);
                let _ = chars.next().unwrap();
             } else if c == '-' {
-               tokens.push(Token::Minus);
+               let _ = chars.next().unwrap();
+               if chars.peek() == Some(&'>') {
+                  tokens.push(Token::Arrow);
+                  let _ = chars.next().unwrap();
+               } else {
+                  tokens.push(Token::Minus);
+               }
                let _ = chars.next().unwrap();
             } else if c == '*' {
                tokens.push(Token::Multiply);
