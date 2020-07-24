@@ -1,0 +1,9 @@
+proc main() {
+   if false {
+      print("bad!");
+   } else if true {
+      print("good!");
+   } else {
+      print("very bad!");
+   }
+}

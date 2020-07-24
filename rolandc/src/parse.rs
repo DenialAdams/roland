@@ -254,21 +254,8 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
             ));
          }
          Some(Token::KeywordIf) => {
-            let _ = l.next();
-            let e = parse_expression(l)?;
-            let if_block = parse_block(l)?;
-            let else_block = match l.peek() {
-               Some(&Token::KeywordElse) => {
-                  let _ = l.next();
-                  parse_block(l)?
-               }
-               _ => BlockNode { statements: vec![] },
-            };
-            statements.push(Statement::IfElseStatement(
-               e,
-               if_block,
-               Box::new(Statement::BlockStatement(else_block)),
-            ));
+            let s = parse_if_else_statement(l)?;
+            statements.push(s);
          }
          Some(Token::Identifier(_)) => match l.double_peek() {
             Some(&Token::Assignment) => {
@@ -307,6 +294,28 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
       }
    }
    Ok(BlockNode { statements })
+}
+
+fn parse_if_else_statement(l: &mut Lexer) -> Result<Statement, ()> {
+   let _ = l.next();
+   let e = parse_expression(l)?;
+   let if_block = parse_block(l)?;
+   let else_statement = match (l.peek(), l.double_peek()) {
+      (Some(&Token::KeywordElse), Some(&Token::KeywordIf)) => {
+         let _ = l.next();
+         parse_if_else_statement(l)?
+      }
+      (Some(&Token::KeywordElse), _) => {
+         let _ = l.next();
+         Statement::BlockStatement(parse_block(l)?)
+      }
+      _ => Statement::BlockStatement(BlockNode { statements: vec![] }),
+   };
+   Ok(Statement::IfElseStatement(
+      e,
+      if_block,
+      Box::new(else_statement),
+   ))
 }
 
 fn parse_parameters(l: &mut Lexer) -> Result<Vec<(String, ExpressionType)>, ()> {
