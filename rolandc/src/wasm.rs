@@ -33,12 +33,13 @@ impl<'a> PrettyWasmWriter {
       self.depth += 1;
    }
 
-   fn emit_function_start<I: IntoIterator<Item = (&'a str, &'a str)>>(&mut self, name: &str, params: I) {
+   fn emit_function_start<I: IntoIterator<Item = (&'a str, &'a str)>>(&mut self, name: &str, params: I, result: &str) {
       self.emit_spaces();
       write!(self.out, "(func ${}", name).unwrap();
       for param in params.into_iter() {
          write!(self.out, " (param ${} {})", param.0, param.1).unwrap();
       }
+      write!(self.out, " {}", result).unwrap();
       self.out.push(b'\n');
       self.depth += 1;
    }
@@ -111,6 +112,20 @@ impl<'a> PrettyWasmWriter {
    }
 }
 
+fn type_to_result(e: &ExpressionType) -> &'static str {
+   match e {
+      ExpressionType::UnknownInt => unreachable!(),
+      ExpressionType::Int(x) => match x.width {
+         IntWidth::Eight => "(result i64)",
+         _ => "(result i32)",
+      },
+      ExpressionType::Bool => "(result i32)",
+      ExpressionType::String => "(result i32) (result i32)",
+      ExpressionType::Unit => "",
+      ExpressionType::CompileError => unreachable!(),
+   }
+}
+
 fn type_to_s(e: &ExpressionType) -> &'static str {
    match e {
       ExpressionType::UnknownInt => unreachable!(),
@@ -163,7 +178,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    // TODO: this shouldnt be vec, but i cant generic
    generation_context
       .out
-      .emit_function_start("print", vec![("str_offset", "i32"), ("str_len", "i32")]);
+      .emit_function_start("print", vec![("str_offset", "i32"), ("str_len", "i32")], "");
    // build the iovecs array
    generation_context
       .out
@@ -187,11 +202,11 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       generation_context.out.emit_function_start(
          &procedure.name,
          procedure.parameters.iter().map(|x| (x.0.as_ref(), type_to_s(&x.1))),
+         type_to_result(&procedure.ret_type),
       );
       if procedure.name == "main" {
          generation_context.out.emit_constant_sexp("(export \"_start\")");
       }
-      // TODO ret type
       for (id, e_type) in procedure.locals.iter() {
          generation_context.out.emit_local_definition(id, type_to_s(e_type));
       }
@@ -239,7 +254,8 @@ fn emit_statement(statement: &Statement, generation_context: &mut GenerationCont
          generation_context.out.close();
       }
       Statement::ReturnStatement(en) => {
-         unimplemented!()
+         do_emit(en, generation_context);
+         generation_context.out.emit_constant_instruction("return");
       }
       Statement::VariableDeclaration(id, en, _) => {
          do_emit(en, generation_context);
