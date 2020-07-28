@@ -183,7 +183,13 @@ fn type_statement(
       Statement::ReturnStatement(en) => {
          do_type(en, validation_context);
          let cur_procedure_info = validation_context.cur_procedure_info.unwrap();
-         if en.exp_type.as_ref().unwrap() != &cur_procedure_info.ret_type {
+
+         // Type Inference
+         if *en.exp_type.as_ref().unwrap() == ExpressionType::UnknownInt && cur_procedure_info.ret_type.is_any_known_int() {
+            set_inferred_type(cur_procedure_info.ret_type.clone(), en, validation_context);
+         }
+
+         if en.exp_type.as_ref().unwrap().is_concrete_type() && en.exp_type.as_ref().unwrap() != &cur_procedure_info.ret_type {
             validation_context.error_count += 1;
             eprintln!(
                "Value of return statement must match declared return type {}; got {}",
@@ -199,7 +205,7 @@ fn type_statement(
 
          let result_type = if en.exp_type.as_ref().unwrap() == &ExpressionType::UnknownInt && declared_type_is_known_int
          {
-            set_inferred_type(dt.as_ref().unwrap(), en, validation_context);
+            set_inferred_type(dt.clone().unwrap(), en, validation_context);
             dt.clone().unwrap()
          } else if dt.is_some() && *dt != en.exp_type {
             validation_context.error_count += 1;
@@ -274,34 +280,35 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             BinOp::Equality | BinOp::NotEquality => &[TypeValidator::AnyInt, TypeValidator::Bool],
          };
 
+         // Type inference
+         if e.0.exp_type.as_ref().unwrap() == &ExpressionType::UnknownInt && e.1.exp_type.as_ref().unwrap().is_any_known_int() {
+            set_inferred_type(e.1.exp_type.clone().unwrap(), &mut e.0, validation_context);
+         } else if e.0.exp_type.as_ref().unwrap().is_any_known_int() && e.1.exp_type.as_ref().unwrap() == &ExpressionType::UnknownInt {
+            set_inferred_type(e.0.exp_type.clone().unwrap(), &mut e.1, validation_context);
+         }
+
          let lhs_type = e.0.exp_type.as_ref().unwrap();
          let rhs_type = e.1.exp_type.as_ref().unwrap();
 
          let result_type = if lhs_type == &ExpressionType::CompileError || rhs_type == &ExpressionType::CompileError {
             // Avoid cascading errors
             ExpressionType::CompileError
-         } else if lhs_type == &ExpressionType::UnknownInt && rhs_type.is_any_known_int() {
-            set_inferred_type(rhs_type, &mut e.0, validation_context);
-            rhs_type.clone()
-         } else if lhs_type.is_any_known_int() && rhs_type == &ExpressionType::UnknownInt {
-            set_inferred_type(lhs_type, &mut e.1, validation_context);
-            lhs_type.clone()
          } else if !any_match(correct_arg_types, lhs_type) {
             validation_context.error_count += 1;
             eprintln!(
                "Binary operator {:?} requires LHS to have type matching {:?}; instead got {}",
                bin_op,
                correct_arg_types,
-               e.0.exp_type.as_ref().unwrap().as_roland_type()
+               lhs_type.as_roland_type()
             );
             ExpressionType::CompileError
          } else if !any_match(correct_arg_types, rhs_type) {
             validation_context.error_count += 1;
             eprintln!(
-               "Binary operator {:?} requires LHS to have type matching {:?}; instead got {}",
+               "Binary operator {:?} requires RHS to have type matching {:?}; instead got {}",
                bin_op,
                correct_arg_types,
-               e.1.exp_type.as_ref().unwrap().as_roland_type()
+               rhs_type.as_roland_type()
             );
             ExpressionType::CompileError
          } else if lhs_type != rhs_type {
@@ -309,8 +316,8 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             eprintln!(
                "Binary operator {:?} requires LHS and RHS to have identical type; instead got {} and {}",
                bin_op,
-               e.0.exp_type.as_ref().unwrap().as_roland_type(),
-               e.1.exp_type.as_ref().unwrap().as_roland_type()
+               lhs_type.as_roland_type(),
+               rhs_type.as_roland_type()
             );
             ExpressionType::CompileError
          } else {
@@ -396,15 +403,22 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
                   );
                // We shortcircuit here, because there will likely be lots of mistmatched types if an arg was forgotten
                } else {
-                  let actual_types = args.iter().map(|x| x.exp_type.as_ref().unwrap());
+                  let actual_types = args.iter_mut();
                   let expected_types = procedure_info.parameters.iter();
                   for (actual, expected) in actual_types.zip(expected_types) {
-                     if actual != expected && *actual != ExpressionType::CompileError {
+
+                     // Type Inference
+                     if *actual.exp_type.as_ref().unwrap() == ExpressionType::UnknownInt && expected.is_any_known_int() {
+                        set_inferred_type(expected.clone(), actual, validation_context);
+                     }
+
+                     let actual_type = actual.exp_type.as_ref().unwrap();
+                     if actual_type != expected && *actual_type != ExpressionType::CompileError {
                         validation_context.error_count += 1;
                         eprintln!(
                            "In call to `{}`, encountered argument of type {} when we expected {}",
                            name,
-                           actual.as_roland_type(),
+                           actual_type.as_roland_type(),
                            expected.as_roland_type()
                         );
                      }
@@ -422,7 +436,7 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
 }
 
 fn set_inferred_type(
-   e_type: &ExpressionType,
+   e_type: ExpressionType,
    expr_node: &mut ExpressionNode,
    validation_context: &mut ValidationContext,
 ) {
@@ -433,17 +447,17 @@ fn set_inferred_type(
       Expression::BoolLiteral(_) => unreachable!(),
       Expression::IntLiteral(_) => {
          validation_context.unknown_ints -= 1;
-         expr_node.exp_type = Some(e_type.clone());
+         expr_node.exp_type = Some(e_type);
       }
       Expression::StringLiteral(_) => unreachable!(),
       Expression::BinaryOperator(_, e) => {
-         set_inferred_type(e_type, &mut e.0, validation_context);
-         set_inferred_type(e_type, &mut e.1, validation_context);
-         expr_node.exp_type = Some(e_type.clone());
+         set_inferred_type(e_type.clone(), &mut e.0, validation_context);
+         set_inferred_type(e_type.clone(), &mut e.1, validation_context);
+         expr_node.exp_type = Some(e_type);
       }
       Expression::UnaryOperator(_, e) => {
-         set_inferred_type(e_type, e, validation_context);
-         expr_node.exp_type = Some(e_type.clone());
+         set_inferred_type(e_type.clone(), e, validation_context);
+         expr_node.exp_type = Some(e_type);
       }
       Expression::Variable(_) => unreachable!(),
       Expression::ProcedureCall(_, _) => unreachable!(),

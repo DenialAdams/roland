@@ -1,0 +1,13 @@
+proc main() {
+   let x = fib(10);
+   print_bool(x == 34);
+}
+
+func fib(n: u64) -> u64 {
+   if (n == 0) {
+      return 0;
+   } else if (n == 1) {
+      return 1;
+   }
+   return fib(n - 1) + fib(n - 2);
+}

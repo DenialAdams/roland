@@ -97,6 +97,15 @@ pub enum ExpressionType {
 }
 
 impl ExpressionType {
+   pub fn is_concrete_type(&self) -> bool {
+      match self {
+         ExpressionType::UnknownInt | ExpressionType::CompileError => false,
+         ExpressionType::Int(_) | ExpressionType::String | ExpressionType::Bool | ExpressionType::Unit => true,
+      }
+   }
+}
+
+impl ExpressionType {
    pub fn is_any_known_int(&self) -> bool {
       match self {
          ExpressionType::Int(_) => true,
