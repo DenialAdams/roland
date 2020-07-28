@@ -1,5 +1,5 @@
 proc main() {
-   let x = fib(10);
+   let x = fib(9);
    print_bool(x == 34);
 }
 

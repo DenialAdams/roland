@@ -49,7 +49,7 @@ impl<'a> PrettyWasmWriter {
       writeln!(self.out, "(if ").unwrap();
       self.depth += 1;
       self.emit_spaces();
-      writeln!(self.out, "(").unwrap();
+      writeln!(self.out, "(i32.eq").unwrap();
       self.depth += 1;
    }
 
@@ -239,6 +239,7 @@ fn emit_statement(statement: &Statement, generation_context: &mut GenerationCont
          generation_context.out.emit_if_start();
          // expression
          do_emit(en, generation_context);
+         generation_context.out.emit_constant_instruction("i32.const 1");
          generation_context.out.close();
          // then
          generation_context.out.emit_then_start();
