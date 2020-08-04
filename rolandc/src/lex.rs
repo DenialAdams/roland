@@ -12,6 +12,7 @@ pub enum Token {
    OpenParen,
    CloseParen,
    Colon,
+   Reference,
    Semicolon,
    Identifier(String),
    BoolLiteral(bool),
@@ -105,6 +106,9 @@ pub fn lex(input: &str) -> Result<Vec<Token>, ()> {
                let _ = chars.next().unwrap();
             } else if c == ',' {
                tokens.push(Token::Comma);
+               let _ = chars.next().unwrap();
+            } else if c == '&' {
+               tokens.push(Token::Reference);
                let _ = chars.next().unwrap();
             } else if c == '=' {
                let _ = chars.next().unwrap();

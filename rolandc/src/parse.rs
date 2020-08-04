@@ -1,4 +1,4 @@
-use super::type_data::{ExpressionType, ValueType};
+use crate::type_data::{ExpressionType, ValueType};
 use super::lex::Token;
 use std::collections::HashSet;
 use std::mem::discriminant;
@@ -153,15 +153,7 @@ fn parse_procedure(l: &mut Lexer) -> Result<ProcedureNode, ()> {
    expect(l, &Token::CloseParen)?;
    let ret_type = if let Some(&Token::Arrow) = l.peek() {
       let _ = l.next();
-      let type_token = expect(l, &Token::Identifier(String::from("")))?;
-      let type_s = extract_identifier(type_token);
-      match parse_type(&type_s) {
-         Some(v) => v,
-         None => {
-            eprintln!("While parsing variable declaration - got an invalid type `{}`", type_s);
-            return Err(());
-         }
-      }
+      parse_type(l)?
    } else {
       ExpressionType::Value(ValueType::Unit)
    };
@@ -204,15 +196,7 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
             let next_discrim = l.peek().map(|x| discriminant(x));
             if next_discrim == Some(discriminant(&Token::Colon)) {
                let _ = l.next();
-               let type_token = expect(l, &Token::Identifier(String::from("")))?;
-               let type_s = extract_identifier(type_token);
-               declared_type = match parse_type(&type_s) {
-                  Some(v) => Some(v),
-                  None => {
-                     eprintln!("While parsing variable declaration - got an invalid type `{}`", type_s);
-                     return Err(());
-                  }
-               };
+               declared_type = Some(parse_type(l)?);
             }
             expect(l, &Token::Assignment)?;
             let e = parse_expression(l)?;
@@ -296,15 +280,7 @@ fn parse_parameters(l: &mut Lexer) -> Result<Vec<(String, ExpressionType)>, ()> 
          Some(Token::Identifier(_)) => {
             let id = l.next().unwrap();
             expect(l, &Token::Colon)?;
-            let type_token = expect(l, &Token::Identifier(String::from("")))?;
-            let type_s = extract_identifier(type_token);
-            let e_type = match parse_type(&type_s) {
-               Some(v) => v,
-               None => {
-                  eprintln!("While parsing parameters - got an invalid type `{}`", type_s);
-                  return Err(());
-               }
-            };
+            let e_type = parse_type(l)?;
             parameters.push((extract_identifier(id), e_type));
             let next_discrim = l.peek().map(|x| discriminant(x));
             if next_discrim == Some(discriminant(&Token::CloseParen)) {
@@ -365,6 +341,37 @@ fn parse_arguments(l: &mut Lexer) -> Result<Vec<ExpressionNode>, ()> {
 
 fn parse_expression(l: &mut Lexer) -> Result<ExpressionNode, ()> {
    Ok(wrap(pratt(l, 0)?))
+}
+
+fn parse_type(l: &mut Lexer) -> Result<ExpressionType, ()> {
+   let mut ptr_count: usize = 0;
+   while let Some(&Token::Reference) = l.peek() {
+      ptr_count += 1;
+      let _ = l.next();
+   }
+   let type_token = expect(l, &Token::Identifier(String::from("")))?;
+   let type_s = extract_identifier(type_token);
+   let value_type = match type_s.as_ref() {
+      "bool" => ValueType::Bool,
+      "i64" => crate::type_data::I64_TYPE,
+      "i32" => crate::type_data::I32_TYPE,
+      "i16" => crate::type_data::I16_TYPE,
+      "i8" => crate::type_data::I8_TYPE,
+      "u64" => crate::type_data::U64_TYPE,
+      "u32" => crate::type_data::U32_TYPE,
+      "u16" => crate::type_data::U16_TYPE,
+      "u8" => crate::type_data::U8_TYPE,
+      "String" => ValueType::String,
+      x => {
+         eprintln!("While parsing type, got an invalid type {}", x);
+         return Err(());
+      },
+   };
+   if ptr_count > 0 {
+      Ok(ExpressionType::Pointer(ptr_count, value_type))
+   } else {
+      Ok(ExpressionType::Value(value_type))
+   }
 }
 
 fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
@@ -470,22 +477,6 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
       Token::Plus | Token::Minus => (2, 3),
       Token::Multiply | Token::Divide => (4, 5),
       _ => unreachable!(),
-   }
-}
-
-fn parse_type(type_s: &str) -> Option<ExpressionType> {
-   match type_s {
-      "bool" => Some(ExpressionType::Value(ValueType::Bool)),
-      "i64" => Some(ExpressionType::Value(super::type_data::I64_TYPE)),
-      "i32" => Some(ExpressionType::Value(super::type_data::I32_TYPE)),
-      "i16" => Some(ExpressionType::Value(super::type_data::I16_TYPE)),
-      "i8" => Some(ExpressionType::Value(super::type_data::I8_TYPE)),
-      "u64" => Some(ExpressionType::Value(super::type_data::U64_TYPE)),
-      "u32" => Some(ExpressionType::Value(super::type_data::U32_TYPE)),
-      "u16" => Some(ExpressionType::Value(super::type_data::U16_TYPE)),
-      "u8" => Some(ExpressionType::Value(super::type_data::U8_TYPE)),
-      "String" => Some(ExpressionType::Value(ValueType::String)),
-      _ => None,
    }
 }
 
