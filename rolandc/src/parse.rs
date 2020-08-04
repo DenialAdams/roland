@@ -1,3 +1,4 @@
+use super::type_data::{ExpressionType, ValueType};
 use super::lex::Token;
 use std::collections::HashSet;
 use std::mem::discriminant;
@@ -69,69 +70,6 @@ pub enum BinOp {
 pub enum UnOp {
    Negate,
    LogicalNegate,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-
-pub enum IntWidth {
-   Eight,
-   Four,
-   Two,
-   One,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct IntType {
-   pub signed: bool,
-   pub width: IntWidth,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum ExpressionType {
-   UnknownInt,
-   Int(IntType),
-   String,
-   Bool,
-   Unit,
-   CompileError,
-}
-
-impl ExpressionType {
-   pub fn is_concrete_type(&self) -> bool {
-      match self {
-         ExpressionType::UnknownInt | ExpressionType::CompileError => false,
-         ExpressionType::Int(_) | ExpressionType::String | ExpressionType::Bool | ExpressionType::Unit => true,
-      }
-   }
-}
-
-impl ExpressionType {
-   pub fn is_any_known_int(&self) -> bool {
-      match self {
-         ExpressionType::Int(_) => true,
-         _ => false,
-      }
-   }
-
-   pub fn as_roland_type(&self) -> &str {
-      match self {
-         ExpressionType::UnknownInt => "?? Int",
-         ExpressionType::Int(x) => match (x.signed, &x.width) {
-            (true, IntWidth::Eight) => "i64",
-            (true, IntWidth::Four) => "i32",
-            (true, IntWidth::Two) => "i16",
-            (true, IntWidth::One) => "i8",
-            (false, IntWidth::Eight) => "u64",
-            (false, IntWidth::Four) => "u32",
-            (false, IntWidth::Two) => "u16",
-            (false, IntWidth::One) => "u8",
-         },
-         ExpressionType::String => "String",
-         ExpressionType::Bool => "bool",
-         ExpressionType::Unit => "()",
-         ExpressionType::CompileError => "ERROR",
-      }
-   }
 }
 
 pub struct ExpressionNode {
@@ -225,7 +163,7 @@ fn parse_procedure(l: &mut Lexer) -> Result<ProcedureNode, ()> {
          }
       }
    } else {
-      ExpressionType::Unit
+      ExpressionType::Value(ValueType::Unit)
    };
    let block = parse_block(l)?;
    Ok(ProcedureNode {
@@ -537,40 +475,16 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
 
 fn parse_type(type_s: &str) -> Option<ExpressionType> {
    match type_s {
-      "bool" => Some(ExpressionType::Bool),
-      "i64" => Some(ExpressionType::Int(IntType {
-         signed: true,
-         width: IntWidth::Eight,
-      })),
-      "i32" => Some(ExpressionType::Int(IntType {
-         signed: true,
-         width: IntWidth::Four,
-      })),
-      "i16" => Some(ExpressionType::Int(IntType {
-         signed: true,
-         width: IntWidth::Two,
-      })),
-      "i8" => Some(ExpressionType::Int(IntType {
-         signed: true,
-         width: IntWidth::One,
-      })),
-      "u64" => Some(ExpressionType::Int(IntType {
-         signed: false,
-         width: IntWidth::Eight,
-      })),
-      "u32" => Some(ExpressionType::Int(IntType {
-         signed: false,
-         width: IntWidth::Four,
-      })),
-      "u16" => Some(ExpressionType::Int(IntType {
-         signed: false,
-         width: IntWidth::Two,
-      })),
-      "u8" => Some(ExpressionType::Int(IntType {
-         signed: false,
-         width: IntWidth::One,
-      })),
-      "String" => Some(ExpressionType::String),
+      "bool" => Some(ExpressionType::Value(ValueType::Bool)),
+      "i64" => Some(ExpressionType::Value(super::type_data::I64_TYPE)),
+      "i32" => Some(ExpressionType::Value(super::type_data::I32_TYPE)),
+      "i16" => Some(ExpressionType::Value(super::type_data::I16_TYPE)),
+      "i8" => Some(ExpressionType::Value(super::type_data::I8_TYPE)),
+      "u64" => Some(ExpressionType::Value(super::type_data::U64_TYPE)),
+      "u32" => Some(ExpressionType::Value(super::type_data::U32_TYPE)),
+      "u16" => Some(ExpressionType::Value(super::type_data::U16_TYPE)),
+      "u8" => Some(ExpressionType::Value(super::type_data::U8_TYPE)),
+      "String" => Some(ExpressionType::Value(ValueType::String)),
       _ => None,
    }
 }

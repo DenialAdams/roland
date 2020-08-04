@@ -1,6 +1,7 @@
 mod html_debug;
 mod lex;
 mod parse;
+mod type_data;
 mod validator;
 mod wasm;
 

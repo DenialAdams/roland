@@ -1,4 +1,5 @@
-use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, ExpressionType, Program, Statement, UnOp};
+use super::type_data::{ExpressionType, ValueType};
+use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, UnOp};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
@@ -9,9 +10,9 @@ enum TypeValidator {
 
 fn matches(type_validation: &TypeValidator, et: &ExpressionType) -> bool {
    match (type_validation, et) {
-      (TypeValidator::Bool, ExpressionType::Bool) => true,
-      (TypeValidator::AnyInt, ExpressionType::Int(_)) => true,
-      (TypeValidator::AnyInt, ExpressionType::UnknownInt) => true,
+      (TypeValidator::Bool, ExpressionType::Value(ValueType::Bool)) => true,
+      (TypeValidator::AnyInt, ExpressionType::Value(ValueType::Int(_))) => true,
+      (TypeValidator::AnyInt, ExpressionType::Value(ValueType::UnknownInt)) => true,
       _ => false,
    }
 }
@@ -44,7 +45,7 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
    let mut procedure_info = HashMap::new();
    let mut error_count = 0;
    // Built-In functions
-   let standard_lib_procs = [("print", false, &[ExpressionType::String], ExpressionType::Unit)];
+   let standard_lib_procs = [("print", false, &[ExpressionType::Value(ValueType::String)], ExpressionType::Value(ValueType::Unit))];
    for p in standard_lib_procs.iter() {
       procedure_info.insert(
          p.0.to_string(),
@@ -89,7 +90,7 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
    if !validation_context.procedure_info.contains_key("main") {
       validation_context.error_count += 1;
       eprintln!("A procedure with the name `main` must be present");
-   } else if validation_context.procedure_info.get("main").unwrap().ret_type != ExpressionType::Unit {
+   } else if validation_context.procedure_info.get("main").unwrap().ret_type != ExpressionType::Value(ValueType::Unit) {
       validation_context.error_count += 1;
       eprintln!("`main` is a special procedure and is not allowed to return a value");
    }
@@ -115,14 +116,14 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
       // Ensure that the last statement is a return statement
       // (it has already been type checked, so we don't have to check that)
       match (&procedure.ret_type, procedure.block.statements.last()) {
-         (ExpressionType::Unit, _) => (),
+         (ExpressionType::Value(ValueType::Unit), _) => (),
          (_, Some(Statement::ReturnStatement(_))) => (),
          (x, _) => {
             validation_context.error_count += 1;
             eprintln!(
                "Procedure/function `{}` is declared to return type {} but is missing a final return statement",
                procedure.name,
-               x.as_roland_type()
+               x.as_roland_type_info()
             );
          }
       }
@@ -158,7 +159,7 @@ fn type_statement(
             eprintln!("Encountered undefined variable `{}`", id);
          } else if exp_type != declared_type.unwrap().0 {
             validation_context.error_count += 1;
-            eprintln!("Encountered assignment to variable `{}`, but the expression type {} does not match the declared type {}", id, exp_type.as_roland_type(), declared_type.unwrap().0.as_roland_type());
+            eprintln!("Encountered assignment to variable `{}`, but the expression type {} does not match the declared type {}", id, exp_type.as_roland_type_info(), declared_type.unwrap().0.as_roland_type_info());
          };
       }
       Statement::BlockStatement(bn) => {
@@ -172,11 +173,11 @@ fn type_statement(
          type_statement(block_2, validation_context, cur_procedure_locals);
          do_type(en, validation_context);
          let if_exp_type = en.exp_type.as_ref().unwrap();
-         if if_exp_type != &ExpressionType::Bool && if_exp_type != &ExpressionType::CompileError {
+         if if_exp_type != &ExpressionType::Value(ValueType::Bool) && if_exp_type != &ExpressionType::Value(ValueType::CompileError) {
             validation_context.error_count += 1;
             eprintln!(
                "Value of if expression must be a bool; instead got {}",
-               en.exp_type.as_ref().unwrap().as_roland_type()
+               en.exp_type.as_ref().unwrap().as_roland_type_info()
             );
          }
       }
@@ -185,7 +186,7 @@ fn type_statement(
          let cur_procedure_info = validation_context.cur_procedure_info.unwrap();
 
          // Type Inference
-         if *en.exp_type.as_ref().unwrap() == ExpressionType::UnknownInt && cur_procedure_info.ret_type.is_any_known_int() {
+         if *en.exp_type.as_ref().unwrap() == ExpressionType::Value(ValueType::UnknownInt) && cur_procedure_info.ret_type.is_any_known_int() {
             set_inferred_type(cur_procedure_info.ret_type.clone(), en, validation_context);
          }
 
@@ -193,8 +194,8 @@ fn type_statement(
             validation_context.error_count += 1;
             eprintln!(
                "Value of return statement must match declared return type {}; got {}",
-               cur_procedure_info.ret_type.as_roland_type(),
-               en.exp_type.as_ref().unwrap().as_roland_type()
+               cur_procedure_info.ret_type.as_roland_type_info(),
+               en.exp_type.as_ref().unwrap().as_roland_type_info()
             );
          }
       }
@@ -203,7 +204,7 @@ fn type_statement(
 
          do_type(en, validation_context);
 
-         let result_type = if en.exp_type.as_ref().unwrap() == &ExpressionType::UnknownInt && declared_type_is_known_int
+         let result_type = if en.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt) && declared_type_is_known_int
          {
             set_inferred_type(dt.clone().unwrap(), en, validation_context);
             dt.clone().unwrap()
@@ -211,10 +212,10 @@ fn type_statement(
             validation_context.error_count += 1;
             eprintln!(
                "Declared type {} does not match actual expression type {}",
-               dt.as_ref().unwrap().as_roland_type(),
-               en.exp_type.as_ref().unwrap().as_roland_type()
+               dt.as_ref().unwrap().as_roland_type_info(),
+               en.exp_type.as_ref().unwrap().as_roland_type_info()
             );
-            ExpressionType::CompileError
+            ExpressionType::Value(ValueType::CompileError)
          } else {
             en.exp_type.clone().unwrap()
          };
@@ -253,16 +254,16 @@ fn type_block(
 fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationContext) {
    match &mut expr_node.expression {
       Expression::BoolLiteral(_) => {
-         expr_node.exp_type = Some(ExpressionType::Bool);
+         expr_node.exp_type = Some(ExpressionType::Value(ValueType::Bool));
       }
       Expression::IntLiteral(_) => {
          validation_context.unknown_ints += 1;
-         expr_node.exp_type = Some(ExpressionType::UnknownInt);
+         expr_node.exp_type = Some(ExpressionType::Value(ValueType::UnknownInt));
       }
       Expression::StringLiteral(lit) => {
          // This clone will become cheap when we intern everywhere
          validation_context.string_literals.insert(lit.clone());
-         expr_node.exp_type = Some(ExpressionType::String);
+         expr_node.exp_type = Some(ExpressionType::Value(ValueType::String));
       }
       Expression::BinaryOperator(bin_op, e) => {
          do_type(&mut e.0, validation_context);
@@ -281,45 +282,45 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
          };
 
          // Type inference
-         if e.0.exp_type.as_ref().unwrap() == &ExpressionType::UnknownInt && e.1.exp_type.as_ref().unwrap().is_any_known_int() {
+         if e.0.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt) && e.1.exp_type.as_ref().unwrap().is_any_known_int() {
             set_inferred_type(e.1.exp_type.clone().unwrap(), &mut e.0, validation_context);
-         } else if e.0.exp_type.as_ref().unwrap().is_any_known_int() && e.1.exp_type.as_ref().unwrap() == &ExpressionType::UnknownInt {
+         } else if e.0.exp_type.as_ref().unwrap().is_any_known_int() && e.1.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt) {
             set_inferred_type(e.0.exp_type.clone().unwrap(), &mut e.1, validation_context);
          }
 
          let lhs_type = e.0.exp_type.as_ref().unwrap();
          let rhs_type = e.1.exp_type.as_ref().unwrap();
 
-         let result_type = if lhs_type == &ExpressionType::CompileError || rhs_type == &ExpressionType::CompileError {
+         let result_type = if lhs_type == &ExpressionType::Value(ValueType::CompileError) || rhs_type == &ExpressionType::Value(ValueType::CompileError) {
             // Avoid cascading errors
-            ExpressionType::CompileError
+            ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_arg_types, lhs_type) {
             validation_context.error_count += 1;
             eprintln!(
                "Binary operator {:?} requires LHS to have type matching {:?}; instead got {}",
                bin_op,
                correct_arg_types,
-               lhs_type.as_roland_type()
+               lhs_type.as_roland_type_info()
             );
-            ExpressionType::CompileError
+            ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_arg_types, rhs_type) {
             validation_context.error_count += 1;
             eprintln!(
                "Binary operator {:?} requires RHS to have type matching {:?}; instead got {}",
                bin_op,
                correct_arg_types,
-               rhs_type.as_roland_type()
+               rhs_type.as_roland_type_info()
             );
-            ExpressionType::CompileError
+            ExpressionType::Value(ValueType::CompileError)
          } else if lhs_type != rhs_type {
             validation_context.error_count += 1;
             eprintln!(
                "Binary operator {:?} requires LHS and RHS to have identical type; instead got {} and {}",
                bin_op,
-               lhs_type.as_roland_type(),
-               rhs_type.as_roland_type()
+               lhs_type.as_roland_type_info(),
+               rhs_type.as_roland_type_info()
             );
-            ExpressionType::CompileError
+            ExpressionType::Value(ValueType::CompileError)
          } else {
             match bin_op {
                BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide => lhs_type.clone(),
@@ -328,7 +329,7 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
                | BinOp::GreaterThan
                | BinOp::GreaterThanOrEqualTo
                | BinOp::LessThan
-               | BinOp::LessThanOrEqualTo => ExpressionType::Bool,
+               | BinOp::LessThanOrEqualTo => ExpressionType::Value(ValueType::Bool),
             }
          };
 
@@ -342,18 +343,18 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             UnOp::LogicalNegate => TypeValidator::Bool,
          };
 
-         let result_type = if e.exp_type.as_ref().unwrap() == &ExpressionType::CompileError {
+         let result_type = if e.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::CompileError) {
             // Avoid cascading errors
-            ExpressionType::CompileError
+            ExpressionType::Value(ValueType::CompileError)
          } else if !matches(&correct_type, e.exp_type.as_ref().unwrap()) {
             validation_context.error_count += 1;
             eprintln!(
                "Expected type {:?} for expression {:?}; instead got {}",
                correct_type,
                un_op,
-               e.exp_type.as_ref().unwrap().as_roland_type()
+               e.exp_type.as_ref().unwrap().as_roland_type_info()
             );
-            ExpressionType::CompileError
+            ExpressionType::Value(ValueType::CompileError)
          } else {
             e.exp_type.clone().unwrap()
          };
@@ -368,7 +369,7 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             None => {
                validation_context.error_count += 1;
                eprintln!("Encountered undefined variable `{}`", id);
-               ExpressionType::CompileError
+               ExpressionType::Value(ValueType::CompileError)
             }
          };
 
@@ -408,18 +409,18 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
                   for (actual, expected) in actual_types.zip(expected_types) {
 
                      // Type Inference
-                     if *actual.exp_type.as_ref().unwrap() == ExpressionType::UnknownInt && expected.is_any_known_int() {
+                     if *actual.exp_type.as_ref().unwrap() == ExpressionType::Value(ValueType::UnknownInt) && expected.is_any_known_int() {
                         set_inferred_type(expected.clone(), actual, validation_context);
                      }
 
                      let actual_type = actual.exp_type.as_ref().unwrap();
-                     if actual_type != expected && *actual_type != ExpressionType::CompileError {
+                     if actual_type != expected && *actual_type != ExpressionType::Value(ValueType::CompileError) {
                         validation_context.error_count += 1;
                         eprintln!(
                            "In call to `{}`, encountered argument of type {} when we expected {}",
                            name,
-                           actual_type.as_roland_type(),
-                           expected.as_roland_type()
+                           actual_type.as_roland_type_info(),
+                           expected.as_roland_type_info()
                         );
                      }
                   }
@@ -428,7 +429,7 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             None => {
                validation_context.error_count += 1;
                eprintln!("Encountered call to undefined procedure/function `{}`", name);
-               expr_node.exp_type = Some(ExpressionType::CompileError);
+               expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
             }
          }
       }
@@ -440,7 +441,7 @@ fn set_inferred_type(
    expr_node: &mut ExpressionNode,
    validation_context: &mut ValidationContext,
 ) {
-   if expr_node.exp_type.as_ref().unwrap() != &ExpressionType::UnknownInt {
+   if expr_node.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::UnknownInt) {
       return;
    }
    match &mut expr_node.expression {

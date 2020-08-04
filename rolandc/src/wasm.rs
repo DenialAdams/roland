@@ -1,4 +1,5 @@
-use crate::parse::{BinOp, Expression, ExpressionNode, ExpressionType, IntWidth, Program, Statement, UnOp};
+use crate::type_data::{ExpressionType, IntWidth, ValueType};
+use crate::parse::{BinOp, Expression, ExpressionNode, Program, Statement, UnOp};
 use std::collections::HashMap;
 use std::io::Write;
 
@@ -114,29 +115,43 @@ impl<'a> PrettyWasmWriter {
 
 fn type_to_result(e: &ExpressionType) -> &'static str {
    match e {
-      ExpressionType::UnknownInt => unreachable!(),
-      ExpressionType::Int(x) => match x.width {
+      ExpressionType::Value(x) => value_type_to_result(x),
+      ExpressionType::Pointer(_, _) => "(result i32)",
+   }
+}
+
+fn value_type_to_result(e: &ValueType) -> &'static str {
+   match e {
+      ValueType::UnknownInt => unreachable!(),
+      ValueType::Int(x) => match x.width {
          IntWidth::Eight => "(result i64)",
          _ => "(result i32)",
       },
-      ExpressionType::Bool => "(result i32)",
-      ExpressionType::String => "(result i32) (result i32)",
-      ExpressionType::Unit => "",
-      ExpressionType::CompileError => unreachable!(),
+      ValueType::Bool => "(result i32)",
+      ValueType::String => "(result i32) (result i32)",
+      ValueType::Unit => "",
+      ValueType::CompileError => unreachable!(),
    }
 }
 
 fn type_to_s(e: &ExpressionType) -> &'static str {
    match e {
-      ExpressionType::UnknownInt => unreachable!(),
-      ExpressionType::Int(x) => match x.width {
+      ExpressionType::Value(x) => value_type_to_s(x),
+      ExpressionType::Pointer(_, _) => "i32"
+   }
+}
+
+fn value_type_to_s(e: &ValueType) -> &'static str {
+   match e {
+      ValueType::UnknownInt => unreachable!(),
+      ValueType::Int(x) => match x.width {
          IntWidth::Eight => "i64",
          _ => "i32",
       },
-      ExpressionType::Bool => "i32",
-      ExpressionType::String => unimplemented!(),
-      ExpressionType::Unit => unreachable!(),
-      ExpressionType::CompileError => unreachable!(),
+      ValueType::Bool => "i32",
+      ValueType::String => unimplemented!(),
+      ValueType::Unit => unreachable!(),
+      ValueType::CompileError => unreachable!(),
    }
 }
 
@@ -272,7 +287,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       }
       Expression::IntLiteral(x) => {
          let wasm_type = match expr_node.exp_type.as_ref().unwrap() {
-            ExpressionType::Int(x) => match x.width {
+            ExpressionType::Value(ValueType::Int(x)) => match x.width {
                IntWidth::Eight => "i64",
                _ => "i32",
             },
@@ -290,7 +305,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          do_emit(&e.0, generation_context);
          do_emit(&e.1, generation_context);
          let (wasm_type, suffix) = match e.0.exp_type.as_ref().unwrap() {
-            ExpressionType::Int(x) => {
+            ExpressionType::Value(ValueType::Int(x)) => {
                let wasm_type = match x.width {
                   IntWidth::Eight => "i64",
                   _ => "i32",
@@ -298,7 +313,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                let suffix = if x.signed { "_s" } else { "_u" };
                (wasm_type, suffix)
             }
-            ExpressionType::Bool => ("i32", "_u"),
+            ExpressionType::Value(ValueType::Bool) => ("i32", "_u"),
             _ => unreachable!(),
          };
          generation_context.out.emit_spaces();
@@ -338,11 +353,11 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       Expression::UnaryOperator(un_op, e) => {
          do_emit(e, generation_context);
          let wasm_type = match expr_node.exp_type.as_ref().unwrap() {
-            ExpressionType::Int(x) => match x.width {
+            ExpressionType::Value(ValueType::Int(x)) => match x.width {
                IntWidth::Eight => "i64",
                _ => "i32",
             },
-            ExpressionType::Bool => "i32",
+            ExpressionType::Value(ValueType::Bool) => "i32",
             _ => unreachable!(),
          };
          match un_op {

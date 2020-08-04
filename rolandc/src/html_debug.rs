@@ -79,7 +79,7 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
 
 fn print_expression(out: &mut BufWriter<File>, expression_node: &ExpressionNode) {
    let type_text = match &expression_node.exp_type {
-      Some(x) => format!("<br><span class=\"type\">{}</span>", x.as_roland_type()),
+      Some(x) => format!("<br><span class=\"type\">{}</span>", x.as_roland_type_info()),
       None => "".to_string(),
    };
    match &expression_node.expression {
