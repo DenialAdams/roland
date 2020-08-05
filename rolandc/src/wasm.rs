@@ -102,6 +102,16 @@ impl<'a> PrettyWasmWriter {
       writeln!(&mut self.out, "local.get ${}", local_name).unwrap();
    }
 
+   fn emit_set_global(&mut self, global_name: &str) {
+      self.emit_spaces();
+      writeln!(&mut self.out, "global.set ${}", global_name).unwrap();
+   }
+
+   fn emit_get_global(&mut self, global_name: &str) {
+      self.emit_spaces();
+      writeln!(&mut self.out, "global.get ${}", global_name).unwrap();
+   }
+
    fn emit_call(&mut self, func_name: &str) {
       self.emit_spaces();
       writeln!(&mut self.out, "call ${}", func_name).unwrap();
@@ -155,6 +165,29 @@ fn value_type_to_s(e: &ValueType) -> &'static str {
    }
 }
 
+fn sizeof_type(e: &ExpressionType) -> u32 {
+   match e {
+      ExpressionType::Value(x) => sizeof_value_type(x),
+      ExpressionType::Pointer(_, _) => 4,
+   }
+}
+
+fn sizeof_value_type(e: &ValueType) -> u32 {
+   match e {
+      ValueType::UnknownInt => unreachable!(),
+      ValueType::Int(x) => match x.width {
+         IntWidth::Eight => 8,
+         IntWidth::Four => 4,
+         IntWidth::Two => 2,
+         IntWidth::One => 1,
+      },
+      ValueType::Bool => 4,
+      ValueType::String => 8,
+      ValueType::Unit => unreachable!(),
+      ValueType::CompileError => unreachable!(),
+   }
+}
+
 pub fn emit_wasm(program: &Program) -> Vec<u8> {
    let mut generation_context = GenerationContext {
       out: PrettyWasmWriter {
@@ -188,6 +221,9 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       // TODO: check for overflow here
       offset += s_len;
    }
+
+   generation_context.out.emit_spaces();
+   writeln!(generation_context.out.out, "(global $sp (mut i32) (i32.const {}))", offset).unwrap();
 
    // print
    // TODO: this shouldnt be vec, but i cant generic
@@ -225,6 +261,12 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       for (id, e_type) in procedure.locals.iter() {
          generation_context.out.emit_local_definition(id, type_to_s(e_type));
       }
+      generation_context.out.emit_get_global("sp");
+      let sum_sizeof = procedure.locals.iter().map(|x| sizeof_type(&x.1)).sum();
+      generation_context.out.emit_const_i32(sum_sizeof);
+      generation_context.out.emit_spaces();
+      writeln!(generation_context.out.out, "i32.add").unwrap();
+      generation_context.out.emit_set_global("sp");
       for statement in &procedure.block.statements {
          emit_statement(statement, &mut generation_context);
       }
