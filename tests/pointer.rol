@@ -1,0 +1,10 @@
+proc main() {
+   let x: u8 = 5;
+   let y = &x;
+   mutato(y);
+   print_bool(x == 3);
+}
+
+proc mutato(arg: &u8) {
+   *arg = 3;
+}
