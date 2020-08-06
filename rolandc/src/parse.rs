@@ -1,5 +1,5 @@
-use crate::type_data::{ExpressionType, ValueType};
 use super::lex::Token;
+use crate::type_data::{ExpressionType, ValueType};
 use std::collections::{HashMap, HashSet};
 use std::mem::discriminant;
 
@@ -265,11 +265,7 @@ fn parse_if_else_statement(l: &mut Lexer) -> Result<Statement, ()> {
       }
       _ => Statement::BlockStatement(BlockNode { statements: vec![] }),
    };
-   Ok(Statement::IfElseStatement(
-      e,
-      if_block,
-      Box::new(else_statement),
-   ))
+   Ok(Statement::IfElseStatement(e, if_block, Box::new(else_statement)))
 }
 
 fn parse_parameters(l: &mut Lexer) -> Result<Vec<(String, ExpressionType)>, ()> {
@@ -365,7 +361,7 @@ fn parse_type(l: &mut Lexer) -> Result<ExpressionType, ()> {
       x => {
          eprintln!("While parsing type, got an invalid type {}", x);
          return Err(());
-      },
+      }
    };
    if ptr_count > 0 {
       Ok(ExpressionType::Pointer(ptr_count, value_type))

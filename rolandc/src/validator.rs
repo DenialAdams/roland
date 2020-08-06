@@ -45,7 +45,12 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
    let mut procedure_info = HashMap::new();
    let mut error_count = 0;
    // Built-In functions
-   let standard_lib_procs = [("print", false, &[ExpressionType::Value(ValueType::String)], ExpressionType::Value(ValueType::Unit))];
+   let standard_lib_procs = [(
+      "print",
+      false,
+      &[ExpressionType::Value(ValueType::String)],
+      ExpressionType::Value(ValueType::Unit),
+   )];
    for p in standard_lib_procs.iter() {
       procedure_info.insert(
          p.0.to_string(),
@@ -175,7 +180,9 @@ fn type_statement(
          type_statement(block_2, validation_context, cur_procedure_locals);
          do_type(en, validation_context);
          let if_exp_type = en.exp_type.as_ref().unwrap();
-         if if_exp_type != &ExpressionType::Value(ValueType::Bool) && if_exp_type != &ExpressionType::Value(ValueType::CompileError) {
+         if if_exp_type != &ExpressionType::Value(ValueType::Bool)
+            && if_exp_type != &ExpressionType::Value(ValueType::CompileError)
+         {
             validation_context.error_count += 1;
             eprintln!(
                "Value of if expression must be a bool; instead got {}",
@@ -188,11 +195,15 @@ fn type_statement(
          let cur_procedure_info = validation_context.cur_procedure_info.unwrap();
 
          // Type Inference
-         if *en.exp_type.as_ref().unwrap() == ExpressionType::Value(ValueType::UnknownInt) && cur_procedure_info.ret_type.is_any_known_int() {
+         if *en.exp_type.as_ref().unwrap() == ExpressionType::Value(ValueType::UnknownInt)
+            && cur_procedure_info.ret_type.is_any_known_int()
+         {
             set_inferred_type(cur_procedure_info.ret_type.clone(), en, validation_context);
          }
 
-         if en.exp_type.as_ref().unwrap().is_concrete_type() && en.exp_type.as_ref().unwrap() != &cur_procedure_info.ret_type {
+         if en.exp_type.as_ref().unwrap().is_concrete_type()
+            && en.exp_type.as_ref().unwrap() != &cur_procedure_info.ret_type
+         {
             validation_context.error_count += 1;
             eprintln!(
                "Value of return statement must match declared return type {}; got {}",
@@ -206,7 +217,8 @@ fn type_statement(
 
          do_type(en, validation_context);
 
-         let result_type = if en.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt) && declared_type_is_known_int
+         let result_type = if en.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt)
+            && declared_type_is_known_int
          {
             set_inferred_type(dt.clone().unwrap(), en, validation_context);
             dt.clone().unwrap()
@@ -284,16 +296,22 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
          };
 
          // Type inference
-         if e.0.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt) && e.1.exp_type.as_ref().unwrap().is_any_known_int() {
+         if e.0.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt)
+            && e.1.exp_type.as_ref().unwrap().is_any_known_int()
+         {
             set_inferred_type(e.1.exp_type.clone().unwrap(), &mut e.0, validation_context);
-         } else if e.0.exp_type.as_ref().unwrap().is_any_known_int() && e.1.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt) {
+         } else if e.0.exp_type.as_ref().unwrap().is_any_known_int()
+            && e.1.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt)
+         {
             set_inferred_type(e.0.exp_type.clone().unwrap(), &mut e.1, validation_context);
          }
 
          let lhs_type = e.0.exp_type.as_ref().unwrap();
          let rhs_type = e.1.exp_type.as_ref().unwrap();
 
-         let result_type = if lhs_type == &ExpressionType::Value(ValueType::CompileError) || rhs_type == &ExpressionType::Value(ValueType::CompileError) {
+         let result_type = if lhs_type == &ExpressionType::Value(ValueType::CompileError)
+            || rhs_type == &ExpressionType::Value(ValueType::CompileError)
+         {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_arg_types, lhs_type) {
@@ -409,9 +427,10 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
                   let actual_types = args.iter_mut();
                   let expected_types = procedure_info.parameters.iter();
                   for (actual, expected) in actual_types.zip(expected_types) {
-
                      // Type Inference
-                     if *actual.exp_type.as_ref().unwrap() == ExpressionType::Value(ValueType::UnknownInt) && expected.is_any_known_int() {
+                     if *actual.exp_type.as_ref().unwrap() == ExpressionType::Value(ValueType::UnknownInt)
+                        && expected.is_any_known_int()
+                     {
                         set_inferred_type(expected.clone(), actual, validation_context);
                      }
 

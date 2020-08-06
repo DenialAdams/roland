@@ -1,5 +1,5 @@
-use crate::type_data::{ExpressionType, IntWidth, ValueType};
 use crate::parse::{BinOp, Expression, ExpressionNode, Program, Statement, UnOp};
+use crate::type_data::{ExpressionType, IntWidth, ValueType};
 use std::collections::HashMap;
 use std::io::Write;
 
@@ -139,7 +139,7 @@ fn value_type_to_result(e: &ValueType) -> &'static str {
 fn type_to_s(e: &ExpressionType) -> &'static str {
    match e {
       ExpressionType::Value(x) => value_type_to_s(x),
-      ExpressionType::Pointer(_, _) => "i32"
+      ExpressionType::Pointer(_, _) => "i32",
    }
 }
 
@@ -238,9 +238,19 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    }
 
    generation_context.out.emit_spaces();
-   writeln!(generation_context.out.out, "(global $sp (mut i32) (i32.const {}))", offset).unwrap();
+   writeln!(
+      generation_context.out.out,
+      "(global $sp (mut i32) (i32.const {}))",
+      offset
+   )
+   .unwrap();
    generation_context.out.emit_spaces();
-   writeln!(generation_context.out.out, "(global $bp (mut i32) (i32.const {}))", offset).unwrap();
+   writeln!(
+      generation_context.out.out,
+      "(global $bp (mut i32) (i32.const {}))",
+      offset
+   )
+   .unwrap();
 
    // print
    // TODO: this shouldnt be vec, but i cant generic
@@ -273,7 +283,9 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
       for local in procedure.locals.iter() {
          // TODO: interning.
-         generation_context.local_offsets.insert(local.0.clone(), generation_context.sum_sizeof_locals);
+         generation_context
+            .local_offsets
+            .insert(local.0.clone(), generation_context.sum_sizeof_locals);
          generation_context.sum_sizeof_locals += sizeof_type_mem(&local.1);
       }
 
@@ -476,7 +488,14 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                ExpressionType::Value(ValueType::Bool) => ("32", "_u"),
                _ => unreachable!(),
             };
-            writeln!(generation_context.out.out, "{}.load{}{}", type_to_s(val_type), load_suffx, sign_suffix).unwrap();
+            writeln!(
+               generation_context.out.out,
+               "{}.load{}{}",
+               type_to_s(val_type),
+               load_suffx,
+               sign_suffix
+            )
+            .unwrap();
          }
       }
       Expression::ProcedureCall(name, args) => {
@@ -515,7 +534,13 @@ fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) 
          ExpressionType::Value(ValueType::Bool) => "32",
          _ => unreachable!(),
       };
-      writeln!(generation_context.out.out, "{}.store{}", type_to_s(val_type), load_suffx).unwrap();
+      writeln!(
+         generation_context.out.out,
+         "{}.store{}",
+         type_to_s(val_type),
+         load_suffx
+      )
+      .unwrap();
    }
 }
 
@@ -547,7 +572,9 @@ fn adjust_stack_function_exit(generation_context: &mut GenerationContext) {
 
 fn adjust_stack(generation_context: &mut GenerationContext, instr: &str) {
    generation_context.out.emit_get_global("sp");
-   generation_context.out.emit_const_i32(generation_context.sum_sizeof_locals);
+   generation_context
+      .out
+      .emit_const_i32(generation_context.sum_sizeof_locals);
    generation_context.out.emit_spaces();
    writeln!(generation_context.out.out, "i32.{}", instr).unwrap();
    generation_context.out.emit_set_global("sp");
