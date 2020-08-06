@@ -1,6 +1,6 @@
 use crate::type_data::{ExpressionType, ValueType};
 use super::lex::Token;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::mem::discriminant;
 
 struct Lexer {
@@ -46,7 +46,7 @@ fn expect(l: &mut Lexer, token: &Token) -> Result<Token, ()> {
 pub struct ProcedureNode {
    pub name: String,
    pub parameters: Vec<(String, ExpressionType)>,
-   pub locals: Vec<(String, ExpressionType)>,
+   pub locals: HashMap<String, ExpressionType>,
    pub block: BlockNode,
    pub ret_type: ExpressionType,
    pub pure: bool,
@@ -161,7 +161,7 @@ fn parse_procedure(l: &mut Lexer) -> Result<ProcedureNode, ()> {
    Ok(ProcedureNode {
       name: extract_identifier(function_name),
       parameters,
-      locals: Vec::new(),
+      locals: HashMap::new(),
       block,
       ret_type,
       pure: false,

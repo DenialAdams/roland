@@ -106,9 +106,11 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
       validation_context.cur_procedure_info = procedure_info.get(procedure.name.as_str());
 
       for parameter in procedure.parameters.iter() {
+         // TODO, again, interning
          validation_context
             .variable_types
             .insert(parameter.0.clone(), (parameter.1.clone(), 0));
+         procedure.locals.insert(parameter.0.clone(), parameter.1.clone());
       }
 
       type_block(&mut procedure.block, &mut validation_context, &mut procedure.locals);
@@ -145,7 +147,7 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
 fn type_statement(
    statement: &mut Statement,
    validation_context: &mut ValidationContext,
-   cur_procedure_locals: &mut Vec<(String, ExpressionType)>,
+   cur_procedure_locals: &mut HashMap<String, ExpressionType>,
 ) {
    match statement {
       Statement::AssignmentStatement(id, en) => {
@@ -229,7 +231,7 @@ fn type_statement(
                (en.exp_type.clone().unwrap(), validation_context.block_depth),
             );
             // TODO, again, interning
-            cur_procedure_locals.push((id.clone(), result_type));
+            cur_procedure_locals.insert(id.clone(), result_type);
          }
       }
    }
@@ -238,7 +240,7 @@ fn type_statement(
 fn type_block(
    bn: &mut BlockNode,
    validation_context: &mut ValidationContext,
-   cur_procedure_locals: &mut Vec<(String, ExpressionType)>,
+   cur_procedure_locals: &mut HashMap<String, ExpressionType>,
 ) {
    validation_context.block_depth += 1;
 

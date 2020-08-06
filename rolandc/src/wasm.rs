@@ -6,6 +6,8 @@ use std::io::Write;
 struct GenerationContext {
    out: PrettyWasmWriter,
    literal_offsets: HashMap<String, (u32, u32)>,
+   local_offsets: HashMap<String, u32>,
+   sum_sizeof_locals: u32,
 }
 
 struct PrettyWasmWriter {
@@ -87,16 +89,6 @@ impl<'a> PrettyWasmWriter {
       .unwrap();
    }
 
-   fn emit_local_definition(&mut self, local_name: &str, type_s: &str) {
-      self.emit_spaces();
-      writeln!(&mut self.out, "(local ${} {})", local_name, type_s).unwrap();
-   }
-
-   fn emit_set_local(&mut self, local_name: &str) {
-      self.emit_spaces();
-      writeln!(&mut self.out, "local.set ${}", local_name).unwrap();
-   }
-
    fn emit_get_local(&mut self, local_name: &str) {
       self.emit_spaces();
       writeln!(&mut self.out, "local.get ${}", local_name).unwrap();
@@ -165,14 +157,14 @@ fn value_type_to_s(e: &ValueType) -> &'static str {
    }
 }
 
-fn sizeof_type(e: &ExpressionType) -> u32 {
+fn sizeof_type_mem(e: &ExpressionType) -> u32 {
    match e {
-      ExpressionType::Value(x) => sizeof_value_type(x),
+      ExpressionType::Value(x) => sizeof_value_type_mem(x),
       ExpressionType::Pointer(_, _) => 4,
    }
 }
 
-fn sizeof_value_type(e: &ValueType) -> u32 {
+fn sizeof_value_type_mem(e: &ValueType) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::Int(x) => match x.width {
@@ -180,6 +172,27 @@ fn sizeof_value_type(e: &ValueType) -> u32 {
          IntWidth::Four => 4,
          IntWidth::Two => 2,
          IntWidth::One => 1,
+      },
+      ValueType::Bool => 4,
+      ValueType::String => 8,
+      ValueType::Unit => unreachable!(),
+      ValueType::CompileError => unreachable!(),
+   }
+}
+
+fn sizeof_type_wasm(e: &ExpressionType) -> u32 {
+   match e {
+      ExpressionType::Value(x) => sizeof_value_type_wasm(x),
+      ExpressionType::Pointer(_, _) => 4,
+   }
+}
+
+fn sizeof_value_type_wasm(e: &ValueType) -> u32 {
+   match e {
+      ValueType::UnknownInt => unreachable!(),
+      ValueType::Int(x) => match x.width {
+         IntWidth::Eight => 8,
+         _ => 4,
       },
       ValueType::Bool => 4,
       ValueType::String => 8,
@@ -196,6 +209,8 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       },
       // todo: just reuse the same map?
       literal_offsets: HashMap::with_capacity(program.literals.len()),
+      local_offsets: HashMap::new(),
+      sum_sizeof_locals: 0,
    };
 
    generation_context.out.emit_module_start();
@@ -224,6 +239,8 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
    generation_context.out.emit_spaces();
    writeln!(generation_context.out.out, "(global $sp (mut i32) (i32.const {}))", offset).unwrap();
+   generation_context.out.emit_spaces();
+   writeln!(generation_context.out.out, "(global $bp (mut i32) (i32.const {}))", offset).unwrap();
 
    // print
    // TODO: this shouldnt be vec, but i cant generic
@@ -250,26 +267,45 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    generation_context.out.close();
 
    for procedure in program.procedures.iter() {
+      generation_context.local_offsets.clear();
+      // 0-4 == value of previous frame base pointer
+      generation_context.sum_sizeof_locals = 4;
+
+      for local in procedure.locals.iter() {
+         // TODO: interning.
+         generation_context.local_offsets.insert(local.0.clone(), generation_context.sum_sizeof_locals);
+         generation_context.sum_sizeof_locals += sizeof_type_mem(&local.1);
+      }
+
       generation_context.out.emit_function_start(
          &procedure.name,
          procedure.parameters.iter().map(|x| (x.0.as_ref(), type_to_s(&x.1))),
          type_to_result(&procedure.ret_type),
       );
+
       if procedure.name == "main" {
          generation_context.out.emit_constant_sexp("(export \"_start\")");
       }
-      for (id, e_type) in procedure.locals.iter() {
-         generation_context.out.emit_local_definition(id, type_to_s(e_type));
+
+      adjust_stack_function_entry(&mut generation_context);
+
+      // Copy parametes to stack memory so we can take pointers
+      for param in &procedure.parameters {
+         get_stack_address_of_local(&param.0, &mut generation_context);
+         generation_context.out.emit_get_local(&param.0);
+         store(&param.1, &mut generation_context);
       }
-      generation_context.out.emit_get_global("sp");
-      let sum_sizeof = procedure.locals.iter().map(|x| sizeof_type(&x.1)).sum();
-      generation_context.out.emit_const_i32(sum_sizeof);
-      generation_context.out.emit_spaces();
-      writeln!(generation_context.out.out, "i32.add").unwrap();
-      generation_context.out.emit_set_global("sp");
+
       for statement in &procedure.block.statements {
          emit_statement(statement, &mut generation_context);
       }
+
+      if let Some(Statement::ReturnStatement(_)) = procedure.block.statements.last() {
+         // No need to adjust stack; it was done in the return statement
+      } else {
+         adjust_stack_function_exit(&mut generation_context);
+      }
+
       generation_context.out.close();
    }
 
@@ -280,9 +316,11 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
 fn emit_statement(statement: &Statement, generation_context: &mut GenerationContext) {
    match statement {
-      Statement::AssignmentStatement(id, en) => {
+      Statement::AssignmentStatement(id, en) | Statement::VariableDeclaration(id, en, _) => {
+         get_stack_address_of_local(id, generation_context);
          do_emit(en, generation_context);
-         generation_context.out.emit_set_local(id);
+         let val_type = en.exp_type.as_ref().unwrap();
+         store(val_type, generation_context);
       }
       Statement::BlockStatement(bn) => {
          for statement in &bn.statements {
@@ -313,11 +351,8 @@ fn emit_statement(statement: &Statement, generation_context: &mut GenerationCont
       }
       Statement::ReturnStatement(en) => {
          do_emit(en, generation_context);
+         adjust_stack_function_exit(generation_context);
          generation_context.out.emit_constant_instruction("return");
-      }
-      Statement::VariableDeclaration(id, en, _) => {
-         do_emit(en, generation_context);
-         generation_context.out.emit_set_local(id);
       }
    }
 }
@@ -420,7 +455,29 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
       }
       Expression::Variable(id) => {
-         generation_context.out.emit_get_local(id);
+         get_stack_address_of_local(id, generation_context);
+
+         let val_type = expr_node.exp_type.as_ref().unwrap();
+         generation_context.out.emit_spaces();
+         if sizeof_type_mem(val_type) == sizeof_type_wasm(val_type) {
+            writeln!(generation_context.out.out, "{}.load", type_to_s(val_type)).unwrap();
+         } else {
+            let (load_suffx, sign_suffix) = match val_type {
+               ExpressionType::Value(ValueType::Int(x)) => {
+                  let load_suffx = match x.width {
+                     IntWidth::Eight => "64",
+                     IntWidth::Four => "32",
+                     IntWidth::Two => "16",
+                     IntWidth::One => "8",
+                  };
+                  let sign_suffix = if x.signed { "_s" } else { "_u" };
+                  (load_suffx, sign_suffix)
+               }
+               ExpressionType::Value(ValueType::Bool) => ("32", "_u"),
+               _ => unreachable!(),
+            };
+            writeln!(generation_context.out.out, "{}.load{}{}", type_to_s(val_type), load_suffx, sign_suffix).unwrap();
+         }
       }
       Expression::ProcedureCall(name, args) => {
          for arg in args {
@@ -429,4 +486,69 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          generation_context.out.emit_call(name);
       }
    }
+}
+
+/// Places the address of given local on the stack
+fn get_stack_address_of_local(id: &str, generation_context: &mut GenerationContext) {
+   let offset = *generation_context.local_offsets.get(id).unwrap();
+   generation_context.out.emit_get_global("bp");
+   generation_context.out.emit_const_i32(offset);
+   generation_context.out.emit_spaces();
+   writeln!(generation_context.out.out, "i32.add").unwrap();
+}
+
+fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+   generation_context.out.emit_spaces();
+   if sizeof_type_mem(val_type) == sizeof_type_wasm(val_type) {
+      writeln!(generation_context.out.out, "{}.store", type_to_s(val_type)).unwrap();
+   } else {
+      let load_suffx = match val_type {
+         ExpressionType::Value(ValueType::Int(x)) => {
+            let load_suffx = match x.width {
+               IntWidth::Eight => "64",
+               IntWidth::Four => "32",
+               IntWidth::Two => "16",
+               IntWidth::One => "8",
+            };
+            load_suffx
+         }
+         ExpressionType::Value(ValueType::Bool) => "32",
+         _ => unreachable!(),
+      };
+      writeln!(generation_context.out.out, "{}.store{}", type_to_s(val_type), load_suffx).unwrap();
+   }
+}
+
+fn adjust_stack_function_entry(generation_context: &mut GenerationContext) {
+   if generation_context.sum_sizeof_locals == 0 {
+      return;
+   }
+
+   generation_context.out.emit_get_global("sp");
+   generation_context.out.emit_get_global("bp");
+   generation_context.out.emit_spaces();
+   writeln!(generation_context.out.out, "i32.store").unwrap();
+   generation_context.out.emit_get_global("sp");
+   generation_context.out.emit_set_global("bp");
+   adjust_stack(generation_context, "add");
+}
+
+fn adjust_stack_function_exit(generation_context: &mut GenerationContext) {
+   if generation_context.sum_sizeof_locals == 0 {
+      return;
+   }
+
+   adjust_stack(generation_context, "sub");
+   generation_context.out.emit_get_global("sp");
+   generation_context.out.emit_spaces();
+   writeln!(generation_context.out.out, "i32.load").unwrap();
+   generation_context.out.emit_set_global("bp");
+}
+
+fn adjust_stack(generation_context: &mut GenerationContext, instr: &str) {
+   generation_context.out.emit_get_global("sp");
+   generation_context.out.emit_const_i32(generation_context.sum_sizeof_locals);
+   generation_context.out.emit_spaces();
+   writeln!(generation_context.out.out, "i32.{}", instr).unwrap();
+   generation_context.out.emit_set_global("sp");
 }
