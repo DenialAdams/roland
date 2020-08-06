@@ -301,7 +301,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
       adjust_stack_function_entry(&mut generation_context);
 
-      // Copy parametes to stack memory so we can take pointers
+      // Copy parameters to stack memory so we can take pointers
       for param in &procedure.parameters {
          get_stack_address_of_local(&param.0, &mut generation_context);
          generation_context.out.emit_get_local(&param.0);
