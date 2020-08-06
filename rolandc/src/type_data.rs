@@ -97,6 +97,19 @@ impl ExpressionType {
          }
       }
    }
+
+   pub fn increment_indirection_count(&mut self) {
+      match self {
+         ExpressionType::Value(v) => {
+            // UGH this clone is so un-necessary, i don't know how to fix safely
+            // TODO
+            *self = ExpressionType::Pointer(1, v.clone());
+         }
+         ExpressionType::Pointer(i, _) => {
+            *i += 1;
+         }
+      }
+   }
 }
 
 impl ValueType {

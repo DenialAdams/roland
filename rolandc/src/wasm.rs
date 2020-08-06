@@ -450,6 +450,18 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             _ => unreachable!(),
          };
          match un_op {
+            UnOp::AddressOf => {
+               // Assertion: e must be a variable expression due to validation
+               let id = match &e.expression {
+                  Expression::Variable(x) => x,
+                  _ => unreachable!(),
+               };
+               // we need to drop the value we just loaded
+               // TODO: this is really silly, right? should we just not emit the load at all
+               // (but that's not fun logic, maybe better handled by optimizing IR)
+               generation_context.out.emit_constant_instruction("drop");
+               get_stack_address_of_local(id, generation_context);
+            }
             UnOp::LogicalNegate => {
                generation_context.out.emit_spaces();
                writeln!(generation_context.out.out, "{}.eqz", wasm_type).unwrap();

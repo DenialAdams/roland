@@ -6,10 +6,12 @@ use std::collections::{HashMap, HashSet};
 enum TypeValidator {
    Bool,
    AnyInt,
+   Any,
 }
 
 fn matches(type_validation: &TypeValidator, et: &ExpressionType) -> bool {
    match (type_validation, et) {
+      (TypeValidator::Any, _) => true,
       (TypeValidator::Bool, ExpressionType::Value(ValueType::Bool)) => true,
       (TypeValidator::AnyInt, ExpressionType::Value(ValueType::Int(_))) => true,
       (TypeValidator::AnyInt, ExpressionType::Value(ValueType::UnknownInt)) => true,
@@ -358,9 +360,20 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
       Expression::UnaryOperator(un_op, e) => {
          do_type(e, validation_context);
 
-         let correct_type = match un_op {
-            UnOp::Negate => TypeValidator::AnyInt,
-            UnOp::LogicalNegate => TypeValidator::Bool,
+         let (correct_type, node_type) = match un_op {
+            UnOp::Negate => (TypeValidator::AnyInt, e.exp_type.clone().unwrap()),
+            UnOp::LogicalNegate => (TypeValidator::Bool, e.exp_type.clone().unwrap()),
+            UnOp::AddressOf => {
+               let mut new_type = e.exp_type.clone().unwrap();
+               new_type.increment_indirection_count();
+               (TypeValidator::Any, new_type)
+            }
+         };
+
+         let inner_exp_is_variable = if let Expression::Variable(_) = e.expression {
+            true
+         } else {
+            false
          };
 
          let result_type = if e.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::CompileError) {
@@ -375,8 +388,12 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
                e.exp_type.as_ref().unwrap().as_roland_type_info()
             );
             ExpressionType::Value(ValueType::CompileError)
+         } else if *un_op == UnOp::AddressOf && !inner_exp_is_variable {
+            validation_context.error_count += 1;
+            eprintln!("A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter");
+            ExpressionType::Value(ValueType::CompileError)
          } else {
-            e.exp_type.clone().unwrap()
+            node_type
          };
 
          expr_node.exp_type = Some(result_type);

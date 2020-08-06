@@ -66,10 +66,11 @@ pub enum BinOp {
    LessThanOrEqualTo,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum UnOp {
    Negate,
    LogicalNegate,
+   AddressOf,
 }
 
 pub struct ExpressionNode {
@@ -401,6 +402,11 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
          let rhs = pratt(l, r_bp)?;
          Expression::UnaryOperator(UnOp::LogicalNegate, Box::new(wrap(rhs)))
       }
+      Some(x @ Token::Reference) => {
+         let ((), r_bp) = prefix_binding_power(&x);
+         let rhs = pratt(l, r_bp)?;
+         Expression::UnaryOperator(UnOp::AddressOf, Box::new(wrap(rhs)))
+      }
       x => {
          eprintln!(
             "While parsing expression - unexpected token {:?}; was expecting an int, identifier, or prefix operator",
@@ -458,6 +464,7 @@ fn prefix_binding_power(op: &Token) -> ((), u8) {
    match op {
       Token::Exclam => ((), 6),
       Token::Minus => ((), 6),
+      Token::Reference => ((), 6),
       _ => panic!("bad op: {:?}", op),
    }
 }
