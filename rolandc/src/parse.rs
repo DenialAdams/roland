@@ -71,6 +71,7 @@ pub enum UnOp {
    Negate,
    LogicalNegate,
    AddressOf,
+   Dereference,
 }
 
 pub struct ExpressionNode {
@@ -92,13 +93,14 @@ impl Expression {
    pub fn is_lvalue(&self) -> bool {
       match self {
          Expression::Variable(_) => true,
+         Expression::UnaryOperator(UnOp::Dereference, _) => true,
          _ => false,
       }
    }
 }
 
 pub enum Statement {
-   AssignmentStatement(String, ExpressionNode),
+   AssignmentStatement(ExpressionNode, ExpressionNode),
    BlockStatement(BlockNode),
    ExpressionStatement(ExpressionNode),
    IfElseStatement(ExpressionNode, BlockNode, Box<Statement>),
@@ -221,28 +223,35 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
             let s = parse_if_else_statement(l)?;
             statements.push(s);
          }
-         Some(Token::Identifier(_)) => match l.double_peek() {
-            Some(&Token::Assignment) => {
-               let variable_name = expect(l, &Token::Identifier(String::from("")))?;
-               expect(l, &Token::Assignment)?;
-               let e = parse_expression(l)?;
-               expect(l, &Token::Semicolon)?;
-               statements.push(Statement::AssignmentStatement(extract_identifier(variable_name), e));
-            }
-            _ => {
-               let e = parse_expression(l)?;
-               expect(l, &Token::Semicolon)?;
-               statements.push(Statement::ExpressionStatement(e));
-            }
-         },
          Some(Token::BoolLiteral(_))
          | Some(Token::StringLiteral(_))
          | Some(Token::IntLiteral(_))
          | Some(Token::OpenParen)
+         | Some(Token::Exclam)
+         | Some(Token::Reference)
+         | Some(Token::MultiplyDeref)
+         | Some(Token::Identifier(_))
          | Some(Token::Minus) => {
             let e = parse_expression(l)?;
-            expect(l, &Token::Semicolon)?;
-            statements.push(Statement::ExpressionStatement(e));
+            match l.peek() {
+               Some(&Token::Assignment) => {
+                  let _ = l.next();
+                  let re = parse_expression(l)?;
+                  expect(l, &Token::Semicolon)?;
+                  statements.push(Statement::AssignmentStatement(e, re));
+               }
+               Some(&Token::Semicolon) => {
+                  let _ = l.next();
+                  statements.push(Statement::ExpressionStatement(e));
+               }
+               x => {
+                  eprintln!(
+                     "While parsing statement - unexpected token {:?}; was expecting a semicolon or assignment operator",
+                     x
+                  );
+                  return Err(());
+               }
+            }
          }
          Some(x) => {
             eprintln!(
@@ -320,6 +329,9 @@ fn parse_arguments(l: &mut Lexer) -> Result<Vec<ExpressionNode>, ()> {
          | Some(Token::StringLiteral(_))
          | Some(Token::IntLiteral(_))
          | Some(Token::OpenParen)
+         | Some(Token::Reference)
+         | Some(Token::Exclam)
+         | Some(Token::MultiplyDeref)
          | Some(Token::Minus) => {
             let e = parse_expression(l)?;
             arguments.push(e);
@@ -416,6 +428,11 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
          let rhs = pratt(l, r_bp)?;
          Expression::UnaryOperator(UnOp::AddressOf, Box::new(wrap(rhs)))
       }
+      Some(x @ Token::MultiplyDeref) => {
+         let ((), r_bp) = prefix_binding_power(&x);
+         let rhs = pratt(l, r_bp)?;
+         Expression::UnaryOperator(UnOp::Dereference, Box::new(wrap(rhs)))
+      }
       x => {
          eprintln!(
             "While parsing expression - unexpected token {:?}; was expecting an int, identifier, or prefix operator",
@@ -430,7 +447,7 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
       let op: Token = match l.peek() {
          Some(x @ &Token::Plus)
          | Some(x @ &Token::Minus)
-         | Some(x @ &Token::Multiply)
+         | Some(x @ &Token::MultiplyDeref)
          | Some(x @ &Token::Divide)
          | Some(x @ &Token::LessThan)
          | Some(x @ &Token::LessThanOrEqualTo)
@@ -452,7 +469,7 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
       let bin_op = match op {
          Token::Plus => BinOp::Add,
          Token::Minus => BinOp::Subtract,
-         Token::Multiply => BinOp::Multiply,
+         Token::MultiplyDeref => BinOp::Multiply,
          Token::Divide => BinOp::Divide,
          Token::GreaterThan => BinOp::GreaterThan,
          Token::GreaterThanOrEqualTo => BinOp::GreaterThanOrEqualTo,
@@ -474,6 +491,7 @@ fn prefix_binding_power(op: &Token) -> ((), u8) {
       Token::Exclam => ((), 6),
       Token::Minus => ((), 6),
       Token::Reference => ((), 6),
+      Token::MultiplyDeref => ((), 6),
       _ => panic!("bad op: {:?}", op),
    }
 }
@@ -487,7 +505,7 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
       | Token::LessThan
       | Token::LessThanOrEqualTo => (1, 1),
       Token::Plus | Token::Minus => (2, 3),
-      Token::Multiply | Token::Divide => (4, 5),
+      Token::MultiplyDeref | Token::Divide => (4, 5),
       _ => unreachable!(),
    }
 }

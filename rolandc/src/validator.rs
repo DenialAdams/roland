@@ -6,12 +6,14 @@ use std::collections::{HashMap, HashSet};
 enum TypeValidator {
    Bool,
    AnyInt,
+   AnyPointer,
    Any,
 }
 
 fn matches(type_validation: &TypeValidator, et: &ExpressionType) -> bool {
    match (type_validation, et) {
       (TypeValidator::Any, _) => true,
+      (TypeValidator::AnyPointer, ExpressionType::Pointer(_, _)) => true,
       (TypeValidator::Bool, ExpressionType::Value(ValueType::Bool)) => true,
       (TypeValidator::AnyInt, ExpressionType::Value(ValueType::Int(_))) => true,
       (TypeValidator::AnyInt, ExpressionType::Value(ValueType::UnknownInt)) => true,
@@ -157,19 +159,33 @@ fn type_statement(
    cur_procedure_locals: &mut HashMap<String, ExpressionType>,
 ) {
    match statement {
-      Statement::AssignmentStatement(id, en) => {
+      Statement::AssignmentStatement(len, en) => {
+         do_type(len, validation_context);
          do_type(en, validation_context);
 
-         let exp_type = en.exp_type.clone().unwrap();
-         let declared_type = validation_context.variable_types.get(id);
+         // Type inference
+         if len.exp_type.as_ref().unwrap().is_any_known_int()
+            && en.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt)
+         {
+            set_inferred_type(len.exp_type.clone().unwrap(), en, validation_context);
+         }
 
-         if declared_type.is_none() {
+         let lhs_type = len.exp_type.as_ref().unwrap();
+         let rhs_type = en.exp_type.as_ref().unwrap();
+
+         if lhs_type != rhs_type {
             validation_context.error_count += 1;
-            eprintln!("Encountered undefined variable `{}`", id);
-         } else if exp_type != declared_type.unwrap().0 {
+            eprintln!(
+               "Left hand side of assignment has type {} which does not match the type of the right hand side {}",
+               lhs_type.as_roland_type_info(),
+               rhs_type.as_roland_type_info(),
+            );
+         } else if !len.expression.is_lvalue() {
             validation_context.error_count += 1;
-            eprintln!("Encountered assignment to variable `{}`, but the expression type {} does not match the declared type {}", id, exp_type.as_roland_type_info(), declared_type.unwrap().0.as_roland_type_info());
-         };
+            eprintln!(
+               "Left hand side of assignment is not a valid memory location; i.e. a variable or parameter",
+            );
+         }
       }
       Statement::BlockStatement(bn) => {
          type_block(bn, validation_context, cur_procedure_locals);
@@ -361,6 +377,12 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
          do_type(e, validation_context);
 
          let (correct_type, node_type) = match un_op {
+            UnOp::Dereference => {
+               let mut new_type = e.exp_type.clone().unwrap();
+               // If this fails, it will be caught by the type matcher
+               let _ = new_type.decrement_indirection_count();
+               (TypeValidator::AnyPointer, new_type)
+            },
             UnOp::Negate => (TypeValidator::AnyInt, e.exp_type.clone().unwrap()),
             UnOp::LogicalNegate => (TypeValidator::Bool, e.exp_type.clone().unwrap()),
             UnOp::AddressOf => {

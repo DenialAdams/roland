@@ -20,7 +20,7 @@ pub enum Token {
    IntLiteral(i64),
    Plus,
    Minus,
-   Multiply,
+   MultiplyDeref,
    Divide,
    Assignment,
    Equality,
@@ -99,7 +99,7 @@ pub fn lex(input: &str) -> Result<Vec<Token>, ()> {
                }
                let _ = chars.next().unwrap();
             } else if c == '*' {
-               tokens.push(Token::Multiply);
+               tokens.push(Token::MultiplyDeref);
                let _ = chars.next().unwrap();
             } else if c == '/' {
                tokens.push(Token::Divide);

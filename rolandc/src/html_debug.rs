@@ -36,10 +36,10 @@ pub fn print_ast_as_html(program: &Program) {
 
 fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
    match statement {
-      Statement::AssignmentStatement(ident, e) => {
+      Statement::AssignmentStatement(le, e) => {
          writeln!(out, "<li><span>Assignment</span>").unwrap();
          writeln!(out, "<ul>").unwrap();
-         writeln!(out, "<li><span>{}</span>", ident).unwrap();
+         print_expression(out, le);
          print_expression(out, e);
          writeln!(out, "</ul></li>").unwrap();
       }

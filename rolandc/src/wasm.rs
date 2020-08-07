@@ -328,9 +328,15 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
 fn emit_statement(statement: &Statement, generation_context: &mut GenerationContext) {
    match statement {
-      Statement::AssignmentStatement(id, en) | Statement::VariableDeclaration(id, en, _) => {
+      Statement::AssignmentStatement(len, en) => {
+         do_emit(len, generation_context);
+         do_emit_and_load_lval(en, generation_context);
+         let val_type = en.exp_type.as_ref().unwrap();
+         store(val_type, generation_context);
+      }
+      Statement::VariableDeclaration(id, en, _) => {
          get_stack_address_of_local(id, generation_context);
-         do_emit_for_rvalue(en, generation_context);
+         do_emit_and_load_lval(en, generation_context);
          let val_type = en.exp_type.as_ref().unwrap();
          store(val_type, generation_context);
       }
@@ -345,7 +351,7 @@ fn emit_statement(statement: &Statement, generation_context: &mut GenerationCont
       Statement::IfElseStatement(en, block_1, block_2) => {
          generation_context.out.emit_if_start();
          // expression
-         do_emit_for_rvalue(en, generation_context);
+         do_emit_and_load_lval(en, generation_context);
          generation_context.out.emit_constant_instruction("i32.const 1");
          generation_context.out.close();
          // then
@@ -362,7 +368,7 @@ fn emit_statement(statement: &Statement, generation_context: &mut GenerationCont
          generation_context.out.close();
       }
       Statement::ReturnStatement(en) => {
-         do_emit_for_rvalue(en, generation_context);
+         do_emit_and_load_lval(en, generation_context);
 
          adjust_stack_function_exit(generation_context);
          generation_context.out.emit_constant_instruction("return");
@@ -370,7 +376,7 @@ fn emit_statement(statement: &Statement, generation_context: &mut GenerationCont
    }
 }
 
-fn do_emit_for_rvalue(expr_node: &ExpressionNode, generation_context: &mut GenerationContext) {
+fn do_emit_and_load_lval(expr_node: &ExpressionNode, generation_context: &mut GenerationContext) {
    do_emit(expr_node, generation_context);
 
    if expr_node.expression.is_lvalue() {
@@ -400,9 +406,9 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          generation_context.out.emit_const_i32(*len);
       }
       Expression::BinaryOperator(bin_op, e) => {
-         do_emit_for_rvalue(&e.0, generation_context);
+         do_emit_and_load_lval(&e.0, generation_context);
 
-         do_emit_for_rvalue(&e.1, generation_context);
+         do_emit_and_load_lval(&e.1, generation_context);
 
          let (wasm_type, suffix) = match e.0.exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => {
@@ -457,6 +463,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                _ => "i32",
             },
             ExpressionType::Value(ValueType::Bool) => "i32",
+            ExpressionType::Pointer(_, _) => "i32",
             _ => unreachable!(),
          };
 
@@ -466,14 +473,18 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
 
                // This operator coaxes the lvalue to an rvalue without a load
             }
+            UnOp::Dereference => {
+               do_emit(e, generation_context);
+               load(expr_node.exp_type.as_ref().unwrap(), generation_context)
+            }
             UnOp::LogicalNegate => {
-               do_emit_for_rvalue(e, generation_context);
+               do_emit_and_load_lval(e, generation_context);
 
                generation_context.out.emit_spaces();
                writeln!(generation_context.out.out, "{}.eqz", wasm_type).unwrap();
             }
             UnOp::Negate => {
-               do_emit_for_rvalue(e, generation_context);
+               do_emit_and_load_lval(e, generation_context);
 
                generation_context.out.emit_spaces();
                writeln!(generation_context.out.out, "{}.const -1", wasm_type).unwrap(); // 0xFF_FF_...
@@ -491,7 +502,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       }
       Expression::ProcedureCall(name, args) => {
          for arg in args {
-            do_emit_for_rvalue(arg, generation_context);
+            do_emit_and_load_lval(arg, generation_context);
          }
          generation_context.out.emit_call(name);
       }
