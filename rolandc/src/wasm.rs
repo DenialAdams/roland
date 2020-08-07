@@ -454,6 +454,12 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             BinOp::LessThanOrEqualTo => {
                writeln!(generation_context.out.out, "{}.le{}", wasm_type, suffix).unwrap();
             }
+            BinOp::BitwiseAnd => {
+               writeln!(generation_context.out.out, "{}.and", wasm_type).unwrap();
+            }
+            BinOp::BitwiseOr => {
+               writeln!(generation_context.out.out, "{}.or", wasm_type).unwrap();
+            }
          }
       }
       Expression::UnaryOperator(un_op, e) => {

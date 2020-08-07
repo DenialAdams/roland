@@ -310,7 +310,7 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             | BinOp::GreaterThanOrEqualTo
             | BinOp::LessThan
             | BinOp::LessThanOrEqualTo => &[TypeValidator::AnyInt],
-            BinOp::Equality | BinOp::NotEquality => &[TypeValidator::AnyInt, TypeValidator::Bool],
+            BinOp::Equality | BinOp::NotEquality | BinOp::BitwiseAnd | BinOp::BitwiseOr => &[TypeValidator::AnyInt, TypeValidator::Bool],
          };
 
          // Type inference
@@ -361,7 +361,7 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             ExpressionType::Value(ValueType::CompileError)
          } else {
             match bin_op {
-               BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide => lhs_type.clone(),
+               BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide | BinOp::BitwiseAnd | BinOp::BitwiseOr => lhs_type.clone(),
                BinOp::Equality
                | BinOp::NotEquality
                | BinOp::GreaterThan

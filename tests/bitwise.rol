@@ -1,0 +1,11 @@
+proc main() {
+   print_bool(true | false);
+   print_bool(true | true);
+   print_bool(true & false);
+   print_bool(true & true);
+   let x: u8 = 123;
+   print_bool(x & 0 == 0);
+   print_bool(x | 0 == 123);
+   print_bool(x & 255 == 123);
+   print_bool(x | 255 == 255);
+}

@@ -64,6 +64,8 @@ pub enum BinOp {
    LessThan,
    GreaterThanOrEqualTo,
    LessThanOrEqualTo,
+   BitwiseAnd,
+   BitwiseOr,
 }
 
 #[derive(Debug, PartialEq)]
@@ -228,7 +230,7 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
          | Some(Token::IntLiteral(_))
          | Some(Token::OpenParen)
          | Some(Token::Exclam)
-         | Some(Token::Reference)
+         | Some(Token::Amp)
          | Some(Token::MultiplyDeref)
          | Some(Token::Identifier(_))
          | Some(Token::Minus) => {
@@ -329,7 +331,7 @@ fn parse_arguments(l: &mut Lexer) -> Result<Vec<ExpressionNode>, ()> {
          | Some(Token::StringLiteral(_))
          | Some(Token::IntLiteral(_))
          | Some(Token::OpenParen)
-         | Some(Token::Reference)
+         | Some(Token::Amp)
          | Some(Token::Exclam)
          | Some(Token::MultiplyDeref)
          | Some(Token::Minus) => {
@@ -363,7 +365,7 @@ fn parse_expression(l: &mut Lexer) -> Result<ExpressionNode, ()> {
 
 fn parse_type(l: &mut Lexer) -> Result<ExpressionType, ()> {
    let mut ptr_count: usize = 0;
-   while let Some(&Token::Reference) = l.peek() {
+   while let Some(&Token::Amp) = l.peek() {
       ptr_count += 1;
       let _ = l.next();
    }
@@ -394,7 +396,7 @@ fn parse_type(l: &mut Lexer) -> Result<ExpressionType, ()> {
 
 fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
    let lhs = l.next();
-   let lhs = match lhs {
+   let mut lhs = match lhs {
       Some(Token::BoolLiteral(x)) => Expression::BoolLiteral(x),
       Some(Token::IntLiteral(x)) => Expression::IntLiteral(x),
       Some(Token::StringLiteral(x)) => Expression::StringLiteral(x),
@@ -423,7 +425,7 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
          let rhs = pratt(l, r_bp)?;
          Expression::UnaryOperator(UnOp::LogicalNegate, Box::new(wrap(rhs)))
       }
-      Some(x @ Token::Reference) => {
+      Some(x @ Token::Amp) => {
          let ((), r_bp) = prefix_binding_power(&x);
          let rhs = pratt(l, r_bp)?;
          Expression::UnaryOperator(UnOp::AddressOf, Box::new(wrap(rhs)))
@@ -454,6 +456,8 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
          | Some(x @ &Token::GreaterThan)
          | Some(x @ &Token::GreaterThanOrEqualTo)
          | Some(x @ &Token::Equality)
+         | Some(x @ &Token::Pipe)
+         | Some(x @ &Token::Amp)
          | Some(x @ &Token::NotEquality) => x.clone(),
          _ => break,
       };
@@ -469,6 +473,8 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
       let bin_op = match op {
          Token::Plus => BinOp::Add,
          Token::Minus => BinOp::Subtract,
+         Token::Pipe => BinOp::BitwiseOr,
+         Token::Amp => BinOp::BitwiseAnd,
          Token::MultiplyDeref => BinOp::Multiply,
          Token::Divide => BinOp::Divide,
          Token::GreaterThan => BinOp::GreaterThan,
@@ -480,7 +486,7 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
          _ => unreachable!(),
       };
 
-      return Ok(Expression::BinaryOperator(bin_op, Box::new((wrap(lhs), wrap(rhs)))));
+      lhs = Expression::BinaryOperator(bin_op, Box::new((wrap(lhs), wrap(rhs))));
    }
 
    Ok(lhs)
@@ -488,10 +494,10 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
 
 fn prefix_binding_power(op: &Token) -> ((), u8) {
    match op {
-      Token::Exclam => ((), 6),
-      Token::Minus => ((), 6),
-      Token::Reference => ((), 6),
-      Token::MultiplyDeref => ((), 6),
+      Token::Exclam => ((), 10),
+      Token::Minus => ((), 10),
+      Token::Amp => ((), 10),
+      Token::MultiplyDeref => ((), 10),
       _ => panic!("bad op: {:?}", op),
    }
 }
@@ -504,8 +510,10 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
       | Token::GreaterThanOrEqualTo
       | Token::LessThan
       | Token::LessThanOrEqualTo => (1, 1),
-      Token::Plus | Token::Minus => (2, 3),
-      Token::MultiplyDeref | Token::Divide => (4, 5),
+      Token::Pipe => (2, 3),
+      Token::Amp => (4, 5),
+      Token::Plus | Token::Minus => (6, 7),
+      Token::MultiplyDeref | Token::Divide => (8, 9),
       _ => unreachable!(),
    }
 }
