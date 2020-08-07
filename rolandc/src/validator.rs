@@ -182,9 +182,7 @@ fn type_statement(
             );
          } else if !len.expression.is_lvalue() {
             validation_context.error_count += 1;
-            eprintln!(
-               "Left hand side of assignment is not a valid memory location; i.e. a variable or parameter",
-            );
+            eprintln!("Left hand side of assignment is not a valid memory location; i.e. a variable or parameter",);
          }
       }
       Statement::BlockStatement(bn) => {
@@ -310,7 +308,9 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             | BinOp::GreaterThanOrEqualTo
             | BinOp::LessThan
             | BinOp::LessThanOrEqualTo => &[TypeValidator::AnyInt],
-            BinOp::Equality | BinOp::NotEquality | BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor => &[TypeValidator::AnyInt, TypeValidator::Bool],
+            BinOp::Equality | BinOp::NotEquality | BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor => {
+               &[TypeValidator::AnyInt, TypeValidator::Bool]
+            }
          };
 
          // Type inference
@@ -361,7 +361,13 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             ExpressionType::Value(ValueType::CompileError)
          } else {
             match bin_op {
-               BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide | BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor => lhs_type.clone(),
+               BinOp::Add
+               | BinOp::Subtract
+               | BinOp::Multiply
+               | BinOp::Divide
+               | BinOp::BitwiseAnd
+               | BinOp::BitwiseOr
+               | BinOp::BitwiseXor => lhs_type.clone(),
                BinOp::Equality
                | BinOp::NotEquality
                | BinOp::GreaterThan
@@ -382,7 +388,7 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
                // If this fails, it will be caught by the type matcher
                let _ = new_type.decrement_indirection_count();
                (TypeValidator::AnyPointer, new_type)
-            },
+            }
             UnOp::Negate => (TypeValidator::AnyInt, e.exp_type.clone().unwrap()),
             UnOp::LogicalNegate => (TypeValidator::Bool, e.exp_type.clone().unwrap()),
             UnOp::AddressOf => {

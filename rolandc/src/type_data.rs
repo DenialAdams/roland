@@ -113,9 +113,7 @@ impl ExpressionType {
 
    pub fn decrement_indirection_count(&mut self) -> Result<(), ()> {
       match self {
-         ExpressionType::Value(_) => {
-            Err(())
-         }
+         ExpressionType::Value(_) => Err(()),
          ExpressionType::Pointer(1, v) => {
             // UGH this clone is so un-necessary, i don't know how to fix safely
             // TODO
@@ -142,14 +140,14 @@ impl ValueType {
       match self {
          ValueType::UnknownInt => "?? Int",
          ValueType::Int(x) => match (x.signed, &x.width) {
-               (true, IntWidth::Eight) => "i64",
-               (true, IntWidth::Four) => "i32",
-               (true, IntWidth::Two) => "i16",
-               (true, IntWidth::One) => "i8",
-               (false, IntWidth::Eight) => "u64",
-               (false, IntWidth::Four) => "u32",
-               (false, IntWidth::Two) => "u16",
-               (false, IntWidth::One) => "u8",
+            (true, IntWidth::Eight) => "i64",
+            (true, IntWidth::Four) => "i32",
+            (true, IntWidth::Two) => "i16",
+            (true, IntWidth::One) => "i8",
+            (false, IntWidth::Eight) => "u64",
+            (false, IntWidth::Four) => "u32",
+            (false, IntWidth::Two) => "u16",
+            (false, IntWidth::One) => "u8",
          },
          ValueType::String => "String",
          ValueType::Bool => "bool",
