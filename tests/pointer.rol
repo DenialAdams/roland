@@ -3,6 +3,7 @@ proc main() {
    let y = &x;
    mutato(y);
    print_bool(x == 3);
+   print_bool(*y == x);
 }
 
 proc mutato(arg: &u8) {

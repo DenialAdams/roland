@@ -88,6 +88,15 @@ pub enum Expression {
    UnaryOperator(UnOp, Box<ExpressionNode>),
 }
 
+impl Expression {
+   pub fn is_lvalue(&self) -> bool {
+      match self {
+         Expression::Variable(_) => true,
+         _ => false,
+      }
+   }
+}
+
 pub enum Statement {
    AssignmentStatement(String, ExpressionNode),
    BlockStatement(BlockNode),

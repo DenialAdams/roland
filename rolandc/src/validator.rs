@@ -370,12 +370,6 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             }
          };
 
-         let inner_exp_is_variable = if let Expression::Variable(_) = e.expression {
-            true
-         } else {
-            false
-         };
-
          let result_type = if e.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::CompileError) {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
@@ -388,7 +382,7 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
                e.exp_type.as_ref().unwrap().as_roland_type_info()
             );
             ExpressionType::Value(ValueType::CompileError)
-         } else if *un_op == UnOp::AddressOf && !inner_exp_is_variable {
+         } else if *un_op == UnOp::AddressOf && !e.expression.is_lvalue() {
             validation_context.error_count += 1;
             eprintln!("A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter");
             ExpressionType::Value(ValueType::CompileError)

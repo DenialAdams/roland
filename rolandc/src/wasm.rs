@@ -330,7 +330,7 @@ fn emit_statement(statement: &Statement, generation_context: &mut GenerationCont
    match statement {
       Statement::AssignmentStatement(id, en) | Statement::VariableDeclaration(id, en, _) => {
          get_stack_address_of_local(id, generation_context);
-         do_emit(en, generation_context);
+         do_emit_for_rvalue(en, generation_context);
          let val_type = en.exp_type.as_ref().unwrap();
          store(val_type, generation_context);
       }
@@ -345,7 +345,7 @@ fn emit_statement(statement: &Statement, generation_context: &mut GenerationCont
       Statement::IfElseStatement(en, block_1, block_2) => {
          generation_context.out.emit_if_start();
          // expression
-         do_emit(en, generation_context);
+         do_emit_for_rvalue(en, generation_context);
          generation_context.out.emit_constant_instruction("i32.const 1");
          generation_context.out.close();
          // then
@@ -362,10 +362,19 @@ fn emit_statement(statement: &Statement, generation_context: &mut GenerationCont
          generation_context.out.close();
       }
       Statement::ReturnStatement(en) => {
-         do_emit(en, generation_context);
+         do_emit_for_rvalue(en, generation_context);
+
          adjust_stack_function_exit(generation_context);
          generation_context.out.emit_constant_instruction("return");
       }
+   }
+}
+
+fn do_emit_for_rvalue(expr_node: &ExpressionNode, generation_context: &mut GenerationContext) {
+   do_emit(expr_node, generation_context);
+
+   if expr_node.expression.is_lvalue() {
+      load(expr_node.exp_type.as_ref().unwrap(), generation_context)
    }
 }
 
@@ -391,8 +400,10 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          generation_context.out.emit_const_i32(*len);
       }
       Expression::BinaryOperator(bin_op, e) => {
-         do_emit(&e.0, generation_context);
-         do_emit(&e.1, generation_context);
+         do_emit_for_rvalue(&e.0, generation_context);
+
+         do_emit_for_rvalue(&e.1, generation_context);
+
          let (wasm_type, suffix) = match e.0.exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => {
                let wasm_type = match x.width {
@@ -440,7 +451,6 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
       }
       Expression::UnaryOperator(un_op, e) => {
-         do_emit(e, generation_context);
          let wasm_type = match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => match x.width {
                IntWidth::Eight => "i64",
@@ -449,24 +459,22 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             ExpressionType::Value(ValueType::Bool) => "i32",
             _ => unreachable!(),
          };
+
          match un_op {
             UnOp::AddressOf => {
-               // Assertion: e must be a variable expression due to validation
-               let id = match &e.expression {
-                  Expression::Variable(x) => x,
-                  _ => unreachable!(),
-               };
-               // we need to drop the value we just loaded
-               // TODO: this is really silly, right? should we just not emit the load at all
-               // (but that's not fun logic, maybe better handled by optimizing IR)
-               generation_context.out.emit_constant_instruction("drop");
-               get_stack_address_of_local(id, generation_context);
+               do_emit(e, generation_context);
+
+               // This operator coaxes the lvalue to an rvalue without a load
             }
             UnOp::LogicalNegate => {
+               do_emit_for_rvalue(e, generation_context);
+
                generation_context.out.emit_spaces();
                writeln!(generation_context.out.out, "{}.eqz", wasm_type).unwrap();
             }
             UnOp::Negate => {
+               do_emit_for_rvalue(e, generation_context);
+
                generation_context.out.emit_spaces();
                writeln!(generation_context.out.out, "{}.const -1", wasm_type).unwrap(); // 0xFF_FF_...
                generation_context.out.emit_spaces();
@@ -480,39 +488,10 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       }
       Expression::Variable(id) => {
          get_stack_address_of_local(id, generation_context);
-
-         let val_type = expr_node.exp_type.as_ref().unwrap();
-         generation_context.out.emit_spaces();
-         if sizeof_type_mem(val_type) == sizeof_type_wasm(val_type) {
-            writeln!(generation_context.out.out, "{}.load", type_to_s(val_type)).unwrap();
-         } else {
-            let (load_suffx, sign_suffix) = match val_type {
-               ExpressionType::Value(ValueType::Int(x)) => {
-                  let load_suffx = match x.width {
-                     IntWidth::Eight => "64",
-                     IntWidth::Four => "32",
-                     IntWidth::Two => "16",
-                     IntWidth::One => "8",
-                  };
-                  let sign_suffix = if x.signed { "_s" } else { "_u" };
-                  (load_suffx, sign_suffix)
-               }
-               ExpressionType::Value(ValueType::Bool) => ("32", "_u"),
-               _ => unreachable!(),
-            };
-            writeln!(
-               generation_context.out.out,
-               "{}.load{}{}",
-               type_to_s(val_type),
-               load_suffx,
-               sign_suffix
-            )
-            .unwrap();
-         }
       }
       Expression::ProcedureCall(name, args) => {
          for arg in args {
-            do_emit(arg, generation_context);
+            do_emit_for_rvalue(arg, generation_context);
          }
          generation_context.out.emit_call(name);
       }
@@ -526,6 +505,36 @@ fn get_stack_address_of_local(id: &str, generation_context: &mut GenerationConte
    generation_context.out.emit_const_i32(offset);
    generation_context.out.emit_spaces();
    writeln!(generation_context.out.out, "i32.add").unwrap();
+}
+
+fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+   generation_context.out.emit_spaces();
+   if sizeof_type_mem(val_type) == sizeof_type_wasm(val_type) {
+      writeln!(generation_context.out.out, "{}.load", type_to_s(val_type)).unwrap();
+   } else {
+      let (load_suffx, sign_suffix) = match val_type {
+         ExpressionType::Value(ValueType::Int(x)) => {
+            let load_suffx = match x.width {
+               IntWidth::Eight => "64",
+               IntWidth::Four => "32",
+               IntWidth::Two => "16",
+               IntWidth::One => "8",
+            };
+            let sign_suffix = if x.signed { "_s" } else { "_u" };
+            (load_suffx, sign_suffix)
+         }
+         ExpressionType::Value(ValueType::Bool) => ("32", "_u"),
+         _ => unreachable!(),
+      };
+      writeln!(
+         generation_context.out.out,
+         "{}.load{}{}",
+         type_to_s(val_type),
+         load_suffx,
+         sign_suffix
+      )
+      .unwrap();
+   }
 }
 
 fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
