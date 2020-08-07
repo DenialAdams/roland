@@ -66,6 +66,7 @@ pub enum BinOp {
    LessThanOrEqualTo,
    BitwiseAnd,
    BitwiseOr,
+   BitwiseXor,
 }
 
 #[derive(Debug, PartialEq)]
@@ -458,6 +459,7 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
          | Some(x @ &Token::Equality)
          | Some(x @ &Token::Pipe)
          | Some(x @ &Token::Amp)
+         | Some(x @ &Token::Caret)
          | Some(x @ &Token::NotEquality) => x.clone(),
          _ => break,
       };
@@ -483,6 +485,7 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
          Token::LessThanOrEqualTo => BinOp::LessThanOrEqualTo,
          Token::Equality => BinOp::Equality,
          Token::NotEquality => BinOp::NotEquality,
+         Token::Caret => BinOp::BitwiseXor,
          _ => unreachable!(),
       };
 
@@ -494,10 +497,10 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
 
 fn prefix_binding_power(op: &Token) -> ((), u8) {
    match op {
-      Token::Exclam => ((), 10),
-      Token::Minus => ((), 10),
-      Token::Amp => ((), 10),
-      Token::MultiplyDeref => ((), 10),
+      Token::Exclam => ((), 12),
+      Token::Minus => ((), 12),
+      Token::Amp => ((), 12),
+      Token::MultiplyDeref => ((), 12),
       _ => panic!("bad op: {:?}", op),
    }
 }
@@ -511,9 +514,10 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
       | Token::LessThan
       | Token::LessThanOrEqualTo => (1, 1),
       Token::Pipe => (2, 3),
-      Token::Amp => (4, 5),
-      Token::Plus | Token::Minus => (6, 7),
-      Token::MultiplyDeref | Token::Divide => (8, 9),
+      Token::Caret => (4, 5),
+      Token::Amp => (6, 7),
+      Token::Plus | Token::Minus => (8, 9),
+      Token::MultiplyDeref | Token::Divide => (10, 11),
       _ => unreachable!(),
    }
 }

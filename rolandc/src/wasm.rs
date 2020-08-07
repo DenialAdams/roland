@@ -460,6 +460,9 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             BinOp::BitwiseOr => {
                writeln!(generation_context.out.out, "{}.or", wasm_type).unwrap();
             }
+            BinOp::BitwiseXor => {
+               writeln!(generation_context.out.out, "{}.xor", wasm_type).unwrap();
+            }
          }
       }
       Expression::UnaryOperator(un_op, e) => {

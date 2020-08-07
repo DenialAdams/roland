@@ -12,6 +12,7 @@ pub enum Token {
    OpenParen,
    CloseParen,
    Colon,
+   Caret,
    Amp,
    Pipe,
    Semicolon,
@@ -110,6 +111,9 @@ pub fn lex(input: &str) -> Result<Vec<Token>, ()> {
                let _ = chars.next().unwrap();
             } else if c == '&' {
                tokens.push(Token::Amp);
+               let _ = chars.next().unwrap();
+            } else if c == '^' {
+               tokens.push(Token::Caret);
                let _ = chars.next().unwrap();
             } else if c == '|' {
                tokens.push(Token::Pipe);
