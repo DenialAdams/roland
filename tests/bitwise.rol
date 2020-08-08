@@ -13,4 +13,6 @@ proc main() {
    print_bool(x ^ x == 0);
    print_bool(x ^ 0 == 123);
    print_bool(x ^ 255 == 132);
+   let y: i8 = 2;
+   print_bool(!y == -3);
 }

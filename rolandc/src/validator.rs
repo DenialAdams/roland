@@ -382,26 +382,26 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
       Expression::UnaryOperator(un_op, e) => {
          do_type(e, validation_context);
 
-         let (correct_type, node_type) = match un_op {
+         let (correct_type, node_type): (&[TypeValidator], _) = match un_op {
             UnOp::Dereference => {
                let mut new_type = e.exp_type.clone().unwrap();
                // If this fails, it will be caught by the type matcher
                let _ = new_type.decrement_indirection_count();
-               (TypeValidator::AnyPointer, new_type)
+               (&[TypeValidator::AnyPointer], new_type)
             }
-            UnOp::Negate => (TypeValidator::AnyInt, e.exp_type.clone().unwrap()),
-            UnOp::LogicalNegate => (TypeValidator::Bool, e.exp_type.clone().unwrap()),
+            UnOp::Negate => (&[TypeValidator::AnyInt], e.exp_type.clone().unwrap()),
+            UnOp::Complement => (&[TypeValidator::Bool, TypeValidator::AnyInt], e.exp_type.clone().unwrap()),
             UnOp::AddressOf => {
                let mut new_type = e.exp_type.clone().unwrap();
                new_type.increment_indirection_count();
-               (TypeValidator::Any, new_type)
+               (&[TypeValidator::Any], new_type)
             }
          };
 
          let result_type = if e.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::CompileError) {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
-         } else if !matches(&correct_type, e.exp_type.as_ref().unwrap()) {
+         } else if !any_match(correct_type, e.exp_type.as_ref().unwrap()) {
             validation_context.error_count += 1;
             eprintln!(
                "Expected type {:?} for expression {:?}; instead got {}",

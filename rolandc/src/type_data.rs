@@ -38,13 +38,13 @@ pub const I64_TYPE: ValueType = ValueType::Int(IntType {
    width: IntWidth::Eight,
 });
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ExpressionType {
    Value(ValueType),
    Pointer(usize, ValueType),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ValueType {
    UnknownInt,
    Int(IntType),
@@ -54,7 +54,7 @@ pub enum ValueType {
    CompileError,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IntWidth {
    Eight,
    Four,
@@ -62,7 +62,7 @@ pub enum IntWidth {
    One,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IntType {
    pub signed: bool,
    pub width: IntWidth,

@@ -72,16 +72,19 @@ pub enum BinOp {
 #[derive(Debug, PartialEq)]
 pub enum UnOp {
    Negate,
-   LogicalNegate,
+   Complement,
    AddressOf,
    Dereference,
 }
+
+#[derive(Debug)]
 
 pub struct ExpressionNode {
    pub expression: Expression,
    pub exp_type: Option<ExpressionType>,
 }
 
+#[derive(Debug)]
 pub enum Expression {
    ProcedureCall(String, Vec<ExpressionNode>),
    BoolLiteral(bool),
@@ -396,6 +399,7 @@ fn parse_type(l: &mut Lexer) -> Result<ExpressionType, ()> {
 }
 
 fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
+   println!("{:?}", l.peek());
    let lhs = l.next();
    let mut lhs = match lhs {
       Some(Token::BoolLiteral(x)) => Expression::BoolLiteral(x),
@@ -424,7 +428,7 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
       Some(x @ Token::Exclam) => {
          let ((), r_bp) = prefix_binding_power(&x);
          let rhs = pratt(l, r_bp)?;
-         Expression::UnaryOperator(UnOp::LogicalNegate, Box::new(wrap(rhs)))
+         Expression::UnaryOperator(UnOp::Complement, Box::new(wrap(rhs)))
       }
       Some(x @ Token::Amp) => {
          let ((), r_bp) = prefix_binding_power(&x);
@@ -447,6 +451,7 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
 
    loop {
       // TODO: use something like discriminant, or maybe better a new enum type so we avoid the clone
+      println!("{:?}", l.peek());
       let op: Token = match l.peek() {
          Some(x @ &Token::Plus)
          | Some(x @ &Token::Minus)

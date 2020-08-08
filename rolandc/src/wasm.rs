@@ -486,19 +486,21 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                do_emit(e, generation_context);
                load(expr_node.exp_type.as_ref().unwrap(), generation_context)
             }
-            UnOp::LogicalNegate => {
+            UnOp::Complement => {
                do_emit_and_load_lval(e, generation_context);
 
-               generation_context.out.emit_spaces();
-               writeln!(generation_context.out.out, "{}.eqz", wasm_type).unwrap();
+               if *e.exp_type.as_ref().unwrap() == ExpressionType::Value(ValueType::Bool) {
+                  generation_context.out.emit_spaces();
+                  writeln!(generation_context.out.out, "{}.eqz", wasm_type).unwrap();
+               } else {
+                  complement_val(e.exp_type.as_ref().unwrap(), wasm_type, generation_context);
+
+               }
             }
             UnOp::Negate => {
                do_emit_and_load_lval(e, generation_context);
 
-               generation_context.out.emit_spaces();
-               writeln!(generation_context.out.out, "{}.const -1", wasm_type).unwrap(); // 0xFF_FF_...
-               generation_context.out.emit_spaces();
-               writeln!(generation_context.out.out, "{}.xor", wasm_type).unwrap();
+               complement_val(e.exp_type.as_ref().unwrap(), wasm_type, generation_context);
                generation_context.out.emit_spaces();
                writeln!(generation_context.out.out, "{}.const 1", wasm_type).unwrap();
                generation_context.out.emit_spaces();
@@ -516,6 +518,24 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          generation_context.out.emit_call(name);
       }
    }
+}
+
+fn complement_val(t_type: &ExpressionType, wasm_type: &str, generation_context: &mut GenerationContext) {
+   let magic_const: u64 = match t_type {
+      ExpressionType::Value(crate::type_data::U8_TYPE) => std::u8::MAX as u64,
+      ExpressionType::Value(crate::type_data::U16_TYPE) => std::u16::MAX as u64,
+      ExpressionType::Value(crate::type_data::U32_TYPE) => std::u32::MAX as u64,
+      ExpressionType::Value(crate::type_data::U64_TYPE) => std::u64::MAX,
+      ExpressionType::Value(crate::type_data::I8_TYPE) => std::u32::MAX as u64,
+      ExpressionType::Value(crate::type_data::I16_TYPE) => std::u32::MAX as u64,
+      ExpressionType::Value(crate::type_data::I32_TYPE) => std::u32::MAX as u64,
+      ExpressionType::Value(crate::type_data::I64_TYPE) => std::u64::MAX,
+      _ => unreachable!(),
+   };
+   generation_context.out.emit_spaces();
+   writeln!(generation_context.out.out, "{}.const {}", wasm_type, magic_const).unwrap();
+   generation_context.out.emit_spaces();
+   writeln!(generation_context.out.out, "{}.xor", wasm_type).unwrap();
 }
 
 /// Places the address of given local on the stack

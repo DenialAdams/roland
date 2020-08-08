@@ -99,7 +99,6 @@ pub fn lex(input: &str) -> Result<Vec<Token>, ()> {
                } else {
                   tokens.push(Token::Minus);
                }
-               let _ = chars.next().unwrap();
             } else if c == '*' {
                tokens.push(Token::MultiplyDeref);
                let _ = chars.next().unwrap();
