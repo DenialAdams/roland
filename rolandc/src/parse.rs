@@ -504,7 +504,7 @@ fn prefix_binding_power(op: &Token) -> ((), u8) {
       Token::Minus => ((), 12),
       Token::Amp => ((), 12),
       Token::MultiplyDeref => ((), 12),
-      _ => panic!("bad op: {:?}", op),
+      _ => unreachable!(),
    }
 }
 
