@@ -283,6 +283,9 @@ fn type_block(
 
 fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationContext) {
    match &mut expr_node.expression {
+      Expression::UnitLiteral => {
+         expr_node.exp_type = Some(ExpressionType::Value(ValueType::Unit));
+      }
       Expression::BoolLiteral(_) => {
          expr_node.exp_type = Some(ExpressionType::Value(ValueType::Bool));
       }
@@ -520,6 +523,7 @@ fn set_inferred_type(
          set_inferred_type(e_type.clone(), e, validation_context);
          expr_node.exp_type = Some(e_type);
       }
+      Expression::UnitLiteral => unreachable!(),
       Expression::Variable(_) => unreachable!(),
       Expression::ProcedureCall(_, _) => unreachable!(),
    }

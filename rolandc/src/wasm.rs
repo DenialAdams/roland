@@ -386,6 +386,7 @@ fn do_emit_and_load_lval(expr_node: &ExpressionNode, generation_context: &mut Ge
 
 fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContext) {
    match &expr_node.expression {
+      Expression::UnitLiteral => (),
       Expression::BoolLiteral(x) => {
          generation_context.out.emit_const_i32(*x as u32);
       }

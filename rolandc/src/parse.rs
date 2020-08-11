@@ -90,6 +90,7 @@ pub enum Expression {
    BoolLiteral(bool),
    StringLiteral(String),
    IntLiteral(i64),
+   UnitLiteral,
    Variable(String),
    BinaryOperator(BinOp, Box<(ExpressionNode, ExpressionNode)>),
    UnaryOperator(UnOp, Box<ExpressionNode>),
@@ -203,8 +204,14 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
          }
          Some(Token::KeywordReturn) => {
             let _ = l.next();
-            let e = parse_expression(l)?;
-            expect(l, &Token::Semicolon)?;
+            let e = if let Some(Token::Semicolon) = l.peek() {
+               let _ = l.next();
+               wrap(Expression::UnitLiteral)
+            } else {
+               let e = parse_expression(l)?;
+               expect(l, &Token::Semicolon)?;
+               e
+            };
             statements.push(Statement::ReturnStatement(e));
          }
          Some(Token::KeywordLet) => {
@@ -373,24 +380,35 @@ fn parse_type(l: &mut Lexer) -> Result<ExpressionType, ()> {
       ptr_count += 1;
       let _ = l.next();
    }
-   let type_token = expect(l, &Token::Identifier(String::from("")))?;
-   let type_s = extract_identifier(type_token);
-   let value_type = match type_s.as_ref() {
-      "bool" => ValueType::Bool,
-      "i64" => crate::type_data::I64_TYPE,
-      "i32" => crate::type_data::I32_TYPE,
-      "i16" => crate::type_data::I16_TYPE,
-      "i8" => crate::type_data::I8_TYPE,
-      "u64" => crate::type_data::U64_TYPE,
-      "u32" => crate::type_data::U32_TYPE,
-      "u16" => crate::type_data::U16_TYPE,
-      "u8" => crate::type_data::U8_TYPE,
-      "String" => ValueType::String,
-      x => {
-         eprintln!("While parsing type, got an invalid type {}", x);
-         return Err(());
+
+   let value_type = match l.peek() {
+      Some(Token::OpenParen) => {
+         let _ = l.next();
+         expect(l, &Token::CloseParen)?;
+         ValueType::Unit
+      }
+      _ => {
+         let type_token = expect(l, &Token::Identifier(String::from("")))?;
+         let type_s = extract_identifier(type_token);
+         match type_s.as_ref() {
+            "bool" => ValueType::Bool,
+            "i64" => crate::type_data::I64_TYPE,
+            "i32" => crate::type_data::I32_TYPE,
+            "i16" => crate::type_data::I16_TYPE,
+            "i8" => crate::type_data::I8_TYPE,
+            "u64" => crate::type_data::U64_TYPE,
+            "u32" => crate::type_data::U32_TYPE,
+            "u16" => crate::type_data::U16_TYPE,
+            "u8" => crate::type_data::U8_TYPE,
+            "String" => ValueType::String,
+            x => {
+               eprintln!("While parsing type, got an invalid type {}", x);
+               return Err(());
+            }
+         }
       }
    };
+
    if ptr_count > 0 {
       Ok(ExpressionType::Pointer(ptr_count, value_type))
    } else {
@@ -415,9 +433,14 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
          }
       }
       Some(Token::OpenParen) => {
-         let new_lhs = pratt(l, 0)?;
-         expect(l, &Token::CloseParen)?;
-         new_lhs
+         if let Some(&Token::CloseParen) = l.peek() {
+            let _ = l.next();
+            Expression::UnitLiteral
+         } else {
+            let new_lhs = pratt(l, 0)?;
+            expect(l, &Token::CloseParen)?;
+            new_lhs
+         }
       }
       Some(x @ Token::Minus) => {
          let ((), r_bp) = prefix_binding_power(&x);

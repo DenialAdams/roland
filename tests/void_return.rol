@@ -1,0 +1,17 @@
+proc main() {
+   a();
+   b();
+   print("finished");
+}
+
+proc a() -> () {
+   let x: i16 = 5 + 5;
+   return;
+   print("never reached");
+}
+
+proc b() {
+   let x: i16 = -10 + -10;
+   return ();
+   print("also never reached");
+}
