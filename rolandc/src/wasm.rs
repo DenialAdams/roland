@@ -576,11 +576,11 @@ fn get_stack_address_of_local(id: &str, generation_context: &mut GenerationConte
 }
 
 fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   generation_context.out.emit_spaces();
    if *val_type == ExpressionType::Value(ValueType::Unit) {
       // Drop the load address; nothing to load
       generation_context.out.emit_constant_instruction("drop");
    } else if sizeof_type_mem(val_type) == sizeof_type_wasm(val_type) {
+      generation_context.out.emit_spaces();
       writeln!(generation_context.out.out, "{}.load", type_to_s(val_type)).unwrap();
    } else {
       let (load_suffx, sign_suffix) = match val_type {
@@ -597,6 +597,7 @@ fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
          ExpressionType::Value(ValueType::Bool) => ("32", "_u"),
          _ => unreachable!(),
       };
+      generation_context.out.emit_spaces();
       writeln!(
          generation_context.out.out,
          "{}.load{}{}",
@@ -609,11 +610,11 @@ fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
 }
 
 fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   generation_context.out.emit_spaces();
    if *val_type == ExpressionType::Value(ValueType::Unit) {
       // Drop the placement address; nothing to store
       generation_context.out.emit_constant_instruction("drop");
    } else if sizeof_type_mem(val_type) == sizeof_type_wasm(val_type) {
+      generation_context.out.emit_spaces();
       writeln!(generation_context.out.out, "{}.store", type_to_s(val_type)).unwrap();
    } else {
       let load_suffx = match val_type {
@@ -629,6 +630,7 @@ fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) 
          ExpressionType::Value(ValueType::Bool) => "32",
          _ => unreachable!(),
       };
+      generation_context.out.emit_spaces();
       writeln!(
          generation_context.out.out,
          "{}.store{}",
