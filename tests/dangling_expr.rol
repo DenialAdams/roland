@@ -1,0 +1,9 @@
+proc main() {
+   a();
+}
+
+proc a() -> u8 {
+   "wasm backend bug; unused expressions must be dropped from the stack";
+   print("hello");
+   return 10;
+}

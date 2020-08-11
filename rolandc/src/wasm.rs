@@ -175,7 +175,25 @@ fn sizeof_value_type_mem(e: &ValueType) -> u32 {
       },
       ValueType::Bool => 4,
       ValueType::String => 8,
-      ValueType::Unit => unreachable!(),
+      ValueType::Unit => 0,
+      ValueType::CompileError => unreachable!(),
+   }
+}
+
+fn sizeof_type_locals(e: &ExpressionType) -> u32 {
+   match e {
+      ExpressionType::Value(x) => sizeof_value_type_locals(x),
+      ExpressionType::Pointer(_, _) => 1,
+   }
+}
+
+fn sizeof_value_type_locals(e: &ValueType) -> u32 {
+   match e {
+      ValueType::UnknownInt => unreachable!(),
+      ValueType::Int(_) => 1,
+      ValueType::Bool => 1,
+      ValueType::String => 2,
+      ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
    }
 }
@@ -196,7 +214,7 @@ fn sizeof_value_type_wasm(e: &ValueType) -> u32 {
       },
       ValueType::Bool => 4,
       ValueType::String => 8,
-      ValueType::Unit => unreachable!(),
+      ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
    }
 }
@@ -291,7 +309,10 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
       generation_context.out.emit_function_start(
          &procedure.name,
-         procedure.parameters.iter().map(|x| (x.0.as_ref(), type_to_s(&x.1))),
+         procedure.parameters
+            .iter()
+            .filter(|x| x.1 != ExpressionType::Value(ValueType::Unit))
+            .map(|x| (x.0.as_ref(), type_to_s(&x.1))),
          type_to_result(&procedure.ret_type),
       );
 
@@ -303,6 +324,9 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
       // Copy parameters to stack memory so we can take pointers
       for param in &procedure.parameters {
+         if param.1 == ExpressionType::Value(ValueType::Unit) {
+            continue;
+         }
          get_stack_address_of_local(&param.0, &mut generation_context);
          generation_context.out.emit_get_local(&param.0);
          store(&param.1, &mut generation_context);
@@ -347,6 +371,9 @@ fn emit_statement(statement: &Statement, generation_context: &mut GenerationCont
       }
       Statement::ExpressionStatement(en) => {
          do_emit(en, generation_context);
+         for _ in 0..sizeof_type_locals(en.exp_type.as_ref().unwrap()) {
+            generation_context.out.emit_constant_instruction("drop");
+         }
       }
       Statement::IfElseStatement(en, block_1, block_2) => {
          generation_context.out.emit_if_start();
@@ -550,7 +577,10 @@ fn get_stack_address_of_local(id: &str, generation_context: &mut GenerationConte
 
 fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    generation_context.out.emit_spaces();
-   if sizeof_type_mem(val_type) == sizeof_type_wasm(val_type) {
+   if *val_type == ExpressionType::Value(ValueType::Unit) {
+      // Drop the load address; nothing to load
+      generation_context.out.emit_constant_instruction("drop");
+   } else if sizeof_type_mem(val_type) == sizeof_type_wasm(val_type) {
       writeln!(generation_context.out.out, "{}.load", type_to_s(val_type)).unwrap();
    } else {
       let (load_suffx, sign_suffix) = match val_type {
@@ -580,7 +610,10 @@ fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
 
 fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    generation_context.out.emit_spaces();
-   if sizeof_type_mem(val_type) == sizeof_type_wasm(val_type) {
+   if *val_type == ExpressionType::Value(ValueType::Unit) {
+      // Drop the placement address; nothing to store
+      generation_context.out.emit_constant_instruction("drop");
+   } else if sizeof_type_mem(val_type) == sizeof_type_wasm(val_type) {
       writeln!(generation_context.out.out, "{}.store", type_to_s(val_type)).unwrap();
    } else {
       let load_suffx = match val_type {
