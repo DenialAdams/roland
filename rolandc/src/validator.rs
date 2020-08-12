@@ -42,6 +42,7 @@ struct ValidationContext<'a> {
    variable_types: HashMap<String, (ExpressionType, u64)>,
    error_count: u64,
    block_depth: u64,
+   loop_depth: u64,
    unknown_ints: u64,
 }
 
@@ -93,6 +94,7 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
       procedure_info: &procedure_info,
       cur_procedure_info: None,
       block_depth: 0,
+      loop_depth: 0,
       unknown_ints: 0,
    };
 
@@ -187,6 +189,27 @@ fn type_statement(
       }
       Statement::BlockStatement(bn) => {
          type_block(bn, validation_context, cur_procedure_locals);
+      }
+      Statement::ContinueStatement => {
+         if validation_context.loop_depth == 0 {
+            validation_context.error_count += 1;
+            eprintln!(
+               "Continue statement can only be used in a loop"
+            );
+         }
+      }
+      Statement::BreakStatement => {
+         if validation_context.loop_depth == 0 {
+            validation_context.error_count += 1;
+            eprintln!(
+               "Break statement can only be used in a loop"
+            );
+         }
+      }
+      Statement::LoopStatement(bn) => {
+         validation_context.loop_depth += 1;
+         type_block(bn, validation_context, cur_procedure_locals);
+         validation_context.loop_depth -= 1;
       }
       Statement::ExpressionStatement(en) => {
          do_type(en, validation_context);

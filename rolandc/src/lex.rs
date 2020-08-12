@@ -7,6 +7,9 @@ pub enum Token {
    KeywordProcedureDef,
    KeywordLet,
    KeywordReturn,
+   KeywordLoop,
+   KeywordContinue,
+   KeywordBreak,
    OpenBrace,
    CloseBrace,
    OpenParen,
@@ -52,6 +55,9 @@ fn extract_keyword_or_ident(s: &str) -> Token {
       "proc" => Token::KeywordProcedureDef,
       "let" => Token::KeywordLet,
       "return" => Token::KeywordReturn,
+      "loop" => Token::KeywordLoop,
+      "break" => Token::KeywordBreak,
+      "continue" => Token::KeywordContinue,
       other => Token::Identifier(other.to_string()),
    }
 }

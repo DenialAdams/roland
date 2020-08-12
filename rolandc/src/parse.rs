@@ -109,6 +109,9 @@ impl Expression {
 pub enum Statement {
    AssignmentStatement(ExpressionNode, ExpressionNode),
    BlockStatement(BlockNode),
+   LoopStatement(BlockNode),
+   ContinueStatement,
+   BreakStatement,
    ExpressionStatement(ExpressionNode),
    IfElseStatement(ExpressionNode, BlockNode, Box<Statement>),
    ReturnStatement(ExpressionNode),
@@ -201,6 +204,21 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
          Some(Token::CloseBrace) => {
             let _ = l.next();
             break;
+         }
+         Some(Token::KeywordContinue) => {
+            let _ = l.next();
+            statements.push(Statement::ContinueStatement);
+            expect(l, &Token::Semicolon)?;
+         }
+         Some(Token::KeywordBreak) => {
+            let _ = l.next();
+            statements.push(Statement::BreakStatement);
+            expect(l, &Token::Semicolon)?;
+         }
+         Some(Token::KeywordLoop) => {
+            let _ = l.next();
+            let new_block = parse_block(l)?;
+            statements.push(Statement::LoopStatement(new_block));
          }
          Some(Token::KeywordReturn) => {
             let _ = l.next();

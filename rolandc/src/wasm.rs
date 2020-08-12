@@ -8,6 +8,8 @@ struct GenerationContext {
    literal_offsets: HashMap<String, (u32, u32)>,
    local_offsets: HashMap<String, u32>,
    sum_sizeof_locals: u32,
+   loop_depth: u64,
+   loop_counter: u64,
 }
 
 struct PrettyWasmWriter {
@@ -45,6 +47,24 @@ impl<'a> PrettyWasmWriter {
       write!(self.out, " {}", result).unwrap();
       self.out.push(b'\n');
       self.depth += 1;
+   }
+
+   fn emit_block_start(&mut self, label_val: u64) {
+      self.emit_spaces();
+      writeln!(self.out, "block $b_{}", label_val).unwrap();
+      self.depth += 1;
+   }
+
+   fn emit_loop_start(&mut self, label_val: u64) {
+      self.emit_spaces();
+      writeln!(self.out, "loop $l_{}", label_val).unwrap();
+      self.depth += 1;
+   }
+
+   fn emit_end(&mut self) {
+      self.depth -= 1;
+      self.emit_spaces();
+      writeln!(self.out, "end").unwrap();
    }
 
    fn emit_if_start(&mut self) {
@@ -229,6 +249,8 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       literal_offsets: HashMap::with_capacity(program.literals.len()),
       local_offsets: HashMap::new(),
       sum_sizeof_locals: 0,
+      loop_counter: 0,
+      loop_depth: 0,
    };
 
    generation_context.out.emit_module_start();
@@ -368,6 +390,28 @@ fn emit_statement(statement: &Statement, generation_context: &mut GenerationCont
          for statement in &bn.statements {
             emit_statement(statement, generation_context)
          }
+      }
+      Statement::LoopStatement(bn) => {
+         generation_context.loop_depth += 1;
+         generation_context.out.emit_block_start(generation_context.loop_counter);
+         generation_context.out.emit_loop_start(generation_context.loop_counter);
+         generation_context.loop_counter += 1;
+         for statement in &bn.statements {
+            emit_statement(statement, generation_context)
+         }
+         generation_context.out.emit_spaces();
+         writeln!(generation_context.out.out, "br $l_{}", generation_context.loop_counter - generation_context.loop_depth).unwrap();
+         generation_context.out.emit_end();
+         generation_context.out.emit_end();
+         generation_context.loop_depth -= 1;
+      }
+      Statement::BreakStatement => {
+         generation_context.out.emit_spaces();
+         writeln!(generation_context.out.out, "br $b_{}", generation_context.loop_counter - generation_context.loop_depth).unwrap();
+      }
+      Statement::ContinueStatement => {
+         generation_context.out.emit_spaces();
+         writeln!(generation_context.out.out, "br $l_{}", generation_context.loop_counter - generation_context.loop_depth).unwrap();
       }
       Statement::ExpressionStatement(en) => {
          do_emit(en, generation_context);

@@ -1,0 +1,16 @@
+proc main() {
+   let x: u8 = 0;
+   let y: u8 = 0;
+   loop {
+      x = x + 1;
+      if x == 10 {
+         break;
+      }
+      if x / 2 == 0 {
+         continue;
+      }
+      y = y + 1;
+   }
+   print_bool(x == 10);
+   print_bool(y == 8);
+}

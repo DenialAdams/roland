@@ -44,9 +44,26 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
          writeln!(out, "</ul></li>").unwrap();
       }
       Statement::BlockStatement(bn) => {
+         writeln!(out, "<li><span>Block</span>").unwrap();
+         writeln!(out, "</ul></li>").unwrap();
          for statement in bn.statements.iter() {
             print_statement(out, statement);
          }
+         writeln!(out, "</ul></li>").unwrap();
+      }
+      Statement::LoopStatement(bn) => {
+         writeln!(out, "<li><span>Loop</span>").unwrap();
+         writeln!(out, "<ul>").unwrap();
+         for statement in bn.statements.iter() {
+            print_statement(out, statement);
+         }
+         writeln!(out, "</ul></li>").unwrap();
+      }
+      Statement::ContinueStatement => {
+         writeln!(out, "<li><span>Continue</span>").unwrap();
+      }
+      Statement::BreakStatement => {
+         writeln!(out, "<li><span>Break</span>").unwrap();
       }
       Statement::ExpressionStatement(e) => {
          print_expression(out, e);
