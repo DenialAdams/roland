@@ -1,8 +1,8 @@
 use clap::Clap;
+use rolandc::CompilationError;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
-use rolandc::CompilationError;
 
 #[derive(Clap)]
 struct Opts {
@@ -23,7 +23,6 @@ fn main() {
       None
    };
 
-
    let compile_result = rolandc::compile(&user_program_s, ast_out.as_mut());
 
    let out_bytes = match compile_result {
@@ -35,7 +34,6 @@ fn main() {
          std::process::exit(1);
       }
    };
-
 
    opts.output.set_extension("wast");
    let mut wasm_out = File::create(opts.output).unwrap();

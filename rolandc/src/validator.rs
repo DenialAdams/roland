@@ -193,17 +193,13 @@ fn type_statement(
       Statement::ContinueStatement => {
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
-            eprintln!(
-               "Continue statement can only be used in a loop"
-            );
+            eprintln!("Continue statement can only be used in a loop");
          }
       }
       Statement::BreakStatement => {
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
-            eprintln!(
-               "Break statement can only be used in a loop"
-            );
+            eprintln!("Break statement can only be used in a loop");
          }
       }
       Statement::LoopStatement(bn) => {
@@ -416,7 +412,10 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
                (&[TypeValidator::AnyPointer], new_type)
             }
             UnOp::Negate => (&[TypeValidator::AnyInt], e.exp_type.clone().unwrap()),
-            UnOp::Complement => (&[TypeValidator::Bool, TypeValidator::AnyInt], e.exp_type.clone().unwrap()),
+            UnOp::Complement => (
+               &[TypeValidator::Bool, TypeValidator::AnyInt],
+               e.exp_type.clone().unwrap(),
+            ),
             UnOp::AddressOf => {
                let mut new_type = e.exp_type.clone().unwrap();
                new_type.increment_indirection_count();

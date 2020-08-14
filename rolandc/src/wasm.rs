@@ -331,7 +331,8 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
       generation_context.out.emit_function_start(
          &procedure.name,
-         procedure.parameters
+         procedure
+            .parameters
             .iter()
             .filter(|x| x.1 != ExpressionType::Value(ValueType::Unit))
             .map(|x| (x.0.as_ref(), type_to_s(&x.1))),
@@ -400,18 +401,33 @@ fn emit_statement(statement: &Statement, generation_context: &mut GenerationCont
             emit_statement(statement, generation_context)
          }
          generation_context.out.emit_spaces();
-         writeln!(generation_context.out.out, "br $l_{}", generation_context.loop_counter - generation_context.loop_depth).unwrap();
+         writeln!(
+            generation_context.out.out,
+            "br $l_{}",
+            generation_context.loop_counter - generation_context.loop_depth
+         )
+         .unwrap();
          generation_context.out.emit_end();
          generation_context.out.emit_end();
          generation_context.loop_depth -= 1;
       }
       Statement::BreakStatement => {
          generation_context.out.emit_spaces();
-         writeln!(generation_context.out.out, "br $b_{}", generation_context.loop_counter - generation_context.loop_depth).unwrap();
+         writeln!(
+            generation_context.out.out,
+            "br $b_{}",
+            generation_context.loop_counter - generation_context.loop_depth
+         )
+         .unwrap();
       }
       Statement::ContinueStatement => {
          generation_context.out.emit_spaces();
-         writeln!(generation_context.out.out, "br $l_{}", generation_context.loop_counter - generation_context.loop_depth).unwrap();
+         writeln!(
+            generation_context.out.out,
+            "br $l_{}",
+            generation_context.loop_counter - generation_context.loop_depth
+         )
+         .unwrap();
       }
       Statement::ExpressionStatement(en) => {
          do_emit(en, generation_context);
@@ -566,7 +582,6 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                   writeln!(generation_context.out.out, "{}.eqz", wasm_type).unwrap();
                } else {
                   complement_val(e.exp_type.as_ref().unwrap(), wasm_type, generation_context);
-
                }
             }
             UnOp::Negate => {
