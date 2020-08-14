@@ -1,6 +1,5 @@
 use crate::parse::{Expression, ExpressionNode, Program, Statement};
-use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::Write;
 
 const HTML_HEADER: &'static str = "<!DOCTYPE HTML>
 <html lang=\"en\">
@@ -11,9 +10,7 @@ const HTML_HEADER: &'static str = "<!DOCTYPE HTML>
 </head>
 <body>";
 
-pub fn print_ast_as_html(program: &Program) {
-   let out_f = File::create("ast.html").unwrap();
-   let mut out = BufWriter::new(out_f);
+pub fn print_ast_as_html<W: Write>(out: &mut W, program: &Program) {
    writeln!(out, "{}", HTML_HEADER).unwrap();
    writeln!(out, "<ul class=\"tree\">").unwrap();
    writeln!(out, "<li><span>Program</span>").unwrap();
@@ -23,7 +20,7 @@ pub fn print_ast_as_html(program: &Program) {
       writeln!(out, "<li><span>{} «{}»</span>", label, procedure.name).unwrap();
       writeln!(out, "<ul>").unwrap();
       for statement in procedure.block.statements.iter() {
-         print_statement(&mut out, statement);
+         print_statement(out, statement);
       }
       writeln!(out, "</ul></li>").unwrap();
    }
@@ -34,7 +31,7 @@ pub fn print_ast_as_html(program: &Program) {
    writeln!(out, "</html>").unwrap();
 }
 
-fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
+fn print_statement<W: Write>(out: &mut W, statement: &Statement) {
    match statement {
       Statement::AssignmentStatement(le, e) => {
          writeln!(out, "<li><span>Assignment</span>").unwrap();
@@ -45,7 +42,7 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
       }
       Statement::BlockStatement(bn) => {
          writeln!(out, "<li><span>Block</span>").unwrap();
-         writeln!(out, "</ul></li>").unwrap();
+         writeln!(out, "<ul>").unwrap();
          for statement in bn.statements.iter() {
             print_statement(out, statement);
          }
@@ -60,10 +57,10 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
          writeln!(out, "</ul></li>").unwrap();
       }
       Statement::ContinueStatement => {
-         writeln!(out, "<li><span>Continue</span>").unwrap();
+         writeln!(out, "<li><span>Continue</span></li>").unwrap();
       }
       Statement::BreakStatement => {
-         writeln!(out, "<li><span>Break</span>").unwrap();
+         writeln!(out, "<li><span>Break</span></li>").unwrap();
       }
       Statement::ExpressionStatement(e) => {
          print_expression(out, e);
@@ -94,7 +91,7 @@ fn print_statement(out: &mut BufWriter<File>, statement: &Statement) {
    }
 }
 
-fn print_expression(out: &mut BufWriter<File>, expression_node: &ExpressionNode) {
+fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode) {
    let type_text = match &expression_node.exp_type {
       Some(x) => format!("<br><span class=\"type\">{}</span>", x.as_roland_type_info()),
       None => "".to_string(),

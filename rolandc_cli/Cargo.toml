@@ -1,7 +1,9 @@
 [package]
-name = "rolandc"
+name = "rolandc_cli"
 version = "0.1.0"
 authors = ["Richard McCormack <brick@brick.codes>"]
 edition = "2018"
 
 [dependencies]
+clap = "3.0.0-beta.1"
+rolandc = { path = "../rolandc" }

@@ -1,8 +1,9 @@
 [workspace]
 
 members = [
-   "rolandc",
    "roland_test_runner",
+   "rolandc",
+   "rolandc_cli",
 ]
 
 [profile.release]

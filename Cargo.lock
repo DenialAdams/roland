@@ -264,8 +264,13 @@ dependencies = [
 [[package]]
 name = "rolandc"
 version = "0.1.0"
+
+[[package]]
+name = "rolandc_cli"
+version = "0.1.0"
 dependencies = [
  "clap 3.0.0-beta.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rolandc 0.1.0",
 ]
 
 [[package]]
