@@ -1,0 +1,10 @@
+[package]
+name = "rolandc_wasm"
+version = "0.1.0"
+authors = ["Richard McCormack <brick@brick.codes>"]
+edition = "2018"
+
+[dependencies]
+rolandc = { path = "../rolandc" }
+wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"

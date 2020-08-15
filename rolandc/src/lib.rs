@@ -11,7 +11,7 @@ use std::io::Write;
 pub enum CompilationError {
    Lex,
    Parse,
-   Sematic(u64),
+   Semantic(u64),
 }
 
 pub fn compile<E: Write, A: Write>(
@@ -28,7 +28,7 @@ pub fn compile<E: Write, A: Write>(
       html_debug::print_ast_as_html(w, &user_program);
    }
    if err_count > 0 {
-      return Err(CompilationError::Sematic(err_count));
+      return Err(CompilationError::Semantic(err_count));
    }
    Ok(wasm::emit_wasm(&user_program))
 }
