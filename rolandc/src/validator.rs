@@ -83,7 +83,8 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
                err_stream,
                "Encountered duplicate procedures/functions with the same name `{}`",
                procedure.name
-            ).unwrap();
+            )
+            .unwrap();
          }
          None => (),
       }
@@ -105,7 +106,11 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       writeln!(err_stream, "A procedure with the name `main` must be present").unwrap();
    } else if validation_context.procedure_info.get("main").unwrap().ret_type != ExpressionType::Value(ValueType::Unit) {
       validation_context.error_count += 1;
-      writeln!(err_stream, "`main` is a special procedure and is not allowed to return a value").unwrap();
+      writeln!(
+         err_stream,
+         "`main` is a special procedure and is not allowed to return a value"
+      )
+      .unwrap();
    }
 
    // We won't proceed with type checking because there could be false positives due to
@@ -126,7 +131,12 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          procedure.locals.insert(parameter.0.clone(), parameter.1.clone());
       }
 
-      type_block(err_stream, &mut procedure.block, &mut validation_context, &mut procedure.locals);
+      type_block(
+         err_stream,
+         &mut procedure.block,
+         &mut validation_context,
+         &mut procedure.locals,
+      );
 
       // Ensure that the last statement is a return statement
       // (it has already been type checked, so we don't have to check that)
@@ -140,7 +150,8 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
                "Procedure/function `{}` is declared to return type {} but is missing a final return statement",
                procedure.name,
                x.as_roland_type_info()
-            ).unwrap();
+            )
+            .unwrap();
          }
       }
    }
@@ -151,7 +162,8 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          err_stream,
          "We weren't able to determine the types of {} int literals",
          validation_context.unknown_ints
-      ).unwrap();
+      )
+      .unwrap();
    }
 
    program.literals = validation_context.string_literals;
@@ -187,10 +199,15 @@ fn type_statement<W: Write>(
                "Left hand side of assignment has type {} which does not match the type of the right hand side {}",
                lhs_type.as_roland_type_info(),
                rhs_type.as_roland_type_info(),
-            ).unwrap();
+            )
+            .unwrap();
          } else if !len.expression.is_lvalue() {
             validation_context.error_count += 1;
-            writeln!(err_stream, "Left hand side of assignment is not a valid memory location; i.e. a variable or parameter").unwrap();
+            writeln!(
+               err_stream,
+               "Left hand side of assignment is not a valid memory location; i.e. a variable or parameter"
+            )
+            .unwrap();
          }
       }
       Statement::BlockStatement(bn) => {
@@ -229,7 +246,8 @@ fn type_statement<W: Write>(
                err_stream,
                "Value of if expression must be a bool; instead got {}",
                en.exp_type.as_ref().unwrap().as_roland_type_info()
-            ).unwrap();
+            )
+            .unwrap();
          }
       }
       Statement::ReturnStatement(en) => {
@@ -252,7 +270,8 @@ fn type_statement<W: Write>(
                "Value of return statement must match declared return type {}; got {}",
                cur_procedure_info.ret_type.as_roland_type_info(),
                en.exp_type.as_ref().unwrap().as_roland_type_info()
-            ).unwrap();
+            )
+            .unwrap();
          }
       }
       Statement::VariableDeclaration(id, en, dt) => {
@@ -272,7 +291,8 @@ fn type_statement<W: Write>(
                "Declared type {} does not match actual expression type {}",
                dt.as_ref().unwrap().as_roland_type_info(),
                en.exp_type.as_ref().unwrap().as_roland_type_info()
-            ).unwrap();
+            )
+            .unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else {
             en.exp_type.clone().unwrap()
@@ -280,7 +300,12 @@ fn type_statement<W: Write>(
 
          if validation_context.variable_types.contains_key(id) {
             validation_context.error_count += 1;
-            writeln!(err_stream, "Variable shadowing is not supported at this time (`{}`)", id).unwrap();
+            writeln!(
+               err_stream,
+               "Variable shadowing is not supported at this time (`{}`)",
+               id
+            )
+            .unwrap();
          } else {
             validation_context.variable_types.insert(
                id.clone(),
@@ -372,7 +397,8 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                bin_op,
                correct_arg_types,
                lhs_type.as_roland_type_info()
-            ).unwrap();
+            )
+            .unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_arg_types, rhs_type) {
             validation_context.error_count += 1;
@@ -382,7 +408,8 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                bin_op,
                correct_arg_types,
                rhs_type.as_roland_type_info()
-            ).unwrap();
+            )
+            .unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else if lhs_type != rhs_type {
             validation_context.error_count += 1;
@@ -392,7 +419,8 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                bin_op,
                lhs_type.as_roland_type_info(),
                rhs_type.as_roland_type_info()
-            ).unwrap();
+            )
+            .unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else {
             match bin_op {
@@ -447,11 +475,16 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                correct_type,
                un_op,
                e.exp_type.as_ref().unwrap().as_roland_type_info()
-            ).unwrap();
+            )
+            .unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf && !e.expression.is_lvalue() {
             validation_context.error_count += 1;
-            writeln!(err_stream, "A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter").unwrap();
+            writeln!(
+               err_stream,
+               "A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter"
+            )
+            .unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else {
             node_type
@@ -480,7 +513,11 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
 
          if name == "main" {
             validation_context.error_count += 1;
-            writeln!(err_stream, "`main` is a special procedure and is not allowed to be called").unwrap();
+            writeln!(
+               err_stream,
+               "`main` is a special procedure and is not allowed to be called"
+            )
+            .unwrap();
          }
 
          match validation_context.procedure_info.get(name) {
@@ -489,7 +526,12 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
 
                if validation_context.cur_procedure_info.unwrap().pure && !procedure_info.pure {
                   validation_context.error_count += 1;
-                  writeln!(err_stream, "Encountered call to procedure `{}` (impure) in func (pure)", name).unwrap();
+                  writeln!(
+                     err_stream,
+                     "Encountered call to procedure `{}` (impure) in func (pure)",
+                     name
+                  )
+                  .unwrap();
                }
 
                if procedure_info.parameters.len() != args.len() {
@@ -500,7 +542,8 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                      name,
                      procedure_info.parameters.len(),
                      args.len()
-                  ).unwrap();
+                  )
+                  .unwrap();
                // We shortcircuit here, because there will likely be lots of mistmatched types if an arg was forgotten
                } else {
                   let actual_types = args.iter_mut();
@@ -522,14 +565,20 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                            name,
                            actual_type.as_roland_type_info(),
                            expected.as_roland_type_info()
-                        ).unwrap();
+                        )
+                        .unwrap();
                      }
                   }
                }
             }
             None => {
                validation_context.error_count += 1;
-               writeln!(err_stream, "Encountered call to undefined procedure/function `{}`", name).unwrap();
+               writeln!(
+                  err_stream,
+                  "Encountered call to undefined procedure/function `{}`",
+                  name
+               )
+               .unwrap();
                expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
             }
          }
