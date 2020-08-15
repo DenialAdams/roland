@@ -292,11 +292,16 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<BlockNode,
                err_stream,
                "While parsing block - unexpected token {:?}; was expecting a statement",
                x
-            ).unwrap();
+            )
+            .unwrap();
             return Err(());
          }
          None => {
-            writeln!(err_stream, "While parsing block - unexpected EOF; was expecting a statement or a }}").unwrap();
+            writeln!(
+               err_stream,
+               "While parsing block - unexpected EOF; was expecting a statement or a }}"
+            )
+            .unwrap();
             return Err(());
          }
       }
@@ -346,7 +351,8 @@ fn parse_parameters<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Vec<(
                err_stream,
                "While parsing parameters - unexpected token {:?}; was expecting an identifier or a )",
                x
-            ).unwrap();
+            )
+            .unwrap();
             return Err(());
          }
       }
@@ -385,7 +391,8 @@ fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Vec<Ex
                err_stream,
                "While parsing arguments - unexpected token {:?}; was expecting an expression or a )",
                x
-            ).unwrap();
+            )
+            .unwrap();
             return Err(());
          }
       }
@@ -491,7 +498,8 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8) -> Result<Expr
             err_stream,
             "While parsing expression - unexpected token {:?}; was expecting an int, identifier, or prefix operator",
             x
-         ).unwrap();
+         )
+         .unwrap();
          return Err(());
       }
    };

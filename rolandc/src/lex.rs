@@ -223,7 +223,11 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<Token>, ()> 
          Ok(tokens)
       }
       LexMode::StringLiteral => {
-         writeln!(err_stream, "Encountered EOF while parsing string literal; Are you missing a closing \"?").unwrap();
+         writeln!(
+            err_stream,
+            "Encountered EOF while parsing string literal; Are you missing a closing \"?"
+         )
+         .unwrap();
          Err(())
       }
    }

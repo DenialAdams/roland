@@ -14,7 +14,11 @@ pub enum CompilationError {
    Sematic(u64),
 }
 
-pub fn compile<E: Write, A: Write>(user_program_s: &str, err_stream: &mut E, html_ast_out: Option<&mut A>) -> Result<Vec<u8>, CompilationError> {
+pub fn compile<E: Write, A: Write>(
+   user_program_s: &str,
+   err_stream: &mut E,
+   html_ast_out: Option<&mut A>,
+) -> Result<Vec<u8>, CompilationError> {
    let mut user_program = lex_and_parse(user_program_s, err_stream);
    let std_lib_s = include_str!("../../lib/print.rol");
    let std_lib = lex_and_parse(std_lib_s, err_stream);
