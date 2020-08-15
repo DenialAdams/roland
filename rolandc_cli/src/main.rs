@@ -30,8 +30,8 @@ fn main() {
 
    let out_bytes = match compile_result {
       Ok(v) => v,
-      Err(CompilationError::Lex) => unimplemented!(),
-      Err(CompilationError::Parse) => unimplemented!(),
+      Err(CompilationError::Lex) => std::process::exit(1),
+      Err(CompilationError::Parse) => std::process::exit(1),
       Err(CompilationError::Sematic(err_count)) => {
          writeln!(err_stream_l, "There were {} semantic errors, bailing", err_count).unwrap();
          std::process::exit(1);

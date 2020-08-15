@@ -19,11 +19,11 @@ pub fn compile<E: Write, A: Write>(
    err_stream: &mut E,
    html_ast_out: Option<&mut A>,
 ) -> Result<Vec<u8>, CompilationError> {
-   let mut user_program = lex_and_parse(user_program_s, err_stream);
+   let mut user_program = lex_and_parse(user_program_s, err_stream)?;
    let std_lib_s = include_str!("../../lib/print.rol");
-   let std_lib = lex_and_parse(std_lib_s, err_stream);
+   let std_lib = lex_and_parse(std_lib_s, err_stream)?;
    merge_programs(&mut user_program, &mut [std_lib]);
-   let err_count = validator::type_and_check_validity(&mut user_program);
+   let err_count = validator::type_and_check_validity(&mut user_program, err_stream);
    if let Some(w) = html_ast_out {
       html_debug::print_ast_as_html(w, &user_program);
    }
@@ -40,13 +40,13 @@ fn merge_programs(main_program: &mut Program, other_programs: &mut [Program]) {
    }
 }
 
-fn lex_and_parse<W: Write>(s: &str, err_stream: &mut W) -> Program {
+fn lex_and_parse<W: Write>(s: &str, err_stream: &mut W) -> Result<Program, CompilationError> {
    let tokens = match lex::lex(&s, err_stream) {
-      Err(()) => std::process::exit(1),
+      Err(()) => return Err(CompilationError::Lex),
       Ok(v) => v,
    };
    match parse::astify(tokens, err_stream) {
-      Err(()) => std::process::exit(1),
-      Ok(v) => v,
+      Err(()) => Err(CompilationError::Parse),
+      Ok(v) => Ok(v),
    }
 }

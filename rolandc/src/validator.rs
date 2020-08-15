@@ -1,6 +1,7 @@
 use super::type_data::{ExpressionType, ValueType};
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, UnOp};
 use std::collections::{HashMap, HashSet};
+use std::io::Write;
 
 #[derive(Debug)]
 enum TypeValidator {
@@ -46,7 +47,7 @@ struct ValidationContext<'a> {
    unknown_ints: u64,
 }
 
-pub fn type_and_check_validity(program: &mut Program) -> u64 {
+pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut W) -> u64 {
    let mut procedure_info = HashMap::new();
    let mut error_count = 0;
    // Built-In functions
@@ -78,10 +79,11 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
       ) {
          Some(_) => {
             error_count += 1;
-            eprintln!(
+            writeln!(
+               err_stream,
                "Encountered duplicate procedures/functions with the same name `{}`",
                procedure.name
-            );
+            ).unwrap();
          }
          None => (),
       }
@@ -100,10 +102,10 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
 
    if !validation_context.procedure_info.contains_key("main") {
       validation_context.error_count += 1;
-      eprintln!("A procedure with the name `main` must be present");
+      writeln!(err_stream, "A procedure with the name `main` must be present").unwrap();
    } else if validation_context.procedure_info.get("main").unwrap().ret_type != ExpressionType::Value(ValueType::Unit) {
       validation_context.error_count += 1;
-      eprintln!("`main` is a special procedure and is not allowed to return a value");
+      writeln!(err_stream, "`main` is a special procedure and is not allowed to return a value").unwrap();
    }
 
    // We won't proceed with type checking because there could be false positives due to
@@ -124,7 +126,7 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
          procedure.locals.insert(parameter.0.clone(), parameter.1.clone());
       }
 
-      type_block(&mut procedure.block, &mut validation_context, &mut procedure.locals);
+      type_block(err_stream, &mut procedure.block, &mut validation_context, &mut procedure.locals);
 
       // Ensure that the last statement is a return statement
       // (it has already been type checked, so we don't have to check that)
@@ -133,21 +135,23 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
          (_, Some(Statement::ReturnStatement(_))) => (),
          (x, _) => {
             validation_context.error_count += 1;
-            eprintln!(
+            writeln!(
+               err_stream,
                "Procedure/function `{}` is declared to return type {} but is missing a final return statement",
                procedure.name,
                x.as_roland_type_info()
-            );
+            ).unwrap();
          }
       }
    }
 
    if validation_context.unknown_ints > 0 {
       validation_context.error_count += 1;
-      eprintln!(
+      writeln!(
+         err_stream,
          "We weren't able to determine the types of {} int literals",
          validation_context.unknown_ints
-      );
+      ).unwrap();
    }
 
    program.literals = validation_context.string_literals;
@@ -155,15 +159,16 @@ pub fn type_and_check_validity(program: &mut Program) -> u64 {
    validation_context.error_count
 }
 
-fn type_statement(
+fn type_statement<W: Write>(
+   err_stream: &mut W,
    statement: &mut Statement,
    validation_context: &mut ValidationContext,
    cur_procedure_locals: &mut HashMap<String, ExpressionType>,
 ) {
    match statement {
       Statement::AssignmentStatement(len, en) => {
-         do_type(len, validation_context);
-         do_type(en, validation_context);
+         do_type(err_stream, len, validation_context);
+         do_type(err_stream, en, validation_context);
 
          // Type inference
          if len.exp_type.as_ref().unwrap().is_any_known_int()
@@ -177,56 +182,58 @@ fn type_statement(
 
          if lhs_type != rhs_type {
             validation_context.error_count += 1;
-            eprintln!(
+            writeln!(
+               err_stream,
                "Left hand side of assignment has type {} which does not match the type of the right hand side {}",
                lhs_type.as_roland_type_info(),
                rhs_type.as_roland_type_info(),
-            );
+            ).unwrap();
          } else if !len.expression.is_lvalue() {
             validation_context.error_count += 1;
-            eprintln!("Left hand side of assignment is not a valid memory location; i.e. a variable or parameter",);
+            writeln!(err_stream, "Left hand side of assignment is not a valid memory location; i.e. a variable or parameter").unwrap();
          }
       }
       Statement::BlockStatement(bn) => {
-         type_block(bn, validation_context, cur_procedure_locals);
+         type_block(err_stream, bn, validation_context, cur_procedure_locals);
       }
       Statement::ContinueStatement => {
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
-            eprintln!("Continue statement can only be used in a loop");
+            writeln!(err_stream, "Continue statement can only be used in a loop").unwrap();
          }
       }
       Statement::BreakStatement => {
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
-            eprintln!("Break statement can only be used in a loop");
+            writeln!(err_stream, "Break statement can only be used in a loop").unwrap();
          }
       }
       Statement::LoopStatement(bn) => {
          validation_context.loop_depth += 1;
-         type_block(bn, validation_context, cur_procedure_locals);
+         type_block(err_stream, bn, validation_context, cur_procedure_locals);
          validation_context.loop_depth -= 1;
       }
       Statement::ExpressionStatement(en) => {
-         do_type(en, validation_context);
+         do_type(err_stream, en, validation_context);
       }
       Statement::IfElseStatement(en, block_1, block_2) => {
-         type_block(block_1, validation_context, cur_procedure_locals);
-         type_statement(block_2, validation_context, cur_procedure_locals);
-         do_type(en, validation_context);
+         type_block(err_stream, block_1, validation_context, cur_procedure_locals);
+         type_statement(err_stream, block_2, validation_context, cur_procedure_locals);
+         do_type(err_stream, en, validation_context);
          let if_exp_type = en.exp_type.as_ref().unwrap();
          if if_exp_type != &ExpressionType::Value(ValueType::Bool)
             && if_exp_type != &ExpressionType::Value(ValueType::CompileError)
          {
             validation_context.error_count += 1;
-            eprintln!(
+            writeln!(
+               err_stream,
                "Value of if expression must be a bool; instead got {}",
                en.exp_type.as_ref().unwrap().as_roland_type_info()
-            );
+            ).unwrap();
          }
       }
       Statement::ReturnStatement(en) => {
-         do_type(en, validation_context);
+         do_type(err_stream, en, validation_context);
          let cur_procedure_info = validation_context.cur_procedure_info.unwrap();
 
          // Type Inference
@@ -240,17 +247,18 @@ fn type_statement(
             && en.exp_type.as_ref().unwrap() != &cur_procedure_info.ret_type
          {
             validation_context.error_count += 1;
-            eprintln!(
+            writeln!(
+               err_stream,
                "Value of return statement must match declared return type {}; got {}",
                cur_procedure_info.ret_type.as_roland_type_info(),
                en.exp_type.as_ref().unwrap().as_roland_type_info()
-            );
+            ).unwrap();
          }
       }
       Statement::VariableDeclaration(id, en, dt) => {
          let declared_type_is_known_int = dt.as_ref().map(|x| x.is_any_known_int()).unwrap_or(false);
 
-         do_type(en, validation_context);
+         do_type(err_stream, en, validation_context);
 
          let result_type = if en.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt)
             && declared_type_is_known_int
@@ -259,11 +267,12 @@ fn type_statement(
             dt.clone().unwrap()
          } else if dt.is_some() && *dt != en.exp_type {
             validation_context.error_count += 1;
-            eprintln!(
+            writeln!(
+               err_stream,
                "Declared type {} does not match actual expression type {}",
                dt.as_ref().unwrap().as_roland_type_info(),
                en.exp_type.as_ref().unwrap().as_roland_type_info()
-            );
+            ).unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else {
             en.exp_type.clone().unwrap()
@@ -271,7 +280,7 @@ fn type_statement(
 
          if validation_context.variable_types.contains_key(id) {
             validation_context.error_count += 1;
-            eprintln!("Variable shadowing is not supported at this time (`{}`)", id);
+            writeln!(err_stream, "Variable shadowing is not supported at this time (`{}`)", id).unwrap();
          } else {
             validation_context.variable_types.insert(
                id.clone(),
@@ -284,7 +293,8 @@ fn type_statement(
    }
 }
 
-fn type_block(
+fn type_block<W: Write>(
+   err_stream: &mut W,
    bn: &mut BlockNode,
    validation_context: &mut ValidationContext,
    cur_procedure_locals: &mut HashMap<String, ExpressionType>,
@@ -292,7 +302,7 @@ fn type_block(
    validation_context.block_depth += 1;
 
    for statement in bn.statements.iter_mut() {
-      type_statement(statement, validation_context, cur_procedure_locals);
+      type_statement(err_stream, statement, validation_context, cur_procedure_locals);
    }
 
    validation_context.block_depth -= 1;
@@ -300,7 +310,7 @@ fn type_block(
    validation_context.variable_types.retain(|_, v| v.1 <= cur_block_depth);
 }
 
-fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationContext) {
+fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validation_context: &mut ValidationContext) {
    match &mut expr_node.expression {
       Expression::UnitLiteral => {
          expr_node.exp_type = Some(ExpressionType::Value(ValueType::Unit));
@@ -318,8 +328,8 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
          expr_node.exp_type = Some(ExpressionType::Value(ValueType::String));
       }
       Expression::BinaryOperator(bin_op, e) => {
-         do_type(&mut e.0, validation_context);
-         do_type(&mut e.1, validation_context);
+         do_type(err_stream, &mut e.0, validation_context);
+         do_type(err_stream, &mut e.1, validation_context);
 
          let correct_arg_types: &[TypeValidator] = match bin_op {
             BinOp::Add
@@ -356,30 +366,33 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_arg_types, lhs_type) {
             validation_context.error_count += 1;
-            eprintln!(
+            writeln!(
+               err_stream,
                "Binary operator {:?} requires LHS to have type matching {:?}; instead got {}",
                bin_op,
                correct_arg_types,
                lhs_type.as_roland_type_info()
-            );
+            ).unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_arg_types, rhs_type) {
             validation_context.error_count += 1;
-            eprintln!(
+            writeln!(
+               err_stream,
                "Binary operator {:?} requires RHS to have type matching {:?}; instead got {}",
                bin_op,
                correct_arg_types,
                rhs_type.as_roland_type_info()
-            );
+            ).unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else if lhs_type != rhs_type {
             validation_context.error_count += 1;
-            eprintln!(
+            writeln!(
+               err_stream,
                "Binary operator {:?} requires LHS and RHS to have identical type; instead got {} and {}",
                bin_op,
                lhs_type.as_roland_type_info(),
                rhs_type.as_roland_type_info()
-            );
+            ).unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else {
             match bin_op {
@@ -402,7 +415,7 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
          expr_node.exp_type = Some(result_type);
       }
       Expression::UnaryOperator(un_op, e) => {
-         do_type(e, validation_context);
+         do_type(err_stream, e, validation_context);
 
          let (correct_type, node_type): (&[TypeValidator], _) = match un_op {
             UnOp::Dereference => {
@@ -428,16 +441,17 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_type, e.exp_type.as_ref().unwrap()) {
             validation_context.error_count += 1;
-            eprintln!(
+            writeln!(
+               err_stream,
                "Expected type {:?} for expression {:?}; instead got {}",
                correct_type,
                un_op,
                e.exp_type.as_ref().unwrap().as_roland_type_info()
-            );
+            ).unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf && !e.expression.is_lvalue() {
             validation_context.error_count += 1;
-            eprintln!("A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter");
+            writeln!(err_stream, "A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter").unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else {
             node_type
@@ -452,7 +466,7 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
             Some(t) => t.0.clone(),
             None => {
                validation_context.error_count += 1;
-               eprintln!("Encountered undefined variable `{}`", id);
+               writeln!(err_stream, "Encountered undefined variable `{}`", id).unwrap();
                ExpressionType::Value(ValueType::CompileError)
             }
          };
@@ -461,12 +475,12 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
       }
       Expression::ProcedureCall(name, args) => {
          for arg in args.iter_mut() {
-            do_type(arg, validation_context);
+            do_type(err_stream, arg, validation_context);
          }
 
          if name == "main" {
             validation_context.error_count += 1;
-            eprintln!("`main` is a special procedure and is not allowed to be called");
+            writeln!(err_stream, "`main` is a special procedure and is not allowed to be called").unwrap();
          }
 
          match validation_context.procedure_info.get(name) {
@@ -475,17 +489,18 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
 
                if validation_context.cur_procedure_info.unwrap().pure && !procedure_info.pure {
                   validation_context.error_count += 1;
-                  eprintln!("Encountered call to procedure `{}` (impure) in func (pure)", name);
+                  writeln!(err_stream, "Encountered call to procedure `{}` (impure) in func (pure)", name).unwrap();
                }
 
                if procedure_info.parameters.len() != args.len() {
                   validation_context.error_count += 1;
-                  eprintln!(
+                  writeln!(
+                     err_stream,
                      "In call to `{}`, mismatched arity. Expected {} arguments but got {}",
                      name,
                      procedure_info.parameters.len(),
                      args.len()
-                  );
+                  ).unwrap();
                // We shortcircuit here, because there will likely be lots of mistmatched types if an arg was forgotten
                } else {
                   let actual_types = args.iter_mut();
@@ -501,19 +516,20 @@ fn do_type(expr_node: &mut ExpressionNode, validation_context: &mut ValidationCo
                      let actual_type = actual.exp_type.as_ref().unwrap();
                      if actual_type != expected && *actual_type != ExpressionType::Value(ValueType::CompileError) {
                         validation_context.error_count += 1;
-                        eprintln!(
+                        writeln!(
+                           err_stream,
                            "In call to `{}`, encountered argument of type {} when we expected {}",
                            name,
                            actual_type.as_roland_type_info(),
                            expected.as_roland_type_info()
-                        );
+                        ).unwrap();
                      }
                   }
                }
             }
             None => {
                validation_context.error_count += 1;
-               eprintln!("Encountered call to undefined procedure/function `{}`", name);
+               writeln!(err_stream, "Encountered call to undefined procedure/function `{}`", name).unwrap();
                expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
             }
          }
