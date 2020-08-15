@@ -1,3 +1,4 @@
+use std::io::Write;
 #[derive(Clone, Debug)]
 pub enum Token {
    Arrow,
@@ -62,7 +63,7 @@ fn extract_keyword_or_ident(s: &str) -> Token {
    }
 }
 
-pub fn lex(input: &str) -> Result<Vec<Token>, ()> {
+pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<Token>, ()> {
    let mut tokens = Vec::new();
    let mut mode = LexMode::Normal;
    let mut str_buf = String::new();
@@ -160,7 +161,7 @@ pub fn lex(input: &str) -> Result<Vec<Token>, ()> {
             } else if c.is_alphabetic() {
                mode = LexMode::Ident;
             } else {
-               eprintln!("Encountered unexpected character {}", c);
+               writeln!(err_stream, "Encountered unexpected character {}", c).unwrap();
                return Err(());
             }
          }
@@ -198,7 +199,7 @@ pub fn lex(input: &str) -> Result<Vec<Token>, ()> {
                int_value = if let Some(v) = new_val {
                   v
                } else {
-                  eprintln!("Encountered number that is TOO BIG!!");
+                  writeln!(err_stream, "Encountered number that is TOO BIG!!").unwrap();
                   return Err(());
                };
                let _ = chars.next().unwrap();
@@ -222,7 +223,7 @@ pub fn lex(input: &str) -> Result<Vec<Token>, ()> {
          Ok(tokens)
       }
       LexMode::StringLiteral => {
-         eprintln!("Encountered EOF while parsing string literal; Are you missing a closing \"?");
+         writeln!(err_stream, "Encountered EOF while parsing string literal; Are you missing a closing \"?").unwrap();
          Err(())
       }
    }

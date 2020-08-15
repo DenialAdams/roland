@@ -14,10 +14,10 @@ pub enum CompilationError {
    Sematic(u64),
 }
 
-pub fn compile<W: Write>(user_program_s: &str, html_ast_out: Option<&mut W>) -> Result<Vec<u8>, CompilationError> {
-   let mut user_program = lex_and_parse(user_program_s);
+pub fn compile<E: Write, A: Write>(user_program_s: &str, err_stream: &mut E, html_ast_out: Option<&mut A>) -> Result<Vec<u8>, CompilationError> {
+   let mut user_program = lex_and_parse(user_program_s, err_stream);
    let std_lib_s = include_str!("../../lib/print.rol");
-   let std_lib = lex_and_parse(std_lib_s);
+   let std_lib = lex_and_parse(std_lib_s, err_stream);
    merge_programs(&mut user_program, &mut [std_lib]);
    let err_count = validator::type_and_check_validity(&mut user_program);
    if let Some(w) = html_ast_out {
@@ -36,12 +36,12 @@ fn merge_programs(main_program: &mut Program, other_programs: &mut [Program]) {
    }
 }
 
-fn lex_and_parse(s: &str) -> Program {
-   let tokens = match lex::lex(&s) {
+fn lex_and_parse<W: Write>(s: &str, err_stream: &mut W) -> Program {
+   let tokens = match lex::lex(&s, err_stream) {
       Err(()) => std::process::exit(1),
       Ok(v) => v,
    };
-   match parse::astify(tokens) {
+   match parse::astify(tokens, err_stream) {
       Err(()) => std::process::exit(1),
       Ok(v) => v,
    }

@@ -23,14 +23,17 @@ fn main() {
       None
    };
 
-   let compile_result = rolandc::compile(&user_program_s, ast_out.as_mut());
+   let err_stream = std::io::stderr();
+   let mut err_stream_l = err_stream.lock();
+
+   let compile_result = rolandc::compile(&user_program_s, &mut err_stream_l, ast_out.as_mut());
 
    let out_bytes = match compile_result {
       Ok(v) => v,
       Err(CompilationError::Lex) => unimplemented!(),
       Err(CompilationError::Parse) => unimplemented!(),
       Err(CompilationError::Sematic(err_count)) => {
-         eprintln!("There were {} semantic errors, bailing", err_count);
+         writeln!(err_stream_l, "There were {} semantic errors, bailing", err_count).unwrap();
          std::process::exit(1);
       }
    };

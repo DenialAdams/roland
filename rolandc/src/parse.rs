@@ -1,6 +1,7 @@
 use super::lex::Token;
 use crate::type_data::{ExpressionType, ValueType};
 use std::collections::{HashMap, HashSet};
+use std::io::Write;
 use std::mem::discriminant;
 
 struct Lexer {
@@ -30,14 +31,14 @@ impl Lexer {
    }
 }
 
-fn expect(l: &mut Lexer, token: &Token) -> Result<Token, ()> {
+fn expect<W: Write>(l: &mut Lexer, err_stream: &mut W, token: &Token) -> Result<Token, ()> {
    let lex_token = l.next();
    if lex_token
       .as_ref()
       .map(|x| discriminant(x) != discriminant(token))
       .unwrap_or(true)
    {
-      eprintln!("got {:?} when expecting {:?}", lex_token, token);
+      writeln!(err_stream, "got {:?} when expecting {:?}", lex_token, token).unwrap();
       return Err(());
    }
    Ok(lex_token.unwrap())
@@ -127,7 +128,7 @@ pub struct Program {
    pub literals: HashSet<String>,
 }
 
-pub fn astify(tokens: Vec<Token>) -> Result<Program, ()> {
+pub fn astify<W: Write>(tokens: Vec<Token>, err_stream: &mut W) -> Result<Program, ()> {
    let mut lexer = Lexer::from_tokens(tokens);
 
    let mut procedures = vec![];
@@ -136,20 +137,21 @@ pub fn astify(tokens: Vec<Token>) -> Result<Program, ()> {
       match peeked_token {
          Token::KeywordFuncDef => {
             let _ = lexer.next();
-            let mut p = parse_procedure(&mut lexer)?;
+            let mut p = parse_procedure(&mut lexer, err_stream)?;
             p.pure = true;
             procedures.push(p);
          }
          Token::KeywordProcedureDef => {
             let _ = lexer.next();
-            let p = parse_procedure(&mut lexer)?;
+            let p = parse_procedure(&mut lexer, err_stream)?;
             procedures.push(p);
          }
          x => {
-            eprintln!(
+            writeln!(
+               err_stream,
                "While parsing top level - unexpected token {:?}; was expecting a function, procedure, or struct declaration",
                x
-            );
+            ).unwrap();
             return Err(());
          }
       }
@@ -168,18 +170,18 @@ fn extract_identifier(t: Token) -> String {
    }
 }
 
-fn parse_procedure(l: &mut Lexer) -> Result<ProcedureNode, ()> {
-   let function_name = expect(l, &Token::Identifier(String::from("")))?;
-   expect(l, &Token::OpenParen)?;
-   let parameters = parse_parameters(l)?;
-   expect(l, &Token::CloseParen)?;
+fn parse_procedure<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<ProcedureNode, ()> {
+   let function_name = expect(l, err_stream, &Token::Identifier(String::from("")))?;
+   expect(l, err_stream, &Token::OpenParen)?;
+   let parameters = parse_parameters(l, err_stream)?;
+   expect(l, err_stream, &Token::CloseParen)?;
    let ret_type = if let Some(&Token::Arrow) = l.peek() {
       let _ = l.next();
-      parse_type(l)?
+      parse_type(l, err_stream)?
    } else {
       ExpressionType::Value(ValueType::Unit)
    };
-   let block = parse_block(l)?;
+   let block = parse_block(l, err_stream)?;
    Ok(ProcedureNode {
       name: extract_identifier(function_name),
       parameters,
@@ -190,15 +192,15 @@ fn parse_procedure(l: &mut Lexer) -> Result<ProcedureNode, ()> {
    })
 }
 
-fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
-   expect(l, &Token::OpenBrace)?;
+fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<BlockNode, ()> {
+   expect(l, err_stream, &Token::OpenBrace)?;
 
    let mut statements = vec![];
 
    loop {
       match l.peek() {
          Some(Token::OpenBrace) => {
-            let new_block = parse_block(l)?;
+            let new_block = parse_block(l, err_stream)?;
             statements.push(Statement::BlockStatement(new_block));
          }
          Some(Token::CloseBrace) => {
@@ -208,16 +210,16 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
          Some(Token::KeywordContinue) => {
             let _ = l.next();
             statements.push(Statement::ContinueStatement);
-            expect(l, &Token::Semicolon)?;
+            expect(l, err_stream, &Token::Semicolon)?;
          }
          Some(Token::KeywordBreak) => {
             let _ = l.next();
             statements.push(Statement::BreakStatement);
-            expect(l, &Token::Semicolon)?;
+            expect(l, err_stream, &Token::Semicolon)?;
          }
          Some(Token::KeywordLoop) => {
             let _ = l.next();
-            let new_block = parse_block(l)?;
+            let new_block = parse_block(l, err_stream)?;
             statements.push(Statement::LoopStatement(new_block));
          }
          Some(Token::KeywordReturn) => {
@@ -226,8 +228,8 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
                let _ = l.next();
                wrap(Expression::UnitLiteral)
             } else {
-               let e = parse_expression(l)?;
-               expect(l, &Token::Semicolon)?;
+               let e = parse_expression(l, err_stream)?;
+               expect(l, err_stream, &Token::Semicolon)?;
                e
             };
             statements.push(Statement::ReturnStatement(e));
@@ -235,15 +237,15 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
          Some(Token::KeywordLet) => {
             let mut declared_type = None;
             let _ = l.next();
-            let variable_name = expect(l, &Token::Identifier(String::from("")))?;
+            let variable_name = expect(l, err_stream, &Token::Identifier(String::from("")))?;
             let next_discrim = l.peek().map(|x| discriminant(x));
             if next_discrim == Some(discriminant(&Token::Colon)) {
                let _ = l.next();
-               declared_type = Some(parse_type(l)?);
+               declared_type = Some(parse_type(l, err_stream)?);
             }
-            expect(l, &Token::Assignment)?;
-            let e = parse_expression(l)?;
-            expect(l, &Token::Semicolon)?;
+            expect(l, err_stream, &Token::Assignment)?;
+            let e = parse_expression(l, err_stream)?;
+            expect(l, err_stream, &Token::Semicolon)?;
             statements.push(Statement::VariableDeclaration(
                extract_identifier(variable_name),
                e,
@@ -251,7 +253,7 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
             ));
          }
          Some(Token::KeywordIf) => {
-            let s = parse_if_else_statement(l)?;
+            let s = parse_if_else_statement(l, err_stream)?;
             statements.push(s);
          }
          Some(Token::BoolLiteral(_))
@@ -263,12 +265,12 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
          | Some(Token::MultiplyDeref)
          | Some(Token::Identifier(_))
          | Some(Token::Minus) => {
-            let e = parse_expression(l)?;
+            let e = parse_expression(l, err_stream)?;
             match l.peek() {
                Some(&Token::Assignment) => {
                   let _ = l.next();
-                  let re = parse_expression(l)?;
-                  expect(l, &Token::Semicolon)?;
+                  let re = parse_expression(l, err_stream)?;
+                  expect(l, err_stream, &Token::Semicolon)?;
                   statements.push(Statement::AssignmentStatement(e, re));
                }
                Some(&Token::Semicolon) => {
@@ -276,23 +278,25 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
                   statements.push(Statement::ExpressionStatement(e));
                }
                x => {
-                  eprintln!(
+                  writeln!(
+                     err_stream,
                      "While parsing statement - unexpected token {:?}; was expecting a semicolon or assignment operator",
                      x
-                  );
+                  ).unwrap();
                   return Err(());
                }
             }
          }
          Some(x) => {
-            eprintln!(
+            writeln!(
+               err_stream,
                "While parsing block - unexpected token {:?}; was expecting a statement",
                x
-            );
+            ).unwrap();
             return Err(());
          }
          None => {
-            eprintln!("While parsing block - unexpected EOF; was expecting a statement or a }}");
+            writeln!(err_stream, "While parsing block - unexpected EOF; was expecting a statement or a }}").unwrap();
             return Err(());
          }
       }
@@ -300,48 +304,49 @@ fn parse_block(l: &mut Lexer) -> Result<BlockNode, ()> {
    Ok(BlockNode { statements })
 }
 
-fn parse_if_else_statement(l: &mut Lexer) -> Result<Statement, ()> {
+fn parse_if_else_statement<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Statement, ()> {
    let _ = l.next();
-   let e = parse_expression(l)?;
-   let if_block = parse_block(l)?;
+   let e = parse_expression(l, err_stream)?;
+   let if_block = parse_block(l, err_stream)?;
    let else_statement = match (l.peek(), l.double_peek()) {
       (Some(&Token::KeywordElse), Some(&Token::KeywordIf)) => {
          let _ = l.next();
-         parse_if_else_statement(l)?
+         parse_if_else_statement(l, err_stream)?
       }
       (Some(&Token::KeywordElse), _) => {
          let _ = l.next();
-         Statement::BlockStatement(parse_block(l)?)
+         Statement::BlockStatement(parse_block(l, err_stream)?)
       }
       _ => Statement::BlockStatement(BlockNode { statements: vec![] }),
    };
    Ok(Statement::IfElseStatement(e, if_block, Box::new(else_statement)))
 }
 
-fn parse_parameters(l: &mut Lexer) -> Result<Vec<(String, ExpressionType)>, ()> {
+fn parse_parameters<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Vec<(String, ExpressionType)>, ()> {
    let mut parameters = vec![];
 
    loop {
       match l.peek() {
          Some(Token::Identifier(_)) => {
             let id = l.next().unwrap();
-            expect(l, &Token::Colon)?;
-            let e_type = parse_type(l)?;
+            expect(l, err_stream, &Token::Colon)?;
+            let e_type = parse_type(l, err_stream)?;
             parameters.push((extract_identifier(id), e_type));
             let next_discrim = l.peek().map(|x| discriminant(x));
             if next_discrim == Some(discriminant(&Token::CloseParen)) {
                break;
             }
-            expect(l, &Token::Comma)?;
+            expect(l, err_stream, &Token::Comma)?;
          }
          Some(Token::CloseParen) => {
             break;
          }
          x => {
-            eprintln!(
+            writeln!(
+               err_stream,
                "While parsing parameters - unexpected token {:?}; was expecting an identifier or a )",
                x
-            );
+            ).unwrap();
             return Err(());
          }
       }
@@ -350,7 +355,7 @@ fn parse_parameters(l: &mut Lexer) -> Result<Vec<(String, ExpressionType)>, ()> 
    Ok(parameters)
 }
 
-fn parse_arguments(l: &mut Lexer) -> Result<Vec<ExpressionNode>, ()> {
+fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Vec<ExpressionNode>, ()> {
    let mut arguments = vec![];
 
    loop {
@@ -364,22 +369,23 @@ fn parse_arguments(l: &mut Lexer) -> Result<Vec<ExpressionNode>, ()> {
          | Some(Token::Exclam)
          | Some(Token::MultiplyDeref)
          | Some(Token::Minus) => {
-            let e = parse_expression(l)?;
+            let e = parse_expression(l, err_stream)?;
             arguments.push(e);
             let next_discrim = l.peek().map(|x| discriminant(x));
             if next_discrim == Some(discriminant(&Token::CloseParen)) {
                break;
             }
-            expect(l, &Token::Comma)?;
+            expect(l, err_stream, &Token::Comma)?;
          }
          Some(Token::CloseParen) => {
             break;
          }
          x => {
-            eprintln!(
+            writeln!(
+               err_stream,
                "While parsing arguments - unexpected token {:?}; was expecting an expression or a )",
                x
-            );
+            ).unwrap();
             return Err(());
          }
       }
@@ -388,11 +394,11 @@ fn parse_arguments(l: &mut Lexer) -> Result<Vec<ExpressionNode>, ()> {
    Ok(arguments)
 }
 
-fn parse_expression(l: &mut Lexer) -> Result<ExpressionNode, ()> {
-   Ok(wrap(pratt(l, 0)?))
+fn parse_expression<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<ExpressionNode, ()> {
+   Ok(wrap(pratt(l, err_stream, 0)?))
 }
 
-fn parse_type(l: &mut Lexer) -> Result<ExpressionType, ()> {
+fn parse_type<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<ExpressionType, ()> {
    let mut ptr_count: usize = 0;
    while let Some(&Token::Amp) = l.peek() {
       ptr_count += 1;
@@ -402,11 +408,11 @@ fn parse_type(l: &mut Lexer) -> Result<ExpressionType, ()> {
    let value_type = match l.peek() {
       Some(Token::OpenParen) => {
          let _ = l.next();
-         expect(l, &Token::CloseParen)?;
+         expect(l, err_stream, &Token::CloseParen)?;
          ValueType::Unit
       }
       _ => {
-         let type_token = expect(l, &Token::Identifier(String::from("")))?;
+         let type_token = expect(l, err_stream, &Token::Identifier(String::from("")))?;
          let type_s = extract_identifier(type_token);
          match type_s.as_ref() {
             "bool" => ValueType::Bool,
@@ -420,7 +426,7 @@ fn parse_type(l: &mut Lexer) -> Result<ExpressionType, ()> {
             "u8" => crate::type_data::U8_TYPE,
             "String" => ValueType::String,
             x => {
-               eprintln!("While parsing type, got an invalid type {}", x);
+               writeln!(err_stream, "While parsing type, got an invalid type {}", x).unwrap();
                return Err(());
             }
          }
@@ -434,7 +440,7 @@ fn parse_type(l: &mut Lexer) -> Result<ExpressionType, ()> {
    }
 }
 
-fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
+fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8) -> Result<Expression, ()> {
    let lhs = l.next();
    let mut lhs = match lhs {
       Some(Token::BoolLiteral(x)) => Expression::BoolLiteral(x),
@@ -443,8 +449,8 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
       Some(Token::Identifier(s)) => {
          if let Some(&Token::OpenParen) = l.peek() {
             let _ = l.next();
-            let args = parse_arguments(l)?;
-            expect(l, &Token::CloseParen)?;
+            let args = parse_arguments(l, err_stream)?;
+            expect(l, err_stream, &Token::CloseParen)?;
             Expression::ProcedureCall(s, args)
          } else {
             Expression::Variable(s)
@@ -455,36 +461,37 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
             let _ = l.next();
             Expression::UnitLiteral
          } else {
-            let new_lhs = pratt(l, 0)?;
-            expect(l, &Token::CloseParen)?;
+            let new_lhs = pratt(l, err_stream, 0)?;
+            expect(l, err_stream, &Token::CloseParen)?;
             new_lhs
          }
       }
       Some(x @ Token::Minus) => {
          let ((), r_bp) = prefix_binding_power(&x);
-         let rhs = pratt(l, r_bp)?;
+         let rhs = pratt(l, err_stream, r_bp)?;
          Expression::UnaryOperator(UnOp::Negate, Box::new(wrap(rhs)))
       }
       Some(x @ Token::Exclam) => {
          let ((), r_bp) = prefix_binding_power(&x);
-         let rhs = pratt(l, r_bp)?;
+         let rhs = pratt(l, err_stream, r_bp)?;
          Expression::UnaryOperator(UnOp::Complement, Box::new(wrap(rhs)))
       }
       Some(x @ Token::Amp) => {
          let ((), r_bp) = prefix_binding_power(&x);
-         let rhs = pratt(l, r_bp)?;
+         let rhs = pratt(l, err_stream, r_bp)?;
          Expression::UnaryOperator(UnOp::AddressOf, Box::new(wrap(rhs)))
       }
       Some(x @ Token::MultiplyDeref) => {
          let ((), r_bp) = prefix_binding_power(&x);
-         let rhs = pratt(l, r_bp)?;
+         let rhs = pratt(l, err_stream, r_bp)?;
          Expression::UnaryOperator(UnOp::Dereference, Box::new(wrap(rhs)))
       }
       x => {
-         eprintln!(
+         writeln!(
+            err_stream,
             "While parsing expression - unexpected token {:?}; was expecting an int, identifier, or prefix operator",
             x
-         );
+         ).unwrap();
          return Err(());
       }
    };
@@ -514,7 +521,7 @@ fn pratt(l: &mut Lexer, min_bp: u8) -> Result<Expression, ()> {
       }
 
       let _ = l.next();
-      let rhs = pratt(l, r_b)?;
+      let rhs = pratt(l, err_stream, r_b)?;
 
       let bin_op = match op {
          Token::Plus => BinOp::Add,
