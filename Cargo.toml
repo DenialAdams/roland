@@ -4,6 +4,7 @@ members = [
    "roland_test_runner",
    "rolandc",
    "rolandc_cli",
+   "rolandc_wasm",
 ]
 
 #[profile.release]

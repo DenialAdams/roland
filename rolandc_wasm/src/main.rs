@@ -1,17 +1,7 @@
-use clap::Clap;
 use rolandc::CompilationError;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
-
-#[derive(Clap)]
-struct Opts {
-   source_file: PathBuf,
-   #[clap(long)]
-   output_html_ast: bool,
-   #[clap(short, long)]
-   output: PathBuf,
-}
 
 fn main() {
    let mut opts: Opts = Opts::parse();
