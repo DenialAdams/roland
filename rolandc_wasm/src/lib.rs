@@ -1,6 +1,7 @@
 use rolandc::CompilationError;
 use std::io::Write;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 
 #[wasm_bindgen(start)]
 pub fn start() {
@@ -11,7 +12,7 @@ pub fn start() {
 pub fn compile_and_update_all() -> Option<Vec<u8>> {
    let window = web_sys::window().unwrap();
    let document = window.document().unwrap();
-   let source_code = document.get_element_by_id("src_frame").unwrap().node_value().unwrap();
+   let source_code = document.get_element_by_id("src_frame").unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value();
    let output_frame = document.get_element_by_id("out_frame").unwrap();
    let ast_frame = document.get_element_by_id("ast_frame").unwrap();
 
