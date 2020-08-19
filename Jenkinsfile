@@ -12,7 +12,7 @@ pipeline {
          steps {
             dir('rolandc_wasm') {
                sh 'cargo build --release --target wasm32-unknown-unknown'
-               sh 'wasm-bindgen --target web ../target/wasm32-unknown-unknown/release/rolandc_wasm.wasm --out-dir ./pkg'
+               sh 'wasm-bindgen --target web ../target/wasm32-unknown-unknown/release/librolandc_wasm.wasm --out-dir ./pkg'
             }
          }
       }
