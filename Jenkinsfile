@@ -27,6 +27,7 @@ pipeline {
                   sh 'cp ../../rolandc_wasm/pkg/rolandc_wasm.js .'
                   sh 'cp ../../rolandc_wasm/pkg/rolandc_wasm_bg.wasm .'
                }
+               sh 'cp ../../ast.css .'
                sh 'cp ../rolandc_wasm/index.html .'
                sh 'cp ../rolandc_wasm/index.js .'
                sh 'cp ../rolandc_wasm/stylesheet.css .'
