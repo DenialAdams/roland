@@ -1,17 +1,7 @@
 use crate::parse::{Expression, ExpressionNode, Program, Statement};
 use std::io::Write;
 
-const HTML_HEADER: &'static str = "<!DOCTYPE HTML>
-<html lang=\"en\">
-<head>
-  <meta charset=\"utf-8\">
-  <title>rolandc AST debug</title>
-  <link rel=\"stylesheet\" href=\"./ast.css\">
-</head>
-<body>";
-
 pub fn print_ast_as_html<W: Write>(out: &mut W, program: &Program) {
-   writeln!(out, "{}", HTML_HEADER).unwrap();
    writeln!(out, "<ul class=\"tree\">").unwrap();
    writeln!(out, "<li><span>Program</span>").unwrap();
    writeln!(out, "<ul>").unwrap();
@@ -27,8 +17,6 @@ pub fn print_ast_as_html<W: Write>(out: &mut W, program: &Program) {
    writeln!(out, "</ul>").unwrap();
    writeln!(out, "</li>").unwrap();
    writeln!(out, "</ul>").unwrap();
-   writeln!(out, "</body>").unwrap();
-   writeln!(out, "</html>").unwrap();
 }
 
 fn print_statement<W: Write>(out: &mut W, statement: &Statement) {

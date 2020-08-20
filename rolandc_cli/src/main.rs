@@ -4,6 +4,15 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
+const HTML_HEADER: &'static str = "<!DOCTYPE HTML>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\">
+  <title>rolandc AST debug</title>
+  <link rel=\"stylesheet\" href=\"./ast.css\">
+</head>
+<body>";
+
 #[derive(Clap)]
 struct Opts {
    source_file: PathBuf,
@@ -18,7 +27,9 @@ fn main() {
    let user_program_s = std::fs::read_to_string(opts.source_file).unwrap();
    let mut ast_out: Option<BufWriter<File>> = if opts.output_html_ast {
       let out_f = File::create("ast.html").unwrap();
-      Some(BufWriter::new(out_f))
+      let mut writer = BufWriter::new(out_f);
+      writeln!(writer, "{}", HTML_HEADER).unwrap();
+      Some(writer)
    } else {
       None
    };
@@ -27,6 +38,7 @@ fn main() {
    let mut err_stream_l = err_stream.lock();
 
    let compile_result = rolandc::compile(&user_program_s, &mut err_stream_l, ast_out.as_mut());
+   ast_out.as_mut().map(|x| writeln!(x, "</body>\n</html>").unwrap());
 
    let out_bytes = match compile_result {
       Ok(v) => v,
