@@ -10,6 +10,13 @@ window.addEventListener('DOMContentLoaded', (event) => {
    initApp();
 });
 
-window.compileUpdateAll = function compileUpdateAll() {
-   compile_and_update_all();
+window.compileUpdateAll = async function compileUpdateAll() {
+   let output_frame = document.getElementById("output_frame");
+   output_frame.textContent = "Compiling...";
+   let wasm_bytes = compile_and_update_all();
+   if (wasm_bytes != null) {
+      output_frame.textContent = "Executing...";
+      let response = new Response(wasm_bytes);
+      let exec_result = await WebAssembly.instantiateStreaming(response);
+   }
 };
