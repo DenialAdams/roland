@@ -11,7 +11,7 @@ window.addEventListener('DOMContentLoaded', (event) => {
 });
 
 window.compileUpdateAll = async function compileUpdateAll() {
-   let output_frame = document.getElementById("output_frame");
+   let output_frame = document.getElementById("out_frame");
    output_frame.textContent = "Compiling...";
    let wasm_bytes = compile_and_update_all();
    if (wasm_bytes != null) {
