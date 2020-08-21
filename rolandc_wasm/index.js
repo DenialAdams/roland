@@ -16,7 +16,7 @@ window.compileUpdateAll = async function compileUpdateAll() {
    let wasm_bytes = compile_and_update_all();
    if (wasm_bytes != null) {
       output_frame.textContent = "Executing...";
-      let response = new Response(new Blob(wasm_bytes.buffer));
+      let response = new Response(new Blob(wasm_bytes));
       let exec_result = await WebAssembly.instantiateStreaming(response);
    }
 };
