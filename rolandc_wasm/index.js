@@ -66,7 +66,7 @@ function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
 
    buffers.forEach(writev);
 
-   if (fd === WASI_STDOUT_FILENO) console.log(String.fromCharCode.apply(null, bufferBytes));
+   console.log(String.fromCharCode.apply(null, bufferBytes));
 
    view.setUint32(nwritten, written, !0);
 
