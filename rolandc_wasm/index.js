@@ -44,7 +44,10 @@ window.addEventListener('DOMContentLoaded', (event) => {
 
 window.addEventListener('DOMContentLoaded', (event) => {
    let output_frame = document.getElementById("src_frame");
-   CodeMirror.fromTextArea(output_frame);
+   CodeMirror.fromTextArea(output_frame, {
+      lineNumbers: true,
+      mode: null
+    });
 });
 
 window.compileUpdateAll = async function compileUpdateAll() {
