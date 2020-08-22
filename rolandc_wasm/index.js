@@ -43,7 +43,7 @@ window.addEventListener('DOMContentLoaded', (event) => {
 });
 
 window.addEventListener('DOMContentLoaded', (event) => {
-   let output_frame = document.getElementById("out_frame");
+   let output_frame = document.getElementById("src_frame");
    CodeMirror.fromTextArea(output_frame);
 });
 
