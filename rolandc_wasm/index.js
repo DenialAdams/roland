@@ -1,5 +1,7 @@
 import { start, compile_and_update_all, default as init } from './pkg/rolandc_wasm.js';
 
+let instance = null;
+
 window.initApp = async function initApp() {
    await init('./pkg/rolandc_wasm_bg.wasm');
    start();
@@ -22,13 +24,14 @@ window.compileUpdateAll = async function compileUpdateAll() {
       let response = new Response(wasm_bytes, { "headers": headers });
       let wasi_polyfill = { fd_write: fd_write_polyfill };
       let result = await WebAssembly.instantiateStreaming(response, { wasi_unstable: wasi_polyfill });
-      result.instance.exports._start();
+      instance = result.instance;
+      instance.exports._start();
    }
 };
 
 function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
 
-   var view = getModuleMemoryDataView();
+   var view = new DataView(instance.exports.memory.buffer);
 
    var written = 0;
    var bufferBytes = [];
@@ -44,7 +47,7 @@ function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
               var buf = view.getUint32(ptr, !0);
               var bufLen = view.getUint32(ptr + 4, !0);
 
-              return new Uint8Array(moduleInstanceExports.memory.buffer, buf, bufLen);
+              return new Uint8Array(instance.exports.memory.buffer, buf, bufLen);
            });
 
        return buffers;
