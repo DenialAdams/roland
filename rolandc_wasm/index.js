@@ -23,7 +23,7 @@ const HELLO_WORLD =
 `;
 
 let instance = null;
-let src_frame = document.getElementById("src_frame");
+let src_frame = null;
 
 window.setHelloWorld = function setHelloWorld() {
    src_frame.value = HELLO_WORLD;
