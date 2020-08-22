@@ -3,9 +3,7 @@ import { start, compile_and_update_all, default as init } from './pkg/rolandc_wa
 const FIB =
 `proc main() {
    let x = fib(9);
-   let z = fast_fib(9);
    print_bool(x == 34);
-   print_bool(x == z);
 }
 
 func fib(n: u64) -> u64 {
