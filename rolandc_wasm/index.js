@@ -23,14 +23,14 @@ const HELLO_WORLD =
 `;
 
 let instance = null;
-let src_frame = null;
+let code_editor = null;
 
 window.setHelloWorld = function setHelloWorld() {
-   src_frame.value = HELLO_WORLD;
+   code_editor.getDoc().setValue(HELLO_WORLD);
 }
 
 window.setFib = function setFib() {
-   src_frame.value = FIB;
+   code_editor.getDoc().setValue(FIB);
 }
 
 window.initApp = async function initApp() {
@@ -40,8 +40,8 @@ window.initApp = async function initApp() {
 }
 
 window.addEventListener('DOMContentLoaded', (event) => {
-   src_frame = document.getElementById("src_frame");
-   src_frame = CodeMirror.fromTextArea(src_frame, {
+   let text_area = document.getElementById("src_frame");
+   code_editor = CodeMirror.fromTextArea(text_area, {
       lineNumbers: true,
       mode: null
    });
@@ -51,7 +51,7 @@ window.addEventListener('DOMContentLoaded', (event) => {
 window.compileUpdateAll = async function compileUpdateAll() {
    let output_frame = document.getElementById("out_frame");
    output_frame.textContent = "Compiling...";
-   let wasm_bytes = compile_and_update_all();
+   let wasm_bytes = compile_and_update_all(code_editor.getDoc().getValue());
    if (wasm_bytes != null) {
       let headers = new Headers({
          'Content-Type': 'application/wasm'
