@@ -21,8 +21,8 @@ window.compileUpdateAll = async function compileUpdateAll() {
       });
       let response = new Response(wasm_bytes, { "headers": headers });
       let wasi_polyfill = { fd_write: fd_write_polyfill };
-      let instance = await WebAssembly.instantiateStreaming(response, { wasi_unstable: wasi_polyfill });
-      instance.exports._start();
+      let result = await WebAssembly.instantiateStreaming(response, { wasi_unstable: wasi_polyfill });
+      result.instance.exports._start();
    }
 };
 
