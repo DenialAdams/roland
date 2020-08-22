@@ -1,5 +1,37 @@
 import { start, compile_and_update_all, default as init } from './pkg/rolandc_wasm.js';
 
+const FIB =
+`proc main() {
+   let x = fib(9);
+   let z = fast_fib(9);
+   print_bool(x == 34);
+   print_bool(x == z);
+}
+
+func fib(n: u64) -> u64 {
+   if n == 0 {
+      return 0;
+   } else if n == 1 {
+      return 1;
+   }
+   return fib(n - 1) + fib(n - 2);
+}
+`;
+
+const HELLO_WORLD =
+`proc main() {
+   print("Hello, world!");
+}
+`;
+
+window.setHelloWorld = function setHelloWorld() {
+   document.getElementById("src_frame").value = HELLO_WORLD;
+}
+
+window.setFib = function setFib() {
+   document.getElementById("src_frame").value = FIB;
+}
+
 let instance = null;
 
 window.initApp = async function initApp() {
