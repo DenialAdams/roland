@@ -53,7 +53,7 @@ function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
       }
    });
 
-   document.getElementById("out_frame").textContent += String.fromCharCode.apply(null, bufferBytes);
+   document.getElementById("out_frame").textContent += new TextDecoder("utf-8").decode(bufferBytes);
 
    view.setUint32(nwritten, 0, !0);
 
