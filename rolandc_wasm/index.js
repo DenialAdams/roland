@@ -22,15 +22,16 @@ const HELLO_WORLD =
 }
 `;
 
+let instance = null;
+let src_frame = document.getElementById("src_frame");
+
 window.setHelloWorld = function setHelloWorld() {
-   document.getElementById("src_frame").value = HELLO_WORLD;
+   src_frame.value = HELLO_WORLD;
 }
 
 window.setFib = function setFib() {
-   document.getElementById("src_frame").value = FIB;
+   src_frame.value = FIB;
 }
-
-let instance = null;
 
 window.initApp = async function initApp() {
    await init('./pkg/rolandc_wasm_bg.wasm');
@@ -39,15 +40,12 @@ window.initApp = async function initApp() {
 }
 
 window.addEventListener('DOMContentLoaded', (event) => {
-   initApp();
-});
-
-window.addEventListener('DOMContentLoaded', (event) => {
-   let output_frame = document.getElementById("src_frame");
-   CodeMirror.fromTextArea(output_frame, {
+   src_frame = document.getElementById("src_frame");
+   src_frame = CodeMirror.fromTextArea(src_frame, {
       lineNumbers: true,
       mode: null
-    });
+   });
+   initApp();
 });
 
 window.compileUpdateAll = async function compileUpdateAll() {
