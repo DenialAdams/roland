@@ -8,17 +8,21 @@ main {
    display: flex;
    flex-flow: column;
    align-items: center;
-   width: 100%;
+   width: 50%;
    height: 100%;
+}
+
+.CodeMirror {
+   width: 100%
 }
 
 #preload {
    display: flex;
    justify-content: space-around;
-   flex-flow: row;
-   flex: 0 0 auto;
+   width: 100%
 }
 
 #out_frame {
    white-space: pre-line;
+   width: 100%
 }
