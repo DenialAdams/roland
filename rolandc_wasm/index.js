@@ -20,7 +20,8 @@ window.compileUpdateAll = async function compileUpdateAll() {
          'Content-Type': 'application/wasm'
       });
       let response = new Response(wasm_bytes, { "headers": headers });
-      let exec_result = await WebAssembly.instantiateStreaming(response, { fd_write: fd_write_polyfill } );
+      let wasi_polyfill = { fd_write: fd_write_polyfill };
+      let exec_result = await WebAssembly.instantiateStreaming(response, { wasi_unstable: wasi_polyfill });
    }
 };
 
