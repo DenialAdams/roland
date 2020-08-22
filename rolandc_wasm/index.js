@@ -70,5 +70,5 @@ function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
 
    view.setUint32(nwritten, written, !0);
 
-   return WASI_ESUCCESS;
+   return 0;
 }
