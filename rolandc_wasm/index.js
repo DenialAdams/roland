@@ -33,7 +33,6 @@ function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
 
    var view = new DataView(instance.exports.memory.buffer);
 
-   let bufferBytes = new Uint8Array();
    let sum = 0;
 
    var buffers = Array.from({ length: iovsLen }, function (_, i) {
@@ -46,6 +45,7 @@ function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
       return new Uint8Array(instance.exports.memory.buffer, buf, bufLen);
    });
 
+   let bufferBytes = new Uint8Array(sum);
    let i = 0;
    buffers.forEach(buffer => {
       for (let j = 0; j < buffer.length; j++) {
