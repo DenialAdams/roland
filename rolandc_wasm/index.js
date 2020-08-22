@@ -42,6 +42,11 @@ window.addEventListener('DOMContentLoaded', (event) => {
    initApp();
 });
 
+window.addEventListener('DOMContentLoaded', (event) => {
+   let output_frame = document.getElementById("out_frame");
+   CodeMirror.fromTextArea(output_frame);
+});
+
 window.compileUpdateAll = async function compileUpdateAll() {
    let output_frame = document.getElementById("out_frame");
    output_frame.textContent = "Compiling...";
