@@ -17,7 +17,6 @@ window.compileUpdateAll = async function compileUpdateAll() {
    output_frame.textContent = "Compiling...";
    let wasm_bytes = compile_and_update_all();
    if (wasm_bytes != null) {
-      output_frame.textContent = "Executing...";
       let headers = new Headers({
          'Content-Type': 'application/wasm'
       });
@@ -25,6 +24,7 @@ window.compileUpdateAll = async function compileUpdateAll() {
       let wasi_polyfill = { fd_write: fd_write_polyfill };
       let result = await WebAssembly.instantiateStreaming(response, { wasi_unstable: wasi_polyfill });
       instance = result.instance;
+      output_frame.textContent = '';
       instance.exports._start();
    }
 };
@@ -33,42 +33,29 @@ function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
 
    var view = new DataView(instance.exports.memory.buffer);
 
-   var written = 0;
-   var bufferBytes = [];
+   let bufferBytes = new Uint8Array();
+   let sum = 0;
 
-   function getiovs(iovs, iovsLen) {
-       // iovs* -> [iov, iov, ...]
-       // __wasi_ciovec_t {
-       //   void* buf,
-       //   size_t buf_len,
-       // }
-       var buffers = Array.from({ length: iovsLen }, function (_, i) {
-              var ptr = iovs + i * 8;
-              var buf = view.getUint32(ptr, !0);
-              var bufLen = view.getUint32(ptr + 4, !0);
+   var buffers = Array.from({ length: iovsLen }, function (_, i) {
+      var ptr = iovs + i * 8;
+      var buf = view.getUint32(ptr, !0);
+      var bufLen = view.getUint32(ptr + 4, !0);
 
-              return new Uint8Array(instance.exports.memory.buffer, buf, bufLen);
-           });
+      sum += bufLen;
 
-       return buffers;
-   }
+      return new Uint8Array(instance.exports.memory.buffer, buf, bufLen);
+   });
 
-   var buffers = getiovs(iovs, iovsLen);
-   function writev(iov) {
+   let i = 0;
+   buffers.forEach(buffer => {
+      for (let j = 0; j < buffer.length; j++) {
+         bufferByes[i++] = buffer[j++];
+      }
+   });
 
-       for (var b = 0; b < iov.byteLength; b++) {
+   document.getElementById("out_frame").textContent += String.fromCharCode.apply(null, bufferBytes);
 
-          bufferBytes.push(iov[b]);
-       }
-
-       written += b;
-   }
-
-   buffers.forEach(writev);
-
-   console.log(String.fromCharCode.apply(null, bufferBytes));
-
-   view.setUint32(nwritten, written, !0);
+   view.setUint32(nwritten, 0, !0);
 
    return 0;
 }
