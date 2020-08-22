@@ -49,7 +49,7 @@ function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
    let i = 0;
    buffers.forEach(buffer => {
       for (let j = 0; j < buffer.length; j++) {
-         bufferByes[i++] = buffer[j++];
+         bufferBytes[i++] = buffer[j++];
       }
    });
 
