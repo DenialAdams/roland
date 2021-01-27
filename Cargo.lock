@@ -136,12 +136,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "difference"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "524cbf6897b527295dff137cec09ecf3a05f4fddffd7dfcd1585403449e74198"
-
-[[package]]
 name = "either"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -323,9 +317,9 @@ dependencies = [
 name = "roland_test_runner"
 version = "0.1.0"
 dependencies = [
- "difference",
  "os_pipe",
  "rayon",
+ "similar",
  "termcolor",
 ]
 
@@ -358,6 +352,12 @@ name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
+
+[[package]]
+name = "similar"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c2c5334976f6000d0c36cf95a0b70ff4daa310b935aa4ce190d02f1012c81d0"
 
 [[package]]
 name = "strsim"

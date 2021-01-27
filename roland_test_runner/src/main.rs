@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::Mutex;
 
-use difference::{Changeset, Difference};
+use similar::text::{ChangeTag, TextDiff};
 
 use os_pipe::pipe;
 
@@ -18,8 +18,8 @@ enum TestFailureReason {
    ExpectedCompilationFailure,
    ExpectedCompilationSuccess,
    ExpectedCompilationSuccessNoExecutable,
-   MismatchedExecutionOutput(Changeset),
-   MismatchedCompilationErrorOutput(Changeset),
+   MismatchedExecutionOutput(String, String),
+   MismatchedCompilationErrorOutput(String, String),
 }
 
 fn main() -> Result<(), &'static str> {
@@ -99,23 +99,19 @@ fn main() -> Result<(), &'static str> {
                TestFailureReason::ExpectedCompilationSuccessNoExecutable => {
                   writeln!(&mut out_handle, "Compilation was supposed to succeed, but no executable was produced and there was no error output from the compiler").unwrap();
                }
-               TestFailureReason::MismatchedExecutionOutput(diff) => {
+               TestFailureReason::MismatchedExecutionOutput(expected, actual) => {
                   writeln!(
                      &mut out_handle,
                      "Compiled OK, but execution of the program produced a different result than expected:"
                   ).unwrap();
-                  writeln!(&mut out_handle, "```").unwrap();
-                  print_diff(&mut out_handle, &diff.diffs);
-                  writeln!(&mut out_handle, "```").unwrap();
+                  print_diff(&mut out_handle, &expected, &actual);
                }
-               TestFailureReason::MismatchedCompilationErrorOutput(diff) => {
+               TestFailureReason::MismatchedCompilationErrorOutput(expected, actual) => {
                   writeln!(
                      &mut out_handle,
                      "Failed to compile, but the compilation error was different than expected:"
                   ).unwrap();
-                  writeln!(&mut out_handle, "```").unwrap();
-                  print_diff(&mut out_handle, &diff.diffs);
-                  writeln!(&mut out_handle, "```").unwrap();
+                  print_diff(&mut out_handle, &expected, &actual);
                }
             }
             writeln!(&mut out_handle, "--------------------").unwrap();
@@ -140,24 +136,31 @@ fn main() -> Result<(), &'static str> {
    Ok(())
 }
 
-fn print_diff<W: WriteColor>(t: &mut W, diffs: &[Difference]) {
-   for diff in diffs.iter() {
-      match diff {
-         Difference::Same(ref x) => {
-            let _ = t.set_color(ColorSpec::new().set_fg(None).set_intense(false));
-            writeln!(t, "{}", x).unwrap();
-         }
-         Difference::Add(ref x) => {
-            let _ = t.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_intense(false));
-            writeln!(t, "+{}", x).unwrap();
-         }
-         Difference::Rem(ref x) => {
-            let _ = t.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_intense(false));
-            writeln!(t, "-{}", x).unwrap();
+fn print_diff<W: WriteColor>(t: &mut W, expected: &str, actual: &str) {
+   let diff = TextDiff::from_lines(expected, actual);
+   let ops = diff.ops();
+
+   writeln!(t, "```").unwrap();
+   for op in ops {
+      for change in diff.iter_changes(op) {
+         match change.tag() {
+            ChangeTag::Equal => {
+               let _ = t.set_color(ColorSpec::new().set_fg(None).set_intense(false));
+               write!(t, "{}", change.value()).unwrap();
+            }
+            ChangeTag::Insert => {
+               let _ = t.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_intense(false));
+               write!(t, "+{}", change.value()).unwrap();
+            }
+            ChangeTag::Delete => {
+               let _ = t.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_intense(false));
+               write!(t, "-{}", change.value()).unwrap();
+            }
          }
       }
    }
    let _ = t.set_color(ColorSpec::new().set_fg(None).set_intense(false));
+   writeln!(t, "```").unwrap();
 }
 
 fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Result<(), TestFailureReason> {
@@ -192,8 +195,7 @@ fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Res
             handle.wait().unwrap();
          };
          if prog_output != desired_result {
-            let changeset = Changeset::new(&desired_result, &prog_output, "\n");
-            return Err(TestFailureReason::MismatchedExecutionOutput(changeset));
+            return Err(TestFailureReason::MismatchedExecutionOutput(desired_result, prog_output));
          }
       } else {
          return Err(TestFailureReason::ExpectedCompilationFailure);
@@ -205,8 +207,7 @@ fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Res
          handle.read_to_string(&mut desired_result).unwrap();
          let stderr_text = String::from_utf8_lossy(&tc_output.stderr);
          if stderr_text != desired_result {
-            let changeset = Changeset::new(&desired_result, &stderr_text, "\n");
-            return Err(TestFailureReason::MismatchedCompilationErrorOutput(changeset));
+            return Err(TestFailureReason::MismatchedCompilationErrorOutput(desired_result, stderr_text.into_owned()));
          }
       } else {
          return Err(TestFailureReason::ExpectedCompilationSuccess);
