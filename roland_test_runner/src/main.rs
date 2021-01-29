@@ -127,12 +127,19 @@ fn main() -> Result<(), &'static str> {
    let _ = out_handle.set_color(&pass_color);
    write!(&mut out_handle, "{} ", lock.0).unwrap();
    let _ = out_handle.set_color(&reset_color);
-   write!(&mut out_handle, "successes, ").unwrap();
+   if lock.0 == 1 {
+      write!(&mut out_handle, "success, ").unwrap();
+   } else {
+      write!(&mut out_handle, "successes, ").unwrap();
+   }
    let _ = out_handle.set_color(&err_color);
    write!(&mut out_handle, "{} ", lock.1).unwrap();
    let _ = out_handle.set_color(&reset_color);
-   writeln!(&mut out_handle, "failures").unwrap();
-
+   if lock.1 == 1 {
+      writeln!(&mut out_handle, "failure").unwrap();
+   } else {
+      writeln!(&mut out_handle, "failures").unwrap();
+   }
    Ok(())
 }
 
