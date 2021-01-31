@@ -355,9 +355,9 @@ checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
 name = "similar"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c2c5334976f6000d0c36cf95a0b70ff4daa310b935aa4ce190d02f1012c81d0"
+checksum = "823f59ff8efe59c4cf706349651b0e19dd6f501fdf3521666fbe498e8d18d0ec"
 
 [[package]]
 name = "strsim"
