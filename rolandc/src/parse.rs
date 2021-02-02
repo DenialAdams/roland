@@ -101,6 +101,7 @@ pub enum Expression {
    BinaryOperator(BinOp, Box<(ExpressionNode, ExpressionNode)>),
    UnaryOperator(UnOp, Box<ExpressionNode>),
    StructLiteral(String, Vec<(String, ExpressionNode)>),
+   FieldAccess(String, Box<ExpressionNode>),
 }
 
 impl Expression {
@@ -494,7 +495,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
       Some(Token::IntLiteral(x)) => Expression::IntLiteral(x),
       Some(Token::StringLiteral(x)) => Expression::StringLiteral(x),
       Some(Token::Identifier(s)) => {
-         if let Some(&Token::OpenParen) = l.peek() {
+         if l.peek() == Some(&Token::OpenParen)  {
             let _ = l.next();
             let args = parse_arguments(l, err_stream)?;
             expect(l, err_stream, &Token::CloseParen)?;
@@ -568,8 +569,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
    };
 
    loop {
-      // TODO: use something like discriminant, or maybe better a new enum type so we avoid the clone
-      let op: Token = match l.peek() {
+      let op: &Token = match l.peek() {
          Some(x @ &Token::Plus)
          | Some(x @ &Token::Minus)
          | Some(x @ &Token::MultiplyDeref)
@@ -582,16 +582,16 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
          | Some(x @ &Token::Pipe)
          | Some(x @ &Token::Amp)
          | Some(x @ &Token::Caret)
-         | Some(x @ &Token::NotEquality) => x.clone(),
+         | Some(x @ &Token::NotEquality) => x,
          _ => break,
       };
 
-      let (l_bp, r_b) = infix_binding_power(&op);
+      let (l_bp, r_b) = infix_binding_power(op);
       if l_bp < min_bp {
          break;
       }
 
-      let _ = l.next();
+      let op = l.next().unwrap();
       let rhs = pratt(l, err_stream, r_b, if_head)?;
 
       let bin_op = match op {

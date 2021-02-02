@@ -610,6 +610,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          generation_context.out.emit_call(name);
       }
       Expression::StructLiteral(_, _) => unimplemented!(),
+      Expression::FieldAccess(_, _) => unimplemented!(),
    }
 }
 

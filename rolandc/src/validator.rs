@@ -586,6 +586,9 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
       Expression::StructLiteral(_type_name, _args) => {
          unimplemented!()
       }
+      Expression::FieldAccess(_, _) => {
+         unimplemented!()
+      }
    }
 }
 
@@ -617,5 +620,6 @@ fn set_inferred_type(
       Expression::Variable(_) => unreachable!(),
       Expression::ProcedureCall(_, _) => unreachable!(),
       Expression::StructLiteral(_, _) => unreachable!(),
+      Expression::FieldAccess(_, _) => unreachable!(),
    }
 }
