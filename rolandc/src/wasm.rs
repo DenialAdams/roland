@@ -153,6 +153,7 @@ fn value_type_to_result(e: &ValueType) -> &'static str {
       ValueType::String => "(result i32) (result i32)",
       ValueType::Unit => "",
       ValueType::CompileError => unreachable!(),
+      ValueType::Struct(_) => unimplemented!(),
    }
 }
 
@@ -174,6 +175,7 @@ fn value_type_to_s(e: &ValueType) -> &'static str {
       ValueType::String => unimplemented!(),
       ValueType::Unit => unreachable!(),
       ValueType::CompileError => unreachable!(),
+      ValueType::Struct(_) => unimplemented!(),
    }
 }
 
@@ -197,6 +199,7 @@ fn sizeof_value_type_mem(e: &ValueType) -> u32 {
       ValueType::String => 8,
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
+      ValueType::Struct(_) => unimplemented!(),
    }
 }
 
@@ -215,6 +218,7 @@ fn sizeof_value_type_locals(e: &ValueType) -> u32 {
       ValueType::String => 2,
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
+      ValueType::Struct(_) => unimplemented!(),
    }
 }
 
@@ -236,6 +240,7 @@ fn sizeof_value_type_wasm(e: &ValueType) -> u32 {
       ValueType::String => 8,
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
+      ValueType::Struct(_) => unimplemented!(),
    }
 }
 
@@ -604,6 +609,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
          generation_context.out.emit_call(name);
       }
+      Expression::StructInstatiation(_, _) => unimplemented!(),
    }
 }
 

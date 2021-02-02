@@ -121,5 +121,13 @@ fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode) {
          print_expression(out, &expr);
          writeln!(out, "</ul></li>").unwrap();
       }
+      Expression::StructInstatiation(type_name, fields) => {
+         writeln!(out, "<li><span>{}{}</span>", type_name, type_text).unwrap();
+         writeln!(out, "<ul>").unwrap();
+         for field in fields {
+            print_expression(out, &field.1);
+         }
+         writeln!(out, "</ul></li>").unwrap();
+      }
    }
 }

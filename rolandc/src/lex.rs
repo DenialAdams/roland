@@ -1,11 +1,12 @@
 use std::io::Write;
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Token {
    Arrow,
    KeywordElse,
    KeywordFuncDef,
    KeywordIf,
    KeywordProcedureDef,
+   KeywordStructDef,
    KeywordLet,
    KeywordReturn,
    KeywordLoop,
@@ -37,6 +38,7 @@ pub enum Token {
    GreaterThanOrEqualTo,
    Comma,
    Exclam,
+   Period,
 }
 
 enum LexMode {
@@ -54,6 +56,7 @@ fn extract_keyword_or_ident(s: &str) -> Token {
       "func" => Token::KeywordFuncDef,
       "if" => Token::KeywordIf,
       "proc" => Token::KeywordProcedureDef,
+      "struct" => Token::KeywordStructDef,
       "let" => Token::KeywordLet,
       "return" => Token::KeywordReturn,
       "loop" => Token::KeywordLoop,
@@ -156,6 +159,9 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<Token>, ()> 
                } else {
                   tokens.push(Token::Exclam);
                }
+            } else if c == '.' {
+               tokens.push(Token::Period);
+               let _ = chars.next().unwrap();
             } else if c.is_ascii_digit() {
                mode = LexMode::IntLiteral;
             } else if c.is_alphabetic() {

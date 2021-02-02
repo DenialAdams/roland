@@ -1,0 +1,8 @@
+struct X {
+   foo: i64
+   bar: u8
+}
+
+proc main() {
+
+}

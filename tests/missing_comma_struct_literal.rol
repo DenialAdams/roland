@@ -1,0 +1,11 @@
+struct X {
+   foo: i64,
+   bar: u8
+}
+
+proc main() {
+   let y = X {
+      foo: 8
+      bar: 10
+   };
+}

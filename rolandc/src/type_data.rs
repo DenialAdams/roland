@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 pub const U8_TYPE: ValueType = ValueType::Int(IntType {
    signed: false,
    width: IntWidth::One,
@@ -51,6 +53,7 @@ pub enum ValueType {
    String,
    Bool,
    Unit,
+   Struct(String),
    CompileError,
 }
 
@@ -92,7 +95,7 @@ impl ExpressionType {
             for _ in 0..*x {
                s.push('&');
             }
-            s.push_str(base_type);
+            s.push_str(&*base_type);
             s
          }
       }
@@ -132,27 +135,28 @@ impl ValueType {
    fn is_concrete_type(&self) -> bool {
       match self {
          ValueType::UnknownInt | ValueType::CompileError => false,
-         ValueType::Int(_) | ValueType::String | ValueType::Bool | ValueType::Unit => true,
+         ValueType::Int(_) | ValueType::String | ValueType::Bool | ValueType::Unit | ValueType::Struct(_) => true,
       }
    }
 
-   fn as_roland_type_info(&self) -> &str {
+   fn as_roland_type_info(&self) -> Cow<str> {
       match self {
-         ValueType::UnknownInt => "?? Int",
+         ValueType::UnknownInt => Cow::Borrowed("?? Int"),
          ValueType::Int(x) => match (x.signed, &x.width) {
-            (true, IntWidth::Eight) => "i64",
-            (true, IntWidth::Four) => "i32",
-            (true, IntWidth::Two) => "i16",
-            (true, IntWidth::One) => "i8",
-            (false, IntWidth::Eight) => "u64",
-            (false, IntWidth::Four) => "u32",
-            (false, IntWidth::Two) => "u16",
-            (false, IntWidth::One) => "u8",
+            (true, IntWidth::Eight) => Cow::Borrowed("i64"),
+            (true, IntWidth::Four) => Cow::Borrowed("i32"),
+            (true, IntWidth::Two) => Cow::Borrowed("i16"),
+            (true, IntWidth::One) => Cow::Borrowed("i8"),
+            (false, IntWidth::Eight) => Cow::Borrowed("u64"),
+            (false, IntWidth::Four) => Cow::Borrowed("u32"),
+            (false, IntWidth::Two) => Cow::Borrowed("u16"),
+            (false, IntWidth::One) => Cow::Borrowed("u8"),
          },
-         ValueType::String => "String",
-         ValueType::Bool => "bool",
-         ValueType::Unit => "()",
-         ValueType::CompileError => "ERROR",
+         ValueType::String => Cow::Borrowed("String"),
+         ValueType::Bool => Cow::Borrowed("bool"),
+         ValueType::Unit => Cow::Borrowed("()"),
+         ValueType::CompileError => Cow::Borrowed("ERROR"),
+         ValueType::Struct(x) => Cow::Owned(format!("Struct {}", x)),
       }
    }
 }
