@@ -609,7 +609,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
          generation_context.out.emit_call(name);
       }
-      Expression::StructInstatiation(_, _) => unimplemented!(),
+      Expression::StructLiteral(_, _) => unimplemented!(),
    }
 }
 

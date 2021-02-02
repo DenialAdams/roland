@@ -100,7 +100,7 @@ pub enum Expression {
    Variable(String),
    BinaryOperator(BinOp, Box<(ExpressionNode, ExpressionNode)>),
    UnaryOperator(UnOp, Box<ExpressionNode>),
-   StructInstatiation(String, Vec<(String, ExpressionNode)>),
+   StructLiteral(String, Vec<(String, ExpressionNode)>),
 }
 
 impl Expression {
@@ -521,7 +521,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
                   expect(l, err_stream, &Token::Comma)?;
                };
             }
-            Expression::StructInstatiation(s, fields)
+            Expression::StructLiteral(s, fields)
          } else {
             Expression::Variable(s)
          }
