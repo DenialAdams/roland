@@ -1,0 +1,27 @@
+struct X {
+   foo: u8,
+   bar: u8,
+}
+
+proc main() {
+   let a = X {
+      foo: 10,
+      foo: 10,
+      bar: 10,
+   };
+
+   let b = X {
+      foo: 10,
+   };
+
+   let c = X {
+      foo: 10,
+      bar: 10,
+      baz: true,
+   };
+
+   let d = X {
+      foo: true,
+      bar: 10,
+   };
+}

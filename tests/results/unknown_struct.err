@@ -1,1 +1,2 @@
-Encountered use of unknown struct `foo`
+Encountered construction of undefined struct `Y`
+There were 1 semantic errors, bailing

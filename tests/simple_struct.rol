@@ -14,7 +14,7 @@ proc main() {
    print_bool(instance.my_field == 10);
    print_bool(instance.my_other_field.another_field == 300);
 
-   instancy.my_field = 22;
+   instance.my_field = 22;
    instance.my_other_field.another_field = 222;
 
    print_bool(instance.my_field == 22);

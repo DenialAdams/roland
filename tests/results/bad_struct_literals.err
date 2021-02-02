@@ -1,0 +1,5 @@
+`foo` is a valid field of struct `X`, but is duplicated
+Literal of struct `X` is missing fields {"bar"}
+`baz` is not a known field of struct `X`
+For field `foo` of struct `X`, encountered value of type bool when we expected u8
+There were 4 semantic errors, bailing

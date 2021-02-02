@@ -38,6 +38,7 @@ struct ProcedureInfo {
 
 struct ValidationContext<'a> {
    procedure_info: &'a HashMap<String, ProcedureInfo>,
+   struct_info: &'a HashMap<String, HashMap<String, ExpressionType>>,
    cur_procedure_info: Option<&'a ProcedureInfo>,
    string_literals: HashSet<String>,
    variable_types: HashMap<String, (ExpressionType, u64)>,
@@ -49,7 +50,9 @@ struct ValidationContext<'a> {
 
 pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut W) -> u64 {
    let mut procedure_info = HashMap::new();
+   let mut struct_info = HashMap::new();
    let mut error_count = 0;
+
    // Built-In functions
    let standard_lib_procs = [(
       "print",
@@ -68,7 +71,23 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       );
    }
 
+   let mut parameter_dupe_check = HashSet::new();
    for procedure in program.procedures.iter() {
+      parameter_dupe_check.clear();
+      parameter_dupe_check.reserve(procedure.parameters.len());
+      for param in procedure.parameters.iter() {
+         if !parameter_dupe_check.insert(param.0.as_str()) {
+            error_count += 1;
+            writeln!(
+               err_stream,
+               "Procedure/function `{}` has a duplicate parameter `{}`",
+               procedure.name,
+               param.0,
+            )
+            .unwrap();
+         }
+      }
+
       match procedure_info.insert(
          procedure.name.clone(),
          ProcedureInfo {
@@ -90,11 +109,47 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       }
    }
 
+   for a_struct in program.structs.iter() {
+      let mut field_map = HashMap::with_capacity(a_struct.fields.len());
+      for field in a_struct.fields.iter() {
+         match field_map.insert(field.0.clone(), field.1.clone()) {
+            Some(__) => {
+               error_count += 1;
+               writeln!(
+                  err_stream,
+                  "Struct `{}` has a duplicate field `{}`",
+                  a_struct.name,
+                  field.0,
+               )
+               .unwrap();
+            }
+            None => (),
+         }
+      }
+
+      match struct_info.insert(
+         a_struct.name.clone(),
+         field_map,
+      ) {
+         Some(_) => {
+            error_count += 1;
+            writeln!(
+               err_stream,
+               "Encountered duplicate structs with the same name `{}`",
+               a_struct.name
+            )
+            .unwrap();
+         }
+         None => (),
+      }
+   }
+
    let mut validation_context = ValidationContext {
       string_literals: HashSet::new(),
       variable_types: HashMap::new(),
       error_count,
       procedure_info: &procedure_info,
+      struct_info: &struct_info,
       cur_procedure_info: None,
       block_depth: 0,
       loop_depth: 0,
@@ -114,7 +169,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
    }
 
    // We won't proceed with type checking because there could be false positives due to
-   // procedure definition errors.
+   // procedure/struct definition errors.
    if validation_context.error_count > 0 {
       return validation_context.error_count;
    }
@@ -284,7 +339,7 @@ fn type_statement<W: Write>(
          {
             set_inferred_type(dt.clone().unwrap(), en, validation_context);
             dt.clone().unwrap()
-         } else if dt.is_some() && *dt != en.exp_type {
+         } else if dt.is_some() && *dt != en.exp_type && en.exp_type != Some(ExpressionType::Value(ValueType::CompileError)) {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
@@ -583,8 +638,85 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
             }
          }
       }
-      Expression::StructLiteral(_type_name, _args) => {
-         unimplemented!()
+      Expression::StructLiteral(struct_name, fields) => {
+         for field in fields.iter_mut() {
+            do_type(err_stream, &mut field.1, validation_context);
+         }
+
+         match validation_context.struct_info.get(struct_name) {
+            Some(defined_fields) => {
+               // TODO, interning...
+               expr_node.exp_type = Some(ExpressionType::Value(ValueType::Struct(struct_name.clone())));
+
+               let mut unmatched_fields: HashSet<&str> = defined_fields.keys().map(|x| x.as_str()).collect();
+               for field in fields {
+                  // Extraneous field check
+                  let defined_type = match defined_fields.get(&field.0) {
+                     Some(x) => x,
+                     None => {
+                        validation_context.error_count += 1;
+                        writeln!(
+                           err_stream,
+                           "`{}` is not a known field of struct `{}`",
+                           field.0,
+                           struct_name,
+                        )
+                        .unwrap();
+                        continue;
+                     }
+                  };
+
+                  // Duplicate field check
+                  if !unmatched_fields.remove(field.0.as_str()) {
+                     validation_context.error_count += 1;
+                     writeln!(
+                        err_stream,
+                        "`{}` is a valid field of struct `{}`, but is duplicated",
+                        field.0,
+                        struct_name,
+                     )
+                     .unwrap();
+                  }
+
+                  // Type validation
+                  if defined_type.is_any_known_int() && field.1.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt) {
+                     set_inferred_type(defined_type.clone(), &mut field.1, validation_context);
+                  } else if field.1.exp_type.as_ref().unwrap() != defined_type {
+                     validation_context.error_count += 1;
+                     writeln!(
+                        err_stream,
+                        "For field `{}` of struct `{}`, encountered value of type {} when we expected {}",
+                        field.0,
+                        struct_name,
+                        field.1.exp_type.as_ref().unwrap().as_roland_type_info(),
+                        defined_type.as_roland_type_info(),
+                     )
+                     .unwrap();
+                  }
+               }
+               // Missing field check
+               if !unmatched_fields.is_empty() {
+                  validation_context.error_count += 1;
+                  writeln!(
+                     err_stream,
+                     "Literal of struct `{}` is missing fields {:?}",
+                     struct_name,
+                     unmatched_fields,
+                  )
+                  .unwrap();
+               }
+            }
+            None => {
+               validation_context.error_count += 1;
+               writeln!(
+                  err_stream,
+                  "Encountered construction of undefined struct `{}`",
+                  struct_name
+               )
+               .unwrap();
+               expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
+            }
+         }
       }
       Expression::FieldAccess(_, _) => {
          unimplemented!()

@@ -1,0 +1,2 @@
+Struct `Foo` has a duplicate field `x`
+There were 1 semantic errors, bailing

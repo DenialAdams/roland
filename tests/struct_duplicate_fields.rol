@@ -1,0 +1,6 @@
+struct Foo {
+   x: u8,
+   x: u8,
+}
+
+proc main() {}

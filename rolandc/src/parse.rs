@@ -55,7 +55,7 @@ pub struct ProcedureNode {
 
 pub struct StructNode {
    pub name: String,
-   pub fields: HashMap<String, ExpressionType>,
+   pub fields: Vec<(String, ExpressionType)>,
 }
 
 #[derive(Debug)]
@@ -101,7 +101,7 @@ pub enum Expression {
    BinaryOperator(BinOp, Box<(ExpressionNode, ExpressionNode)>),
    UnaryOperator(UnOp, Box<ExpressionNode>),
    StructLiteral(String, Vec<(String, ExpressionNode)>),
-   FieldAccess(String, Box<ExpressionNode>),
+   FieldAccess(Vec<String>, Box<ExpressionNode>),
 }
 
 impl Expression {
@@ -109,6 +109,7 @@ impl Expression {
       match self {
          Expression::Variable(_) => true,
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
+         Expression::FieldAccess(_, _) => true,
          _ => false,
       }
    }
@@ -210,7 +211,7 @@ fn parse_procedure<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Proced
 fn parse_struct<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<StructNode, ()> {
    let struct_name = extract_identifier(expect(l, err_stream, &Token::Identifier(String::from("")))?);
    expect(l, err_stream, &Token::OpenBrace)?;
-   let mut fields: HashMap<String, ExpressionType> = HashMap::new();
+   let mut fields: Vec<(String, ExpressionType)> = vec![];
    loop {
       if let Some(&Token::CloseBrace) = l.peek() {
          let _ = l.next();
@@ -219,7 +220,7 @@ fn parse_struct<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<StructNod
       let identifier = expect(l, err_stream, &Token::Identifier(String::from("")))?;
       let _ = expect(l, err_stream, &Token::Colon)?;
       let f_type = parse_type(l, err_stream)?;
-      fields.insert(extract_identifier(identifier), f_type);
+      fields.push((extract_identifier(identifier), f_type));
       if let Some(&Token::CloseBrace) = l.peek() {
          let _ = l.next();
          break;
@@ -560,7 +561,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
       x => {
          writeln!(
             err_stream,
-            "While parsing expression - unexpected token {:?}; was expecting an int, identifier, or prefix operator",
+            "While parsing expression - unexpected token {:?}; was expecting a literal, call, variable, or prefix operator",
             x
          )
          .unwrap();
@@ -583,6 +584,18 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
          | Some(x @ &Token::Amp)
          | Some(x @ &Token::Caret)
          | Some(x @ &Token::NotEquality) => x,
+         Some(&Token::Period) => {
+            let mut fields = vec![];
+            loop {
+               let _ = l.next();
+               fields.push(extract_identifier(expect(l, err_stream, &Token::Identifier(String::from("")))?));
+               if l.peek() != Some(&Token::Period) {
+                  break;
+               }
+            }
+            lhs = Expression::FieldAccess(fields, Box::new(wrap(lhs)));
+            continue;
+         },
          _ => break,
       };
 

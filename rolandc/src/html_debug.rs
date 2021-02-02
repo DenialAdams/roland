@@ -133,7 +133,7 @@ fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode) {
          writeln!(out, "<li><span>Field Access {}</span>", type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
          print_expression(out, lhs);
-         writeln!(out, "<li><span>{}</span></li>", field).unwrap();
+         writeln!(out, "<li><span>{:?}</span></li>", field).unwrap();
          writeln!(out, "</ul></li>").unwrap();
       }
    }
