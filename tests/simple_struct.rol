@@ -13,6 +13,10 @@ proc main() {
 
    print_bool(instance.my_field == 10);
    print_bool(instance.my_other_field == 300);
+
+   instancy.my_field = 22;
+
+   print_bool(instance.my_field == 22);
 }
 
 struct Y {
