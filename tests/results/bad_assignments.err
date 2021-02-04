@@ -1,4 +1,4 @@
-Left hand side of assignment is not a valid memory location; i.e. a variable or parameter
+Left hand side of assignment is not a valid memory location; i.e. a variable, field, or parameter
 Left hand side of assignment has type String which does not match the type of the right hand side ?? Int
 We weren't able to determine the types of 3 int literals
 There were 3 semantic errors, bailing

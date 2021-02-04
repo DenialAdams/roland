@@ -18,7 +18,7 @@ proc main() {
    instance.my_other_field.another_field = 222;
 
    print_bool(instance.my_field == 22);
-   print_bool(instance.my_field.another_field == 300);
+   print_bool(instance.my_other_field.another_field == 222);
 }
 
 struct Y {

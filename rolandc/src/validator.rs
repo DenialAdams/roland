@@ -260,7 +260,7 @@ fn type_statement<W: Write>(
             validation_context.error_count += 1;
             writeln!(
                err_stream,
-               "Left hand side of assignment is not a valid memory location; i.e. a variable or parameter"
+               "Left hand side of assignment is not a valid memory location; i.e. a variable, field, or parameter"
             )
             .unwrap();
          }
@@ -718,8 +718,73 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
             }
          }
       }
-      Expression::FieldAccess(_, _) => {
-         unimplemented!()
+      Expression::FieldAccess(fields, lhs) => {
+         do_type(err_stream, lhs, validation_context);
+
+         if let Some(ExpressionType::Value(ValueType::Struct(base_struct_name))) = lhs.exp_type.as_ref() {
+            let mut current_struct = base_struct_name.as_str();
+            let mut current_struct_info = validation_context.struct_info.get(current_struct).unwrap();
+            for (field, next_field) in fields.iter().take(fields.len() - 1).zip(fields.iter().skip(1)) {
+               match current_struct_info.get(field) {
+                  Some(ExpressionType::Value(ValueType::Struct(x))) => {
+                     current_struct = x.as_str();
+                     current_struct_info = validation_context.struct_info.get(current_struct).unwrap();
+                  }
+                  Some(_) => {
+                     validation_context.error_count += 1;
+                     writeln!(
+                        err_stream,
+                        "Field `{}` is not a struct type and so doesn't have field `{}`",
+                        field,
+                        next_field,
+                     )
+                     .unwrap();
+                     expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
+                     break;
+                  }
+                  None => {
+                     validation_context.error_count += 1;
+                     writeln!(
+                        err_stream,
+                        "Struct `{}` does not have a field `{}`",
+                        current_struct,
+                        field,
+                     )
+                     .unwrap();
+                     expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
+                     break;
+                  }
+               }
+            }
+
+            if expr_node.exp_type != Some(ExpressionType::Value(ValueType::CompileError)) {
+               match current_struct_info.get(fields.last().unwrap()) {
+                  Some(e_type) => {
+                     expr_node.exp_type = Some(e_type.clone());
+                  }
+                  None => {
+                     validation_context.error_count += 1;
+                     writeln!(
+                        err_stream,
+                        "Struct `{}` does not have a field `{}`",
+                        current_struct,
+                        fields.last().unwrap(),
+                     )
+                     .unwrap();
+                     expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
+                  }
+               }
+            }
+         } else {
+            validation_context.error_count += 1;
+            writeln!(
+               err_stream,
+               "Encountered field access on type {}; only structs have fields",
+               lhs.exp_type.as_ref().unwrap().as_roland_type_info()
+            )
+            .unwrap();
+            expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
+         }
       }
    }
 }

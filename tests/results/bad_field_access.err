@@ -1,0 +1,5 @@
+Encountered field access on type bool; only structs have fields
+Field `foo` is not a struct type and so doesn't have field `baz`
+Struct `X` does not have a field `baz`
+Struct `Y` does not have a field `other`
+There were 4 semantic errors, bailing
