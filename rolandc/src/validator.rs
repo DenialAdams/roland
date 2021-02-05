@@ -48,6 +48,24 @@ struct ValidationContext<'a> {
    unknown_ints: u64,
 }
 
+fn recursive_struct_check(base_name: &str, struct_fields: &HashMap<String, ExpressionType>, struct_info: &HashMap<String, HashMap<String, ExpressionType>>) -> bool {
+   let mut is_recursive = false;
+
+   for struct_field in struct_fields.iter().flat_map(|x| match &x.1 {
+      ExpressionType::Value(ValueType::Struct(x)) => Some(x.as_str()),
+      _ => None,
+   }) {
+      if struct_field == base_name {
+         is_recursive = true;
+         break;
+      }
+
+      is_recursive |= recursive_struct_check(base_name, struct_info.get(struct_field).unwrap(), struct_info);
+   }
+
+   is_recursive
+}
+
 pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut W) -> u64 {
    let mut procedure_info = HashMap::new();
    let mut struct_info = HashMap::new();
@@ -141,6 +159,18 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
             .unwrap();
          }
          None => (),
+      }
+   }
+
+   for struct_i in struct_info.iter() {
+      if recursive_struct_check(struct_i.0.as_str(), &struct_i.1, &struct_info) {
+         error_count += 1;
+         writeln!(
+            err_stream,
+            "Struct `{}` contains itself, which isn't allowed as it would result in an infinitely large struct",
+            struct_i.0.as_str(),
+         )
+         .unwrap();
       }
    }
 

@@ -1,6 +1,12 @@
 struct X {
-   my_field: u8,
+   my_field: u64,
    my_other_field: Y,
+}
+
+func foo() -> Y {
+   return Y {
+      another_field: 123,
+   };
 }
 
 proc main() {
@@ -19,6 +25,14 @@ proc main() {
 
    print_bool(instance.my_field == 22);
    print_bool(instance.my_other_field.another_field == 222);
+
+   instance.my_field = instance.my_other_field.another_field;
+
+   print_bool(instance.my_field == 222);
+
+   let z = foo();
+
+   print_bool(z.another_field == 123);
 }
 
 struct Y {

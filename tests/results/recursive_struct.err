@@ -1,0 +1,3 @@
+Struct `X` contains itself, which isn't allowed as it would result in an infinitely large struct
+Struct `Y` contains itself, which isn't allowed as it would result in an infinitely large struct
+There were 2 semantic errors, bailing
