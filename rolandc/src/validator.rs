@@ -60,7 +60,7 @@ fn recursive_struct_check(base_name: &str, struct_fields: &HashMap<String, Expre
          break;
       }
 
-      is_recursive |= recursive_struct_check(base_name, struct_info.get(struct_field).unwrap(), struct_info);
+      is_recursive |= struct_info.get(struct_field).map(|si| recursive_struct_check(base_name, si, struct_info)).unwrap_or(false);
    }
 
    is_recursive
@@ -163,6 +163,21 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
    }
 
    for struct_i in struct_info.iter() {
+      for (field, e_type) in struct_i.1.iter().filter(|(_, e_type)| match e_type {
+         ExpressionType::Value(ValueType::Struct(s)) => struct_info.get(s).is_none(),
+         _ => false,
+      }) {
+         error_count += 1;
+         writeln!(
+            err_stream,
+            "Field `{}` of struct `{}` is of undeclared type `{}`",
+            field,
+            struct_i.0,
+            e_type.as_roland_type_info(),
+         )
+         .unwrap();
+      }
+
       if recursive_struct_check(struct_i.0.as_str(), &struct_i.1, &struct_info) {
          error_count += 1;
          writeln!(
@@ -376,6 +391,19 @@ fn type_statement<W: Write>(
                "Declared type {} does not match actual expression type {}",
                dt.as_ref().unwrap().as_roland_type_info(),
                en.exp_type.as_ref().unwrap().as_roland_type_info()
+            )
+            .unwrap();
+            ExpressionType::Value(ValueType::CompileError)
+         } else if dt.as_ref().and_then(|x| match x {
+            ExpressionType::Value(ValueType::Struct(s)) => Some(s),
+            _ => None
+         }).map(|x| validation_context.struct_info.get(x).is_none()).unwrap_or(false) {
+            validation_context.error_count += 1;
+            writeln!(
+               err_stream,
+               "Variable `{}` is declared with undeclared type `{}`",
+               id,
+               dt.as_ref().unwrap().as_roland_type_info()
             )
             .unwrap();
             ExpressionType::Value(ValueType::CompileError)

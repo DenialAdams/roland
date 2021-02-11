@@ -1,0 +1,2 @@
+Field `alpha` of struct `X` is of undeclared type `Struct Y`
+There were 1 semantic errors, bailing
