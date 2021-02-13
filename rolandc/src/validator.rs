@@ -266,9 +266,11 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       .unwrap();
    }
 
+   let err_count = validation_context.error_count;
    program.literals = validation_context.string_literals;
+   program.struct_info = struct_info;
 
-   validation_context.error_count
+   err_count
 }
 
 fn type_statement<W: Write>(

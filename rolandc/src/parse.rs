@@ -134,7 +134,10 @@ pub struct BlockNode {
 pub struct Program {
    pub procedures: Vec<ProcedureNode>,
    pub structs: Vec<StructNode>,
+
+   // These fields are populated by the semantic phase
    pub literals: HashSet<String>,
+   pub struct_info: HashMap<String, HashMap<String, ExpressionType>>,
 }
 
 pub fn astify<W: Write>(tokens: Vec<Token>, err_stream: &mut W) -> Result<Program, ()> {
@@ -176,6 +179,7 @@ pub fn astify<W: Write>(tokens: Vec<Token>, err_stream: &mut W) -> Result<Progra
       procedures,
       structs,
       literals: HashSet::new(),
+      struct_info: HashMap::new(),
    })
 }
 

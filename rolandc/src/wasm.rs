@@ -7,9 +7,16 @@ struct GenerationContext {
    out: PrettyWasmWriter,
    literal_offsets: HashMap<String, (u32, u32)>,
    local_offsets: HashMap<String, u32>,
+   struct_size_info: HashMap<String, SizeInfo>,
    sum_sizeof_locals: u32,
    loop_depth: u64,
    loop_counter: u64,
+}
+
+struct SizeInfo {
+   locals_size: u32,
+   mem_size: u32,
+   wasm_size: u32,
 }
 
 struct PrettyWasmWriter {
@@ -179,14 +186,15 @@ fn value_type_to_s(e: &ValueType) -> &'static str {
    }
 }
 
-fn sizeof_type_mem(e: &ExpressionType) -> u32 {
+/// The size of a type as it's stored in memory
+fn sizeof_type_mem(e: &ExpressionType, si: &HashMap<String, SizeInfo>) -> u32 {
    match e {
-      ExpressionType::Value(x) => sizeof_value_type_mem(x),
+      ExpressionType::Value(x) => sizeof_value_type_mem(x, si),
       ExpressionType::Pointer(_, _) => 4,
    }
 }
 
-fn sizeof_value_type_mem(e: &ValueType) -> u32 {
+fn sizeof_value_type_mem(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::Int(x) => match x.width {
@@ -199,18 +207,19 @@ fn sizeof_value_type_mem(e: &ValueType) -> u32 {
       ValueType::String => 8,
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
-      ValueType::Struct(_) => unimplemented!(),
+      ValueType::Struct(x) => si.get(x).unwrap().mem_size,
    }
 }
 
-fn sizeof_type_locals(e: &ExpressionType) -> u32 {
+/// The size of a type, in number of locals
+fn sizeof_type_locals(e: &ExpressionType, si: &HashMap<String, SizeInfo>) -> u32 {
    match e {
-      ExpressionType::Value(x) => sizeof_value_type_locals(x),
+      ExpressionType::Value(x) => sizeof_value_type_locals(x, si),
       ExpressionType::Pointer(_, _) => 1,
    }
 }
 
-fn sizeof_value_type_locals(e: &ValueType) -> u32 {
+fn sizeof_value_type_locals(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::Int(_) => 1,
@@ -218,18 +227,19 @@ fn sizeof_value_type_locals(e: &ValueType) -> u32 {
       ValueType::String => 2,
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
-      ValueType::Struct(_) => unimplemented!(),
+      ValueType::Struct(x) => si.get(x).unwrap().locals_size,
    }
 }
 
-fn sizeof_type_wasm(e: &ExpressionType) -> u32 {
+/// The size of a type, in bytes, as it's stored in locals (minimum size 4 bytes)
+fn sizeof_type_wasm(e: &ExpressionType, si: &HashMap<String, SizeInfo>) -> u32 {
    match e {
-      ExpressionType::Value(x) => sizeof_value_type_wasm(x),
+      ExpressionType::Value(x) => sizeof_value_type_wasm(x, si),
       ExpressionType::Pointer(_, _) => 4,
    }
 }
 
-fn sizeof_value_type_wasm(e: &ValueType) -> u32 {
+fn sizeof_value_type_wasm(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::Int(x) => match x.width {
@@ -240,11 +250,39 @@ fn sizeof_value_type_wasm(e: &ValueType) -> u32 {
       ValueType::String => 8,
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
-      ValueType::Struct(_) => unimplemented!(),
+      ValueType::Struct(x) => si.get(x).unwrap().wasm_size,
    }
 }
 
+fn calculate_struct_size_info(name: &str, struct_info: &HashMap<String, HashMap<String, ExpressionType>>, struct_size_info: &mut HashMap<String, SizeInfo>) {
+   let mut sum_mem = 0;
+   let mut sum_wasm = 0;
+   let mut sum_locals = 0;
+   for field_t in struct_info.get(name).unwrap().values() {
+      if let ExpressionType::Value(ValueType::Struct(s)) = field_t {
+         if !struct_size_info.contains_key(s) {
+            calculate_struct_size_info(s.as_str(), struct_info, struct_size_info);
+         }
+      }
+
+      // todo: Check this?
+      sum_mem += sizeof_type_mem(field_t, struct_size_info);
+      sum_wasm += sizeof_type_wasm(field_t, struct_size_info);
+      sum_locals += sizeof_type_locals(field_t, struct_size_info);
+   }
+   struct_size_info.insert(name.to_owned(), SizeInfo {
+      mem_size: sum_mem,
+      wasm_size: sum_wasm,
+      locals_size: sum_locals,
+   });
+}
+
 pub fn emit_wasm(program: &Program) -> Vec<u8> {
+   let mut struct_size_info: HashMap<String, SizeInfo> = HashMap::with_capacity(program.struct_info.len());
+   for s in program.struct_info.iter() {
+      calculate_struct_size_info(s.0.as_str(), &program.struct_info, &mut struct_size_info);
+   }
+
    let mut generation_context = GenerationContext {
       out: PrettyWasmWriter {
          out: Vec::new(),
@@ -253,6 +291,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       // todo: just reuse the same map?
       literal_offsets: HashMap::with_capacity(program.literals.len()),
       local_offsets: HashMap::new(),
+      struct_size_info,
       sum_sizeof_locals: 0,
       loop_counter: 0,
       loop_depth: 0,
@@ -331,15 +370,18 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
          generation_context
             .local_offsets
             .insert(local.0.clone(), generation_context.sum_sizeof_locals);
-         generation_context.sum_sizeof_locals += sizeof_type_mem(&local.1);
+         // TODO: should we check for overflow on this value?
+         generation_context.sum_sizeof_locals += sizeof_type_mem(&local.1, &generation_context.struct_size_info);
       }
 
+      // Outside of the closure so that the borrow checker can understand this borrow
+      let struct_size_info_ref = &generation_context.struct_size_info;
       generation_context.out.emit_function_start(
          &procedure.name,
          procedure
             .parameters
             .iter()
-            .filter(|x| x.1 != ExpressionType::Value(ValueType::Unit))
+            .filter(|x| sizeof_type_locals(&x.1, struct_size_info_ref) != 0)
             .map(|x| (x.0.as_ref(), type_to_s(&x.1))),
          type_to_result(&procedure.ret_type),
       );
@@ -352,7 +394,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
       // Copy parameters to stack memory so we can take pointers
       for param in &procedure.parameters {
-         if param.1 == ExpressionType::Value(ValueType::Unit) {
+         if sizeof_type_mem(&param.1, &generation_context.struct_size_info) == 0 {
             continue;
          }
          get_stack_address_of_local(&param.0, &mut generation_context);
@@ -436,7 +478,7 @@ fn emit_statement(statement: &Statement, generation_context: &mut GenerationCont
       }
       Statement::ExpressionStatement(en) => {
          do_emit(en, generation_context);
-         for _ in 0..sizeof_type_locals(en.exp_type.as_ref().unwrap()) {
+         for _ in 0..sizeof_type_locals(en.exp_type.as_ref().unwrap(), &generation_context.struct_size_info) {
             generation_context.out.emit_constant_instruction("drop");
          }
       }
@@ -609,7 +651,11 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
          generation_context.out.emit_call(name);
       }
-      Expression::StructLiteral(_, _) => unimplemented!(),
+      Expression::StructLiteral(_, fields) => {
+         for field in fields.iter() {
+            do_emit_and_load_lval(&field.1, generation_context);
+         }
+      },
       Expression::FieldAccess(_, _) => unimplemented!(),
    }
 }
@@ -642,10 +688,10 @@ fn get_stack_address_of_local(id: &str, generation_context: &mut GenerationConte
 }
 
 fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   if *val_type == ExpressionType::Value(ValueType::Unit) {
+   if sizeof_type_mem(val_type, &generation_context.struct_size_info) == 0 {
       // Drop the load address; nothing to load
       generation_context.out.emit_constant_instruction("drop");
-   } else if sizeof_type_mem(val_type) == sizeof_type_wasm(val_type) {
+   } else if sizeof_type_mem(val_type, &generation_context.struct_size_info) == sizeof_type_wasm(val_type, &generation_context.struct_size_info) {
       generation_context.out.emit_spaces();
       writeln!(generation_context.out.out, "{}.load", type_to_s(val_type)).unwrap();
    } else {
@@ -676,10 +722,10 @@ fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
 }
 
 fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   if *val_type == ExpressionType::Value(ValueType::Unit) {
+   if sizeof_type_mem(val_type, &generation_context.struct_size_info) == 0 {
       // Drop the placement address; nothing to store
       generation_context.out.emit_constant_instruction("drop");
-   } else if sizeof_type_mem(val_type) == sizeof_type_wasm(val_type) {
+   } else if sizeof_type_mem(val_type, &generation_context.struct_size_info) == sizeof_type_wasm(val_type, &generation_context.struct_size_info) {
       generation_context.out.emit_spaces();
       writeln!(generation_context.out.out, "{}.store", type_to_s(val_type)).unwrap();
    } else {

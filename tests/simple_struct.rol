@@ -13,7 +13,7 @@ proc main() {
    let instance = X {
       my_field: 10,
       my_other_field: Y {
-         another_field: 300
+         another_field: 100 * 3
       },
    };
 
