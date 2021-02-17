@@ -3,6 +3,7 @@ use crate::type_data::{ExpressionType, ValueType};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::mem::discriminant;
+use indexmap::IndexMap;
 
 struct Lexer {
    tokens: Vec<Token>,
@@ -47,7 +48,7 @@ fn expect<W: Write>(l: &mut Lexer, err_stream: &mut W, token: &Token) -> Result<
 pub struct ProcedureNode {
    pub name: String,
    pub parameters: Vec<(String, ExpressionType)>,
-   pub locals: HashMap<String, ExpressionType>,
+   pub locals: IndexMap<String, ExpressionType>,
    pub block: BlockNode,
    pub ret_type: ExpressionType,
    pub pure: bool,
@@ -137,7 +138,7 @@ pub struct Program {
 
    // These fields are populated by the semantic phase
    pub literals: HashSet<String>,
-   pub struct_info: HashMap<String, HashMap<String, ExpressionType>>,
+   pub struct_info: IndexMap<String, HashMap<String, ExpressionType>>,
 }
 
 pub fn astify<W: Write>(tokens: Vec<Token>, err_stream: &mut W) -> Result<Program, ()> {
@@ -179,7 +180,7 @@ pub fn astify<W: Write>(tokens: Vec<Token>, err_stream: &mut W) -> Result<Progra
       procedures,
       structs,
       literals: HashSet::new(),
-      struct_info: HashMap::new(),
+      struct_info: IndexMap::new(),
    })
 }
 
@@ -205,7 +206,7 @@ fn parse_procedure<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Proced
    Ok(ProcedureNode {
       name: extract_identifier(function_name),
       parameters,
-      locals: HashMap::new(),
+      locals: IndexMap::new(),
       block,
       ret_type,
       pure: false,

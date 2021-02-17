@@ -2,6 +2,7 @@ use super::type_data::{ExpressionType, ValueType};
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, UnOp};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
+use indexmap::IndexMap;
 
 #[derive(Debug)]
 enum TypeValidator {
@@ -37,8 +38,9 @@ struct ProcedureInfo {
 }
 
 struct ValidationContext<'a> {
+   // todo: for reliable output, this probably also needs to become and index map
    procedure_info: &'a HashMap<String, ProcedureInfo>,
-   struct_info: &'a HashMap<String, HashMap<String, ExpressionType>>,
+   struct_info: &'a IndexMap<String, HashMap<String, ExpressionType>>,
    cur_procedure_info: Option<&'a ProcedureInfo>,
    string_literals: HashSet<String>,
    variable_types: HashMap<String, (ExpressionType, u64)>,
@@ -48,7 +50,7 @@ struct ValidationContext<'a> {
    unknown_ints: u64,
 }
 
-fn recursive_struct_check(base_name: &str, struct_fields: &HashMap<String, ExpressionType>, struct_info: &HashMap<String, HashMap<String, ExpressionType>>) -> bool {
+fn recursive_struct_check(base_name: &str, struct_fields: &HashMap<String, ExpressionType>, struct_info: &IndexMap<String, HashMap<String, ExpressionType>>) -> bool {
    let mut is_recursive = false;
 
    for struct_field in struct_fields.iter().flat_map(|x| match &x.1 {
@@ -68,7 +70,7 @@ fn recursive_struct_check(base_name: &str, struct_fields: &HashMap<String, Expre
 
 pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut W) -> u64 {
    let mut procedure_info = HashMap::new();
-   let mut struct_info = HashMap::new();
+   let mut struct_info = IndexMap::new();
    let mut error_count = 0;
 
    // Built-In functions
@@ -277,7 +279,7 @@ fn type_statement<W: Write>(
    err_stream: &mut W,
    statement: &mut Statement,
    validation_context: &mut ValidationContext,
-   cur_procedure_locals: &mut HashMap<String, ExpressionType>,
+   cur_procedure_locals: &mut IndexMap<String, ExpressionType>,
 ) {
    match statement {
       Statement::AssignmentStatement(len, en) => {
@@ -437,7 +439,7 @@ fn type_block<W: Write>(
    err_stream: &mut W,
    bn: &mut BlockNode,
    validation_context: &mut ValidationContext,
-   cur_procedure_locals: &mut HashMap<String, ExpressionType>,
+   cur_procedure_locals: &mut IndexMap<String, ExpressionType>,
 ) {
    validation_context.block_depth += 1;
 

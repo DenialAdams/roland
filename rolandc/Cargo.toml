@@ -5,3 +5,4 @@ authors = ["Richard McCormack <brick@brick.codes>"]
 edition = "2018"
 
 [dependencies]
+indexmap = "1.6"
