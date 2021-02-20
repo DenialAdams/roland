@@ -11,6 +11,7 @@ struct GenerationContext<'a> {
    local_offsets_locals: HashMap<String, u32>,
    struct_info: &'a IndexMap<String, HashMap<String, ExpressionType>>,
    struct_size_info: HashMap<String, SizeInfo>,
+   struct_field_offsets_locals: HashMap<String, HashMap<String, u32>>,
    sum_sizeof_locals_mem: u32,
    loop_depth: u64,
    loop_counter: u64,
@@ -319,6 +320,21 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       calculate_struct_size_info(s.0.as_str(), &program.struct_info, &mut struct_size_info);
    }
 
+   let mut struct_field_offsets_locals: HashMap<String, HashMap<String, u32>> = HashMap::with_capacity(program.struct_info.len());
+   for s in program.struct_info.iter() {
+      calculate_struct_size_info(s.0.as_str(), &program.struct_info, &mut struct_size_info);
+
+      let mut field_offsets = HashMap::with_capacity(s.1.len());
+      let mut offset = 0;
+      for field in s.1.iter() {
+         field_offsets.insert(field.0.to_string(), offset);
+         offset += sizeof_type_locals(field.1, &struct_size_info);
+      }
+
+      struct_field_offsets_locals.insert(s.0.to_string(), field_offsets);
+   }
+
+
    let mut generation_context = GenerationContext {
       out: PrettyWasmWriter {
          out: Vec::new(),
@@ -330,6 +346,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       local_offsets_locals: HashMap::new(),
       struct_info: &program.struct_info,
       struct_size_info,
+      struct_field_offsets_locals,
       sum_sizeof_locals_mem: 0,
       loop_counter: 0,
       loop_depth: 0,
@@ -700,7 +717,9 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             do_emit_and_load_lval(&field.1, generation_context);
          }
       },
-      Expression::FieldAccess(_, _) => unimplemented!(),
+      Expression::FieldAccess(field_names, lhs) => {
+         unimplemented!();
+      },
    }
 }
 
