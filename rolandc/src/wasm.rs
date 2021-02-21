@@ -8,7 +8,7 @@ struct GenerationContext<'a> {
    out: PrettyWasmWriter,
    literal_offsets: HashMap<String, (u32, u32)>,
    local_offsets_mem: HashMap<String, u32>,
-   local_offsets_locals: HashMap<String, u32>,
+   local_offsets_values: HashMap<String, u32>,
    struct_info: &'a IndexMap<String, HashMap<String, ExpressionType>>,
    struct_size_info: HashMap<String, SizeInfo>,
    struct_field_offsets_locals: HashMap<String, HashMap<String, u32>>,
@@ -18,7 +18,7 @@ struct GenerationContext<'a> {
 }
 
 struct SizeInfo {
-   locals_size: u32,
+   values_size: u32,
    mem_size: u32,
    wasm_size: u32,
 }
@@ -248,15 +248,15 @@ fn sizeof_value_type_mem(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
    }
 }
 
-/// The size of a type, in number of locals
-fn sizeof_type_locals(e: &ExpressionType, si: &HashMap<String, SizeInfo>) -> u32 {
+/// The size of a type, in number of WASM values
+fn sizeof_type_values(e: &ExpressionType, si: &HashMap<String, SizeInfo>) -> u32 {
    match e {
-      ExpressionType::Value(x) => sizeof_value_type_locals(x, si),
+      ExpressionType::Value(x) => sizeof_value_type_values(x, si),
       ExpressionType::Pointer(_, _) => 1,
    }
 }
 
-fn sizeof_value_type_locals(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
+fn sizeof_value_type_values(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::Int(_) => 1,
@@ -264,7 +264,7 @@ fn sizeof_value_type_locals(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u3
       ValueType::String => 2,
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
-      ValueType::Struct(x) => si.get(x).unwrap().locals_size,
+      ValueType::Struct(x) => si.get(x).unwrap().values_size,
    }
 }
 
@@ -294,7 +294,7 @@ fn sizeof_value_type_wasm(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 
 fn calculate_struct_size_info(name: &str, struct_info: &IndexMap<String, HashMap<String, ExpressionType>>, struct_size_info: &mut HashMap<String, SizeInfo>) {
    let mut sum_mem = 0;
    let mut sum_wasm = 0;
-   let mut sum_locals = 0;
+   let mut sum_values = 0;
    for field_t in struct_info.get(name).unwrap().values() {
       if let ExpressionType::Value(ValueType::Struct(s)) = field_t {
          if !struct_size_info.contains_key(s) {
@@ -305,12 +305,12 @@ fn calculate_struct_size_info(name: &str, struct_info: &IndexMap<String, HashMap
       // todo: Check this?
       sum_mem += sizeof_type_mem(field_t, struct_size_info);
       sum_wasm += sizeof_type_wasm(field_t, struct_size_info);
-      sum_locals += sizeof_type_locals(field_t, struct_size_info);
+      sum_values += sizeof_type_values(field_t, struct_size_info);
    }
    struct_size_info.insert(name.to_owned(), SizeInfo {
       mem_size: sum_mem,
       wasm_size: sum_wasm,
-      locals_size: sum_locals,
+      values_size: sum_values,
    });
 }
 
@@ -320,7 +320,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       calculate_struct_size_info(s.0.as_str(), &program.struct_info, &mut struct_size_info);
    }
 
-   let mut struct_field_offsets_locals: HashMap<String, HashMap<String, u32>> = HashMap::with_capacity(program.struct_info.len());
+   let mut struct_field_offsets_values: HashMap<String, HashMap<String, u32>> = HashMap::with_capacity(program.struct_info.len());
    for s in program.struct_info.iter() {
       calculate_struct_size_info(s.0.as_str(), &program.struct_info, &mut struct_size_info);
 
@@ -328,10 +328,10 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       let mut offset = 0;
       for field in s.1.iter() {
          field_offsets.insert(field.0.to_string(), offset);
-         offset += sizeof_type_locals(field.1, &struct_size_info);
+         offset += sizeof_type_values(field.1, &struct_size_info);
       }
 
-      struct_field_offsets_locals.insert(s.0.to_string(), field_offsets);
+      struct_field_offsets_values.insert(s.0.to_string(), field_offsets);
    }
 
 
@@ -343,10 +343,10 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       // todo: just reuse the same map?
       literal_offsets: HashMap::with_capacity(program.literals.len()),
       local_offsets_mem: HashMap::new(),
-      local_offsets_locals: HashMap::new(),
+      local_offsets_values: HashMap::new(),
       struct_info: &program.struct_info,
       struct_size_info,
-      struct_field_offsets_locals,
+      struct_field_offsets_locals: struct_field_offsets_values,
       sum_sizeof_locals_mem: 0,
       loop_counter: 0,
       loop_depth: 0,
@@ -414,14 +414,18 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    generation_context.out.emit_constant_instruction("drop");
    generation_context.out.close();
 
+   // for every struct + field combo
+   // let's emit a function which takes the struct in and outputs the values that make up the field
+   // oh boy
+
    for procedure in program.procedures.iter() {
       generation_context.local_offsets_mem.clear();
-      generation_context.local_offsets_locals.clear();
+      generation_context.local_offsets_values.clear();
 
       // 0-4 == value of previous frame base pointer
       generation_context.sum_sizeof_locals_mem = 4;
 
-      let mut sum_sizeof_locals_locals: u32 = 0;
+      let mut sum_sizeof_locals_values: u32 = 0;
 
       for local in procedure.locals.iter() {
          // TODO: interning.
@@ -430,13 +434,13 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
             .insert(local.0.clone(), generation_context.sum_sizeof_locals_mem);
 
          generation_context
-            .local_offsets_locals
-            .insert(local.0.clone(), sum_sizeof_locals_locals);
+            .local_offsets_values
+            .insert(local.0.clone(), sum_sizeof_locals_values);
 
          // TODO: should we check for overflow on this value?
          generation_context.sum_sizeof_locals_mem += sizeof_type_mem(&local.1, &generation_context.struct_size_info);
          // TODO: should we check for overflow on this value?
-         sum_sizeof_locals_locals += sizeof_type_locals(&local.1, &generation_context.struct_size_info);
+         sum_sizeof_locals_values += sizeof_type_values(&local.1, &generation_context.struct_size_info);
       }
 
       generation_context.out.emit_function_start(
@@ -459,7 +463,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
             continue;
          }
          get_stack_address_of_local(&param.0, &mut generation_context);
-         generation_context.out.emit_get_local(*generation_context.local_offsets_locals.get(param.0.as_str()).unwrap());
+         generation_context.out.emit_get_local(*generation_context.local_offsets_values.get(param.0.as_str()).unwrap());
          store(&param.1, &mut generation_context);
       }
 
@@ -539,7 +543,7 @@ fn emit_statement(statement: &Statement, generation_context: &mut GenerationCont
       }
       Statement::ExpressionStatement(en) => {
          do_emit(en, generation_context);
-         for _ in 0..sizeof_type_locals(en.exp_type.as_ref().unwrap(), &generation_context.struct_size_info) {
+         for _ in 0..sizeof_type_values(en.exp_type.as_ref().unwrap(), &generation_context.struct_size_info) {
             generation_context.out.emit_constant_instruction("drop");
          }
       }

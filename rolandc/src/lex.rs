@@ -164,7 +164,7 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<Token>, ()> 
                let _ = chars.next().unwrap();
             } else if c.is_ascii_digit() {
                mode = LexMode::IntLiteral;
-            } else if c.is_alphabetic() {
+            } else if c.is_alphabetic() || c == '_' {
                mode = LexMode::Ident;
             } else {
                writeln!(err_stream, "Encountered unexpected character {}", c).unwrap();
