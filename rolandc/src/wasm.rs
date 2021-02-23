@@ -11,7 +11,8 @@ struct GenerationContext<'a> {
    local_offsets_values: HashMap<String, u32>,
    struct_info: &'a IndexMap<String, HashMap<String, ExpressionType>>,
    struct_size_info: HashMap<String, SizeInfo>,
-   struct_field_offsets_locals: HashMap<String, HashMap<String, u32>>,
+   struct_field_offsets_values: HashMap<String, HashMap<String, u32>>,
+   struct_scratch_space_begin: u32,
    sum_sizeof_locals_mem: u32,
    loop_depth: u64,
    loop_counter: u64,
@@ -166,9 +167,15 @@ fn write_value_type_as_result(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<St
       ValueType::String => write!(out, "(result i32) (result i32)").unwrap(),
       ValueType::Unit => (),
       ValueType::CompileError => unreachable!(),
-      ValueType::Struct(x) => for e_type in si.get(x).unwrap().values() {
-         write_type_as_result(e_type, out, si);
-         out.push(b' ');
+      ValueType::Struct(x) => {
+         let field_types = si.get(x).unwrap();
+         for e_type in field_types.values() {
+            write_type_as_result(e_type, out, si);
+            out.push(b' ');
+         }
+         if !field_types.is_empty() {
+            let _ = out.pop();
+         }
       },
    }
 }
@@ -191,9 +198,15 @@ fn write_value_type_as_params(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<St
       ValueType::String => write!(out, "(param i32) (param i32)").unwrap(),
       ValueType::Unit => (),
       ValueType::CompileError => unreachable!(),
-      ValueType::Struct(x) => for e_type in si.get(x).unwrap().values() {
-         write_type_as_params(e_type, out, si);
-         out.push(b' ');
+      ValueType::Struct(x) => {
+         let field_types = si.get(x).unwrap();
+         for e_type in field_types.values() {
+            write_type_as_params(e_type, out, si);
+            out.push(b' ');
+         }
+         if !field_types.is_empty() {
+            let _ = out.pop();
+         }
       },
    }
 }
@@ -216,9 +229,15 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, HashM
       ValueType::String => write!(out, "i32 i32").unwrap(),
       ValueType::Unit => unreachable!(),
       ValueType::CompileError => unreachable!(),
-      ValueType::Struct(x) => for e_type in si.get(x).unwrap().values() {
-         type_to_s(e_type, out, si);
-         out.push(b' ');
+      ValueType::Struct(x) => {
+         let field_types = si.get(x).unwrap();
+         for e_type in field_types.values() {
+            type_to_s(e_type, out, si);
+            out.push(b' ');
+         }
+         if !field_types.is_empty() {
+            let _ = out.pop();
+         }
       },
    }
 }
@@ -314,11 +333,20 @@ fn calculate_struct_size_info(name: &str, struct_info: &IndexMap<String, HashMap
    });
 }
 
+// MEMORY LAYOUT
+// 0-15 scratch space for the print function
+// 16-l literals
+// l-ss scratch space sized to fit the largest compound type (we need to put structs here and not the value stack sometimes)
+// ss+ program stack (local variables and parameters are pushed here during runtime)
+
 pub fn emit_wasm(program: &Program) -> Vec<u8> {
    let mut struct_size_info: HashMap<String, SizeInfo> = HashMap::with_capacity(program.struct_info.len());
    for s in program.struct_info.iter() {
       calculate_struct_size_info(s.0.as_str(), &program.struct_info, &mut struct_size_info);
    }
+
+   // 8 is the size of string
+   let largest_size_compound_type = std::iter::once(8).chain(struct_size_info.values().map(|x| x.mem_size)).max().unwrap();
 
    let mut struct_field_offsets_values: HashMap<String, HashMap<String, u32>> = HashMap::with_capacity(program.struct_info.len());
    for s in program.struct_info.iter() {
@@ -346,7 +374,8 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       local_offsets_values: HashMap::new(),
       struct_info: &program.struct_info,
       struct_size_info,
-      struct_field_offsets_locals: struct_field_offsets_values,
+      struct_field_offsets_values,
+      struct_scratch_space_begin: 0,
       sum_sizeof_locals_mem: 0,
       loop_counter: 0,
       loop_depth: 0,
@@ -376,6 +405,10 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       offset += s_len;
    }
 
+   // this scratch space will be used at runtime
+   generation_context.struct_scratch_space_begin = offset;
+   offset += largest_size_compound_type;
+
    generation_context.out.emit_spaces();
    writeln!(
       generation_context.out.out,
@@ -388,6 +421,12 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       generation_context.out.out,
       "(global $bp (mut i32) (i32.const {}))",
       offset
+   )
+   .unwrap();
+   generation_context.out.emit_spaces();
+   writeln!(
+      generation_context.out.out,
+      "(global $mem_address (mut i32) (i32.const 0))"
    )
    .unwrap();
 
@@ -414,9 +453,25 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    generation_context.out.emit_constant_instruction("drop");
    generation_context.out.close();
 
-   // for every struct + field combo
-   // let's emit a function which takes the struct in and outputs the values that make up the field
-   // oh boy
+   for s in program.struct_info.iter() {
+      for field in s.1 {
+         // todo: we can avoid this allocation by re-examaning the emit_function_start abstraction (we could push directly into the underlying buffer?)
+         let full_name = format!("::{}::{}", s.0.as_str(), field.0.as_str());
+         // this allocation (s.0.to_string) is extremely cringe (todo: maybe we should store expressiontype in this struct instead of string?) BETTER TODO: interning
+         generation_context
+            .out
+            .emit_function_start(&full_name, &[("".into(), ExpressionType::Value(ValueType::Struct(s.0.to_string())))], &field.1, &program.struct_info);
+
+         let offset_begin = *generation_context.struct_field_offsets_values.get(s.0).unwrap().get(field.0).unwrap();
+         let offset_end = offset_begin + sizeof_type_values(field.1, &generation_context.struct_size_info);
+
+         for i in offset_begin..offset_end {
+            generation_context.out.emit_get_local(i);
+         }
+
+         generation_context.out.close();
+      }
+   }
 
    for procedure in program.procedures.iter() {
       generation_context.local_offsets_mem.clear();
@@ -459,12 +514,16 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
       // Copy parameters to stack memory so we can take pointers
       for param in &procedure.parameters {
-         if sizeof_type_mem(&param.1, &generation_context.struct_size_info) == 0 {
-            continue;
+         if sizeof_type_values(&param.1, &generation_context.struct_size_info) == 1 {
+            get_stack_address_of_local(&param.0, &mut generation_context);
+            generation_context.out.emit_get_local(*generation_context.local_offsets_values.get(param.0.as_str()).unwrap());
+            simple_store(&param.1, &mut generation_context);
+         } else if sizeof_type_values(&param.1, &generation_context.struct_size_info) > 1 {
+            unimplemented!();
+            get_stack_address_of_local(&param.0, &mut generation_context);
+            generation_context.out.emit_set_global("mem_address");
+            complex_store(0, &param.1, &mut generation_context);
          }
-         get_stack_address_of_local(&param.0, &mut generation_context);
-         generation_context.out.emit_get_local(*generation_context.local_offsets_values.get(param.0.as_str()).unwrap());
-         store(&param.1, &mut generation_context);
       }
 
       for statement in &procedure.block.statements {
@@ -579,7 +638,8 @@ fn do_emit_and_load_lval(expr_node: &ExpressionNode, generation_context: &mut Ge
    do_emit(expr_node, generation_context);
 
    if expr_node.expression.is_lvalue() {
-      load(expr_node.exp_type.as_ref().unwrap(), generation_context, &generation_context.struct_info)
+      // @Struct this needs to become a normal load to handle multi-value types
+      simple_load(expr_node.exp_type.as_ref().unwrap(), generation_context);
    }
 }
 
@@ -684,7 +744,8 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             }
             UnOp::Dereference => {
                do_emit(e, generation_context);
-               load(expr_node.exp_type.as_ref().unwrap(), generation_context, &generation_context.struct_info);
+               // @Struct this needs to become a normal load to handle multi-value types
+               simple_load(expr_node.exp_type.as_ref().unwrap(), generation_context);
             }
             UnOp::Complement => {
                do_emit_and_load_lval(e, generation_context);
@@ -722,7 +783,28 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
       },
       Expression::FieldAccess(field_names, lhs) => {
-         unimplemented!();
+         do_emit_and_load_lval(lhs, generation_context);
+
+         let mut current_struct_name = match lhs.exp_type.as_ref() {
+            Some(ExpressionType::Value(ValueType::Struct(x))) => x,
+            _ => unreachable!(),
+         };
+
+         // We have the entire struct sitting on the value stack
+         // -- there's no "pick" operation in wasm so we can't just choose the fields we want
+         // instead we call these special functions which basically convert the struct fields into locals so we can select them easier
+         // yeah, this is a pretty big hack
+         for field_name in field_names.iter().take(field_names.len() - 1) {
+            let func_name = format!("::{}::{}", current_struct_name, field_name);
+            generation_context.out.emit_call(&func_name);
+            current_struct_name = match generation_context.struct_info.get(current_struct_name).unwrap().get(field_name) {
+               Some(ExpressionType::Value(ValueType::Struct(x))) => x,
+               _ => unreachable!(),
+            };
+         }
+
+         let func_name = format!("::{}_{}", current_struct_name, field_names.last().unwrap());
+         generation_context.out.emit_call(&func_name);
       },
    }
 }
@@ -754,13 +836,13 @@ fn get_stack_address_of_local(id: &str, generation_context: &mut GenerationConte
    writeln!(generation_context.out.out, "i32.add").unwrap();
 }
 
-fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext, si: &IndexMap<String, HashMap<String, ExpressionType>>) {
-   if sizeof_type_mem(val_type, &generation_context.struct_size_info) == 0 {
+fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+   if sizeof_type_values(val_type, &generation_context.struct_size_info) == 0 {
       // Drop the load address; nothing to load
       generation_context.out.emit_constant_instruction("drop");
    } else if sizeof_type_mem(val_type, &generation_context.struct_size_info) == sizeof_type_wasm(val_type, &generation_context.struct_size_info) {
       generation_context.out.emit_spaces();
-      type_to_s(val_type, &mut generation_context.out.out, si);
+      type_to_s(val_type, &mut generation_context.out.out, generation_context.struct_info);
       writeln!(generation_context.out.out, ".load").unwrap();
    } else {
       let (load_suffx, sign_suffix) = match val_type {
@@ -778,7 +860,7 @@ fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext, s
          _ => unreachable!(),
       };
       generation_context.out.emit_spaces();
-      type_to_s(val_type, &mut generation_context.out.out, si);
+      type_to_s(val_type, &mut generation_context.out.out, generation_context.struct_info);
       writeln!(
          generation_context.out.out,
          ".load{}{}",
@@ -790,10 +872,92 @@ fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext, s
 }
 
 fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   if sizeof_type_mem(val_type, &generation_context.struct_size_info) == 0 {
-      // Drop the placement address; nothing to store
+   if sizeof_type_values(val_type, &generation_context.struct_size_info) == 0 {
+      // drop the placement address
       generation_context.out.emit_constant_instruction("drop");
-   } else if sizeof_type_mem(val_type, &generation_context.struct_size_info) == sizeof_type_wasm(val_type, &generation_context.struct_size_info) {
+   } else if sizeof_type_values(val_type, &generation_context.struct_size_info) == 1 {
+      simple_store(val_type, generation_context);
+   } else if sizeof_type_values(val_type, &generation_context.struct_size_info) > 1 {
+      // @STRUCT Put struct into linear memory
+      unimplemented!();
+      generation_context.out.emit_set_global("mem_address");
+      complex_store(0, val_type, generation_context);
+   }
+
+}
+
+fn complex_store(mut offset: u32, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+   fn adjust_by_offset(m_offset: u32, m_generation_context: &mut GenerationContext) {
+      if m_offset > 0 {
+         m_generation_context.out.emit_const_i32(m_offset);
+         m_generation_context.out.emit_spaces();
+         writeln!(m_generation_context.out.out, "i32.add").unwrap();
+      }
+   }
+
+   match val_type {
+      ExpressionType::Value(ValueType::Struct(x)) => {
+         let struct_info = generation_context.struct_info.get(x).unwrap();
+
+         for field in struct_info.values() {
+            if sizeof_type_values(field, &generation_context.struct_size_info) == 1 {
+               generation_context.out.emit_get_global("mem_address");
+               adjust_by_offset(offset, generation_context);
+
+               generation_context.out.emit_const_i32(generation_context.struct_scratch_space_begin);
+               adjust_by_offset(offset, generation_context);
+               simple_load(field, generation_context);
+
+               simple_store(field, generation_context);
+            } else if sizeof_type_values(field, &generation_context.struct_size_info) > 1 {
+               complex_store(offset, field, generation_context);
+            }
+
+            offset += sizeof_type_mem(field, &generation_context.struct_size_info);
+         }
+      }
+      ExpressionType::Value(ValueType::String) => {
+         // address for store
+         generation_context.out.emit_get_global("mem_address");
+         adjust_by_offset(offset, generation_context);
+
+         // load the value from scratch space
+         generation_context.out.emit_const_i32(generation_context.struct_scratch_space_begin);
+         generation_context.out.emit_spaces();
+         writeln!(generation_context.out.out, "i32.load").unwrap();
+         generation_context.out.emit_spaces();
+
+         // store value @ address
+         writeln!(generation_context.out.out, "i32.store").unwrap();
+
+         // repeat for second field
+
+         // address for store
+         generation_context.out.emit_get_global("mem_address");
+         adjust_by_offset(offset + 4, generation_context);
+
+         // load the value from scratch space
+         generation_context.out.emit_const_i32(generation_context.struct_scratch_space_begin);
+         generation_context.out.emit_const_i32(offset + 4);
+         generation_context.out.emit_spaces();
+         writeln!(generation_context.out.out, "i32.add").unwrap();
+         generation_context.out.emit_spaces();
+         writeln!(generation_context.out.out, "i32.load").unwrap();
+         generation_context.out.emit_spaces();
+
+         // store value @ address
+         writeln!(generation_context.out.out, "i32.store").unwrap();
+      }
+      _ => {
+         unreachable!();
+      }
+   }
+}
+
+// VALUE STACK: i32 MEMORY_OFFSET, (any 1 value)
+fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+   debug_assert!(sizeof_type_mem(val_type, &generation_context.struct_size_info) == 1);
+   if sizeof_type_mem(val_type, &generation_context.struct_size_info) == sizeof_type_wasm(val_type, &generation_context.struct_size_info) {
       generation_context.out.emit_spaces();
       type_to_s(val_type, &mut generation_context.out.out, &generation_context.struct_info);
       writeln!(generation_context.out.out, ".store").unwrap();
