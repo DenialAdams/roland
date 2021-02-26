@@ -1,8 +1,8 @@
 use super::type_data::{ExpressionType, ValueType};
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, UnOp};
+use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use indexmap::IndexMap;
 
 #[derive(Debug)]
 enum TypeValidator {
@@ -50,7 +50,11 @@ struct ValidationContext<'a> {
    unknown_ints: u64,
 }
 
-fn recursive_struct_check(base_name: &str, struct_fields: &HashMap<String, ExpressionType>, struct_info: &IndexMap<String, HashMap<String, ExpressionType>>) -> bool {
+fn recursive_struct_check(
+   base_name: &str,
+   struct_fields: &HashMap<String, ExpressionType>,
+   struct_info: &IndexMap<String, HashMap<String, ExpressionType>>,
+) -> bool {
    let mut is_recursive = false;
 
    for struct_field in struct_fields.iter().flat_map(|x| match &x.1 {
@@ -62,7 +66,10 @@ fn recursive_struct_check(base_name: &str, struct_fields: &HashMap<String, Expre
          break;
       }
 
-      is_recursive |= struct_info.get(struct_field).map(|si| recursive_struct_check(base_name, si, struct_info)).unwrap_or(false);
+      is_recursive |= struct_info
+         .get(struct_field)
+         .map(|si| recursive_struct_check(base_name, si, struct_info))
+         .unwrap_or(false);
    }
 
    is_recursive
@@ -101,8 +108,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
             writeln!(
                err_stream,
                "Procedure/function `{}` has a duplicate parameter `{}`",
-               procedure.name,
-               param.0,
+               procedure.name, param.0,
             )
             .unwrap();
          }
@@ -138,8 +144,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
                writeln!(
                   err_stream,
                   "Struct `{}` has a duplicate field `{}`",
-                  a_struct.name,
-                  field.0,
+                  a_struct.name, field.0,
                )
                .unwrap();
             }
@@ -147,10 +152,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          }
       }
 
-      match struct_info.insert(
-         a_struct.name.clone(),
-         field_map,
-      ) {
+      match struct_info.insert(a_struct.name.clone(), field_map) {
          Some(_) => {
             error_count += 1;
             writeln!(
@@ -388,7 +390,10 @@ fn type_statement<W: Write>(
          {
             set_inferred_type(dt.clone().unwrap(), en, validation_context);
             dt.clone().unwrap()
-         } else if dt.is_some() && *dt != en.exp_type && en.exp_type != Some(ExpressionType::Value(ValueType::CompileError)) {
+         } else if dt.is_some()
+            && *dt != en.exp_type
+            && en.exp_type != Some(ExpressionType::Value(ValueType::CompileError))
+         {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
@@ -398,10 +403,15 @@ fn type_statement<W: Write>(
             )
             .unwrap();
             ExpressionType::Value(ValueType::CompileError)
-         } else if dt.as_ref().and_then(|x| match x {
-            ExpressionType::Value(ValueType::Struct(s)) => Some(s),
-            _ => None
-         }).map(|x| validation_context.struct_info.get(x).is_none()).unwrap_or(false) {
+         } else if dt
+            .as_ref()
+            .and_then(|x| match x {
+               ExpressionType::Value(ValueType::Struct(s)) => Some(s),
+               _ => None,
+            })
+            .map(|x| validation_context.struct_info.get(x).is_none())
+            .unwrap_or(false)
+         {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
@@ -720,8 +730,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                         writeln!(
                            err_stream,
                            "`{}` is not a known field of struct `{}`",
-                           field.0,
-                           struct_name,
+                           field.0, struct_name,
                         )
                         .unwrap();
                         continue;
@@ -734,14 +743,15 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                      writeln!(
                         err_stream,
                         "`{}` is a valid field of struct `{}`, but is duplicated",
-                        field.0,
-                        struct_name,
+                        field.0, struct_name,
                      )
                      .unwrap();
                   }
 
                   // Type validation
-                  if defined_type.is_any_known_int() && field.1.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt) {
+                  if defined_type.is_any_known_int()
+                     && field.1.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt)
+                  {
                      set_inferred_type(defined_type.clone(), &mut field.1, validation_context);
                   } else if field.1.exp_type.as_ref().unwrap() != defined_type {
                      validation_context.error_count += 1;
@@ -762,8 +772,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                   writeln!(
                      err_stream,
                      "Literal of struct `{}` is missing fields {:?}",
-                     struct_name,
-                     unmatched_fields,
+                     struct_name, unmatched_fields,
                   )
                   .unwrap();
                }
@@ -797,8 +806,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                      writeln!(
                         err_stream,
                         "Field `{}` is not a struct type and so doesn't have field `{}`",
-                        field,
-                        next_field,
+                        field, next_field,
                      )
                      .unwrap();
                      expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
@@ -809,8 +817,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                      writeln!(
                         err_stream,
                         "Struct `{}` does not have a field `{}`",
-                        current_struct,
-                        field,
+                        current_struct, field,
                      )
                      .unwrap();
                      expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));

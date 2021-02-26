@@ -202,7 +202,10 @@ fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Res
             handle.wait().unwrap();
          };
          if prog_output != desired_result {
-            return Err(TestFailureReason::MismatchedExecutionOutput(desired_result, prog_output));
+            return Err(TestFailureReason::MismatchedExecutionOutput(
+               desired_result,
+               prog_output,
+            ));
          }
       } else {
          return Err(TestFailureReason::ExpectedCompilationFailure);
@@ -214,7 +217,10 @@ fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Res
          handle.read_to_string(&mut desired_result).unwrap();
          let stderr_text = String::from_utf8_lossy(&tc_output.stderr);
          if stderr_text != desired_result {
-            return Err(TestFailureReason::MismatchedCompilationErrorOutput(desired_result, stderr_text.into_owned()));
+            return Err(TestFailureReason::MismatchedCompilationErrorOutput(
+               desired_result,
+               stderr_text.into_owned(),
+            ));
          }
       } else {
          return Err(TestFailureReason::ExpectedCompilationSuccess);

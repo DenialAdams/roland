@@ -1,8 +1,8 @@
 use crate::parse::{BinOp, Expression, ExpressionNode, Program, Statement, UnOp};
 use crate::type_data::{ExpressionType, IntWidth, ValueType, U32_TYPE};
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::io::Write;
-use indexmap::IndexMap;
 
 struct GenerationContext<'a> {
    out: PrettyWasmWriter,
@@ -48,7 +48,13 @@ impl<'a> PrettyWasmWriter {
       self.depth += 1;
    }
 
-   fn emit_function_start(&mut self, name: &str, params: &[(String, ExpressionType)], result_type: &ExpressionType, si: &IndexMap<String, HashMap<String, ExpressionType>>) {
+   fn emit_function_start(
+      &mut self,
+      name: &str,
+      params: &[(String, ExpressionType)],
+      result_type: &ExpressionType,
+      si: &IndexMap<String, HashMap<String, ExpressionType>>,
+   ) {
       self.emit_spaces();
       write!(self.out, "(func ${}", name).unwrap();
       for param in params.into_iter() {
@@ -162,7 +168,11 @@ fn write_type_as_result(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<Str
    }
 }
 
-fn write_value_type_as_result(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, HashMap<String, ExpressionType>>) {
+fn write_value_type_as_result(
+   e: &ValueType,
+   out: &mut Vec<u8>,
+   si: &IndexMap<String, HashMap<String, ExpressionType>>,
+) {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::Int(x) => match x.width {
@@ -182,7 +192,7 @@ fn write_value_type_as_result(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<St
          if !field_types.is_empty() {
             let _ = out.pop();
          }
-      },
+      }
    }
 }
 
@@ -193,7 +203,11 @@ fn write_type_as_params(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<Str
    }
 }
 
-fn write_value_type_as_params(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, HashMap<String, ExpressionType>>) {
+fn write_value_type_as_params(
+   e: &ValueType,
+   out: &mut Vec<u8>,
+   si: &IndexMap<String, HashMap<String, ExpressionType>>,
+) {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::Int(x) => match x.width {
@@ -213,7 +227,7 @@ fn write_value_type_as_params(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<St
          if !field_types.is_empty() {
             let _ = out.pop();
          }
-      },
+      }
    }
 }
 
@@ -244,7 +258,7 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, HashM
          if !field_types.is_empty() {
             let _ = out.pop();
          }
-      },
+      }
    }
 }
 
@@ -316,7 +330,11 @@ fn sizeof_value_type_wasm(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 
    }
 }
 
-fn calculate_struct_size_info(name: &str, struct_info: &IndexMap<String, HashMap<String, ExpressionType>>, struct_size_info: &mut HashMap<String, SizeInfo>) {
+fn calculate_struct_size_info(
+   name: &str,
+   struct_info: &IndexMap<String, HashMap<String, ExpressionType>>,
+   struct_size_info: &mut HashMap<String, SizeInfo>,
+) {
    let mut sum_mem = 0;
    let mut sum_wasm = 0;
    let mut sum_values = 0;
@@ -332,14 +350,22 @@ fn calculate_struct_size_info(name: &str, struct_info: &IndexMap<String, HashMap
       sum_wasm += sizeof_type_wasm(field_t, struct_size_info);
       sum_values += sizeof_type_values(field_t, struct_size_info);
    }
-   struct_size_info.insert(name.to_owned(), SizeInfo {
-      mem_size: sum_mem,
-      wasm_size: sum_wasm,
-      values_size: sum_values,
-   });
+   struct_size_info.insert(
+      name.to_owned(),
+      SizeInfo {
+         mem_size: sum_mem,
+         wasm_size: sum_wasm,
+         values_size: sum_values,
+      },
+   );
 }
 
-fn move_locals_of_type_to_dest(dest: &mut u32, local_index: &mut u32, field: &ExpressionType, generation_context: &mut GenerationContext) {
+fn move_locals_of_type_to_dest(
+   dest: &mut u32,
+   local_index: &mut u32,
+   field: &ExpressionType,
+   generation_context: &mut GenerationContext,
+) {
    match field {
       ExpressionType::Value(ValueType::Unit) => (),
       ExpressionType::Value(ValueType::String) => {
@@ -369,7 +395,12 @@ fn move_locals_of_type_to_dest(dest: &mut u32, local_index: &mut u32, field: &Ex
    }
 }
 
-fn dynamic_move_locals_of_type_to_dest(offset: &mut u32, local_index: &mut u32, field: &ExpressionType, generation_context: &mut GenerationContext) {
+fn dynamic_move_locals_of_type_to_dest(
+   offset: &mut u32,
+   local_index: &mut u32,
+   field: &ExpressionType,
+   generation_context: &mut GenerationContext,
+) {
    match field {
       ExpressionType::Value(ValueType::Unit) => (),
       ExpressionType::Value(ValueType::String) => {
@@ -415,7 +446,10 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    }
 
    // 8 is the size of string
-   let largest_size_compound_type_mem = std::iter::once(8).chain(struct_size_info.values().map(|x| x.mem_size)).max().unwrap();
+   let largest_size_compound_type_mem = std::iter::once(8)
+      .chain(struct_size_info.values().map(|x| x.mem_size))
+      .max()
+      .unwrap();
 
    let mut generation_context = GenerationContext {
       out: PrettyWasmWriter {
@@ -483,9 +517,15 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    .unwrap();
 
    // print
-   generation_context
-      .out
-      .emit_function_start("print", &[("str_offset".into(), ExpressionType::Value(U32_TYPE)), ("str_len".into(), ExpressionType::Value(U32_TYPE))], &ExpressionType::Value(ValueType::Unit), &program.struct_info);
+   generation_context.out.emit_function_start(
+      "print",
+      &[
+         ("str_offset".into(), ExpressionType::Value(U32_TYPE)),
+         ("str_len".into(), ExpressionType::Value(U32_TYPE)),
+      ],
+      &ExpressionType::Value(ValueType::Unit),
+      &program.struct_info,
+   );
    // build the iovecs array
    generation_context
       .out
@@ -511,9 +551,12 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
          // todo: we can avoid this allocation by re-examaning the emit_function_start abstraction (we could push directly into the underlying buffer?)
          let full_name = format!("::{}::{}", s.0.as_str(), field.0.as_str());
          // this allocation (s.0.to_string) is extremely cringe (todo: maybe we should store expressiontype in this struct instead of string?) BETTER TODO: interning
-         generation_context
-            .out
-            .emit_function_start(&full_name, &[("".into(), ExpressionType::Value(ValueType::Struct(s.0.to_string())))], &field.1, &program.struct_info);
+         generation_context.out.emit_function_start(
+            &full_name,
+            &[("".into(), ExpressionType::Value(ValueType::Struct(s.0.to_string())))],
+            &field.1,
+            &program.struct_info,
+         );
 
          let offset_end = offset_begin + sizeof_type_values(field.1, &generation_context.struct_size_info);
 
@@ -531,9 +574,12 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       let full_name = format!("::{}:::put_in_scratch_space", s.0.as_str());
 
       // this allocation (s.0.to_string) is extremely cringe (todo: maybe we should store expressiontype in this struct instead of string?) BETTER TODO: interning
-      generation_context
-         .out
-         .emit_function_start(&full_name, &[("".into(), ExpressionType::Value(ValueType::Struct(s.0.to_string())))], &ExpressionType::Value(ValueType::Unit), &program.struct_info);
+      generation_context.out.emit_function_start(
+         &full_name,
+         &[("".into(), ExpressionType::Value(ValueType::Struct(s.0.to_string())))],
+         &ExpressionType::Value(ValueType::Unit),
+         &program.struct_info,
+      );
 
       let mut mem_index = generation_context.struct_scratch_space_begin;
       let mut i = 0;
@@ -544,13 +590,21 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       generation_context.out.close();
    }
 
-   generation_context
-      .out
-      .emit_function_start("::put_string_slice_in_scratch_space", &[("".into(), ExpressionType::Value(ValueType::String))], &ExpressionType::Value(ValueType::Unit), &program.struct_info);
+   generation_context.out.emit_function_start(
+      "::put_string_slice_in_scratch_space",
+      &[("".into(), ExpressionType::Value(ValueType::String))],
+      &ExpressionType::Value(ValueType::Unit),
+      &program.struct_info,
+   );
 
    let mut mem_index = generation_context.struct_scratch_space_begin;
    let mut i = 0;
-   move_locals_of_type_to_dest(&mut mem_index, &mut i, &ExpressionType::Value(ValueType::String), &mut generation_context);
+   move_locals_of_type_to_dest(
+      &mut mem_index,
+      &mut i,
+      &ExpressionType::Value(ValueType::String),
+      &mut generation_context,
+   );
    generation_context.out.close();
 
    for procedure in program.procedures.iter() {
@@ -571,8 +625,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
       generation_context.out.emit_function_start(
          &procedure.name,
-         &procedure
-            .parameters,
+         &procedure.parameters,
          &procedure.ret_type,
          &program.struct_info,
       );
@@ -855,7 +908,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             let value_of_field = map.get(field.0).unwrap();
             do_emit_and_load_lval(value_of_field, generation_context);
          }
-      },
+      }
       Expression::FieldAccess(field_names, lhs) => {
          do_emit(lhs, generation_context);
 
@@ -902,7 +955,12 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             for field_name in field_names.iter().take(field_names.len() - 1) {
                let func_name = format!("::{}::{}", current_struct_name, field_name);
                generation_context.out.emit_call(&func_name);
-               current_struct_name = match generation_context.struct_info.get(current_struct_name).unwrap().get(field_name) {
+               current_struct_name = match generation_context
+                  .struct_info
+                  .get(current_struct_name)
+                  .unwrap()
+                  .get(field_name)
+               {
                   Some(ExpressionType::Value(ValueType::Struct(x))) => x,
                   _ => unreachable!(),
                };
@@ -911,7 +969,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             let func_name = format!("::{}::{}", current_struct_name, field_names.last().unwrap());
             generation_context.out.emit_call(&func_name);
          }
-      },
+      }
    }
 }
 
@@ -981,9 +1039,15 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
    if sizeof_type_values(val_type, &generation_context.struct_size_info) == 0 {
       // Drop the load address; nothing to load
       generation_context.out.emit_constant_instruction("drop");
-   } else if sizeof_type_mem(val_type, &generation_context.struct_size_info) == sizeof_type_wasm(val_type, &generation_context.struct_size_info) {
+   } else if sizeof_type_mem(val_type, &generation_context.struct_size_info)
+      == sizeof_type_wasm(val_type, &generation_context.struct_size_info)
+   {
       generation_context.out.emit_spaces();
-      type_to_s(val_type, &mut generation_context.out.out, generation_context.struct_info);
+      type_to_s(
+         val_type,
+         &mut generation_context.out.out,
+         generation_context.struct_info,
+      );
       writeln!(generation_context.out.out, ".load").unwrap();
    } else {
       let (load_suffx, sign_suffix) = match val_type {
@@ -1001,14 +1065,12 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
          _ => unreachable!(),
       };
       generation_context.out.emit_spaces();
-      type_to_s(val_type, &mut generation_context.out.out, generation_context.struct_info);
-      writeln!(
-         generation_context.out.out,
-         ".load{}{}",
-         load_suffx,
-         sign_suffix
-      )
-      .unwrap();
+      type_to_s(
+         val_type,
+         &mut generation_context.out.out,
+         generation_context.struct_info,
+      );
+      writeln!(generation_context.out.out, ".load{}{}", load_suffx, sign_suffix).unwrap();
    }
 }
 
@@ -1034,7 +1096,6 @@ fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) 
          _ => unreachable!(),
       }
    }
-
 }
 
 fn complex_store(mut offset: u32, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
@@ -1047,7 +1108,9 @@ fn complex_store(mut offset: u32, val_type: &ExpressionType, generation_context:
                generation_context.out.emit_get_global("mem_address");
                generation_context.out.emit_const_add_i32(offset);
 
-               generation_context.out.emit_const_i32(generation_context.struct_scratch_space_begin);
+               generation_context
+                  .out
+                  .emit_const_i32(generation_context.struct_scratch_space_begin);
                generation_context.out.emit_const_add_i32(offset);
                simple_load(field, generation_context);
 
@@ -1065,7 +1128,9 @@ fn complex_store(mut offset: u32, val_type: &ExpressionType, generation_context:
          generation_context.out.emit_const_add_i32(offset);
 
          // load the value from scratch space
-         generation_context.out.emit_const_i32(generation_context.struct_scratch_space_begin);
+         generation_context
+            .out
+            .emit_const_i32(generation_context.struct_scratch_space_begin);
          generation_context.out.emit_spaces();
          writeln!(generation_context.out.out, "i32.load").unwrap();
 
@@ -1080,7 +1145,9 @@ fn complex_store(mut offset: u32, val_type: &ExpressionType, generation_context:
          generation_context.out.emit_const_add_i32(offset + 4);
 
          // load the value from scratch space
-         generation_context.out.emit_const_i32(generation_context.struct_scratch_space_begin);
+         generation_context
+            .out
+            .emit_const_i32(generation_context.struct_scratch_space_begin);
          generation_context.out.emit_const_add_i32(offset + 4);
          generation_context.out.emit_spaces();
          writeln!(generation_context.out.out, "i32.load").unwrap();
@@ -1098,9 +1165,15 @@ fn complex_store(mut offset: u32, val_type: &ExpressionType, generation_context:
 // VALUE STACK: i32 MEMORY_OFFSET, (any 1 value)
 fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    debug_assert!(sizeof_type_mem(val_type, &generation_context.struct_size_info) == 1);
-   if sizeof_type_mem(val_type, &generation_context.struct_size_info) == sizeof_type_wasm(val_type, &generation_context.struct_size_info) {
+   if sizeof_type_mem(val_type, &generation_context.struct_size_info)
+      == sizeof_type_wasm(val_type, &generation_context.struct_size_info)
+   {
       generation_context.out.emit_spaces();
-      type_to_s(val_type, &mut generation_context.out.out, &generation_context.struct_info);
+      type_to_s(
+         val_type,
+         &mut generation_context.out.out,
+         &generation_context.struct_info,
+      );
       writeln!(generation_context.out.out, ".store").unwrap();
    } else {
       let load_suffx = match val_type {
@@ -1117,13 +1190,12 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
          _ => unreachable!(),
       };
       generation_context.out.emit_spaces();
-      type_to_s(val_type, &mut generation_context.out.out, &generation_context.struct_info);
-      writeln!(
-         generation_context.out.out,
-         ".store{}",
-         load_suffx,
-      )
-      .unwrap();
+      type_to_s(
+         val_type,
+         &mut generation_context.out.out,
+         &generation_context.struct_info,
+      );
+      writeln!(generation_context.out.out, ".store{}", load_suffx,).unwrap();
    }
 }
 

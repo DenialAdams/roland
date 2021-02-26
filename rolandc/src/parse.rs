@@ -1,9 +1,9 @@
 use super::lex::Token;
 use crate::type_data::{ExpressionType, ValueType};
+use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::mem::discriminant;
-use indexmap::IndexMap;
 
 struct Lexer {
    tokens: Vec<Token>,
@@ -482,7 +482,7 @@ fn parse_type<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<ExpressionT
             "u16" => crate::type_data::U16_TYPE,
             "u8" => crate::type_data::U8_TYPE,
             "String" => ValueType::String,
-            _ => ValueType::Struct(type_s)
+            _ => ValueType::Struct(type_s),
          }
       }
    };
@@ -501,7 +501,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
       Some(Token::IntLiteral(x)) => Expression::IntLiteral(x),
       Some(Token::StringLiteral(x)) => Expression::StringLiteral(x),
       Some(Token::Identifier(s)) => {
-         if l.peek() == Some(&Token::OpenParen)  {
+         if l.peek() == Some(&Token::OpenParen) {
             let _ = l.next();
             let args = parse_arguments(l, err_stream)?;
             expect(l, err_stream, &Token::CloseParen)?;
@@ -593,14 +593,18 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
             let mut fields = vec![];
             loop {
                let _ = l.next();
-               fields.push(extract_identifier(expect(l, err_stream, &Token::Identifier(String::from("")))?));
+               fields.push(extract_identifier(expect(
+                  l,
+                  err_stream,
+                  &Token::Identifier(String::from("")),
+               )?));
                if l.peek() != Some(&Token::Period) {
                   break;
                }
             }
             lhs = Expression::FieldAccess(fields, Box::new(wrap(lhs)));
             continue;
-         },
+         }
          _ => break,
       };
 
