@@ -72,13 +72,6 @@ pub struct IntType {
 }
 
 impl ExpressionType {
-   pub fn is_compound_type(&self) -> bool {
-      match self {
-         ExpressionType::Value(x) => x.is_compound_type(),
-         ExpressionType::Pointer(_, x) => false,
-      }
-   }
-
    pub fn is_concrete_type(&self) -> bool {
       match self {
          ExpressionType::Value(x) => x.is_concrete_type(),
@@ -139,13 +132,6 @@ impl ExpressionType {
 }
 
 impl ValueType {
-   fn is_compound_type(&self) -> bool {
-      match self {
-         ValueType::Struct(_) | ValueType::String => true,
-         ValueType::Int(_) | ValueType::Bool | ValueType::Unit | ValueType::UnknownInt | ValueType::CompileError => false,
-      }
-   }
-
    fn is_concrete_type(&self) -> bool {
       match self {
          ValueType::UnknownInt | ValueType::CompileError => false,

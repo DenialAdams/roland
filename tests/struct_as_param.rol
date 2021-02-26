@@ -1,0 +1,18 @@
+struct X {
+   alligator: u64,
+   lizard: u8,
+   animal: String,
+}
+
+proc foo_baz(a: String, b: X) {
+   print(a);
+   print(b.animal);
+}
+
+proc main() {
+   foo_baz("all good", X {
+      alligator: 1,
+      lizard: 20,
+      animal: "bee",
+   });
+}

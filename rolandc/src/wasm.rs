@@ -8,7 +8,6 @@ struct GenerationContext<'a> {
    out: PrettyWasmWriter,
    literal_offsets: HashMap<String, (u32, u32)>,
    local_offsets_mem: HashMap<String, u32>,
-   local_offsets_values: HashMap<String, u32>,
    struct_info: &'a IndexMap<String, HashMap<String, ExpressionType>>,
    struct_size_info: HashMap<String, SizeInfo>,
    struct_scratch_space_begin: u32,
@@ -370,6 +369,39 @@ fn move_locals_of_type_to_dest(dest: &mut u32, local_index: &mut u32, field: &Ex
    }
 }
 
+fn dynamic_move_locals_of_type_to_dest(offset: &mut u32, local_index: &mut u32, field: &ExpressionType, generation_context: &mut GenerationContext) {
+   match field {
+      ExpressionType::Value(ValueType::Unit) => (),
+      ExpressionType::Value(ValueType::String) => {
+         generation_context.out.emit_get_global("mem_address");
+         generation_context.out.emit_const_add_i32(*offset);
+         generation_context.out.emit_get_local(*local_index);
+         simple_store(&ExpressionType::Value(U32_TYPE), generation_context);
+
+         generation_context.out.emit_get_global("mem_address");
+         generation_context.out.emit_const_add_i32(*offset + 4);
+         generation_context.out.emit_get_local(*local_index + 1);
+         simple_store(&ExpressionType::Value(U32_TYPE), generation_context);
+
+         *offset += 8;
+         *local_index += 2;
+      }
+      ExpressionType::Value(ValueType::Struct(x)) => {
+         for sub_field in generation_context.struct_info.get(x).unwrap().values() {
+            dynamic_move_locals_of_type_to_dest(offset, local_index, sub_field, generation_context);
+         }
+      }
+      _ => {
+         generation_context.out.emit_get_global("mem_address");
+         generation_context.out.emit_const_add_i32(*offset);
+         generation_context.out.emit_get_local(*local_index);
+         simple_store(field, generation_context);
+         *offset += sizeof_type_mem(field, &generation_context.struct_size_info);
+         *local_index += 1;
+      }
+   }
+}
+
 // MEMORY LAYOUT
 // 0-15 scratch space for the print function
 // 16-l literals
@@ -393,7 +425,6 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       // todo: just reuse the same map?
       literal_offsets: HashMap::with_capacity(program.literals.len()),
       local_offsets_mem: HashMap::new(),
-      local_offsets_values: HashMap::new(),
       struct_info: &program.struct_info,
       struct_size_info,
       struct_scratch_space_begin: 0,
@@ -524,12 +555,9 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
    for procedure in program.procedures.iter() {
       generation_context.local_offsets_mem.clear();
-      generation_context.local_offsets_values.clear();
 
       // 0-4 == value of previous frame base pointer
       generation_context.sum_sizeof_locals_mem = 4;
-
-      let mut sum_sizeof_locals_values: u32 = 0;
 
       for local in procedure.locals.iter() {
          // TODO: interning.
@@ -537,14 +565,8 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
             .local_offsets_mem
             .insert(local.0.clone(), generation_context.sum_sizeof_locals_mem);
 
-         generation_context
-            .local_offsets_values
-            .insert(local.0.clone(), sum_sizeof_locals_values);
-
          // TODO: should we check for overflow on this value?
          generation_context.sum_sizeof_locals_mem += sizeof_type_mem(&local.1, &generation_context.struct_size_info);
-         // TODO: should we check for overflow on this value?
-         sum_sizeof_locals_values += sizeof_type_values(&local.1, &generation_context.struct_size_info);
       }
 
       generation_context.out.emit_function_start(
@@ -562,16 +584,17 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       adjust_stack_function_entry(&mut generation_context);
 
       // Copy parameters to stack memory so we can take pointers
+      let mut values_index = 0;
       for param in &procedure.parameters {
          if sizeof_type_values(&param.1, &generation_context.struct_size_info) == 1 {
             get_stack_address_of_local(&param.0, &mut generation_context);
-            generation_context.out.emit_get_local(*generation_context.local_offsets_values.get(param.0.as_str()).unwrap());
+            generation_context.out.emit_get_local(values_index);
             simple_store(&param.1, &mut generation_context);
+            values_index += 1;
          } else if sizeof_type_values(&param.1, &generation_context.struct_size_info) > 1 {
-            unimplemented!();
             get_stack_address_of_local(&param.0, &mut generation_context);
             generation_context.out.emit_set_global("mem_address");
-            complex_store(0, &param.1, &mut generation_context);
+            dynamic_move_locals_of_type_to_dest(&mut 0, &mut values_index, &param.1, &mut generation_context);
          }
       }
 
@@ -931,11 +954,11 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
       ExpressionType::Value(ValueType::String) => {
          generation_context.out.emit_get_global("mem_address");
          generation_context.out.emit_const_add_i32(offset);
-         simple_load(val_type, generation_context);
+         simple_load(&ExpressionType::Value(U32_TYPE), generation_context);
 
          generation_context.out.emit_get_global("mem_address");
          generation_context.out.emit_const_add_i32(offset + 4);
-         simple_load(val_type, generation_context);
+         simple_load(&ExpressionType::Value(U32_TYPE), generation_context);
       }
       ExpressionType::Value(ValueType::Struct(x)) => {
          for field in generation_context.struct_info.get(x).unwrap().values() {
@@ -1015,14 +1038,6 @@ fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) 
 }
 
 fn complex_store(mut offset: u32, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   fn adjust_by_offset(m_offset: u32, m_generation_context: &mut GenerationContext) {
-      if m_offset > 0 {
-         m_generation_context.out.emit_const_i32(m_offset);
-         m_generation_context.out.emit_spaces();
-         writeln!(m_generation_context.out.out, "i32.add").unwrap();
-      }
-   }
-
    match val_type {
       ExpressionType::Value(ValueType::Struct(x)) => {
          let struct_info = generation_context.struct_info.get(x).unwrap();
@@ -1047,33 +1062,31 @@ fn complex_store(mut offset: u32, val_type: &ExpressionType, generation_context:
       ExpressionType::Value(ValueType::String) => {
          // address for store
          generation_context.out.emit_get_global("mem_address");
-         adjust_by_offset(offset, generation_context);
+         generation_context.out.emit_const_add_i32(offset);
 
          // load the value from scratch space
          generation_context.out.emit_const_i32(generation_context.struct_scratch_space_begin);
          generation_context.out.emit_spaces();
          writeln!(generation_context.out.out, "i32.load").unwrap();
-         generation_context.out.emit_spaces();
 
          // store value @ address
+         generation_context.out.emit_spaces();
          writeln!(generation_context.out.out, "i32.store").unwrap();
 
          // repeat for second field
 
          // address for store
          generation_context.out.emit_get_global("mem_address");
-         adjust_by_offset(offset + 4, generation_context);
+         generation_context.out.emit_const_add_i32(offset + 4);
 
          // load the value from scratch space
          generation_context.out.emit_const_i32(generation_context.struct_scratch_space_begin);
-         generation_context.out.emit_const_i32(offset + 4);
-         generation_context.out.emit_spaces();
-         writeln!(generation_context.out.out, "i32.add").unwrap();
+         generation_context.out.emit_const_add_i32(offset + 4);
          generation_context.out.emit_spaces();
          writeln!(generation_context.out.out, "i32.load").unwrap();
-         generation_context.out.emit_spaces();
 
          // store value @ address
+         generation_context.out.emit_spaces();
          writeln!(generation_context.out.out, "i32.store").unwrap();
       }
       _ => {
