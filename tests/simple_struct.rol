@@ -33,6 +33,7 @@ proc main() {
    let z = foo();
 
    print_bool(z.another_field == 123);
+   print_bool(foo().another_field == 123);
 }
 
 struct Y {

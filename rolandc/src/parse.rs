@@ -110,7 +110,7 @@ impl Expression {
       match self {
          Expression::Variable(_) => true,
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
-         Expression::FieldAccess(_, _) => true,
+         Expression::FieldAccess(_, lhs) => lhs.expression.is_lvalue(),
          _ => false,
       }
    }

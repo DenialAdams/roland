@@ -11,7 +11,6 @@ struct GenerationContext<'a> {
    local_offsets_values: HashMap<String, u32>,
    struct_info: &'a IndexMap<String, HashMap<String, ExpressionType>>,
    struct_size_info: HashMap<String, SizeInfo>,
-   struct_field_offsets_values: HashMap<String, HashMap<String, u32>>,
    struct_scratch_space_begin: u32,
    sum_sizeof_locals_mem: u32,
    loop_depth: u64,
@@ -146,6 +145,14 @@ impl<'a> PrettyWasmWriter {
    fn emit_const_i32(&mut self, value: u32) {
       self.emit_spaces();
       writeln!(&mut self.out, "i32.const {}", value).unwrap();
+   }
+
+   fn emit_const_add_i32(&mut self, value: u32) {
+      if value > 0 {
+         self.emit_const_i32(value);
+         self.emit_spaces();
+         writeln!(self.out, "i32.add").unwrap();
+      }
    }
 }
 
@@ -333,6 +340,36 @@ fn calculate_struct_size_info(name: &str, struct_info: &IndexMap<String, HashMap
    });
 }
 
+fn move_locals_of_type_to_dest(dest: &mut u32, local_index: &mut u32, field: &ExpressionType, generation_context: &mut GenerationContext) {
+   match field {
+      ExpressionType::Value(ValueType::Unit) => (),
+      ExpressionType::Value(ValueType::String) => {
+         generation_context.out.emit_const_i32(*dest);
+         generation_context.out.emit_get_local(*local_index);
+         simple_store(&ExpressionType::Value(U32_TYPE), generation_context);
+
+         generation_context.out.emit_const_i32(*dest + 4);
+         generation_context.out.emit_get_local(*local_index + 1);
+         simple_store(&ExpressionType::Value(U32_TYPE), generation_context);
+
+         *dest += 8;
+         *local_index += 2;
+      }
+      ExpressionType::Value(ValueType::Struct(x)) => {
+         for sub_field in generation_context.struct_info.get(x).unwrap().values() {
+            move_locals_of_type_to_dest(dest, local_index, sub_field, generation_context);
+         }
+      }
+      _ => {
+         generation_context.out.emit_const_i32(*dest);
+         generation_context.out.emit_get_local(*local_index);
+         simple_store(field, generation_context);
+         *dest += sizeof_type_mem(field, &generation_context.struct_size_info);
+         *local_index += 1;
+      }
+   }
+}
+
 // MEMORY LAYOUT
 // 0-15 scratch space for the print function
 // 16-l literals
@@ -346,22 +383,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    }
 
    // 8 is the size of string
-   let largest_size_compound_type = std::iter::once(8).chain(struct_size_info.values().map(|x| x.mem_size)).max().unwrap();
-
-   let mut struct_field_offsets_values: HashMap<String, HashMap<String, u32>> = HashMap::with_capacity(program.struct_info.len());
-   for s in program.struct_info.iter() {
-      calculate_struct_size_info(s.0.as_str(), &program.struct_info, &mut struct_size_info);
-
-      let mut field_offsets = HashMap::with_capacity(s.1.len());
-      let mut offset = 0;
-      for field in s.1.iter() {
-         field_offsets.insert(field.0.to_string(), offset);
-         offset += sizeof_type_values(field.1, &struct_size_info);
-      }
-
-      struct_field_offsets_values.insert(s.0.to_string(), field_offsets);
-   }
-
+   let largest_size_compound_type_mem = std::iter::once(8).chain(struct_size_info.values().map(|x| x.mem_size)).max().unwrap();
 
    let mut generation_context = GenerationContext {
       out: PrettyWasmWriter {
@@ -374,7 +396,6 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       local_offsets_values: HashMap::new(),
       struct_info: &program.struct_info,
       struct_size_info,
-      struct_field_offsets_values,
       struct_scratch_space_begin: 0,
       sum_sizeof_locals_mem: 0,
       loop_counter: 0,
@@ -407,7 +428,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
    // this scratch space will be used at runtime
    generation_context.struct_scratch_space_begin = offset;
-   offset += largest_size_compound_type;
+   offset += largest_size_compound_type_mem;
 
    generation_context.out.emit_spaces();
    writeln!(
@@ -454,6 +475,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    generation_context.out.close();
 
    for s in program.struct_info.iter() {
+      let mut offset_begin = 0;
       for field in s.1 {
          // todo: we can avoid this allocation by re-examaning the emit_function_start abstraction (we could push directly into the underlying buffer?)
          let full_name = format!("::{}::{}", s.0.as_str(), field.0.as_str());
@@ -462,7 +484,6 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
             .out
             .emit_function_start(&full_name, &[("".into(), ExpressionType::Value(ValueType::Struct(s.0.to_string())))], &field.1, &program.struct_info);
 
-         let offset_begin = *generation_context.struct_field_offsets_values.get(s.0).unwrap().get(field.0).unwrap();
          let offset_end = offset_begin + sizeof_type_values(field.1, &generation_context.struct_size_info);
 
          for i in offset_begin..offset_end {
@@ -470,8 +491,36 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
          }
 
          generation_context.out.close();
+
+         offset_begin = offset_end;
       }
+
+      // todo: we can avoid this allocation by re-examaning the emit_function_start abstraction (we could push directly into the underlying buffer?)
+      // we have to be careful not to conflcit with a field name because then we would have two funcs with the same name (see above) hence the extra colon
+      let full_name = format!("::{}:::put_in_scratch_space", s.0.as_str());
+
+      // this allocation (s.0.to_string) is extremely cringe (todo: maybe we should store expressiontype in this struct instead of string?) BETTER TODO: interning
+      generation_context
+         .out
+         .emit_function_start(&full_name, &[("".into(), ExpressionType::Value(ValueType::Struct(s.0.to_string())))], &ExpressionType::Value(ValueType::Unit), &program.struct_info);
+
+      let mut mem_index = generation_context.struct_scratch_space_begin;
+      let mut i = 0;
+      for field in s.1.values() {
+         move_locals_of_type_to_dest(&mut mem_index, &mut i, field, &mut generation_context);
+      }
+
+      generation_context.out.close();
    }
+
+   generation_context
+      .out
+      .emit_function_start("::put_string_slice_in_scratch_space", &[("".into(), ExpressionType::Value(ValueType::String))], &ExpressionType::Value(ValueType::Unit), &program.struct_info);
+
+   let mut mem_index = generation_context.struct_scratch_space_begin;
+   let mut i = 0;
+   move_locals_of_type_to_dest(&mut mem_index, &mut i, &ExpressionType::Value(ValueType::String), &mut generation_context);
+   generation_context.out.close();
 
    for procedure in program.procedures.iter() {
       generation_context.local_offsets_mem.clear();
@@ -638,8 +687,7 @@ fn do_emit_and_load_lval(expr_node: &ExpressionNode, generation_context: &mut Ge
    do_emit(expr_node, generation_context);
 
    if expr_node.expression.is_lvalue() {
-      // @Struct this needs to become a normal load to handle multi-value types
-      simple_load(expr_node.exp_type.as_ref().unwrap(), generation_context);
+      load(expr_node.exp_type.as_ref().unwrap(), generation_context);
    }
 }
 
@@ -744,8 +792,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             }
             UnOp::Dereference => {
                do_emit(e, generation_context);
-               // @Struct this needs to become a normal load to handle multi-value types
-               simple_load(expr_node.exp_type.as_ref().unwrap(), generation_context);
+               load(expr_node.exp_type.as_ref().unwrap(), generation_context);
             }
             UnOp::Complement => {
                do_emit_and_load_lval(e, generation_context);
@@ -777,34 +824,70 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
          generation_context.out.emit_call(name);
       }
-      Expression::StructLiteral(_, fields) => {
-         for field in fields.iter() {
-            do_emit_and_load_lval(&field.1, generation_context);
+      Expression::StructLiteral(s_name, fields) => {
+         // We need to emit this in the proper order!!
+         let map: HashMap<&String, &ExpressionNode> = fields.iter().map(|x| (&x.0, &x.1)).collect();
+         let si = generation_context.struct_info.get(s_name).unwrap();
+         for field in si.iter() {
+            let value_of_field = map.get(field.0).unwrap();
+            do_emit_and_load_lval(value_of_field, generation_context);
          }
       },
       Expression::FieldAccess(field_names, lhs) => {
-         do_emit_and_load_lval(lhs, generation_context);
+         do_emit(lhs, generation_context);
 
-         let mut current_struct_name = match lhs.exp_type.as_ref() {
-            Some(ExpressionType::Value(ValueType::Struct(x))) => x,
-            _ => unreachable!(),
-         };
+         if lhs.expression.is_lvalue() {
+            let mut si = match lhs.exp_type.as_ref() {
+               Some(ExpressionType::Value(ValueType::Struct(x))) => generation_context.struct_info.get(x).unwrap(),
+               _ => unreachable!(),
+            };
+            let mut mem_offset = 0;
 
-         // We have the entire struct sitting on the value stack
-         // -- there's no "pick" operation in wasm so we can't just choose the fields we want
-         // instead we call these special functions which basically convert the struct fields into locals so we can select them easier
-         // yeah, this is a pretty big hack
-         for field_name in field_names.iter().take(field_names.len() - 1) {
-            let func_name = format!("::{}::{}", current_struct_name, field_name);
-            generation_context.out.emit_call(&func_name);
-            current_struct_name = match generation_context.struct_info.get(current_struct_name).unwrap().get(field_name) {
+            for field_name in field_names.iter().take(field_names.len() - 1) {
+               for field in si {
+                  if field.0 == field_name {
+                     si = match field.1 {
+                        ExpressionType::Value(ValueType::Struct(x)) => generation_context.struct_info.get(x).unwrap(),
+                        _ => unreachable!(),
+                     };
+                     break;
+                  }
+
+                  mem_offset += sizeof_type_mem(field.1, &generation_context.struct_size_info);
+               }
+            }
+
+            for field in si {
+               if field.0 == field_names.last().unwrap() {
+                  break;
+               }
+
+               mem_offset += sizeof_type_mem(field.1, &generation_context.struct_size_info);
+            }
+
+            generation_context.out.emit_const_add_i32(mem_offset);
+         } else {
+            let mut current_struct_name = match lhs.exp_type.as_ref() {
                Some(ExpressionType::Value(ValueType::Struct(x))) => x,
                _ => unreachable!(),
             };
-         }
 
-         let func_name = format!("::{}_{}", current_struct_name, field_names.last().unwrap());
-         generation_context.out.emit_call(&func_name);
+            // We have the entire struct sitting on the value stack
+            // -- there's no "pick" operation in wasm so we can't just choose the fields we want
+            // instead we call these special functions which basically convert the struct fields into locals so we can select them easier
+            // yeah, this is a pretty big hack
+            for field_name in field_names.iter().take(field_names.len() - 1) {
+               let func_name = format!("::{}::{}", current_struct_name, field_name);
+               generation_context.out.emit_call(&func_name);
+               current_struct_name = match generation_context.struct_info.get(current_struct_name).unwrap().get(field_name) {
+                  Some(ExpressionType::Value(ValueType::Struct(x))) => x,
+                  _ => unreachable!(),
+               };
+            }
+
+            let func_name = format!("::{}::{}", current_struct_name, field_names.last().unwrap());
+            generation_context.out.emit_call(&func_name);
+         }
       },
    }
 }
@@ -831,9 +914,44 @@ fn complement_val(t_type: &ExpressionType, wasm_type: &str, generation_context: 
 fn get_stack_address_of_local(id: &str, generation_context: &mut GenerationContext) {
    let offset = *generation_context.local_offsets_mem.get(id).unwrap();
    generation_context.out.emit_get_global("bp");
-   generation_context.out.emit_const_i32(offset);
-   generation_context.out.emit_spaces();
-   writeln!(generation_context.out.out, "i32.add").unwrap();
+   generation_context.out.emit_const_add_i32(offset);
+}
+
+fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+   if sizeof_type_values(val_type, &generation_context.struct_size_info) > 1 {
+      generation_context.out.emit_set_global("mem_address");
+      complex_load(0, val_type, generation_context);
+   } else {
+      simple_load(val_type, generation_context);
+   }
+}
+
+fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+   match val_type {
+      ExpressionType::Value(ValueType::String) => {
+         generation_context.out.emit_get_global("mem_address");
+         generation_context.out.emit_const_add_i32(offset);
+         simple_load(val_type, generation_context);
+
+         generation_context.out.emit_get_global("mem_address");
+         generation_context.out.emit_const_add_i32(offset + 4);
+         simple_load(val_type, generation_context);
+      }
+      ExpressionType::Value(ValueType::Struct(x)) => {
+         for field in generation_context.struct_info.get(x).unwrap().values() {
+            if sizeof_type_values(field, &generation_context.struct_size_info) == 1 {
+               generation_context.out.emit_get_global("mem_address");
+               generation_context.out.emit_const_add_i32(offset);
+               simple_load(field, generation_context);
+            } else if sizeof_type_values(field, &generation_context.struct_size_info) > 1 {
+               complex_load(offset, field, generation_context);
+            }
+
+            offset += sizeof_type_mem(field, &generation_context.struct_size_info);
+         }
+      }
+      _ => unreachable!(),
+   }
 }
 
 fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
@@ -878,10 +996,20 @@ fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) 
    } else if sizeof_type_values(val_type, &generation_context.struct_size_info) == 1 {
       simple_store(val_type, generation_context);
    } else if sizeof_type_values(val_type, &generation_context.struct_size_info) > 1 {
-      // @STRUCT Put struct into linear memory
-      unimplemented!();
-      generation_context.out.emit_set_global("mem_address");
-      complex_store(0, val_type, generation_context);
+      match val_type {
+         ExpressionType::Value(ValueType::Struct(x)) => {
+            let target_name = format!("::{}:::put_in_scratch_space", x);
+            generation_context.out.emit_call(target_name.as_str());
+            generation_context.out.emit_set_global("mem_address");
+            complex_store(0, val_type, generation_context);
+         }
+         ExpressionType::Value(ValueType::String) => {
+            generation_context.out.emit_call("::put_string_slice_in_scratch_space");
+            generation_context.out.emit_set_global("mem_address");
+            complex_store(0, val_type, generation_context);
+         }
+         _ => unreachable!(),
+      }
    }
 
 }
@@ -902,10 +1030,10 @@ fn complex_store(mut offset: u32, val_type: &ExpressionType, generation_context:
          for field in struct_info.values() {
             if sizeof_type_values(field, &generation_context.struct_size_info) == 1 {
                generation_context.out.emit_get_global("mem_address");
-               adjust_by_offset(offset, generation_context);
+               generation_context.out.emit_const_add_i32(offset);
 
                generation_context.out.emit_const_i32(generation_context.struct_scratch_space_begin);
-               adjust_by_offset(offset, generation_context);
+               generation_context.out.emit_const_add_i32(offset);
                simple_load(field, generation_context);
 
                simple_store(field, generation_context);

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::Mutex;
 
-use similar::text::{ChangeTag, TextDiff};
+use similar::{ChangeTag, TextDiff};
 
 use os_pipe::pipe;
 
