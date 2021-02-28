@@ -1,1 +1,2 @@
 While parsing top level - unexpected token StringLiteral("bepis"); was expecting a function, procedure, or struct declaration
+↳ line 4, column 1

@@ -99,7 +99,12 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
    while let Some(c) = chars.peek().copied() {
       match mode {
          LexMode::Normal => {
-            if c.is_whitespace() {
+            if c == '\n' {
+               source_info.line += 1;
+               source_info.col = 1;
+               let _ = chars.next().unwrap();
+            } else if c.is_whitespace() {
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '"' {
                mode = LexMode::StringLiteral;
@@ -109,92 +114,107 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
                   source_info,
                   token: Token::OpenBrace,
                });
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '}' {
                tokens.push(SourceToken {
                   source_info,
                   token: Token::CloseBrace,
                });
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '(' {
                tokens.push(SourceToken {
                   source_info,
                   token: Token::OpenParen,
                });
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == ')' {
                tokens.push(SourceToken {
                   source_info,
                   token: Token::CloseParen,
                });
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == ':' {
                tokens.push(SourceToken {
                   source_info,
                   token: Token::Colon,
                });
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == ';' {
                tokens.push(SourceToken {
                   source_info,
                   token: Token::Semicolon,
                });
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '+' {
                tokens.push(SourceToken {
                   source_info,
                   token: Token::Plus,
                });
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '-' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'>') {
                   tokens.push(SourceToken {
-                  source_info,
-                  token: Token::Arrow,
-               });
+                     source_info,
+                     token: Token::Arrow,
+                  });
+                  source_info.col += 2;
                   let _ = chars.next().unwrap();
                } else {
                   tokens.push(SourceToken {
-                  source_info,
-                  token: Token::Minus,
-               });
+                     source_info,
+                     token: Token::Minus,
+                  });
+                  source_info.col += 1;
                }
             } else if c == '*' {
                tokens.push(SourceToken {
                   source_info,
                   token: Token::MultiplyDeref,
                });
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '/' {
                tokens.push(SourceToken {
                   source_info,
                   token: Token::Divide,
                });
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == ',' {
                tokens.push(SourceToken {
                   source_info,
                   token: Token::Comma,
                });
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '&' {
                tokens.push(SourceToken {
                   source_info,
                   token: Token::Amp,
                });
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '^' {
                tokens.push(SourceToken {
                   source_info,
                   token: Token::Caret,
                });
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '|' {
                tokens.push(SourceToken {
                   source_info,
                   token: Token::Pipe,
                });
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '=' {
                let _ = chars.next().unwrap();
@@ -203,12 +223,14 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
                      source_info,
                      token: Token::Equality,
                   });
+                  source_info.col += 2;
                   let _ = chars.next().unwrap();
                } else {
                   tokens.push(SourceToken {
                      source_info,
                      token: Token::Assignment,
                   });
+                  source_info.col += 1;
                }
             } else if c == '>' {
                let _ = chars.next().unwrap();
@@ -217,12 +239,14 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
                      source_info,
                      token: Token::GreaterThanOrEqualTo,
                   });
+                  source_info.col += 2;
                   let _ = chars.next().unwrap();
                } else {
                   tokens.push(SourceToken {
                      source_info,
                      token: Token::GreaterThan,
                   });
+                  source_info.col += 1;
                }
             } else if c == '<' {
                let _ = chars.next().unwrap();
@@ -231,12 +255,14 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
                      source_info,
                      token: Token::LessThanOrEqualTo,
                   });
+                  source_info.col += 2;
                   let _ = chars.next().unwrap();
                } else {
                   tokens.push(SourceToken {
                      source_info,
                      token: Token::LessThan,
                   });
+                  source_info.col += 1;
                }
             } else if c == '!' {
                let _ = chars.next().unwrap();
@@ -245,18 +271,21 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
                      source_info,
                      token: Token::NotEquality,
                   });
+                  source_info.col += 2;
                   let _ = chars.next().unwrap();
                } else {
                   tokens.push(SourceToken {
                      source_info,
                      token: Token::Exclam,
                   });
+                  source_info.col += 1;
                }
             } else if c == '.' {
                tokens.push(SourceToken {
                   source_info,
                   token: Token::Period,
                });
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c.is_ascii_digit() {
                mode = LexMode::IntLiteral;
@@ -267,22 +296,15 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
                emit_source_info(err_stream, source_info);
                return Err(());
             }
-
-            if c == '\n' {
-               source_info.line += 1;
-               source_info.col = 1;
-            } else {
-               source_info.col += 1;
-            }
          }
          LexMode::Ident => {
             if !c.is_alphabetic() && !c.is_alphanumeric() && c != '_' {
-               source_info.col += str_buf.len();
                let resulting_token = extract_keyword_or_ident(&str_buf);
                tokens.push(SourceToken {
                   source_info,
                   token: resulting_token,
                });
+               source_info.col += str_buf.len();
                str_buf.clear();
                mode = LexMode::Normal;
             } else {
@@ -340,12 +362,12 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
       LexMode::Normal => Ok(tokens),
       // Probably no valid program ends with a keyword or identifier, but we'll let the parser determine that
       LexMode::Ident => {
-         source_info.col += str_buf.len();
          let resulting_token = extract_keyword_or_ident(&str_buf);
          tokens.push(SourceToken {
             source_info,
             token: resulting_token,
          });
+         source_info.col += str_buf.len();
          Ok(tokens)
       }
       // Same for numbers
