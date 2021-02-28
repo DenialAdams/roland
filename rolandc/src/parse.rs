@@ -1,4 +1,4 @@
-use super::lex::Token;
+use super::lex::{SourceToken, Token};
 use crate::type_data::{ExpressionType, ValueType};
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
@@ -6,17 +6,17 @@ use std::io::Write;
 use std::mem::discriminant;
 
 struct Lexer {
-   tokens: Vec<Token>,
+   tokens: Vec<SourceToken>,
 }
 
 impl Lexer {
-   fn from_tokens(mut tokens: Vec<Token>) -> Lexer {
+   fn from_tokens(mut tokens: Vec<SourceToken>) -> Lexer {
       tokens.reverse();
       Lexer { tokens }
    }
 
    fn peek(&self) -> Option<&Token> {
-      self.tokens.last()
+      self.tokens.last().map(|x| &x.token)
    }
 
    fn double_peek(&self) -> Option<&Token> {
@@ -24,19 +24,19 @@ impl Lexer {
          return None;
       }
 
-      self.tokens.get(self.tokens.len() - 2)
+      self.tokens.get(self.tokens.len() - 2).map(|x| &x.token)
    }
 
-   fn next(&mut self) -> Option<Token> {
+   fn next(&mut self) -> Option<SourceToken> {
       self.tokens.pop()
    }
 }
 
-fn expect<W: Write>(l: &mut Lexer, err_stream: &mut W, token: &Token) -> Result<Token, ()> {
+fn expect<W: Write>(l: &mut Lexer, err_stream: &mut W, token: &Token) -> Result<SourceToken, ()> {
    let lex_token = l.next();
    if lex_token
       .as_ref()
-      .map(|x| discriminant(x) != discriminant(token))
+      .map(|x| discriminant(&x.token) != discriminant(token))
       .unwrap_or(true)
    {
       writeln!(err_stream, "got {:?} when expecting {:?}", lex_token, token).unwrap();
@@ -141,7 +141,7 @@ pub struct Program {
    pub struct_info: IndexMap<String, HashMap<String, ExpressionType>>,
 }
 
-pub fn astify<W: Write>(tokens: Vec<Token>, err_stream: &mut W) -> Result<Program, ()> {
+pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W) -> Result<Program, ()> {
    let mut lexer = Lexer::from_tokens(tokens);
 
    let mut procedures = vec![];
@@ -204,7 +204,7 @@ fn parse_procedure<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Proced
    };
    let block = parse_block(l, err_stream)?;
    Ok(ProcedureNode {
-      name: extract_identifier(function_name),
+      name: extract_identifier(function_name.token),
       parameters,
       locals: IndexMap::new(),
       block,
@@ -214,7 +214,7 @@ fn parse_procedure<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Proced
 }
 
 fn parse_struct<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<StructNode, ()> {
-   let struct_name = extract_identifier(expect(l, err_stream, &Token::Identifier(String::from("")))?);
+   let struct_name = extract_identifier(expect(l, err_stream, &Token::Identifier(String::from("")))?.token);
    expect(l, err_stream, &Token::OpenBrace)?;
    let mut fields: Vec<(String, ExpressionType)> = vec![];
    loop {
@@ -225,7 +225,7 @@ fn parse_struct<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<StructNod
       let identifier = expect(l, err_stream, &Token::Identifier(String::from("")))?;
       let _ = expect(l, err_stream, &Token::Colon)?;
       let f_type = parse_type(l, err_stream)?;
-      fields.push((extract_identifier(identifier), f_type));
+      fields.push((extract_identifier(identifier.token), f_type));
       if let Some(&Token::CloseBrace) = l.peek() {
          let _ = l.next();
          break;
@@ -297,7 +297,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<BlockNode,
             let e = parse_expression(l, err_stream, false)?;
             expect(l, err_stream, &Token::Semicolon)?;
             statements.push(Statement::VariableDeclaration(
-               extract_identifier(variable_name),
+               extract_identifier(variable_name.token),
                e,
                declared_type,
             ));
@@ -386,7 +386,7 @@ fn parse_parameters<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Vec<(
             let id = l.next().unwrap();
             expect(l, err_stream, &Token::Colon)?;
             let e_type = parse_type(l, err_stream)?;
-            parameters.push((extract_identifier(id), e_type));
+            parameters.push((extract_identifier(id.token), e_type));
             let next_discrim = l.peek().map(|x| discriminant(x));
             if next_discrim == Some(discriminant(&Token::CloseParen)) {
                break;
@@ -470,7 +470,7 @@ fn parse_type<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<ExpressionT
       }
       _ => {
          let type_token = expect(l, err_stream, &Token::Identifier(String::from("")))?;
-         let type_s = extract_identifier(type_token);
+         let type_s = extract_identifier(type_token.token);
          match type_s.as_ref() {
             "bool" => ValueType::Bool,
             "i64" => crate::type_data::I64_TYPE,
@@ -496,7 +496,7 @@ fn parse_type<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<ExpressionT
 
 fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool) -> Result<Expression, ()> {
    let lhs = l.next();
-   let mut lhs = match lhs {
+   let mut lhs = match lhs.map(|x| x.token) {
       Some(Token::BoolLiteral(x)) => Expression::BoolLiteral(x),
       Some(Token::IntLiteral(x)) => Expression::IntLiteral(x),
       Some(Token::StringLiteral(x)) => Expression::StringLiteral(x),
@@ -514,7 +514,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
                   let _ = l.next();
                   break;
                }
-               let identifier = extract_identifier(expect(l, err_stream, &Token::Identifier(String::from("")))?);
+               let identifier = extract_identifier(expect(l, err_stream, &Token::Identifier(String::from("")))?.token);
                let _ = expect(l, err_stream, &Token::Colon)?;
                let val = parse_expression(l, err_stream, false)?;
                fields.push((identifier, val));
@@ -597,7 +597,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
                   l,
                   err_stream,
                   &Token::Identifier(String::from("")),
-               )?));
+               )?.token));
                if l.peek() != Some(&Token::Period) {
                   break;
                }
@@ -613,7 +613,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
          break;
       }
 
-      let op = l.next().unwrap();
+      let op = l.next().unwrap().token;
       let rhs = pratt(l, err_stream, r_b, if_head)?;
 
       let bin_op = match op {

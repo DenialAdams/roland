@@ -1,4 +1,17 @@
 use std::io::Write;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SourceInfo {
+   line: usize,
+   col: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SourceToken {
+   pub token: Token,
+   pub source_info: SourceInfo
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
    Arrow,
@@ -48,6 +61,10 @@ enum LexMode {
    IntLiteral,
 }
 
+pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo) {
+   writeln!(err_stream, "↳ line {}, column {}", source_info.line, source_info.col).unwrap();
+}
+
 fn extract_keyword_or_ident(s: &str) -> Token {
    match s {
       "true" => Token::BoolLiteral(true),
@@ -66,12 +83,19 @@ fn extract_keyword_or_ident(s: &str) -> Token {
    }
 }
 
-pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<Token>, ()> {
-   let mut tokens = Vec::new();
+pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>, ()> {
+   let mut tokens: Vec<SourceToken> = Vec::new();
    let mut mode = LexMode::Normal;
    let mut str_buf = String::new();
    let mut int_value: i64 = 0;
+   let mut int_length: usize = 0;
    let mut chars = input.chars().peekable();
+
+   let mut source_info = SourceInfo {
+      line: 1,
+      col: 1,
+   };
+
    while let Some(c) = chars.peek().copied() {
       match mode {
          LexMode::Normal => {
@@ -81,86 +105,158 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<Token>, ()> 
                mode = LexMode::StringLiteral;
                let _ = chars.next().unwrap();
             } else if c == '{' {
-               tokens.push(Token::OpenBrace);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::OpenBrace,
+               });
                let _ = chars.next().unwrap();
             } else if c == '}' {
-               tokens.push(Token::CloseBrace);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::CloseBrace,
+               });
                let _ = chars.next().unwrap();
             } else if c == '(' {
-               tokens.push(Token::OpenParen);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::OpenParen,
+               });
                let _ = chars.next().unwrap();
             } else if c == ')' {
-               tokens.push(Token::CloseParen);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::CloseParen,
+               });
                let _ = chars.next().unwrap();
             } else if c == ':' {
-               tokens.push(Token::Colon);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::Colon,
+               });
                let _ = chars.next().unwrap();
             } else if c == ';' {
-               tokens.push(Token::Semicolon);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::Semicolon,
+               });
                let _ = chars.next().unwrap();
             } else if c == '+' {
-               tokens.push(Token::Plus);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::Plus,
+               });
                let _ = chars.next().unwrap();
             } else if c == '-' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'>') {
-                  tokens.push(Token::Arrow);
+                  tokens.push(SourceToken {
+                  source_info,
+                  token: Token::Arrow,
+               });
                   let _ = chars.next().unwrap();
                } else {
-                  tokens.push(Token::Minus);
+                  tokens.push(SourceToken {
+                  source_info,
+                  token: Token::Minus,
+               });
                }
             } else if c == '*' {
-               tokens.push(Token::MultiplyDeref);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::MultiplyDeref,
+               });
                let _ = chars.next().unwrap();
             } else if c == '/' {
-               tokens.push(Token::Divide);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::Divide,
+               });
                let _ = chars.next().unwrap();
             } else if c == ',' {
-               tokens.push(Token::Comma);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::Comma,
+               });
                let _ = chars.next().unwrap();
             } else if c == '&' {
-               tokens.push(Token::Amp);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::Amp,
+               });
                let _ = chars.next().unwrap();
             } else if c == '^' {
-               tokens.push(Token::Caret);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::Caret,
+               });
                let _ = chars.next().unwrap();
             } else if c == '|' {
-               tokens.push(Token::Pipe);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::Pipe,
+               });
                let _ = chars.next().unwrap();
             } else if c == '=' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'=') {
-                  tokens.push(Token::Equality);
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::Equality,
+                  });
                   let _ = chars.next().unwrap();
                } else {
-                  tokens.push(Token::Assignment);
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::Assignment,
+                  });
                }
             } else if c == '>' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'=') {
-                  tokens.push(Token::GreaterThanOrEqualTo);
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::GreaterThanOrEqualTo,
+                  });
                   let _ = chars.next().unwrap();
                } else {
-                  tokens.push(Token::GreaterThan);
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::GreaterThan,
+                  });
                }
             } else if c == '<' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'=') {
-                  tokens.push(Token::LessThanOrEqualTo);
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::LessThanOrEqualTo,
+                  });
                   let _ = chars.next().unwrap();
                } else {
-                  tokens.push(Token::LessThan);
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::LessThan,
+                  });
                }
             } else if c == '!' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'=') {
-                  tokens.push(Token::NotEquality);
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::NotEquality,
+                  });
                   let _ = chars.next().unwrap();
                } else {
-                  tokens.push(Token::Exclam);
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::Exclam,
+                  });
                }
             } else if c == '.' {
-               tokens.push(Token::Period);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::Period,
+               });
                let _ = chars.next().unwrap();
             } else if c.is_ascii_digit() {
                mode = LexMode::IntLiteral;
@@ -168,13 +264,25 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<Token>, ()> 
                mode = LexMode::Ident;
             } else {
                writeln!(err_stream, "Encountered unexpected character {}", c).unwrap();
+               emit_source_info(err_stream, source_info);
                return Err(());
+            }
+
+            if c == '\n' {
+               source_info.line += 1;
+               source_info.col = 1;
+            } else {
+               source_info.col += 1;
             }
          }
          LexMode::Ident => {
             if !c.is_alphabetic() && !c.is_alphanumeric() && c != '_' {
+               source_info.col += str_buf.len();
                let resulting_token = extract_keyword_or_ident(&str_buf);
-               tokens.push(resulting_token);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: resulting_token,
+               });
                str_buf.clear();
                mode = LexMode::Normal;
             } else {
@@ -184,7 +292,12 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<Token>, ()> 
          }
          LexMode::StringLiteral => {
             if c == '"' {
-               tokens.push(Token::StringLiteral(str_buf.clone()));
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::StringLiteral(str_buf.clone()),
+               });
+               source_info.col += str_buf.len();
+               source_info.col += 1; // closing quote
                str_buf.clear();
                mode = LexMode::Normal;
             } else {
@@ -195,8 +308,13 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<Token>, ()> 
          LexMode::IntLiteral => {
             if !c.is_ascii_digit() {
                let resulting_token = Token::IntLiteral(int_value);
-               tokens.push(resulting_token);
+               tokens.push(SourceToken {
+                  source_info,
+                  token: resulting_token,
+               });
+               source_info.col += int_length;
                int_value = 0;
+               int_length = 0;
                mode = LexMode::Normal;
             } else {
                let new_val = int_value
@@ -206,8 +324,12 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<Token>, ()> 
                   v
                } else {
                   writeln!(err_stream, "Encountered number that is TOO BIG!!").unwrap();
+                  emit_source_info(err_stream, source_info);
                   return Err(());
                };
+
+               int_length += 1;
+
                let _ = chars.next().unwrap();
             }
          }
@@ -218,14 +340,22 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<Token>, ()> 
       LexMode::Normal => Ok(tokens),
       // Probably no valid program ends with a keyword or identifier, but we'll let the parser determine that
       LexMode::Ident => {
+         source_info.col += str_buf.len();
          let resulting_token = extract_keyword_or_ident(&str_buf);
-         tokens.push(resulting_token);
+         tokens.push(SourceToken {
+            source_info,
+            token: resulting_token,
+         });
          Ok(tokens)
       }
       // Same for numbers
       LexMode::IntLiteral => {
          let resulting_token = Token::IntLiteral(int_value);
-         tokens.push(resulting_token);
+         tokens.push(SourceToken {
+            source_info,
+            token: resulting_token,
+         });
+         source_info.col += int_length;
          Ok(tokens)
       }
       LexMode::StringLiteral => {
@@ -234,6 +364,7 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<Token>, ()> 
             "Encountered EOF while parsing string literal; Are you missing a closing \"?"
          )
          .unwrap();
+         emit_source_info(err_stream, source_info);
          Err(())
       }
    }
