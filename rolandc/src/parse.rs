@@ -1,7 +1,8 @@
 use super::lex::{SourceToken, SourceInfo, Token, emit_source_info};
 use crate::type_data::{ExpressionType, ValueType};
+use crate::validator::StructInfo;
 use indexmap::IndexMap;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::io::Write;
 use std::mem::discriminant;
 
@@ -59,11 +60,13 @@ pub struct ProcedureNode {
    pub block: BlockNode,
    pub ret_type: ExpressionType,
    pub pure: bool,
+   pub procedure_begin_location: SourceInfo,
 }
 
 pub struct StructNode {
    pub name: String,
    pub fields: Vec<(String, ExpressionType)>,
+   pub struct_begin_location: SourceInfo,
 }
 
 #[derive(Debug)]
@@ -145,7 +148,7 @@ pub struct Program {
 
    // These fields are populated by the semantic phase
    pub literals: HashSet<String>,
-   pub struct_info: IndexMap<String, HashMap<String, ExpressionType>>,
+   pub struct_info: IndexMap<String, StructInfo>,
 }
 
 pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W) -> Result<Program, ()> {
@@ -157,19 +160,19 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W) -> Result<
    while let Some(peeked_token) = lexer.peek_token() {
       match peeked_token {
          Token::KeywordFuncDef => {
-            let _ = lexer.next();
-            let mut p = parse_procedure(&mut lexer, err_stream)?;
+            let def = lexer.next().unwrap();
+            let mut p = parse_procedure(&mut lexer, err_stream, def.source_info)?;
             p.pure = true;
             procedures.push(p);
          }
          Token::KeywordProcedureDef => {
-            let _ = lexer.next();
-            let p = parse_procedure(&mut lexer, err_stream)?;
+            let def = lexer.next().unwrap();
+            let p = parse_procedure(&mut lexer, err_stream, def.source_info)?;
             procedures.push(p);
          }
          Token::KeywordStructDef => {
-            let _ = lexer.next();
-            let s = parse_struct(&mut lexer, err_stream)?;
+            let def = lexer.next().unwrap();
+            let s = parse_struct(&mut lexer, err_stream, def.source_info)?;
             structs.push(s);
          }
          x => {
@@ -199,7 +202,7 @@ fn extract_identifier(t: Token) -> String {
    }
 }
 
-fn parse_procedure<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<ProcedureNode, ()> {
+fn parse_procedure<W: Write>(l: &mut Lexer, err_stream: &mut W, source_info: SourceInfo) -> Result<ProcedureNode, ()> {
    let function_name = expect(l, err_stream, &Token::Identifier(String::from("")))?;
    expect(l, err_stream, &Token::OpenParen)?;
    let parameters = parse_parameters(l, err_stream)?;
@@ -218,10 +221,11 @@ fn parse_procedure<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Proced
       block,
       ret_type,
       pure: false,
+      procedure_begin_location: source_info,
    })
 }
 
-fn parse_struct<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<StructNode, ()> {
+fn parse_struct<W: Write>(l: &mut Lexer, err_stream: &mut W, source_info: SourceInfo) -> Result<StructNode, ()> {
    let struct_name = extract_identifier(expect(l, err_stream, &Token::Identifier(String::from("")))?.token);
    expect(l, err_stream, &Token::OpenBrace)?;
    let mut fields: Vec<(String, ExpressionType)> = vec![];
@@ -248,6 +252,7 @@ fn parse_struct<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<StructNod
    Ok(StructNode {
       name: struct_name,
       fields,
+      struct_begin_location: source_info,
    })
 }
 

@@ -1,2 +1,4 @@
 Encountered duplicate procedures/functions with the same name `foo`
+↳ first procedure/function defined @ line 5, column 1
+↳ second procedure/function defined @ line 9, column 1
 There were 1 semantic errors, bailing

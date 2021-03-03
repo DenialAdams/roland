@@ -2,8 +2,8 @@ use std::io::Write;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct SourceInfo {
-   line: usize,
-   col: usize,
+   pub line: usize,
+   pub col: usize,
 }
 
 #[derive(Clone, Debug, PartialEq)]

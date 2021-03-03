@@ -1,5 +1,6 @@
 use crate::parse::{BinOp, Expression, ExpressionNode, Program, Statement, UnOp};
 use crate::type_data::{ExpressionType, IntWidth, ValueType, U32_TYPE};
+use crate::validator::StructInfo;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::io::Write;
@@ -8,7 +9,7 @@ struct GenerationContext<'a> {
    out: PrettyWasmWriter,
    literal_offsets: HashMap<String, (u32, u32)>,
    local_offsets_mem: HashMap<String, u32>,
-   struct_info: &'a IndexMap<String, HashMap<String, ExpressionType>>,
+   struct_info: &'a IndexMap<String, StructInfo>,
    struct_size_info: HashMap<String, SizeInfo>,
    struct_scratch_space_begin: u32,
    sum_sizeof_locals_mem: u32,
@@ -53,7 +54,7 @@ impl<'a> PrettyWasmWriter {
       name: &str,
       params: &[(String, ExpressionType)],
       result_type: &ExpressionType,
-      si: &IndexMap<String, HashMap<String, ExpressionType>>,
+      si: &IndexMap<String, StructInfo>,
    ) {
       self.emit_spaces();
       write!(self.out, "(func ${}", name).unwrap();
@@ -161,7 +162,7 @@ impl<'a> PrettyWasmWriter {
    }
 }
 
-fn write_type_as_result(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<String, HashMap<String, ExpressionType>>) {
+fn write_type_as_result(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
    match e {
       ExpressionType::Value(x) => write_value_type_as_result(x, out, si),
       ExpressionType::Pointer(_, _) => write!(out, "(result i32)").unwrap(),
@@ -171,7 +172,7 @@ fn write_type_as_result(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<Str
 fn write_value_type_as_result(
    e: &ValueType,
    out: &mut Vec<u8>,
-   si: &IndexMap<String, HashMap<String, ExpressionType>>,
+   si: &IndexMap<String, StructInfo>,
 ) {
    match e {
       ValueType::UnknownInt => unreachable!(),
@@ -184,7 +185,7 @@ fn write_value_type_as_result(
       ValueType::Unit => (),
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
-         let field_types = si.get(x).unwrap();
+         let field_types = &si.get(x).unwrap().field_types;
          for e_type in field_types.values() {
             write_type_as_result(e_type, out, si);
             out.push(b' ');
@@ -196,7 +197,7 @@ fn write_value_type_as_result(
    }
 }
 
-fn write_type_as_params(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<String, HashMap<String, ExpressionType>>) {
+fn write_type_as_params(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
    match e {
       ExpressionType::Value(x) => write_value_type_as_params(x, out, si),
       ExpressionType::Pointer(_, _) => write!(out, "(param i32)").unwrap(),
@@ -206,7 +207,7 @@ fn write_type_as_params(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<Str
 fn write_value_type_as_params(
    e: &ValueType,
    out: &mut Vec<u8>,
-   si: &IndexMap<String, HashMap<String, ExpressionType>>,
+   si: &IndexMap<String, StructInfo>,
 ) {
    match e {
       ValueType::UnknownInt => unreachable!(),
@@ -219,7 +220,7 @@ fn write_value_type_as_params(
       ValueType::Unit => (),
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
-         let field_types = si.get(x).unwrap();
+         let field_types = &si.get(x).unwrap().field_types;
          for e_type in field_types.values() {
             write_type_as_params(e_type, out, si);
             out.push(b' ');
@@ -231,14 +232,14 @@ fn write_value_type_as_params(
    }
 }
 
-fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<String, HashMap<String, ExpressionType>>) {
+fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
    match e {
       ExpressionType::Value(x) => value_type_to_s(x, out, si),
       ExpressionType::Pointer(_, _) => write!(out, "i32").unwrap(),
    }
 }
 
-fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, HashMap<String, ExpressionType>>) {
+fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::Int(x) => match x.width {
@@ -250,7 +251,7 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, HashM
       ValueType::Unit => unreachable!(),
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
-         let field_types = si.get(x).unwrap();
+         let field_types = &si.get(x).unwrap().field_types;
          for e_type in field_types.values() {
             type_to_s(e_type, out, si);
             out.push(b' ');
@@ -332,13 +333,13 @@ fn sizeof_value_type_wasm(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 
 
 fn calculate_struct_size_info(
    name: &str,
-   struct_info: &IndexMap<String, HashMap<String, ExpressionType>>,
+   struct_info: &IndexMap<String, StructInfo>,
    struct_size_info: &mut HashMap<String, SizeInfo>,
 ) {
    let mut sum_mem = 0;
    let mut sum_wasm = 0;
    let mut sum_values = 0;
-   for field_t in struct_info.get(name).unwrap().values() {
+   for field_t in struct_info.get(name).unwrap().field_types.values() {
       if let ExpressionType::Value(ValueType::Struct(s)) = field_t {
          if !struct_size_info.contains_key(s) {
             calculate_struct_size_info(s.as_str(), struct_info, struct_size_info);
@@ -381,7 +382,7 @@ fn move_locals_of_type_to_dest(
          *local_index += 2;
       }
       ExpressionType::Value(ValueType::Struct(x)) => {
-         for sub_field in generation_context.struct_info.get(x).unwrap().values() {
+         for sub_field in generation_context.struct_info.get(x).unwrap().field_types.values() {
             move_locals_of_type_to_dest(dest, local_index, sub_field, generation_context);
          }
       }
@@ -418,7 +419,7 @@ fn dynamic_move_locals_of_type_to_dest(
          *local_index += 2;
       }
       ExpressionType::Value(ValueType::Struct(x)) => {
-         for sub_field in generation_context.struct_info.get(x).unwrap().values() {
+         for sub_field in generation_context.struct_info.get(x).unwrap().field_types.values() {
             dynamic_move_locals_of_type_to_dest(offset, local_index, sub_field, generation_context);
          }
       }
@@ -547,7 +548,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
    for s in program.struct_info.iter() {
       let mut offset_begin = 0;
-      for field in s.1 {
+      for field in s.1.field_types.iter() {
          // todo: we can avoid this allocation by re-examaning the emit_function_start abstraction (we could push directly into the underlying buffer?)
          let full_name = format!("::{}::{}", s.0.as_str(), field.0.as_str());
          // this allocation (s.0.to_string) is extremely cringe (todo: maybe we should store expressiontype in this struct instead of string?) BETTER TODO: interning
@@ -583,7 +584,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
       let mut mem_index = generation_context.struct_scratch_space_begin;
       let mut i = 0;
-      for field in s.1.values() {
+      for field in s.1.field_types.values() {
          move_locals_of_type_to_dest(&mut mem_index, &mut i, field, &mut generation_context);
       }
 
@@ -904,7 +905,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          // We need to emit this in the proper order!!
          let map: HashMap<&String, &ExpressionNode> = fields.iter().map(|x| (&x.0, &x.1)).collect();
          let si = generation_context.struct_info.get(s_name).unwrap();
-         for field in si.iter() {
+         for field in si.field_types.iter() {
             let value_of_field = map.get(field.0).unwrap();
             do_emit_and_load_lval(value_of_field, generation_context);
          }
@@ -920,7 +921,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             let mut mem_offset = 0;
 
             for field_name in field_names.iter().take(field_names.len() - 1) {
-               for field in si {
+               for field in si.field_types.iter() {
                   if field.0 == field_name {
                      si = match field.1 {
                         ExpressionType::Value(ValueType::Struct(x)) => generation_context.struct_info.get(x).unwrap(),
@@ -933,7 +934,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                }
             }
 
-            for field in si {
+            for field in si.field_types.iter() {
                if field.0 == field_names.last().unwrap() {
                   break;
                }
@@ -959,6 +960,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                   .struct_info
                   .get(current_struct_name)
                   .unwrap()
+                  .field_types
                   .get(field_name)
                {
                   Some(ExpressionType::Value(ValueType::Struct(x))) => x,
@@ -1019,7 +1021,7 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
          simple_load(&ExpressionType::Value(U32_TYPE), generation_context);
       }
       ExpressionType::Value(ValueType::Struct(x)) => {
-         for field in generation_context.struct_info.get(x).unwrap().values() {
+         for field in generation_context.struct_info.get(x).unwrap().field_types.values() {
             if sizeof_type_values(field, &generation_context.struct_size_info) == 1 {
                generation_context.out.emit_get_global("mem_address");
                generation_context.out.emit_const_add_i32(offset);
@@ -1101,9 +1103,9 @@ fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) 
 fn complex_store(mut offset: u32, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    match val_type {
       ExpressionType::Value(ValueType::Struct(x)) => {
-         let struct_info = generation_context.struct_info.get(x).unwrap();
+         let field_types = &generation_context.struct_info.get(x).unwrap().field_types;
 
-         for field in struct_info.values() {
+         for field in field_types.values() {
             if sizeof_type_values(field, &generation_context.struct_size_info) == 1 {
                generation_context.out.emit_get_global("mem_address");
                generation_context.out.emit_const_add_i32(offset);

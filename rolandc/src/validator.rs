@@ -1,4 +1,5 @@
 use super::type_data::{ExpressionType, ValueType};
+use crate::lex::SourceInfo;
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, UnOp};
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
@@ -35,12 +36,18 @@ struct ProcedureInfo {
    pure: bool,
    parameters: Vec<ExpressionType>,
    ret_type: ExpressionType,
+   procedure_begin_location: SourceInfo,
+}
+
+pub struct StructInfo {
+   pub field_types: HashMap<String, ExpressionType>,
+   pub struct_begin_location: SourceInfo,
 }
 
 struct ValidationContext<'a> {
    // todo: for reliable output, this probably also needs to become and index map
-   procedure_info: &'a HashMap<String, ProcedureInfo>,
-   struct_info: &'a IndexMap<String, HashMap<String, ExpressionType>>,
+   procedure_info: &'a IndexMap<String, ProcedureInfo>,
+   struct_info: &'a IndexMap<String, StructInfo>,
    cur_procedure_info: Option<&'a ProcedureInfo>,
    string_literals: HashSet<String>,
    variable_types: HashMap<String, (ExpressionType, u64)>,
@@ -53,7 +60,7 @@ struct ValidationContext<'a> {
 fn recursive_struct_check(
    base_name: &str,
    struct_fields: &HashMap<String, ExpressionType>,
-   struct_info: &IndexMap<String, HashMap<String, ExpressionType>>,
+   struct_info: &IndexMap<String, StructInfo>,
 ) -> bool {
    let mut is_recursive = false;
 
@@ -68,7 +75,7 @@ fn recursive_struct_check(
 
       is_recursive |= struct_info
          .get(struct_field)
-         .map(|si| recursive_struct_check(base_name, si, struct_info))
+         .map(|si| recursive_struct_check(base_name, &si.field_types, struct_info))
          .unwrap_or(false);
    }
 
@@ -76,8 +83,8 @@ fn recursive_struct_check(
 }
 
 pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut W) -> u64 {
-   let mut procedure_info = HashMap::new();
-   let mut struct_info = IndexMap::new();
+   let mut procedure_info: IndexMap<String, ProcedureInfo> = IndexMap::new();
+   let mut struct_info: IndexMap<String, StructInfo> = IndexMap::new();
    let mut error_count = 0;
 
    // Built-In functions
@@ -94,6 +101,10 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
             pure: p.1,
             parameters: p.2.to_vec(),
             ret_type: p.3.clone(),
+            procedure_begin_location: SourceInfo {
+               line: 0,
+               col: 0,
+            },
          },
       );
    }
@@ -111,7 +122,8 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
                procedure.name, param.0,
             )
             .unwrap();
-         }
+            writeln!(err_stream, "↳ procedure/function defined @ line {}, column {}", procedure.procedure_begin_location.line, procedure.procedure_begin_location.col).unwrap();
+         } 
       }
 
       match procedure_info.insert(
@@ -120,9 +132,10 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
             pure: procedure.pure,
             parameters: procedure.parameters.iter().map(|x| x.1.clone()).collect(),
             ret_type: procedure.ret_type.clone(),
+            procedure_begin_location: procedure.procedure_begin_location,
          },
       ) {
-         Some(_) => {
+         Some(old_procedure) => {
             error_count += 1;
             writeln!(
                err_stream,
@@ -130,6 +143,8 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
                procedure.name
             )
             .unwrap();
+            writeln!(err_stream, "↳ first procedure/function defined @ line {}, column {}", old_procedure.procedure_begin_location.line, old_procedure.procedure_begin_location.col).unwrap();
+            writeln!(err_stream, "↳ second procedure/function defined @ line {}, column {}", procedure.procedure_begin_location.line, procedure.procedure_begin_location.col).unwrap();
          }
          None => (),
       }
@@ -147,13 +162,17 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
                   a_struct.name, field.0,
                )
                .unwrap();
+               writeln!(err_stream, "↳ struct defined @ line {}, column {}", a_struct.struct_begin_location.line, a_struct.struct_begin_location.col).unwrap();
             }
             None => (),
          }
       }
 
-      match struct_info.insert(a_struct.name.clone(), field_map) {
-         Some(_) => {
+      match struct_info.insert(a_struct.name.clone(), StructInfo {
+         field_types: field_map,
+         struct_begin_location: a_struct.struct_begin_location,
+      }) {
+         Some(old_struct) => {
             error_count += 1;
             writeln!(
                err_stream,
@@ -161,13 +180,15 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
                a_struct.name
             )
             .unwrap();
+            writeln!(err_stream, "↳ first struct defined @ line {}, column {}", old_struct.struct_begin_location.line, old_struct.struct_begin_location.col).unwrap();
+            writeln!(err_stream, "↳ second struct defined @ line {}, column {}", a_struct.struct_begin_location.line, a_struct.struct_begin_location.col).unwrap();
          }
          None => (),
       }
    }
 
    for struct_i in struct_info.iter() {
-      for (field, e_type) in struct_i.1.iter().filter(|(_, e_type)| match e_type {
+      for (field, e_type) in struct_i.1.field_types.iter().filter(|(_, e_type)| match e_type {
          ExpressionType::Value(ValueType::Struct(s)) => struct_info.get(s).is_none(),
          _ => false,
       }) {
@@ -182,7 +203,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          .unwrap();
       }
 
-      if recursive_struct_check(struct_i.0.as_str(), &struct_i.1, &struct_info) {
+      if recursive_struct_check(struct_i.0.as_str(), &struct_i.1.field_types, &struct_info) {
          error_count += 1;
          writeln!(
             err_stream,
@@ -215,6 +236,8 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          "`main` is a special procedure and is not allowed to return a value"
       )
       .unwrap();
+      let si = validation_context.procedure_info.get("main").unwrap().procedure_begin_location;
+      writeln!(err_stream, "↳ main defined @ line {}, column {}", si.line, si.col).unwrap();
    }
 
    // We won't proceed with type checking because there could be false positives due to
@@ -256,6 +279,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
                x.as_roland_type_info()
             )
             .unwrap();
+            writeln!(err_stream, "↳ procedure/function defined @ line {}, column {}", procedure.procedure_begin_location.line, procedure.procedure_begin_location.col).unwrap();
          }
       }
    }
@@ -716,9 +740,11 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
          }
 
          match validation_context.struct_info.get(struct_name) {
-            Some(defined_fields) => {
+            Some(defined_struct) => {
                // TODO, interning...
                expr_node.exp_type = Some(ExpressionType::Value(ValueType::Struct(struct_name.clone())));
+
+               let defined_fields = &defined_struct.field_types;
 
                let mut unmatched_fields: HashSet<&str> = defined_fields.keys().map(|x| x.as_str()).collect();
                for field in fields {
@@ -733,6 +759,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                            field.0, struct_name,
                         )
                         .unwrap();
+                        writeln!(err_stream, "↳ struct defined @ line {}, column {}", defined_struct.struct_begin_location.line, defined_struct.struct_begin_location.col).unwrap();
                         continue;
                      }
                   };
@@ -746,6 +773,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                         field.0, struct_name,
                      )
                      .unwrap();
+                     writeln!(err_stream, "↳ struct defined @ line {}, column {}", defined_struct.struct_begin_location.line, defined_struct.struct_begin_location.col).unwrap();
                   }
 
                   // Type validation
@@ -764,6 +792,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                         defined_type.as_roland_type_info(),
                      )
                      .unwrap();
+                     writeln!(err_stream, "↳ struct defined @ line {}, column {}", defined_struct.struct_begin_location.line, defined_struct.struct_begin_location.col).unwrap();
                   }
                }
                // Missing field check
@@ -775,6 +804,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                      struct_name, unmatched_fields,
                   )
                   .unwrap();
+                  writeln!(err_stream, "↳ struct defined @ line {}, column {}", defined_struct.struct_begin_location.line, defined_struct.struct_begin_location.col).unwrap();
                }
             }
             None => {
@@ -794,12 +824,12 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
 
          if let Some(ExpressionType::Value(ValueType::Struct(base_struct_name))) = lhs.exp_type.as_ref() {
             let mut current_struct = base_struct_name.as_str();
-            let mut current_struct_info = validation_context.struct_info.get(current_struct).unwrap();
+            let mut current_struct_info = &validation_context.struct_info.get(current_struct).unwrap().field_types;
             for (field, next_field) in fields.iter().take(fields.len() - 1).zip(fields.iter().skip(1)) {
                match current_struct_info.get(field) {
                   Some(ExpressionType::Value(ValueType::Struct(x))) => {
                      current_struct = x.as_str();
-                     current_struct_info = validation_context.struct_info.get(current_struct).unwrap();
+                     current_struct_info = &validation_context.struct_info.get(current_struct).unwrap().field_types;
                   }
                   Some(_) => {
                      validation_context.error_count += 1;
