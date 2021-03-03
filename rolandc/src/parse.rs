@@ -99,6 +99,7 @@ pub enum UnOp {
 pub struct ExpressionNode {
    pub expression: Expression,
    pub exp_type: Option<ExpressionType>,
+   pub expression_begin_location: SourceInfo,
 }
 
 #[derive(Debug)]
@@ -287,10 +288,14 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<BlockNode,
             statements.push(Statement::LoopStatement(new_block));
          }
          Some(Token::KeywordReturn) => {
-            let _ = l.next();
+            let return_token = l.next().unwrap();
             let e = if let Some(Token::Semicolon) = l.peek_token() {
-               let _ = l.next();
-               wrap(Expression::UnitLiteral)
+               let _ = l.next().unwrap();
+               ExpressionNode {
+                  expression: Expression::UnitLiteral,
+                  exp_type: None,
+                  expression_begin_location: return_token.source_info,
+               }
             } else {
                let e = parse_expression(l, err_stream, false)?;
                expect(l, err_stream, &Token::Semicolon)?;
@@ -476,7 +481,9 @@ fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Vec<Ex
 }
 
 fn parse_expression<W: Write>(l: &mut Lexer, err_stream: &mut W, if_head: bool) -> Result<ExpressionNode, ()> {
-   Ok(wrap(pratt(l, err_stream, 0, if_head)?))
+   let begin_info = l.peek_source();
+   let exp = pratt(l, err_stream, 0, if_head)?; 
+   Ok(wrap(exp, begin_info.unwrap()))
 }
 
 fn parse_type<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<ExpressionType, ()> {
@@ -519,8 +526,9 @@ fn parse_type<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<ExpressionT
 }
 
 fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool) -> Result<Expression, ()> {
-   let lhs = l.next();
-   let mut lhs = match lhs.map(|x| x.token) {
+   let lhs_token = l.next();
+   let lhs_source = lhs_token.as_ref().map(|x| x.source_info);
+   let mut lhs = match lhs_token.map(|x| x.token) {
       Some(Token::BoolLiteral(x)) => Expression::BoolLiteral(x),
       Some(Token::IntLiteral(x)) => Expression::IntLiteral(x),
       Some(Token::StringLiteral(x)) => Expression::StringLiteral(x),
@@ -570,23 +578,27 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
       }
       Some(x @ Token::Minus) => {
          let ((), r_bp) = prefix_binding_power(&x);
+         let begin_location = l.peek_source();
          let rhs = pratt(l, err_stream, r_bp, if_head)?;
-         Expression::UnaryOperator(UnOp::Negate, Box::new(wrap(rhs)))
+         Expression::UnaryOperator(UnOp::Negate, Box::new(wrap(rhs, begin_location.unwrap())))
       }
       Some(x @ Token::Exclam) => {
          let ((), r_bp) = prefix_binding_power(&x);
+         let begin_location = l.peek_source();
          let rhs = pratt(l, err_stream, r_bp, if_head)?;
-         Expression::UnaryOperator(UnOp::Complement, Box::new(wrap(rhs)))
+         Expression::UnaryOperator(UnOp::Complement, Box::new(wrap(rhs, begin_location.unwrap())))
       }
       Some(x @ Token::Amp) => {
          let ((), r_bp) = prefix_binding_power(&x);
+         let begin_location = l.peek_source();
          let rhs = pratt(l, err_stream, r_bp, if_head)?;
-         Expression::UnaryOperator(UnOp::AddressOf, Box::new(wrap(rhs)))
+         Expression::UnaryOperator(UnOp::AddressOf, Box::new(wrap(rhs, begin_location.unwrap())))
       }
       Some(x @ Token::MultiplyDeref) => {
          let ((), r_bp) = prefix_binding_power(&x);
+         let begin_location = l.peek_source();
          let rhs = pratt(l, err_stream, r_bp, if_head)?;
-         Expression::UnaryOperator(UnOp::Dereference, Box::new(wrap(rhs)))
+         Expression::UnaryOperator(UnOp::Dereference, Box::new(wrap(rhs, begin_location.unwrap())))
       }
       x => {
          writeln!(
@@ -630,7 +642,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
                   break;
                }
             }
-            lhs = Expression::FieldAccess(fields, Box::new(wrap(lhs)));
+            lhs = Expression::FieldAccess(fields, Box::new(wrap(lhs, lhs_source.unwrap())));
             continue;
          }
          _ => break,
@@ -641,7 +653,8 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
          break;
       }
 
-      let op = l.next().unwrap().token;
+      let next_token = l.next().unwrap();
+      let op = next_token.token;
       let rhs = pratt(l, err_stream, r_b, if_head)?;
 
       let bin_op = match op {
@@ -661,7 +674,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
          _ => unreachable!(),
       };
 
-      lhs = Expression::BinaryOperator(bin_op, Box::new((wrap(lhs), wrap(rhs))));
+      lhs = Expression::BinaryOperator(bin_op, Box::new((wrap(lhs, lhs_source.unwrap()), wrap(rhs, next_token.source_info))));
    }
 
    Ok(lhs)
@@ -694,9 +707,10 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
    }
 }
 
-fn wrap(expression: Expression) -> ExpressionNode {
+fn wrap(expression: Expression, source_info: SourceInfo) -> ExpressionNode {
    ExpressionNode {
       expression,
       exp_type: None,
+      expression_begin_location: source_info,
    }
 }

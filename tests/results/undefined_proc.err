@@ -1,2 +1,3 @@
 Encountered call to undefined procedure/function `something_undefined`
+↳ line 2, column 4
 There were 1 semantic errors, bailing

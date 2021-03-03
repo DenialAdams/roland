@@ -1,2 +1,3 @@
 Encountered undefined variable `y`
+↳ line 5, column 10
 There were 1 semantic errors, bailing

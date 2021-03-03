@@ -1,7 +1,7 @@
-use std::env;
+use std::{env, io::Seek};
 use std::ffi::OsStr;
-use std::fs::File;
-use std::io::{self, Read, Write};
+use std::fs::{File, OpenOptions};
+use std::io::{self, Read, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::Mutex;
@@ -19,7 +19,7 @@ enum TestFailureReason {
    ExpectedCompilationSuccess,
    ExpectedCompilationSuccessNoExecutable,
    MismatchedExecutionOutput(String, String),
-   MismatchedCompilationErrorOutput(String, String),
+   MismatchedCompilationErrorOutput(String, String, File),
 }
 
 fn main() -> Result<(), &'static str> {
@@ -33,13 +33,15 @@ fn main() -> Result<(), &'static str> {
    reset_color.set_fg(None);
    reset_color.set_intense(false);
 
+
+   let mut args = env::args();
+   if args.len() != 3 && args.len() != 4 {
+      return Err("Expected exactly 2 or 3 arguments");
+   }
    let (test_path, tc_path) = {
-      let mut args = env::args();
-      if args.len() != 3 {
-         return Err("Expected exactly 2 arguments");
-      }
       (PathBuf::from(args.nth(1).unwrap()), args.next().unwrap())
    };
+   let overwrite_error_files = args.next().map(|x| x.as_bytes() == b"--overwrite-error-files").unwrap_or(false);
 
    env::set_current_dir(test_path).unwrap();
 
@@ -106,12 +108,23 @@ fn main() -> Result<(), &'static str> {
                   ).unwrap();
                   print_diff(&mut out_handle, &expected, &actual);
                }
-               TestFailureReason::MismatchedCompilationErrorOutput(expected, actual) => {
-                  writeln!(
-                     &mut out_handle,
-                     "Failed to compile, but the compilation error was different than expected:"
-                  ).unwrap();
-                  print_diff(&mut out_handle, &expected, &actual);
+               TestFailureReason::MismatchedCompilationErrorOutput(expected, actual, mut err_file_handle) => {
+                  if overwrite_error_files {
+                     err_file_handle.seek(SeekFrom::Start(0)).unwrap();
+                     err_file_handle.write_all(actual.as_bytes()).unwrap();
+                     err_file_handle.set_len(actual.as_bytes().len() as u64).unwrap();
+                     print_diff(&mut out_handle, &expected, &actual);
+                     writeln!(
+                        &mut out_handle,
+                        "Updated test compilation error output."
+                     ).unwrap();
+                  } else {
+                     writeln!(
+                        &mut out_handle,
+                        "Failed to compile, but the compilation error was different than expected:"
+                     ).unwrap();
+                     print_diff(&mut out_handle, &expected, &actual);
+                  }
                }
             }
             writeln!(&mut out_handle, "--------------------").unwrap();
@@ -220,6 +233,7 @@ fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Res
             return Err(TestFailureReason::MismatchedCompilationErrorOutput(
                desired_result,
                stderr_text.into_owned(),
+               handle,
             ));
          }
       } else {
@@ -235,5 +249,5 @@ fn open_result_file(result_dir: &Path, entry: &Path, extension: &'static str) ->
    out_name.set_extension(extension);
    let mut out_path = result_dir.to_path_buf();
    out_path.push(out_name.file_name().unwrap());
-   File::open(out_path)
+   OpenOptions::new().read(true).write(true).append(false).open(out_path)
 }

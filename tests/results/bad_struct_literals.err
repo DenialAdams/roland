@@ -1,9 +1,14 @@
 `foo` is a valid field of struct `X`, but is duplicated
 ↳ struct defined @ line 1, column 1
+↳ struct instantiated @ line 7, column 12
 Literal of struct `X` is missing fields {"bar"}
 ↳ struct defined @ line 1, column 1
+↳ struct instantiated @ line 13, column 12
 `baz` is not a known field of struct `X`
 ↳ struct defined @ line 1, column 1
+↳ struct instantiated @ line 17, column 12
 For field `foo` of struct `X`, encountered value of type bool when we expected u8
 ↳ struct defined @ line 1, column 1
+↳ struct instantiated @ line 23, column 12
+↳ field value @ line 24, column 12
 There were 4 semantic errors, bailing

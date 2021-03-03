@@ -331,6 +331,8 @@ fn type_statement<W: Write>(
                rhs_type.as_roland_type_info(),
             )
             .unwrap();
+            writeln!(err_stream, "↳ left hand side @ line {}, column {}", len.expression_begin_location.line, len.expression_begin_location.col).unwrap();
+            writeln!(err_stream, "↳ right hand side @ line {}, column {}", en.expression_begin_location.line, en.expression_begin_location.col).unwrap();
          } else if !len.expression.is_lvalue() {
             validation_context.error_count += 1;
             writeln!(
@@ -338,6 +340,7 @@ fn type_statement<W: Write>(
                "Left hand side of assignment is not a valid memory location; i.e. a variable, field, or parameter"
             )
             .unwrap();
+            writeln!(err_stream, "↳ line {}, column {}", len.expression_begin_location.line, len.expression_begin_location.col).unwrap();
          }
       }
       Statement::BlockStatement(bn) => {
@@ -378,6 +381,7 @@ fn type_statement<W: Write>(
                en.exp_type.as_ref().unwrap().as_roland_type_info()
             )
             .unwrap();
+            writeln!(err_stream, "↳ line {}, column {}", en.expression_begin_location.line, en.expression_begin_location.col).unwrap();
          }
       }
       Statement::ReturnStatement(en) => {
@@ -402,6 +406,7 @@ fn type_statement<W: Write>(
                en.exp_type.as_ref().unwrap().as_roland_type_info()
             )
             .unwrap();
+            writeln!(err_stream, "↳ line {}, column {}", en.expression_begin_location.line, en.expression_begin_location.col).unwrap();
          }
       }
       Statement::VariableDeclaration(id, en, dt) => {
@@ -426,6 +431,7 @@ fn type_statement<W: Write>(
                en.exp_type.as_ref().unwrap().as_roland_type_info()
             )
             .unwrap();
+            writeln!(err_stream, "↳ expression @ line {}, column {}", en.expression_begin_location.line, en.expression_begin_location.col).unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else if dt
             .as_ref()
@@ -439,7 +445,7 @@ fn type_statement<W: Write>(
             validation_context.error_count += 1;
             writeln!(
                err_stream,
-               "Variable `{}` is declared with undeclared type `{}`",
+               "Variable `{}` is declared with undefined type `{}`",
                id,
                dt.as_ref().unwrap().as_roland_type_info()
             )
@@ -550,6 +556,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                lhs_type.as_roland_type_info()
             )
             .unwrap();
+            writeln!(err_stream, "↳ line {}, column {}", e.0.expression_begin_location.line, e.0.expression_begin_location.col).unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_arg_types, rhs_type) {
             validation_context.error_count += 1;
@@ -561,6 +568,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                rhs_type.as_roland_type_info()
             )
             .unwrap();
+            writeln!(err_stream, "↳ line {}, column {}", e.1.expression_begin_location.line, e.1.expression_begin_location.col).unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else if lhs_type != rhs_type {
             validation_context.error_count += 1;
@@ -572,6 +580,8 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                rhs_type.as_roland_type_info()
             )
             .unwrap();
+            writeln!(err_stream, "↳ left hand side @ line {}, column {}", e.0.expression_begin_location.line, e.0.expression_begin_location.col).unwrap();
+            writeln!(err_stream, "↳ right hand side @ line {}, column {}", e.1.expression_begin_location.line, e.1.expression_begin_location.col).unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else {
             match bin_op {
@@ -628,6 +638,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                e.exp_type.as_ref().unwrap().as_roland_type_info()
             )
             .unwrap();
+            writeln!(err_stream, "↳ line {}, column {}", e.expression_begin_location.line, e.expression_begin_location.col).unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf && !e.expression.is_lvalue() {
             validation_context.error_count += 1;
@@ -636,6 +647,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                "A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter"
             )
             .unwrap();
+            writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else {
             node_type
@@ -651,6 +663,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
             None => {
                validation_context.error_count += 1;
                writeln!(err_stream, "Encountered undefined variable `{}`", id).unwrap();
+               writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
                ExpressionType::Value(ValueType::CompileError)
             }
          };
@@ -669,6 +682,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                "`main` is a special procedure and is not allowed to be called"
             )
             .unwrap();
+            writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
          }
 
          match validation_context.procedure_info.get(name) {
@@ -683,6 +697,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                      name
                   )
                   .unwrap();
+                  writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
                }
 
                if procedure_info.parameters.len() != args.len() {
@@ -695,6 +710,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                      args.len()
                   )
                   .unwrap();
+                  writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
                // We shortcircuit here, because there will likely be lots of mistmatched types if an arg was forgotten
                } else {
                   let actual_types = args.iter_mut();
@@ -718,6 +734,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                            expected.as_roland_type_info()
                         )
                         .unwrap();
+                        writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
                      }
                   }
                }
@@ -730,6 +747,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                   name
                )
                .unwrap();
+               writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
                expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
             }
          }
@@ -760,6 +778,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                         )
                         .unwrap();
                         writeln!(err_stream, "↳ struct defined @ line {}, column {}", defined_struct.struct_begin_location.line, defined_struct.struct_begin_location.col).unwrap();
+                        writeln!(err_stream, "↳ struct instantiated @ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
                         continue;
                      }
                   };
@@ -774,6 +793,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                      )
                      .unwrap();
                      writeln!(err_stream, "↳ struct defined @ line {}, column {}", defined_struct.struct_begin_location.line, defined_struct.struct_begin_location.col).unwrap();
+                     writeln!(err_stream, "↳ struct instantiated @ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
                   }
 
                   // Type validation
@@ -793,6 +813,8 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                      )
                      .unwrap();
                      writeln!(err_stream, "↳ struct defined @ line {}, column {}", defined_struct.struct_begin_location.line, defined_struct.struct_begin_location.col).unwrap();
+                     writeln!(err_stream, "↳ struct instantiated @ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
+                     writeln!(err_stream, "↳ field value @ line {}, column {}", field.1.expression_begin_location.line, field.1.expression_begin_location.col).unwrap();
                   }
                }
                // Missing field check
@@ -805,6 +827,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                   )
                   .unwrap();
                   writeln!(err_stream, "↳ struct defined @ line {}, column {}", defined_struct.struct_begin_location.line, defined_struct.struct_begin_location.col).unwrap();
+                  writeln!(err_stream, "↳ struct instantiated @ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
                }
             }
             None => {
@@ -815,6 +838,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                   struct_name
                )
                .unwrap();
+               writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
                expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
             }
          }
@@ -839,6 +863,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                         field, next_field,
                      )
                      .unwrap();
+                     writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
                      expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
                      break;
                   }
@@ -850,6 +875,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                         current_struct, field,
                      )
                      .unwrap();
+                     writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
                      expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
                      break;
                   }
@@ -870,6 +896,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                         fields.last().unwrap(),
                      )
                      .unwrap();
+                     writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
                      expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
                   }
                }
@@ -882,6 +909,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                lhs.exp_type.as_ref().unwrap().as_roland_type_info()
             )
             .unwrap();
+            writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
             expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
          }
       }

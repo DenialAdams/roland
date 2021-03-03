@@ -1,3 +1,4 @@
 Encountered construction of undefined struct `Y`
-Variable `x` is declared with undeclared type `Struct Y`
+↳ line 2, column 15
+Variable `x` is declared with undefined type `Struct Y`
 There were 2 semantic errors, bailing

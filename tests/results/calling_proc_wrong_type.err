@@ -1,2 +1,3 @@
 In call to `print`, encountered argument of type bool when we expected String
+↳ line 2, column 4
 There were 1 semantic errors, bailing
