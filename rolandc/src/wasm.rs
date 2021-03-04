@@ -1,4 +1,4 @@
-use crate::parse::{BinOp, Expression, ExpressionNode, Program, Statement, UnOp};
+use crate::parse::{BinOp, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
 use crate::type_data::{ExpressionType, IntWidth, ValueType, U32_TYPE};
 use crate::validator::StructInfo;
 use indexmap::IndexMap;
@@ -656,7 +656,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
          emit_statement(statement, &mut generation_context);
       }
 
-      if let Some(Statement::ReturnStatement(_)) = procedure.block.statements.last() {
+      if let Some(Statement::ReturnStatement(_)) = procedure.block.statements.last().map(|x| &x.statement) {
          // No need to adjust stack; it was done in the return statement
       } else {
          adjust_stack_function_exit(&mut generation_context);
@@ -670,8 +670,8 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    generation_context.out.out
 }
 
-fn emit_statement(statement: &Statement, generation_context: &mut GenerationContext) {
-   match statement {
+fn emit_statement(statement: &StatementNode, generation_context: &mut GenerationContext) {
+   match &statement.statement {
       Statement::AssignmentStatement(len, en) => {
          do_emit(len, generation_context);
          do_emit_and_load_lval(en, generation_context);

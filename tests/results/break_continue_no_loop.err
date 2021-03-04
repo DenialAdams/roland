@@ -1,3 +1,5 @@
 Break statement can only be used in a loop
+↳ line 2, column 4
 Continue statement can only be used in a loop
+↳ line 3, column 4
 There were 2 semantic errors, bailing

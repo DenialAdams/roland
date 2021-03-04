@@ -1,6 +1,6 @@
 use super::type_data::{ExpressionType, ValueType};
 use crate::lex::SourceInfo;
-use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, UnOp};
+use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
@@ -123,7 +123,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
             )
             .unwrap();
             writeln!(err_stream, "↳ procedure/function defined @ line {}, column {}", procedure.procedure_begin_location.line, procedure.procedure_begin_location.col).unwrap();
-         } 
+         }
       }
 
       match procedure_info.insert(
@@ -201,6 +201,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
             e_type.as_roland_type_info(),
          )
          .unwrap();
+         writeln!(err_stream, "↳ struct defined @ line {}, column {}", struct_i.1.struct_begin_location.line, struct_i.1.struct_begin_location.col).unwrap();
       }
 
       if recursive_struct_check(struct_i.0.as_str(), &struct_i.1.field_types, &struct_info) {
@@ -211,6 +212,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
             struct_i.0.as_str(),
          )
          .unwrap();
+         writeln!(err_stream, "↳ struct defined @ line {}, column {}", struct_i.1.struct_begin_location.line, struct_i.1.struct_begin_location.col).unwrap();
       }
    }
 
@@ -267,7 +269,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
 
       // Ensure that the last statement is a return statement
       // (it has already been type checked, so we don't have to check that)
-      match (&procedure.ret_type, procedure.block.statements.last()) {
+      match (&procedure.ret_type, procedure.block.statements.last().map(|x| &x.statement)) {
          (ExpressionType::Value(ValueType::Unit), _) => (),
          (_, Some(Statement::ReturnStatement(_))) => (),
          (x, _) => {
@@ -280,6 +282,9 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
             )
             .unwrap();
             writeln!(err_stream, "↳ procedure/function defined @ line {}, column {}", procedure.procedure_begin_location.line, procedure.procedure_begin_location.col).unwrap();
+            if let Some(fs) = procedure.block.statements.last() {
+               writeln!(err_stream, "↳ actual final statement @ line {}, column {}", fs.statement_begin_location.line, fs.statement_begin_location.col).unwrap();
+            }
          }
       }
    }
@@ -303,11 +308,11 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
 
 fn type_statement<W: Write>(
    err_stream: &mut W,
-   statement: &mut Statement,
+   statement: &mut StatementNode,
    validation_context: &mut ValidationContext,
    cur_procedure_locals: &mut IndexMap<String, ExpressionType>,
 ) {
-   match statement {
+   match &mut statement.statement {
       Statement::AssignmentStatement(len, en) => {
          do_type(err_stream, len, validation_context);
          do_type(err_stream, en, validation_context);
@@ -350,12 +355,14 @@ fn type_statement<W: Write>(
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
             writeln!(err_stream, "Continue statement can only be used in a loop").unwrap();
+            writeln!(err_stream, "↳ line {}, column {}", statement.statement_begin_location.line, statement.statement_begin_location.col).unwrap();
          }
       }
       Statement::BreakStatement => {
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
             writeln!(err_stream, "Break statement can only be used in a loop").unwrap();
+            writeln!(err_stream, "↳ line {}, column {}", statement.statement_begin_location.line, statement.statement_begin_location.col).unwrap();
          }
       }
       Statement::LoopStatement(bn) => {
@@ -431,6 +438,7 @@ fn type_statement<W: Write>(
                en.exp_type.as_ref().unwrap().as_roland_type_info()
             )
             .unwrap();
+            writeln!(err_stream, "↳ declaration @ line {}, column {}", statement.statement_begin_location.line, statement.statement_begin_location.col).unwrap();
             writeln!(err_stream, "↳ expression @ line {}, column {}", en.expression_begin_location.line, en.expression_begin_location.col).unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else if dt
@@ -450,6 +458,7 @@ fn type_statement<W: Write>(
                dt.as_ref().unwrap().as_roland_type_info()
             )
             .unwrap();
+            writeln!(err_stream, "↳ declaration @ line {}, column {}", statement.statement_begin_location.line, statement.statement_begin_location.col).unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else {
             en.exp_type.clone().unwrap()
@@ -463,6 +472,7 @@ fn type_statement<W: Write>(
                id
             )
             .unwrap();
+            writeln!(err_stream, "↳ line {}, column {}", statement.statement_begin_location.line, statement.statement_begin_location.col).unwrap();
          } else {
             validation_context.variable_types.insert(
                id.clone(),

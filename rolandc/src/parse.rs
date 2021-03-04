@@ -127,6 +127,11 @@ impl Expression {
    }
 }
 
+pub struct StatementNode {
+   pub statement: Statement,
+   pub statement_begin_location: SourceInfo,
+}
+
 pub enum Statement {
    AssignmentStatement(ExpressionNode, ExpressionNode),
    BlockStatement(BlockNode),
@@ -134,13 +139,13 @@ pub enum Statement {
    ContinueStatement,
    BreakStatement,
    ExpressionStatement(ExpressionNode),
-   IfElseStatement(ExpressionNode, BlockNode, Box<Statement>),
+   IfElseStatement(ExpressionNode, BlockNode, Box<StatementNode>),
    ReturnStatement(ExpressionNode),
    VariableDeclaration(String, ExpressionNode, Option<ExpressionType>),
 }
 
 pub struct BlockNode {
-   pub statements: Vec<Statement>,
+   pub statements: Vec<StatementNode>,
 }
 
 pub struct Program {
@@ -260,32 +265,45 @@ fn parse_struct<W: Write>(l: &mut Lexer, err_stream: &mut W, source_info: Source
 fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<BlockNode, ()> {
    expect(l, err_stream, &Token::OpenBrace)?;
 
-   let mut statements = vec![];
+   let mut statements: Vec<StatementNode> = vec![];
 
    loop {
       match l.peek_token() {
          Some(Token::OpenBrace) => {
+            let source = l.peek_source().unwrap();
             let new_block = parse_block(l, err_stream)?;
-            statements.push(Statement::BlockStatement(new_block));
+            statements.push(StatementNode {
+               statement: Statement::BlockStatement(new_block),
+               statement_begin_location: source,
+            });
          }
          Some(Token::CloseBrace) => {
             let _ = l.next();
             break;
          }
          Some(Token::KeywordContinue) => {
-            let _ = l.next();
-            statements.push(Statement::ContinueStatement);
+            let continue_token = l.next().unwrap();
+            statements.push(StatementNode {
+               statement: Statement::ContinueStatement,
+               statement_begin_location: continue_token.source_info,
+            });
             expect(l, err_stream, &Token::Semicolon)?;
          }
          Some(Token::KeywordBreak) => {
-            let _ = l.next();
-            statements.push(Statement::BreakStatement);
+            let break_token = l.next().unwrap();
+            statements.push(StatementNode {
+               statement: Statement::BreakStatement,
+               statement_begin_location: break_token.source_info,
+            });
             expect(l, err_stream, &Token::Semicolon)?;
          }
          Some(Token::KeywordLoop) => {
-            let _ = l.next();
+            let loop_token = l.next().unwrap();
             let new_block = parse_block(l, err_stream)?;
-            statements.push(Statement::LoopStatement(new_block));
+            statements.push(StatementNode {
+               statement: Statement::LoopStatement(new_block),
+               statement_begin_location: loop_token.source_info,
+            });
          }
          Some(Token::KeywordReturn) => {
             let return_token = l.next().unwrap();
@@ -301,11 +319,14 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<BlockNode,
                expect(l, err_stream, &Token::Semicolon)?;
                e
             };
-            statements.push(Statement::ReturnStatement(e));
+            statements.push(StatementNode {
+               statement: Statement::ReturnStatement(e),
+               statement_begin_location: return_token.source_info,
+            });
          }
          Some(Token::KeywordLet) => {
             let mut declared_type = None;
-            let _ = l.next();
+            let let_token = l.next().unwrap();
             let variable_name = expect(l, err_stream, &Token::Identifier(String::from("")))?;
             let next_discrim = l.peek_token().map(|x| discriminant(x));
             if next_discrim == Some(discriminant(&Token::Colon)) {
@@ -315,11 +336,10 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<BlockNode,
             expect(l, err_stream, &Token::Assignment)?;
             let e = parse_expression(l, err_stream, false)?;
             expect(l, err_stream, &Token::Semicolon)?;
-            statements.push(Statement::VariableDeclaration(
-               extract_identifier(variable_name.token),
-               e,
-               declared_type,
-            ));
+            statements.push(StatementNode {
+               statement: Statement::VariableDeclaration(extract_identifier(variable_name.token), e, declared_type),
+               statement_begin_location: let_token.source_info,
+            });
          }
          Some(Token::KeywordIf) => {
             let s = parse_if_else_statement(l, err_stream)?;
@@ -340,11 +360,19 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<BlockNode,
                   let _ = l.next();
                   let re = parse_expression(l, err_stream, false)?;
                   expect(l, err_stream, &Token::Semicolon)?;
-                  statements.push(Statement::AssignmentStatement(e, re));
+                  let statement_begin_location = e.expression_begin_location;
+                  statements.push(StatementNode {
+                     statement: Statement::AssignmentStatement(e, re),
+                     statement_begin_location,
+                  });
                }
                Some(&Token::Semicolon) => {
                   let _ = l.next();
-                  statements.push(Statement::ExpressionStatement(e));
+                  let statement_begin_location = e.expression_begin_location;
+                  statements.push(StatementNode {
+                     statement: Statement::ExpressionStatement(e),
+                     statement_begin_location,
+                  });
                }
                x => {
                   writeln!(
@@ -382,8 +410,8 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<BlockNode,
    Ok(BlockNode { statements })
 }
 
-fn parse_if_else_statement<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Statement, ()> {
-   let _ = l.next();
+fn parse_if_else_statement<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<StatementNode, ()> {
+   let if_token = l.next().unwrap();
    let e = parse_expression(l, err_stream, true)?;
    let if_block = parse_block(l, err_stream)?;
    let else_statement = match (l.peek_token(), l.double_peek_token()) {
@@ -392,12 +420,21 @@ fn parse_if_else_statement<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Resul
          parse_if_else_statement(l, err_stream)?
       }
       (Some(&Token::KeywordElse), _) => {
-         let _ = l.next();
-         Statement::BlockStatement(parse_block(l, err_stream)?)
+         let else_token = l.next().unwrap();
+         StatementNode {
+            statement: Statement::BlockStatement(parse_block(l, err_stream)?),
+            statement_begin_location: else_token.source_info,
+         }
       }
-      _ => Statement::BlockStatement(BlockNode { statements: vec![] }),
+      _ => StatementNode {
+         statement: Statement::BlockStatement(BlockNode { statements: vec![] }),
+         statement_begin_location: if_token.source_info,
+      },
    };
-   Ok(Statement::IfElseStatement(e, if_block, Box::new(else_statement)))
+   Ok(StatementNode {
+      statement: Statement::IfElseStatement(e, if_block, Box::new(else_statement)),
+      statement_begin_location: if_token.source_info,
+   })
 }
 
 fn parse_parameters<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Vec<(String, ExpressionType)>, ()> {
@@ -482,7 +519,7 @@ fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Vec<Ex
 
 fn parse_expression<W: Write>(l: &mut Lexer, err_stream: &mut W, if_head: bool) -> Result<ExpressionNode, ()> {
    let begin_info = l.peek_source();
-   let exp = pratt(l, err_stream, 0, if_head)?; 
+   let exp = pratt(l, err_stream, 0, if_head)?;
    Ok(wrap(exp, begin_info.unwrap()))
 }
 

@@ -1,4 +1,4 @@
-use crate::parse::{Expression, ExpressionNode, Program, Statement};
+use crate::parse::{Expression, ExpressionNode, Program, Statement, StatementNode};
 use std::io::Write;
 
 pub fn print_ast_as_html<W: Write>(out: &mut W, program: &Program) {
@@ -9,8 +9,8 @@ pub fn print_ast_as_html<W: Write>(out: &mut W, program: &Program) {
       let label = if procedure.pure { "func" } else { "proc" };
       writeln!(out, "<li><span>{} «{}»</span>", label, procedure.name).unwrap();
       writeln!(out, "<ul>").unwrap();
-      for statement in procedure.block.statements.iter() {
-         print_statement(out, statement);
+      for statement_node in procedure.block.statements.iter() {
+         print_statement(out, statement_node);
       }
       writeln!(out, "</ul></li>").unwrap();
    }
@@ -19,8 +19,8 @@ pub fn print_ast_as_html<W: Write>(out: &mut W, program: &Program) {
    writeln!(out, "</ul>").unwrap();
 }
 
-fn print_statement<W: Write>(out: &mut W, statement: &Statement) {
-   match statement {
+fn print_statement<W: Write>(out: &mut W, statement_node: &StatementNode) {
+   match &statement_node.statement {
       Statement::AssignmentStatement(le, e) => {
          writeln!(out, "<li><span>Assignment</span>").unwrap();
          writeln!(out, "<ul>").unwrap();

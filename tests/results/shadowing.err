@@ -1,2 +1,3 @@
 Variable shadowing is not supported at this time (`x`)
+↳ line 3, column 4
 There were 1 semantic errors, bailing
