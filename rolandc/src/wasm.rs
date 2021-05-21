@@ -546,6 +546,18 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    generation_context.out.emit_constant_instruction("drop");
    generation_context.out.close();
 
+   // builtin wasm memory size
+   generation_context.out.emit_function_start(
+      "wasm_memory_size",
+      &[],
+      &ExpressionType::Value(crate::type_data::I32_TYPE),
+      &program.struct_info,
+   );
+   generation_context
+      .out
+      .emit_constant_instruction("memory.size");
+   generation_context.out.close();
+
    for s in program.struct_info.iter() {
       let mut offset_begin = 0;
       for field in s.1.field_types.iter() {

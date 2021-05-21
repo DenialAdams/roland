@@ -1,5 +1,5 @@
 use super::type_data::{ExpressionType, ValueType};
-use crate::lex::SourceInfo;
+use crate::{lex::SourceInfo, type_data::I32_TYPE};
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
@@ -91,15 +91,20 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
    let standard_lib_procs = [(
       "print",
       false,
-      &[ExpressionType::Value(ValueType::String)],
+      vec![ExpressionType::Value(ValueType::String)],
       ExpressionType::Value(ValueType::Unit),
+   ), (
+      "wasm_memory_size",
+      true,
+      vec![],
+      ExpressionType::Value(I32_TYPE),
    )];
    for p in standard_lib_procs.iter() {
       procedure_info.insert(
          p.0.to_string(),
          ProcedureInfo {
             pure: p.1,
-            parameters: p.2.to_vec(),
+            parameters: p.2.clone(),
             ret_type: p.3.clone(),
             procedure_begin_location: SourceInfo {
                line: 0,
