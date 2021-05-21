@@ -1,4 +1,3 @@
 proc main() {
-   wasm_memory_size();
    print_bool(wasm_memory_size() == 1);
 }
