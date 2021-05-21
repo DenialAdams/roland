@@ -98,6 +98,11 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       true,
       vec![],
       ExpressionType::Value(I32_TYPE),
+   ), (
+      "wasm_memory_grow",
+      true,
+      vec![ExpressionType::Value(I32_TYPE)],
+      ExpressionType::Value(I32_TYPE),
    )];
    for p in standard_lib_procs.iter() {
       procedure_info.insert(
