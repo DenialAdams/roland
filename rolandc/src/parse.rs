@@ -75,6 +75,7 @@ pub enum BinOp {
    Subtract,
    Multiply,
    Divide,
+   Remainder,
    Equality,
    NotEquality,
    GreaterThan,
@@ -657,6 +658,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
          | Some(x @ &Token::Minus)
          | Some(x @ &Token::MultiplyDeref)
          | Some(x @ &Token::Divide)
+         | Some(x @ &Token::Remainder)
          | Some(x @ &Token::LessThan)
          | Some(x @ &Token::LessThanOrEqualTo)
          | Some(x @ &Token::GreaterThan)
@@ -701,6 +703,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
          Token::Amp => BinOp::BitwiseAnd,
          Token::MultiplyDeref => BinOp::Multiply,
          Token::Divide => BinOp::Divide,
+         Token::Remainder => BinOp::Remainder,
          Token::GreaterThan => BinOp::GreaterThan,
          Token::GreaterThanOrEqualTo => BinOp::GreaterThanOrEqualTo,
          Token::LessThan => BinOp::LessThan,
@@ -739,7 +742,7 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
       Token::Caret => (4, 5),
       Token::Amp => (6, 7),
       Token::Plus | Token::Minus => (8, 9),
-      Token::MultiplyDeref | Token::Divide => (10, 11),
+      Token::MultiplyDeref | Token::Divide | Token::Remainder => (10, 11),
       _ => unreachable!(),
    }
 }

@@ -42,6 +42,7 @@ pub enum Token {
    Minus,
    MultiplyDeref,
    Divide,
+   Remainder,
    Assignment,
    Equality,
    NotEquality,
@@ -185,6 +186,13 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
                tokens.push(SourceToken {
                   source_info,
                   token: Token::Divide,
+               });
+               source_info.col += 1;
+               let _ = chars.next().unwrap();
+            } else if c == '%' {
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::Remainder,
                });
                source_info.col += 1;
                let _ = chars.next().unwrap();

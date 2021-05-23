@@ -848,6 +848,9 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             BinOp::Divide => {
                writeln!(generation_context.out.out, "{}.div{}", wasm_type, suffix).unwrap();
             }
+            BinOp::Remainder => {
+               writeln!(generation_context.out.out, "{}.rem{}", wasm_type, suffix).unwrap();
+            }
             BinOp::Equality => {
                writeln!(generation_context.out.out, "{}.eq", wasm_type).unwrap();
             }
