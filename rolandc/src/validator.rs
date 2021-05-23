@@ -557,6 +557,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                ExpressionType::Value(ValueType::Int(x)) => {
                   target_width > x.width
                }
+               ExpressionType::Value(ValueType::Bool) => true,
                _ => false,
             };
 

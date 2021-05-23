@@ -927,6 +927,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
 
          let source_is_signed = match e.exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => x.signed,
+            ExpressionType::Value(ValueType::Bool) => false,
             _ => unreachable!(),
          };
 
