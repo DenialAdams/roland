@@ -1,0 +1,7 @@
+proc main() {
+   let x: u32 = 123;
+   let foo = "hello";
+   let y = x extend &String;
+   let z = x extend u16;
+   let q = foo extend u64;
+}

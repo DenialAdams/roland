@@ -1,0 +1,7 @@
+proc main() {
+   let x: u8 = 123;
+   let y = x extend u16;
+   let z = x extend u32;
+   let q = x extend u64;
+   print_bool(z == y extend u32);
+}

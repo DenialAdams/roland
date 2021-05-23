@@ -1,5 +1,5 @@
 use crate::parse::{BinOp, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
-use crate::type_data::{ExpressionType, IntWidth, ValueType, U32_TYPE};
+use crate::type_data::{ExpressionType, IntWidth, U32_TYPE, ValueType};
 use crate::validator::StructInfo;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -921,6 +921,34 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                writeln!(generation_context.out.out, "{}.add", wasm_type).unwrap();
             }
          }
+      }
+      Expression::Extend(target_type, e) => {
+         do_emit_and_load_lval(e, generation_context);
+
+         let source_is_signed = match e.exp_type.as_ref().unwrap() {
+            ExpressionType::Value(ValueType::Int(x)) => x.signed,
+            _ => unreachable!(),
+         };
+
+         let suffix = if source_is_signed {
+            "s"
+         } else {
+            "u"
+         };
+
+         match target_type {
+            ExpressionType::Value(ValueType::Int(x)) if x.width == IntWidth::Eight => {
+               generation_context.out.emit_spaces();
+               writeln!(generation_context.out.out, "i64.extend_i32_{}", suffix).unwrap();
+            },
+            ExpressionType::Value(ValueType::Int(_)) => {
+               // nop
+            },
+            _ => unreachable!(),
+         }
+      }
+      Expression::Truncate(_target_type, _e) => {
+         unimplemented!()
       }
       Expression::Variable(id) => {
          get_stack_address_of_local(id, generation_context);

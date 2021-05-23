@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, cmp::Ordering};
 
 pub const U8_TYPE: ValueType = ValueType::Int(IntType {
    signed: false,
@@ -57,12 +57,35 @@ pub enum ValueType {
    CompileError,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IntWidth {
    Eight,
    Four,
    Two,
    One,
+}
+
+impl IntWidth {
+   fn as_num(&self) -> u8 {
+      match self {
+         IntWidth::Eight => 8,
+         IntWidth::Four => 4,
+         IntWidth::Two => 2,
+         IntWidth::One => 1,
+      }
+   }
+}
+
+impl PartialOrd for IntWidth {
+   fn partial_cmp(&self, other: &IntWidth) -> Option<Ordering> {
+      Some(self.cmp(other))
+   }
+}
+
+impl Ord for IntWidth {
+   fn cmp(&self, other: &IntWidth) -> Ordering {
+      self.as_num().cmp(&other.as_num())
+   }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -115,6 +115,8 @@ pub enum Expression {
    UnaryOperator(UnOp, Box<ExpressionNode>),
    StructLiteral(String, Vec<(String, ExpressionNode)>),
    FieldAccess(Vec<String>, Box<ExpressionNode>),
+   Extend(ExpressionType, Box<ExpressionNode>),
+   Truncate(ExpressionType, Box<ExpressionNode>),
 }
 
 impl Expression {
@@ -667,7 +669,9 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
          | Some(x @ &Token::Pipe)
          | Some(x @ &Token::Amp)
          | Some(x @ &Token::Caret)
-         | Some(x @ &Token::NotEquality) => x,
+         | Some(x @ &Token::NotEquality)
+         | Some(x @ &Token::KeywordExtend)
+         | Some(x @ &Token::KeywordTruncate) => x,
          Some(&Token::Period) => {
             let mut fields = vec![];
             loop {
@@ -686,6 +690,24 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
          }
          _ => break,
       };
+
+      if let Some((l_bp, ())) = postfix_binding_power(op) {
+         if l_bp < min_bp {
+            break;
+         }
+
+         let op = l.next().unwrap().token;
+         let a_type = parse_type(l, err_stream)?;
+
+         lhs = match op {
+            Token::KeywordExtend => Expression::Extend(a_type, Box::new(wrap(lhs, lhs_source.unwrap()))),
+            Token::KeywordTruncate => Expression::Truncate(a_type, Box::new(wrap(lhs, lhs_source.unwrap()))),
+            _ => unreachable!(),
+         };
+
+         continue;
+     }
+
 
       let (l_bp, r_b) = infix_binding_power(op);
       if l_bp < min_bp {
@@ -722,11 +744,19 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
 
 fn prefix_binding_power(op: &Token) -> ((), u8) {
    match op {
-      Token::Exclam => ((), 12),
-      Token::Minus => ((), 12),
-      Token::Amp => ((), 12),
-      Token::MultiplyDeref => ((), 12),
+      Token::Exclam => ((), 13),
+      Token::Minus => ((), 13),
+      Token::Amp => ((), 13),
+      Token::MultiplyDeref => ((), 13),
       _ => unreachable!(),
+   }
+}
+
+fn postfix_binding_power(op: &Token) -> Option<(u8, ())> {
+   match &op {
+      Token::KeywordExtend => Some((12, ())),
+      Token::KeywordTruncate => Some((12, ())),
+      _ => None,
    }
 }
 
