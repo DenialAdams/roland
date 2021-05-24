@@ -948,6 +948,11 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             _ => unreachable!(),
          }
       }
+      Expression::Transmute(_target_type, e) => {
+         do_emit_and_load_lval(e, generation_context);
+
+         // nop, width is the same
+      }
       Expression::Truncate(_target_type, _e) => {
          unimplemented!()
       }

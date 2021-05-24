@@ -117,6 +117,7 @@ pub enum Expression {
    FieldAccess(Vec<String>, Box<ExpressionNode>),
    Extend(ExpressionType, Box<ExpressionNode>),
    Truncate(ExpressionType, Box<ExpressionNode>),
+   Transmute(ExpressionType, Box<ExpressionNode>),
 }
 
 impl Expression {
@@ -671,7 +672,8 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
          | Some(x @ &Token::Caret)
          | Some(x @ &Token::NotEquality)
          | Some(x @ &Token::KeywordExtend)
-         | Some(x @ &Token::KeywordTruncate) => x,
+         | Some(x @ &Token::KeywordTruncate)
+         | Some(x @ &Token::KeywordTransmute) => x,
          Some(&Token::Period) => {
             let mut fields = vec![];
             loop {
@@ -702,6 +704,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
          lhs = match op {
             Token::KeywordExtend => Expression::Extend(a_type, Box::new(wrap(lhs, lhs_source.unwrap()))),
             Token::KeywordTruncate => Expression::Truncate(a_type, Box::new(wrap(lhs, lhs_source.unwrap()))),
+            Token::KeywordTransmute => Expression::Transmute(a_type, Box::new(wrap(lhs, lhs_source.unwrap()))),
             _ => unreachable!(),
          };
 
@@ -756,6 +759,7 @@ fn postfix_binding_power(op: &Token) -> Option<(u8, ())> {
    match &op {
       Token::KeywordExtend => Some((12, ())),
       Token::KeywordTruncate => Some((12, ())),
+      Token::KeywordTransmute => Some((12, ())),
       _ => None,
    }
 }

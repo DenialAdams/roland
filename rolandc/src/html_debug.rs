@@ -133,6 +133,12 @@ fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode) {
          print_expression(out, &expr);
          writeln!(out, "</ul></li>").unwrap();
       }
+      Expression::Transmute(_, expr) => {
+         writeln!(out, "<li><span>Transmute{}</span>", type_text).unwrap();
+         writeln!(out, "<ul>").unwrap();
+         print_expression(out, &expr);
+         writeln!(out, "</ul></li>").unwrap();
+      }
       Expression::StructLiteral(type_name, fields) => {
          writeln!(out, "<li><span>{}{}</span>", type_name, type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
