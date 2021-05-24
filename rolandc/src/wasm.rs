@@ -899,7 +899,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             }
             UnOp::Dereference => {
                do_emit(e, generation_context);
-               load(expr_node.exp_type.as_ref().unwrap(), generation_context);
+               load(e.exp_type.as_ref().unwrap(), generation_context);
             }
             UnOp::Complement => {
                do_emit_and_load_lval(e, generation_context);

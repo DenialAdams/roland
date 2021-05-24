@@ -1,5 +1,8 @@
 proc main() {
    let x = malloc(10);
+   let y = malloc(10);
    *x = 123;
+   *y = 213;
    print_bool(*x == 123);
+   print_bool(*y == 213);
 }
