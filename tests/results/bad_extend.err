@@ -1,5 +1,6 @@
-Extend requires the target type to be an integer type; instead got &String
-↳ line 4, column 12
+Extend encountered an operand of type u32 which can not be extended to type &String
+↳ extend @ line 4, column 12
+↳ operand @ line 4, column 12
 Extend encountered an operand of type u32 which can not be extended to type u16
 ↳ extend @ line 5, column 12
 ↳ operand @ line 5, column 12

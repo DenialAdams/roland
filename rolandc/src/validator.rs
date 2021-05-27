@@ -537,27 +537,12 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
          let result_type = if e_type == &ExpressionType::Value(ValueType::CompileError) {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
-         } else if !target_type.is_any_known_int() {
-            validation_context.error_count += 1;
-            writeln!(
-               err_stream,
-               "Extend requires the target type to be an integer type; instead got {}",
-               target_type.as_roland_type_info()
-            )
-            .unwrap();
-            writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
-            ExpressionType::Value(ValueType::CompileError)
          } else {
-            let target_width = match target_type {
-               ExpressionType::Value(ValueType::Int(x)) => x.width,
-               _ => unreachable!(),
-            };
-
-            let valid_cast = match e_type {
-               ExpressionType::Value(ValueType::Int(x)) => {
-                  target_width > x.width
+            let valid_cast = match (e_type, &target_type) {
+               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
+                  x.width < y.width
                }
-               ExpressionType::Value(ValueType::Bool) => true,
+               (ExpressionType::Value(ValueType::Bool), ExpressionType::Value(ValueType::Int(_))) => true,
                _ => false,
             };
 
@@ -589,7 +574,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
          } else {
-            let valid_cast = match (e_type, &*target_type) {
+            let valid_cast = match (e_type, &target_type) {
                // TODO: pointer width is hardcoded
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Pointer(_, _)) if x.width == IntWidth::Four => true,
                (ExpressionType::Pointer(_, _), ExpressionType::Value(ValueType::Int(x))) if x.width == IntWidth::Four => true,
@@ -626,25 +611,10 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
          let result_type = if e_type == &ExpressionType::Value(ValueType::CompileError) {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
-         } else if !target_type.is_any_known_int() {
-            validation_context.error_count += 1;
-            writeln!(
-               err_stream,
-               "Truncate requires the target type to be an integer type; instead got {}",
-               target_type.as_roland_type_info()
-            )
-            .unwrap();
-            writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
-            ExpressionType::Value(ValueType::CompileError)
          } else {
-            let target_width = match target_type {
-               ExpressionType::Value(ValueType::Int(x)) => x.width,
-               _ => unreachable!(),
-            };
-
-            let valid_cast = match e_type {
-               ExpressionType::Value(ValueType::Int(x)) => {
-                  target_width < x.width
+            let valid_cast = match (e_type, &target_type) {
+               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
+                  x.width > y.width
                }
                _ => false,
             };
