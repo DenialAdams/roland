@@ -953,8 +953,16 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
 
          // nop, width is the same
       }
-      Expression::Truncate(_target_type, _e) => {
-         unimplemented!()
+      Expression::Truncate(_target_type, e) => {
+         do_emit_and_load_lval(e, generation_context);
+
+         // 8bytes -> (4, 2, 1) bytes is a wrap
+         // anything else is a nop
+         
+         // this is taking advantage of the fact that truncating is guaranteed to go downwards
+         if sizeof_type_wasm(e.exp_type.as_ref().unwrap(), &generation_context.struct_size_info) > 4 {
+            generation_context.out.emit_constant_instruction("i32.wrap_i64");
+         }
       }
       Expression::Variable(id) => {
          get_stack_address_of_local(id, generation_context);

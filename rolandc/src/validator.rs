@@ -583,25 +583,10 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
       Expression::Transmute(target_type, e) => {
          do_type(err_stream, e, validation_context);
 
-         let target_type_is_ptr = match target_type {
-            ExpressionType::Pointer(_, _) => true,
-            ExpressionType::Value(_) => false,
-         };
-
          let e_type = e.exp_type.as_ref().unwrap();
 
          let result_type = if e_type == &ExpressionType::Value(ValueType::CompileError) {
             // Avoid cascading errors
-            ExpressionType::Value(ValueType::CompileError)
-         } else if !target_type.is_any_known_int() && !target_type_is_ptr {
-            validation_context.error_count += 1;
-            writeln!(
-               err_stream,
-               "Transmute requires the target type to be an integer or pointer type; instead got {}",
-               target_type.as_roland_type_info()
-            )
-            .unwrap();
-            writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else {
             let valid_cast = match (e_type, &*target_type) {
@@ -633,7 +618,56 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
 
          expr_node.exp_type = Some(result_type);
       }
-      Expression::Truncate(_, _) => unimplemented!(),
+      Expression::Truncate(target_type, e) => {
+         do_type(err_stream, e, validation_context);
+
+         let e_type = e.exp_type.as_ref().unwrap();
+
+         let result_type = if e_type == &ExpressionType::Value(ValueType::CompileError) {
+            // Avoid cascading errors
+            ExpressionType::Value(ValueType::CompileError)
+         } else if !target_type.is_any_known_int() {
+            validation_context.error_count += 1;
+            writeln!(
+               err_stream,
+               "Truncate requires the target type to be an integer type; instead got {}",
+               target_type.as_roland_type_info()
+            )
+            .unwrap();
+            writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
+            ExpressionType::Value(ValueType::CompileError)
+         } else {
+            let target_width = match target_type {
+               ExpressionType::Value(ValueType::Int(x)) => x.width,
+               _ => unreachable!(),
+            };
+
+            let valid_cast = match e_type {
+               ExpressionType::Value(ValueType::Int(x)) => {
+                  target_width < x.width
+               }
+               _ => false,
+            };
+
+            if valid_cast {
+               target_type.clone()
+            } else {
+               validation_context.error_count += 1;
+               writeln!(
+                  err_stream,
+                  "Truncate encountered an operand of type {} which can not be truncated to type {}",
+                  e_type.as_roland_type_info(),
+                  target_type.as_roland_type_info(),
+               )
+               .unwrap();
+               writeln!(err_stream, "↳ extend @ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
+               writeln!(err_stream, "↳ operand @ line {}, column {}", e.expression_begin_location.line, e.expression_begin_location.col).unwrap();
+               ExpressionType::Value(ValueType::CompileError)
+            }
+         };
+
+         expr_node.exp_type = Some(result_type);
+      },
       Expression::BinaryOperator(bin_op, e) => {
          do_type(err_stream, &mut e.0, validation_context);
          do_type(err_stream, &mut e.1, validation_context);
