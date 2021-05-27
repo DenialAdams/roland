@@ -6,8 +6,8 @@ proc print_bool(value: bool) {
    }
 }
 
-proc malloc(bytes: u32) -> &u8 {
-   let num_new_pages = (bytes / 65536) + (bytes % 65536 != 0) extend u32;
+proc malloc(bytes: i32) -> &u8 {
+   let num_new_pages = (bytes / 65536) + (bytes % 65536 != 0) extend i32;
    let current_page_start = wasm_memory_grow(num_new_pages) * 65536;
    return current_page_start transmute &u8;
 }

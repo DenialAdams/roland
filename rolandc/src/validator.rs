@@ -1,6 +1,6 @@
 use super::type_data::{ExpressionType, ValueType};
 use crate::type_data::IntWidth;
-use crate::{lex::SourceInfo, type_data::U32_TYPE};
+use crate::{lex::SourceInfo, type_data::I32_TYPE};
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
@@ -46,7 +46,6 @@ pub struct StructInfo {
 }
 
 struct ValidationContext<'a> {
-   // todo: for reliable output, this probably also needs to become and index map
    procedure_info: &'a IndexMap<String, ProcedureInfo>,
    struct_info: &'a IndexMap<String, StructInfo>,
    cur_procedure_info: Option<&'a ProcedureInfo>,
@@ -98,12 +97,12 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       "wasm_memory_size",
       true,
       vec![],
-      ExpressionType::Value(U32_TYPE),
+      ExpressionType::Value(I32_TYPE),
    ), (
       "wasm_memory_grow",
       true,
-      vec![ExpressionType::Value(U32_TYPE)],
-      ExpressionType::Value(U32_TYPE),
+      vec![ExpressionType::Value(I32_TYPE)],
+      ExpressionType::Value(I32_TYPE),
    )];
    for p in standard_lib_procs.iter() {
       procedure_info.insert(
