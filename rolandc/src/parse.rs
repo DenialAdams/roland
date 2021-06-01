@@ -53,6 +53,7 @@ fn expect<W: Write>(l: &mut Lexer, err_stream: &mut W, token: &Token) -> Result<
    Ok(lex_token.unwrap())
 }
 
+#[derive(Clone)]
 pub struct ProcedureNode {
    pub name: String,
    pub parameters: Vec<(String, ExpressionType)>,
@@ -63,13 +64,14 @@ pub struct ProcedureNode {
    pub procedure_begin_location: SourceInfo,
 }
 
+#[derive(Clone)]
 pub struct StructNode {
    pub name: String,
    pub fields: Vec<(String, ExpressionType)>,
    pub struct_begin_location: SourceInfo,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum BinOp {
    Add,
    Subtract,
@@ -87,7 +89,7 @@ pub enum BinOp {
    BitwiseXor,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum UnOp {
    Negate,
    Complement,
@@ -95,15 +97,14 @@ pub enum UnOp {
    Dereference,
 }
 
-#[derive(Debug)]
-
+#[derive(Clone, Debug)]
 pub struct ExpressionNode {
    pub expression: Expression,
    pub exp_type: Option<ExpressionType>,
    pub expression_begin_location: SourceInfo,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Expression {
    ProcedureCall(String, Vec<ExpressionNode>),
    BoolLiteral(bool),
@@ -131,11 +132,13 @@ impl Expression {
    }
 }
 
+#[derive(Clone)]
 pub struct StatementNode {
    pub statement: Statement,
    pub statement_begin_location: SourceInfo,
 }
 
+#[derive(Clone)]
 pub enum Statement {
    AssignmentStatement(ExpressionNode, ExpressionNode),
    BlockStatement(BlockNode),
@@ -148,10 +151,12 @@ pub enum Statement {
    VariableDeclaration(String, ExpressionNode, Option<ExpressionType>),
 }
 
+#[derive(Clone)]
 pub struct BlockNode {
    pub statements: Vec<StatementNode>,
 }
 
+#[derive(Clone)]
 pub struct Program {
    pub procedures: Vec<ProcedureNode>,
    pub structs: Vec<StructNode>,
