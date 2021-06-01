@@ -28,7 +28,7 @@ pub fn compile<E: Write, A: Write>(
    if let Some(w) = html_ast_out {
       let mut program_without_std = user_program.clone();
       program_without_std.procedures.truncate(num_procedures_before_merge);
-      html_debug::print_ast_as_html(w, &user_program);
+      html_debug::print_ast_as_html(w, &program_without_std);
    }
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));
