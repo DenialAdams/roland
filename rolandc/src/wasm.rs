@@ -181,7 +181,6 @@ fn write_value_type_as_result(
          _ => write!(out, "(result i32)").unwrap(),
       },
       ValueType::Bool => write!(out, "(result i32)").unwrap(),
-      ValueType::String => write!(out, "(result i32) (result i32)").unwrap(),
       ValueType::Unit => (),
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
@@ -216,7 +215,6 @@ fn write_value_type_as_params(
          _ => write!(out, "(param i32)").unwrap(),
       },
       ValueType::Bool => write!(out, "(param i32)").unwrap(),
-      ValueType::String => write!(out, "(param i32) (param i32)").unwrap(),
       ValueType::Unit => (),
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
@@ -247,7 +245,6 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, Struc
          _ => write!(out, "i32").unwrap(),
       },
       ValueType::Bool => write!(out, "i32").unwrap(),
-      ValueType::String => write!(out, "i32 i32").unwrap(),
       ValueType::Unit => unreachable!(),
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
@@ -281,7 +278,6 @@ fn sizeof_value_type_mem(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
          IntWidth::One => 1,
       },
       ValueType::Bool => 4,
-      ValueType::String => 8,
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().mem_size,
@@ -301,7 +297,6 @@ fn sizeof_value_type_values(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u3
       ValueType::UnknownInt => unreachable!(),
       ValueType::Int(_) => 1,
       ValueType::Bool => 1,
-      ValueType::String => 2,
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().values_size,
@@ -324,7 +319,6 @@ fn sizeof_value_type_wasm(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 
          _ => 4,
       },
       ValueType::Bool => 4,
-      ValueType::String => 8,
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().wasm_size,
@@ -369,18 +363,6 @@ fn move_locals_of_type_to_dest(
 ) {
    match field {
       ExpressionType::Value(ValueType::Unit) => (),
-      ExpressionType::Value(ValueType::String) => {
-         generation_context.out.emit_const_i32(*dest);
-         generation_context.out.emit_get_local(*local_index);
-         simple_store(&ExpressionType::Value(U32_TYPE), generation_context);
-
-         generation_context.out.emit_const_i32(*dest + 4);
-         generation_context.out.emit_get_local(*local_index + 1);
-         simple_store(&ExpressionType::Value(U32_TYPE), generation_context);
-
-         *dest += 8;
-         *local_index += 2;
-      }
       ExpressionType::Value(ValueType::Struct(x)) => {
          for sub_field in generation_context.struct_info.get(x).unwrap().field_types.values() {
             move_locals_of_type_to_dest(dest, local_index, sub_field, generation_context);
@@ -404,20 +386,6 @@ fn dynamic_move_locals_of_type_to_dest(
 ) {
    match field {
       ExpressionType::Value(ValueType::Unit) => (),
-      ExpressionType::Value(ValueType::String) => {
-         generation_context.out.emit_get_global("mem_address");
-         generation_context.out.emit_const_add_i32(*offset);
-         generation_context.out.emit_get_local(*local_index);
-         simple_store(&ExpressionType::Value(U32_TYPE), generation_context);
-
-         generation_context.out.emit_get_global("mem_address");
-         generation_context.out.emit_const_add_i32(*offset + 4);
-         generation_context.out.emit_get_local(*local_index + 1);
-         simple_store(&ExpressionType::Value(U32_TYPE), generation_context);
-
-         *offset += 8;
-         *local_index += 2;
-      }
       ExpressionType::Value(ValueType::Struct(x)) => {
          for sub_field in generation_context.struct_info.get(x).unwrap().field_types.values() {
             dynamic_move_locals_of_type_to_dest(offset, local_index, sub_field, generation_context);
@@ -617,23 +585,6 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
       generation_context.out.close();
    }
-
-   generation_context.out.emit_function_start(
-      "::put_string_slice_in_scratch_space",
-      &[("".into(), ExpressionType::Value(ValueType::String))],
-      &ExpressionType::Value(ValueType::Unit),
-      &program.struct_info,
-   );
-
-   let mut mem_index = generation_context.struct_scratch_space_begin;
-   let mut i = 0;
-   move_locals_of_type_to_dest(
-      &mut mem_index,
-      &mut i,
-      &ExpressionType::Value(ValueType::String),
-      &mut generation_context,
-   );
-   generation_context.out.close();
 
    for procedure in program.procedures.iter() {
       generation_context.local_offsets_mem.clear();
@@ -899,7 +850,10 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             }
             UnOp::Dereference => {
                do_emit(e, generation_context);
-               load(e.exp_type.as_ref().unwrap(), generation_context);
+
+               if e.expression.is_lvalue() {
+                  load(e.exp_type.as_ref().unwrap(), generation_context);
+               }
             }
             UnOp::Complement => {
                do_emit_and_load_lval(e, generation_context);
@@ -1083,15 +1037,6 @@ fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
 
 fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    match val_type {
-      ExpressionType::Value(ValueType::String) => {
-         generation_context.out.emit_get_global("mem_address");
-         generation_context.out.emit_const_add_i32(offset);
-         simple_load(&ExpressionType::Value(U32_TYPE), generation_context);
-
-         generation_context.out.emit_get_global("mem_address");
-         generation_context.out.emit_const_add_i32(offset + 4);
-         simple_load(&ExpressionType::Value(U32_TYPE), generation_context);
-      }
       ExpressionType::Value(ValueType::Struct(x)) => {
          for field in generation_context.struct_info.get(x).unwrap().field_types.values() {
             if sizeof_type_values(field, &generation_context.struct_size_info) == 1 {
@@ -1162,11 +1107,6 @@ fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) 
             generation_context.out.emit_set_global("mem_address");
             complex_store(0, val_type, generation_context);
          }
-         ExpressionType::Value(ValueType::String) => {
-            generation_context.out.emit_call("::put_string_slice_in_scratch_space");
-            generation_context.out.emit_set_global("mem_address");
-            complex_store(0, val_type, generation_context);
-         }
          _ => unreachable!(),
       }
    }
@@ -1195,40 +1135,6 @@ fn complex_store(mut offset: u32, val_type: &ExpressionType, generation_context:
 
             offset += sizeof_type_mem(field, &generation_context.struct_size_info);
          }
-      }
-      ExpressionType::Value(ValueType::String) => {
-         // address for store
-         generation_context.out.emit_get_global("mem_address");
-         generation_context.out.emit_const_add_i32(offset);
-
-         // load the value from scratch space
-         generation_context
-            .out
-            .emit_const_i32(generation_context.struct_scratch_space_begin);
-         generation_context.out.emit_spaces();
-         writeln!(generation_context.out.out, "i32.load").unwrap();
-
-         // store value @ address
-         generation_context.out.emit_spaces();
-         writeln!(generation_context.out.out, "i32.store").unwrap();
-
-         // repeat for second field
-
-         // address for store
-         generation_context.out.emit_get_global("mem_address");
-         generation_context.out.emit_const_add_i32(offset + 4);
-
-         // load the value from scratch space
-         generation_context
-            .out
-            .emit_const_i32(generation_context.struct_scratch_space_begin);
-         generation_context.out.emit_const_add_i32(offset + 4);
-         generation_context.out.emit_spaces();
-         writeln!(generation_context.out.out, "i32.load").unwrap();
-
-         // store value @ address
-         generation_context.out.emit_spaces();
-         writeln!(generation_context.out.out, "i32.store").unwrap();
       }
       _ => {
          unreachable!();

@@ -50,7 +50,6 @@ pub enum ExpressionType {
 pub enum ValueType {
    UnknownInt,
    Int(IntType),
-   String,
    Bool,
    Unit,
    Struct(String),
@@ -158,7 +157,7 @@ impl ValueType {
    fn is_concrete_type(&self) -> bool {
       match self {
          ValueType::UnknownInt | ValueType::CompileError => false,
-         ValueType::Int(_) | ValueType::String | ValueType::Bool | ValueType::Unit | ValueType::Struct(_) => true,
+         ValueType::Int(_) | ValueType::Bool | ValueType::Unit | ValueType::Struct(_) => true,
       }
    }
 
@@ -175,10 +174,10 @@ impl ValueType {
             (false, IntWidth::Two) => Cow::Borrowed("u16"),
             (false, IntWidth::One) => Cow::Borrowed("u8"),
          },
-         ValueType::String => Cow::Borrowed("String"),
          ValueType::Bool => Cow::Borrowed("bool"),
          ValueType::Unit => Cow::Borrowed("()"),
          ValueType::CompileError => Cow::Borrowed("ERROR"),
+         ValueType::Struct(x) if x.as_str() == "String" => Cow::Borrowed("String"),
          ValueType::Struct(x) => Cow::Owned(format!("Struct {}", x)),
       }
    }

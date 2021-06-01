@@ -41,7 +41,7 @@ struct ProcedureInfo {
 }
 
 pub struct StructInfo {
-   pub field_types: HashMap<String, ExpressionType>,
+   pub field_types: IndexMap<String, ExpressionType>,
    pub struct_begin_location: SourceInfo,
 }
 
@@ -59,7 +59,7 @@ struct ValidationContext<'a> {
 
 fn recursive_struct_check(
    base_name: &str,
-   struct_fields: &HashMap<String, ExpressionType>,
+   struct_fields: &IndexMap<String, ExpressionType>,
    struct_info: &IndexMap<String, StructInfo>,
 ) -> bool {
    let mut is_recursive = false;
@@ -91,7 +91,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
    let standard_lib_procs = [(
       "print",
       false,
-      vec![ExpressionType::Value(ValueType::String)],
+      vec![ExpressionType::Value(ValueType::Struct("String".into()))],
       ExpressionType::Value(ValueType::Unit),
    ), (
       "wasm_memory_size",
@@ -161,7 +161,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
    }
 
    for a_struct in program.structs.iter() {
-      let mut field_map = HashMap::with_capacity(a_struct.fields.len());
+      let mut field_map = IndexMap::with_capacity(a_struct.fields.len());
       for field in a_struct.fields.iter() {
          match field_map.insert(field.0.clone(), field.1.clone()) {
             Some(__) => {
@@ -527,7 +527,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
       Expression::StringLiteral(lit) => {
          // This clone will become cheap when we intern everywhere
          validation_context.string_literals.insert(lit.clone());
-         expr_node.exp_type = Some(ExpressionType::Value(ValueType::String));
+         expr_node.exp_type = Some(ExpressionType::Value(ValueType::Struct("String".into())));
       }
       Expression::Extend(target_type, e) => {
          do_type(err_stream, e, validation_context);
@@ -580,7 +580,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                (ExpressionType::Pointer(_, _), ExpressionType::Value(ValueType::Int(x))) if x.width == IntWidth::Four => true,
                // the signed-ness check is to prevent transmuting from self -> self
                // (error message could be improved in this case)
-               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) if x.width == y.width && x.signed != y.signed => true,
+               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) if x.width == y.width => x.signed != y.signed,
                _ => false,
             };
 

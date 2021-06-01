@@ -1,9 +1,59 @@
+struct String {
+   pointer: &u8,
+   length: u32,
+}
+
 proc print_bool(value: bool) {
    if value {
       print("true");
    } else {
       print("false");
    }
+}
+
+func count_digits(value: u64) -> u8 {
+   let digit_count: u8 = 0;
+
+   loop {
+      if value <= 9 {
+         return digit_count + 1;
+      }
+
+      digit_count = digit_count + 1;
+      value = value / 10;
+   }
+
+   return 0;
+}
+
+proc int_to_string(value: u64) -> String {
+   let digit_count = count_digits(value);
+   let digit_count_for_loop = digit_count extend u32 - 1;
+   let buf = malloc(digit_count extend i32);
+
+   let next_digit: u8 = 0;
+   let i: u32 = 0;
+
+   loop {
+      if value <= 9 {
+         next_digit = value truncate u8;
+         let ptr = ((buf transmute u32) + digit_count_for_loop - i) transmute &u8;
+         *ptr = next_digit + 48;
+         i = i + 1;
+         break;
+      }
+      next_digit = (value % 10) truncate u8;
+      value = value / 10;
+      let ptr = ((buf transmute u32) + digit_count_for_loop - i) transmute &u8;
+      *ptr = next_digit + 48;
+      i = i + 1;
+   }
+
+
+   return String {
+      length: i,
+      pointer: buf,
+   };
 }
 
 proc malloc(bytes: i32) -> &u8 {

@@ -3,5 +3,5 @@ proc main() {
 }
 
 func get_a_cool_string() -> String {
-   return "The time to hesistate is through";
+   return "The time to hesitate is through";
 }
