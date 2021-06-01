@@ -40,6 +40,7 @@ struct ProcedureInfo {
    procedure_begin_location: SourceInfo,
 }
 
+#[derive(Clone)]
 pub struct StructInfo {
    pub field_types: IndexMap<String, ExpressionType>,
    pub struct_begin_location: SourceInfo,

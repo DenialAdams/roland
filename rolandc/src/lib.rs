@@ -22,9 +22,12 @@ pub fn compile<E: Write, A: Write>(
    let mut user_program = lex_and_parse(user_program_s, err_stream)?;
    let std_lib_s = include_str!("../../lib/print.rol");
    let std_lib = lex_and_parse(std_lib_s, err_stream)?;
+   let num_procedures_before_merge = user_program.procedures.len();
    merge_programs(&mut user_program, &mut [std_lib]);
    let err_count = validator::type_and_check_validity(&mut user_program, err_stream);
    if let Some(w) = html_ast_out {
+      let mut program_without_std = user_program.clone();
+      program_without_std.procedures.truncate(num_procedures_before_merge);
       html_debug::print_ast_as_html(w, &user_program);
    }
    if err_count > 0 {
