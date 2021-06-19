@@ -360,6 +360,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
    let err_count = validation_context.error_count;
    program.literals = validation_context.string_literals;
    program.struct_info = struct_info;
+   program.static_info = static_info;
 
    err_count
 }

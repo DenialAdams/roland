@@ -8,6 +8,7 @@ use std::io::Write;
 struct GenerationContext<'a> {
    out: PrettyWasmWriter,
    literal_offsets: HashMap<String, (u32, u32)>,
+   static_offsets: HashMap<String, u32>,
    local_offsets_mem: HashMap<String, u32>,
    struct_info: &'a IndexMap<String, StructInfo>,
    struct_size_info: HashMap<String, SizeInfo>,
@@ -405,9 +406,9 @@ fn dynamic_move_locals_of_type_to_dest(
 // MEMORY LAYOUT
 // 0-15 scratch space for the print function
 // 16-l literals
-// l-ss scratch space sized to fit the largest compound type (we need to put structs here and not the value stack sometimes)
+// l-s statics
+// s-ss scratch space sized to fit the largest compound type (we need to put structs here and not the value stack sometimes)
 // ss+ program stack (local variables and parameters are pushed here during runtime)
-
 pub fn emit_wasm(program: &Program) -> Vec<u8> {
    let mut struct_size_info: HashMap<String, SizeInfo> = HashMap::with_capacity(program.struct_info.len());
    for s in program.struct_info.iter() {
@@ -425,6 +426,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       },
       // todo: just reuse the same map?
       literal_offsets: HashMap::with_capacity(program.literals.len()),
+      static_offsets: HashMap::with_capacity(program.static_info.len()),
       local_offsets_mem: HashMap::new(),
       struct_info: &program.struct_info,
       struct_size_info,
@@ -446,6 +448,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    // Data section
 
    let mut offset: u32 = 16;
+
    for s in std::iter::once("\\n").chain(program.literals.iter().map(|x| x.as_str())) {
       generation_context.out.emit_data(0, offset, s);
       //TODO: and here truncation
@@ -456,6 +459,11 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
          .insert(s.to_string(), (offset, s_len));
       // TODO: check for overflow here
       offset += s_len;
+   }
+
+   for (static_name, static_details) in program.static_info.iter() {
+      generation_context.static_offsets.insert(static_name.clone(), offset);
+      offset += sizeof_type_mem(&static_details.static_type, &generation_context.struct_size_info);
    }
 
    // this scratch space will be used at runtime
@@ -1019,7 +1027,7 @@ fn complement_val(t_type: &ExpressionType, wasm_type: &str, generation_context: 
 
 /// Places the address of given local on the stack
 fn get_stack_address_of_local(id: &str, generation_context: &mut GenerationContext) {
-   let offset = *generation_context.local_offsets_mem.get(id).unwrap();
+   let offset = *generation_context.static_offsets.get(id).or_else(|| generation_context.local_offsets_mem.get(id)).unwrap();
    generation_context.out.emit_get_global("bp");
    generation_context.out.emit_const_add_i32(offset);
 }
@@ -1142,7 +1150,6 @@ fn complex_store(mut offset: u32, val_type: &ExpressionType, generation_context:
 
 // VALUE STACK: i32 MEMORY_OFFSET, (any 1 value)
 fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   debug_assert!(sizeof_type_mem(val_type, &generation_context.struct_size_info) == 1);
    if sizeof_type_mem(val_type, &generation_context.struct_size_info)
       == sizeof_type_wasm(val_type, &generation_context.struct_size_info)
    {
