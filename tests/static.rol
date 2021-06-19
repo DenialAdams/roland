@@ -1,0 +1,6 @@
+static X: u64;
+
+proc main() {
+   X = 10;
+   print(int_to_string(X));
+}

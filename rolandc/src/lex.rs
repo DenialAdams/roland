@@ -28,6 +28,7 @@ pub enum Token {
    KeywordExtend,
    KeywordTruncate,
    KeywordTransmute,
+   KeywordStatic,
    OpenBrace,
    CloseBrace,
    OpenParen,
@@ -86,6 +87,7 @@ fn extract_keyword_or_ident(s: &str) -> Token {
       "extend" => Token::KeywordExtend,
       "truncate" => Token::KeywordTruncate,
       "transmute" => Token::KeywordTransmute,
+      "static" => Token::KeywordStatic,
       other => Token::Identifier(other.to_string()),
    }
 }

@@ -1,6 +1,6 @@
 use super::lex::{SourceToken, SourceInfo, Token, emit_source_info};
 use crate::type_data::{ExpressionType, ValueType};
-use crate::validator::StructInfo;
+use crate::validator::{StructInfo, StaticInfo};
 use indexmap::IndexMap;
 use std::collections::HashSet;
 use std::io::Write;
@@ -69,6 +69,13 @@ pub struct StructNode {
    pub name: String,
    pub fields: Vec<(String, ExpressionType)>,
    pub struct_begin_location: SourceInfo,
+}
+
+#[derive(Clone)]
+pub struct StaticNode {
+   pub name: String,
+   pub static_type: ExpressionType,
+   pub static_begin_location: SourceInfo,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -160,10 +167,12 @@ pub struct BlockNode {
 pub struct Program {
    pub procedures: Vec<ProcedureNode>,
    pub structs: Vec<StructNode>,
+   pub statics: Vec<StaticNode>,
 
    // These fields are populated by the semantic phase
    pub literals: HashSet<String>,
    pub struct_info: IndexMap<String, StructInfo>,
+   pub static_info: IndexMap<String, StaticInfo>,
 }
 
 pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W) -> Result<Program, ()> {
@@ -171,6 +180,7 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W) -> Result<
 
    let mut procedures = vec![];
    let mut structs = vec![];
+   let mut statics = vec![];
 
    while let Some(peeked_token) = lexer.peek_token() {
       match peeked_token {
@@ -190,6 +200,18 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W) -> Result<
             let s = parse_struct(&mut lexer, err_stream, def.source_info)?;
             structs.push(s);
          }
+         Token::KeywordStatic => {
+            let a_static = lexer.next().unwrap();
+            let variable_name = expect(&mut lexer, err_stream, &Token::Identifier(String::from("")))?;
+            expect(&mut lexer, err_stream, &Token::Colon)?;
+            let t_type = parse_type(&mut lexer, err_stream)?;
+            expect(&mut lexer, err_stream, &Token::Semicolon)?;
+            statics.push(StaticNode {
+               name: extract_identifier(variable_name.token),
+               static_type: t_type,
+               static_begin_location: a_static.source_info,
+            });
+         }
          x => {
             writeln!(
                err_stream,
@@ -205,8 +227,10 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W) -> Result<
    Ok(Program {
       procedures,
       structs,
+      statics,
       literals: HashSet::new(),
       struct_info: IndexMap::new(),
+      static_info: IndexMap::new(),
    })
 }
 

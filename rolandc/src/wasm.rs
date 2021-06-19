@@ -414,9 +414,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       calculate_struct_size_info(s.0.as_str(), &program.struct_info, &mut struct_size_info);
    }
 
-   // 8 is the size of string
-   let largest_size_compound_type_mem = std::iter::once(8)
-      .chain(struct_size_info.values().map(|x| x.mem_size))
+   let largest_size_compound_type_mem = struct_size_info.values().map(|x| x.mem_size)
       .max()
       .unwrap();
 
@@ -912,7 +910,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
 
          // 8bytes -> (4, 2, 1) bytes is a wrap
          // anything else is a nop
-         
+
          // this is taking advantage of the fact that truncating is guaranteed to go downwards
          if sizeof_type_wasm(e.exp_type.as_ref().unwrap(), &generation_context.struct_size_info) > 4 {
             generation_context.out.emit_constant_instruction("i32.wrap_i64");

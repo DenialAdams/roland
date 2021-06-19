@@ -46,9 +46,16 @@ pub struct StructInfo {
    pub struct_begin_location: SourceInfo,
 }
 
+#[derive(Clone)]
+pub struct StaticInfo {
+   pub static_type: ExpressionType,
+   pub static_begin_location: SourceInfo,
+}
+
 struct ValidationContext<'a> {
    procedure_info: &'a IndexMap<String, ProcedureInfo>,
    struct_info: &'a IndexMap<String, StructInfo>,
+   static_info: &'a IndexMap<String, StaticInfo>,
    cur_procedure_info: Option<&'a ProcedureInfo>,
    string_literals: HashSet<String>,
    variable_types: HashMap<String, (ExpressionType, u64)>,
@@ -86,6 +93,7 @@ fn recursive_struct_check(
 pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut W) -> u64 {
    let mut procedure_info: IndexMap<String, ProcedureInfo> = IndexMap::new();
    let mut struct_info: IndexMap<String, StructInfo> = IndexMap::new();
+   let mut static_info: IndexMap<String, StaticInfo> = IndexMap::new();
    let mut error_count = 0;
 
    // Built-In functions
@@ -227,12 +235,51 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       }
    }
 
+   for static_node in program.statics.iter() {
+      let static_type = &static_node.static_type;
+      let si = &static_node.static_begin_location;
+
+      if match static_type {
+         ExpressionType::Value(ValueType::Struct(s)) => struct_info.get(s).is_none(),
+         _ => false,
+      } {
+         error_count += 1;
+         writeln!(
+            err_stream,
+            "Static `{}` is of undeclared type `{}`",
+            static_node.name,
+            static_type.as_roland_type_info(),
+         )
+         .unwrap();
+         writeln!(err_stream, "↳ static defined @ line {}, column {}", si.line, si.col).unwrap();
+      }
+
+      match static_info.insert(static_node.name.clone(), StaticInfo {
+         static_type: static_node.static_type.clone(),
+         static_begin_location: static_node.static_begin_location,
+      }) {
+         Some(old_static) => {
+            error_count += 1;
+            writeln!(
+               err_stream,
+               "Encountered duplicate statics with the same name `{}`",
+               static_node.name,
+            )
+            .unwrap();
+            writeln!(err_stream, "↳ first static defined @ line {}, column {}", old_static.static_begin_location.line, old_static.static_begin_location.col).unwrap();
+            writeln!(err_stream, "↳ second static defined @ line {}, column {}", static_node.static_begin_location.line, static_node.static_begin_location.col).unwrap();
+         }
+         None => (),
+      }
+   }
+
    let mut validation_context = ValidationContext {
       string_literals: HashSet::new(),
       variable_types: HashMap::new(),
       error_count,
       procedure_info: &procedure_info,
       struct_info: &struct_info,
+      static_info: &static_info,
       cur_procedure_info: None,
       block_depth: 0,
       loop_depth: 0,
@@ -338,7 +385,9 @@ fn type_statement<W: Write>(
          let lhs_type = len.exp_type.as_ref().unwrap();
          let rhs_type = en.exp_type.as_ref().unwrap();
 
-         if lhs_type != rhs_type {
+         if lhs_type == &ExpressionType::Value(ValueType::CompileError) || rhs_type == &ExpressionType::Value(ValueType::CompileError) {
+            // avoid cascading errors
+         } else if lhs_type != rhs_type {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
@@ -475,7 +524,7 @@ fn type_statement<W: Write>(
             en.exp_type.clone().unwrap()
          };
 
-         if validation_context.variable_types.contains_key(id) {
+         if validation_context.static_info.contains_key(id) || validation_context.variable_types.contains_key(id) {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
@@ -788,10 +837,10 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
          expr_node.exp_type = Some(result_type);
       }
       Expression::Variable(id) => {
-         let defined_type = validation_context.variable_types.get(id);
+         let defined_type = validation_context.static_info.get(id).map(|x| &x.static_type).or_else(|| validation_context.variable_types.get(id).map(|x| &x.0));
 
          let result_type = match defined_type {
-            Some(t) => t.0.clone(),
+            Some(t) => t.clone(),
             None => {
                validation_context.error_count += 1;
                writeln!(err_stream, "Encountered undefined variable `{}`", id).unwrap();
