@@ -1,0 +1,5 @@
+static X: fooble;
+
+proc main() {
+   print("everything a ok");
+}
