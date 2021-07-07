@@ -1,6 +1,6 @@
 use super::type_data::{ExpressionType, ValueType};
 use crate::type_data::IntWidth;
-use crate::{lex::SourceInfo, type_data::I32_TYPE};
+use crate::{lex::SourceInfo, type_data::{I8_TYPE, I16_TYPE, I32_TYPE, U8_TYPE, U16_TYPE, U32_TYPE, U64_TYPE}};
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
@@ -380,7 +380,7 @@ fn type_statement<W: Write>(
          if len.exp_type.as_ref().unwrap().is_any_known_int()
             && en.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt)
          {
-            set_inferred_type(len.exp_type.clone().unwrap(), en, validation_context);
+            set_inferred_type(len.exp_type.clone().unwrap(), en, validation_context, err_stream);
          }
 
          let lhs_type = len.exp_type.as_ref().unwrap();
@@ -460,7 +460,7 @@ fn type_statement<W: Write>(
          if *en.exp_type.as_ref().unwrap() == ExpressionType::Value(ValueType::UnknownInt)
             && cur_procedure_info.ret_type.is_any_known_int()
          {
-            set_inferred_type(cur_procedure_info.ret_type.clone(), en, validation_context);
+            set_inferred_type(cur_procedure_info.ret_type.clone(), en, validation_context, err_stream);
          }
 
          if en.exp_type.as_ref().unwrap().is_concrete_type()
@@ -485,7 +485,7 @@ fn type_statement<W: Write>(
          let result_type = if en.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt)
             && declared_type_is_known_int
          {
-            set_inferred_type(dt.clone().unwrap(), en, validation_context);
+            set_inferred_type(dt.clone().unwrap(), en, validation_context, err_stream);
             dt.clone().unwrap()
          } else if dt.is_some()
             && *dt != en.exp_type
@@ -712,11 +712,11 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
          if e.0.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt)
             && e.1.exp_type.as_ref().unwrap().is_any_known_int()
          {
-            set_inferred_type(e.1.exp_type.clone().unwrap(), &mut e.0, validation_context);
+            set_inferred_type(e.1.exp_type.clone().unwrap(), &mut e.0, validation_context, err_stream);
          } else if e.0.exp_type.as_ref().unwrap().is_any_known_int()
             && e.1.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt)
          {
-            set_inferred_type(e.0.exp_type.clone().unwrap(), &mut e.1, validation_context);
+            set_inferred_type(e.0.exp_type.clone().unwrap(), &mut e.1, validation_context, err_stream);
          }
 
          let lhs_type = e.0.exp_type.as_ref().unwrap();
@@ -902,7 +902,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                      if *actual.exp_type.as_ref().unwrap() == ExpressionType::Value(ValueType::UnknownInt)
                         && expected.is_any_known_int()
                      {
-                        set_inferred_type(expected.clone(), actual, validation_context);
+                        set_inferred_type(expected.clone(), actual, validation_context, err_stream);
                      }
 
                      let actual_type = actual.exp_type.as_ref().unwrap();
@@ -982,7 +982,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                   if defined_type.is_any_known_int()
                      && field.1.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt)
                   {
-                     set_inferred_type(defined_type.clone(), &mut field.1, validation_context);
+                     set_inferred_type(defined_type.clone(), &mut field.1, validation_context, err_stream);
                   } else if field.1.exp_type.as_ref().unwrap() != defined_type {
                      validation_context.error_count += 1;
                      writeln!(
@@ -1098,10 +1098,11 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
    }
 }
 
-fn set_inferred_type(
+fn set_inferred_type<W : Write>(
    e_type: ExpressionType,
    expr_node: &mut ExpressionNode,
    validation_context: &mut ValidationContext,
+   err_stream: &mut W
 ) {
    if expr_node.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::UnknownInt) {
       return;
@@ -1111,18 +1112,41 @@ fn set_inferred_type(
       Expression::Truncate(_, _) => unreachable!(),
       Expression::Transmute(_, _) => unreachable!(),
       Expression::BoolLiteral(_) => unreachable!(),
-      Expression::IntLiteral(_) => {
+      Expression::IntLiteral(val) => {
          validation_context.unknown_ints -= 1;
+         let overflowing_literal = match &e_type {
+            ExpressionType::Value(I8_TYPE) => *val > i64::from(i8::MAX) || *val < i64::from(i8::MIN),
+            ExpressionType::Value(I16_TYPE) => *val > i64::from(i16::MAX) || *val < i64::from(i16::MIN),
+            ExpressionType::Value(I32_TYPE) => *val > i64::from(i32::MAX) || *val < i64::from(i32::MIN),
+            // TODO: add checking for i64 type (currently doesn't make sense because we lex literals as i64 instead of i128 or larger)
+            ExpressionType::Value(U8_TYPE) => *val > i64::from(u8::MAX) || *val < i64::from(u8::MIN),
+            ExpressionType::Value(U16_TYPE) => *val > i64::from(u16::MAX) || *val < i64::from(u16::MIN),
+            ExpressionType::Value(U32_TYPE) => *val > i64::from(u32::MAX) || *val < i64::from(u32::MIN),
+            // TODO: add checking for overflow of u64 type (currently impossible pending lexer)
+            ExpressionType::Value(U64_TYPE) => *val < 0,
+            _ => false,
+         };
+         if overflowing_literal {
+            validation_context.error_count += 1;
+               writeln!(
+                  err_stream,
+                  "Literal of type {} has value `{}` which would immediately over/underflow",
+                  e_type.as_roland_type_info(),
+                  val
+               )
+               .unwrap();
+               writeln!(err_stream, "↳ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
+         }
          expr_node.exp_type = Some(e_type);
       }
       Expression::StringLiteral(_) => unreachable!(),
       Expression::BinaryOperator(_, e) => {
-         set_inferred_type(e_type.clone(), &mut e.0, validation_context);
-         set_inferred_type(e_type.clone(), &mut e.1, validation_context);
+         set_inferred_type(e_type.clone(), &mut e.0, validation_context, err_stream);
+         set_inferred_type(e_type.clone(), &mut e.1, validation_context, err_stream);
          expr_node.exp_type = Some(e_type);
       }
       Expression::UnaryOperator(_, e) => {
-         set_inferred_type(e_type.clone(), e, validation_context);
+         set_inferred_type(e_type.clone(), e, validation_context, err_stream);
          expr_node.exp_type = Some(e_type);
       }
       Expression::UnitLiteral => unreachable!(),
