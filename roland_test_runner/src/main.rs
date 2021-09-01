@@ -17,7 +17,7 @@ use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 enum TestFailureReason {
    ExpectedCompilationFailure,
    ExpectedCompilationSuccess,
-   ExpectedCompilationSuccessNoExecutable,
+   FailedToRunExecutable,
    MismatchedExecutionOutput(String, String),
    MismatchedCompilationErrorOutput(String, String, File),
 }
@@ -98,8 +98,8 @@ fn main() -> Result<(), &'static str> {
                   writeln!(&mut out_handle, "{}", String::from_utf8_lossy(&tc_output.stderr)).unwrap();
                   writeln!(&mut out_handle, "```").unwrap();
                }
-               TestFailureReason::ExpectedCompilationSuccessNoExecutable => {
-                  writeln!(&mut out_handle, "Compilation was supposed to succeed, but no executable was produced and there was no error output from the compiler").unwrap();
+               TestFailureReason::FailedToRunExecutable => {
+                  writeln!(&mut out_handle, "Compilation seemingly succeeded, but the executable failed to run. Is wasmtime installed?").unwrap();
                }
                TestFailureReason::MismatchedExecutionOutput(expected, actual) => {
                   writeln!(
@@ -207,7 +207,7 @@ fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Res
             let mut handle = match prog_command.spawn() {
                Ok(v) => v,
                Err(_) => {
-                  return Err(TestFailureReason::ExpectedCompilationSuccessNoExecutable);
+                  return Err(TestFailureReason::FailedToRunExecutable);
                }
             };
             drop(prog_command);
