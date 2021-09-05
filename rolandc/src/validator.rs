@@ -98,19 +98,19 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
 
    // Built-In functions
    let standard_lib_procs = [(
-      "print",
-      false,
-      vec![ExpressionType::Value(ValueType::Struct("String".into()))],
-      ExpressionType::Value(ValueType::Unit),
-   ), (
       "wasm_memory_size",
-      true,
+      false,
       vec![],
       ExpressionType::Value(I32_TYPE),
    ), (
       "wasm_memory_grow",
-      true,
+      false,
       vec![ExpressionType::Value(I32_TYPE)],
+      ExpressionType::Value(I32_TYPE),
+   ), (
+      "my_fd_write",
+      false,
+      vec![ExpressionType::Value(I32_TYPE), ExpressionType::Value(I32_TYPE), ExpressionType::Value(I32_TYPE), ExpressionType::Value(I32_TYPE)],
       ExpressionType::Value(I32_TYPE),
    )];
    for p in standard_lib_procs.iter() {
@@ -619,6 +619,13 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
       Expression::Transmute(target_type, e) => {
          do_type(err_stream, e, validation_context);
 
+         if e.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt)
+            && target_type.is_pointer()
+         {
+            // todo: hardcoded pointer size
+            set_inferred_type(ExpressionType::Value(U32_TYPE), e, validation_context, err_stream);
+         }
+
          let e_type = e.exp_type.as_ref().unwrap();
 
          let result_type = if e_type == &ExpressionType::Value(ValueType::CompileError) {
@@ -641,12 +648,12 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                validation_context.error_count += 1;
                writeln!(
                   err_stream,
-                  "Transmute encountered an operand of type {} which can not be extended to type {}",
+                  "Transmute encountered an operand of type {} which can not be transmuted to type {}",
                   e_type.as_roland_type_info(),
                   target_type.as_roland_type_info(),
                )
                .unwrap();
-               writeln!(err_stream, "↳ extend @ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
+               writeln!(err_stream, "↳ transmute @ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
                writeln!(err_stream, "↳ operand @ line {}, column {}", e.expression_begin_location.line, e.expression_begin_location.col).unwrap();
                ExpressionType::Value(ValueType::CompileError)
             }
@@ -681,7 +688,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                   target_type.as_roland_type_info(),
                )
                .unwrap();
-               writeln!(err_stream, "↳ extend @ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
+               writeln!(err_stream, "↳ truncate @ line {}, column {}", expr_node.expression_begin_location.line, expr_node.expression_begin_location.col).unwrap();
                writeln!(err_stream, "↳ operand @ line {}, column {}", e.expression_begin_location.line, e.expression_begin_location.col).unwrap();
                ExpressionType::Value(ValueType::CompileError)
             }
@@ -1150,7 +1157,19 @@ fn set_inferred_type<W : Write>(
          expr_node.exp_type = Some(e_type);
       }
       Expression::UnitLiteral => unreachable!(),
-      Expression::Variable(_) => unreachable!(),
+      Expression::Variable(_x) => {
+         return;
+         // I *think* we should able to try setting the variable type here,
+         // but that gets complicated. We'd also have to fix prior uses of that variable
+         // (setting literals or whatever)
+         // so for right now we punt here
+         /*
+         match validation_context.variable_types.get_mut(x) {
+            Some((y @ ExpressionType::Value(ValueType::UnknownInt), _)) => *y = e_type.clone(),
+            _ => unreachable!(),
+         }
+         expr_node.exp_type = Some(e_type); */
+      },
       Expression::ProcedureCall(_, _) => unreachable!(),
       Expression::StructLiteral(_, _) => unreachable!(),
       Expression::FieldAccess(_, _) => unreachable!(),
