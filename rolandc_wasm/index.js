@@ -27,17 +27,17 @@ let code_editor = null;
 
 window.setHelloWorld = function setHelloWorld() {
    code_editor.getDoc().setValue(HELLO_WORLD);
-}
+};
 
 window.setFib = function setFib() {
    code_editor.getDoc().setValue(FIB);
-}
+};
 
 window.initApp = async function initApp() {
    await init('./pkg/rolandc_wasm_bg.wasm');
    start();
    document.getElementById('compile_button').disabled = false;
-}
+};
 
 window.addEventListener('DOMContentLoaded', (event) => {
    let text_area = document.getElementById("src_frame");
@@ -73,8 +73,8 @@ function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
 
    var buffers = Array.from({ length: iovsLen }, function (_, i) {
       var ptr = iovs + i * 8;
-      var buf = view.getUint32(ptr, !0);
-      var bufLen = view.getUint32(ptr + 4, !0);
+      var buf = view.getUint32(ptr, true);
+      var bufLen = view.getUint32(ptr + 4, true);
 
       sum += bufLen;
 
@@ -91,7 +91,7 @@ function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
 
    document.getElementById("out_frame").textContent += new TextDecoder("utf-8").decode(bufferBytes);
 
-   view.setUint32(nwritten, 0, !0);
+   view.setUint32(nwritten, sum, true);
 
    return 0;
 }
