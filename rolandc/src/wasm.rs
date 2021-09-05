@@ -1,5 +1,5 @@
 use crate::parse::{BinOp, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
-use crate::type_data::{ExpressionType, IntWidth, U32_TYPE, ValueType};
+use crate::type_data::{ExpressionType, I32_TYPE, IntWidth, ValueType};
 use crate::validator::StructInfo;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -404,8 +404,8 @@ fn dynamic_move_locals_of_type_to_dest(
 }
 
 // MEMORY LAYOUT
-// 0-15 scratch space for the print function
-// 16-l literals
+// 0-19 scratch space for the print function
+// 20-l literals
 // l-s statics
 // s-ss scratch space sized to fit the largest compound type (we need to put structs here and not the value stack sometimes)
 // ss+ program stack (local variables and parameters are pushed here during runtime)
@@ -447,7 +447,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
    // Data section
 
-   let mut offset: u32 = 16;
+   let mut offset: u32 = 20;
 
    for s in std::iter::once("\\n").chain(program.literals.iter().map(|x| x.as_str())) {
       generation_context.out.emit_data(0, offset, s);
@@ -493,38 +493,26 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
    // print
    generation_context.out.emit_function_start(
-      "print",
+      "my_fd_write",
       &[
-         ("str_offset".into(), ExpressionType::Value(U32_TYPE)),
-         ("str_len".into(), ExpressionType::Value(U32_TYPE)),
+         ("stream".into(), ExpressionType::Value(I32_TYPE)),
+         ("&iovs".into(), ExpressionType::Value(I32_TYPE)),
+         ("iovs_len".into(), ExpressionType::Value(I32_TYPE)),
+         ("written".into(), ExpressionType::Value(I32_TYPE)),
       ],
-      &ExpressionType::Value(ValueType::Unit),
+      &ExpressionType::Value(I32_TYPE),
       &program.struct_info,
    );
-   // build the iovecs array
    generation_context
       .out
-      .emit_constant_sexp("(i32.store (i32.const 0) (local.get 0))");
-   generation_context
-      .out
-      .emit_constant_sexp("(i32.store (i32.const 4) (local.get 1))");
-   generation_context
-      .out
-      .emit_constant_sexp("(i32.store (i32.const 8) (i32.const 16))");
-   generation_context
-      .out
-      .emit_constant_sexp("(i32.store (i32.const 12) (i32.const 1))");
-   generation_context
-      .out
-      .emit_constant_sexp("(call $fd_write (i32.const 1) (i32.const 0) (i32.const 2) (i32.const 0))");
-   generation_context.out.emit_constant_instruction("drop");
+      .emit_constant_sexp("(call $fd_write (local.get 0) (local.get 1) (local.get 2) (local.get 3))");
    generation_context.out.close();
 
    // builtin wasm memory size
    generation_context.out.emit_function_start(
       "wasm_memory_size",
       &[],
-      &ExpressionType::Value(crate::type_data::I32_TYPE),
+      &ExpressionType::Value(I32_TYPE),
       &program.struct_info,
    );
    generation_context
@@ -535,8 +523,8 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    // builtin wasm memory grow
    generation_context.out.emit_function_start(
       "wasm_memory_grow",
-      &[("new_pages".into(), ExpressionType::Value(crate::type_data::I32_TYPE))],
-      &ExpressionType::Value(crate::type_data::I32_TYPE),
+      &[("new_pages".into(), ExpressionType::Value(I32_TYPE))],
+      &ExpressionType::Value(I32_TYPE),
       &program.struct_info,
    );
    generation_context

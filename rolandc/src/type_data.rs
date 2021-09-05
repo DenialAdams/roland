@@ -108,6 +108,13 @@ impl ExpressionType {
       }
    }
 
+   pub fn is_pointer(&self) -> bool {
+      match self {
+         ExpressionType::Pointer(_, _) => true,
+         _ => false,
+      }
+   }
+
    pub fn as_roland_type_info(&self) -> String {
       match self {
          ExpressionType::Value(x) => x.as_roland_type_info().into(),
