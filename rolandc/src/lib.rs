@@ -33,7 +33,7 @@ pub fn compile<E: Write, A: Write>(
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));
    }
-   Ok(wasm::emit_wasm(&user_program))
+   Ok(wasm::emit_wasm(&mut user_program))
 }
 
 fn merge_programs(main_program: &mut Program, other_programs: &mut [Program]) {

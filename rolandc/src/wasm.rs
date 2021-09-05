@@ -22,6 +22,7 @@ struct SizeInfo {
    values_size: u32,
    mem_size: u32,
    wasm_size: u32,
+   strictest_alignment: u32,
 }
 
 struct PrettyWasmWriter {
@@ -285,6 +286,38 @@ fn sizeof_value_type_mem(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
    }
 }
 
+fn aligned_address(v: u32, a: u32) -> u32 {
+   let rem = v % a;
+   if rem != 0 {
+      v + (a - rem)
+   } else {
+      v
+   }
+}
+
+fn mem_alignment(e: &ExpressionType, si: &HashMap<String, SizeInfo>) -> u32 {
+   match e {
+      ExpressionType::Value(x) => value_type_mem_alignment(x, si),
+      ExpressionType::Pointer(_, _) => 4,
+   }
+}
+
+fn value_type_mem_alignment(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
+   match e {
+      ValueType::UnknownInt => unreachable!(),
+      ValueType::Int(x) => match x.width {
+         IntWidth::Eight => 8,
+         IntWidth::Four => 4,
+         IntWidth::Two => 2,
+         IntWidth::One => 1,
+      },
+      ValueType::Bool => 4,
+      ValueType::Unit => 1,
+      ValueType::CompileError => unreachable!(),
+      ValueType::Struct(x) => si.get(x).unwrap().strictest_alignment,
+   }
+}
+
 /// The size of a type, in number of WASM values
 fn sizeof_type_values(e: &ExpressionType, si: &HashMap<String, SizeInfo>) -> u32 {
    match e {
@@ -334,6 +367,7 @@ fn calculate_struct_size_info(
    let mut sum_mem = 0;
    let mut sum_wasm = 0;
    let mut sum_values = 0;
+   let mut strictest_alignment = 1;
    for field_t in struct_info.get(name).unwrap().field_types.values() {
       if let ExpressionType::Value(ValueType::Struct(s)) = field_t {
          if !struct_size_info.contains_key(s) {
@@ -345,6 +379,7 @@ fn calculate_struct_size_info(
       sum_mem += sizeof_type_mem(field_t, struct_size_info);
       sum_wasm += sizeof_type_wasm(field_t, struct_size_info);
       sum_values += sizeof_type_values(field_t, struct_size_info);
+      strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(field_t, struct_size_info));
    }
    struct_size_info.insert(
       name.to_owned(),
@@ -352,6 +387,7 @@ fn calculate_struct_size_info(
          mem_size: sum_mem,
          wasm_size: sum_wasm,
          values_size: sum_values,
+         strictest_alignment: strictest_alignment,
       },
    );
 }
@@ -404,12 +440,12 @@ fn dynamic_move_locals_of_type_to_dest(
 }
 
 // MEMORY LAYOUT
-// 0-19 scratch space for the print function
-// 20-l literals
+// 0-15 scratch space for the print function
+// 16-l literals
 // l-s statics
 // s-ss scratch space sized to fit the largest compound type (we need to put structs here and not the value stack sometimes)
 // ss+ program stack (local variables and parameters are pushed here during runtime)
-pub fn emit_wasm(program: &Program) -> Vec<u8> {
+pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
    let mut struct_size_info: HashMap<String, SizeInfo> = HashMap::with_capacity(program.struct_info.len());
    for s in program.struct_info.iter() {
       calculate_struct_size_info(s.0.as_str(), &program.struct_info, &mut struct_size_info);
@@ -447,7 +483,7 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
 
    // Data section
 
-   let mut offset: u32 = 20;
+   let mut offset: u32 = 16;
 
    for s in std::iter::once("\\n").chain(program.literals.iter().map(|x| x.as_str())) {
       generation_context.out.emit_data(0, offset, s);
@@ -469,6 +505,9 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
    // this scratch space will be used at runtime
    generation_context.struct_scratch_space_begin = offset;
    offset += largest_size_compound_type_mem;
+
+   // keep stack aligned
+   offset = aligned_address(offset, 8);
 
    generation_context.out.emit_spaces();
    writeln!(
@@ -586,7 +625,23 @@ pub fn emit_wasm(program: &Program) -> Vec<u8> {
       // 0-4 == value of previous frame base pointer
       generation_context.sum_sizeof_locals_mem = 4;
 
-      for local in procedure.locals.iter() {
+      // HANDLE ALIGNMENT WITHIN FRAME
+      let locals_by_alignment = {
+         let mut locals_by_alignment = procedure.locals.clone();
+         locals_by_alignment.sort_by(|_k_1, v_1, _k_2, v_2| mem_alignment(v_2, &generation_context.struct_size_info).cmp(&mem_alignment(v_1, &generation_context.struct_size_info)));
+
+         let strictest_alignment = if let Some(v) = locals_by_alignment.first() {
+            mem_alignment(v.1, &generation_context.struct_size_info)
+         } else {
+            1
+         };
+
+         generation_context.sum_sizeof_locals_mem = aligned_address(generation_context.sum_sizeof_locals_mem, strictest_alignment);
+
+         locals_by_alignment
+      };
+
+      for local in locals_by_alignment.iter() {
          // TODO: interning.
          generation_context
             .local_offsets_mem
@@ -1173,6 +1228,7 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
 }
 
 fn adjust_stack_function_entry(generation_context: &mut GenerationContext) {
+   // TODO: is this ever hit?
    if generation_context.sum_sizeof_locals_mem == 0 {
       return;
    }
@@ -1187,6 +1243,7 @@ fn adjust_stack_function_entry(generation_context: &mut GenerationContext) {
 }
 
 fn adjust_stack_function_exit(generation_context: &mut GenerationContext) {
+   // TODO: is this ever hit?
    if generation_context.sum_sizeof_locals_mem == 0 {
       return;
    }
@@ -1200,9 +1257,11 @@ fn adjust_stack_function_exit(generation_context: &mut GenerationContext) {
 
 fn adjust_stack(generation_context: &mut GenerationContext, instr: &str) {
    generation_context.out.emit_get_global("sp");
+   // ensure that each stack frame is strictly aligned so that internal stack frame alignment is preserved
+   let adjust_value = aligned_address(generation_context.sum_sizeof_locals_mem, 8);
    generation_context
       .out
-      .emit_const_i32(generation_context.sum_sizeof_locals_mem);
+      .emit_const_i32(adjust_value);
    generation_context.out.emit_spaces();
    writeln!(generation_context.out.out, "i32.{}", instr).unwrap();
    generation_context.out.emit_set_global("sp");

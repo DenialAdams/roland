@@ -9,15 +9,15 @@ proc print(s: String) {
    *(8 transmute &i32) = "\n".pointer transmute i32;
    *(12 transmute &i32) = 1;
 
-   let written: &i32 = 16 transmute &i32;
+   let written: i32 = 0;
    loop {
-      my_fd_write(1, 0, 2, written transmute i32);
+      my_fd_write(1, 0, 2, &written transmute i32);
       let remaining_len = (4 transmute &i32);
-      if *written > *remaining_len {
+      if written > *remaining_len {
          break;
       } else {
-         *(0 transmute &i32) = *(0 transmute &i32) + *written;
-         *remaining_len = *remaining_len - *written;
+         *(0 transmute &i32) = *(0 transmute &i32) + written;
+         *remaining_len = *remaining_len - written;
       }
    }
 }
