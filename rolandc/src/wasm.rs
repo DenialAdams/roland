@@ -485,7 +485,7 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
 
    let mut offset: u32 = 16;
 
-   for s in std::iter::once("\\n").chain(program.literals.iter().map(|x| x.as_str())) {
+   for s in program.literals.iter().map(|x| x.as_str()) {
       generation_context.out.emit_data(0, offset, s);
       //TODO: and here truncation
       let s_len = s.len() as u32;
@@ -497,6 +497,20 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
       offset += s_len;
    }
 
+   // Handle alignment of statics
+   {
+      program.static_info.sort_by(|_k_1, v_1, _k_2, v_2| {
+         compare_alignment_fn(&v_1.static_type, &v_2.static_type, &generation_context)
+      });
+
+      let strictest_alignment = if let Some(v) = program.static_info.first() {
+         mem_alignment(&v.1.static_type, &generation_context.struct_size_info)
+      } else {
+         1
+      };
+
+      offset = aligned_address(offset, strictest_alignment);
+   }
    for (static_name, static_details) in program.static_info.iter() {
       generation_context.static_offsets.insert(static_name.clone(), offset);
       offset += sizeof_type_mem(&static_details.static_type, &generation_context.struct_size_info);
@@ -619,29 +633,30 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
       generation_context.out.close();
    }
 
-   for procedure in program.procedures.iter() {
+   for procedure in program.procedures.iter_mut() {
       generation_context.local_offsets_mem.clear();
 
       // 0-4 == value of previous frame base pointer
       generation_context.sum_sizeof_locals_mem = 4;
 
-      // HANDLE ALIGNMENT WITHIN FRAME
-      let locals_by_alignment = {
-         let mut locals_by_alignment = procedure.locals.clone();
-         locals_by_alignment.sort_by(|_k_1, v_1, _k_2, v_2| mem_alignment(v_2, &generation_context.struct_size_info).cmp(&mem_alignment(v_1, &generation_context.struct_size_info)));
+      // Handle alignment within frame
+      {
+         procedure.locals.sort_by(|_k_1, v_1, _k_2, v_2| {
+            compare_alignment_fn(v_1, v_2, &generation_context)
+         });
 
-         let strictest_alignment = if let Some(v) = locals_by_alignment.first() {
+         let strictest_alignment = if let Some(v) = procedure.locals.first() {
             mem_alignment(v.1, &generation_context.struct_size_info)
          } else {
             1
          };
 
          generation_context.sum_sizeof_locals_mem = aligned_address(generation_context.sum_sizeof_locals_mem, strictest_alignment);
+      }
 
-         locals_by_alignment
-      };
-
-      for local in locals_by_alignment.iter() {
+      for local in procedure.locals.iter() {
+         // last element could have been a struct, and so we need to pad
+         generation_context.sum_sizeof_locals_mem = aligned_address(generation_context.sum_sizeof_locals_mem, mem_alignment(local.1, &generation_context.struct_size_info));
          // TODO: interning.
          generation_context
             .local_offsets_mem
@@ -695,6 +710,33 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
    generation_context.out.close();
 
    generation_context.out.out
+}
+
+fn compare_alignment_fn(e_1: &ExpressionType, e_2: &ExpressionType, generation_context: &GenerationContext) -> std::cmp::Ordering {
+   let v_2_alignment = mem_alignment(e_2, &generation_context.struct_size_info);
+   let v_1_alignment = mem_alignment(e_1, &generation_context.struct_size_info);
+
+   let v_2_rem = sizeof_type_mem(e_2, &generation_context.struct_size_info) % v_2_alignment;
+   let v_2_required_padding = if v_2_rem == 0 {
+      0
+   } else {
+      v_2_alignment - v_2_rem
+   };
+
+   let v_1_rem = sizeof_type_mem(e_1, &generation_context.struct_size_info) % v_1_alignment;
+   let v_1_required_padding = if v_1_rem == 0 {
+      0
+   } else {
+      v_1_alignment - v_1_rem
+   };
+
+   // The idea is to process the types with the strictest alignment first, to minimize the amount of padding
+   // Some amount of padding between objects is still necessary because we have structs
+   // In that case, we put the structs towards the end to maybe save a couple of bytes per frame
+   // (example: a struct that would require 7 bytes of padding if the following element was a u64 would
+   // only require 3 bytes if the following element is a u32)
+   // ... I'm actually not sure this makes sense, maybe it's better to confirm this empirically
+   v_2_alignment.cmp(&v_1_alignment).then(v_1_required_padding.cmp(&v_2_required_padding))
 }
 
 fn emit_statement(statement: &StatementNode, generation_context: &mut GenerationContext) {
