@@ -5,6 +5,8 @@ use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::io::Write;
 
+const MINIMUM_STACK_FRAME_SIZE: u32 = 4;
+
 struct GenerationContext<'a> {
    out: PrettyWasmWriter,
    literal_offsets: HashMap<String, (u32, u32)>,
@@ -621,7 +623,7 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
       generation_context.local_offsets_mem.clear();
 
       // 0-4 == value of previous frame base pointer
-      generation_context.sum_sizeof_locals_mem = 4;
+      generation_context.sum_sizeof_locals_mem = MINIMUM_STACK_FRAME_SIZE;
 
       // Handle alignment within frame
       {
@@ -1256,8 +1258,7 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
 }
 
 fn adjust_stack_function_entry(generation_context: &mut GenerationContext) {
-   // TODO: is this ever hit? should be 4
-   if generation_context.sum_sizeof_locals_mem == 0 {
+   if generation_context.sum_sizeof_locals_mem == MINIMUM_STACK_FRAME_SIZE {
       return;
    }
 
@@ -1271,8 +1272,7 @@ fn adjust_stack_function_entry(generation_context: &mut GenerationContext) {
 }
 
 fn adjust_stack_function_exit(generation_context: &mut GenerationContext) {
-   // TODO: is this ever hit? should be 4
-   if generation_context.sum_sizeof_locals_mem == 0 {
+   if generation_context.sum_sizeof_locals_mem == MINIMUM_STACK_FRAME_SIZE {
       return;
    }
 
