@@ -1,4 +1,5 @@
-use std::{borrow::Cow, cmp::Ordering};
+use std::borrow::Cow;
+use std::cmp::Ordering;
 
 pub const U8_TYPE: ValueType = ValueType::Int(IntType {
    signed: false,

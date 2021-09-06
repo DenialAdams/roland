@@ -9,7 +9,7 @@ pub struct SourceInfo {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SourceToken {
    pub token: Token,
-   pub source_info: SourceInfo
+   pub source_info: SourceInfo,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -100,10 +100,7 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
    let mut int_length: usize = 0;
    let mut chars = input.chars().peekable();
 
-   let mut source_info = SourceInfo {
-      line: 1,
-      col: 1,
-   };
+   let mut source_info = SourceInfo { line: 1, col: 1 };
 
    while let Some(c) = chars.peek().copied() {
       match mode {
