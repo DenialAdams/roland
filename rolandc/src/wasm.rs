@@ -1,5 +1,5 @@
 use crate::parse::{BinOp, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
-use crate::type_data::{ExpressionType, I32_TYPE, IntWidth, ValueType};
+use crate::type_data::{ExpressionType, IntWidth, ValueType, I32_TYPE};
 use crate::validator::StructInfo;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -171,11 +171,7 @@ fn write_type_as_result(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<Str
    }
 }
 
-fn write_value_type_as_result(
-   e: &ValueType,
-   out: &mut Vec<u8>,
-   si: &IndexMap<String, StructInfo>,
-) {
+fn write_value_type_as_result(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::Int(x) => match x.width {
@@ -205,11 +201,7 @@ fn write_type_as_params(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<Str
    }
 }
 
-fn write_value_type_as_params(
-   e: &ValueType,
-   out: &mut Vec<u8>,
-   si: &IndexMap<String, StructInfo>,
-) {
+fn write_value_type_as_params(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::Int(x) => match x.width {
@@ -451,9 +443,7 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
       calculate_struct_size_info(s.0.as_str(), &program.struct_info, &mut struct_size_info);
    }
 
-   let largest_size_compound_type_mem = struct_size_info.values().map(|x| x.mem_size)
-      .max()
-      .unwrap();
+   let largest_size_compound_type_mem = struct_size_info.values().map(|x| x.mem_size).max().unwrap();
 
    let mut generation_context = GenerationContext {
       out: PrettyWasmWriter {
@@ -499,9 +489,9 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
 
    // Handle alignment of statics
    {
-      program.static_info.sort_by(|_k_1, v_1, _k_2, v_2| {
-         compare_alignment_fn(&v_1.static_type, &v_2.static_type, &generation_context)
-      });
+      program
+         .static_info
+         .sort_by(|_k_1, v_1, _k_2, v_2| compare_alignment_fn(&v_1.static_type, &v_2.static_type, &generation_context));
 
       let strictest_alignment = if let Some(v) = program.static_info.first() {
          mem_alignment(&v.1.static_type, &generation_context.struct_size_info)
@@ -568,9 +558,7 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
       &ExpressionType::Value(I32_TYPE),
       &program.struct_info,
    );
-   generation_context
-      .out
-      .emit_constant_instruction("memory.size");
+   generation_context.out.emit_constant_instruction("memory.size");
    generation_context.out.close();
 
    // builtin wasm memory grow
@@ -580,12 +568,8 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
       &ExpressionType::Value(I32_TYPE),
       &program.struct_info,
    );
-   generation_context
-      .out
-      .emit_get_local(0);
-   generation_context
-      .out
-      .emit_constant_instruction("memory.grow");
+   generation_context.out.emit_get_local(0);
+   generation_context.out.emit_constant_instruction("memory.grow");
    generation_context.out.close();
 
    for s in program.struct_info.iter() {
@@ -641,9 +625,9 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
 
       // Handle alignment within frame
       {
-         procedure.locals.sort_by(|_k_1, v_1, _k_2, v_2| {
-            compare_alignment_fn(v_1, v_2, &generation_context)
-         });
+         procedure
+            .locals
+            .sort_by(|_k_1, v_1, _k_2, v_2| compare_alignment_fn(v_1, v_2, &generation_context));
 
          let strictest_alignment = if let Some(v) = procedure.locals.first() {
             mem_alignment(v.1, &generation_context.struct_size_info)
@@ -651,12 +635,16 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
             1
          };
 
-         generation_context.sum_sizeof_locals_mem = aligned_address(generation_context.sum_sizeof_locals_mem, strictest_alignment);
+         generation_context.sum_sizeof_locals_mem =
+            aligned_address(generation_context.sum_sizeof_locals_mem, strictest_alignment);
       }
 
       for local in procedure.locals.iter() {
          // last element could have been a struct, and so we need to pad
-         generation_context.sum_sizeof_locals_mem = aligned_address(generation_context.sum_sizeof_locals_mem, mem_alignment(local.1, &generation_context.struct_size_info));
+         generation_context.sum_sizeof_locals_mem = aligned_address(
+            generation_context.sum_sizeof_locals_mem,
+            mem_alignment(local.1, &generation_context.struct_size_info),
+         );
          // TODO: interning.
          generation_context
             .local_offsets_mem
@@ -712,23 +700,19 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
    generation_context.out.out
 }
 
-fn compare_alignment_fn(e_1: &ExpressionType, e_2: &ExpressionType, generation_context: &GenerationContext) -> std::cmp::Ordering {
+fn compare_alignment_fn(
+   e_1: &ExpressionType,
+   e_2: &ExpressionType,
+   generation_context: &GenerationContext,
+) -> std::cmp::Ordering {
    let v_2_alignment = mem_alignment(e_2, &generation_context.struct_size_info);
    let v_1_alignment = mem_alignment(e_1, &generation_context.struct_size_info);
 
    let v_2_rem = sizeof_type_mem(e_2, &generation_context.struct_size_info) % v_2_alignment;
-   let v_2_required_padding = if v_2_rem == 0 {
-      0
-   } else {
-      v_2_alignment - v_2_rem
-   };
+   let v_2_required_padding = if v_2_rem == 0 { 0 } else { v_2_alignment - v_2_rem };
 
    let v_1_rem = sizeof_type_mem(e_1, &generation_context.struct_size_info) % v_1_alignment;
-   let v_1_required_padding = if v_1_rem == 0 {
-      0
-   } else {
-      v_1_alignment - v_1_rem
-   };
+   let v_1_required_padding = if v_1_rem == 0 { 0 } else { v_1_alignment - v_1_rem };
 
    // The idea is to process the types with the strictest alignment first, to minimize the amount of padding
    // Some amount of padding between objects is still necessary because we have structs
@@ -736,7 +720,9 @@ fn compare_alignment_fn(e_1: &ExpressionType, e_2: &ExpressionType, generation_c
    // (example: a struct that would require 7 bytes of padding if the following element was a u64 would
    // only require 3 bytes if the following element is a u32)
    // ... I'm actually not sure this makes sense, maybe it's better to confirm this empirically
-   v_2_alignment.cmp(&v_1_alignment).then(v_1_required_padding.cmp(&v_2_required_padding))
+   v_2_alignment
+      .cmp(&v_1_alignment)
+      .then(v_1_required_padding.cmp(&v_2_required_padding))
 }
 
 fn emit_statement(statement: &StatementNode, generation_context: &mut GenerationContext) {
@@ -976,20 +962,16 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             _ => unreachable!(),
          };
 
-         let suffix = if source_is_signed {
-            "s"
-         } else {
-            "u"
-         };
+         let suffix = if source_is_signed { "s" } else { "u" };
 
          match target_type {
             ExpressionType::Value(ValueType::Int(x)) if x.width == IntWidth::Eight => {
                generation_context.out.emit_spaces();
                writeln!(generation_context.out.out, "i64.extend_i32_{}", suffix).unwrap();
-            },
+            }
             ExpressionType::Value(ValueType::Int(_)) => {
                // nop
-            },
+            }
             _ => unreachable!(),
          }
       }
@@ -1112,7 +1094,11 @@ fn complement_val(t_type: &ExpressionType, wasm_type: &str, generation_context: 
 
 /// Places the address of given local on the stack
 fn get_stack_address_of_local(id: &str, generation_context: &mut GenerationContext) {
-   let offset = *generation_context.static_offsets.get(id).or_else(|| generation_context.local_offsets_mem.get(id)).unwrap();
+   let offset = *generation_context
+      .static_offsets
+      .get(id)
+      .or_else(|| generation_context.local_offsets_mem.get(id))
+      .unwrap();
    generation_context.out.emit_get_global("bp");
    generation_context.out.emit_const_add_i32(offset);
 }
@@ -1270,7 +1256,7 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
 }
 
 fn adjust_stack_function_entry(generation_context: &mut GenerationContext) {
-   // TODO: is this ever hit?
+   // TODO: is this ever hit? should be 4
    if generation_context.sum_sizeof_locals_mem == 0 {
       return;
    }
@@ -1285,7 +1271,7 @@ fn adjust_stack_function_entry(generation_context: &mut GenerationContext) {
 }
 
 fn adjust_stack_function_exit(generation_context: &mut GenerationContext) {
-   // TODO: is this ever hit?
+   // TODO: is this ever hit? should be 4
    if generation_context.sum_sizeof_locals_mem == 0 {
       return;
    }
@@ -1301,9 +1287,7 @@ fn adjust_stack(generation_context: &mut GenerationContext, instr: &str) {
    generation_context.out.emit_get_global("sp");
    // ensure that each stack frame is strictly aligned so that internal stack frame alignment is preserved
    let adjust_value = aligned_address(generation_context.sum_sizeof_locals_mem, 8);
-   generation_context
-      .out
-      .emit_const_i32(adjust_value);
+   generation_context.out.emit_const_i32(adjust_value);
    generation_context.out.emit_spaces();
    writeln!(generation_context.out.out, "i32.{}", instr).unwrap();
    generation_context.out.emit_set_global("sp");

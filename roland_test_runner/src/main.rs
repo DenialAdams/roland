@@ -1,7 +1,7 @@
-use std::{env, io::Seek};
+use std::env;
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
-use std::io::{self, Read, SeekFrom, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::Mutex;
@@ -33,15 +33,15 @@ fn main() -> Result<(), &'static str> {
    reset_color.set_fg(None);
    reset_color.set_intense(false);
 
-
    let mut args = env::args();
    if args.len() != 3 && args.len() != 4 {
       return Err("Expected exactly 2 or 3 arguments");
    }
-   let (test_path, tc_path) = {
-      (PathBuf::from(args.nth(1).unwrap()), args.next().unwrap())
-   };
-   let overwrite_error_files = args.next().map(|x| x.as_bytes() == b"--overwrite-error-files").unwrap_or(false);
+   let (test_path, tc_path) = { (PathBuf::from(args.nth(1).unwrap()), args.next().unwrap()) };
+   let overwrite_error_files = args
+      .next()
+      .map(|x| x.as_bytes() == b"--overwrite-error-files")
+      .unwrap_or(false);
 
    env::set_current_dir(test_path).unwrap();
 
@@ -99,13 +99,18 @@ fn main() -> Result<(), &'static str> {
                   writeln!(&mut out_handle, "```").unwrap();
                }
                TestFailureReason::FailedToRunExecutable => {
-                  writeln!(&mut out_handle, "Compilation seemingly succeeded, but the executable failed to run. Is wasmtime installed?").unwrap();
+                  writeln!(
+                     &mut out_handle,
+                     "Compilation seemingly succeeded, but the executable failed to run. Is wasmtime installed?"
+                  )
+                  .unwrap();
                }
                TestFailureReason::MismatchedExecutionOutput(expected, actual) => {
                   writeln!(
                      &mut out_handle,
                      "Compiled OK, but execution of the program produced a different result than expected:"
-                  ).unwrap();
+                  )
+                  .unwrap();
                   print_diff(&mut out_handle, &expected, &actual);
                }
                TestFailureReason::MismatchedCompilationErrorOutput(expected, actual, mut err_file_handle) => {
@@ -114,15 +119,13 @@ fn main() -> Result<(), &'static str> {
                      err_file_handle.write_all(actual.as_bytes()).unwrap();
                      err_file_handle.set_len(actual.as_bytes().len() as u64).unwrap();
                      print_diff(&mut out_handle, &expected, &actual);
-                     writeln!(
-                        &mut out_handle,
-                        "Updated test compilation error output."
-                     ).unwrap();
+                     writeln!(&mut out_handle, "Updated test compilation error output.").unwrap();
                   } else {
                      writeln!(
                         &mut out_handle,
                         "Failed to compile, but the compilation error was different than expected:"
-                     ).unwrap();
+                     )
+                     .unwrap();
                      print_diff(&mut out_handle, &expected, &actual);
                   }
                }

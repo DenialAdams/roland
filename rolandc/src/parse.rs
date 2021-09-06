@@ -1,6 +1,6 @@
-use super::lex::{SourceToken, SourceInfo, Token, emit_source_info};
+use super::lex::{emit_source_info, SourceInfo, SourceToken, Token};
 use crate::type_data::{ExpressionType, ValueType};
-use crate::validator::{StructInfo, StaticInfo};
+use crate::validator::{StaticInfo, StructInfo};
 use indexmap::IndexMap;
 use std::collections::HashSet;
 use std::io::Write;
@@ -706,11 +706,9 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
             let mut fields = vec![];
             loop {
                let _ = l.next();
-               fields.push(extract_identifier(expect(
-                  l,
-                  err_stream,
-                  &Token::Identifier(String::from("")),
-               )?.token));
+               fields.push(extract_identifier(
+                  expect(l, err_stream, &Token::Identifier(String::from("")))?.token,
+               ));
                if l.peek_token() != Some(&Token::Period) {
                   break;
                }
@@ -737,8 +735,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
          };
 
          continue;
-     }
-
+      }
 
       let (l_bp, r_b) = infix_binding_power(op);
       if l_bp < min_bp {
@@ -767,7 +764,10 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
          _ => unreachable!(),
       };
 
-      lhs = Expression::BinaryOperator(bin_op, Box::new((wrap(lhs, lhs_source.unwrap()), wrap(rhs, next_token.source_info))));
+      lhs = Expression::BinaryOperator(
+         bin_op,
+         Box::new((wrap(lhs, lhs_source.unwrap()), wrap(rhs, next_token.source_info))),
+      );
    }
 
    Ok(lhs)
