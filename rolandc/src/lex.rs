@@ -434,7 +434,7 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
             "Encountered EOF while parsing string literal; Are you missing a closing \"?"
          )
          .unwrap();
-         writeln!(err_stream, "↳ String begins @ line {}, column {}", str_begin.line, str_begin.col).unwrap();
+         writeln!(err_stream, "↳ string literal @ line {}, column {}", str_begin.line, str_begin.col).unwrap();
          writeln!(err_stream, "↳ EOF @ line {}, column {}", source_info.line, source_info.col).unwrap();
          Err(())
       }
