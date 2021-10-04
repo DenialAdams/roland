@@ -368,7 +368,7 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
                str_buf.push('\0');
             } else {
                writeln!(err_stream, "Encountered unknown escape sequence `\\{}`", c).unwrap();
-               emit_source_info(err_stream, source_info);
+               emit_source_info(err_stream, SourceInfo { col: source_info.col - 1, line: source_info.line });
                return Err(());
             }
             source_info.col += 1;
