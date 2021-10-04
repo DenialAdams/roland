@@ -63,6 +63,7 @@ enum LexMode {
    Normal,
    Ident,
    StringLiteral,
+   StringLiteralEscape,
    IntLiteral,
 }
 
@@ -95,12 +96,18 @@ fn extract_keyword_or_ident(s: &str) -> Token {
 pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>, ()> {
    let mut tokens: Vec<SourceToken> = Vec::new();
    let mut mode = LexMode::Normal;
-   let mut str_buf = String::new();
-   let mut int_value: i64 = 0;
-   let mut int_length: usize = 0;
-   let mut chars = input.chars().peekable();
 
    let mut source_info = SourceInfo { line: 1, col: 1 };
+
+   // identifiers and string literals
+   let mut str_buf = String::new();
+   let mut str_begin = source_info;
+
+   // integer literals
+   let mut int_value: i64 = 0;
+   let mut int_length: usize = 0;
+
+   let mut chars = input.chars().peekable();
 
    while let Some(c) = chars.peek().copied() {
       match mode {
@@ -114,6 +121,8 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
                let _ = chars.next().unwrap();
             } else if c == '"' {
                mode = LexMode::StringLiteral;
+               str_begin = source_info;
+               source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '{' {
                tokens.push(SourceToken {
@@ -328,17 +337,43 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
          LexMode::StringLiteral => {
             if c == '"' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: str_begin,
                   token: Token::StringLiteral(str_buf.clone()),
                });
-               source_info.col += str_buf.len();
-               source_info.col += 1; // closing quote
                str_buf.clear();
                mode = LexMode::Normal;
+            } else if c == '\\' {
+               mode = LexMode::StringLiteralEscape;
             } else {
                str_buf.push(c);
             }
+            if c == '\n' {
+               source_info.line += 1;
+               source_info.col = 1;
+            } else {
+               source_info.col += 1;
+            }
             let _ = chars.next().unwrap();
+         }
+         LexMode::StringLiteralEscape => {
+            if c == '\\' {
+               str_buf.push('\\');
+            } else if c == 'n' {
+               str_buf.push('\n');
+            } else if c == 'r' {
+               str_buf.push('\r');
+            } else if c == 't' {
+               str_buf.push('\t');
+            } else if c == '0' {
+               str_buf.push('\0');
+            } else {
+               writeln!(err_stream, "Encountered unknown escape sequence `\\{}`", c).unwrap();
+               emit_source_info(err_stream, source_info);
+               return Err(());
+            }
+            source_info.col += 1;
+            let _ = chars.next().unwrap();
+            mode = LexMode::StringLiteral;
          }
          LexMode::IntLiteral => {
             if !c.is_ascii_digit() {
@@ -393,13 +428,14 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
          source_info.col += int_length;
          Ok(tokens)
       }
-      LexMode::StringLiteral => {
+      LexMode::StringLiteral | LexMode::StringLiteralEscape => {
          writeln!(
             err_stream,
             "Encountered EOF while parsing string literal; Are you missing a closing \"?"
          )
          .unwrap();
-         emit_source_info(err_stream, source_info);
+         writeln!(err_stream, "↳ String begins @ line {}, column {}", str_begin.line, str_begin.col).unwrap();
+         writeln!(err_stream, "↳ EOF @ line {}, column {}", source_info.line, source_info.col).unwrap();
          Err(())
       }
    }

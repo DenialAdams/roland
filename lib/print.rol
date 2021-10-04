@@ -7,7 +7,7 @@ proc print(s: String) {
    *(0 transmute &i32) = s.pointer transmute i32;
    *(4 transmute &i32) = s.length transmute i32;
    *(8 transmute &i32) = "\n".pointer transmute i32;
-   *(12 transmute &i32) = 1;
+   *(12 transmute &i32) = "\n".length transmute i32;
 
    let written: i32 = 0;
    loop {

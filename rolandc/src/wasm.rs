@@ -124,12 +124,23 @@ impl<'a> PrettyWasmWriter {
    fn emit_data(&mut self, mem_index: u32, offset: u32, literal: &str) {
       // TODO: escape literal
       self.emit_spaces();
-      writeln!(
+      write!(
          &mut self.out,
-         "(data {} (i32.const {}) \"{}\")",
-         mem_index, offset, literal
+         "(data {} (i32.const {}) \"",
+         mem_index, offset
       )
       .unwrap();
+      for byte in literal.as_bytes() {
+         match byte {
+            b'\\' => write!(self.out, "\\").unwrap(),
+            b'\n' => write!(self.out, "\\n").unwrap(),
+            b'\r' => write!(self.out, "\\r").unwrap(),
+            b'\t' => write!(self.out, "\\t").unwrap(),
+            b'\0' => write!(self.out, "\u{0}").unwrap(),
+            _ => self.out.push(*byte),
+         }
+      }
+      writeln!(self.out, "\")").unwrap();
    }
 
    fn emit_get_local(&mut self, local_index: u32) {
