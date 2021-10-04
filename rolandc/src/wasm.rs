@@ -122,7 +122,6 @@ impl<'a> PrettyWasmWriter {
    }
 
    fn emit_data(&mut self, mem_index: u32, offset: u32, literal: &str) {
-      // TODO: escape literal
       self.emit_spaces();
       write!(
          &mut self.out,
@@ -137,6 +136,7 @@ impl<'a> PrettyWasmWriter {
             b'\r' => write!(self.out, "\\r").unwrap(),
             b'\t' => write!(self.out, "\\t").unwrap(),
             b'\0' => write!(self.out, "\u{0}").unwrap(),
+            b'"' => write!(self.out, "\\\"").unwrap(),
             _ => self.out.push(*byte),
          }
       }
