@@ -783,12 +783,9 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                {
                   true
                }
-               // the signed-ness check is to prevent transmuting from self -> self
-               // (error message could be improved in this case)
-               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y)))
-                  if x.width == y.width =>
+               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) =>
                {
-                  x.signed != y.signed
+                  x.width == y.width
                }
                _ => false,
             };
