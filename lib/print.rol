@@ -11,7 +11,7 @@ proc print(s: String) {
 
    let written: i32 = 0;
    loop {
-      my_fd_write(1, 0, 2, &written transmute i32);
+      fd_write(1, 0, 2, &written transmute i32);
       let remaining_len = (4 transmute &i32);
       if written > *remaining_len {
          break;

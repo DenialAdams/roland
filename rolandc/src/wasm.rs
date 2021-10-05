@@ -547,23 +547,6 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
    )
    .unwrap();
 
-   // print
-   generation_context.out.emit_function_start(
-      "my_fd_write",
-      &[
-         ("stream".into(), ExpressionType::Value(I32_TYPE)),
-         ("&iovs".into(), ExpressionType::Value(I32_TYPE)),
-         ("iovs_len".into(), ExpressionType::Value(I32_TYPE)),
-         ("written".into(), ExpressionType::Value(I32_TYPE)),
-      ],
-      &ExpressionType::Value(I32_TYPE),
-      &program.struct_info,
-   );
-   generation_context
-      .out
-      .emit_constant_sexp("(call $fd_write (local.get 0) (local.get 1) (local.get 2) (local.get 3))");
-   generation_context.out.close();
-
    // builtin wasm memory size
    generation_context.out.emit_function_start(
       "wasm_memory_size",

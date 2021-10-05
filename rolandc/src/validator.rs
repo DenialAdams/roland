@@ -106,7 +106,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          ExpressionType::Value(I32_TYPE),
       ),
       (
-         "my_fd_write",
+         "fd_write",
          false,
          vec![
             ExpressionType::Value(I32_TYPE),
