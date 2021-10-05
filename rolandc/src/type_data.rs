@@ -54,6 +54,7 @@ pub enum ValueType {
    Bool,
    Unit,
    Struct(String),
+   Array(Box<ExpressionType>, i64),
    CompileError,
 }
 
@@ -166,6 +167,7 @@ impl ValueType {
       match self {
          ValueType::UnknownInt | ValueType::CompileError => false,
          ValueType::Int(_) | ValueType::Bool | ValueType::Unit | ValueType::Struct(_) => true,
+         ValueType::Array(_, _) => todo!(),
       }
    }
 
@@ -187,6 +189,7 @@ impl ValueType {
          ValueType::CompileError => Cow::Borrowed("ERROR"),
          ValueType::Struct(x) if x.as_str() == "String" => Cow::Borrowed("String"),
          ValueType::Struct(x) => Cow::Owned(format!("Struct {}", x)),
+         ValueType::Array(i_type, length) => Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info(), length)),
       }
    }
 }

@@ -164,6 +164,14 @@ impl<'a> PrettyWasmWriter {
          writeln!(self.out, "i32.add").unwrap();
       }
    }
+
+   fn emit_const_mul_i32(&mut self, value: u32) {
+      if value != 1 {
+         self.emit_const_i32(value);
+         self.emit_spaces();
+         writeln!(self.out, "i32.mul").unwrap();
+      }
+   }
 }
 
 fn write_type_as_result(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
@@ -192,6 +200,9 @@ fn write_value_type_as_result(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<St
          if !field_types.is_empty() {
             let _ = out.pop();
          }
+      }
+      ValueType::Array(a_type, len) => {
+         write!(out, "(result i32)").unwrap();
       }
    }
 }
@@ -223,6 +234,9 @@ fn write_value_type_as_params(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<St
             let _ = out.pop();
          }
       }
+      ValueType::Array(a_type, len) => {
+         write!(out, "(param i32)").unwrap();
+      }
    }
 }
 
@@ -253,6 +267,15 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, Struc
             let _ = out.pop();
          }
       }
+      ValueType::Array(a_type, len) => {
+         for _ in 0..*len {
+            type_to_s(a_type, out, si);
+            out.push(b' ');
+         }
+         if *len > 0 {
+            let _ = out.pop();
+         }
+      }
    }
 }
 
@@ -277,6 +300,7 @@ fn sizeof_value_type_mem(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().mem_size,
+      ValueType::Array(a_type, len) => sizeof_type_mem(a_type, si) * (*len as u32),
    }
 }
 
@@ -309,6 +333,7 @@ fn value_type_mem_alignment(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u3
       ValueType::Unit => 1,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().strictest_alignment,
+      ValueType::Array(a_type, _len) => mem_alignment(a_type, si),
    }
 }
 
@@ -328,6 +353,7 @@ fn sizeof_value_type_values(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u3
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().values_size,
+      ValueType::Array(a_type, len) => 1,
    }
 }
 
@@ -350,6 +376,7 @@ fn sizeof_value_type_wasm(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().wasm_size,
+      ValueType::Array(a_type, len) => 4,
    }
 }
 
@@ -381,7 +408,7 @@ fn calculate_struct_size_info(
          mem_size: sum_mem,
          wasm_size: sum_wasm,
          values_size: sum_values,
-         strictest_alignment: strictest_alignment,
+         strictest_alignment,
       },
    );
 }
@@ -397,6 +424,11 @@ fn move_locals_of_type_to_dest(
       ExpressionType::Value(ValueType::Struct(x)) => {
          for sub_field in generation_context.struct_info.get(x).unwrap().field_types.values() {
             move_locals_of_type_to_dest(dest, local_index, sub_field, generation_context);
+         }
+      }
+      ExpressionType::Value(ValueType::Array(inner_type, a_len)) => {
+         for _ in 0..*a_len {
+            move_locals_of_type_to_dest(dest, local_index, inner_type, generation_context);
          }
       }
       _ => {
@@ -422,6 +454,11 @@ fn dynamic_move_locals_of_type_to_dest(
             dynamic_move_locals_of_type_to_dest(offset, local_index, sub_field, generation_context);
          }
       }
+      ExpressionType::Value(ValueType::Array(inner_type, a_len)) => {
+         for _ in 0..*a_len {
+            dynamic_move_locals_of_type_to_dest(offset, local_index, inner_type, generation_context);
+         }
+      }
       _ => {
          generation_context.out.emit_get_global("mem_address");
          generation_context.out.emit_const_add_i32(*offset);
@@ -434,8 +471,7 @@ fn dynamic_move_locals_of_type_to_dest(
 }
 
 // MEMORY LAYOUT
-// 0-15 scratch space for the print function
-// 16-l literals
+// 0-l literals
 // l-s statics
 // s-ss scratch space sized to fit the largest compound type (we need to put structs here and not the value stack sometimes)
 // ss+ program stack (local variables and parameters are pushed here during runtime)
@@ -475,7 +511,7 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
 
    // Data section
 
-   let mut offset: u32 = 16;
+   let mut offset: u32 = 0;
 
    for s in program.literals.iter().map(|x| x.as_str()) {
       generation_context.out.emit_data(0, offset, s);
@@ -997,7 +1033,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          get_stack_address_of_local(id, generation_context);
       }
       Expression::ProcedureCall(name, args) => {
-         for arg in args {
+         for arg in args.iter() {
             do_emit_and_load_lval(arg, generation_context);
          }
          generation_context.out.emit_call(name);
@@ -1073,6 +1109,28 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             generation_context.out.emit_call(&func_name);
          }
       }
+      Expression::ArrayLiteral(exprs) => {
+         for expr in exprs.iter() {
+            do_emit(expr, generation_context);
+            // come back
+         }
+      },
+      Expression::ArrayIndex(lhs, index_e) => {
+         do_emit(lhs, generation_context);
+         do_emit(index_e, generation_context);
+
+         if lhs.expression.is_lvalue() {
+            let sizeof_inner = match &lhs.exp_type {
+               Some(ExpressionType::Value(ValueType::Array(x, _))) => sizeof_type_mem(&*x, &generation_context.struct_size_info),
+               _ => unreachable!(),
+            };
+            generation_context.out.emit_const_mul_i32(sizeof_inner);
+            generation_context.out.emit_constant_instruction("i32.add");
+         } else {
+            unimplemented!()
+         }
+
+      },
    }
 }
 

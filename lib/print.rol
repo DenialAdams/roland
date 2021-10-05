@@ -4,14 +4,12 @@ struct String {
 }
 
 proc print(s: String) {
-   *(0 transmute &i32) = s.pointer transmute i32;
-   *(4 transmute &i32) = s.length transmute i32;
-   *(8 transmute &i32) = "\n".pointer transmute i32;
-   *(12 transmute &i32) = 1;
+   let data: [i32; 4] = [s.pointer transmute i32, s.length transmute i32, "\n".pointer transmute i32, 1];
+   let x: i32 = data[0];
 
    let written: i32 = 0;
    loop {
-      my_fd_write(1, 0, 2, &written transmute i32);
+      my_fd_write(1, &data[0] transmute i32, 2, &written transmute i32);
       let remaining_len = (4 transmute &i32);
       if written > *remaining_len {
          break;
