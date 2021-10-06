@@ -582,6 +582,8 @@ fn parse_type<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<ExpressionT
             "u32" => crate::type_data::U32_TYPE,
             "u16" => crate::type_data::U16_TYPE,
             "u8" => crate::type_data::U8_TYPE,
+            "f32" => crate::type_data::F32_TYPE,
+            "f64" => crate::type_data::F64_TYPE,
             _ => ValueType::Struct(type_s),
          }
       }

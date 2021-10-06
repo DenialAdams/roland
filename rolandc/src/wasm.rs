@@ -1,5 +1,5 @@
 use crate::parse::{BinOp, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
-use crate::type_data::{ExpressionType, IntWidth, ValueType, I32_TYPE};
+use crate::type_data::{ExpressionType, FloatWidth, I32_TYPE, IntWidth, ValueType};
 use crate::validator::StructInfo;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -191,6 +191,10 @@ fn write_value_type_as_result(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<St
          IntWidth::Eight => write!(out, "(result i64)").unwrap(),
          _ => write!(out, "(result i32)").unwrap(),
       },
+      ValueType::Float(x) => match x.width {
+         FloatWidth::Eight => write!(out, "(result f64)").unwrap(),
+         FloatWidth::Four => write!(out, "(result i32)").unwrap(),
+      },
       ValueType::Bool => write!(out, "(result i32)").unwrap(),
       ValueType::Unit => (),
       ValueType::CompileError => unreachable!(),
@@ -221,6 +225,10 @@ fn write_value_type_as_params(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<St
          IntWidth::Eight => write!(out, "(param i64)").unwrap(),
          _ => write!(out, "(param i32)").unwrap(),
       },
+      ValueType::Float(x) => match x.width {
+         FloatWidth::Eight => write!(out, "(param f64)").unwrap(),
+         FloatWidth::Four => write!(out, "(param i32)").unwrap(),
+      },
       ValueType::Bool => write!(out, "(param i32)").unwrap(),
       ValueType::Unit => (),
       ValueType::CompileError => unreachable!(),
@@ -250,6 +258,10 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, Struc
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => write!(out, "i64").unwrap(),
          _ => write!(out, "i32").unwrap(),
+      },
+      ValueType::Float(x) => match x.width {
+         FloatWidth::Eight => write!(out, "f64").unwrap(),
+         FloatWidth::Four => write!(out, "i32").unwrap(),
       },
       ValueType::Bool => write!(out, "i32").unwrap(),
       ValueType::Unit => unreachable!(),
@@ -284,6 +296,10 @@ fn sizeof_value_type_mem(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
          IntWidth::Two => 2,
          IntWidth::One => 1,
       },
+      ValueType::Float(x) => match x.width {
+         FloatWidth::Eight => 8,
+         FloatWidth::Four => 4,
+      },
       ValueType::Bool => 4,
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
@@ -316,6 +332,10 @@ fn value_type_mem_alignment(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u3
          IntWidth::Two => 2,
          IntWidth::One => 1,
       },
+      ValueType::Float(x) => match x.width {
+         FloatWidth::Eight => 8,
+         FloatWidth::Four => 4,
+      },
       ValueType::Bool => 4,
       ValueType::Unit => 1,
       ValueType::CompileError => unreachable!(),
@@ -335,6 +355,7 @@ fn sizeof_value_type_values(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u3
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::Int(_) => 1,
+      ValueType::Float(_) => 1,
       ValueType::Bool => 1,
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
@@ -356,6 +377,10 @@ fn sizeof_value_type_wasm(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => 8,
          _ => 4,
+      },
+      ValueType::Float(x) => match x.width {
+         FloatWidth::Eight => 8,
+         FloatWidth::Four => 4,
       },
       ValueType::Bool => 4,
       ValueType::Unit => 0,

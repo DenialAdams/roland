@@ -41,6 +41,14 @@ pub const I64_TYPE: ValueType = ValueType::Int(IntType {
    width: IntWidth::Eight,
 });
 
+pub const F32_TYPE: ValueType = ValueType::Float(FloatType {
+   width: FloatWidth::Four,
+});
+
+pub const F64_TYPE: ValueType = ValueType::Float(FloatType {
+   width: FloatWidth::Eight,
+});
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ExpressionType {
    Value(ValueType),
@@ -51,10 +59,38 @@ pub enum ExpressionType {
 pub enum ValueType {
    UnknownInt,
    Int(IntType),
+   Float(FloatType),
    Bool,
    Unit,
    Struct(String),
    CompileError,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FloatWidth {
+   Eight,
+   Four,
+}
+
+impl FloatWidth {
+   fn as_num(&self) -> u8 {
+      match self {
+         FloatWidth::Eight => 8,
+         FloatWidth::Four => 4,
+      }
+   }
+}
+
+impl PartialOrd for FloatWidth {
+   fn partial_cmp(&self, other: &FloatWidth) -> Option<Ordering> {
+      Some(self.cmp(other))
+   }
+}
+
+impl Ord for FloatWidth {
+   fn cmp(&self, other: &FloatWidth) -> Ordering {
+      self.as_num().cmp(&other.as_num())
+   }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -92,6 +128,11 @@ impl Ord for IntWidth {
 pub struct IntType {
    pub signed: bool,
    pub width: IntWidth,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FloatType {
+   pub width: FloatWidth,
 }
 
 impl ExpressionType {
@@ -165,7 +206,7 @@ impl ValueType {
    fn is_concrete_type(&self) -> bool {
       match self {
          ValueType::UnknownInt | ValueType::CompileError => false,
-         ValueType::Int(_) | ValueType::Bool | ValueType::Unit | ValueType::Struct(_) => true,
+         ValueType::Float(_) | ValueType::Int(_) | ValueType::Bool | ValueType::Unit | ValueType::Struct(_) => true,
       }
    }
 
@@ -182,6 +223,10 @@ impl ValueType {
             (false, IntWidth::Two) => Cow::Borrowed("u16"),
             (false, IntWidth::One) => Cow::Borrowed("u8"),
          },
+         ValueType::Float(x) => match x.width {
+            FloatWidth::Eight => Cow::Borrowed("f64"),
+            FloatWidth::Four => Cow::Borrowed("f32"),
+         }
          ValueType::Bool => Cow::Borrowed("bool"),
          ValueType::Unit => Cow::Borrowed("()"),
          ValueType::CompileError => Cow::Borrowed("ERROR"),
