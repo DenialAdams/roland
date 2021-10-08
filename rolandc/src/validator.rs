@@ -10,6 +10,7 @@ use std::io::Write;
 enum TypeValidator {
    Bool,
    AnyInt,
+   AnyFloat,
    AnyPointer,
    Any,
 }
@@ -21,6 +22,8 @@ fn matches(type_validation: &TypeValidator, et: &ExpressionType) -> bool {
       (TypeValidator::Bool, ExpressionType::Value(ValueType::Bool)) => true,
       (TypeValidator::AnyInt, ExpressionType::Value(ValueType::Int(_))) => true,
       (TypeValidator::AnyInt, ExpressionType::Value(ValueType::UnknownInt)) => true,
+      (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::Float(_))) => true,
+      (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::UnknownFloat)) => true,
       _ => false,
    }
 }
@@ -63,6 +66,7 @@ struct ValidationContext<'a> {
    block_depth: u64,
    loop_depth: u64,
    unknown_ints: u64,
+   unknown_floats: u64,
 }
 
 fn recursive_struct_check(
@@ -341,6 +345,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       block_depth: 0,
       loop_depth: 0,
       unknown_ints: 0,
+      unknown_floats: 0,
    };
 
    if !validation_context.procedure_info.contains_key("main") {
@@ -706,6 +711,10 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
          validation_context.unknown_ints += 1;
          expr_node.exp_type = Some(ExpressionType::Value(ValueType::UnknownInt));
       }
+      Expression::FloatLiteral(_) => {
+         validation_context.unknown_floats += 1;
+         expr_node.exp_type = Some(ExpressionType::Value(ValueType::UnknownFloat));
+      }
       Expression::StringLiteral(lit) => {
          // This clone will become cheap when we intern everywhere
          validation_context.string_literals.insert(lit.clone());
@@ -877,7 +886,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
             | BinOp::GreaterThan
             | BinOp::GreaterThanOrEqualTo
             | BinOp::LessThan
-            | BinOp::LessThanOrEqualTo => &[TypeValidator::AnyInt],
+            | BinOp::LessThanOrEqualTo => &[TypeValidator::AnyInt, TypeValidator::AnyFloat],
             BinOp::Equality | BinOp::NotEquality | BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor => {
                &[TypeValidator::AnyInt, TypeValidator::Bool]
             }
@@ -890,6 +899,14 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
             set_inferred_type(e.1.exp_type.clone().unwrap(), &mut e.0, validation_context, err_stream);
          } else if e.0.exp_type.as_ref().unwrap().is_any_known_int()
             && e.1.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt)
+         {
+            set_inferred_type(e.0.exp_type.clone().unwrap(), &mut e.1, validation_context, err_stream);
+         } else if e.0.exp_type.as_ref().unwrap().is_any_known_float()
+            && e.1.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownFloat)
+         {
+            set_inferred_type(e.0.exp_type.clone().unwrap(), &mut e.1, validation_context, err_stream);
+         } else if e.0.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownFloat)
+            && e.1.exp_type.as_ref().unwrap().is_any_known_float()
          {
             set_inferred_type(e.0.exp_type.clone().unwrap(), &mut e.1, validation_context, err_stream);
          }
@@ -990,7 +1007,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                let _ = new_type.decrement_indirection_count();
                (&[TypeValidator::AnyPointer], new_type)
             }
-            UnOp::Negate => (&[TypeValidator::AnyInt], e.exp_type.clone().unwrap()),
+            UnOp::Negate => (&[TypeValidator::AnyInt, TypeValidator::AnyFloat], e.exp_type.clone().unwrap()),
             UnOp::Complement => (
                &[TypeValidator::Bool, TypeValidator::AnyInt],
                e.exp_type.clone().unwrap(),
@@ -1413,7 +1430,7 @@ fn set_inferred_type<W: Write>(
    validation_context: &mut ValidationContext,
    err_stream: &mut W,
 ) {
-   if expr_node.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::UnknownInt) {
+   if expr_node.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::UnknownInt) && expr_node.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::UnknownFloat) {
       return;
    }
    match &mut expr_node.expression {
@@ -1451,6 +1468,12 @@ fn set_inferred_type<W: Write>(
             )
             .unwrap();
          }
+         expr_node.exp_type = Some(e_type);
+      }
+      Expression::FloatLiteral(_) => {
+         // TODO: remove this assert
+         assert!(expr_node.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownFloat));
+         validation_context.unknown_floats -= 1;
          expr_node.exp_type = Some(e_type);
       }
       Expression::StringLiteral(_) => unreachable!(),

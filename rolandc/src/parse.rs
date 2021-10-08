@@ -117,6 +117,7 @@ pub enum Expression {
    BoolLiteral(bool),
    StringLiteral(String),
    IntLiteral(i64),
+   FloatLiteral(f64),
    UnitLiteral,
    Variable(String),
    BinaryOperator(BinOp, Box<(ExpressionNode, ExpressionNode)>),

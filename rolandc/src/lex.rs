@@ -42,6 +42,7 @@ pub enum Token {
    BoolLiteral(bool),
    StringLiteral(String),
    IntLiteral(i64),
+   FloatLiteral(f64),
    Plus,
    Minus,
    MultiplyDeref,

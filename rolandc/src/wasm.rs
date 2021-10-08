@@ -187,6 +187,7 @@ fn write_type_as_result(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<Str
 fn write_value_type_as_result(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
    match e {
       ValueType::UnknownInt => unreachable!(),
+      ValueType::UnknownFloat => unreachable!(),
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => write!(out, "(result i64)").unwrap(),
          _ => write!(out, "(result i32)").unwrap(),
@@ -221,6 +222,7 @@ fn write_type_as_params(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<Str
 fn write_value_type_as_params(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
    match e {
       ValueType::UnknownInt => unreachable!(),
+      ValueType::UnknownFloat => unreachable!(),
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => write!(out, "(param i64)").unwrap(),
          _ => write!(out, "(param i32)").unwrap(),
@@ -255,6 +257,7 @@ fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<String, Struct
 fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
    match e {
       ValueType::UnknownInt => unreachable!(),
+      ValueType::UnknownFloat => unreachable!(),
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => write!(out, "i64").unwrap(),
          _ => write!(out, "i32").unwrap(),
@@ -290,6 +293,7 @@ fn sizeof_type_mem(e: &ExpressionType, si: &HashMap<String, SizeInfo>) -> u32 {
 fn sizeof_value_type_mem(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
+      ValueType::UnknownFloat => unreachable!(),
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => 8,
          IntWidth::Four => 4,
@@ -326,6 +330,7 @@ fn mem_alignment(e: &ExpressionType, si: &HashMap<String, SizeInfo>) -> u32 {
 fn value_type_mem_alignment(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
+      ValueType::UnknownFloat => unreachable!(),
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => 8,
          IntWidth::Four => 4,
@@ -354,6 +359,7 @@ fn sizeof_type_values(e: &ExpressionType, si: &HashMap<String, SizeInfo>) -> u32
 fn sizeof_value_type_values(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
+      ValueType::UnknownFloat => unreachable!(),
       ValueType::Int(_) => 1,
       ValueType::Float(_) => 1,
       ValueType::Bool => 1,
@@ -374,6 +380,7 @@ fn sizeof_type_wasm(e: &ExpressionType, si: &HashMap<String, SizeInfo>) -> u32 {
 fn sizeof_value_type_wasm(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
+      ValueType::UnknownFloat => unreachable!(),
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => 8,
          _ => 4,
@@ -861,6 +868,17 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          generation_context.out.emit_spaces();
          writeln!(generation_context.out.out, "{}.const {}", wasm_type, x).unwrap();
       }
+      Expression::FloatLiteral(x) => {
+         let wasm_type = match expr_node.exp_type.as_ref().unwrap() {
+            ExpressionType::Value(ValueType::Float(x)) => match x.width {
+               FloatWidth::Eight => "f64",
+               FloatWidth::Four => "f32",
+            },
+            _ => unreachable!(),
+         };
+         generation_context.out.emit_spaces();
+         writeln!(generation_context.out.out, "{}.const {}", wasm_type, x).unwrap();
+      }
       Expression::StringLiteral(str) => {
          let (offset, len) = generation_context.literal_offsets.get(str).unwrap();
          generation_context.out.emit_const_i32(*offset);
@@ -880,6 +898,10 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                let suffix = if x.signed { "_s" } else { "_u" };
                (wasm_type, suffix)
             }
+            ExpressionType::Value(ValueType::Float(x)) => match x.width {
+               FloatWidth::Eight => ("f64", ""),
+               FloatWidth::Four => ("f32", ""),
+            },
             ExpressionType::Value(ValueType::Bool) => ("i32", "_u"),
             _ => unreachable!(),
          };
@@ -935,6 +957,10 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                IntWidth::Eight => "i64",
                _ => "i32",
             },
+            ExpressionType::Value(ValueType::Float(x)) => match x.width {
+               FloatWidth::Eight => "f64",
+               FloatWidth::Four => "f32",
+            },
             ExpressionType::Value(ValueType::Bool) => "i32",
             ExpressionType::Pointer(_, _) => "i32",
             _ => unreachable!(),
@@ -966,11 +992,19 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             UnOp::Negate => {
                do_emit_and_load_lval(e, generation_context);
 
-               complement_val(e.exp_type.as_ref().unwrap(), wasm_type, generation_context);
-               generation_context.out.emit_spaces();
-               writeln!(generation_context.out.out, "{}.const 1", wasm_type).unwrap();
-               generation_context.out.emit_spaces();
-               writeln!(generation_context.out.out, "{}.add", wasm_type).unwrap();
+               match expr_node.exp_type.as_ref().unwrap() {
+                  ExpressionType::Value(ValueType::Int(_)) | ExpressionType::Value(ValueType::Bool) => {
+                     complement_val(e.exp_type.as_ref().unwrap(), wasm_type, generation_context);
+                     generation_context.out.emit_spaces();
+                     writeln!(generation_context.out.out, "{}.const 1", wasm_type).unwrap();
+                     generation_context.out.emit_spaces();
+                     writeln!(generation_context.out.out, "{}.add", wasm_type).unwrap();
+                  },
+                  ExpressionType::Value(ValueType::Float(_)) => {
+                     writeln!(generation_context.out.out, "{}.neg", wasm_type).unwrap();
+                  },
+                  _ => unreachable!(),
+               }
             }
          }
       }

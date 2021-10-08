@@ -94,6 +94,9 @@ fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode) {
       Expression::IntLiteral(x) => {
          writeln!(out, "<li><span>{}{}</span></li>", x, type_text).unwrap();
       }
+      Expression::FloatLiteral(x) => {
+         writeln!(out, "<li><span>{}{}</span></li>", x, type_text).unwrap();
+      }
       Expression::StringLiteral(x) => {
          writeln!(out, "<li><span>\"{}\"{}</span></li>", x, type_text).unwrap();
       }
