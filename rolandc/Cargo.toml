@@ -5,4 +5,5 @@ authors = ["Richard McCormack <brick@brick.codes>"]
 edition = "2018"
 
 [dependencies]
-indexmap = "1.6"
+indexmap = "1"
+fast-float = "0.2"
