@@ -382,6 +382,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<BlockNode,
          Some(Token::BoolLiteral(_))
          | Some(Token::StringLiteral(_))
          | Some(Token::IntLiteral(_))
+         | Some(Token::FloatLiteral(_))
          | Some(Token::OpenParen)
          | Some(Token::Exclam)
          | Some(Token::Amp)
@@ -517,6 +518,7 @@ fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Vec<Ex
          | Some(Token::BoolLiteral(_))
          | Some(Token::StringLiteral(_))
          | Some(Token::IntLiteral(_))
+         | Some(Token::FloatLiteral(_))
          | Some(Token::OpenParen)
          | Some(Token::Amp)
          | Some(Token::Exclam)
@@ -603,6 +605,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
    let mut lhs = match lhs_token.map(|x| x.token) {
       Some(Token::BoolLiteral(x)) => Expression::BoolLiteral(x),
       Some(Token::IntLiteral(x)) => Expression::IntLiteral(x),
+      Some(Token::FloatLiteral(x)) => Expression::FloatLiteral(x),
       Some(Token::StringLiteral(x)) => Expression::StringLiteral(x),
       Some(Token::Identifier(s)) => {
          if l.peek_token() == Some(&Token::OpenParen) {
