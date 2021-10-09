@@ -1172,6 +1172,20 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
 
             offset += sizeof_type_mem(field, &generation_context.struct_size_info);
          }
+         
+      }
+      ExpressionType::Value(ValueType::Array(a_type, len)) => {
+         for _ in 0..*len {
+            if sizeof_type_values(a_type, &generation_context.struct_size_info) == 1 {
+               generation_context.out.emit_get_global("mem_address");
+               generation_context.out.emit_const_add_i32(offset);
+               simple_load(a_type, generation_context);
+            } else if sizeof_type_values(a_type, &generation_context.struct_size_info) > 1 {
+               complex_load(offset, a_type, generation_context);
+            }
+
+            offset += sizeof_type_mem(a_type, &generation_context.struct_size_info);
+         }
       }
       _ => unreachable!(),
    }
