@@ -103,7 +103,7 @@ fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode) {
       Expression::ProcedureCall(x, args) => {
          writeln!(out, "<li><span>{}(){}</span>", x, type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
-         for exp in args {
+         for exp in args.iter() {
             print_expression(out, &exp);
          }
          writeln!(out, "</ul></li>").unwrap()
@@ -154,5 +154,7 @@ fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode) {
          writeln!(out, "<li><span>{:?}</span></li>", field).unwrap();
          writeln!(out, "</ul></li>").unwrap();
       }
+      Expression::ArrayLiteral(_) => todo!(),
+      Expression::ArrayIndex(_, _) => todo!(),
    }
 }

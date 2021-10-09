@@ -1,0 +1,4 @@
+Declared type [bool; 3] does not match actual expression type [bool; 1]
+↳ declaration @ line 2, column 4
+↳ expression @ line 2, column 23
+There were 1 semantic errors, bailing
