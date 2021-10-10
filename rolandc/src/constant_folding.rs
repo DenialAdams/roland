@@ -1,66 +1,64 @@
 use crate::parse::{BlockNode, Expression, ExpressionNode, Program, Statement, BinOp, UnOp};
 use std::{io::Write, mem::discriminant, ops::{BitAnd, BitOr, BitXor}};
 
-struct FoldingContext {
-   error_count: u64,
+pub struct FoldingContext {
+   pub error_count: u64,
 }
 
 pub fn fold_constants<W: Write>(program: &mut Program, err_stream: &mut W) -> u64 {
-   let mut error_count = 0;
-
-   let mut validation_context = FoldingContext {
-      error_count,
+   let mut folding_context = FoldingContext {
+      error_count: 0,
    };
 
    for procedure in program.procedures.iter_mut() {
-      fold_block(&mut procedure.block, err_stream);
+      fold_block(&mut procedure.block, err_stream, &mut folding_context);
    }
 
-   error_count
+   folding_context.error_count
 }
 
-pub fn fold_block<W: Write>(block: &mut BlockNode, err_stream: &mut W) {
+pub fn fold_block<W: Write>(block: &mut BlockNode, err_stream: &mut W, folding_context: &mut FoldingContext) {
    for statement in block.statements.iter_mut() {
-      fold_statement(&mut statement.statement, err_stream);
+      fold_statement(&mut statement.statement, err_stream, folding_context);
    }
 }
 
-pub fn fold_statement<W: Write>(statement: &mut Statement, err_stream: &mut W,) {
+pub fn fold_statement<W: Write>(statement: &mut Statement, err_stream: &mut W, folding_context: &mut FoldingContext) {
    match statement {
       Statement::AssignmentStatement(lhs_expr, rhs_expr) => {
-         try_fold_and_replace_expr(lhs_expr, err_stream);
-         try_fold_and_replace_expr(rhs_expr, err_stream);
+         try_fold_and_replace_expr(lhs_expr, err_stream, folding_context);
+         try_fold_and_replace_expr(rhs_expr, err_stream, folding_context);
       }
       Statement::BlockStatement(block) => {
-         fold_block(block, err_stream);
+         fold_block(block, err_stream, folding_context);
       }
       Statement::BreakStatement | Statement::ContinueStatement => (),
       Statement::IfElseStatement(if_expr, if_block, else_statement) => {
-         try_fold_and_replace_expr(if_expr, err_stream);
-         fold_block(if_block, err_stream);
-         fold_statement(&mut else_statement.statement, err_stream);
+         try_fold_and_replace_expr(if_expr, err_stream, folding_context);
+         fold_block(if_block, err_stream, folding_context);
+         fold_statement(&mut else_statement.statement, err_stream, folding_context);
       },
       Statement::LoopStatement(block) => {
-         fold_block(block, err_stream);
+         fold_block(block, err_stream, folding_context);
       },
       Statement::ExpressionStatement(expr) => {
-         try_fold_and_replace_expr(expr, err_stream);
+         try_fold_and_replace_expr(expr, err_stream, folding_context);
       },
       Statement::ReturnStatement(expr) => {
-         try_fold_and_replace_expr(expr, err_stream);
+         try_fold_and_replace_expr(expr, err_stream, folding_context);
       },
       Statement::VariableDeclaration(_, expr, _) => {
-         try_fold_and_replace_expr(expr, err_stream);
+         try_fold_and_replace_expr(expr, err_stream, folding_context);
       }
    }
 }
 
 #[must_use]
-pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W) -> Option<ExpressionNode> {
+pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W, folding_context: &mut FoldingContext) -> Option<ExpressionNode> {
    match &mut expr_to_fold.expression {
       Expression::ArrayIndex(array, index) => {
-         try_fold_and_replace_expr(array, err_stream);
-         try_fold_and_replace_expr(index, err_stream);
+         try_fold_and_replace_expr(array, err_stream, folding_context);
+         try_fold_and_replace_expr(index, err_stream, folding_context);
 
          None
       }
@@ -69,7 +67,7 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
       }
       Expression::ProcedureCall(_name, exprs) => {
          for expr in exprs.iter_mut() {
-            try_fold_and_replace_expr(expr, err_stream);
+            try_fold_and_replace_expr(expr, err_stream, folding_context);
          }
 
          None
@@ -88,8 +86,8 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
       },
       Expression::UnitLiteral => None,
       Expression::BinaryOperator(op, exprs) => {
-         try_fold_and_replace_expr(&mut exprs.0, err_stream);
-         try_fold_and_replace_expr(&mut exprs.1, err_stream);
+         try_fold_and_replace_expr(&mut exprs.0, err_stream, folding_context);
+         try_fold_and_replace_expr(&mut exprs.1, err_stream, folding_context);
 
          let lhs = extract_literal(&exprs.0.expression);
          let rhs = extract_literal(&exprs.1.expression);
@@ -128,6 +126,7 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                      expression_begin_location: expr_to_fold.expression_begin_location,
                    })
                } else {
+                  folding_context.error_count += 1;
                   unimplemented!();
                   None
                }
@@ -140,6 +139,7 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                      expression_begin_location: expr_to_fold.expression_begin_location,
                    })
                } else {
+                  folding_context.error_count += 1;
                   unimplemented!();
                   None
                }
@@ -233,7 +233,7 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
         }
       },
       Expression::UnaryOperator(op, expr) => {
-         try_fold_and_replace_expr(expr, err_stream);
+         try_fold_and_replace_expr(expr, err_stream, folding_context);
          match op {
             // float and int
             UnOp::Negate => match extract_literal(&expr.expression) {
@@ -267,28 +267,28 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
       },
       Expression::StructLiteral(_, field_exprs) => {
          for (_, expr) in field_exprs.iter_mut() {
-            try_fold_and_replace_expr(expr, err_stream);
+            try_fold_and_replace_expr(expr, err_stream, folding_context);
          }
 
          None
       },
       Expression::FieldAccess(_, expr) => {
-         try_fold_and_replace_expr(expr, err_stream);
+         try_fold_and_replace_expr(expr, err_stream, folding_context);
 
          None
       },
       Expression::Extend(_, expr) => {
-         try_fold_and_replace_expr(expr, err_stream);
+         try_fold_and_replace_expr(expr, err_stream, folding_context);
 
          None
       },
       Expression::Truncate(_, expr) => {
-         try_fold_and_replace_expr(expr, err_stream);
+         try_fold_and_replace_expr(expr, err_stream, folding_context);
 
          None
       },
       Expression::Transmute(_, expr) => {
-         try_fold_and_replace_expr(expr, err_stream);
+         try_fold_and_replace_expr(expr, err_stream, folding_context);
 
          None
       },
@@ -398,8 +398,8 @@ fn extract_literal(expr: &Expression) -> Option<Literal> {
    }
 }
 
-pub fn try_fold_and_replace_expr<W: Write>(node: &mut ExpressionNode, err_stream: &mut W) {
-   if let Some(new_node) = fold_expr(node, err_stream) {
+pub fn try_fold_and_replace_expr<W: Write>(node: &mut ExpressionNode, err_stream: &mut W, folding_context: &mut FoldingContext) {
+   if let Some(new_node) = fold_expr(node, err_stream, folding_context) {
       *node = new_node;
    }
 }

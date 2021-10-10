@@ -1524,7 +1524,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
          if index_expression.exp_type.as_ref().unwrap() == &ExpressionType::Value(I32_TYPE) {
             if let Some(ExpressionType::Value(ValueType::Array(_, len))) = &array_expression.exp_type {
                // We don't care if this fails; if there is an overflow or etc. we'll let the real constant folding run catch it
-               let folded_index = constant_folding::fold_expr(index_expression, &mut NulWriter);
+               let folded_index = constant_folding::fold_expr(index_expression, &mut NulWriter, &mut constant_folding::FoldingContext{error_count: 0});
                let int_index = folded_index.and_then(|x| extract_int_literal(&x.expression));
                if let Some(v) = int_index {
                   if v < 0 || v >= *len || v >= i64::from(std::u32::MAX) {

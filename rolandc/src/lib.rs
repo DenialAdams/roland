@@ -27,6 +27,9 @@ pub fn compile<E: Write, A: Write>(
    let num_procedures_before_merge = user_program.procedures.len();
    merge_programs(&mut user_program, &mut [std_lib]);
    let err_count = validator::type_and_check_validity(&mut user_program, err_stream);
+   if err_count == 0 && do_constant_folding {
+      constant_folding::fold_constants(&mut user_program, err_stream);
+   }
    if let Some(w) = html_ast_out {
       let mut program_without_std = user_program.clone();
       program_without_std.procedures.truncate(num_procedures_before_merge);
@@ -34,9 +37,6 @@ pub fn compile<E: Write, A: Write>(
    }
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));
-   }
-   if do_constant_folding {
-      constant_folding::fold_constants(&mut user_program, err_stream);
    }
    Ok(wasm::emit_wasm(&mut user_program))
 }
