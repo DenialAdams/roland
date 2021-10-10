@@ -1,7 +1,7 @@
-After constant folding, index will be 10, which is out of bounds for the array of length 2
+At runtime, index will be 10, which is out of bounds for the array of length 2
 ↳ array @ line 3, column 4
 ↳ index @ line 3, column 6
-After constant folding, index will be -9, which is out of bounds for the array of length 2
+At runtime, index will be -9, which is out of bounds for the array of length 2
 ↳ array @ line 4, column 4
 ↳ index @ line 4, column 6
 There were 2 semantic errors, bailing

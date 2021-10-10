@@ -1,4 +1,4 @@
-use crate::parse::{BlockNode, Expression, ExpressionNode, Program, Statement, BinOp, UnOp};
+use crate::{parse::{BlockNode, Expression, ExpressionNode, Program, Statement, BinOp, UnOp}, type_data::{ExpressionType, ValueType}};
 use std::{io::Write, mem::discriminant, ops::{BitAnd, BitOr, BitXor}};
 
 pub struct FoldingContext {
@@ -59,6 +59,36 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
       Expression::ArrayIndex(array, index) => {
          try_fold_and_replace_expr(array, err_stream, folding_context);
          try_fold_and_replace_expr(index, err_stream, folding_context);
+
+         let len = match array.exp_type {
+            Some(ExpressionType::Value(ValueType::Array(_, len))) => len,
+            _ => unreachable!(),
+         };
+
+         if let Some(Literal::Int(v)) = extract_literal(&index.expression) {
+            if v < 0 || v >= len || v >= i64::from(std::u32::MAX) {
+               folding_context.error_count += 1;
+               writeln!(
+                  err_stream,
+                  "At runtime, index will be {}, which is out of bounds for the array of length {}",
+                  v,
+                  len,
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ array @ line {}, column {}",
+                  array.expression_begin_location.line, array.expression_begin_location.col
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ index @ line {}, column {}",
+                  index.expression_begin_location.line, index.expression_begin_location.col
+               )
+               .unwrap();
+            }
+         }
 
          None
       }
