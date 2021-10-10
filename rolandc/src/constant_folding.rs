@@ -127,7 +127,30 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                    })
                } else {
                   folding_context.error_count += 1;
-                  unimplemented!();
+                  writeln!(
+                     err_stream,
+                     "During constant folding, got overflow while adding",
+                     
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ addition @ line {}, column {}",
+                     expr_to_fold.expression_begin_location.line, expr_to_fold.expression_begin_location.col
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ LHS @ line {}, column {}",
+                     exprs.0.expression_begin_location.line, exprs.0.expression_begin_location.col
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ RHS @ line {}, column {}",
+                     exprs.1.expression_begin_location.line, exprs.1.expression_begin_location.col
+                  )
+                  .unwrap();
                   None
                }
             },
@@ -140,7 +163,30 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                    })
                } else {
                   folding_context.error_count += 1;
-                  unimplemented!();
+                  writeln!(
+                     err_stream,
+                     "During constant folding, got underflow while subtracting",
+                     
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ subtraction @ line {}, column {}",
+                     expr_to_fold.expression_begin_location.line, expr_to_fold.expression_begin_location.col
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ LHS @ line {}, column {}",
+                     exprs.0.expression_begin_location.line, exprs.0.expression_begin_location.col
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ RHS @ line {}, column {}",
+                     exprs.1.expression_begin_location.line, exprs.1.expression_begin_location.col
+                  )
+                  .unwrap();
                   None
                }
             },
@@ -152,7 +198,31 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                      expression_begin_location: expr_to_fold.expression_begin_location,
                    })
                } else {
-                  unimplemented!();
+                  folding_context.error_count += 1;
+                  writeln!(
+                     err_stream,
+                     "During constant folding, got overflow while multiplying",
+                     
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ multiplication @ line {}, column {}",
+                     expr_to_fold.expression_begin_location.line, expr_to_fold.expression_begin_location.col
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ LHS @ line {}, column {}",
+                     exprs.0.expression_begin_location.line, exprs.0.expression_begin_location.col
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ RHS @ line {}, column {}",
+                     exprs.1.expression_begin_location.line, exprs.1.expression_begin_location.col
+                  )
+                  .unwrap();
                   None
                }
             },
@@ -164,7 +234,31 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                      expression_begin_location: expr_to_fold.expression_begin_location,
                    })
                } else {
-                  unimplemented!();
+                  folding_context.error_count += 1;
+                  writeln!(
+                     err_stream,
+                     "During constant folding, got a divide by zero",
+                     
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ division @ line {}, column {}",
+                     expr_to_fold.expression_begin_location.line, expr_to_fold.expression_begin_location.col
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ LHS @ line {}, column {}",
+                     exprs.0.expression_begin_location.line, exprs.0.expression_begin_location.col
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ RHS @ line {}, column {}",
+                     exprs.1.expression_begin_location.line, exprs.1.expression_begin_location.col
+                  )
+                  .unwrap();
                   None
                }
             },
@@ -176,7 +270,31 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                      expression_begin_location: expr_to_fold.expression_begin_location,
                    })
                } else {
-                  unimplemented!();
+                  folding_context.error_count += 1;
+                  writeln!(
+                     err_stream,
+                     "During constant folding, got a divide by zero",
+                     
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ remainder @ line {}, column {}",
+                     expr_to_fold.expression_begin_location.line, expr_to_fold.expression_begin_location.col
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ LHS @ line {}, column {}",
+                     exprs.0.expression_begin_location.line, exprs.0.expression_begin_location.col
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ RHS @ line {}, column {}",
+                     exprs.1.expression_begin_location.line, exprs.1.expression_begin_location.col
+                  )
+                  .unwrap();
                   None
                }
             },
