@@ -18,6 +18,8 @@ struct Opts {
    source_file: PathBuf,
    #[clap(long)]
    output_html_ast: bool,
+   #[clap(long)]
+   do_constant_folding: bool,
    #[clap(short, long)]
    output: PathBuf,
 }
@@ -37,7 +39,7 @@ fn main() {
    let err_stream = std::io::stderr();
    let mut err_stream_l = err_stream.lock();
 
-   let compile_result = rolandc::compile(&user_program_s, &mut err_stream_l, ast_out.as_mut());
+   let compile_result = rolandc::compile(&user_program_s, &mut err_stream_l, ast_out.as_mut(), opts.do_constant_folding);
    ast_out.as_mut().map(|x| writeln!(x, "</body>\n</html>").unwrap());
 
    let out_bytes = match compile_result {

@@ -1,4 +1,5 @@
 use super::type_data::{ExpressionType, ValueType};
+use crate::constant_folding;
 use crate::lex::SourceInfo;
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
 use crate::type_data::{IntWidth, I16_TYPE, I32_TYPE, I8_TYPE, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
@@ -1519,6 +1520,39 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
             .unwrap();
          }
 
+         // Types are OK
+         if index_expression.exp_type.as_ref().unwrap() == &ExpressionType::Value(I32_TYPE) {
+            if let Some(ExpressionType::Value(ValueType::Array(_, len))) = &array_expression.exp_type {
+               // We don't care if this fails; if there is an overflow or etc. we'll let the real constant folding run catch it
+               let folded_index = constant_folding::fold_expr(index_expression, &mut NulWriter);
+               let int_index = folded_index.and_then(|x| extract_int_literal(&x.expression));
+               if let Some(v) = int_index {
+                  if v < 0 || v >= *len || v >= i64::from(std::u32::MAX) {
+                     validation_context.error_count += 1;
+                     writeln!(
+                        err_stream,
+                        "After constant folding, index will be {}, which is out of bounds for the array of length {}",
+                        v,
+                        len,
+                     )
+                     .unwrap();
+                     writeln!(
+                        err_stream,
+                        "↳ array @ line {}, column {}",
+                        array_expression.expression_begin_location.line, array_expression.expression_begin_location.col
+                     )
+                     .unwrap();
+                     writeln!(
+                        err_stream,
+                        "↳ index @ line {}, column {}",
+                        index_expression.expression_begin_location.line, index_expression.expression_begin_location.col
+                     )
+                     .unwrap();
+                  }
+               }
+            }
+         }
+
          expr_node.exp_type = match &array_expression.exp_type {
             Some(ExpressionType::Value(ValueType::CompileError)) => Some(ExpressionType::Value(ValueType::CompileError)),
             Some(ExpressionType::Value(ValueType::Array(b, _))) => Some(*b.clone()),
@@ -1631,5 +1665,24 @@ fn set_inferred_type<W: Write>(
          }
       },
       Expression::ArrayIndex(_, _) => unreachable!(),
+   }
+}
+
+struct NulWriter;
+
+impl Write for NulWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        return Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        return Ok(())
+    }
+}
+
+fn extract_int_literal(expr: &Expression) -> Option<i64> {
+   match expr {
+      Expression::IntLiteral(x) => Some(*x),
+      _ => None,
    }
 }

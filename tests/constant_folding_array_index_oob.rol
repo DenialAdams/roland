@@ -1,0 +1,5 @@
+proc main() {
+   let x = [true, false];
+   x[1 * 10];
+   x[1 - 10];
+}

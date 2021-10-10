@@ -17,7 +17,7 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
    let mut ast_out = Vec::new();
    let mut err_out = Vec::new();
 
-   let compile_result = rolandc::compile(&source_code, &mut err_out, Some(&mut ast_out));
+   let compile_result = rolandc::compile(&source_code, &mut err_out, Some(&mut ast_out), true);
 
    match compile_result.as_ref() {
       Err(CompilationError::Semantic(err_count)) => {

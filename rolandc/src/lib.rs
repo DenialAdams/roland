@@ -1,3 +1,4 @@
+mod constant_folding;
 mod html_debug;
 mod lex;
 mod parse;
@@ -18,6 +19,7 @@ pub fn compile<E: Write, A: Write>(
    user_program_s: &str,
    err_stream: &mut E,
    html_ast_out: Option<&mut A>,
+   do_constant_folding: bool,
 ) -> Result<Vec<u8>, CompilationError> {
    let mut user_program = lex_and_parse(user_program_s, err_stream)?;
    let std_lib_s = include_str!("../../lib/print.rol");
@@ -32,6 +34,9 @@ pub fn compile<E: Write, A: Write>(
    }
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));
+   }
+   if do_constant_folding {
+      constant_folding::fold_constants(&mut user_program, err_stream);
    }
    Ok(wasm::emit_wasm(&mut user_program))
 }
