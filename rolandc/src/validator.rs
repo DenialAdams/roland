@@ -1557,6 +1557,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
             Some(ExpressionType::Value(ValueType::CompileError)) => Some(ExpressionType::Value(ValueType::CompileError)),
             Some(ExpressionType::Value(ValueType::Array(b, _))) => Some(*b.clone()),
             Some(x) => {
+               validation_context.error_count += 1;
                writeln!(
                   err_stream,
                   "Attempted to index expression of type {}, which is not an array type",
