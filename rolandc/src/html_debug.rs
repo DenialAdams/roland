@@ -148,13 +148,26 @@ fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode) {
          writeln!(out, "</ul></li>").unwrap();
       }
       Expression::FieldAccess(field, lhs) => {
-         writeln!(out, "<li><span>Field Access {}</span>", type_text).unwrap();
+         writeln!(out, "<li><span>Field Access{}</span>", type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
          print_expression(out, lhs);
          writeln!(out, "<li><span>{:?}</span></li>", field).unwrap();
          writeln!(out, "</ul></li>").unwrap();
       }
-      Expression::ArrayLiteral(_) => todo!(),
-      Expression::ArrayIndex(_, _) => todo!(),
+      Expression::ArrayLiteral(exprs) => {
+         writeln!(out, "<li><span>Array{}</span>", type_text).unwrap();
+         writeln!(out, "<ul>").unwrap();
+         for exp in exprs.iter() {
+            print_expression(out, &exp);
+         }
+         writeln!(out, "</ul></li>").unwrap()         
+      },
+      Expression::ArrayIndex(array_expr, index_expr) => {
+         writeln!(out, "<li><span>Array Index{}</span>", type_text).unwrap();
+         writeln!(out, "<ul>").unwrap();
+         print_expression(out, array_expr);
+         print_expression(out, index_expr);
+         writeln!(out, "</ul></li>").unwrap();
+      },
    }
 }
