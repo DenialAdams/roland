@@ -237,7 +237,7 @@ impl ValueType {
          ValueType::Float(x) => match x.width {
             FloatWidth::Eight => Cow::Borrowed("f64"),
             FloatWidth::Four => Cow::Borrowed("f32"),
-         }
+         },
          ValueType::Bool => Cow::Borrowed("bool"),
          ValueType::Unit => Cow::Borrowed("()"),
          ValueType::CompileError => Cow::Borrowed("ERROR"),

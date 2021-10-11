@@ -1,6 +1,6 @@
 use crate::parse::{BinOp, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
-use crate::type_data::{ExpressionType, FloatWidth, I32_TYPE, IntWidth, ValueType};
-use crate::semantic_analysis::validator::StructInfo;
+use crate::semantic_analysis::StructInfo;
+use crate::type_data::{ExpressionType, FloatWidth, IntWidth, ValueType, I32_TYPE};
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
 use std::io::Write;
@@ -73,12 +73,7 @@ impl<'a> PrettyWasmWriter {
       self.depth += 1;
    }
 
-   fn emit_store_function_start(
-      &mut self,
-      index: usize,
-      param: &ExpressionType,
-      si: &IndexMap<String, StructInfo>,
-   ) {
+   fn emit_store_function_start(&mut self, index: usize, param: &ExpressionType, si: &IndexMap<String, StructInfo>) {
       self.emit_spaces();
       write!(self.out, "(func $::store::{} (param i32) ", index).unwrap();
       write_type_as_params(param, &mut self.out, si);
@@ -137,12 +132,7 @@ impl<'a> PrettyWasmWriter {
 
    fn emit_data(&mut self, mem_index: u32, offset: u32, literal: &str) {
       self.emit_spaces();
-      write!(
-         &mut self.out,
-         "(data {} (i32.const {}) \"",
-         mem_index, offset
-      )
-      .unwrap();
+      write!(&mut self.out, "(data {} (i32.const {}) \"", mem_index, offset).unwrap();
       for byte in literal.as_bytes() {
          match byte {
             b'\\' => write!(self.out, "\\").unwrap(),
@@ -722,7 +712,13 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
          } else if sizeof_type_values(&param.1, &generation_context.struct_size_info) > 1 {
             get_stack_address_of_local(&param.0, &mut generation_context);
             generation_context.out.emit_set_global("mem_address");
-            dynamic_move_locals_of_type_to_dest("global.get $mem_address", &mut 0, &mut values_index, &param.1, &mut generation_context);
+            dynamic_move_locals_of_type_to_dest(
+               "global.get $mem_address",
+               &mut 0,
+               &mut values_index,
+               &param.1,
+               &mut generation_context,
+            );
          }
       }
 
@@ -742,7 +738,9 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
    let mut needed_store_fns = IndexSet::new();
    std::mem::swap(&mut needed_store_fns, &mut generation_context.needed_store_fns);
    for (i, e_type) in needed_store_fns.iter().enumerate() {
-      generation_context.out.emit_store_function_start(i, e_type, &generation_context.struct_info);
+      generation_context
+         .out
+         .emit_store_function_start(i, e_type, &generation_context.struct_info);
       dynamic_move_locals_of_type_to_dest("local.get 0", &mut 0, &mut 1, e_type, &mut generation_context);
       generation_context.out.close();
    }
@@ -1023,10 +1021,10 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                      writeln!(generation_context.out.out, "{}.const 1", wasm_type).unwrap();
                      generation_context.out.emit_spaces();
                      writeln!(generation_context.out.out, "{}.add", wasm_type).unwrap();
-                  },
+                  }
                   ExpressionType::Value(ValueType::Float(_)) => {
                      writeln!(generation_context.out.out, "{}.neg", wasm_type).unwrap();
-                  },
+                  }
                   _ => unreachable!(),
                }
             }
@@ -1154,14 +1152,16 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          for expr in exprs.iter() {
             do_emit(expr, generation_context);
          }
-      },
+      }
       Expression::ArrayIndex(lhs, index_e) => {
          do_emit(lhs, generation_context);
          do_emit_and_load_lval(index_e, generation_context);
 
          if lhs.expression.is_lvalue() {
             let sizeof_inner = match &lhs.exp_type {
-               Some(ExpressionType::Value(ValueType::Array(x, _))) => sizeof_type_mem(&*x, &generation_context.struct_size_info),
+               Some(ExpressionType::Value(ValueType::Array(x, _))) => {
+                  sizeof_type_mem(&*x, &generation_context.struct_size_info)
+               }
                _ => unreachable!(),
             };
             generation_context.out.emit_const_mul_i32(sizeof_inner);
@@ -1169,7 +1169,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          } else {
             unimplemented!()
          }
-      },
+      }
    }
 }
 
@@ -1225,7 +1225,6 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
 
             offset += sizeof_type_mem(field, &generation_context.struct_size_info);
          }
-
       }
       ExpressionType::Value(ValueType::Array(a_type, len)) => {
          for _ in 0..*len {
@@ -1292,7 +1291,9 @@ fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) 
       simple_store(val_type, generation_context);
    } else if sizeof_type_values(val_type, &generation_context.struct_size_info) > 1 {
       let (store_fcn_index, _) = generation_context.needed_store_fns.insert_full(val_type.clone());
-      generation_context.out.emit_call(&format!("::store::{}", store_fcn_index));
+      generation_context
+         .out
+         .emit_call(&format!("::store::{}", store_fcn_index));
    }
 }
 

@@ -163,14 +163,14 @@ fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode) {
          for exp in exprs.iter() {
             print_expression(out, &exp);
          }
-         writeln!(out, "</ul></li>").unwrap()         
-      },
+         writeln!(out, "</ul></li>").unwrap()
+      }
       Expression::ArrayIndex(array_expr, index_expr) => {
          writeln!(out, "<li><span>Array Index{}</span>", type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
          print_expression(out, array_expr);
          print_expression(out, index_expr);
          writeln!(out, "</ul></li>").unwrap();
-      },
+      }
    }
 }

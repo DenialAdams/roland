@@ -39,7 +39,12 @@ fn main() {
    let err_stream = std::io::stderr();
    let mut err_stream_l = err_stream.lock();
 
-   let compile_result = rolandc::compile(&user_program_s, &mut err_stream_l, ast_out.as_mut(), !opts.skip_constant_folding);
+   let compile_result = rolandc::compile(
+      &user_program_s,
+      &mut err_stream_l,
+      ast_out.as_mut(),
+      !opts.skip_constant_folding,
+   );
    ast_out.as_mut().map(|x| writeln!(x, "</body>\n</html>").unwrap());
 
    let out_bytes = match compile_result {

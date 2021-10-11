@@ -1,14 +1,15 @@
-use crate::{parse::{BlockNode, Expression, ExpressionNode, Program, Statement, BinOp, UnOp}, type_data::{ExpressionType, ValueType}};
-use std::{io::Write, mem::discriminant, ops::{BitAnd, BitOr, BitXor}};
+use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, UnOp};
+use crate::type_data::{ExpressionType, ValueType};
+use std::io::Write;
+use std::mem::discriminant;
+use std::ops::{BitAnd, BitOr, BitXor};
 
 pub struct FoldingContext {
    pub error_count: u64,
 }
 
 pub fn fold_constants<W: Write>(program: &mut Program, err_stream: &mut W) -> u64 {
-   let mut folding_context = FoldingContext {
-      error_count: 0,
-   };
+   let mut folding_context = FoldingContext { error_count: 0 };
 
    for procedure in program.procedures.iter_mut() {
       fold_block(&mut procedure.block, err_stream, &mut folding_context);
@@ -37,16 +38,16 @@ pub fn fold_statement<W: Write>(statement: &mut Statement, err_stream: &mut W, f
          try_fold_and_replace_expr(if_expr, err_stream, folding_context);
          fold_block(if_block, err_stream, folding_context);
          fold_statement(&mut else_statement.statement, err_stream, folding_context);
-      },
+      }
       Statement::LoopStatement(block) => {
          fold_block(block, err_stream, folding_context);
-      },
+      }
       Statement::ExpressionStatement(expr) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
-      },
+      }
       Statement::ReturnStatement(expr) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
-      },
+      }
       Statement::VariableDeclaration(_, expr, _) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
       }
@@ -54,7 +55,11 @@ pub fn fold_statement<W: Write>(statement: &mut Statement, err_stream: &mut W, f
 }
 
 #[must_use]
-pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W, folding_context: &mut FoldingContext) -> Option<ExpressionNode> {
+pub fn fold_expr<W: Write>(
+   expr_to_fold: &mut ExpressionNode,
+   err_stream: &mut W,
+   folding_context: &mut FoldingContext,
+) -> Option<ExpressionNode> {
    match &mut expr_to_fold.expression {
       Expression::ArrayIndex(array, index) => {
          try_fold_and_replace_expr(array, err_stream, folding_context);
@@ -71,8 +76,7 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                writeln!(
                   err_stream,
                   "At runtime, index will be {}, which is out of bounds for the array of length {}",
-                  v,
-                  len,
+                  v, len,
                )
                .unwrap();
                writeln!(
@@ -92,31 +96,19 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
 
          None
       }
-      Expression::Variable(_) => {
-         None
-      }
+      Expression::Variable(_) => None,
       Expression::ProcedureCall(_name, exprs) => {
          for expr in exprs.iter_mut() {
             try_fold_and_replace_expr(expr, err_stream, folding_context);
          }
 
          None
-      },
-      Expression::ArrayLiteral(_) => {
-         None
-      },
-      Expression::BoolLiteral(_) => {
-         None
       }
-      Expression::StringLiteral(_) => {
-         None
-      },
-      Expression::IntLiteral(_) => {
-         None
-      },
-      Expression::FloatLiteral(_) => {
-         None
-      },
+      Expression::ArrayLiteral(_) => None,
+      Expression::BoolLiteral(_) => None,
+      Expression::StringLiteral(_) => None,
+      Expression::IntLiteral(_) => None,
+      Expression::FloatLiteral(_) => None,
       Expression::UnitLiteral => None,
       Expression::BinaryOperator(op, exprs) => {
          try_fold_and_replace_expr(&mut exprs.0, err_stream, folding_context);
@@ -136,20 +128,16 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
 
          match op {
             // int and float and bool
-            BinOp::Equality => {
-               Some(ExpressionNode {
-                  expression: Expression::BoolLiteral(lhs == rhs),
-                  exp_type: expr_to_fold.exp_type.take(),
-                  expression_begin_location: expr_to_fold.expression_begin_location,
-                })
-            }
-            BinOp::NotEquality => {
-               Some(ExpressionNode {
-                  expression: Expression::BoolLiteral(lhs != rhs),
-                  exp_type: expr_to_fold.exp_type.take(),
-                  expression_begin_location: expr_to_fold.expression_begin_location,
-                })
-            },
+            BinOp::Equality => Some(ExpressionNode {
+               expression: Expression::BoolLiteral(lhs == rhs),
+               exp_type: expr_to_fold.exp_type.take(),
+               expression_begin_location: expr_to_fold.expression_begin_location,
+            }),
+            BinOp::NotEquality => Some(ExpressionNode {
+               expression: Expression::BoolLiteral(lhs != rhs),
+               exp_type: expr_to_fold.exp_type.take(),
+               expression_begin_location: expr_to_fold.expression_begin_location,
+            }),
             // int and float
             BinOp::Add => {
                if let Some(v) = lhs.checked_add(rhs) {
@@ -157,15 +145,10 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                      expression: v,
                      exp_type: expr_to_fold.exp_type.take(),
                      expression_begin_location: expr_to_fold.expression_begin_location,
-                   })
+                  })
                } else {
                   folding_context.error_count += 1;
-                  writeln!(
-                     err_stream,
-                     "During constant folding, got overflow while adding",
-
-                  )
-                  .unwrap();
+                  writeln!(err_stream, "During constant folding, got overflow while adding",).unwrap();
                   writeln!(
                      err_stream,
                      "↳ addition @ line {}, column {}",
@@ -186,22 +169,17 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                   .unwrap();
                   None
                }
-            },
+            }
             BinOp::Subtract => {
                if let Some(v) = lhs.checked_sub(rhs) {
                   Some(ExpressionNode {
                      expression: v,
                      exp_type: expr_to_fold.exp_type.take(),
                      expression_begin_location: expr_to_fold.expression_begin_location,
-                   })
+                  })
                } else {
                   folding_context.error_count += 1;
-                  writeln!(
-                     err_stream,
-                     "During constant folding, got underflow while subtracting",
-
-                  )
-                  .unwrap();
+                  writeln!(err_stream, "During constant folding, got underflow while subtracting",).unwrap();
                   writeln!(
                      err_stream,
                      "↳ subtraction @ line {}, column {}",
@@ -222,22 +200,17 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                   .unwrap();
                   None
                }
-            },
+            }
             BinOp::Multiply => {
                if let Some(v) = lhs.checked_mul(rhs) {
                   Some(ExpressionNode {
                      expression: v,
                      exp_type: expr_to_fold.exp_type.take(),
                      expression_begin_location: expr_to_fold.expression_begin_location,
-                   })
+                  })
                } else {
                   folding_context.error_count += 1;
-                  writeln!(
-                     err_stream,
-                     "During constant folding, got overflow while multiplying",
-
-                  )
-                  .unwrap();
+                  writeln!(err_stream, "During constant folding, got overflow while multiplying",).unwrap();
                   writeln!(
                      err_stream,
                      "↳ multiplication @ line {}, column {}",
@@ -258,22 +231,17 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                   .unwrap();
                   None
                }
-            },
+            }
             BinOp::Divide => {
                if let Some(v) = lhs.checked_div(rhs) {
                   Some(ExpressionNode {
                      expression: v,
                      exp_type: expr_to_fold.exp_type.take(),
                      expression_begin_location: expr_to_fold.expression_begin_location,
-                   })
+                  })
                } else {
                   folding_context.error_count += 1;
-                  writeln!(
-                     err_stream,
-                     "During constant folding, got a divide by zero",
-
-                  )
-                  .unwrap();
+                  writeln!(err_stream, "During constant folding, got a divide by zero",).unwrap();
                   writeln!(
                      err_stream,
                      "↳ division @ line {}, column {}",
@@ -294,22 +262,17 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                   .unwrap();
                   None
                }
-            },
+            }
             BinOp::Remainder => {
                if let Some(v) = lhs.checked_rem(rhs) {
                   Some(ExpressionNode {
                      expression: v,
                      exp_type: expr_to_fold.exp_type.take(),
                      expression_begin_location: expr_to_fold.expression_begin_location,
-                   })
+                  })
                } else {
                   folding_context.error_count += 1;
-                  writeln!(
-                     err_stream,
-                     "During constant folding, got a divide by zero",
-
-                  )
-                  .unwrap();
+                  writeln!(err_stream, "During constant folding, got a divide by zero",).unwrap();
                   writeln!(
                      err_stream,
                      "↳ remainder @ line {}, column {}",
@@ -330,83 +293,69 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                   .unwrap();
                   None
                }
-            },
-            BinOp::GreaterThan => {
-               Some(ExpressionNode {
-                  expression: Expression::BoolLiteral(lhs > rhs),
-                  exp_type: expr_to_fold.exp_type.take(),
-                  expression_begin_location: expr_to_fold.expression_begin_location,
-                })
-            },
-            BinOp::LessThan => {
-               Some(ExpressionNode {
-                  expression: Expression::BoolLiteral(lhs < rhs),
-                  exp_type: expr_to_fold.exp_type.take(),
-                  expression_begin_location: expr_to_fold.expression_begin_location,
-                })
-            },
-            BinOp::GreaterThanOrEqualTo => {
-               Some(ExpressionNode {
-                  expression: Expression::BoolLiteral(lhs >= rhs),
-                  exp_type: expr_to_fold.exp_type.take(),
-                  expression_begin_location: expr_to_fold.expression_begin_location,
-                })
-            },
-            BinOp::LessThanOrEqualTo => {
-               Some(ExpressionNode {
-                  expression: Expression::BoolLiteral(lhs <= rhs),
-                  exp_type: expr_to_fold.exp_type.take(),
-                  expression_begin_location: expr_to_fold.expression_begin_location,
-                })
-            },
+            }
+            BinOp::GreaterThan => Some(ExpressionNode {
+               expression: Expression::BoolLiteral(lhs > rhs),
+               exp_type: expr_to_fold.exp_type.take(),
+               expression_begin_location: expr_to_fold.expression_begin_location,
+            }),
+            BinOp::LessThan => Some(ExpressionNode {
+               expression: Expression::BoolLiteral(lhs < rhs),
+               exp_type: expr_to_fold.exp_type.take(),
+               expression_begin_location: expr_to_fold.expression_begin_location,
+            }),
+            BinOp::GreaterThanOrEqualTo => Some(ExpressionNode {
+               expression: Expression::BoolLiteral(lhs >= rhs),
+               exp_type: expr_to_fold.exp_type.take(),
+               expression_begin_location: expr_to_fold.expression_begin_location,
+            }),
+            BinOp::LessThanOrEqualTo => Some(ExpressionNode {
+               expression: Expression::BoolLiteral(lhs <= rhs),
+               exp_type: expr_to_fold.exp_type.take(),
+               expression_begin_location: expr_to_fold.expression_begin_location,
+            }),
             // int and bool
-            BinOp::BitwiseAnd => {
-               Some(ExpressionNode {
-                  expression: lhs & rhs,
-                  exp_type: expr_to_fold.exp_type.take(),
-                  expression_begin_location: expr_to_fold.expression_begin_location,
-                })
-            },
-            BinOp::BitwiseOr => {
-               Some(ExpressionNode {
-                  expression: lhs | rhs,
-                  exp_type: expr_to_fold.exp_type.take(),
-                  expression_begin_location: expr_to_fold.expression_begin_location,
-                })
-            },
-            BinOp::BitwiseXor => {
-               Some(ExpressionNode {
-                  expression: lhs ^ rhs,
-                  exp_type: expr_to_fold.exp_type.take(),
-                  expression_begin_location: expr_to_fold.expression_begin_location,
-                })
-            },
-        }
-      },
+            BinOp::BitwiseAnd => Some(ExpressionNode {
+               expression: lhs & rhs,
+               exp_type: expr_to_fold.exp_type.take(),
+               expression_begin_location: expr_to_fold.expression_begin_location,
+            }),
+            BinOp::BitwiseOr => Some(ExpressionNode {
+               expression: lhs | rhs,
+               exp_type: expr_to_fold.exp_type.take(),
+               expression_begin_location: expr_to_fold.expression_begin_location,
+            }),
+            BinOp::BitwiseXor => Some(ExpressionNode {
+               expression: lhs ^ rhs,
+               exp_type: expr_to_fold.exp_type.take(),
+               expression_begin_location: expr_to_fold.expression_begin_location,
+            }),
+         }
+      }
       Expression::UnaryOperator(op, expr) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
          match op {
             // float and int
             UnOp::Negate => match extract_literal(&expr.expression) {
-                  Some(Literal::Int(v)) => Some(ExpressionNode {
-                    expression: Expression::IntLiteral(-v),
-                    exp_type: expr_to_fold.exp_type.take(),
-                    expression_begin_location: expr_to_fold.expression_begin_location,
-                  }),
-                  Some(Literal::Bool(_)) => unreachable!(),
-                  Some(Literal::Float(v)) => Some(ExpressionNode {
-                     expression: Expression::FloatLiteral(-v),
-                     exp_type: expr_to_fold.exp_type.take(),
-                     expression_begin_location: expr_to_fold.expression_begin_location,
-                   }),
-                  None => None,
-            }
+               Some(Literal::Int(v)) => Some(ExpressionNode {
+                  expression: Expression::IntLiteral(-v),
+                  exp_type: expr_to_fold.exp_type.take(),
+                  expression_begin_location: expr_to_fold.expression_begin_location,
+               }),
+               Some(Literal::Bool(_)) => unreachable!(),
+               Some(Literal::Float(v)) => Some(ExpressionNode {
+                  expression: Expression::FloatLiteral(-v),
+                  exp_type: expr_to_fold.exp_type.take(),
+                  expression_begin_location: expr_to_fold.expression_begin_location,
+               }),
+               None => None,
+            },
             // int and bool
             UnOp::Complement => match extract_literal(&expr.expression) {
                Some(Literal::Int(v)) => Some(ExpressionNode {
-                 expression: Expression::IntLiteral(!v),
-                 exp_type: expr_to_fold.exp_type.take(),
-                 expression_begin_location: expr_to_fold.expression_begin_location,
+                  expression: Expression::IntLiteral(!v),
+                  exp_type: expr_to_fold.exp_type.take(),
+                  expression_begin_location: expr_to_fold.expression_begin_location,
                }),
                Some(Literal::Bool(v)) => Some(ExpressionNode {
                   expression: Expression::BoolLiteral(!v),
@@ -415,38 +364,38 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                }),
                Some(Literal::Float(_)) => unreachable!(),
                None => None,
-            }
+            },
             // nothing to do
             UnOp::AddressOf | UnOp::Dereference => None,
-        }
-      },
+         }
+      }
       Expression::StructLiteral(_, field_exprs) => {
          for (_, expr) in field_exprs.iter_mut() {
             try_fold_and_replace_expr(expr, err_stream, folding_context);
          }
 
          None
-      },
+      }
       Expression::FieldAccess(_, expr) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
 
          None
-      },
+      }
       Expression::Extend(_, expr) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
 
          None
-      },
+      }
       Expression::Truncate(_, expr) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
 
          None
-      },
+      }
       Expression::Transmute(_, expr) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
 
          None
-      },
+      }
    }
 }
 
@@ -508,7 +457,7 @@ impl BitXor for Literal {
          (Literal::Bool(i), Literal::Bool(j)) => Expression::BoolLiteral(i ^ j),
          _ => unreachable!(),
       }
-    }
+   }
 }
 
 impl BitOr for Literal {
@@ -520,29 +469,29 @@ impl BitOr for Literal {
          (Literal::Bool(i), Literal::Bool(j)) => Expression::BoolLiteral(i | j),
          _ => unreachable!(),
       }
-    }
+   }
 }
 
 impl BitAnd for Literal {
-    type Output = Expression;
+   type Output = Expression;
 
-    fn bitand(self, other: Self) -> Self::Output {
+   fn bitand(self, other: Self) -> Self::Output {
       match (self, other) {
          (Literal::Int(i), Literal::Int(j)) => Expression::IntLiteral(i & j),
          (Literal::Bool(i), Literal::Bool(j)) => Expression::BoolLiteral(i & j),
          _ => unreachable!(),
       }
-    }
+   }
 }
 
 impl PartialOrd for Literal {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+   fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
       match (self, other) {
          (Literal::Int(i), Literal::Int(j)) => i.partial_cmp(j),
          (Literal::Float(i), Literal::Float(j)) => i.partial_cmp(j),
          _ => unreachable!(),
       }
-    }
+   }
 }
 
 fn extract_literal(expr: &Expression) -> Option<Literal> {
@@ -554,7 +503,11 @@ fn extract_literal(expr: &Expression) -> Option<Literal> {
    }
 }
 
-pub fn try_fold_and_replace_expr<W: Write>(node: &mut ExpressionNode, err_stream: &mut W, folding_context: &mut FoldingContext) {
+pub fn try_fold_and_replace_expr<W: Write>(
+   node: &mut ExpressionNode,
+   err_stream: &mut W,
+   folding_context: &mut FoldingContext,
+) {
    if let Some(new_node) = fold_expr(node, err_stream, folding_context) {
       *node = new_node;
    }

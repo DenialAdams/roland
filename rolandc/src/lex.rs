@@ -388,7 +388,13 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
                str_buf.push('"');
             } else {
                writeln!(err_stream, "Encountered unknown escape sequence `\\{}`", c).unwrap();
-               emit_source_info(err_stream, SourceInfo { col: source_info.col - 1, line: source_info.line });
+               emit_source_info(
+                  err_stream,
+                  SourceInfo {
+                     col: source_info.col - 1,
+                     line: source_info.line,
+                  },
+               );
                return Err(());
             }
             source_info.col += 1;
@@ -437,14 +443,29 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
             "Encountered EOF while parsing string literal; Are you missing a closing \"?"
          )
          .unwrap();
-         writeln!(err_stream, "↳ string literal @ line {}, column {}", str_begin.line, str_begin.col).unwrap();
-         writeln!(err_stream, "↳ EOF @ line {}, column {}", source_info.line, source_info.col).unwrap();
+         writeln!(
+            err_stream,
+            "↳ string literal @ line {}, column {}",
+            str_begin.line, str_begin.col
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ EOF @ line {}, column {}",
+            source_info.line, source_info.col
+         )
+         .unwrap();
          Err(())
       }
    }
 }
 
-fn finish_numeric_literal<W: Write>(s: &str, err_stream: &mut W, source_info: SourceInfo, is_float: bool) -> Result<SourceToken, ()> {
+fn finish_numeric_literal<W: Write>(
+   s: &str,
+   err_stream: &mut W,
+   source_info: SourceInfo,
+   is_float: bool,
+) -> Result<SourceToken, ()> {
    let resulting_token = if is_float {
       let float_value = match fast_float::parse(s) {
          Ok(v) => v,
@@ -462,7 +483,7 @@ fn finish_numeric_literal<W: Write>(s: &str, err_stream: &mut W, source_info: So
             writeln!(err_stream, "Encountered number that is TOO BIG!!").unwrap();
             emit_source_info(err_stream, source_info);
             return Err(());
-         },
+         }
       };
       Token::IntLiteral(int_value)
    };
@@ -489,12 +510,10 @@ fn parse_int(s: &str) -> Result<i64, ()> {
          b'7' => 7,
          b'8' => 8,
          b'9' => 9,
-         _ => unreachable!()
+         _ => unreachable!(),
       };
 
-      let new_val = int_value
-         .checked_mul(10)
-         .and_then(|x| x.checked_add(digit));
+      let new_val = int_value.checked_mul(10).and_then(|x| x.checked_add(digit));
 
       int_value = if let Some(v) = new_val {
          v

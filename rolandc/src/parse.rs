@@ -1,6 +1,6 @@
 use super::lex::{emit_source_info, SourceInfo, SourceToken, Token};
+use crate::semantic_analysis::{StaticInfo, StructInfo};
 use crate::type_data::{ExpressionType, ValueType};
-use crate::semantic_analysis::validator::{StaticInfo, StructInfo};
 use indexmap::IndexMap;
 use std::collections::HashSet;
 use std::io::Write;

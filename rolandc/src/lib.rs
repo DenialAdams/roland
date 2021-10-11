@@ -2,8 +2,8 @@ mod constant_folding;
 mod html_debug;
 mod lex;
 mod parse;
-mod type_data;
 mod semantic_analysis;
+mod type_data;
 mod wasm;
 
 use parse::Program;
