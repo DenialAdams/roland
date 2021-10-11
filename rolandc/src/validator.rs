@@ -436,6 +436,16 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       .unwrap();
    }
 
+   if validation_context.unknown_floats > 0 {
+      validation_context.error_count += 1;
+      writeln!(
+         err_stream,
+         "We weren't able to determine the types of {} float literals",
+         validation_context.unknown_floats
+      )
+      .unwrap();
+   }
+
    let err_count = validation_context.error_count;
    program.literals = validation_context.string_literals;
    program.struct_info = struct_info;

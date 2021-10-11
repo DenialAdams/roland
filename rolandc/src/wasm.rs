@@ -1225,7 +1225,7 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
 
             offset += sizeof_type_mem(field, &generation_context.struct_size_info);
          }
-         
+
       }
       ExpressionType::Value(ValueType::Array(a_type, len)) => {
          for _ in 0..*len {
@@ -1270,6 +1270,7 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
             let sign_suffix = if x.signed { "_s" } else { "_u" };
             (load_suffx, sign_suffix)
          }
+         ExpressionType::Value(ValueType::Float(_)) => ("", ""),
          ExpressionType::Value(ValueType::Bool) => ("32", "_u"),
          _ => unreachable!(),
       };
@@ -1318,6 +1319,7 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
             };
             load_suffx
          }
+         ExpressionType::Value(ValueType::Float(_)) => "",
          ExpressionType::Value(ValueType::Bool) => "32",
          _ => unreachable!(),
       };

@@ -394,7 +394,11 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                     expression_begin_location: expr_to_fold.expression_begin_location,
                   }),
                   Some(Literal::Bool(_)) => unreachable!(),
-                  Some(Literal::Float(_)) => unimplemented!(),
+                  Some(Literal::Float(v)) => Some(ExpressionNode {
+                     expression: Expression::FloatLiteral(-v),
+                     exp_type: expr_to_fold.exp_type.take(),
+                     expression_begin_location: expr_to_fold.expression_begin_location,
+                   }),
                   None => None,
             }
             // int and bool
@@ -409,7 +413,7 @@ pub fn fold_expr<W: Write>(expr_to_fold: &mut ExpressionNode, err_stream: &mut W
                   exp_type: expr_to_fold.exp_type.take(),
                   expression_begin_location: expr_to_fold.expression_begin_location,
                }),
-               Some(Literal::Float(_)) => unimplemented!(),
+               Some(Literal::Float(_)) => unreachable!(),
                None => None,
             }
             // nothing to do
@@ -457,7 +461,7 @@ impl Literal {
    fn checked_add(self, other: Self) -> Option<Expression> {
       match (self, other) {
          (Literal::Int(i), Literal::Int(j)) => Some(Expression::IntLiteral(i.checked_add(j)?)),
-         (Literal::Float(i), Literal::Float(j)) => todo!(),
+         (Literal::Float(i), Literal::Float(j)) => Some(Expression::FloatLiteral(i + j)),
          _ => unreachable!(),
       }
    }
@@ -465,7 +469,7 @@ impl Literal {
    fn checked_sub(self, other: Self) -> Option<Expression> {
       match (self, other) {
          (Literal::Int(i), Literal::Int(j)) => Some(Expression::IntLiteral(i.checked_sub(j)?)),
-         (Literal::Float(i), Literal::Float(j)) => todo!(),
+         (Literal::Float(i), Literal::Float(j)) => Some(Expression::FloatLiteral(i - j)),
          _ => unreachable!(),
       }
    }
@@ -473,7 +477,7 @@ impl Literal {
    fn checked_mul(self, other: Self) -> Option<Expression> {
       match (self, other) {
          (Literal::Int(i), Literal::Int(j)) => Some(Expression::IntLiteral(i.checked_mul(j)?)),
-         (Literal::Float(i), Literal::Float(j)) => todo!(),
+         (Literal::Float(i), Literal::Float(j)) => Some(Expression::FloatLiteral(i * j)),
          _ => unreachable!(),
       }
    }
@@ -481,7 +485,7 @@ impl Literal {
    fn checked_rem(self, other: Self) -> Option<Expression> {
       match (self, other) {
          (Literal::Int(i), Literal::Int(j)) => Some(Expression::IntLiteral(i.checked_rem(j)?)),
-         (Literal::Float(i), Literal::Float(j)) => todo!(),
+         (Literal::Float(i), Literal::Float(j)) => Some(Expression::FloatLiteral(i % j)),
          _ => unreachable!(),
       }
    }
@@ -489,7 +493,7 @@ impl Literal {
    fn checked_div(self, other: Self) -> Option<Expression> {
       match (self, other) {
          (Literal::Int(i), Literal::Int(j)) => Some(Expression::IntLiteral(i.checked_div(j)?)),
-         (Literal::Float(i), Literal::Float(j)) => todo!(),
+         (Literal::Float(i), Literal::Float(j)) => Some(Expression::FloatLiteral(i / j)),
          _ => unreachable!(),
       }
    }
@@ -544,6 +548,7 @@ impl PartialOrd for Literal {
 fn extract_literal(expr: &Expression) -> Option<Literal> {
    match expr {
       Expression::IntLiteral(x) => Some(Literal::Int(*x)),
+      Expression::FloatLiteral(x) => Some(Literal::Float(*x)),
       Expression::BoolLiteral(x) => Some(Literal::Bool(*x)),
       _ => None,
    }

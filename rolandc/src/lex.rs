@@ -67,7 +67,7 @@ enum LexMode {
    Ident,
    StringLiteral,
    StringLiteralEscape,
-   IntLiteral,
+   NumericLiteral,
 }
 
 pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo) {
@@ -102,13 +102,14 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
 
    let mut source_info = SourceInfo { line: 1, col: 1 };
 
-   // identifiers and string literals
+   // Temporary buffer we use in various parts of the lexer
    let mut str_buf = String::new();
+
+   // identifiers and string literal
    let mut str_begin = source_info;
 
-   // integer literals
-   let mut int_value: i64 = 0;
-   let mut int_length: usize = 0;
+   // numeric literals
+   let mut is_float = false;
 
    let mut chars = input.chars().peekable();
 
@@ -327,7 +328,7 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
                source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c.is_ascii_digit() {
-               mode = LexMode::IntLiteral;
+               mode = LexMode::NumericLiteral;
             } else if c.is_alphabetic() || c == '_' {
                mode = LexMode::Ident;
             } else {
@@ -394,32 +395,20 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
             let _ = chars.next().unwrap();
             mode = LexMode::StringLiteral;
          }
-         LexMode::IntLiteral => {
-            if !c.is_ascii_digit() {
-               let resulting_token = Token::IntLiteral(int_value);
-               tokens.push(SourceToken {
-                  source_info,
-                  token: resulting_token,
-               });
-               source_info.col += int_length;
-               int_value = 0;
-               int_length = 0;
-               mode = LexMode::Normal;
-            } else {
-               let new_val = int_value
-                  .checked_mul(10)
-                  .and_then(|x| x.checked_add(c.to_digit(10).unwrap() as i64));
-               int_value = if let Some(v) = new_val {
-                  v
-               } else {
-                  writeln!(err_stream, "Encountered number that is TOO BIG!!").unwrap();
-                  emit_source_info(err_stream, source_info);
-                  return Err(());
-               };
-
-               int_length += 1;
-
+         LexMode::NumericLiteral => {
+            if c.is_ascii_digit() {
+               str_buf.push(c);
                let _ = chars.next().unwrap();
+            } else if c == '.' && !is_float {
+               is_float = true;
+               str_buf.push(c);
+               let _ = chars.next().unwrap();
+            } else {
+               tokens.push(finish_numeric_literal(&str_buf, err_stream, source_info, is_float)?);
+               source_info.col += str_buf.len();
+               is_float = false;
+               str_buf.clear();
+               mode = LexMode::Normal;
             }
          }
       }
@@ -438,13 +427,8 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
          Ok(tokens)
       }
       // Same for numbers
-      LexMode::IntLiteral => {
-         let resulting_token = Token::IntLiteral(int_value);
-         tokens.push(SourceToken {
-            source_info,
-            token: resulting_token,
-         });
-         source_info.col += int_length;
+      LexMode::NumericLiteral => {
+         tokens.push(finish_numeric_literal(&str_buf, err_stream, source_info, is_float)?);
          Ok(tokens)
       }
       LexMode::StringLiteral | LexMode::StringLiteralEscape => {
@@ -458,4 +442,66 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
          Err(())
       }
    }
+}
+
+fn finish_numeric_literal<W: Write>(s: &str, err_stream: &mut W, source_info: SourceInfo, is_float: bool) -> Result<SourceToken, ()> {
+   let resulting_token = if is_float {
+      let float_value = match fast_float::parse(s) {
+         Ok(v) => v,
+         Err(_) => {
+            writeln!(err_stream, "Encountered number that can't be parsed as a float").unwrap();
+            emit_source_info(err_stream, source_info);
+            return Err(());
+         }
+      };
+      Token::FloatLiteral(float_value)
+   } else {
+      let int_value = match parse_int(s) {
+         Ok(v) => v,
+         Err(_) => {
+            writeln!(err_stream, "Encountered number that is TOO BIG!!").unwrap();
+            emit_source_info(err_stream, source_info);
+            return Err(());
+         },
+      };
+      Token::IntLiteral(int_value)
+   };
+   Ok(SourceToken {
+      source_info,
+      token: resulting_token,
+   })
+}
+
+// The string provided MUST be a valid number, or we'll assert
+// An Err is returned if overflow would occur
+fn parse_int(s: &str) -> Result<i64, ()> {
+   let mut int_value: i64 = 0;
+
+   for b in s.as_bytes() {
+      let digit: i64 = match b {
+         b'0' => 0,
+         b'1' => 1,
+         b'2' => 2,
+         b'3' => 3,
+         b'4' => 4,
+         b'5' => 5,
+         b'6' => 6,
+         b'7' => 7,
+         b'8' => 8,
+         b'9' => 9,
+         _ => unreachable!()
+      };
+
+      let new_val = int_value
+         .checked_mul(10)
+         .and_then(|x| x.checked_add(digit));
+
+      int_value = if let Some(v) = new_val {
+         v
+      } else {
+         return Err(());
+      };
+   }
+
+   Ok(int_value)
 }
