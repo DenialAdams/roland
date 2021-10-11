@@ -3,7 +3,7 @@ mod html_debug;
 mod lex;
 mod parse;
 mod type_data;
-mod validator;
+mod semantic_analysis;
 mod wasm;
 
 use parse::Program;
@@ -26,7 +26,7 @@ pub fn compile<E: Write, A: Write>(
    let std_lib = lex_and_parse(std_lib_s, err_stream)?;
    let num_procedures_before_merge = user_program.procedures.len();
    merge_programs(&mut user_program, &mut [std_lib]);
-   let mut err_count = validator::type_and_check_validity(&mut user_program, err_stream);
+   let mut err_count = semantic_analysis::validator::type_and_check_validity(&mut user_program, err_stream);
    if err_count == 0 && do_constant_folding {
       err_count = constant_folding::fold_constants(&mut user_program, err_stream);
    }

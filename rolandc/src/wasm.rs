@@ -1,6 +1,6 @@
 use crate::parse::{BinOp, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
 use crate::type_data::{ExpressionType, FloatWidth, I32_TYPE, IntWidth, ValueType};
-use crate::validator::StructInfo;
+use crate::semantic_analysis::validator::StructInfo;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
 use std::io::Write;
