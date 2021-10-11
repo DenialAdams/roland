@@ -33,6 +33,8 @@ pub enum Token {
    CloseBrace,
    OpenParen,
    CloseParen,
+   OpenSquareBracket,
+   CloseSquareBracket,
    Colon,
    Caret,
    Amp,
@@ -310,6 +312,20 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
                });
                source_info.col += 1;
                let _ = chars.next().unwrap();
+            } else if c == '[' {
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::OpenSquareBracket,
+               });
+               source_info.col += 1;
+               let _ = chars.next().unwrap();
+            } else if c == ']' {
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::CloseSquareBracket,
+               });
+               source_info.col += 1;
+               let _ = chars.next().unwrap();
             } else if c.is_ascii_digit() {
                mode = LexMode::IntLiteral;
             } else if c.is_alphabetic() || c == '_' {
@@ -321,7 +337,7 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
             }
          }
          LexMode::Ident => {
-            if !c.is_alphabetic() && !c.is_alphanumeric() && c != '_' {
+            if !c.is_alphanumeric() && c != '_' {
                let resulting_token = extract_keyword_or_ident(&str_buf);
                tokens.push(SourceToken {
                   source_info,

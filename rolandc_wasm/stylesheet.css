@@ -23,6 +23,12 @@ main {
    width: 100%
 }
 
+#buttons {
+   display: flex;
+   justify-content: space-around;
+   width: 100%;
+}
+
 #out_frame {
    white-space: pre-line;
    width: 100%;

@@ -456,8 +456,13 @@ fn type_statement<W: Write>(
          do_type(err_stream, en, validation_context);
 
          // Type inference
+         let rhs_is_unknown = match en.exp_type.as_ref() {
+            Some(ExpressionType::Value(ValueType::UnknownInt)) => true,
+            Some(ExpressionType::Value(ValueType::Array(b, _))) => **b == ExpressionType::Value(ValueType::UnknownInt),
+            _ => false,
+         };
          if len.exp_type.as_ref().unwrap().is_any_known_int()
-            && en.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt)
+            && rhs_is_unknown
          {
             set_inferred_type(len.exp_type.clone().unwrap(), en, validation_context, err_stream);
          }
@@ -1421,6 +1426,145 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
             expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
          }
       }
+      Expression::ArrayLiteral(elems) => {
+         for elem in elems.iter_mut() {
+            do_type(err_stream, elem, validation_context);
+         }
+
+         let mut any_error = false;
+
+         for i in 1..elems.len() {
+            if elems[i - 1].exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::CompileError)
+               || elems[i].exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::CompileError)
+            {
+               // avoid cascading errors
+               continue;
+            } else if elems[i - 1].exp_type.as_ref().unwrap().is_any_known_int()
+               && elems[i].exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt)
+            {
+               // type inference
+               set_inferred_type(
+                  elems[i - 1].exp_type.clone().unwrap(),
+                  &mut elems[i],
+                  validation_context,
+                  err_stream,
+               );
+            } else if elems[i - 1].exp_type != elems[i].exp_type {
+               validation_context.error_count += 1;
+               writeln!(
+                  err_stream,
+                  "Element at array index {} has type of {}, but element at array index {} has mismatching type of {}",
+                  i - 1,
+                  elems[i - 1].exp_type.as_ref().unwrap().as_roland_type_info(),
+                  i,
+                  elems[i].exp_type.as_ref().unwrap().as_roland_type_info(),
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ array literal @ line {}, column {}",
+                  expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ element {} @ line {}, column {}",
+                  i - 1,
+                  elems[i - 1].expression_begin_location.line,
+                  elems[i - 1].expression_begin_location.col
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ element {} @ line {}, column {}",
+                  i, elems[i].expression_begin_location.line, elems[i].expression_begin_location.col
+               )
+               .unwrap();
+
+               any_error = true;
+            }
+         }
+
+         if elems.len() > std::u32::MAX as usize {
+            any_error = true;
+            writeln!(
+               err_stream,
+               "Array literal has {} elements, which is more than the maximum {} elements",
+               elems.len(),
+               std::u32::MAX,
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ array literal @ line {}, column {}",
+               expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+            )
+            .unwrap();
+         }
+
+         if any_error {
+            expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
+         } else {
+            let a_type = elems[0].exp_type.clone().unwrap();
+
+            expr_node.exp_type = Some(ExpressionType::Value(ValueType::Array(
+               Box::new(a_type),
+               elems.len() as i64,
+            )));
+         }
+      }
+      Expression::ArrayIndex(array_expression, index_expression) => {
+         do_type(err_stream, array_expression, validation_context);
+         do_type(err_stream, index_expression, validation_context);
+
+         if index_expression.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::UnknownInt) {
+            set_inferred_type(ExpressionType::Value(I32_TYPE), &mut *index_expression, validation_context, err_stream);
+         } else if index_expression.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::CompileError) {
+            // avoid cascading errors
+         } else if index_expression.exp_type.as_ref().unwrap() != &ExpressionType::Value(I32_TYPE) {
+            writeln!(
+               err_stream,
+               "Attempted to index an array with a value of type {}, which is not i32",
+               index_expression.exp_type.as_ref().unwrap().as_roland_type_info(),
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ index @ line {}, column {}",
+               index_expression.expression_begin_location.line, index_expression.expression_begin_location.col
+            )
+            .unwrap();
+         }
+
+         expr_node.exp_type = match &array_expression.exp_type {
+            Some(ExpressionType::Value(ValueType::CompileError)) => Some(ExpressionType::Value(ValueType::CompileError)),
+            Some(ExpressionType::Value(ValueType::Array(b, _))) => Some(*b.clone()),
+            Some(x) => {
+               validation_context.error_count += 1;
+               writeln!(
+                  err_stream,
+                  "Attempted to index expression of type {}, which is not an array type",
+                  x.as_roland_type_info(),
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ expression @ line {}, column {}",
+                  array_expression.expression_begin_location.line, array_expression.expression_begin_location.col
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ index @ line {}, column {}",
+                  index_expression.expression_begin_location.line, index_expression.expression_begin_location.col
+               )
+               .unwrap();
+
+               Some(ExpressionType::Value(ValueType::CompileError))
+            }
+            None => unreachable!(),
+         };
+      },
    }
 }
 
@@ -1430,9 +1574,6 @@ fn set_inferred_type<W: Write>(
    validation_context: &mut ValidationContext,
    err_stream: &mut W,
 ) {
-   if expr_node.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::UnknownInt) && expr_node.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::UnknownFloat) {
-      return;
-   }
    match &mut expr_node.expression {
       Expression::Extend(_, _) => unreachable!(),
       Expression::Truncate(_, _) => unreachable!(),
@@ -1503,5 +1644,16 @@ fn set_inferred_type<W: Write>(
       Expression::ProcedureCall(_, _) => unreachable!(),
       Expression::StructLiteral(_, _) => unreachable!(),
       Expression::FieldAccess(_, _) => unreachable!(),
+      Expression::ArrayLiteral(exprs) => {
+         for expr in exprs.iter_mut() {
+            set_inferred_type(e_type.clone(), expr, validation_context, err_stream);
+         }
+
+         match &mut expr_node.exp_type {
+            Some(ExpressionType::Value(ValueType::Array(a_type, _))) => **a_type = e_type,
+            _ => unreachable!(),
+         }
+      },
+      Expression::ArrayIndex(_, _) => unreachable!(),
    }
 }

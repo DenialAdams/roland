@@ -113,7 +113,9 @@ pub struct ExpressionNode {
 
 #[derive(Clone, Debug)]
 pub enum Expression {
-   ProcedureCall(String, Vec<ExpressionNode>),
+   ProcedureCall(String, Box<[ExpressionNode]>),
+   ArrayLiteral(Box<[ExpressionNode]>),
+   ArrayIndex(Box<ExpressionNode>, Box<ExpressionNode>),
    BoolLiteral(bool),
    StringLiteral(String),
    IntLiteral(i64),
@@ -133,6 +135,7 @@ impl Expression {
    pub fn is_lvalue(&self) -> bool {
       match self {
          Expression::Variable(_) => true,
+         Expression::ArrayIndex(array_exp, _) => array_exp.expression.is_lvalue(),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
          Expression::FieldAccess(_, lhs) => lhs.expression.is_lvalue(),
          _ => false,
@@ -238,6 +241,13 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W) -> Result<
 fn extract_identifier(t: Token) -> String {
    match t {
       Token::Identifier(v) => v,
+      _ => unreachable!(),
+   }
+}
+
+fn extract_int_literal(t: Token) -> i64 {
+   match t {
+      Token::IntLiteral(v) => v,
       _ => unreachable!(),
    }
 }
@@ -520,6 +530,7 @@ fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<Vec<Ex
          | Some(Token::IntLiteral(_))
          | Some(Token::FloatLiteral(_))
          | Some(Token::OpenParen)
+         | Some(Token::OpenSquareBracket)
          | Some(Token::Amp)
          | Some(Token::Exclam)
          | Some(Token::MultiplyDeref)
@@ -567,6 +578,14 @@ fn parse_type<W: Write>(l: &mut Lexer, err_stream: &mut W) -> Result<ExpressionT
    }
 
    let value_type = match l.peek_token() {
+      Some(Token::OpenSquareBracket) => {
+         let _ = l.next();
+         let a_inner_type = parse_type(l, err_stream)?;
+         expect(l, err_stream, &Token::Semicolon)?;
+         let length = expect(l, err_stream, &Token::IntLiteral(0))?;
+         expect(l, err_stream, &Token::CloseSquareBracket)?;
+         ValueType::Array(Box::new(a_inner_type), extract_int_literal(length.token))
+      }
       Some(Token::OpenParen) => {
          let _ = l.next();
          expect(l, err_stream, &Token::CloseParen)?;
@@ -612,7 +631,7 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
             let _ = l.next();
             let args = parse_arguments(l, err_stream)?;
             expect(l, err_stream, &Token::CloseParen)?;
-            Expression::ProcedureCall(s, args)
+            Expression::ProcedureCall(s, args.into_boxed_slice())
          } else if !if_head && l.peek_token() == Some(&Token::OpenBrace) {
             let _ = l.next();
             let mut fields = vec![];
@@ -650,6 +669,23 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
             expect(l, err_stream, &Token::CloseParen)?;
             new_lhs
          }
+      }
+      Some(Token::OpenSquareBracket) => {
+         // Array creation
+         let mut es = vec![];
+         loop {
+            if let Some(Token::CloseSquareBracket) = l.peek_token() {
+               break;
+            }
+            es.push(parse_expression(l, err_stream, false)?);
+            if let Some(Token::CloseSquareBracket) = l.peek_token() {
+               break;
+            } else {
+               expect(l, err_stream, &Token::Comma)?;
+            }
+         }
+         let _ = l.next(); // ]
+         Expression::ArrayLiteral(es.into_boxed_slice())
       }
       Some(x @ Token::Minus) => {
          let ((), r_bp) = prefix_binding_power(&x);
@@ -707,7 +743,8 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
          | Some(x @ &Token::NotEquality)
          | Some(x @ &Token::KeywordExtend)
          | Some(x @ &Token::KeywordTruncate)
-         | Some(x @ &Token::KeywordTransmute) => x,
+         | Some(x @ &Token::KeywordTransmute)
+         | Some(x @ &Token::OpenSquareBracket) => x,
          Some(&Token::Period) => {
             let mut fields = vec![];
             loop {
@@ -731,12 +768,25 @@ fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool)
          }
 
          let op = l.next().unwrap().token;
-         let a_type = parse_type(l, err_stream)?;
 
          lhs = match op {
-            Token::KeywordExtend => Expression::Extend(a_type, Box::new(wrap(lhs, lhs_source.unwrap()))),
-            Token::KeywordTruncate => Expression::Truncate(a_type, Box::new(wrap(lhs, lhs_source.unwrap()))),
-            Token::KeywordTransmute => Expression::Transmute(a_type, Box::new(wrap(lhs, lhs_source.unwrap()))),
+            Token::OpenSquareBracket => {
+               let inner = parse_expression(l, err_stream, false)?;
+               expect(l, err_stream, &Token::CloseSquareBracket)?;
+               Expression::ArrayIndex(Box::new(wrap(lhs, lhs_source.unwrap())), Box::new(inner))
+            }
+            Token::KeywordExtend => {
+               let a_type = parse_type(l, err_stream)?;
+               Expression::Extend(a_type, Box::new(wrap(lhs, lhs_source.unwrap())))
+            }
+            Token::KeywordTruncate => {
+               let a_type = parse_type(l, err_stream)?;
+               Expression::Truncate(a_type, Box::new(wrap(lhs, lhs_source.unwrap())))
+            }
+            Token::KeywordTransmute => {
+               let a_type = parse_type(l, err_stream)?;
+               Expression::Transmute(a_type, Box::new(wrap(lhs, lhs_source.unwrap())))
+            }
             _ => unreachable!(),
          };
 
@@ -791,6 +841,7 @@ fn prefix_binding_power(op: &Token) -> ((), u8) {
 
 fn postfix_binding_power(op: &Token) -> Option<(u8, ())> {
    match &op {
+      Token::OpenSquareBracket => Some((14, ())),
       Token::KeywordExtend => Some((12, ())),
       Token::KeywordTruncate => Some((12, ())),
       Token::KeywordTransmute => Some((12, ())),

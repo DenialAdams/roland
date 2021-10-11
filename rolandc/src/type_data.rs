@@ -49,13 +49,13 @@ pub const F64_TYPE: ValueType = ValueType::Float(FloatType {
    width: FloatWidth::Eight,
 });
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ExpressionType {
    Value(ValueType),
    Pointer(usize, ValueType),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ValueType {
    UnknownInt,
    UnknownFloat,
@@ -64,10 +64,11 @@ pub enum ValueType {
    Bool,
    Unit,
    Struct(String),
+   Array(Box<ExpressionType>, i64),
    CompileError,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FloatWidth {
    Eight,
    Four,
@@ -94,7 +95,7 @@ impl Ord for FloatWidth {
    }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum IntWidth {
    Eight,
    Four,
@@ -125,13 +126,13 @@ impl Ord for IntWidth {
    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct IntType {
    pub signed: bool,
    pub width: IntWidth,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FloatType {
    pub width: FloatWidth,
 }
@@ -214,7 +215,8 @@ impl ValueType {
    fn is_concrete_type(&self) -> bool {
       match self {
          ValueType::UnknownInt | ValueType::UnknownFloat | ValueType::CompileError => false,
-         ValueType::Float(_) | ValueType::Int(_) | ValueType::Bool | ValueType::Unit | ValueType::Struct(_) => true,
+         ValueType::Int(_) | ValueType::Float(_) | ValueType::Bool | ValueType::Unit | ValueType::Struct(_) => true,
+         ValueType::Array(exp, _) => exp.is_concrete_type(),
       }
    }
 
@@ -241,6 +243,7 @@ impl ValueType {
          ValueType::CompileError => Cow::Borrowed("ERROR"),
          ValueType::Struct(x) if x.as_str() == "String" => Cow::Borrowed("String"),
          ValueType::Struct(x) => Cow::Owned(format!("Struct {}", x)),
+         ValueType::Array(i_type, length) => Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info(), length)),
       }
    }
 }

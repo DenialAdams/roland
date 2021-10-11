@@ -1,6 +1,7 @@
 use rolandc::CompilationError;
+use web_sys::HtmlInputElement;
 use std::io::Write;
-use wasm_bindgen::prelude::*;
+use wasm_bindgen::{JsCast, prelude::*};
 
 #[wasm_bindgen(start)]
 pub fn start() {
@@ -14,10 +15,12 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
    let output_frame = document.get_element_by_id("out_frame").unwrap();
    let ast_frame = document.get_element_by_id("ast_frame").unwrap();
 
+   let do_constant_folding: HtmlInputElement = document.get_element_by_id("do_constant_folding").unwrap().dyn_into().unwrap();
+
    let mut ast_out = Vec::new();
    let mut err_out = Vec::new();
 
-   let compile_result = rolandc::compile(&source_code, &mut err_out, Some(&mut ast_out));
+   let compile_result = rolandc::compile(&source_code, &mut err_out, Some(&mut ast_out), do_constant_folding.checked());
 
    match compile_result.as_ref() {
       Err(CompilationError::Semantic(err_count)) => {

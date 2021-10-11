@@ -14,7 +14,13 @@
       <main>
          <div id="preload"><a href='#' onclick="setHelloWorld()">Hello, world!</a><a href='#' onclick="setFib()">Fibonacci</a></div>
          <textarea id="src_frame"></textarea>
-         <button id="compile_button" onclick="compileUpdateAll()" disabled>Compile and run</button>
+         <div id="buttons">
+            <button id="compile_button" onclick="compileUpdateAll()" disabled>Compile and run</button>
+            <span>
+               <input type="checkbox" id="do_constant_folding" checked/>
+               <label for="do_constant_folding">Constant folding</label>
+            </span>
+         </div>
          <div id="ast_frame"></div>
          <div id="out_frame"></div>
       </main>
