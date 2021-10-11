@@ -1,5 +1,6 @@
 proc main() {
    123 = 345;
    let x = "food";
-   x = 123;
+   let y: u64 = 123;
+   x = y;
 }

@@ -438,11 +438,11 @@ fn type_statement<W: Write>(
          let lhs_type = len.exp_type.as_ref().unwrap();
          let rhs_type = en.exp_type.as_ref().unwrap();
 
-         if !lhs_type.is_concrete_type()
-            || !rhs_type.is_concrete_type()
+         if lhs_type == &ExpressionType::Value(ValueType::CompileError)
+            || rhs_type == &ExpressionType::Value(ValueType::CompileError)
          {
             // avoid cascading errors
-         } else if lhs_type != rhs_type {
+         } else if lhs_type != rhs_type && lhs_type.is_concrete_type() && rhs_type.is_concrete_type() {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
