@@ -1442,6 +1442,11 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
 
          if any_error {
             expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
+         } else if elems.is_empty() {
+            expr_node.exp_type = Some(ExpressionType::Value(ValueType::Array(
+               Box::new(ExpressionType::Value(ValueType::Unit)),
+               elems.len() as i64,
+            )));
          } else {
             let a_type = elems[0].exp_type.clone().unwrap();
 
