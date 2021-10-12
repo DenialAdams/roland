@@ -1,4 +1,3 @@
-use clap::Clap;
 use rolandc::CompilationError;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -13,19 +12,34 @@ const HTML_HEADER: &'static str = "<!DOCTYPE HTML>
 </head>
 <body>";
 
-#[derive(Clap)]
+#[derive(Debug)]
 struct Opts {
    source_file: PathBuf,
-   #[clap(long)]
-   output_html_ast: bool,
-   #[clap(long)]
-   skip_constant_folding: bool,
-   #[clap(short, long)]
    output: PathBuf,
+   output_html_ast: bool,
+   skip_constant_folding: bool,
+}
+
+fn parse_path(s: &std::ffi::OsStr) -> Result<std::path::PathBuf, &'static str> {
+   Ok(s.into())
+}
+
+fn parse_args() -> Result<Opts, pico_args::Error> {
+   let mut pargs = pico_args::Arguments::from_env();
+
+   let opts = Opts {
+      source_file: pargs.free_from_os_str(parse_path)?,
+      output: pargs.value_from_os_str("--output", parse_path)?,
+      output_html_ast: pargs.contains("--output-html-ast"),
+      skip_constant_folding: pargs.contains("--skip-constant-folding"),
+   };
+
+   Ok(opts)
 }
 
 fn main() {
-   let mut opts: Opts = Opts::parse();
+   let mut opts = parse_args().unwrap();
+
    let user_program_s = std::fs::read_to_string(opts.source_file).unwrap();
    let mut ast_out: Option<BufWriter<File>> = if opts.output_html_ast {
       let out_f = File::create("ast.html").unwrap();

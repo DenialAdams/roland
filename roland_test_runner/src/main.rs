@@ -60,9 +60,9 @@ fn main() -> Result<(), &'static str> {
 
    entries.par_iter().for_each(|entry| {
       let tc_output = Command::new(tc_path.as_str())
-         .arg("-o")
-         .arg(entry.file_stem().unwrap())
          .arg(entry.file_name().unwrap())
+         .arg("--output")
+         .arg(entry.file_stem().unwrap())
          .output()
          .unwrap();
       let test_ok = test_result(&tc_output, &entry, &result_dir);
