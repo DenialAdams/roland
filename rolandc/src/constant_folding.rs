@@ -1,5 +1,6 @@
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, UnOp};
 use crate::type_data::{ExpressionType, ValueType};
+use std::collections::HashMap;
 use std::io::Write;
 use std::mem::discriminant;
 use std::ops::{BitAnd, BitOr, BitXor};
@@ -91,6 +92,19 @@ pub fn fold_expr<W: Write>(
                   index.expression_begin_location.line, index.expression_begin_location.col
                )
                .unwrap();
+            } else if is_const(&array.expression) {
+               let array_elems = match &mut array.expression {
+                  Expression::ArrayLiteral(exprs) => exprs,
+                  _ => unreachable!(),
+               };
+
+               let chosen_elem = array_elems.get_mut(v as usize).unwrap();
+
+               return Some(ExpressionNode {
+                  expression: chosen_elem.expression.clone(),
+                  exp_type: chosen_elem.exp_type.take(),
+                  expression_begin_location: expr_to_fold.expression_begin_location,
+               });
             }
          }
 
@@ -376,10 +390,39 @@ pub fn fold_expr<W: Write>(
 
          None
       }
-      Expression::FieldAccess(_, expr) => {
+      Expression::FieldAccess(field_names, expr) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
 
-         None
+         if is_const(&expr.expression) {
+            let mut struct_literal = &expr.expression;
+            // drill to innermost struct
+            for field_name in field_names.iter().take(field_names.len() - 1) {
+               match struct_literal {
+                  Expression::StructLiteral(_, fields) => {
+                     // We want O(1) field access in other places- consider unifying, perhaps at parse time? TODO
+                     let map: HashMap<&String, &ExpressionNode> = fields.iter().map(|x| (&x.0, &x.1)).collect();
+                     struct_literal = &map.get(field_name).unwrap().expression;
+                  }
+                  _ => unreachable!(),
+               }
+            }
+
+            match struct_literal {
+               Expression::StructLiteral(_, fields) => {
+                  // We want O(1) field access in other places- consider unifying, perhaps at parse time? TODO
+                  let map: HashMap<&String, &ExpressionNode> = fields.iter().map(|x| (&x.0, &x.1)).collect();
+                  let inner_node = map.get(field_names.last().unwrap()).unwrap();
+                  Some(ExpressionNode {
+                    expression: inner_node.expression.clone(),
+                    exp_type: inner_node.exp_type.clone(),
+                    expression_begin_location: expr_to_fold.expression_begin_location,
+                  })
+               }
+               _ => unreachable!(),
+            }
+         } else {
+            None
+         }
       }
       Expression::Extend(_, expr) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
@@ -396,6 +439,17 @@ pub fn fold_expr<W: Write>(
 
          None
       }
+   }
+}
+
+fn is_const(expr: &Expression) -> bool {
+   match expr {
+      Expression::IntLiteral(_) => true,
+      Expression::FloatLiteral(_) => true,
+      Expression::BoolLiteral(_) => true,
+      Expression::ArrayLiteral(exprs) => exprs.iter().all(|x| is_const(&x.expression)),
+      Expression::StructLiteral(_, exprs) => exprs.iter().all(|(_, x)| is_const(&x.expression)),
+      _ => false,
    }
 }
 
