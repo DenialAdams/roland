@@ -15,7 +15,6 @@ struct GenerationContext<'a> {
    struct_info: &'a IndexMap<String, StructInfo>,
    struct_size_info: HashMap<String, SizeInfo>,
    needed_store_fns: IndexSet<ExpressionType>,
-   struct_scratch_space_begin: u32,
    sum_sizeof_locals_mem: u32,
    loop_depth: u64,
    loop_counter: u64,
@@ -505,15 +504,12 @@ fn dynamic_move_locals_of_type_to_dest(
 // MEMORY LAYOUT
 // 0-l literals
 // l-s statics
-// s-ss scratch space sized to fit the largest compound type (we need to put structs here and not the value stack sometimes)
-// ss+ program stack (local variables and parameters are pushed here during runtime)
+// s+ program stack (local variables and parameters are pushed here during runtime)
 pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
    let mut struct_size_info: HashMap<String, SizeInfo> = HashMap::with_capacity(program.struct_info.len());
    for s in program.struct_info.iter() {
       calculate_struct_size_info(s.0.as_str(), &program.struct_info, &mut struct_size_info);
    }
-
-   let largest_size_compound_type_mem = struct_size_info.values().map(|x| x.mem_size).max().unwrap();
 
    let mut generation_context = GenerationContext {
       out: PrettyWasmWriter {
@@ -527,7 +523,6 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
       needed_store_fns: IndexSet::new(),
       struct_info: &program.struct_info,
       struct_size_info,
-      struct_scratch_space_begin: 0,
       sum_sizeof_locals_mem: 0,
       loop_counter: 0,
       loop_depth: 0,
@@ -576,10 +571,6 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
       generation_context.static_offsets.insert(static_name.clone(), offset);
       offset += sizeof_type_mem(&static_details.static_type, &generation_context.struct_size_info);
    }
-
-   // this scratch space will be used at runtime
-   generation_context.struct_scratch_space_begin = offset;
-   offset += largest_size_compound_type_mem;
 
    // keep stack aligned
    offset = aligned_address(offset, 8);
