@@ -10,7 +10,12 @@ use crate::type_data::{I16_TYPE, I32_TYPE, I8_TYPE, U16_TYPE, U32_TYPE, U64_TYPE
 // Inference may still not be possible for other reasons
 fn inference_is_impossible(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
    match source_type {
-      ExpressionType::Value(ValueType::Array(e, _)) => inference_is_impossible(&*e, target_type),
+      ExpressionType::Value(ValueType::Array(src_e, _)) => match target_type {
+         ExpressionType::Value(ValueType::Array(target_e, _)) => {
+            inference_is_impossible(src_e, target_e)
+         },
+         _ => true,
+      },
       ExpressionType::Value(ValueType::UnknownFloat) => !target_type.is_any_known_float(),
       ExpressionType::Value(ValueType::UnknownInt) => !target_type.is_any_known_int(),
       _ => true,
@@ -91,30 +96,31 @@ fn set_inferred_type<W: Write>(
       Expression::UnitLiteral => unreachable!(),
       Expression::Variable(_x) => {
          return;
-         // I *think* we should able to try setting the variable type here,
-         // but that gets complicated. We'd also have to fix prior uses of that variable
-         // (setting literals or whatever)
-         // so for right now we punt here
-         /*
-         match validation_context.variable_types.get_mut(x) {
-            Some((y @ ExpressionType::Value(ValueType::UnknownInt), _)) => *y = e_type.clone(),
-            _ => unreachable!(),
-         }
-         expr_node.exp_type = Some(e_type); */
       }
       Expression::ProcedureCall(_, _) => unreachable!(),
       Expression::StructLiteral(_, _) => unreachable!(),
       Expression::FieldAccess(_, _) => unreachable!(),
       Expression::ArrayLiteral(exprs) => {
+         let target_elem_type = match e_type {
+            ExpressionType::Value(ValueType::Array(inner_type, _)) => inner_type,
+            _ => unreachable!(),
+         };
+
          for expr in exprs.iter_mut() {
-            set_inferred_type(e_type, expr, validation_context, err_stream);
+            set_inferred_type(target_elem_type, expr, validation_context, err_stream);
          }
 
+         // It's important that we don't override the length here; that can't be inferred
          match &mut expr_node.exp_type {
-            Some(ExpressionType::Value(ValueType::Array(a_type, _))) => **a_type = e_type.clone(),
+            Some(ExpressionType::Value(ValueType::Array(a_type, _))) => *a_type = target_elem_type.clone(),
             _ => unreachable!(),
          }
       }
-      Expression::ArrayIndex(_, _) => unreachable!(),
+      Expression::ArrayIndex(array_expr, _index_expr) => {
+         // The length is bogus, but we don't care about that during inference anyway
+         let array_type = ExpressionType::Value(ValueType::Array(Box::new(e_type.clone()), 0));
+         set_inferred_type(&array_type, array_expr, validation_context, err_stream);
+         expr_node.exp_type = Some(e_type.clone());
+      },
    }
 }
