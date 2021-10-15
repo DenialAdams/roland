@@ -60,7 +60,7 @@ impl<'a> PrettyWasmWriter {
       params: &[(StrId, ExpressionType)],
       result_type: &ExpressionType,
       si: &IndexMap<StrId, StructInfo>,
-      interner: &Interner
+      interner: &Interner,
    ) {
       self.emit_spaces();
       write!(self.out, "(func ${}", interner.lookup(name)).unwrap();
@@ -623,7 +623,11 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
       let mut offset_begin = 0;
       for field in s.1.field_types.iter() {
          // todo: we can avoid this allocation by re-examaning the emit_function_start abstraction (we could push directly into the underlying buffer?)
-         let full_name = interner.intern(&format!("::struct::{}::{}", interner.lookup(*s.0), interner.lookup(*field.0)));
+         let full_name = interner.intern(&format!(
+            "::struct::{}::{}",
+            interner.lookup(*s.0),
+            interner.lookup(*field.0)
+         ));
          // this allocation (s.0.to_string) is extremely cringe (todo: maybe we should store expressiontype in this struct instead of string?) BETTER TODO: interning
          generation_context.out.emit_function_start_named_params(
             full_name,
@@ -860,7 +864,11 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
    }
 }
 
-fn do_emit_and_load_lval(expr_node: &ExpressionNode, generation_context: &mut GenerationContext, interner: &mut Interner) {
+fn do_emit_and_load_lval(
+   expr_node: &ExpressionNode,
+   generation_context: &mut GenerationContext,
+   interner: &mut Interner,
+) {
    do_emit(expr_node, generation_context, interner);
 
    if expr_node.expression.is_lvalue() {
@@ -1125,7 +1133,11 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             // instead we call these special functions which basically convert the struct fields into locals so we can select them easier
             // yeah, this is a pretty big hack
             for field_name in field_names.iter().take(field_names.len() - 1) {
-               let func_name = interner.intern(&format!("::struct::{}::{}", interner.lookup(*current_struct_name), interner.lookup(*field_name)));
+               let func_name = interner.intern(&format!(
+                  "::struct::{}::{}",
+                  interner.lookup(*current_struct_name),
+                  interner.lookup(*field_name)
+               ));
                generation_context.out.emit_call(func_name, interner);
                current_struct_name = match generation_context
                   .struct_info
@@ -1139,7 +1151,11 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                };
             }
 
-            let func_name = interner.intern(&format!("::struct::{}::{}", interner.lookup(*current_struct_name), interner.lookup(*field_names.last().unwrap())));
+            let func_name = interner.intern(&format!(
+               "::struct::{}::{}",
+               interner.lookup(*current_struct_name),
+               interner.lookup(*field_names.last().unwrap())
+            ));
             generation_context.out.emit_call(func_name, interner);
          }
       }

@@ -71,7 +71,12 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
 
    // Built-In functions
    let standard_lib_procs = [
-      (interner.intern("wasm_memory_size"), false, vec![], ExpressionType::Value(I32_TYPE)),
+      (
+         interner.intern("wasm_memory_size"),
+         false,
+         vec![],
+         ExpressionType::Value(I32_TYPE),
+      ),
       (
          interner.intern("wasm_memory_grow"),
          false,
@@ -170,7 +175,8 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
                writeln!(
                   err_stream,
                   "Struct `{}` has a duplicate field `{}`",
-                  interner.lookup(a_struct.name), interner.lookup(field.0),
+                  interner.lookup(a_struct.name),
+                  interner.lookup(field.0),
                )
                .unwrap();
                writeln!(
@@ -326,7 +332,9 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
    if !validation_context.procedure_info.contains_key(&main_token) {
       validation_context.error_count += 1;
       writeln!(err_stream, "A procedure with the name `main` must be present").unwrap();
-   } else if validation_context.procedure_info.get(&main_token).unwrap().ret_type != ExpressionType::Value(ValueType::Unit) {
+   } else if validation_context.procedure_info.get(&main_token).unwrap().ret_type
+      != ExpressionType::Value(ValueType::Unit)
+   {
       validation_context.error_count += 1;
       writeln!(
          err_stream,
@@ -364,7 +372,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          &mut procedure.block,
          &mut validation_context,
          &mut procedure.locals,
-         interner
+         interner,
       );
 
       // Ensure that the last statement is a return statement
@@ -436,14 +444,20 @@ fn type_statement<W: Write>(
    statement: &mut StatementNode,
    validation_context: &mut ValidationContext,
    cur_procedure_locals: &mut IndexMap<StrId, ExpressionType>,
-   interner: &mut Interner
+   interner: &mut Interner,
 ) {
    match &mut statement.statement {
       Statement::AssignmentStatement(len, en) => {
          do_type(err_stream, len, validation_context, interner);
          do_type(err_stream, en, validation_context, interner);
 
-         try_set_inferred_type(len.exp_type.as_ref().unwrap(), en, validation_context, err_stream, interner);
+         try_set_inferred_type(
+            len.exp_type.as_ref().unwrap(),
+            en,
+            validation_context,
+            err_stream,
+            interner,
+         );
 
          let lhs_type = len.exp_type.as_ref().unwrap();
          let rhs_type = en.exp_type.as_ref().unwrap();
@@ -551,7 +565,13 @@ fn type_statement<W: Write>(
          let cur_procedure_info = validation_context.cur_procedure_info.unwrap();
 
          // Type Inference
-         try_set_inferred_type(&cur_procedure_info.ret_type, en, validation_context, err_stream, interner);
+         try_set_inferred_type(
+            &cur_procedure_info.ret_type,
+            en,
+            validation_context,
+            err_stream,
+            interner,
+         );
 
          if en.exp_type.as_ref().unwrap().is_concrete_type()
             && en.exp_type.as_ref().unwrap() != &cur_procedure_info.ret_type
@@ -645,10 +665,9 @@ fn type_statement<W: Write>(
             )
             .unwrap();
          } else {
-            validation_context.variable_types.insert(
-               *id,
-               (en.exp_type.clone().unwrap(), validation_context.block_depth),
-            );
+            validation_context
+               .variable_types
+               .insert(*id, (en.exp_type.clone().unwrap(), validation_context.block_depth));
             // TODO, again, interning
             cur_procedure_locals.insert(id.clone(), result_type);
          }
@@ -661,12 +680,18 @@ fn type_block<W: Write>(
    bn: &mut BlockNode,
    validation_context: &mut ValidationContext,
    cur_procedure_locals: &mut IndexMap<StrId, ExpressionType>,
-   interner: &mut Interner
+   interner: &mut Interner,
 ) {
    validation_context.block_depth += 1;
 
    for statement in bn.statements.iter_mut() {
-      type_statement(err_stream, statement, validation_context, cur_procedure_locals, interner);
+      type_statement(
+         err_stream,
+         statement,
+         validation_context,
+         cur_procedure_locals,
+         interner,
+      );
    }
 
    validation_context.block_depth -= 1;
@@ -674,7 +699,12 @@ fn type_block<W: Write>(
    validation_context.variable_types.retain(|_, v| v.1 <= cur_block_depth);
 }
 
-fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validation_context: &mut ValidationContext, interner: &mut Interner) {
+fn do_type<W: Write>(
+   err_stream: &mut W,
+   expr_node: &mut ExpressionNode,
+   validation_context: &mut ValidationContext,
+   interner: &mut Interner,
+) {
    match &mut expr_node.expression {
       Expression::UnitLiteral => {
          expr_node.exp_type = Some(ExpressionType::Value(ValueType::Unit));
@@ -745,7 +775,13 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
 
          if target_type.is_pointer() {
             // todo: hardcoded pointer size
-            try_set_inferred_type(&ExpressionType::Value(U32_TYPE), e, validation_context, err_stream, interner);
+            try_set_inferred_type(
+               &ExpressionType::Value(U32_TYPE),
+               e,
+               validation_context,
+               err_stream,
+               interner,
+            );
          }
 
          let e_type = e.exp_type.as_ref().unwrap();
@@ -865,8 +901,20 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
             }
          };
 
-         try_set_inferred_type(e.0.exp_type.as_ref().unwrap(), &mut e.1, validation_context, err_stream, interner);
-         try_set_inferred_type(e.1.exp_type.as_ref().unwrap(), &mut e.0, validation_context, err_stream, interner);
+         try_set_inferred_type(
+            e.0.exp_type.as_ref().unwrap(),
+            &mut e.1,
+            validation_context,
+            err_stream,
+            interner,
+         );
+         try_set_inferred_type(
+            e.1.exp_type.as_ref().unwrap(),
+            &mut e.0,
+            validation_context,
+            err_stream,
+            interner,
+         );
 
          let lhs_type = e.0.exp_type.as_ref().unwrap();
          let rhs_type = e.1.exp_type.as_ref().unwrap();
@@ -1169,7 +1217,8 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                         writeln!(
                            err_stream,
                            "`{}` is not a known field of struct `{}`",
-                           interner.lookup(field.0), interner.lookup(*struct_name),
+                           interner.lookup(field.0),
+                           interner.lookup(*struct_name),
                         )
                         .unwrap();
                         writeln!(
@@ -1194,7 +1243,8 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                      writeln!(
                         err_stream,
                         "`{}` is a valid field of struct `{}`, but is duplicated",
-                        interner.lookup(field.0), interner.lookup(*struct_name),
+                        interner.lookup(field.0),
+                        interner.lookup(*struct_name),
                      )
                      .unwrap();
                      writeln!(
@@ -1255,7 +1305,8 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                   writeln!(
                      err_stream,
                      "Literal of struct `{}` is missing fields [{}]",
-                     interner.lookup(*struct_name), unmatched_fields_str.join(", "),
+                     interner.lookup(*struct_name),
+                     unmatched_fields_str.join(", "),
                   )
                   .unwrap();
                   writeln!(
@@ -1307,7 +1358,8 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                      writeln!(
                         err_stream,
                         "Field `{}` is not a struct type and so doesn't have field `{}`",
-                        interner.lookup(*field), interner.lookup(*next_field),
+                        interner.lookup(*field),
+                        interner.lookup(*next_field),
                      )
                      .unwrap();
                      writeln!(
@@ -1324,7 +1376,8 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                      writeln!(
                         err_stream,
                         "Struct `{}` does not have a field `{}`",
-                        interner.lookup(current_struct), interner.lookup(*field),
+                        interner.lookup(current_struct),
+                        interner.lookup(*field),
                      )
                      .unwrap();
                      writeln!(
@@ -1393,7 +1446,7 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
                &mut elems[i],
                validation_context,
                err_stream,
-               interner
+               interner,
             );
 
             if !elems[i - 1].exp_type.as_ref().unwrap().is_concrete_type()
@@ -1488,7 +1541,11 @@ fn do_type<W: Write>(err_stream: &mut W, expr_node: &mut ExpressionNode, validat
             writeln!(
                err_stream,
                "Attempted to index an array with a value of type {}, which is not u32",
-               index_expression.exp_type.as_ref().unwrap().as_roland_type_info(interner),
+               index_expression
+                  .exp_type
+                  .as_ref()
+                  .unwrap()
+                  .as_roland_type_info(interner),
             )
             .unwrap();
             writeln!(

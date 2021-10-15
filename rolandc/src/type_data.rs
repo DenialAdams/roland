@@ -245,7 +245,9 @@ impl ValueType {
          ValueType::CompileError => Cow::Borrowed("ERROR"),
          ValueType::Struct(x) if *x == interner.intern("String") => Cow::Borrowed("String"),
          ValueType::Struct(x) => Cow::Owned(format!("Struct {}", interner.lookup(*x))),
-         ValueType::Array(i_type, length) => Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info(interner), length)),
+         ValueType::Array(i_type, length) => {
+            Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info(interner), length))
+         }
       }
    }
 }

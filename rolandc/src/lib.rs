@@ -34,7 +34,8 @@ pub fn compile<E: Write, A: Write>(
 
    merge_programs(&mut user_program, &mut [std_lib]);
 
-   let mut err_count = semantic_analysis::validator::type_and_check_validity(&mut user_program, err_stream, &mut interner);
+   let mut err_count =
+      semantic_analysis::validator::type_and_check_validity(&mut user_program, err_stream, &mut interner);
 
    if err_count == 0 && do_constant_folding {
       err_count = constant_folding::fold_constants(&mut user_program, err_stream);

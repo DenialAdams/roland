@@ -1,5 +1,5 @@
 use super::lex::{emit_source_info, SourceInfo, SourceToken, Token};
-use crate::interner::{DUMMY_STR_TOKEN, Interner, StrId};
+use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
 use crate::semantic_analysis::{StaticInfo, StructInfo};
 use crate::type_data::{ExpressionType, ValueType};
 use indexmap::IndexMap;
@@ -254,7 +254,12 @@ fn extract_int_literal(t: Token) -> i64 {
    }
 }
 
-fn parse_procedure<W: Write>(l: &mut Lexer, err_stream: &mut W, source_info: SourceInfo, interner: &Interner) -> Result<ProcedureNode, ()> {
+fn parse_procedure<W: Write>(
+   l: &mut Lexer,
+   err_stream: &mut W,
+   source_info: SourceInfo,
+   interner: &Interner,
+) -> Result<ProcedureNode, ()> {
    let function_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
    expect(l, err_stream, &Token::OpenParen)?;
    let parameters = parse_parameters(l, err_stream, interner)?;
@@ -277,7 +282,12 @@ fn parse_procedure<W: Write>(l: &mut Lexer, err_stream: &mut W, source_info: Sou
    })
 }
 
-fn parse_struct<W: Write>(l: &mut Lexer, err_stream: &mut W, source_info: SourceInfo, interner: &Interner) -> Result<StructNode, ()> {
+fn parse_struct<W: Write>(
+   l: &mut Lexer,
+   err_stream: &mut W,
+   source_info: SourceInfo,
+   interner: &Interner,
+) -> Result<StructNode, ()> {
    let struct_name = extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
    expect(l, err_stream, &Token::OpenBrace)?;
    let mut fields: Vec<(StrId, ExpressionType)> = vec![];
@@ -459,7 +469,11 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
    Ok(BlockNode { statements })
 }
 
-fn parse_if_else_statement<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner) -> Result<StatementNode, ()> {
+fn parse_if_else_statement<W: Write>(
+   l: &mut Lexer,
+   err_stream: &mut W,
+   interner: &Interner,
+) -> Result<StatementNode, ()> {
    let if_token = l.next().unwrap();
    let e = parse_expression(l, err_stream, true, interner)?;
    let if_block = parse_block(l, err_stream, interner)?;
@@ -486,7 +500,11 @@ fn parse_if_else_statement<W: Write>(l: &mut Lexer, err_stream: &mut W, interner
    })
 }
 
-fn parse_parameters<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner) -> Result<Vec<(StrId, ExpressionType)>, ()> {
+fn parse_parameters<W: Write>(
+   l: &mut Lexer,
+   err_stream: &mut W,
+   interner: &Interner,
+) -> Result<Vec<(StrId, ExpressionType)>, ()> {
    let mut parameters = vec![];
 
    loop {
@@ -523,7 +541,11 @@ fn parse_parameters<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Inte
    Ok(parameters)
 }
 
-fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner) -> Result<Vec<ExpressionNode>, ()> {
+fn parse_arguments<W: Write>(
+   l: &mut Lexer,
+   err_stream: &mut W,
+   interner: &Interner,
+) -> Result<Vec<ExpressionNode>, ()> {
    let mut arguments = vec![];
 
    loop {
@@ -568,7 +590,12 @@ fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Inter
    Ok(arguments)
 }
 
-fn parse_expression<W: Write>(l: &mut Lexer, err_stream: &mut W, if_head: bool, interner: &Interner) -> Result<ExpressionNode, ()> {
+fn parse_expression<W: Write>(
+   l: &mut Lexer,
+   err_stream: &mut W,
+   if_head: bool,
+   interner: &Interner,
+) -> Result<ExpressionNode, ()> {
    let begin_info = l.peek_source();
    let exp = pratt(l, err_stream, 0, if_head, interner)?;
    Ok(wrap(exp, begin_info.unwrap()))
@@ -622,7 +649,13 @@ fn parse_type<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner) 
    }
 }
 
-fn pratt<W: Write>(l: &mut Lexer, err_stream: &mut W, min_bp: u8, if_head: bool, interner: &Interner) -> Result<Expression, ()> {
+fn pratt<W: Write>(
+   l: &mut Lexer,
+   err_stream: &mut W,
+   min_bp: u8,
+   if_head: bool,
+   interner: &Interner,
+) -> Result<Expression, ()> {
    let lhs_token = l.next();
    let lhs_source = lhs_token.as_ref().map(|x| x.source_info);
    let mut lhs = match lhs_token.map(|x| x.token) {
