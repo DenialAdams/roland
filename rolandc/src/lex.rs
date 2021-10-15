@@ -1,5 +1,7 @@
 use std::io::Write;
 
+use crate::interner::{Interner, StrId};
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct SourceInfo {
    pub line: usize,
@@ -40,9 +42,9 @@ pub enum Token {
    Amp,
    Pipe,
    Semicolon,
-   Identifier(String),
+   Identifier(StrId),
    BoolLiteral(bool),
-   StringLiteral(String),
+   StringLiteral(StrId),
    IntLiteral(i64),
    FloatLiteral(f64),
    Plus,
@@ -74,7 +76,7 @@ pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo) {
    writeln!(err_stream, "↳ line {}, column {}", source_info.line, source_info.col).unwrap();
 }
 
-fn extract_keyword_or_ident(s: &str) -> Token {
+fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
    match s {
       "true" => Token::BoolLiteral(true),
       "false" => Token::BoolLiteral(false),
@@ -92,11 +94,11 @@ fn extract_keyword_or_ident(s: &str) -> Token {
       "truncate" => Token::KeywordTruncate,
       "transmute" => Token::KeywordTransmute,
       "static" => Token::KeywordStatic,
-      other => Token::Identifier(other.to_string()),
+      other => Token::Identifier(interner.intern(other)),
    }
 }
 
-pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>, ()> {
+pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -> Result<Vec<SourceToken>, ()> {
    let mut tokens: Vec<SourceToken> = Vec::new();
    let mut mode = LexMode::Normal;
 
@@ -339,7 +341,7 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
          }
          LexMode::Ident => {
             if !c.is_alphanumeric() && c != '_' {
-               let resulting_token = extract_keyword_or_ident(&str_buf);
+               let resulting_token = extract_keyword_or_ident(&str_buf, interner);
                tokens.push(SourceToken {
                   source_info,
                   token: resulting_token,
@@ -354,9 +356,10 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
          }
          LexMode::StringLiteral => {
             if c == '"' {
+               let final_str = interner.intern(&str_buf);
                tokens.push(SourceToken {
                   source_info: str_begin,
-                  token: Token::StringLiteral(str_buf.clone()),
+                  token: Token::StringLiteral(final_str),
                });
                str_buf.clear();
                mode = LexMode::Normal;
@@ -424,7 +427,7 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W) -> Result<Vec<SourceToken>
       LexMode::Normal => Ok(tokens),
       // Probably no valid program ends with a keyword or identifier, but we'll let the parser determine that
       LexMode::Ident => {
-         let resulting_token = extract_keyword_or_ident(&str_buf);
+         let resulting_token = extract_keyword_or_ident(&str_buf, interner);
          tokens.push(SourceToken {
             source_info,
             token: resulting_token,

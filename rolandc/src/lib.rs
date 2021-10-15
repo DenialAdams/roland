@@ -1,5 +1,6 @@
 mod constant_folding;
 mod html_debug;
+mod interner;
 mod lex;
 mod parse;
 mod semantic_analysis;
@@ -8,6 +9,8 @@ mod wasm;
 
 use parse::Program;
 use std::io::Write;
+
+use crate::interner::Interner;
 
 pub enum CompilationError {
    Lex,
@@ -21,24 +24,33 @@ pub fn compile<E: Write, A: Write>(
    html_ast_out: Option<&mut A>,
    do_constant_folding: bool,
 ) -> Result<Vec<u8>, CompilationError> {
-   let mut user_program = lex_and_parse(user_program_s, err_stream)?;
+   let mut interner = Interner::with_capacity(1024);
+
+   let mut user_program = lex_and_parse(user_program_s, err_stream, &mut interner)?;
+
    let std_lib_s = include_str!("../../lib/print.rol");
-   let std_lib = lex_and_parse(std_lib_s, err_stream)?;
+   let std_lib = lex_and_parse(std_lib_s, err_stream, &mut interner)?;
    let num_procedures_before_merge = user_program.procedures.len();
+
    merge_programs(&mut user_program, &mut [std_lib]);
-   let mut err_count = semantic_analysis::validator::type_and_check_validity(&mut user_program, err_stream);
+
+   let mut err_count = semantic_analysis::validator::type_and_check_validity(&mut user_program, err_stream, &mut interner);
+
    if err_count == 0 && do_constant_folding {
       err_count = constant_folding::fold_constants(&mut user_program, err_stream);
    }
+
    if let Some(w) = html_ast_out {
       let mut program_without_std = user_program.clone();
       program_without_std.procedures.truncate(num_procedures_before_merge);
-      html_debug::print_ast_as_html(w, &program_without_std);
+      html_debug::print_ast_as_html(w, &program_without_std, &mut interner);
    }
+
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));
    }
-   Ok(wasm::emit_wasm(&mut user_program))
+
+   Ok(wasm::emit_wasm(&mut user_program, &mut interner))
 }
 
 fn merge_programs(main_program: &mut Program, other_programs: &mut [Program]) {
@@ -49,12 +61,12 @@ fn merge_programs(main_program: &mut Program, other_programs: &mut [Program]) {
    }
 }
 
-fn lex_and_parse<W: Write>(s: &str, err_stream: &mut W) -> Result<Program, CompilationError> {
-   let tokens = match lex::lex(&s, err_stream) {
+fn lex_and_parse<W: Write>(s: &str, err_stream: &mut W, interner: &mut Interner) -> Result<Program, CompilationError> {
+   let tokens = match lex::lex(&s, err_stream, interner) {
       Err(()) => return Err(CompilationError::Lex),
       Ok(v) => v,
    };
-   match parse::astify(tokens, err_stream) {
+   match parse::astify(tokens, err_stream, interner) {
       Err(()) => Err(CompilationError::Parse),
       Ok(v) => Ok(v),
    }

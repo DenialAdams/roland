@@ -1,6 +1,7 @@
 use std::io::Write;
 
 use super::ValidationContext;
+use crate::interner::Interner;
 use crate::parse::{Expression, ExpressionNode};
 use crate::type_data::{ExpressionType, ValueType};
 
@@ -11,9 +12,7 @@ use crate::type_data::{I16_TYPE, I32_TYPE, I8_TYPE, U16_TYPE, U32_TYPE, U64_TYPE
 fn inference_is_impossible(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
    match source_type {
       ExpressionType::Value(ValueType::Array(src_e, _)) => match target_type {
-         ExpressionType::Value(ValueType::Array(target_e, _)) => {
-            inference_is_impossible(src_e, target_e)
-         },
+         ExpressionType::Value(ValueType::Array(target_e, _)) => inference_is_impossible(src_e, target_e),
          _ => true,
       },
       ExpressionType::Value(ValueType::UnknownFloat) => !target_type.is_any_known_float(),
@@ -27,13 +26,14 @@ pub fn try_set_inferred_type<W: Write>(
    expr_node: &mut ExpressionNode,
    validation_context: &mut ValidationContext,
    err_stream: &mut W,
+   interner: &mut Interner,
 ) {
    let source_type = expr_node.exp_type.as_ref().unwrap();
    if inference_is_impossible(source_type, e_type) {
       return;
    }
 
-   set_inferred_type(e_type, expr_node, validation_context, err_stream)
+   set_inferred_type(e_type, expr_node, validation_context, err_stream, interner)
 }
 
 fn set_inferred_type<W: Write>(
@@ -41,6 +41,7 @@ fn set_inferred_type<W: Write>(
    expr_node: &mut ExpressionNode,
    validation_context: &mut ValidationContext,
    err_stream: &mut W,
+   interner: &mut Interner,
 ) {
    match &mut expr_node.expression {
       Expression::Extend(_, _) => unreachable!(),
@@ -66,7 +67,7 @@ fn set_inferred_type<W: Write>(
             writeln!(
                err_stream,
                "Literal of type {} has value `{}` which would immediately over/underflow",
-               e_type.as_roland_type_info(),
+               e_type.as_roland_type_info(interner),
                val
             )
             .unwrap();
@@ -85,12 +86,12 @@ fn set_inferred_type<W: Write>(
       }
       Expression::StringLiteral(_) => unreachable!(),
       Expression::BinaryOperator(_, e) => {
-         set_inferred_type(e_type, &mut e.0, validation_context, err_stream);
-         set_inferred_type(e_type, &mut e.1, validation_context, err_stream);
+         set_inferred_type(e_type, &mut e.0, validation_context, err_stream, interner);
+         set_inferred_type(e_type, &mut e.1, validation_context, err_stream, interner);
          expr_node.exp_type = Some(e_type.clone());
       }
       Expression::UnaryOperator(_, e) => {
-         set_inferred_type(e_type, e, validation_context, err_stream);
+         set_inferred_type(e_type, e, validation_context, err_stream, interner);
          expr_node.exp_type = Some(e_type.clone());
       }
       Expression::UnitLiteral => unreachable!(),
@@ -107,7 +108,7 @@ fn set_inferred_type<W: Write>(
          };
 
          for expr in exprs.iter_mut() {
-            set_inferred_type(target_elem_type, expr, validation_context, err_stream);
+            set_inferred_type(target_elem_type, expr, validation_context, err_stream, interner);
          }
 
          // It's important that we don't override the length here; that can't be inferred
@@ -119,8 +120,8 @@ fn set_inferred_type<W: Write>(
       Expression::ArrayIndex(array_expr, _index_expr) => {
          // The length is bogus, but we don't care about that during inference anyway
          let array_type = ExpressionType::Value(ValueType::Array(Box::new(e_type.clone()), 0));
-         set_inferred_type(&array_type, array_expr, validation_context, err_stream);
+         set_inferred_type(&array_type, array_expr, validation_context, err_stream, interner);
          expr_node.exp_type = Some(e_type.clone());
-      },
+      }
    }
 }

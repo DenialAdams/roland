@@ -1,3 +1,4 @@
+use crate::interner::StrId;
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, UnOp};
 use crate::type_data::{ExpressionType, ValueType};
 use std::collections::HashMap;
@@ -400,7 +401,7 @@ pub fn fold_expr<W: Write>(
                match struct_literal {
                   Expression::StructLiteral(_, fields) => {
                      // We want O(1) field access in other places- consider unifying, perhaps at parse time? TODO
-                     let map: HashMap<&String, &ExpressionNode> = fields.iter().map(|x| (&x.0, &x.1)).collect();
+                     let map: HashMap<StrId, &ExpressionNode> = fields.iter().map(|x| (x.0, &x.1)).collect();
                      struct_literal = &map.get(field_name).unwrap().expression;
                   }
                   _ => unreachable!(),
@@ -410,12 +411,12 @@ pub fn fold_expr<W: Write>(
             match struct_literal {
                Expression::StructLiteral(_, fields) => {
                   // We want O(1) field access in other places- consider unifying, perhaps at parse time? TODO
-                  let map: HashMap<&String, &ExpressionNode> = fields.iter().map(|x| (&x.0, &x.1)).collect();
+                  let map: HashMap<StrId, &ExpressionNode> = fields.iter().map(|x| (x.0, &x.1)).collect();
                   let inner_node = map.get(field_names.last().unwrap()).unwrap();
                   Some(ExpressionNode {
-                    expression: inner_node.expression.clone(),
-                    exp_type: inner_node.exp_type.clone(),
-                    expression_begin_location: expr_to_fold.expression_begin_location,
+                     expression: inner_node.expression.clone(),
+                     exp_type: inner_node.exp_type.clone(),
+                     expression_begin_location: expr_to_fold.expression_begin_location,
                   })
                }
                _ => unreachable!(),

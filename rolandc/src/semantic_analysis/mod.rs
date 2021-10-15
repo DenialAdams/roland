@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use indexmap::IndexMap;
 
+use crate::interner::StrId;
 use crate::lex::SourceInfo;
 use crate::type_data::ExpressionType;
 
@@ -17,7 +18,7 @@ pub struct ProcedureInfo {
 
 #[derive(Clone)]
 pub struct StructInfo {
-   pub field_types: IndexMap<String, ExpressionType>,
+   pub field_types: IndexMap<StrId, ExpressionType>,
    pub struct_begin_location: SourceInfo,
 }
 
@@ -28,12 +29,12 @@ pub struct StaticInfo {
 }
 
 pub struct ValidationContext<'a> {
-   pub procedure_info: &'a IndexMap<String, ProcedureInfo>,
-   pub struct_info: &'a IndexMap<String, StructInfo>,
-   pub static_info: &'a IndexMap<String, StaticInfo>,
+   pub procedure_info: &'a IndexMap<StrId, ProcedureInfo>,
+   pub struct_info: &'a IndexMap<StrId, StructInfo>,
+   pub static_info: &'a IndexMap<StrId, StaticInfo>,
    pub cur_procedure_info: Option<&'a ProcedureInfo>,
-   pub string_literals: HashSet<String>,
-   pub variable_types: HashMap<String, (ExpressionType, u64)>,
+   pub string_literals: HashSet<StrId>,
+   pub variable_types: HashMap<StrId, (ExpressionType, u64)>,
    pub error_count: u64,
    pub block_depth: u64,
    pub loop_depth: u64,

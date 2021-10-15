@@ -1,3 +1,4 @@
+use crate::interner::{Interner, StrId};
 use crate::parse::{BinOp, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
 use crate::semantic_analysis::StructInfo;
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth, ValueType, I32_TYPE};
@@ -9,11 +10,11 @@ const MINIMUM_STACK_FRAME_SIZE: u32 = 4;
 
 struct GenerationContext<'a> {
    out: PrettyWasmWriter,
-   literal_offsets: HashMap<String, (u32, u32)>,
-   static_offsets: HashMap<String, u32>,
-   local_offsets_mem: HashMap<String, u32>,
-   struct_info: &'a IndexMap<String, StructInfo>,
-   struct_size_info: HashMap<String, SizeInfo>,
+   literal_offsets: HashMap<StrId, (u32, u32)>,
+   static_offsets: HashMap<StrId, u32>,
+   local_offsets_mem: HashMap<StrId, u32>,
+   struct_info: &'a IndexMap<StrId, StructInfo>,
+   struct_size_info: HashMap<StrId, SizeInfo>,
    needed_store_fns: IndexSet<ExpressionType>,
    sum_sizeof_locals_mem: u32,
    loop_depth: u64,
@@ -55,13 +56,14 @@ impl<'a> PrettyWasmWriter {
 
    fn emit_function_start_named_params(
       &mut self,
-      name: &str,
-      params: &[(String, ExpressionType)],
+      name: StrId,
+      params: &[(StrId, ExpressionType)],
       result_type: &ExpressionType,
-      si: &IndexMap<String, StructInfo>,
+      si: &IndexMap<StrId, StructInfo>,
+      interner: &Interner
    ) {
       self.emit_spaces();
-      write!(self.out, "(func ${}", name).unwrap();
+      write!(self.out, "(func ${}", interner.lookup(name)).unwrap();
       for param in params.into_iter() {
          self.out.push(b' ');
          write_type_as_params(&param.1, &mut self.out, si);
@@ -72,7 +74,7 @@ impl<'a> PrettyWasmWriter {
       self.depth += 1;
    }
 
-   fn emit_store_function_start(&mut self, index: usize, param: &ExpressionType, si: &IndexMap<String, StructInfo>) {
+   fn emit_store_function_start(&mut self, index: usize, param: &ExpressionType, si: &IndexMap<StrId, StructInfo>) {
       self.emit_spaces();
       write!(self.out, "(func $::store::{} (param i32) ", index).unwrap();
       write_type_as_params(param, &mut self.out, si);
@@ -161,9 +163,9 @@ impl<'a> PrettyWasmWriter {
       writeln!(&mut self.out, "global.get ${}", global_name).unwrap();
    }
 
-   fn emit_call(&mut self, func_name: &str) {
+   fn emit_call(&mut self, func_name: StrId, interner: &Interner) {
       self.emit_spaces();
-      writeln!(&mut self.out, "call ${}", func_name).unwrap();
+      writeln!(&mut self.out, "call ${}", interner.lookup(func_name)).unwrap();
    }
 
    fn emit_const_i32(&mut self, value: u32) {
@@ -188,14 +190,14 @@ impl<'a> PrettyWasmWriter {
    }
 }
 
-fn write_type_as_result(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
+fn write_type_as_result(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
    match e {
       ExpressionType::Value(x) => write_value_type_as_result(x, out, si),
       ExpressionType::Pointer(_, _) => write!(out, "(result i32)").unwrap(),
    }
 }
 
-fn write_value_type_as_result(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
+fn write_value_type_as_result(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::UnknownFloat => unreachable!(),
@@ -232,14 +234,14 @@ fn write_value_type_as_result(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<St
    }
 }
 
-fn write_type_as_params(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
+fn write_type_as_params(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
    match e {
       ExpressionType::Value(x) => write_value_type_as_params(x, out, si),
       ExpressionType::Pointer(_, _) => write!(out, "(param i32)").unwrap(),
    }
 }
 
-fn write_value_type_as_params(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
+fn write_value_type_as_params(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::UnknownFloat => unreachable!(),
@@ -276,14 +278,14 @@ fn write_value_type_as_params(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<St
    }
 }
 
-fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
+fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
    match e {
       ExpressionType::Value(x) => value_type_to_s(x, out, si),
       ExpressionType::Pointer(_, _) => write!(out, "i32").unwrap(),
    }
 }
 
-fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, StructInfo>) {
+fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::UnknownFloat => unreachable!(),
@@ -321,14 +323,14 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<String, Struc
 }
 
 /// The size of a type as it's stored in memory
-fn sizeof_type_mem(e: &ExpressionType, si: &HashMap<String, SizeInfo>) -> u32 {
+fn sizeof_type_mem(e: &ExpressionType, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ExpressionType::Value(x) => sizeof_value_type_mem(x, si),
       ExpressionType::Pointer(_, _) => 4,
    }
 }
 
-fn sizeof_value_type_mem(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
+fn sizeof_value_type_mem(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::UnknownFloat => unreachable!(),
@@ -359,14 +361,14 @@ fn aligned_address(v: u32, a: u32) -> u32 {
    }
 }
 
-fn mem_alignment(e: &ExpressionType, si: &HashMap<String, SizeInfo>) -> u32 {
+fn mem_alignment(e: &ExpressionType, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ExpressionType::Value(x) => value_type_mem_alignment(x, si),
       ExpressionType::Pointer(_, _) => 4,
    }
 }
 
-fn value_type_mem_alignment(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
+fn value_type_mem_alignment(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::UnknownFloat => unreachable!(),
@@ -389,14 +391,14 @@ fn value_type_mem_alignment(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u3
 }
 
 /// The size of a type, in number of WASM values
-fn sizeof_type_values(e: &ExpressionType, si: &HashMap<String, SizeInfo>) -> u32 {
+fn sizeof_type_values(e: &ExpressionType, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ExpressionType::Value(x) => sizeof_value_type_values(x, si),
       ExpressionType::Pointer(_, _) => 1,
    }
 }
 
-fn sizeof_value_type_values(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
+fn sizeof_value_type_values(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::UnknownFloat => unreachable!(),
@@ -411,14 +413,14 @@ fn sizeof_value_type_values(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u3
 }
 
 /// The size of a type, in bytes, as it's stored in locals (minimum size 4 bytes)
-fn sizeof_type_wasm(e: &ExpressionType, si: &HashMap<String, SizeInfo>) -> u32 {
+fn sizeof_type_wasm(e: &ExpressionType, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ExpressionType::Value(x) => sizeof_value_type_wasm(x, si),
       ExpressionType::Pointer(_, _) => 4,
    }
 }
 
-fn sizeof_value_type_wasm(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 {
+fn sizeof_value_type_wasm(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::UnknownFloat => unreachable!(),
@@ -439,18 +441,18 @@ fn sizeof_value_type_wasm(e: &ValueType, si: &HashMap<String, SizeInfo>) -> u32 
 }
 
 fn calculate_struct_size_info(
-   name: &str,
-   struct_info: &IndexMap<String, StructInfo>,
-   struct_size_info: &mut HashMap<String, SizeInfo>,
+   name: StrId,
+   struct_info: &IndexMap<StrId, StructInfo>,
+   struct_size_info: &mut HashMap<StrId, SizeInfo>,
 ) {
    let mut sum_mem = 0;
    let mut sum_wasm = 0;
    let mut sum_values = 0;
    let mut strictest_alignment = 1;
-   for field_t in struct_info.get(name).unwrap().field_types.values() {
+   for field_t in struct_info.get(&name).unwrap().field_types.values() {
       if let ExpressionType::Value(ValueType::Struct(s)) = field_t {
          if !struct_size_info.contains_key(s) {
-            calculate_struct_size_info(s.as_str(), struct_info, struct_size_info);
+            calculate_struct_size_info(*s, struct_info, struct_size_info);
          }
       }
 
@@ -505,10 +507,10 @@ fn dynamic_move_locals_of_type_to_dest(
 // 0-l literals
 // l-s statics
 // s+ program stack (local variables and parameters are pushed here during runtime)
-pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
-   let mut struct_size_info: HashMap<String, SizeInfo> = HashMap::with_capacity(program.struct_info.len());
+pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
+   let mut struct_size_info: HashMap<StrId, SizeInfo> = HashMap::with_capacity(program.struct_info.len());
    for s in program.struct_info.iter() {
-      calculate_struct_size_info(s.0.as_str(), &program.struct_info, &mut struct_size_info);
+      calculate_struct_size_info(*s.0, &program.struct_info, &mut struct_size_info);
    }
 
    let mut generation_context = GenerationContext {
@@ -541,14 +543,12 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
 
    let mut offset: u32 = 0;
 
-   for s in program.literals.iter().map(|x| x.as_str()) {
-      generation_context.out.emit_data(0, offset, s);
+   for s in program.literals.iter() {
+      let str_value = interner.lookup(*s);
+      generation_context.out.emit_data(0, offset, str_value);
       //TODO: and here truncation
-      let s_len = s.len() as u32;
-      // TODO: interning to make clone cheap
-      generation_context
-         .literal_offsets
-         .insert(s.to_string(), (offset, s_len));
+      let s_len = str_value.len() as u32;
+      generation_context.literal_offsets.insert(*s, (offset, s_len));
       // TODO: check for overflow here
       offset += s_len;
    }
@@ -598,20 +598,22 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
 
    // builtin wasm memory size
    generation_context.out.emit_function_start_named_params(
-      "wasm_memory_size",
+      interner.intern("wasm_memory_size"),
       &[],
       &ExpressionType::Value(I32_TYPE),
       &program.struct_info,
+      interner,
    );
    generation_context.out.emit_constant_instruction("memory.size");
    generation_context.out.close();
 
    // builtin wasm memory grow
    generation_context.out.emit_function_start_named_params(
-      "wasm_memory_grow",
-      &[("new_pages".into(), ExpressionType::Value(I32_TYPE))],
+      interner.intern("wasm_memory_grow"),
+      &[(interner.intern("new_pages"), ExpressionType::Value(I32_TYPE))],
       &ExpressionType::Value(I32_TYPE),
       &program.struct_info,
+      interner,
    );
    generation_context.out.emit_get_local(0);
    generation_context.out.emit_constant_instruction("memory.grow");
@@ -621,13 +623,14 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
       let mut offset_begin = 0;
       for field in s.1.field_types.iter() {
          // todo: we can avoid this allocation by re-examaning the emit_function_start abstraction (we could push directly into the underlying buffer?)
-         let full_name = format!("::struct::{}::{}", s.0.as_str(), field.0.as_str());
+         let full_name = interner.intern(&format!("::struct::{}::{}", interner.lookup(*s.0), interner.lookup(*field.0)));
          // this allocation (s.0.to_string) is extremely cringe (todo: maybe we should store expressiontype in this struct instead of string?) BETTER TODO: interning
          generation_context.out.emit_function_start_named_params(
-            &full_name,
-            &[("".into(), ExpressionType::Value(ValueType::Struct(s.0.to_string())))],
+            full_name,
+            &[(interner.intern(""), ExpressionType::Value(ValueType::Struct(*s.0)))],
             &field.1,
             &program.struct_info,
+            interner,
          );
 
          let offset_end = offset_begin + sizeof_type_values(field.1, &generation_context.struct_size_info);
@@ -680,13 +683,14 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
       }
 
       generation_context.out.emit_function_start_named_params(
-         &procedure.name,
+         procedure.name,
          &procedure.parameters,
          &procedure.ret_type,
          &program.struct_info,
+         interner,
       );
 
-      if procedure.name == "main" {
+      if procedure.name == interner.intern("main") {
          generation_context.out.emit_constant_sexp("(export \"_start\")");
       }
 
@@ -696,12 +700,12 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
       let mut values_index = 0;
       for param in &procedure.parameters {
          if sizeof_type_values(&param.1, &generation_context.struct_size_info) == 1 {
-            get_stack_address_of_local(&param.0, &mut generation_context);
+            get_stack_address_of_local(param.0, &mut generation_context);
             generation_context.out.emit_get_local(values_index);
             simple_store(&param.1, &mut generation_context);
             values_index += 1;
          } else if sizeof_type_values(&param.1, &generation_context.struct_size_info) > 1 {
-            get_stack_address_of_local(&param.0, &mut generation_context);
+            get_stack_address_of_local(param.0, &mut generation_context);
             generation_context.out.emit_set_global("mem_address");
             dynamic_move_locals_of_type_to_dest(
                "global.get $mem_address",
@@ -714,7 +718,7 @@ pub fn emit_wasm(program: &mut Program) -> Vec<u8> {
       }
 
       for statement in &procedure.block.statements {
-         emit_statement(statement, &mut generation_context);
+         emit_statement(statement, &mut generation_context, interner);
       }
 
       if let Some(Statement::ReturnStatement(_)) = procedure.block.statements.last().map(|x| &x.statement) {
@@ -766,23 +770,23 @@ fn compare_alignment_fn(
       .then(v_1_required_padding.cmp(&v_2_required_padding))
 }
 
-fn emit_statement(statement: &StatementNode, generation_context: &mut GenerationContext) {
+fn emit_statement(statement: &StatementNode, generation_context: &mut GenerationContext, interner: &mut Interner) {
    match &statement.statement {
       Statement::AssignmentStatement(len, en) => {
-         do_emit(len, generation_context);
-         do_emit_and_load_lval(en, generation_context);
+         do_emit(len, generation_context, interner);
+         do_emit_and_load_lval(en, generation_context, interner);
          let val_type = en.exp_type.as_ref().unwrap();
-         store(val_type, generation_context);
+         store(val_type, generation_context, interner);
       }
       Statement::VariableDeclaration(id, en, _) => {
-         get_stack_address_of_local(id, generation_context);
-         do_emit_and_load_lval(en, generation_context);
+         get_stack_address_of_local(*id, generation_context);
+         do_emit_and_load_lval(en, generation_context, interner);
          let val_type = en.exp_type.as_ref().unwrap();
-         store(val_type, generation_context);
+         store(val_type, generation_context, interner);
       }
       Statement::BlockStatement(bn) => {
          for statement in &bn.statements {
-            emit_statement(statement, generation_context)
+            emit_statement(statement, generation_context, interner);
          }
       }
       Statement::LoopStatement(bn) => {
@@ -791,7 +795,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          generation_context.out.emit_loop_start(generation_context.loop_counter);
          generation_context.loop_counter += 1;
          for statement in &bn.statements {
-            emit_statement(statement, generation_context)
+            emit_statement(statement, generation_context, interner);
          }
          generation_context.out.emit_spaces();
          writeln!(
@@ -823,7 +827,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          .unwrap();
       }
       Statement::ExpressionStatement(en) => {
-         do_emit(en, generation_context);
+         do_emit(en, generation_context, interner);
          for _ in 0..sizeof_type_values(en.exp_type.as_ref().unwrap(), &generation_context.struct_size_info) {
             generation_context.out.emit_constant_instruction("drop");
          }
@@ -831,24 +835,24 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
       Statement::IfElseStatement(en, block_1, block_2) => {
          generation_context.out.emit_if_start();
          // expression
-         do_emit_and_load_lval(en, generation_context);
+         do_emit_and_load_lval(en, generation_context, interner);
          generation_context.out.emit_constant_instruction("i32.const 1");
          generation_context.out.close();
          // then
          generation_context.out.emit_then_start();
          for statement in &block_1.statements {
-            emit_statement(statement, generation_context);
+            emit_statement(statement, generation_context, interner);
          }
          generation_context.out.close();
          // else
          generation_context.out.emit_else_start();
-         emit_statement(block_2, generation_context);
+         emit_statement(block_2, generation_context, interner);
          generation_context.out.close();
          // finish if
          generation_context.out.close();
       }
       Statement::ReturnStatement(en) => {
-         do_emit_and_load_lval(en, generation_context);
+         do_emit_and_load_lval(en, generation_context, interner);
 
          adjust_stack_function_exit(generation_context);
          generation_context.out.emit_constant_instruction("return");
@@ -856,15 +860,15 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
    }
 }
 
-fn do_emit_and_load_lval(expr_node: &ExpressionNode, generation_context: &mut GenerationContext) {
-   do_emit(expr_node, generation_context);
+fn do_emit_and_load_lval(expr_node: &ExpressionNode, generation_context: &mut GenerationContext, interner: &mut Interner) {
+   do_emit(expr_node, generation_context, interner);
 
    if expr_node.expression.is_lvalue() {
       load(expr_node.exp_type.as_ref().unwrap(), generation_context);
    }
 }
 
-fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContext) {
+fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContext, interner: &mut Interner) {
    match &expr_node.expression {
       Expression::UnitLiteral => (),
       Expression::BoolLiteral(x) => {
@@ -898,9 +902,9 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          generation_context.out.emit_const_i32(*len);
       }
       Expression::BinaryOperator(bin_op, e) => {
-         do_emit_and_load_lval(&e.0, generation_context);
+         do_emit_and_load_lval(&e.0, generation_context, interner);
 
-         do_emit_and_load_lval(&e.1, generation_context);
+         do_emit_and_load_lval(&e.1, generation_context, interner);
 
          let (wasm_type, suffix) = match e.0.exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => {
@@ -981,19 +985,19 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
 
          match un_op {
             UnOp::AddressOf => {
-               do_emit(e, generation_context);
+               do_emit(e, generation_context, interner);
 
                // This operator coaxes the lvalue to an rvalue without a load
             }
             UnOp::Dereference => {
-               do_emit(e, generation_context);
+               do_emit(e, generation_context, interner);
 
                if e.expression.is_lvalue() {
                   load(e.exp_type.as_ref().unwrap(), generation_context);
                }
             }
             UnOp::Complement => {
-               do_emit_and_load_lval(e, generation_context);
+               do_emit_and_load_lval(e, generation_context, interner);
 
                if *e.exp_type.as_ref().unwrap() == ExpressionType::Value(ValueType::Bool) {
                   generation_context.out.emit_spaces();
@@ -1003,7 +1007,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                }
             }
             UnOp::Negate => {
-               do_emit_and_load_lval(e, generation_context);
+               do_emit_and_load_lval(e, generation_context, interner);
 
                match expr_node.exp_type.as_ref().unwrap() {
                   ExpressionType::Value(ValueType::Int(_)) | ExpressionType::Value(ValueType::Bool) => {
@@ -1022,7 +1026,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
       }
       Expression::Extend(target_type, e) => {
-         do_emit_and_load_lval(e, generation_context);
+         do_emit_and_load_lval(e, generation_context, interner);
 
          let source_is_signed = match e.exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => x.signed,
@@ -1044,12 +1048,12 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
       }
       Expression::Transmute(_target_type, e) => {
-         do_emit_and_load_lval(e, generation_context);
+         do_emit_and_load_lval(e, generation_context, interner);
 
          // nop, width is the same
       }
       Expression::Truncate(_target_type, e) => {
-         do_emit_and_load_lval(e, generation_context);
+         do_emit_and_load_lval(e, generation_context, interner);
 
          // 8bytes -> (4, 2, 1) bytes is a wrap
          // anything else is a nop
@@ -1060,25 +1064,25 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
       }
       Expression::Variable(id) => {
-         get_stack_address_of_local(id, generation_context);
+         get_stack_address_of_local(*id, generation_context);
       }
       Expression::ProcedureCall(name, args) => {
          for arg in args.iter() {
-            do_emit_and_load_lval(arg, generation_context);
+            do_emit_and_load_lval(arg, generation_context, interner);
          }
-         generation_context.out.emit_call(name);
+         generation_context.out.emit_call(*name, interner);
       }
       Expression::StructLiteral(s_name, fields) => {
          // We need to emit this in the proper order!!
-         let map: HashMap<&String, &ExpressionNode> = fields.iter().map(|x| (&x.0, &x.1)).collect();
+         let map: HashMap<StrId, &ExpressionNode> = fields.iter().map(|x| (x.0, &x.1)).collect();
          let si = generation_context.struct_info.get(s_name).unwrap();
          for field in si.field_types.iter() {
             let value_of_field = map.get(field.0).unwrap();
-            do_emit_and_load_lval(value_of_field, generation_context);
+            do_emit_and_load_lval(value_of_field, generation_context, interner);
          }
       }
       Expression::FieldAccess(field_names, lhs) => {
-         do_emit(lhs, generation_context);
+         do_emit(lhs, generation_context, interner);
 
          if lhs.expression.is_lvalue() {
             let mut si = match lhs.exp_type.as_ref() {
@@ -1121,8 +1125,8 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             // instead we call these special functions which basically convert the struct fields into locals so we can select them easier
             // yeah, this is a pretty big hack
             for field_name in field_names.iter().take(field_names.len() - 1) {
-               let func_name = format!("::struct::{}::{}", current_struct_name, field_name);
-               generation_context.out.emit_call(&func_name);
+               let func_name = interner.intern(&format!("::struct::{}::{}", interner.lookup(*current_struct_name), interner.lookup(*field_name)));
+               generation_context.out.emit_call(func_name, interner);
                current_struct_name = match generation_context
                   .struct_info
                   .get(current_struct_name)
@@ -1135,18 +1139,18 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                };
             }
 
-            let func_name = format!("::struct::{}::{}", current_struct_name, field_names.last().unwrap());
-            generation_context.out.emit_call(&func_name);
+            let func_name = interner.intern(&format!("::struct::{}::{}", interner.lookup(*current_struct_name), interner.lookup(*field_names.last().unwrap())));
+            generation_context.out.emit_call(func_name, interner);
          }
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
-            do_emit(expr, generation_context);
+            do_emit(expr, generation_context, interner);
          }
       }
       Expression::ArrayIndex(lhs, index_e) => {
-         do_emit(lhs, generation_context);
-         do_emit_and_load_lval(index_e, generation_context);
+         do_emit(lhs, generation_context, interner);
+         do_emit_and_load_lval(index_e, generation_context, interner);
 
          if lhs.expression.is_lvalue() {
             let sizeof_inner = match &lhs.exp_type {
@@ -1183,11 +1187,11 @@ fn complement_val(t_type: &ExpressionType, wasm_type: &str, generation_context: 
 }
 
 /// Places the address of given local on the stack
-fn get_stack_address_of_local(id: &str, generation_context: &mut GenerationContext) {
+fn get_stack_address_of_local(id: StrId, generation_context: &mut GenerationContext) {
    let offset = *generation_context
       .static_offsets
-      .get(id)
-      .or_else(|| generation_context.local_offsets_mem.get(id))
+      .get(&id)
+      .or_else(|| generation_context.local_offsets_mem.get(&id))
       .unwrap();
    generation_context.out.emit_get_global("bp");
    generation_context.out.emit_const_add_i32(offset);
@@ -1274,7 +1278,7 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
    }
 }
 
-fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext, interner: &mut Interner) {
    if sizeof_type_values(val_type, &generation_context.struct_size_info) == 0 {
       // drop the placement address
       generation_context.out.emit_constant_instruction("drop");
@@ -1284,7 +1288,7 @@ fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) 
       let (store_fcn_index, _) = generation_context.needed_store_fns.insert_full(val_type.clone());
       generation_context
          .out
-         .emit_call(&format!("::store::{}", store_fcn_index));
+         .emit_call(interner.intern(&format!("::store::{}", store_fcn_index)), interner);
    }
 }
 

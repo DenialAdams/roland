@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
 
+use crate::interner::{Interner, StrId};
+
 pub const U8_TYPE: ValueType = ValueType::Int(IntType {
    signed: false,
    width: IntWidth::One,
@@ -63,7 +65,7 @@ pub enum ValueType {
    Float(FloatType),
    Bool,
    Unit,
-   Struct(String),
+   Struct(StrId),
    Array(Box<ExpressionType>, i64),
    CompileError,
 }
@@ -166,11 +168,11 @@ impl ExpressionType {
       }
    }
 
-   pub fn as_roland_type_info(&self) -> String {
+   pub fn as_roland_type_info(&self, interner: &mut Interner) -> String {
       match self {
-         ExpressionType::Value(x) => x.as_roland_type_info().into(),
+         ExpressionType::Value(x) => x.as_roland_type_info(interner).into(),
          ExpressionType::Pointer(x, y) => {
-            let base_type = y.as_roland_type_info();
+            let base_type = y.as_roland_type_info(interner);
             let mut s: String = String::with_capacity(x + base_type.len());
             for _ in 0..*x {
                s.push('&');
@@ -220,7 +222,7 @@ impl ValueType {
       }
    }
 
-   fn as_roland_type_info(&self) -> Cow<str> {
+   fn as_roland_type_info(&self, interner: &mut Interner) -> Cow<str> {
       match self {
          ValueType::UnknownFloat => Cow::Borrowed("?? Float"),
          ValueType::UnknownInt => Cow::Borrowed("?? Int"),
@@ -241,9 +243,9 @@ impl ValueType {
          ValueType::Bool => Cow::Borrowed("bool"),
          ValueType::Unit => Cow::Borrowed("()"),
          ValueType::CompileError => Cow::Borrowed("ERROR"),
-         ValueType::Struct(x) if x.as_str() == "String" => Cow::Borrowed("String"),
-         ValueType::Struct(x) => Cow::Owned(format!("Struct {}", x)),
-         ValueType::Array(i_type, length) => Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info(), length)),
+         ValueType::Struct(x) if *x == interner.intern("String") => Cow::Borrowed("String"),
+         ValueType::Struct(x) => Cow::Owned(format!("Struct {}", interner.lookup(*x))),
+         ValueType::Array(i_type, length) => Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info(interner), length)),
       }
    }
 }
