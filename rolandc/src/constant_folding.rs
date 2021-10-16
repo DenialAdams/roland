@@ -3,7 +3,6 @@ use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statem
 use crate::type_data::{ExpressionType, ValueType};
 use std::collections::HashMap;
 use std::io::Write;
-use std::mem::discriminant;
 use std::ops::{BitAnd, BitOr, BitXor};
 
 pub struct FoldingContext {
@@ -129,8 +128,111 @@ pub fn fold_expr<W: Write>(
          try_fold_and_replace_expr(&mut exprs.0, err_stream, folding_context);
          try_fold_and_replace_expr(&mut exprs.1, err_stream, folding_context);
 
+         debug_assert!(exprs.0.exp_type == exprs.1.exp_type);
+
          let lhs = extract_literal(&exprs.0.expression);
          let rhs = extract_literal(&exprs.1.expression);
+
+         if lhs.is_none() && rhs.is_none() {
+            return None;
+         }
+
+         // We only need one of LHS/RHS for some constant operations
+         {
+            // First we handle the non-commutative cases
+            match (rhs, *op) {
+               (Some(Literal::Int(0)), BinOp::Divide) => {
+                  folding_context.error_count += 1;
+                  writeln!(err_stream, "During constant folding, got a divide by zero",).unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ division @ line {}, column {}",
+                     expr_to_fold.expression_begin_location.line, expr_to_fold.expression_begin_location.col
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ LHS @ line {}, column {}",
+                     exprs.0.expression_begin_location.line, exprs.0.expression_begin_location.col
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ RHS @ line {}, column {}",
+                     exprs.1.expression_begin_location.line, exprs.1.expression_begin_location.col
+                  )
+                  .unwrap();
+                  return None;
+               }
+               (Some(Literal::Int(1)), BinOp::Divide) => {
+                  return Some(ExpressionNode {
+                     expression: exprs.0.expression.clone(),
+                     exp_type: expr_to_fold.exp_type.take(),
+                     expression_begin_location: expr_to_fold.expression_begin_location,
+                  });
+               }
+               _ => (),
+            }
+
+            let (one_literal, non_literal_expr) = if rhs.is_none() {
+               (lhs.unwrap(), &exprs.1.expression)
+            } else {
+               (rhs.unwrap(), &exprs.0.expression)
+            };
+
+            match (one_literal, *op) {
+               // TODO: this i64::MAX (in several places) is very gross. We should store literal based on actual type? Or something?
+               // constant does not affect LHs
+               (Literal::Int(1), BinOp::Multiply)
+               | (Literal::Int(0), BinOp::Add)
+               | (Literal::Bool(false), BinOp::BitwiseOr)
+               | (Literal::Bool(true), BinOp::BitwiseAnd)
+               | (Literal::Int(i64::MAX), BinOp::BitwiseAnd)
+               | (Literal::Int(0), BinOp::BitwiseOr) => {
+                  return Some(ExpressionNode {
+                     expression: non_literal_expr.clone(),
+                     exp_type: expr_to_fold.exp_type.take(),
+                     expression_begin_location: expr_to_fold.expression_begin_location,
+                  });
+               },
+               (Literal::Int(i64::MAX), BinOp::BitwiseOr) => {
+                  return Some(ExpressionNode {
+                     expression: Expression::IntLiteral(i64::MAX),
+                     exp_type: expr_to_fold.exp_type.take(),
+                     expression_begin_location: expr_to_fold.expression_begin_location,
+                  });
+               },
+               (Literal::Int(0), BinOp::BitwiseAnd) => {
+                  return Some(ExpressionNode {
+                     expression: Expression::IntLiteral(0),
+                     exp_type: expr_to_fold.exp_type.take(),
+                     expression_begin_location: expr_to_fold.expression_begin_location,
+                  });
+               },
+               (Literal::Bool(true), BinOp::BitwiseOr) => {
+                  return Some(ExpressionNode {
+                     expression: Expression::BoolLiteral(true),
+                     exp_type: expr_to_fold.exp_type.take(),
+                     expression_begin_location: expr_to_fold.expression_begin_location,
+                  });
+               },
+               (Literal::Bool(false), BinOp::BitwiseAnd) => {
+                  return Some(ExpressionNode {
+                     expression: Expression::BoolLiteral(false),
+                     exp_type: expr_to_fold.exp_type.take(),
+                     expression_begin_location: expr_to_fold.expression_begin_location,
+                  });
+               },
+               (Literal::Int(0), BinOp::Multiply) => {
+                  return Some(ExpressionNode {
+                     expression: Expression::IntLiteral(0),
+                     exp_type: expr_to_fold.exp_type.take(),
+                     expression_begin_location: expr_to_fold.expression_begin_location,
+                  });
+               },
+               _ => (),
+            }
+         }
 
          if lhs.is_none() || rhs.is_none() {
             return None;
@@ -138,8 +240,6 @@ pub fn fold_expr<W: Write>(
 
          let lhs = lhs.unwrap();
          let rhs = rhs.unwrap();
-
-         debug_assert!(discriminant(&lhs) == discriminant(&rhs));
 
          match op {
             // int and float and bool
@@ -255,27 +355,8 @@ pub fn fold_expr<W: Write>(
                      expression_begin_location: expr_to_fold.expression_begin_location,
                   })
                } else {
-                  folding_context.error_count += 1;
-                  writeln!(err_stream, "During constant folding, got a divide by zero",).unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ division @ line {}, column {}",
-                     expr_to_fold.expression_begin_location.line, expr_to_fold.expression_begin_location.col
-                  )
-                  .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ LHS @ line {}, column {}",
-                     exprs.0.expression_begin_location.line, exprs.0.expression_begin_location.col
-                  )
-                  .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ RHS @ line {}, column {}",
-                     exprs.1.expression_begin_location.line, exprs.1.expression_begin_location.col
-                  )
-                  .unwrap();
-                  None
+                  // Divide by 0 handled above
+                  unreachable!();
                }
             }
             BinOp::Remainder => {
@@ -454,7 +535,7 @@ fn is_const(expr: &Expression) -> bool {
    }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 enum Literal {
    Int(i64),
    Float(f64),
