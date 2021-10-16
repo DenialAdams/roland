@@ -14,7 +14,7 @@ pub struct SourceToken {
    pub source_info: SourceInfo,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Token {
    Arrow,
    KeywordElse,
@@ -31,6 +31,7 @@ pub enum Token {
    KeywordTruncate,
    KeywordTransmute,
    KeywordStatic,
+   KeywordNamed,
    OpenBrace,
    CloseBrace,
    OpenParen,
@@ -94,6 +95,7 @@ fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
       "truncate" => Token::KeywordTruncate,
       "transmute" => Token::KeywordTransmute,
       "static" => Token::KeywordStatic,
+      "named" => Token::KeywordNamed,
       other => Token::Identifier(interner.intern(other)),
    }
 }

@@ -112,10 +112,10 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       parameter_dupe_check.clear();
       parameter_dupe_check.reserve(procedure.parameters.len());
       for param in procedure.parameters.iter() {
-         if !parameter_dupe_check.insert(param.0) {
+         if !parameter_dupe_check.insert(param.name) {
             error_count += 1;
             let procedure_name_str = interner.lookup(procedure.name);
-            let param_0_str = interner.lookup(param.0);
+            let param_0_str = interner.lookup(param.name);
             writeln!(
                err_stream,
                "Procedure/function `{}` has a duplicate parameter `{}`",
@@ -135,7 +135,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          procedure.name,
          ProcedureInfo {
             pure: procedure.pure,
-            parameters: procedure.parameters.iter().map(|x| x.1.clone()).collect(),
+            parameters: procedure.parameters.iter().map(|x| x.p_type.clone()).collect(),
             ret_type: procedure.ret_type.clone(),
             procedure_begin_location: procedure.procedure_begin_location,
          },
@@ -360,11 +360,10 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       validation_context.cur_procedure_info = procedure_info.get(&procedure.name);
 
       for parameter in procedure.parameters.iter() {
-         // TODO, again, interning
          validation_context
             .variable_types
-            .insert(parameter.0.clone(), (parameter.1.clone(), 0));
-         procedure.locals.insert(parameter.0.clone(), parameter.1.clone());
+            .insert(parameter.name, (parameter.p_type.clone(), 0));
+         procedure.locals.insert(parameter.name, parameter.p_type.clone());
       }
 
       type_block(
@@ -668,8 +667,7 @@ fn type_statement<W: Write>(
             validation_context
                .variable_types
                .insert(*id, (en.exp_type.clone().unwrap(), validation_context.block_depth));
-            // TODO, again, interning
-            cur_procedure_locals.insert(id.clone(), result_type);
+            cur_procedure_locals.insert(*id, result_type);
          }
       }
    }
@@ -1093,7 +1091,7 @@ fn do_type<W: Write>(
       }
       Expression::ProcedureCall(name, args) => {
          for arg in args.iter_mut() {
-            do_type(err_stream, arg, validation_context, interner);
+            do_type(err_stream, &mut arg.expr, validation_context, interner);
          }
 
          if *name == interner.intern("main") {
@@ -1152,9 +1150,9 @@ fn do_type<W: Write>(
                   let actual_types = args.iter_mut();
                   let expected_types = procedure_info.parameters.iter();
                   for (actual, expected) in actual_types.zip(expected_types) {
-                     try_set_inferred_type(expected, actual, validation_context, err_stream, interner);
+                     try_set_inferred_type(expected, &mut actual.expr, validation_context, err_stream, interner);
 
-                     let actual_type = actual.exp_type.as_ref().unwrap();
+                     let actual_type = actual.expr.exp_type.as_ref().unwrap();
                      if actual_type != expected && *actual_type != ExpressionType::Value(ValueType::CompileError) {
                         validation_context.error_count += 1;
                         let actual_type_str = actual_type.as_roland_type_info(interner);
@@ -1202,8 +1200,7 @@ fn do_type<W: Write>(
 
          match validation_context.struct_info.get(struct_name) {
             Some(defined_struct) => {
-               // TODO, interning...
-               expr_node.exp_type = Some(ExpressionType::Value(ValueType::Struct(struct_name.clone())));
+               expr_node.exp_type = Some(ExpressionType::Value(ValueType::Struct(*struct_name)));
 
                let defined_fields = &defined_struct.field_types;
 

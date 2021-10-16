@@ -111,9 +111,9 @@ pub fn fold_expr<W: Write>(
          None
       }
       Expression::Variable(_) => None,
-      Expression::ProcedureCall(_name, exprs) => {
-         for expr in exprs.iter_mut() {
-            try_fold_and_replace_expr(expr, err_stream, folding_context);
+      Expression::ProcedureCall(_name, args) => {
+         for arg in args.iter_mut() {
+            try_fold_and_replace_expr(&mut arg.expr, err_stream, folding_context);
          }
 
          None

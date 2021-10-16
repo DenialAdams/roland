@@ -1,5 +1,5 @@
 use crate::interner::{Interner, StrId};
-use crate::parse::{BinOp, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
+use crate::parse::{BinOp, Expression, ExpressionNode, ParameterNode, Program, Statement, StatementNode, UnOp};
 use crate::semantic_analysis::StructInfo;
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth, ValueType, I32_TYPE};
 use indexmap::{IndexMap, IndexSet};
@@ -57,7 +57,7 @@ impl<'a> PrettyWasmWriter {
    fn emit_function_start_named_params(
       &mut self,
       name: StrId,
-      params: &[(StrId, ExpressionType)],
+      params: &[ParameterNode],
       result_type: &ExpressionType,
       si: &IndexMap<StrId, StructInfo>,
       interner: &Interner,
@@ -66,7 +66,7 @@ impl<'a> PrettyWasmWriter {
       write!(self.out, "(func ${}", interner.lookup(name)).unwrap();
       for param in params.into_iter() {
          self.out.push(b' ');
-         write_type_as_params(&param.1, &mut self.out, si);
+         write_type_as_params(&param.p_type, &mut self.out, si);
       }
       self.out.push(b' ');
       write_type_as_result(result_type, &mut self.out, si);
@@ -608,9 +608,14 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
    generation_context.out.close();
 
    // builtin wasm memory grow
+   let new_pages_param = ParameterNode {
+      name: interner.intern("new_pages"),
+      p_type: ExpressionType::Value(I32_TYPE),
+      named: false,
+   };
    generation_context.out.emit_function_start_named_params(
       interner.intern("wasm_memory_grow"),
-      &[(interner.intern("new_pages"), ExpressionType::Value(I32_TYPE))],
+      &[new_pages_param],
       &ExpressionType::Value(I32_TYPE),
       &program.struct_info,
       interner,
@@ -628,10 +633,14 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
             interner.lookup(*s.0),
             interner.lookup(*field.0)
          ));
-         // this allocation (s.0.to_string) is extremely cringe (todo: maybe we should store expressiontype in this struct instead of string?) BETTER TODO: interning
+         let param = ParameterNode {
+            name: interner.intern(""),
+            p_type: ExpressionType::Value(ValueType::Struct(*s.0)),
+            named: false,
+         };
          generation_context.out.emit_function_start_named_params(
             full_name,
-            &[(interner.intern(""), ExpressionType::Value(ValueType::Struct(*s.0)))],
+            &[param],
             &field.1,
             &program.struct_info,
             interner,
@@ -677,10 +686,9 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
             generation_context.sum_sizeof_locals_mem,
             mem_alignment(local.1, &generation_context.struct_size_info),
          );
-         // TODO: interning.
          generation_context
             .local_offsets_mem
-            .insert(local.0.clone(), generation_context.sum_sizeof_locals_mem);
+            .insert(*local.0, generation_context.sum_sizeof_locals_mem);
 
          // TODO: should we check for overflow on this value?
          generation_context.sum_sizeof_locals_mem += sizeof_type_mem(&local.1, &generation_context.struct_size_info);
@@ -703,19 +711,19 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
       // Copy parameters to stack memory so we can take pointers
       let mut values_index = 0;
       for param in &procedure.parameters {
-         if sizeof_type_values(&param.1, &generation_context.struct_size_info) == 1 {
-            get_stack_address_of_local(param.0, &mut generation_context);
+         if sizeof_type_values(&param.p_type, &generation_context.struct_size_info) == 1 {
+            get_stack_address_of_local(param.name, &mut generation_context);
             generation_context.out.emit_get_local(values_index);
-            simple_store(&param.1, &mut generation_context);
+            simple_store(&param.p_type, &mut generation_context);
             values_index += 1;
-         } else if sizeof_type_values(&param.1, &generation_context.struct_size_info) > 1 {
-            get_stack_address_of_local(param.0, &mut generation_context);
+         } else if sizeof_type_values(&param.p_type, &generation_context.struct_size_info) > 1 {
+            get_stack_address_of_local(param.name, &mut generation_context);
             generation_context.out.emit_set_global("mem_address");
             dynamic_move_locals_of_type_to_dest(
                "global.get $mem_address",
                &mut 0,
                &mut values_index,
-               &param.1,
+               &param.p_type,
                &mut generation_context,
             );
          }
@@ -1076,7 +1084,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       }
       Expression::ProcedureCall(name, args) => {
          for arg in args.iter() {
-            do_emit_and_load_lval(arg, generation_context, interner);
+            do_emit_and_load_lval(&arg.expr, generation_context, interner);
          }
          generation_context.out.emit_call(*name, interner);
       }

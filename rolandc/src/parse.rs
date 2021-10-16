@@ -57,12 +57,19 @@ fn expect<W: Write>(l: &mut Lexer, err_stream: &mut W, token: &Token) -> Result<
 #[derive(Clone)]
 pub struct ProcedureNode {
    pub name: StrId,
-   pub parameters: Vec<(StrId, ExpressionType)>,
+   pub parameters: Vec<ParameterNode>,
    pub locals: IndexMap<StrId, ExpressionType>,
    pub block: BlockNode,
    pub ret_type: ExpressionType,
    pub pure: bool,
    pub procedure_begin_location: SourceInfo,
+}
+
+#[derive(Clone)]
+pub struct ParameterNode {
+   pub name: StrId,
+   pub p_type: ExpressionType,
+   pub named: bool,
 }
 
 #[derive(Clone)]
@@ -114,7 +121,7 @@ pub struct ExpressionNode {
 
 #[derive(Clone, Debug)]
 pub enum Expression {
-   ProcedureCall(StrId, Box<[ExpressionNode]>),
+   ProcedureCall(StrId, Box<[ArgumentNode]>),
    ArrayLiteral(Box<[ExpressionNode]>),
    ArrayIndex(Box<ExpressionNode>, Box<ExpressionNode>),
    BoolLiteral(bool),
@@ -130,6 +137,12 @@ pub enum Expression {
    Extend(ExpressionType, Box<ExpressionNode>),
    Truncate(ExpressionType, Box<ExpressionNode>),
    Transmute(ExpressionType, Box<ExpressionNode>),
+}
+
+#[derive(Clone, Debug)]
+pub struct ArgumentNode {
+   pub name: Option<StrId>,
+   pub expr: ExpressionNode,
 }
 
 impl Expression {
@@ -504,18 +517,27 @@ fn parse_parameters<W: Write>(
    l: &mut Lexer,
    err_stream: &mut W,
    interner: &Interner,
-) -> Result<Vec<(StrId, ExpressionType)>, ()> {
+) -> Result<Vec<ParameterNode>, ()> {
    let mut parameters = vec![];
 
    loop {
       match l.peek_token() {
-         Some(Token::Identifier(_)) => {
+         Some(Token::Identifier(_)) | Some(Token::KeywordNamed) => {
+            let named = if l.peek_token() == Some(&Token::KeywordNamed) {
+               let _= l.next();
+               true
+            } else {
+               false
+            };
             let id = l.next().unwrap();
             expect(l, err_stream, &Token::Colon)?;
             let e_type = parse_type(l, err_stream, interner)?;
-            parameters.push((extract_identifier(id.token), e_type));
-            let next_discrim = l.peek_token().map(|x| discriminant(x));
-            if next_discrim == Some(discriminant(&Token::CloseParen)) {
+            parameters.push(ParameterNode {
+               name: extract_identifier(id.token),
+               p_type: e_type,
+               named,
+            });
+            if l.peek_token() == Some(&Token::CloseParen) {
                break;
             }
             expect(l, err_stream, &Token::Comma)?;
@@ -545,7 +567,7 @@ fn parse_arguments<W: Write>(
    l: &mut Lexer,
    err_stream: &mut W,
    interner: &Interner,
-) -> Result<Vec<ExpressionNode>, ()> {
+) -> Result<Vec<ArgumentNode>, ()> {
    let mut arguments = vec![];
 
    loop {
@@ -561,8 +583,22 @@ fn parse_arguments<W: Write>(
          | Some(Token::Exclam)
          | Some(Token::MultiplyDeref)
          | Some(Token::Minus) => {
-            let e = parse_expression(l, err_stream, false, interner)?;
-            arguments.push(e);
+            let name: Option<StrId> = if let Some(Token::Identifier(x)) = l.peek_token().copied() {
+               if l.double_peek_token() == Some(&Token::Colon) {
+                  let _ = l.next();
+                  let _ = l.next();
+                  Some(x)
+               } else {
+                  None
+               }
+            } else {
+               None
+            };
+            let expr = parse_expression(l, err_stream, false, interner)?;
+            arguments.push(ArgumentNode {
+               name,
+               expr,
+            });
             let next_discrim = l.peek_token().map(|x| discriminant(x));
             if next_discrim == Some(discriminant(&Token::CloseParen)) {
                break;

@@ -112,8 +112,8 @@ fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode, int
          let procedure_str = interner.lookup(*x);
          writeln!(out, "<li><span>{}(){}</span>", procedure_str, type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
-         for exp in args.iter() {
-            print_expression(out, &exp, interner);
+         for arg in args.iter() {
+            print_expression(out, &arg.expr, interner);
          }
          writeln!(out, "</ul></li>").unwrap()
       }
