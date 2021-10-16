@@ -194,42 +194,42 @@ pub fn fold_expr<W: Write>(
                      exp_type: expr_to_fold.exp_type.take(),
                      expression_begin_location: expr_to_fold.expression_begin_location,
                   });
-               },
+               }
                (Literal::Int(i64::MAX), BinOp::BitwiseOr) => {
                   return Some(ExpressionNode {
                      expression: Expression::IntLiteral(i64::MAX),
                      exp_type: expr_to_fold.exp_type.take(),
                      expression_begin_location: expr_to_fold.expression_begin_location,
                   });
-               },
+               }
                (Literal::Int(0), BinOp::BitwiseAnd) => {
                   return Some(ExpressionNode {
                      expression: Expression::IntLiteral(0),
                      exp_type: expr_to_fold.exp_type.take(),
                      expression_begin_location: expr_to_fold.expression_begin_location,
                   });
-               },
+               }
                (Literal::Bool(true), BinOp::BitwiseOr) => {
                   return Some(ExpressionNode {
                      expression: Expression::BoolLiteral(true),
                      exp_type: expr_to_fold.exp_type.take(),
                      expression_begin_location: expr_to_fold.expression_begin_location,
                   });
-               },
+               }
                (Literal::Bool(false), BinOp::BitwiseAnd) => {
                   return Some(ExpressionNode {
                      expression: Expression::BoolLiteral(false),
                      exp_type: expr_to_fold.exp_type.take(),
                      expression_begin_location: expr_to_fold.expression_begin_location,
                   });
-               },
+               }
                (Literal::Int(0), BinOp::Multiply) => {
                   return Some(ExpressionNode {
                      expression: Expression::IntLiteral(0),
                      exp_type: expr_to_fold.exp_type.take(),
                      expression_begin_location: expr_to_fold.expression_begin_location,
                   });
-               },
+               }
                _ => (),
             }
          }

@@ -524,7 +524,7 @@ fn parse_parameters<W: Write>(
       match l.peek_token() {
          Some(Token::Identifier(_)) | Some(Token::KeywordNamed) => {
             let named = if l.peek_token() == Some(&Token::KeywordNamed) {
-               let _= l.next();
+               let _ = l.next();
                true
             } else {
                false
@@ -563,11 +563,7 @@ fn parse_parameters<W: Write>(
    Ok(parameters)
 }
 
-fn parse_arguments<W: Write>(
-   l: &mut Lexer,
-   err_stream: &mut W,
-   interner: &Interner,
-) -> Result<Vec<ArgumentNode>, ()> {
+fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner) -> Result<Vec<ArgumentNode>, ()> {
    let mut arguments = vec![];
 
    loop {
@@ -595,10 +591,7 @@ fn parse_arguments<W: Write>(
                None
             };
             let expr = parse_expression(l, err_stream, false, interner)?;
-            arguments.push(ArgumentNode {
-               name,
-               expr,
-            });
+            arguments.push(ArgumentNode { name, expr });
             let next_discrim = l.peek_token().map(|x| discriminant(x));
             if next_discrim == Some(discriminant(&Token::CloseParen)) {
                break;
