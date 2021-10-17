@@ -18,16 +18,14 @@ enum TypeValidator {
 }
 
 fn matches(type_validation: &TypeValidator, et: &ExpressionType) -> bool {
-   match (type_validation, et) {
-      (TypeValidator::Any, _) => true,
-      (TypeValidator::AnyPointer, ExpressionType::Pointer(_, _)) => true,
-      (TypeValidator::Bool, ExpressionType::Value(ValueType::Bool)) => true,
-      (TypeValidator::AnyInt, ExpressionType::Value(ValueType::Int(_))) => true,
-      (TypeValidator::AnyInt, ExpressionType::Value(ValueType::UnknownInt)) => true,
-      (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::Float(_))) => true,
-      (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::UnknownFloat)) => true,
-      _ => false,
-   }
+   matches!((type_validation, et),
+     (TypeValidator::Any, _)
+   | (TypeValidator::AnyPointer, ExpressionType::Pointer(_, _))
+   | (TypeValidator::Bool, ExpressionType::Value(ValueType::Bool))
+   | (TypeValidator::AnyInt, ExpressionType::Value(ValueType::Int(_)))
+   | (TypeValidator::AnyInt, ExpressionType::Value(ValueType::UnknownInt))
+   | (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::Float(_)))
+   | (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::UnknownFloat)))
 }
 
 fn any_match(type_validations: &[TypeValidator], et: &ExpressionType) -> bool {
@@ -156,12 +154,14 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       }
 
       if !reported_named_error && first_named_param.is_some() {
-         // It doesn't really matter how we sort these, as long as we do it consistently for arguments
-         // AND that there are no equal elements (in this case, we already check that parameters don't have the same name)
-         procedure.parameters[first_named_param.unwrap()..].sort_unstable_by_key(|x| x.name);
+         if let Some(i) = first_named_param {
+            // It doesn't really matter how we sort these, as long as we do it consistently for arguments
+            // AND that there are no equal elements (in this case, we already check that parameters don't have the same name)
+            procedure.parameters[i..].sort_unstable_by_key(|x| x.name);
+         }
       }
 
-      match procedure_info.insert(
+      if let Some(old_procedure) = procedure_info.insert(
          procedure.name,
          ProcedureInfo {
             pure: procedure.pure,
@@ -176,7 +176,6 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
             procedure_begin_location: procedure.procedure_begin_location,
          },
       ) {
-         Some(old_procedure) => {
             error_count += 1;
             let procedure_name_str = interner.lookup(procedure.name);
             writeln!(
@@ -198,63 +197,55 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
             )
             .unwrap();
          }
-         None => (),
-      }
    }
 
    for a_struct in program.structs.iter() {
       let mut field_map = IndexMap::with_capacity(a_struct.fields.len());
       for field in a_struct.fields.iter() {
-         match field_map.insert(field.0, field.1.clone()) {
-            Some(_) => {
-               error_count += 1;
-               writeln!(
-                  err_stream,
-                  "Struct `{}` has a duplicate field `{}`",
-                  interner.lookup(a_struct.name),
-                  interner.lookup(field.0),
-               )
-               .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ struct defined @ line {}, column {}",
-                  a_struct.struct_begin_location.line, a_struct.struct_begin_location.col
-               )
-               .unwrap();
-            }
-            None => (),
+         if field_map.insert(field.0, field.1.clone()).is_some() {
+            error_count += 1;
+            writeln!(
+               err_stream,
+               "Struct `{}` has a duplicate field `{}`",
+               interner.lookup(a_struct.name),
+               interner.lookup(field.0),
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ struct defined @ line {}, column {}",
+               a_struct.struct_begin_location.line, a_struct.struct_begin_location.col
+            )
+            .unwrap();
          }
       }
 
-      match struct_info.insert(
+      if let Some(old_struct) =  struct_info.insert(
          a_struct.name,
          StructInfo {
             field_types: field_map,
             struct_begin_location: a_struct.struct_begin_location,
          },
       ) {
-         Some(old_struct) => {
-            error_count += 1;
-            writeln!(
-               err_stream,
-               "Encountered duplicate structs with the same name `{}`",
-               interner.lookup(a_struct.name)
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ first struct defined @ line {}, column {}",
-               old_struct.struct_begin_location.line, old_struct.struct_begin_location.col
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ second struct defined @ line {}, column {}",
-               a_struct.struct_begin_location.line, a_struct.struct_begin_location.col
-            )
-            .unwrap();
-         }
-         None => (),
+         error_count += 1;
+         writeln!(
+            err_stream,
+            "Encountered duplicate structs with the same name `{}`",
+            interner.lookup(a_struct.name)
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ first struct defined @ line {}, column {}",
+            old_struct.struct_begin_location.line, old_struct.struct_begin_location.col
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ second struct defined @ line {}, column {}",
+            a_struct.struct_begin_location.line, a_struct.struct_begin_location.col
+         )
+         .unwrap();
       }
    }
 
@@ -318,35 +309,32 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          writeln!(err_stream, "↳ static defined @ line {}, column {}", si.line, si.col).unwrap();
       }
 
-      match static_info.insert(
+      if let Some(old_static) = static_info.insert(
          static_node.name,
          StaticInfo {
             static_type: static_node.static_type.clone(),
             static_begin_location: static_node.static_begin_location,
          },
       ) {
-         Some(old_static) => {
-            error_count += 1;
-            writeln!(
-               err_stream,
-               "Encountered duplicate statics with the same name `{}`",
-               interner.lookup(static_node.name),
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ first static defined @ line {}, column {}",
-               old_static.static_begin_location.line, old_static.static_begin_location.col
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ second static defined @ line {}, column {}",
-               static_node.static_begin_location.line, static_node.static_begin_location.col
-            )
-            .unwrap();
-         }
-         None => (),
+         error_count += 1;
+         writeln!(
+            err_stream,
+            "Encountered duplicate statics with the same name `{}`",
+            interner.lookup(static_node.name),
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ first static defined @ line {}, column {}",
+            old_static.static_begin_location.line, old_static.static_begin_location.col
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ second static defined @ line {}, column {}",
+            static_node.static_begin_location.line, static_node.static_begin_location.col
+         )
+         .unwrap();
       }
    }
 
@@ -417,7 +405,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          procedure.block.statements.last().map(|x| &x.statement),
       ) {
          (ExpressionType::Value(ValueType::Unit), _) => (),
-         (_, Some(Statement::ReturnStatement(_))) => (),
+         (_, Some(Statement::Return(_))) => (),
          (x, _) => {
             validation_context.error_count += 1;
             let x_str = x.as_roland_type_info(interner);
@@ -482,7 +470,7 @@ fn type_statement<W: Write>(
    interner: &mut Interner,
 ) {
    match &mut statement.statement {
-      Statement::AssignmentStatement(len, en) => {
+      Statement::Assignment(len, en) => {
          do_type(err_stream, len, validation_context, interner);
          do_type(err_stream, en, validation_context, interner);
 
@@ -537,10 +525,10 @@ fn type_statement<W: Write>(
             .unwrap();
          }
       }
-      Statement::BlockStatement(bn) => {
+      Statement::Block(bn) => {
          type_block(err_stream, bn, validation_context, cur_procedure_locals, interner);
       }
-      Statement::ContinueStatement => {
+      Statement::Continue => {
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
             writeln!(err_stream, "Continue statement can only be used in a loop").unwrap();
@@ -552,7 +540,7 @@ fn type_statement<W: Write>(
             .unwrap();
          }
       }
-      Statement::BreakStatement => {
+      Statement::Break => {
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
             writeln!(err_stream, "Break statement can only be used in a loop").unwrap();
@@ -564,15 +552,15 @@ fn type_statement<W: Write>(
             .unwrap();
          }
       }
-      Statement::LoopStatement(bn) => {
+      Statement::Loop(bn) => {
          validation_context.loop_depth += 1;
          type_block(err_stream, bn, validation_context, cur_procedure_locals, interner);
          validation_context.loop_depth -= 1;
       }
-      Statement::ExpressionStatement(en) => {
+      Statement::Expression(en) => {
          do_type(err_stream, en, validation_context, interner);
       }
-      Statement::IfElseStatement(en, block_1, block_2) => {
+      Statement::IfElse(en, block_1, block_2) => {
          type_block(err_stream, block_1, validation_context, cur_procedure_locals, interner);
          type_statement(err_stream, block_2, validation_context, cur_procedure_locals, interner);
          do_type(err_stream, en, validation_context, interner);
@@ -595,7 +583,7 @@ fn type_statement<W: Write>(
             .unwrap();
          }
       }
-      Statement::ReturnStatement(en) => {
+      Statement::Return(en) => {
          do_type(err_stream, en, validation_context, interner);
          let cur_procedure_info = validation_context.cur_procedure_info.unwrap();
 

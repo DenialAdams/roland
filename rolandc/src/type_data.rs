@@ -148,24 +148,15 @@ impl ExpressionType {
    }
 
    pub fn is_any_known_int(&self) -> bool {
-      match self {
-         ExpressionType::Value(ValueType::Int(_)) => true,
-         _ => false,
-      }
+      matches!(self, ExpressionType::Value(ValueType::Int(_)))
    }
 
    pub fn is_any_known_float(&self) -> bool {
-      match self {
-         ExpressionType::Value(ValueType::Float(_)) => true,
-         _ => false,
-      }
+      matches!(self, ExpressionType::Value(ValueType::Float(_)))
    }
 
    pub fn is_pointer(&self) -> bool {
-      match self {
-         ExpressionType::Pointer(_, _) => true,
-         _ => false,
-      }
+      matches!(self, ExpressionType::Pointer(_, _))
    }
 
    pub fn as_roland_type_info(&self, interner: &mut Interner) -> String {

@@ -64,7 +64,7 @@ impl<'a> PrettyWasmWriter {
    ) {
       self.emit_spaces();
       write!(self.out, "(func ${}", interner.lookup(name)).unwrap();
-      for param in params.into_iter() {
+      for param in params.iter() {
          self.out.push(b' ');
          write_type_as_params(&param.p_type, &mut self.out, si);
       }
@@ -568,7 +568,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
       offset = aligned_address(offset, strictest_alignment);
    }
    for (static_name, static_details) in program.static_info.iter() {
-      generation_context.static_offsets.insert(static_name.clone(), offset);
+      generation_context.static_offsets.insert(*static_name, offset);
       offset += sizeof_type_mem(&static_details.static_type, &generation_context.struct_size_info);
    }
 
@@ -641,7 +641,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
          generation_context.out.emit_function_start_named_params(
             full_name,
             &[param],
-            &field.1,
+            field.1,
             &program.struct_info,
             interner,
          );
@@ -691,7 +691,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
             .insert(*local.0, generation_context.sum_sizeof_locals_mem);
 
          // TODO: should we check for overflow on this value?
-         generation_context.sum_sizeof_locals_mem += sizeof_type_mem(&local.1, &generation_context.struct_size_info);
+         generation_context.sum_sizeof_locals_mem += sizeof_type_mem(local.1, &generation_context.struct_size_info);
       }
 
       generation_context.out.emit_function_start_named_params(
@@ -711,29 +711,33 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
       // Copy parameters to stack memory so we can take pointers
       let mut values_index = 0;
       for param in &procedure.parameters {
-         if sizeof_type_values(&param.p_type, &generation_context.struct_size_info) == 1 {
-            get_stack_address_of_local(param.name, &mut generation_context);
-            generation_context.out.emit_get_local(values_index);
-            simple_store(&param.p_type, &mut generation_context);
-            values_index += 1;
-         } else if sizeof_type_values(&param.p_type, &generation_context.struct_size_info) > 1 {
-            get_stack_address_of_local(param.name, &mut generation_context);
-            generation_context.out.emit_set_global("mem_address");
-            dynamic_move_locals_of_type_to_dest(
-               "global.get $mem_address",
-               &mut 0,
-               &mut values_index,
-               &param.p_type,
-               &mut generation_context,
-            );
-         }
+         match sizeof_type_values(&param.p_type, &generation_context.struct_size_info).cmp(&1) {
+            std::cmp::Ordering::Less => (),
+            std::cmp::Ordering::Equal => {
+               get_stack_address_of_local(param.name, &mut generation_context);
+               generation_context.out.emit_get_local(values_index);
+               simple_store(&param.p_type, &mut generation_context);
+               values_index += 1;
+            },
+            std::cmp::Ordering::Greater => {
+               get_stack_address_of_local(param.name, &mut generation_context);
+               generation_context.out.emit_set_global("mem_address");
+               dynamic_move_locals_of_type_to_dest(
+                  "global.get $mem_address",
+                  &mut 0,
+                  &mut values_index,
+                  &param.p_type,
+                  &mut generation_context,
+               );
+            },
+        }
       }
 
       for statement in &procedure.block.statements {
          emit_statement(statement, &mut generation_context, interner);
       }
 
-      if let Some(Statement::ReturnStatement(_)) = procedure.block.statements.last().map(|x| &x.statement) {
+      if let Some(Statement::Return(_)) = procedure.block.statements.last().map(|x| &x.statement) {
          // No need to adjust stack; it was done in the return statement
       } else {
          adjust_stack_function_exit(&mut generation_context);
@@ -747,7 +751,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
    for (i, e_type) in needed_store_fns.iter().enumerate() {
       generation_context
          .out
-         .emit_store_function_start(i, e_type, &generation_context.struct_info);
+         .emit_store_function_start(i, e_type, generation_context.struct_info);
       dynamic_move_locals_of_type_to_dest("local.get 0", &mut 0, &mut 1, e_type, &mut generation_context);
       generation_context.out.close();
    }
@@ -784,7 +788,7 @@ fn compare_alignment_fn(
 
 fn emit_statement(statement: &StatementNode, generation_context: &mut GenerationContext, interner: &mut Interner) {
    match &statement.statement {
-      Statement::AssignmentStatement(len, en) => {
+      Statement::Assignment(len, en) => {
          do_emit(len, generation_context, interner);
          do_emit_and_load_lval(en, generation_context, interner);
          let val_type = en.exp_type.as_ref().unwrap();
@@ -796,12 +800,12 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          let val_type = en.exp_type.as_ref().unwrap();
          store(val_type, generation_context, interner);
       }
-      Statement::BlockStatement(bn) => {
+      Statement::Block(bn) => {
          for statement in &bn.statements {
             emit_statement(statement, generation_context, interner);
          }
       }
-      Statement::LoopStatement(bn) => {
+      Statement::Loop(bn) => {
          generation_context.loop_depth += 1;
          generation_context.out.emit_block_start(generation_context.loop_counter);
          generation_context.out.emit_loop_start(generation_context.loop_counter);
@@ -820,7 +824,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          generation_context.out.emit_end();
          generation_context.loop_depth -= 1;
       }
-      Statement::BreakStatement => {
+      Statement::Break => {
          generation_context.out.emit_spaces();
          writeln!(
             generation_context.out.out,
@@ -829,7 +833,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          )
          .unwrap();
       }
-      Statement::ContinueStatement => {
+      Statement::Continue => {
          generation_context.out.emit_spaces();
          writeln!(
             generation_context.out.out,
@@ -838,13 +842,13 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          )
          .unwrap();
       }
-      Statement::ExpressionStatement(en) => {
+      Statement::Expression(en) => {
          do_emit(en, generation_context, interner);
          for _ in 0..sizeof_type_values(en.exp_type.as_ref().unwrap(), &generation_context.struct_size_info) {
             generation_context.out.emit_constant_instruction("drop");
          }
       }
-      Statement::IfElseStatement(en, block_1, block_2) => {
+      Statement::IfElse(en, block_1, block_2) => {
          generation_context.out.emit_if_start();
          // expression
          do_emit_and_load_lval(en, generation_context, interner);
@@ -863,7 +867,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          // finish if
          generation_context.out.close();
       }
-      Statement::ReturnStatement(en) => {
+      Statement::Return(en) => {
          do_emit_and_load_lval(en, generation_context, interner);
 
          adjust_stack_function_exit(generation_context);
@@ -1234,12 +1238,14 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
    match val_type {
       ExpressionType::Value(ValueType::Struct(x)) => {
          for field in generation_context.struct_info.get(x).unwrap().field_types.values() {
-            if sizeof_type_values(field, &generation_context.struct_size_info) == 1 {
-               generation_context.out.emit_get_global("mem_address");
-               generation_context.out.emit_const_add_i32(offset);
-               simple_load(field, generation_context);
-            } else if sizeof_type_values(field, &generation_context.struct_size_info) > 1 {
-               complex_load(offset, field, generation_context);
+            match sizeof_type_values(field, &generation_context.struct_size_info).cmp(&1) {
+                std::cmp::Ordering::Less => (),
+                std::cmp::Ordering::Equal => {
+                  generation_context.out.emit_get_global("mem_address");
+                  generation_context.out.emit_const_add_i32(offset);
+                  simple_load(field, generation_context);
+                },
+                std::cmp::Ordering::Greater => complex_load(offset, field, generation_context),
             }
 
             offset += sizeof_type_mem(field, &generation_context.struct_size_info);
@@ -1247,12 +1253,16 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
       }
       ExpressionType::Value(ValueType::Array(a_type, len)) => {
          for _ in 0..*len {
-            if sizeof_type_values(a_type, &generation_context.struct_size_info) == 1 {
-               generation_context.out.emit_get_global("mem_address");
-               generation_context.out.emit_const_add_i32(offset);
-               simple_load(a_type, generation_context);
-            } else if sizeof_type_values(a_type, &generation_context.struct_size_info) > 1 {
-               complex_load(offset, a_type, generation_context);
+            match sizeof_type_values(a_type, &generation_context.struct_size_info).cmp(&1) {
+                std::cmp::Ordering::Less => (),
+                std::cmp::Ordering::Equal => {
+                  generation_context.out.emit_get_global("mem_address");
+                  generation_context.out.emit_const_add_i32(offset);
+                  simple_load(a_type, generation_context);
+                },
+                std::cmp::Ordering::Greater => {
+                  complex_load(offset, a_type, generation_context);
+                },
             }
 
             offset += sizeof_type_mem(a_type, &generation_context.struct_size_info);

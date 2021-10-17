@@ -23,14 +23,14 @@ pub fn print_ast_as_html<W: Write>(out: &mut W, program: &Program, interner: &mu
 
 fn print_statement<W: Write>(out: &mut W, statement_node: &StatementNode, interner: &mut Interner) {
    match &statement_node.statement {
-      Statement::AssignmentStatement(le, e) => {
+      Statement::Assignment(le, e) => {
          writeln!(out, "<li><span>Assignment</span>").unwrap();
          writeln!(out, "<ul>").unwrap();
          print_expression(out, le, interner);
          print_expression(out, e, interner);
          writeln!(out, "</ul></li>").unwrap();
       }
-      Statement::BlockStatement(bn) => {
+      Statement::Block(bn) => {
          writeln!(out, "<li><span>Block</span>").unwrap();
          writeln!(out, "<ul>").unwrap();
          for statement in bn.statements.iter() {
@@ -38,7 +38,7 @@ fn print_statement<W: Write>(out: &mut W, statement_node: &StatementNode, intern
          }
          writeln!(out, "</ul></li>").unwrap();
       }
-      Statement::LoopStatement(bn) => {
+      Statement::Loop(bn) => {
          writeln!(out, "<li><span>Loop</span>").unwrap();
          writeln!(out, "<ul>").unwrap();
          for statement in bn.statements.iter() {
@@ -46,16 +46,16 @@ fn print_statement<W: Write>(out: &mut W, statement_node: &StatementNode, intern
          }
          writeln!(out, "</ul></li>").unwrap();
       }
-      Statement::ContinueStatement => {
+      Statement::Continue => {
          writeln!(out, "<li><span>Continue</span></li>").unwrap();
       }
-      Statement::BreakStatement => {
+      Statement::Break => {
          writeln!(out, "<li><span>Break</span></li>").unwrap();
       }
-      Statement::ExpressionStatement(e) => {
+      Statement::Expression(e) => {
          print_expression(out, e, interner);
       }
-      Statement::IfElseStatement(e, block_1, block_2) => {
+      Statement::IfElse(e, block_1, block_2) => {
          writeln!(out, "<li><span>If-Else</span>").unwrap();
          writeln!(out, "<ul>").unwrap();
          print_expression(out, e, interner);
@@ -65,7 +65,7 @@ fn print_statement<W: Write>(out: &mut W, statement_node: &StatementNode, intern
          print_statement(out, block_2, interner);
          writeln!(out, "</ul></li>").unwrap();
       }
-      Statement::ReturnStatement(e) => {
+      Statement::Return(e) => {
          writeln!(out, "<li><span>Return</span>").unwrap();
          writeln!(out, "<ul>").unwrap();
          print_expression(out, e, interner);

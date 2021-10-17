@@ -165,14 +165,14 @@ pub struct StatementNode {
 
 #[derive(Clone)]
 pub enum Statement {
-   AssignmentStatement(ExpressionNode, ExpressionNode),
-   BlockStatement(BlockNode),
-   LoopStatement(BlockNode),
-   ContinueStatement,
-   BreakStatement,
-   ExpressionStatement(ExpressionNode),
-   IfElseStatement(ExpressionNode, BlockNode, Box<StatementNode>),
-   ReturnStatement(ExpressionNode),
+   Assignment(ExpressionNode, ExpressionNode),
+   Block(BlockNode),
+   Loop(BlockNode),
+   Continue,
+   Break,
+   Expression(ExpressionNode),
+   IfElse(ExpressionNode, BlockNode, Box<StatementNode>),
+   Return(ExpressionNode),
    VariableDeclaration(StrId, ExpressionNode, Option<ExpressionType>),
 }
 
@@ -344,7 +344,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
             let source = l.peek_source().unwrap();
             let new_block = parse_block(l, err_stream, interner)?;
             statements.push(StatementNode {
-               statement: Statement::BlockStatement(new_block),
+               statement: Statement::Block(new_block),
                statement_begin_location: source,
             });
          }
@@ -355,7 +355,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
          Some(Token::KeywordContinue) => {
             let continue_token = l.next().unwrap();
             statements.push(StatementNode {
-               statement: Statement::ContinueStatement,
+               statement: Statement::Continue,
                statement_begin_location: continue_token.source_info,
             });
             expect(l, err_stream, &Token::Semicolon)?;
@@ -363,7 +363,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
          Some(Token::KeywordBreak) => {
             let break_token = l.next().unwrap();
             statements.push(StatementNode {
-               statement: Statement::BreakStatement,
+               statement: Statement::Break,
                statement_begin_location: break_token.source_info,
             });
             expect(l, err_stream, &Token::Semicolon)?;
@@ -372,7 +372,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
             let loop_token = l.next().unwrap();
             let new_block = parse_block(l, err_stream, interner)?;
             statements.push(StatementNode {
-               statement: Statement::LoopStatement(new_block),
+               statement: Statement::Loop(new_block),
                statement_begin_location: loop_token.source_info,
             });
          }
@@ -391,7 +391,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
                e
             };
             statements.push(StatementNode {
-               statement: Statement::ReturnStatement(e),
+               statement: Statement::Return(e),
                statement_begin_location: return_token.source_info,
             });
          }
@@ -434,7 +434,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
                   expect(l, err_stream, &Token::Semicolon)?;
                   let statement_begin_location = e.expression_begin_location;
                   statements.push(StatementNode {
-                     statement: Statement::AssignmentStatement(e, re),
+                     statement: Statement::Assignment(e, re),
                      statement_begin_location,
                   });
                }
@@ -442,7 +442,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
                   let _ = l.next();
                   let statement_begin_location = e.expression_begin_location;
                   statements.push(StatementNode {
-                     statement: Statement::ExpressionStatement(e),
+                     statement: Statement::Expression(e),
                      statement_begin_location,
                   });
                }
@@ -498,17 +498,17 @@ fn parse_if_else_statement<W: Write>(
       (Some(&Token::KeywordElse), _) => {
          let else_token = l.next().unwrap();
          StatementNode {
-            statement: Statement::BlockStatement(parse_block(l, err_stream, interner)?),
+            statement: Statement::Block(parse_block(l, err_stream, interner)?),
             statement_begin_location: else_token.source_info,
          }
       }
       _ => StatementNode {
-         statement: Statement::BlockStatement(BlockNode { statements: vec![] }),
+         statement: Statement::Block(BlockNode { statements: vec![] }),
          statement_begin_location: if_token.source_info,
       },
    };
    Ok(StatementNode {
-      statement: Statement::IfElseStatement(e, if_block, Box::new(else_statement)),
+      statement: Statement::IfElse(e, if_block, Box::new(else_statement)),
       statement_begin_location: if_token.source_info,
    })
 }

@@ -27,26 +27,26 @@ pub fn fold_block<W: Write>(block: &mut BlockNode, err_stream: &mut W, folding_c
 
 pub fn fold_statement<W: Write>(statement: &mut Statement, err_stream: &mut W, folding_context: &mut FoldingContext) {
    match statement {
-      Statement::AssignmentStatement(lhs_expr, rhs_expr) => {
+      Statement::Assignment(lhs_expr, rhs_expr) => {
          try_fold_and_replace_expr(lhs_expr, err_stream, folding_context);
          try_fold_and_replace_expr(rhs_expr, err_stream, folding_context);
       }
-      Statement::BlockStatement(block) => {
+      Statement::Block(block) => {
          fold_block(block, err_stream, folding_context);
       }
-      Statement::BreakStatement | Statement::ContinueStatement => (),
-      Statement::IfElseStatement(if_expr, if_block, else_statement) => {
+      Statement::Break | Statement::Continue => (),
+      Statement::IfElse(if_expr, if_block, else_statement) => {
          try_fold_and_replace_expr(if_expr, err_stream, folding_context);
          fold_block(if_block, err_stream, folding_context);
          fold_statement(&mut else_statement.statement, err_stream, folding_context);
       }
-      Statement::LoopStatement(block) => {
+      Statement::Loop(block) => {
          fold_block(block, err_stream, folding_context);
       }
-      Statement::ExpressionStatement(expr) => {
+      Statement::Expression(expr) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
       }
-      Statement::ReturnStatement(expr) => {
+      Statement::Return(expr) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
       }
       Statement::VariableDeclaration(_, expr, _) => {
@@ -174,10 +174,10 @@ pub fn fold_expr<W: Write>(
                _ => (),
             }
 
-            let (one_literal, non_literal_expr) = if rhs.is_none() {
-               (lhs.unwrap(), &exprs.1.expression)
+            let (one_literal, non_literal_expr) = if let Some(v) = rhs {
+               (v, &exprs.0.expression)
             } else {
-               (rhs.unwrap(), &exprs.0.expression)
+               (lhs.unwrap(), &exprs.1.expression)
             };
 
             match (one_literal, *op) {
