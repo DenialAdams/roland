@@ -166,7 +166,12 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          ProcedureInfo {
             pure: procedure.pure,
             parameters: procedure.parameters.iter().map(|x| x.p_type.clone()).collect(),
-            named_parameters: procedure.parameters.iter().filter(|x| x.named).map(|x| (x.name, x.p_type.clone())).collect(),
+            named_parameters: procedure
+               .parameters
+               .iter()
+               .filter(|x| x.named)
+               .map(|x| (x.name, x.p_type.clone()))
+               .collect(),
             ret_type: procedure.ret_type.clone(),
             procedure_begin_location: procedure.procedure_begin_location,
          },
@@ -1162,8 +1167,14 @@ fn do_type<W: Write>(
 
                // Validate that there are no non-named arguments after named arguments, then reorder the argument list
                let first_named_arg = args.iter().enumerate().find(|(_, arg)| arg.name.is_some()).map(|x| x.0);
-               let last_normal_arg = args.iter().enumerate().rfind(|(_, arg)| arg.name.is_none()).map(|x| x.0);
-               let args_in_order = first_named_arg.and_then(|x| last_normal_arg.and_then(|y| Some(x > y))).unwrap_or(true);
+               let last_normal_arg = args
+                  .iter()
+                  .enumerate()
+                  .rfind(|(_, arg)| arg.name.is_none())
+                  .map(|x| x.0);
+               let args_in_order = first_named_arg
+                  .and_then(|x| last_normal_arg.and_then(|y| Some(x > y)))
+                  .unwrap_or(true);
 
                if !args_in_order {
                   validation_context.error_count += 1;
@@ -1234,7 +1245,7 @@ fn do_type<W: Write>(
 
                   for arg in args.iter_mut().filter(|x| x.name.is_some()) {
                      let expected = procedure_info.named_parameters.get(&arg.name.unwrap());
-                     
+
                      if expected.is_none() {
                         validation_context.error_count += 1;
                         writeln!(
