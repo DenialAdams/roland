@@ -42,6 +42,7 @@ window.initApp = async function initApp() {
 window.addEventListener('DOMContentLoaded', (event) => {
    let text_area = document.getElementById("src_frame");
    code_editor = CodeMirror.fromTextArea(text_area, {
+      tabSize: 3,
       lineNumbers: true,
       mode: null
    });
