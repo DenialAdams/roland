@@ -158,7 +158,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       if !reported_named_error && first_named_param.is_some() {
          // It doesn't really matter how we sort these, as long as we do it consistently for arguments
          // AND that there are no equal elements (in this case, we already check that parameters don't have the same name)
-         procedure.parameters[first_named_param.unwrap()..].sort_by_key(|x| x.name);
+         procedure.parameters[first_named_param.unwrap()..].sort_unstable_by_key(|x| x.name);
       }
 
       match procedure_info.insert(
@@ -1180,7 +1180,7 @@ fn do_type<W: Write>(
                   )
                   .unwrap();
                } else if let Some(i) = first_named_arg {
-                  args[i..].sort_by_key(|x| x.name);
+                  args[i..].sort_unstable_by_key(|x| x.name);
                }
 
                if args_in_order && procedure_info.parameters.len() != args.len() {
