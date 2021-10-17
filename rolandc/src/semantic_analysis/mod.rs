@@ -12,6 +12,7 @@ pub mod validator;
 pub struct ProcedureInfo {
    pub pure: bool,
    pub parameters: Vec<ExpressionType>,
+   pub named_parameters: HashMap<StrId, ExpressionType>,
    pub ret_type: ExpressionType,
    pub procedure_begin_location: SourceInfo,
 }

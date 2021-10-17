@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::mem;
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct StrId(usize);
 
 // TODO: remove this, we only use it for a dumb reason

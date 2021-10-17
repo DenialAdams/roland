@@ -1,0 +1,3 @@
+Procedure/function `foo` has named parameter(s) which come before non-named parameter(s)
+↳ procedure/function defined @ line 1, column 1
+There were 1 semantic errors, bailing

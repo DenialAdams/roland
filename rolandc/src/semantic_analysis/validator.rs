@@ -101,6 +101,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          ProcedureInfo {
             pure: p.1,
             parameters: p.2.clone(),
+            named_parameters: HashMap::new(),
             ret_type: p.3.clone(),
             procedure_begin_location: SourceInfo { line: 0, col: 0 },
          },
@@ -108,18 +109,41 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
    }
 
    let mut parameter_dupe_check = HashSet::new();
-   for procedure in program.procedures.iter() {
+   for procedure in program.procedures.iter_mut() {
       parameter_dupe_check.clear();
       parameter_dupe_check.reserve(procedure.parameters.len());
-      for param in procedure.parameters.iter() {
+
+      let mut first_named_param = None;
+      let mut reported_named_error = false;
+      for (i, param) in procedure.parameters.iter().enumerate() {
          if !parameter_dupe_check.insert(param.name) {
             error_count += 1;
-            let procedure_name_str = interner.lookup(procedure.name);
-            let param_0_str = interner.lookup(param.name);
             writeln!(
                err_stream,
                "Procedure/function `{}` has a duplicate parameter `{}`",
-               procedure_name_str, param_0_str,
+               interner.lookup(procedure.name),
+               interner.lookup(param.name),
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ procedure/function defined @ line {}, column {}",
+               procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
+            )
+            .unwrap();
+         }
+
+         if param.named && first_named_param.is_none() {
+            first_named_param = Some(i);
+         }
+
+         if !param.named && first_named_param.is_some() && !reported_named_error {
+            reported_named_error = true;
+            error_count += 1;
+            writeln!(
+               err_stream,
+               "Procedure/function `{}` has named parameter(s) which come before non-named parameter(s)",
+               interner.lookup(procedure.name),
             )
             .unwrap();
             writeln!(
@@ -131,11 +155,18 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          }
       }
 
+      if !reported_named_error && first_named_param.is_some() {
+         // It doesn't really matter how we sort these, as long as we do it consistently for arguments
+         // AND that there are no equal elements (in this case, we already check that parameters don't have the same name)
+         procedure.parameters[first_named_param.unwrap()..].sort_by_key(|x| x.name);
+      }
+
       match procedure_info.insert(
          procedure.name,
          ProcedureInfo {
             pure: procedure.pure,
             parameters: procedure.parameters.iter().map(|x| x.p_type.clone()).collect(),
+            named_parameters: procedure.parameters.iter().filter(|x| x.named).map(|x| (x.name, x.p_type.clone())).collect(),
             ret_type: procedure.ret_type.clone(),
             procedure_begin_location: procedure.procedure_begin_location,
          },
@@ -1129,7 +1160,30 @@ fn do_type<W: Write>(
                   .unwrap();
                }
 
-               if procedure_info.parameters.len() != args.len() {
+               // Validate that there are no non-named arguments after named arguments, then reorder the argument list
+               let first_named_arg = args.iter().enumerate().find(|(_, arg)| arg.name.is_some()).map(|x| x.0);
+               let last_normal_arg = args.iter().enumerate().rfind(|(_, arg)| arg.name.is_none()).map(|x| x.0);
+               let args_in_order = first_named_arg.and_then(|x| last_normal_arg.and_then(|y| Some(x > y))).unwrap_or(true);
+
+               if !args_in_order {
+                  validation_context.error_count += 1;
+                  writeln!(
+                     err_stream,
+                     "Call to `{}` has named argument(s) which come before non-named argument(s)",
+                     interner.lookup(*name),
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ line {}, column {}",
+                     expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                  )
+                  .unwrap();
+               } else if let Some(i) = first_named_arg {
+                  args[i..].sort_by_key(|x| x.name);
+               }
+
+               if args_in_order && procedure_info.parameters.len() != args.len() {
                   validation_context.error_count += 1;
                   writeln!(
                      err_stream,
@@ -1146,10 +1200,14 @@ fn do_type<W: Write>(
                   )
                   .unwrap();
                // We shortcircuit here, because there will likely be lots of mistmatched types if an arg was forgotten
-               } else {
-                  let actual_types = args.iter_mut();
+               } else if args_in_order {
                   let expected_types = procedure_info.parameters.iter();
-                  for (actual, expected) in actual_types.zip(expected_types) {
+                  for (actual, expected) in args.iter_mut().zip(expected_types) {
+                     // These should be at the end by now, so we've checked everything we needed to
+                     if actual.name.is_some() {
+                        break;
+                     }
+
                      try_set_inferred_type(expected, &mut actual.expr, validation_context, err_stream, interner);
 
                      let actual_type = actual.expr.exp_type.as_ref().unwrap();
@@ -1163,6 +1221,54 @@ fn do_type<W: Write>(
                            interner.lookup(*name),
                            actual_type_str,
                            expected_type_str,
+                        )
+                        .unwrap();
+                        writeln!(
+                           err_stream,
+                           "↳ line {}, column {}",
+                           expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                        )
+                        .unwrap();
+                     }
+                  }
+
+                  for arg in args.iter_mut().filter(|x| x.name.is_some()) {
+                     let expected = procedure_info.named_parameters.get(&arg.name.unwrap());
+                     
+                     if expected.is_none() {
+                        validation_context.error_count += 1;
+                        writeln!(
+                           err_stream,
+                           "In call to `{}`, encountered named argument `{}` that does not correspond to any named parameter",
+                           interner.lookup(*name),
+                           interner.lookup(arg.name.unwrap()),
+                        )
+                        .unwrap();
+                        writeln!(
+                           err_stream,
+                           "↳ line {}, column {}",
+                           expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                        )
+                        .unwrap();
+                        continue;
+                     }
+
+                     let expected = expected.unwrap();
+
+                     try_set_inferred_type(expected, &mut arg.expr, validation_context, err_stream, interner);
+
+                     let actual_type = arg.expr.exp_type.as_ref().unwrap();
+                     if actual_type != expected && *actual_type != ExpressionType::Value(ValueType::CompileError) {
+                        validation_context.error_count += 1;
+                        let actual_type_str = actual_type.as_roland_type_info(interner);
+                        let expected_type_str = expected.as_roland_type_info(interner);
+                        writeln!(
+                           err_stream,
+                           "In call to `{}`, encountered argument of type {} when we expected {} for named parameter {}",
+                           interner.lookup(*name),
+                           actual_type_str,
+                           expected_type_str,
+                           interner.lookup(arg.name.unwrap())
                         )
                         .unwrap();
                         writeln!(
