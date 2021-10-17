@@ -127,25 +127,25 @@ fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode, int
       Expression::UnaryOperator(un_op, expr) => {
          writeln!(out, "<li><span>{:?}{}</span>", un_op, type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
-         print_expression(out, &expr, interner);
+         print_expression(out, expr, interner);
          writeln!(out, "</ul></li>").unwrap();
       }
       Expression::Extend(_, expr) => {
          writeln!(out, "<li><span>Extend{}</span>", type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
-         print_expression(out, &expr, interner);
+         print_expression(out, expr, interner);
          writeln!(out, "</ul></li>").unwrap();
       }
       Expression::Truncate(_, expr) => {
          writeln!(out, "<li><span>Truncate{}</span>", type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
-         print_expression(out, &expr, interner);
+         print_expression(out, expr, interner);
          writeln!(out, "</ul></li>").unwrap();
       }
       Expression::Transmute(_, expr) => {
          writeln!(out, "<li><span>Transmute{}</span>", type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
-         print_expression(out, &expr, interner);
+         print_expression(out, expr, interner);
          writeln!(out, "</ul></li>").unwrap();
       }
       Expression::StructLiteral(type_name, fields) => {
@@ -168,7 +168,7 @@ fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode, int
          writeln!(out, "<li><span>Array{}</span>", type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
          for exp in exprs.iter() {
-            print_expression(out, &exp, interner);
+            print_expression(out, exp, interner);
          }
          writeln!(out, "</ul></li>").unwrap()
       }

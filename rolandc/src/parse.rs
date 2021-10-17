@@ -399,7 +399,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
             let mut declared_type = None;
             let let_token = l.next().unwrap();
             let variable_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
-            let next_discrim = l.peek_token().map(|x| discriminant(x));
+            let next_discrim = l.peek_token().map(discriminant);
             if next_discrim == Some(discriminant(&Token::Colon)) {
                let _ = l.next();
                declared_type = Some(parse_type(l, err_stream, interner)?);
@@ -592,7 +592,7 @@ fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Inter
             };
             let expr = parse_expression(l, err_stream, false, interner)?;
             arguments.push(ArgumentNode { name, expr });
-            let next_discrim = l.peek_token().map(|x| discriminant(x));
+            let next_discrim = l.peek_token().map(discriminant);
             if next_discrim == Some(discriminant(&Token::CloseParen)) {
                break;
             }

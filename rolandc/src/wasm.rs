@@ -1325,19 +1325,18 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
       type_to_s(
          val_type,
          &mut generation_context.out.out,
-         &generation_context.struct_info,
+         generation_context.struct_info,
       );
       writeln!(generation_context.out.out, ".store").unwrap();
    } else {
       let load_suffx = match val_type {
          ExpressionType::Value(ValueType::Int(x)) => {
-            let load_suffx = match x.width {
+            match x.width {
                IntWidth::Eight => "64",
                IntWidth::Four => "32",
                IntWidth::Two => "16",
                IntWidth::One => "8",
-            };
-            load_suffx
+            }
          }
          ExpressionType::Value(ValueType::Float(_)) => "",
          ExpressionType::Value(ValueType::Bool) => "32",
@@ -1347,7 +1346,7 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
       type_to_s(
          val_type,
          &mut generation_context.out.out,
-         &generation_context.struct_info,
+         generation_context.struct_info,
       );
       writeln!(generation_context.out.out, ".store{}", load_suffx,).unwrap();
    }

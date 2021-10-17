@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
-const HTML_HEADER: &'static str = "<!DOCTYPE HTML>
+const HTML_HEADER: &str = "<!DOCTYPE HTML>
 <html lang=\"en\">
 <head>
   <meta charset=\"utf-8\">
@@ -59,7 +59,9 @@ fn main() {
       ast_out.as_mut(),
       !opts.skip_constant_folding,
    );
-   ast_out.as_mut().map(|x| writeln!(x, "</body>\n</html>").unwrap());
+   if let Some(x) = ast_out.as_mut() {
+      writeln!(x, "</body>\n</html>").unwrap()
+   }
 
    let out_bytes = match compile_result {
       Ok(v) => v,

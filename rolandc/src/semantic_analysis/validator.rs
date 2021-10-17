@@ -205,8 +205,8 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
    for a_struct in program.structs.iter() {
       let mut field_map = IndexMap::with_capacity(a_struct.fields.len());
       for field in a_struct.fields.iter() {
-         match field_map.insert(field.0.clone(), field.1.clone()) {
-            Some(__) => {
+         match field_map.insert(field.0, field.1.clone()) {
+            Some(_) => {
                error_count += 1;
                writeln!(
                   err_stream,
@@ -227,7 +227,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       }
 
       match struct_info.insert(
-         a_struct.name.clone(),
+         a_struct.name,
          StructInfo {
             field_types: field_map,
             struct_begin_location: a_struct.struct_begin_location,
@@ -319,7 +319,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       }
 
       match static_info.insert(
-         static_node.name.clone(),
+         static_node.name,
          StaticInfo {
             static_type: static_node.static_type.clone(),
             static_begin_location: static_node.static_begin_location,
@@ -1173,7 +1173,7 @@ fn do_type<W: Write>(
                   .rfind(|(_, arg)| arg.name.is_none())
                   .map(|x| x.0);
                let args_in_order = first_named_arg
-                  .and_then(|x| last_normal_arg.and_then(|y| Some(x > y)))
+                  .and_then(|x| last_normal_arg.map(|y| x > y))
                   .unwrap_or(true);
 
                if !args_in_order {

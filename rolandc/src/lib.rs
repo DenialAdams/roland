@@ -63,7 +63,7 @@ fn merge_programs(main_program: &mut Program, other_programs: &mut [Program]) {
 }
 
 fn lex_and_parse<W: Write>(s: &str, err_stream: &mut W, interner: &mut Interner) -> Result<Program, CompilationError> {
-   let tokens = match lex::lex(&s, err_stream, interner) {
+   let tokens = match lex::lex(s, err_stream, interner) {
       Err(()) => return Err(CompilationError::Lex),
       Ok(v) => v,
    };

@@ -26,17 +26,14 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
    let mut err_out = Vec::new();
 
    let compile_result = rolandc::compile(
-      &source_code,
+      source_code,
       &mut err_out,
       Some(&mut ast_out),
       do_constant_folding.checked(),
    );
 
-   match compile_result.as_ref() {
-      Err(CompilationError::Semantic(err_count)) => {
-         writeln!(err_out, "There were {} semantic errors, bailing", err_count).unwrap();
-      }
-      _ => (),
+   if let Err(CompilationError::Semantic(err_count)) = compile_result.as_ref() {
+      writeln!(err_out, "There were {} semantic errors, bailing", err_count).unwrap();
    };
 
    let ast_s = String::from_utf8(ast_out).unwrap();
@@ -46,7 +43,7 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
    match compile_result.as_ref() {
       Ok(v) => Some(wat::parse_bytes(v).unwrap().into_owned()),
       Err(_) => {
-         output_frame.set_text_content(err_s.as_ref().map(|x| x.as_str()));
+         output_frame.set_text_content(err_s.as_deref());
          None
       }
    }

@@ -65,7 +65,7 @@ fn main() -> Result<(), &'static str> {
          .arg(entry.file_stem().unwrap())
          .output()
          .unwrap();
-      let test_ok = test_result(&tc_output, &entry, &result_dir);
+      let test_ok = test_result(&tc_output, entry, &result_dir);
       let mut lock = output_mutex.lock().unwrap();
       match test_ok {
          Ok(()) => {

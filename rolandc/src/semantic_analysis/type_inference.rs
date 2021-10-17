@@ -95,9 +95,7 @@ fn set_inferred_type<W: Write>(
          expr_node.exp_type = Some(e_type.clone());
       }
       Expression::UnitLiteral => unreachable!(),
-      Expression::Variable(_x) => {
-         return;
-      }
+      Expression::Variable(_) => (),
       Expression::ProcedureCall(_, _) => unreachable!(),
       Expression::StructLiteral(_, _) => unreachable!(),
       Expression::FieldAccess(_, _) => unreachable!(),
