@@ -426,6 +426,17 @@ pub fn fold_expr<W: Write>(
                exp_type: expr_to_fold.exp_type.take(),
                expression_begin_location: expr_to_fold.expression_begin_location,
             }),
+            // bool
+            BinOp::LogicalAnd => Some(ExpressionNode {
+               expression: lhs & rhs,
+               exp_type: expr_to_fold.exp_type.take(),
+               expression_begin_location: expr_to_fold.expression_begin_location,
+            }),
+            BinOp::LogicalOr => Some(ExpressionNode {
+               expression: lhs | rhs,
+               exp_type: expr_to_fold.exp_type.take(),
+               expression_begin_location: expr_to_fold.expression_begin_location,
+            }),
          }
       }
       Expression::UnaryOperator(op, expr) => {

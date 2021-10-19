@@ -1,0 +1,17 @@
+proc f_false() -> bool {
+    print("f_false");
+    return false;
+}
+
+proc f_true() -> bool {
+    print("f_true");
+    return true;
+}
+
+proc main() {
+    let result = f_true() or f_false();
+    print_bool(result);
+    print("---");
+    result = f_false() and f_true();
+    print_bool(result);
+}

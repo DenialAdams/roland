@@ -32,6 +32,8 @@ pub enum Token {
    KeywordTransmute,
    KeywordStatic,
    KeywordNamed,
+   KeywordAnd,
+   KeywordOr,
    OpenBrace,
    CloseBrace,
    OpenParen,
@@ -97,6 +99,8 @@ fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
       "transmute" => Token::KeywordTransmute,
       "static" => Token::KeywordStatic,
       "named" => Token::KeywordNamed,
+      "and" => Token::KeywordAnd,
+      "or" => Token::KeywordOr,
       other => Token::Identifier(interner.intern(other)),
    }
 }

@@ -100,12 +100,10 @@ impl<'a> PrettyWasmWriter {
       writeln!(self.out, "end").unwrap();
    }
 
-   fn emit_if_start(&mut self) {
+   fn emit_if_start(&mut self, result_type: &ExpressionType, si: &IndexMap<StrId, StructInfo>) {
       self.emit_spaces();
-      writeln!(self.out, "(if ").unwrap();
-      self.depth += 1;
-      self.emit_spaces();
-      writeln!(self.out, "(i32.eq").unwrap();
+      write!(self.out, "(if ").unwrap();
+      write_type_as_result(result_type, &mut self.out, si);
       self.depth += 1;
    }
 
@@ -849,11 +847,8 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          }
       }
       Statement::IfElse(en, block_1, block_2) => {
-         generation_context.out.emit_if_start();
-         // expression
          do_emit_and_load_lval(en, generation_context, interner);
-         generation_context.out.emit_constant_instruction("i32.const 1");
-         generation_context.out.close();
+         generation_context.out.emit_if_start(&ExpressionType::Value(ValueType::Unit), generation_context.struct_info);
          // then
          generation_context.out.emit_then_start();
          for statement in &block_1.statements {
@@ -921,6 +916,34 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          generation_context.out.emit_const_i32(*offset);
          generation_context.out.emit_const_i32(*len);
       }
+      Expression::BinaryOperator(BinOp::LogicalAnd, e) => {
+         do_emit_and_load_lval(&e.0, generation_context, interner);
+         generation_context.out.emit_if_start(&ExpressionType::Value(ValueType::Bool), generation_context.struct_info);
+         // then
+         generation_context.out.emit_then_start();
+         do_emit_and_load_lval(&e.1, generation_context, interner);
+         generation_context.out.close();
+         // else
+         generation_context.out.emit_else_start();
+         generation_context.out.emit_const_i32(0);
+         generation_context.out.close();
+         // finish if
+         generation_context.out.close();
+      }
+      Expression::BinaryOperator(BinOp::LogicalOr, e) => {
+         do_emit_and_load_lval(&e.0, generation_context, interner);
+         generation_context.out.emit_if_start(&ExpressionType::Value(ValueType::Bool), generation_context.struct_info);
+         // then
+         generation_context.out.emit_then_start();
+         generation_context.out.emit_const_i32(1);
+         generation_context.out.close();
+         // else
+         generation_context.out.emit_else_start();
+         do_emit_and_load_lval(&e.1, generation_context, interner);
+         generation_context.out.close();
+         // finish if
+         generation_context.out.close();
+      }
       Expression::BinaryOperator(bin_op, e) => {
          do_emit_and_load_lval(&e.0, generation_context, interner);
 
@@ -986,6 +1009,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             BinOp::BitwiseXor => {
                writeln!(generation_context.out.out, "{}.xor", wasm_type).unwrap();
             }
+            BinOp::LogicalAnd | BinOp::LogicalOr => unreachable!(),
          }
       }
       Expression::UnaryOperator(un_op, e) => {

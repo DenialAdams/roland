@@ -918,6 +918,7 @@ fn do_type<W: Write>(
             | BinOp::GreaterThanOrEqualTo
             | BinOp::LessThan
             | BinOp::LessThanOrEqualTo => &[TypeValidator::AnyInt, TypeValidator::AnyFloat],
+            BinOp::LogicalAnd | BinOp::LogicalOr => &[TypeValidator::Bool],
             BinOp::Equality | BinOp::NotEquality | BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor => {
                &[TypeValidator::AnyInt, TypeValidator::Bool]
             }
@@ -1018,7 +1019,9 @@ fn do_type<W: Write>(
                | BinOp::GreaterThan
                | BinOp::GreaterThanOrEqualTo
                | BinOp::LessThan
-               | BinOp::LessThanOrEqualTo => ExpressionType::Value(ValueType::Bool),
+               | BinOp::LessThanOrEqualTo
+               | BinOp::LogicalAnd
+               | BinOp::LogicalOr => ExpressionType::Value(ValueType::Bool),
             }
          };
 

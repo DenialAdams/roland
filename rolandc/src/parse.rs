@@ -102,6 +102,8 @@ pub enum BinOp {
    BitwiseAnd,
    BitwiseOr,
    BitwiseXor,
+   LogicalAnd,
+   LogicalOr,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -807,6 +809,8 @@ fn pratt<W: Write>(
          | Some(x @ &Token::Equality)
          | Some(x @ &Token::Pipe)
          | Some(x @ &Token::Amp)
+         | Some(x @ &Token::KeywordAnd)
+         | Some(x @ &Token::KeywordOr)
          | Some(x @ &Token::Caret)
          | Some(x @ &Token::NotEquality)
          | Some(x @ &Token::KeywordExtend)
@@ -875,6 +879,8 @@ fn pratt<W: Write>(
          Token::Minus => BinOp::Subtract,
          Token::Pipe => BinOp::BitwiseOr,
          Token::Amp => BinOp::BitwiseAnd,
+         Token::KeywordOr => BinOp::LogicalOr,
+         Token::KeywordAnd => BinOp::LogicalAnd,
          Token::MultiplyDeref => BinOp::Multiply,
          Token::Divide => BinOp::Divide,
          Token::Remainder => BinOp::Remainder,
@@ -899,37 +905,39 @@ fn pratt<W: Write>(
 
 fn prefix_binding_power(op: &Token) -> ((), u8) {
    match op {
-      Token::Exclam => ((), 13),
-      Token::Minus => ((), 13),
-      Token::Amp => ((), 13),
-      Token::MultiplyDeref => ((), 13),
+      Token::Exclam => ((), 17),
+      Token::Minus => ((), 17),
+      Token::Amp => ((), 17),
+      Token::MultiplyDeref => ((), 17),
       _ => unreachable!(),
    }
 }
 
 fn postfix_binding_power(op: &Token) -> Option<(u8, ())> {
    match &op {
-      Token::OpenSquareBracket => Some((14, ())),
-      Token::KeywordExtend => Some((12, ())),
-      Token::KeywordTruncate => Some((12, ())),
-      Token::KeywordTransmute => Some((12, ())),
+      Token::OpenSquareBracket => Some((18, ())),
+      Token::KeywordExtend => Some((16, ())),
+      Token::KeywordTruncate => Some((16, ())),
+      Token::KeywordTransmute => Some((16, ())),
       _ => None,
    }
 }
 
 fn infix_binding_power(op: &Token) -> (u8, u8) {
    match &op {
+      Token::KeywordOr => (1, 2),
+      Token::KeywordAnd => (3, 4),
       Token::Equality
       | Token::NotEquality
       | Token::GreaterThan
       | Token::GreaterThanOrEqualTo
       | Token::LessThan
-      | Token::LessThanOrEqualTo => (1, 1),
-      Token::Pipe => (2, 3),
-      Token::Caret => (4, 5),
-      Token::Amp => (6, 7),
-      Token::Plus | Token::Minus => (8, 9),
-      Token::MultiplyDeref | Token::Divide | Token::Remainder => (10, 11),
+      | Token::LessThanOrEqualTo => (5, 5),
+      Token::Pipe => (6, 7),
+      Token::Caret => (8, 9),
+      Token::Amp => (10, 11),
+      Token::Plus | Token::Minus => (12, 13),
+      Token::MultiplyDeref | Token::Divide | Token::Remainder => (14, 15),
       _ => unreachable!(),
    }
 }
