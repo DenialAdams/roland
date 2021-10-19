@@ -71,6 +71,7 @@ enum LexMode {
    StringLiteral,
    StringLiteralEscape,
    NumericLiteral,
+   Comment,
 }
 
 pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo) {
@@ -205,11 +206,17 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
                source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '/' {
-               tokens.push(SourceToken {
-                  source_info,
-                  token: Token::Divide,
-               });
-               source_info.col += 1;
+               let _ = chars.next().unwrap();
+               if chars.peek() == Some(&'/') {
+                  mode = LexMode::Comment;
+                  source_info.col += 2;
+               } else {
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::Divide,
+                  });
+                  source_info.col += 1;
+               }
                let _ = chars.next().unwrap();
             } else if c == '%' {
                tokens.push(SourceToken {
@@ -422,11 +429,21 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
                mode = LexMode::Normal;
             }
          }
+         LexMode::Comment => {
+            if c == '\n' {
+               source_info.col = 0;
+               source_info.line += 1;
+               mode = LexMode::Normal;
+            } else {
+               source_info.col += 1;
+            }
+            let _ = chars.next().unwrap();
+         }
       }
    }
 
    match mode {
-      LexMode::Normal => Ok(tokens),
+      LexMode::Normal | LexMode::Comment => Ok(tokens),
       // Probably no valid program ends with a keyword or identifier, but we'll let the parser determine that
       LexMode::Ident => {
          let resulting_token = extract_keyword_or_ident(&str_buf, interner);

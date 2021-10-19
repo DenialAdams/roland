@@ -182,7 +182,7 @@ pub fn fold_expr<W: Write>(
 
             match (one_literal, *op) {
                // TODO: this i64::MAX (in several places) is very gross. We should store literal based on actual type? Or something?
-               // constant does not affect LHs
+               // constant does not affect LHS
                (Literal::Int(1), BinOp::Multiply)
                | (Literal::Int(0), BinOp::Add)
                | (Literal::Bool(false), BinOp::BitwiseOr)
