@@ -1,2 +1,2 @@
-While parsing top level - unexpected token StringLiteral(StrId(1)); was expecting a function, procedure, or struct declaration
+While parsing top level - unexpected token 'string literal'; was expecting a function, procedure, or struct declaration
 ↳ line 4, column 1

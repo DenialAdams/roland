@@ -45,7 +45,8 @@ fn expect<W: Write>(l: &mut Lexer, err_stream: &mut W, token: &Token) -> Result<
       .map(|x| discriminant(&x.token) != discriminant(token))
       .unwrap_or(true)
    {
-      writeln!(err_stream, "got {:?} when expecting {:?}", lex_token, token).unwrap();
+      let lex_token_str = lex_token.map(|x| x.token.for_parse_err()).unwrap_or("EOF");
+      writeln!(err_stream, "Encountered '{}' when expecting '{}'", lex_token_str, token.for_parse_err()).unwrap();
       if let Some(l_token) = lex_token {
          emit_source_info(err_stream, l_token.source_info);
       }
@@ -236,8 +237,8 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
          x => {
             writeln!(
                err_stream,
-               "While parsing top level - unexpected token {:?}; was expecting a function, procedure, or struct declaration",
-               x
+               "While parsing top level - unexpected token '{}'; was expecting a function, procedure, or struct declaration",
+               x.for_parse_err()
             ).unwrap();
             emit_source_info(err_stream, lexer.peek_source().unwrap());
             return Err(());
@@ -448,15 +449,20 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
                      statement_begin_location,
                   });
                }
-               x => {
+               Some(x) => {
                   writeln!(
                      err_stream,
-                     "While parsing statement - unexpected token {:?}; was expecting a semicolon or assignment operator",
-                     x
+                     "While parsing statement - unexpected token '{}'; was expecting a semicolon or assignment operator",
+                     x.for_parse_err()
                   ).unwrap();
-                  if let Some(si) = l.peek_source() {
-                     emit_source_info(err_stream, si);
-                  }
+                  emit_source_info(err_stream, l.peek_source().unwrap());
+                  return Err(());
+               }
+               None => {
+                  writeln!(
+                     err_stream,
+                     "While parsing statement - unexpected EOF; was expecting a semicolon or assignment operator",
+                  ).unwrap();
                   return Err(());
                }
             }
@@ -464,8 +470,8 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
          Some(x) => {
             writeln!(
                err_stream,
-               "While parsing block - unexpected token {:?}; was expecting a statement",
-               x
+               "While parsing block - unexpected token '{}'; was expecting a statement",
+               x.for_parse_err()
             )
             .unwrap();
             emit_source_info(err_stream, l.peek_source().unwrap());
@@ -547,16 +553,22 @@ fn parse_parameters<W: Write>(
          Some(Token::CloseParen) => {
             break;
          }
-         x => {
+         Some(x) => {
             writeln!(
                err_stream,
-               "While parsing parameters - unexpected token {:?}; was expecting an identifier or a )",
-               x
+               "While parsing parameters - unexpected token '{}'; was expecting an identifier or a )",
+               x.for_parse_err()
             )
             .unwrap();
-            if let Some(si) = l.peek_source() {
-               emit_source_info(err_stream, si);
-            }
+            emit_source_info(err_stream, l.peek_source().unwrap());
+            return Err(());
+         }
+         None => {
+            writeln!(
+               err_stream,
+               "While parsing parameters - unexpected token EOF; was expecting an identifier or a )",
+            )
+            .unwrap();
             return Err(());
          }
       }
@@ -603,16 +615,22 @@ fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Inter
          Some(Token::CloseParen) => {
             break;
          }
-         x => {
+         Some(x) => {
             writeln!(
                err_stream,
-               "While parsing arguments - unexpected token {:?}; was expecting an expression or a )",
-               x
+               "While parsing arguments - unexpected token '{}'; was expecting an expression or a )",
+               x.for_parse_err()
             )
             .unwrap();
-            if let Some(si) = l.peek_source() {
-               emit_source_info(err_stream, si);
-            }
+            emit_source_info(err_stream, l.peek_source().unwrap());
+            return Err(());
+         }
+         None => {
+            writeln!(
+               err_stream,
+               "While parsing arguments - unexpected EOF; was expecting an expression or a )",
+            )
+            .unwrap();
             return Err(());
          }
       }
@@ -782,10 +800,11 @@ fn pratt<W: Write>(
          Expression::UnaryOperator(UnOp::Dereference, Box::new(wrap(rhs, begin_location.unwrap())))
       }
       x => {
+         let s = x.map(|x| x.for_parse_err()).unwrap_or("EOF");
          writeln!(
             err_stream,
-            "While parsing expression - unexpected token {:?}; was expecting a literal, call, variable, or prefix operator",
-            x
+            "While parsing expression - unexpected token '{}'; was expecting a literal, call, variable, or prefix operator",
+            s
          )
          .unwrap();
          if let Some(si) = l.peek_source() {
