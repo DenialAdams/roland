@@ -3,7 +3,7 @@ use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
 use crate::interner::{Interner, StrId};
 use crate::lex::SourceInfo;
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
-use crate::type_data::{ExpressionType, IntWidth, ValueType, I32_TYPE, U32_TYPE, USIZE_TYPE};
+use crate::type_data::{ExpressionType, ISIZE_TYPE, IntWidth, USIZE_TYPE, ValueType};
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
@@ -75,24 +75,24 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          interner.intern("wasm_memory_size"),
          false,
          vec![],
-         ExpressionType::Value(I32_TYPE),
+         ExpressionType::Value(USIZE_TYPE),
       ),
       (
          interner.intern("wasm_memory_grow"),
          false,
-         vec![ExpressionType::Value(I32_TYPE)],
-         ExpressionType::Value(I32_TYPE),
+         vec![ExpressionType::Value(USIZE_TYPE)],
+         ExpressionType::Value(USIZE_TYPE),
       ),
       (
          interner.intern("fd_write"),
          false,
          vec![
-            ExpressionType::Value(I32_TYPE),
-            ExpressionType::Value(I32_TYPE),
-            ExpressionType::Value(I32_TYPE),
-            ExpressionType::Value(I32_TYPE),
+            ExpressionType::Value(USIZE_TYPE),
+            ExpressionType::Pointer(1, USIZE_TYPE),
+            ExpressionType::Value(USIZE_TYPE),
+            ExpressionType::Pointer(1, USIZE_TYPE),
          ],
-         ExpressionType::Value(I32_TYPE),
+         ExpressionType::Value(ISIZE_TYPE),
       ),
    ];
    for p in standard_lib_procs.iter() {
@@ -1595,12 +1595,14 @@ fn do_type<W: Write>(
             }
          }
 
+         // @FixedPointerWidth
          if elems.len() > std::u32::MAX as usize {
             any_error = true;
             writeln!(
                err_stream,
                "Array literal has {} elements, which is more than the maximum {} elements",
                elems.len(),
+               // FixedPointerWidth
                std::u32::MAX,
             )
             .unwrap();
@@ -1633,7 +1635,7 @@ fn do_type<W: Write>(
          do_type(err_stream, index_expression, validation_context, interner);
 
          try_set_inferred_type(
-            &ExpressionType::Value(U32_TYPE),
+            &ExpressionType::Value(USIZE_TYPE),
             &mut *index_expression,
             validation_context,
             err_stream,
@@ -1642,10 +1644,10 @@ fn do_type<W: Write>(
 
          if !index_expression.exp_type.as_ref().unwrap().is_concrete_type() {
             // avoid cascading errors
-         } else if index_expression.exp_type.as_ref().unwrap() != &ExpressionType::Value(U32_TYPE) {
+         } else if index_expression.exp_type.as_ref().unwrap() != &ExpressionType::Value(USIZE_TYPE) {
             writeln!(
                err_stream,
-               "Attempted to index an array with a value of type {}, which is not u32",
+               "Attempted to index an array with a value of type {}, which is not usize",
                index_expression
                   .exp_type
                   .as_ref()

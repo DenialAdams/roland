@@ -1,14 +1,15 @@
 struct String {
    pointer: &u8,
-   length: u32,
+   length: usize,
 }
 
 proc print(s: String) {
-   let data: [i32; 4] = [s.pointer transmute i32, s.length transmute i32, "\n".pointer transmute i32, "\n".length transmute i32];
+   let data: [usize; 4] = [s.pointer transmute usize, s.length, "\n".pointer transmute usize, "\n".length];
 
-   let written: i32 = 0;
+   let written: usize = 0;
    loop {
-      fd_write(1, &data[0] transmute i32, 2, &written transmute i32);
+      fd_write(1, &data[0], 2, &written);
+      break;
       let remaining_len = &data[1];
       if written > *remaining_len {
          break;
@@ -44,23 +45,23 @@ func count_digits(value: u64) -> u8 {
 
 proc int_to_string(value: u64) -> String {
    let digit_count = count_digits(value);
-   let digit_count_for_loop = digit_count extend u32 - 1;
-   let buf = malloc(digit_count extend i32);
+   let digit_count_for_loop = digit_count extend usize - 1;
+   let buf = malloc(digit_count extend usize);
 
    let next_digit: u8 = 0;
-   let i: u32 = 0;
+   let i: usize = 0;
 
    loop {
       if value <= 9 {
          next_digit = value truncate u8;
-         let ptr = ((buf transmute u32) + digit_count_for_loop - i) transmute &u8;
+         let ptr = ((buf transmute usize) + digit_count_for_loop - i) transmute &u8;
          *ptr = next_digit + 48;
          i = i + 1;
          break;
       }
       next_digit = (value % 10) truncate u8;
       value = value / 10;
-      let ptr = ((buf transmute u32) + digit_count_for_loop - i) transmute &u8;
+      let ptr = ((buf transmute usize) + digit_count_for_loop - i) transmute &u8;
       *ptr = next_digit + 48;
       i = i + 1;
    }
@@ -72,8 +73,8 @@ proc int_to_string(value: u64) -> String {
    };
 }
 
-proc malloc(bytes: i32) -> &u8 {
-   let num_new_pages = (bytes / 65536) + (bytes % 65536 != 0) extend i32;
+proc malloc(bytes: usize) -> &u8 {
+   let num_new_pages = (bytes / 65536) + (bytes % 65536 != 0) extend usize;
    let current_page_start = wasm_memory_grow(num_new_pages) * 65536;
    return current_page_start transmute &u8;
 }

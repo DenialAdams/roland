@@ -1,7 +1,7 @@
 use crate::interner::{Interner, StrId};
 use crate::parse::{BinOp, Expression, ExpressionNode, ParameterNode, Program, Statement, StatementNode, UnOp};
 use crate::semantic_analysis::StructInfo;
-use crate::type_data::{ExpressionType, FloatWidth, IntWidth, ValueType, I32_TYPE};
+use crate::type_data::{ExpressionType, FloatWidth, IntWidth, USIZE_TYPE, ValueType};
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
 use std::io::Write;
@@ -104,6 +104,7 @@ impl<'a> PrettyWasmWriter {
       self.emit_spaces();
       write!(self.out, "(if ").unwrap();
       write_type_as_result(result_type, &mut self.out, si);
+      self.out.push(b'\n');
       self.depth += 1;
    }
 
@@ -598,7 +599,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
    generation_context.out.emit_function_start_named_params(
       interner.intern("wasm_memory_size"),
       &[],
-      &ExpressionType::Value(I32_TYPE),
+      &ExpressionType::Value(USIZE_TYPE),
       &program.struct_info,
       interner,
    );
@@ -608,13 +609,13 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
    // builtin wasm memory grow
    let new_pages_param = ParameterNode {
       name: interner.intern("new_pages"),
-      p_type: ExpressionType::Value(I32_TYPE),
+      p_type: ExpressionType::Value(USIZE_TYPE),
       named: false,
    };
    generation_context.out.emit_function_start_named_params(
       interner.intern("wasm_memory_grow"),
       &[new_pages_param],
-      &ExpressionType::Value(I32_TYPE),
+      &ExpressionType::Value(USIZE_TYPE),
       &program.struct_info,
       interner,
    );
