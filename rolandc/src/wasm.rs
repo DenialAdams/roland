@@ -1204,7 +1204,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
-            do_emit(expr, generation_context, interner);
+            do_emit_and_load_lval(expr, generation_context, interner);
          }
       }
       Expression::ArrayIndex(lhs, index_e) => {

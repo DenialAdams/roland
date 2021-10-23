@@ -9,7 +9,6 @@ proc print(s: String) {
    let written: usize = 0;
    loop {
       fd_write(1, &data[0], 2, &written);
-      break;
       let remaining_len = &data[1];
       if written > *remaining_len {
          break;
