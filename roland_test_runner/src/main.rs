@@ -22,6 +22,28 @@ enum TestFailureReason {
    MismatchedCompilationErrorOutput(String, String, File),
 }
 
+struct Opts {
+   test_path: PathBuf,
+   tc_path: PathBuf,
+   overwrite_error_files: bool,
+}
+
+fn parse_path(s: &std::ffi::OsStr) -> Result<std::path::PathBuf, &'static str> {
+   Ok(s.into())
+}
+
+fn parse_args() -> Result<Opts, pico_args::Error> {
+   let mut pargs = pico_args::Arguments::from_env();
+
+   let opts = Opts {
+      test_path: pargs.free_from_os_str(parse_path)?,
+      tc_path: pargs.free_from_os_str(parse_path)?,
+      overwrite_error_files: pargs.contains("--overwrite-error-files"),
+   };
+
+   Ok(opts)
+}
+
 fn main() -> Result<(), &'static str> {
    let mut err_color = ColorSpec::new();
    err_color.set_fg(Some(Color::Red));
@@ -33,17 +55,9 @@ fn main() -> Result<(), &'static str> {
    reset_color.set_fg(None);
    reset_color.set_intense(false);
 
-   let mut args = env::args();
-   if args.len() != 3 && args.len() != 4 {
-      return Err("Expected exactly 2 or 3 arguments");
-   }
-   let (test_path, tc_path) = { (PathBuf::from(args.nth(1).unwrap()), args.next().unwrap()) };
-   let overwrite_error_files = args
-      .next()
-      .map(|x| x.as_bytes() == b"--overwrite-error-files")
-      .unwrap_or(false);
+   let opts = parse_args().unwrap();
 
-   env::set_current_dir(test_path).unwrap();
+   env::set_current_dir(&opts.test_path).unwrap();
 
    let current_dir = env::current_dir().unwrap();
    let mut result_dir = current_dir.clone();
@@ -59,7 +73,7 @@ fn main() -> Result<(), &'static str> {
       .collect();
 
    entries.par_iter().for_each(|entry| {
-      let tc_output = Command::new(tc_path.as_str())
+      let tc_output = Command::new(&opts.tc_path)
          .arg(entry.file_name().unwrap())
          .arg("--output")
          .arg(entry.file_stem().unwrap())
@@ -114,7 +128,7 @@ fn main() -> Result<(), &'static str> {
                   print_diff(&mut out_handle, &expected, &actual);
                }
                TestFailureReason::MismatchedCompilationErrorOutput(expected, actual, mut err_file_handle) => {
-                  if overwrite_error_files {
+                  if opts.overwrite_error_files {
                      err_file_handle.seek(SeekFrom::Start(0)).unwrap();
                      err_file_handle.write_all(actual.as_bytes()).unwrap();
                      err_file_handle.set_len(actual.as_bytes().len() as u64).unwrap();

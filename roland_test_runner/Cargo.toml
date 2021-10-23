@@ -5,6 +5,7 @@ authors = ["Richard McCormack <brick@brick.codes>"]
 edition = "2018"
 
 [dependencies]
+pico-args = { version = "0.4", default-features=false, features=[] }
 similar = "2"
 os_pipe = "0.9"
 rayon = "1"
