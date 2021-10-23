@@ -23,6 +23,11 @@ pub const U64_TYPE: ValueType = ValueType::Int(IntType {
    width: IntWidth::Eight,
 });
 
+pub const USIZE_TYPE: ValueType = ValueType::Int(IntType {
+   signed: false,
+   width: IntWidth::Pointer,
+});
+
 pub const I8_TYPE: ValueType = ValueType::Int(IntType {
    signed: true,
    width: IntWidth::One,
@@ -41,6 +46,11 @@ pub const I32_TYPE: ValueType = ValueType::Int(IntType {
 pub const I64_TYPE: ValueType = ValueType::Int(IntType {
    signed: true,
    width: IntWidth::Eight,
+});
+
+pub const ISIZE_TYPE: ValueType = ValueType::Int(IntType {
+   signed: true,
+   width: IntWidth::Pointer,
 });
 
 pub const F32_TYPE: ValueType = ValueType::Float(FloatType {
@@ -99,6 +109,7 @@ impl Ord for FloatWidth {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum IntWidth {
+   Pointer,
    Eight,
    Four,
    Two,
@@ -106,25 +117,14 @@ pub enum IntWidth {
 }
 
 impl IntWidth {
-   fn as_num(&self) -> u8 {
+   pub fn as_bytes(&self) -> u8 {
       match self {
          IntWidth::Eight => 8,
-         IntWidth::Four => 4,
+         // @FixedPointerWidth
+         IntWidth::Four | IntWidth::Pointer => 4,
          IntWidth::Two => 2,
          IntWidth::One => 1,
       }
-   }
-}
-
-impl PartialOrd for IntWidth {
-   fn partial_cmp(&self, other: &IntWidth) -> Option<Ordering> {
-      Some(self.cmp(other))
-   }
-}
-
-impl Ord for IntWidth {
-   fn cmp(&self, other: &IntWidth) -> Ordering {
-      self.as_num().cmp(&other.as_num())
    }
 }
 
@@ -218,10 +218,12 @@ impl ValueType {
          ValueType::UnknownFloat => Cow::Borrowed("?? Float"),
          ValueType::UnknownInt => Cow::Borrowed("?? Int"),
          ValueType::Int(x) => match (x.signed, &x.width) {
+            (true, IntWidth::Pointer) => Cow::Borrowed("isize"),
             (true, IntWidth::Eight) => Cow::Borrowed("i64"),
             (true, IntWidth::Four) => Cow::Borrowed("i32"),
             (true, IntWidth::Two) => Cow::Borrowed("i16"),
             (true, IntWidth::One) => Cow::Borrowed("i8"),
+            (false, IntWidth::Pointer) => Cow::Borrowed("usize"),
             (false, IntWidth::Eight) => Cow::Borrowed("u64"),
             (false, IntWidth::Four) => Cow::Borrowed("u32"),
             (false, IntWidth::Two) => Cow::Borrowed("u16"),

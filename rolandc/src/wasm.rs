@@ -334,7 +334,7 @@ fn sizeof_value_type_mem(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32 {
       ValueType::UnknownFloat => unreachable!(),
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => 8,
-         IntWidth::Four => 4,
+         IntWidth::Four | IntWidth::Pointer => 4,
          IntWidth::Two => 2,
          IntWidth::One => 1,
       },
@@ -372,7 +372,7 @@ fn value_type_mem_alignment(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32
       ValueType::UnknownFloat => unreachable!(),
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => 8,
-         IntWidth::Four => 4,
+         IntWidth::Four | IntWidth::Pointer => 4,
          IntWidth::Two => 2,
          IntWidth::One => 1,
       },
@@ -716,7 +716,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
                generation_context.out.emit_get_local(values_index);
                simple_store(&param.p_type, &mut generation_context);
                values_index += 1;
-            },
+            }
             std::cmp::Ordering::Greater => {
                get_stack_address_of_local(param.name, &mut generation_context);
                generation_context.out.emit_set_global("mem_address");
@@ -727,8 +727,8 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
                   &param.p_type,
                   &mut generation_context,
                );
-            },
-        }
+            }
+         }
       }
 
       for statement in &procedure.block.statements {
@@ -848,7 +848,9 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
       }
       Statement::IfElse(en, block_1, block_2) => {
          do_emit_and_load_lval(en, generation_context, interner);
-         generation_context.out.emit_if_start(&ExpressionType::Value(ValueType::Unit), generation_context.struct_info);
+         generation_context
+            .out
+            .emit_if_start(&ExpressionType::Value(ValueType::Unit), generation_context.struct_info);
          // then
          generation_context.out.emit_then_start();
          for statement in &block_1.statements {
@@ -918,7 +920,9 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       }
       Expression::BinaryOperator(BinOp::LogicalAnd, e) => {
          do_emit_and_load_lval(&e.0, generation_context, interner);
-         generation_context.out.emit_if_start(&ExpressionType::Value(ValueType::Bool), generation_context.struct_info);
+         generation_context
+            .out
+            .emit_if_start(&ExpressionType::Value(ValueType::Bool), generation_context.struct_info);
          // then
          generation_context.out.emit_then_start();
          do_emit_and_load_lval(&e.1, generation_context, interner);
@@ -932,7 +936,9 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       }
       Expression::BinaryOperator(BinOp::LogicalOr, e) => {
          do_emit_and_load_lval(&e.0, generation_context, interner);
-         generation_context.out.emit_if_start(&ExpressionType::Value(ValueType::Bool), generation_context.struct_info);
+         generation_context
+            .out
+            .emit_if_start(&ExpressionType::Value(ValueType::Bool), generation_context.struct_info);
          // then
          generation_context.out.emit_then_start();
          generation_context.out.emit_const_i32(1);
@@ -1225,10 +1231,14 @@ fn complement_val(t_type: &ExpressionType, wasm_type: &str, generation_context: 
       ExpressionType::Value(crate::type_data::U8_TYPE) => std::u8::MAX as u64,
       ExpressionType::Value(crate::type_data::U16_TYPE) => std::u16::MAX as u64,
       ExpressionType::Value(crate::type_data::U32_TYPE) => std::u32::MAX as u64,
+      // @FixedPointerWidth
+      ExpressionType::Value(crate::type_data::USIZE_TYPE) => std::u32::MAX as u64,
       ExpressionType::Value(crate::type_data::U64_TYPE) => std::u64::MAX,
       ExpressionType::Value(crate::type_data::I8_TYPE) => std::u32::MAX as u64,
       ExpressionType::Value(crate::type_data::I16_TYPE) => std::u32::MAX as u64,
       ExpressionType::Value(crate::type_data::I32_TYPE) => std::u32::MAX as u64,
+      // @FixedPointerWidth
+      ExpressionType::Value(crate::type_data::ISIZE_TYPE) => std::u32::MAX as u64,
       ExpressionType::Value(crate::type_data::I64_TYPE) => std::u64::MAX,
       _ => unreachable!(),
    };
@@ -1263,13 +1273,13 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
       ExpressionType::Value(ValueType::Struct(x)) => {
          for field in generation_context.struct_info.get(x).unwrap().field_types.values() {
             match sizeof_type_values(field, &generation_context.struct_size_info).cmp(&1) {
-                std::cmp::Ordering::Less => (),
-                std::cmp::Ordering::Equal => {
+               std::cmp::Ordering::Less => (),
+               std::cmp::Ordering::Equal => {
                   generation_context.out.emit_get_global("mem_address");
                   generation_context.out.emit_const_add_i32(offset);
                   simple_load(field, generation_context);
-                },
-                std::cmp::Ordering::Greater => complex_load(offset, field, generation_context),
+               }
+               std::cmp::Ordering::Greater => complex_load(offset, field, generation_context),
             }
 
             offset += sizeof_type_mem(field, &generation_context.struct_size_info);
@@ -1278,15 +1288,15 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
       ExpressionType::Value(ValueType::Array(a_type, len)) => {
          for _ in 0..*len {
             match sizeof_type_values(a_type, &generation_context.struct_size_info).cmp(&1) {
-                std::cmp::Ordering::Less => (),
-                std::cmp::Ordering::Equal => {
+               std::cmp::Ordering::Less => (),
+               std::cmp::Ordering::Equal => {
                   generation_context.out.emit_get_global("mem_address");
                   generation_context.out.emit_const_add_i32(offset);
                   simple_load(a_type, generation_context);
-                },
-                std::cmp::Ordering::Greater => {
+               }
+               std::cmp::Ordering::Greater => {
                   complex_load(offset, a_type, generation_context);
-                },
+               }
             }
 
             offset += sizeof_type_mem(a_type, &generation_context.struct_size_info);
@@ -1315,7 +1325,7 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
          ExpressionType::Value(ValueType::Int(x)) => {
             let load_suffx = match x.width {
                IntWidth::Eight => "64",
-               IntWidth::Four => "32",
+               IntWidth::Four | IntWidth::Pointer => "32",
                IntWidth::Two => "16",
                IntWidth::One => "8",
             };
@@ -1364,14 +1374,12 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
       writeln!(generation_context.out.out, ".store").unwrap();
    } else {
       let load_suffx = match val_type {
-         ExpressionType::Value(ValueType::Int(x)) => {
-            match x.width {
-               IntWidth::Eight => "64",
-               IntWidth::Four => "32",
-               IntWidth::Two => "16",
-               IntWidth::One => "8",
-            }
-         }
+         ExpressionType::Value(ValueType::Int(x)) => match x.width {
+            IntWidth::Eight => "64",
+            IntWidth::Four | IntWidth::Pointer => "32",
+            IntWidth::Two => "16",
+            IntWidth::One => "8",
+         },
          ExpressionType::Value(ValueType::Float(_)) => "",
          ExpressionType::Value(ValueType::Bool) => "32",
          _ => unreachable!(),

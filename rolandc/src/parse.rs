@@ -46,7 +46,13 @@ fn expect<W: Write>(l: &mut Lexer, err_stream: &mut W, token: &Token) -> Result<
       .unwrap_or(true)
    {
       let lex_token_str = lex_token.map(|x| x.token.for_parse_err()).unwrap_or("EOF");
-      writeln!(err_stream, "Encountered '{}' when expecting '{}'", lex_token_str, token.for_parse_err()).unwrap();
+      writeln!(
+         err_stream,
+         "Encountered '{}' when expecting '{}'",
+         lex_token_str,
+         token.for_parse_err()
+      )
+      .unwrap();
       if let Some(l_token) = lex_token {
          emit_source_info(err_stream, l_token.source_info);
       }
@@ -462,7 +468,8 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
                   writeln!(
                      err_stream,
                      "While parsing statement - unexpected EOF; was expecting a semicolon or assignment operator",
-                  ).unwrap();
+                  )
+                  .unwrap();
                   return Err(());
                }
             }
@@ -676,10 +683,12 @@ fn parse_type<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner) 
          let type_s = extract_identifier(type_token.token);
          match interner.lookup(type_s) {
             "bool" => ValueType::Bool,
+            "isize" => crate::type_data::ISIZE_TYPE,
             "i64" => crate::type_data::I64_TYPE,
             "i32" => crate::type_data::I32_TYPE,
             "i16" => crate::type_data::I16_TYPE,
             "i8" => crate::type_data::I8_TYPE,
+            "usize" => crate::type_data::USIZE_TYPE,
             "u64" => crate::type_data::U64_TYPE,
             "u32" => crate::type_data::U32_TYPE,
             "u16" => crate::type_data::U16_TYPE,

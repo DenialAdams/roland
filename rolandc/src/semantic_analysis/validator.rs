@@ -3,7 +3,7 @@ use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
 use crate::interner::{Interner, StrId};
 use crate::lex::SourceInfo;
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
-use crate::type_data::{ExpressionType, IntWidth, ValueType, I32_TYPE, U32_TYPE};
+use crate::type_data::{ExpressionType, IntWidth, ValueType, I32_TYPE, U32_TYPE, USIZE_TYPE};
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
@@ -18,14 +18,16 @@ enum TypeValidator {
 }
 
 fn matches(type_validation: &TypeValidator, et: &ExpressionType) -> bool {
-   matches!((type_validation, et),
-     (TypeValidator::Any, _)
-   | (TypeValidator::AnyPointer, ExpressionType::Pointer(_, _))
-   | (TypeValidator::Bool, ExpressionType::Value(ValueType::Bool))
-   | (TypeValidator::AnyInt, ExpressionType::Value(ValueType::Int(_)))
-   | (TypeValidator::AnyInt, ExpressionType::Value(ValueType::UnknownInt))
-   | (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::Float(_)))
-   | (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::UnknownFloat)))
+   matches!(
+      (type_validation, et),
+      (TypeValidator::Any, _)
+         | (TypeValidator::AnyPointer, ExpressionType::Pointer(_, _))
+         | (TypeValidator::Bool, ExpressionType::Value(ValueType::Bool))
+         | (TypeValidator::AnyInt, ExpressionType::Value(ValueType::Int(_)))
+         | (TypeValidator::AnyInt, ExpressionType::Value(ValueType::UnknownInt))
+         | (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::Float(_)))
+         | (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::UnknownFloat))
+   )
 }
 
 fn any_match(type_validations: &[TypeValidator], et: &ExpressionType) -> bool {
@@ -176,27 +178,27 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
             procedure_begin_location: procedure.procedure_begin_location,
          },
       ) {
-            error_count += 1;
-            let procedure_name_str = interner.lookup(procedure.name);
-            writeln!(
-               err_stream,
-               "Encountered duplicate procedures/functions with the same name `{}`",
-               procedure_name_str
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ first procedure/function defined @ line {}, column {}",
-               old_procedure.procedure_begin_location.line, old_procedure.procedure_begin_location.col
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ second procedure/function defined @ line {}, column {}",
-               procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
-            )
-            .unwrap();
-         }
+         error_count += 1;
+         let procedure_name_str = interner.lookup(procedure.name);
+         writeln!(
+            err_stream,
+            "Encountered duplicate procedures/functions with the same name `{}`",
+            procedure_name_str
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ first procedure/function defined @ line {}, column {}",
+            old_procedure.procedure_begin_location.line, old_procedure.procedure_begin_location.col
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ second procedure/function defined @ line {}, column {}",
+            procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
+         )
+         .unwrap();
+      }
    }
 
    for a_struct in program.structs.iter() {
@@ -220,7 +222,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          }
       }
 
-      if let Some(old_struct) =  struct_info.insert(
+      if let Some(old_struct) = struct_info.insert(
          a_struct.name,
          StructInfo {
             field_types: field_map,
@@ -757,7 +759,7 @@ fn do_type<W: Write>(
          } else {
             let valid_cast = match (e_type, &target_type) {
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
-                  x.width < y.width
+                  x.width.as_bytes() < y.width.as_bytes()
                }
                (ExpressionType::Value(ValueType::Bool), ExpressionType::Value(ValueType::Int(_))) => true,
                _ => false,
@@ -796,9 +798,8 @@ fn do_type<W: Write>(
          do_type(err_stream, e, validation_context, interner);
 
          if target_type.is_pointer() {
-            // todo: hardcoded pointer size
             try_set_inferred_type(
-               &ExpressionType::Value(U32_TYPE),
+               &ExpressionType::Value(USIZE_TYPE),
                e,
                validation_context,
                err_stream,
@@ -813,19 +814,18 @@ fn do_type<W: Write>(
             ExpressionType::Value(ValueType::CompileError)
          } else {
             let valid_cast = match (e_type, &target_type) {
-               // TODO: pointer width is hardcoded
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Pointer(_, _))
-                  if x.width == IntWidth::Four =>
+                  if x.width == IntWidth::Pointer =>
                {
                   true
                }
                (ExpressionType::Pointer(_, _), ExpressionType::Value(ValueType::Int(x)))
-                  if x.width == IntWidth::Four =>
+                  if x.width == IntWidth::Pointer =>
                {
                   true
                }
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
-                  x.width == y.width
+                  x.width.as_bytes() == y.width.as_bytes()
                }
                _ => false,
             };
@@ -870,7 +870,7 @@ fn do_type<W: Write>(
          } else {
             let valid_cast = match (e_type, &target_type) {
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
-                  x.width > y.width
+                  x.width.as_bytes() > y.width.as_bytes()
                }
                _ => false,
             };

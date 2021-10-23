@@ -3,9 +3,10 @@ use std::io::Write;
 use super::ValidationContext;
 use crate::interner::Interner;
 use crate::parse::{Expression, ExpressionNode};
-use crate::type_data::{ExpressionType, ValueType};
-
-use crate::type_data::{I16_TYPE, I32_TYPE, I8_TYPE, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
+use crate::type_data::{
+   ExpressionType, ValueType, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE,
+   USIZE_TYPE,
+};
 
 // Returns false if the types being inferred are incompatible
 // Inference may still not be possible for other reasons
@@ -54,13 +55,18 @@ fn set_inferred_type<W: Write>(
             ExpressionType::Value(I8_TYPE) => *val > i64::from(i8::MAX) || *val < i64::from(i8::MIN),
             ExpressionType::Value(I16_TYPE) => *val > i64::from(i16::MAX) || *val < i64::from(i16::MIN),
             ExpressionType::Value(I32_TYPE) => *val > i64::from(i32::MAX) || *val < i64::from(i32::MIN),
+            // @FixedPointerWidth
+            ExpressionType::Value(ISIZE_TYPE) => *val > i64::from(i32::MAX) || *val < i64::from(i32::MIN),
             // TODO: add checking for i64 type (currently doesn't make sense because we lex literals as i64 instead of i128 or larger)
+            ExpressionType::Value(I64_TYPE) => false,
             ExpressionType::Value(U8_TYPE) => *val > i64::from(u8::MAX) || *val < i64::from(u8::MIN),
             ExpressionType::Value(U16_TYPE) => *val > i64::from(u16::MAX) || *val < i64::from(u16::MIN),
             ExpressionType::Value(U32_TYPE) => *val > i64::from(u32::MAX) || *val < i64::from(u32::MIN),
+            // @FixedPointerWidth
+            ExpressionType::Value(USIZE_TYPE) => *val > i64::from(u32::MAX) || *val < i64::from(u32::MIN),
             // TODO: add checking for overflow of u64 type (currently impossible pending lexer)
             ExpressionType::Value(U64_TYPE) => *val < 0,
-            _ => false,
+            _ => unreachable!(),
          };
          if overflowing_literal {
             validation_context.error_count += 1;
