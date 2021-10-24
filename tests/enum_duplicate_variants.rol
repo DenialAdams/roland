@@ -1,0 +1,6 @@
+enum Foo {
+   X,
+   X,
+}
+
+proc main() {}
