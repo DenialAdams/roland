@@ -3,7 +3,8 @@ use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
 use crate::interner::{Interner, StrId};
 use crate::lex::SourceInfo;
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
-use crate::type_data::{ExpressionType, ISIZE_TYPE, IntWidth, USIZE_TYPE, ValueType};
+use crate::semantic_analysis::EnumInfo;
+use crate::type_data::{ExpressionType, IntWidth, ValueType, ISIZE_TYPE, USIZE_TYPE};
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
@@ -65,6 +66,7 @@ fn recursive_struct_check(
 
 pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut W, interner: &mut Interner) -> u64 {
    let mut procedure_info: IndexMap<StrId, ProcedureInfo> = IndexMap::new();
+   let mut enum_info: IndexMap<StrId, EnumInfo> = IndexMap::new();
    let mut struct_info: IndexMap<StrId, StructInfo> = IndexMap::new();
    let mut static_info: IndexMap<StrId, StaticInfo> = IndexMap::new();
    let mut error_count = 0;
@@ -108,15 +110,15 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       );
    }
 
-   let mut parameter_dupe_check = HashSet::new();
+   let mut dupe_check = HashSet::new();
    for procedure in program.procedures.iter_mut() {
-      parameter_dupe_check.clear();
-      parameter_dupe_check.reserve(procedure.parameters.len());
+      dupe_check.clear();
+      dupe_check.reserve(procedure.parameters.len());
 
       let mut first_named_param = None;
       let mut reported_named_error = false;
       for (i, param) in procedure.parameters.iter().enumerate() {
-         if !parameter_dupe_check.insert(param.name) {
+         if !dupe_check.insert(param.name) {
             error_count += 1;
             writeln!(
                err_stream,
@@ -201,6 +203,56 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       }
    }
 
+   for a_enum in program.enums.iter() {
+      dupe_check.clear();
+      for variant in a_enum.variants.iter().copied() {
+         if !dupe_check.insert(variant) {
+            error_count += 1;
+            writeln!(
+               err_stream,
+               "Enum `{}` has a duplicate variant `{}`",
+               interner.lookup(a_enum.name),
+               interner.lookup(variant),
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ enum defined @ line {}, column {}",
+               a_enum.begin_location.line, a_enum.begin_location.col
+            )
+            .unwrap();
+         }
+      }
+
+      if let Some(old_enum) = enum_info.insert(
+         a_enum.name,
+         EnumInfo {
+            variants: a_enum.variants.clone(),
+            enum_begin_location: a_enum.begin_location,
+         },
+      ) {
+         error_count += 1;
+         writeln!(
+            err_stream,
+            "Encountered duplicate enums with the same name `{}`",
+            interner.lookup(a_enum.name)
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ first enum defined @ line {}, column {}",
+            old_enum.enum_begin_location.line, old_enum.enum_begin_location.col
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ second enum defined @ line {}, column {}",
+            a_enum.begin_location.line, a_enum.begin_location.col
+         )
+         .unwrap();
+      }
+   }
+
    for a_struct in program.structs.iter() {
       let mut field_map = IndexMap::with_capacity(a_struct.fields.len());
       for field in a_struct.fields.iter() {
@@ -216,7 +268,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
             writeln!(
                err_stream,
                "↳ struct defined @ line {}, column {}",
-               a_struct.struct_begin_location.line, a_struct.struct_begin_location.col
+               a_struct.begin_location.line, a_struct.begin_location.col
             )
             .unwrap();
          }
@@ -226,7 +278,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          a_struct.name,
          StructInfo {
             field_types: field_map,
-            struct_begin_location: a_struct.struct_begin_location,
+            struct_begin_location: a_struct.begin_location,
          },
       ) {
          error_count += 1;
@@ -245,13 +297,35 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          writeln!(
             err_stream,
             "↳ second struct defined @ line {}, column {}",
-            a_struct.struct_begin_location.line, a_struct.struct_begin_location.col
+            a_struct.begin_location.line, a_struct.begin_location.col
          )
          .unwrap();
       }
    }
 
    for struct_i in struct_info.iter() {
+      if let Some(enum_i) = enum_info.get(struct_i.0) {
+         error_count += 1;
+         writeln!(
+            err_stream,
+            "Enum and struct share the same name `{}`",
+            interner.lookup(*struct_i.0)
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ enum defined @ line {}, column {}",
+            enum_i.enum_begin_location.line, enum_i.enum_begin_location.col
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ struct defined @ line {}, column {}",
+            struct_i.1.struct_begin_location.line, struct_i.1.struct_begin_location.col
+         )
+         .unwrap();
+      }
+
       for (field, e_type) in struct_i.1.field_types.iter().filter(|(_, e_type)| match e_type {
          ExpressionType::Value(ValueType::Struct(s)) => struct_info.get(s).is_none(),
          _ => false,
@@ -458,6 +532,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
 
    let err_count = validation_context.error_count;
    program.literals = validation_context.string_literals;
+   program.enum_info = enum_info;
    program.struct_info = struct_info;
    program.static_info = static_info;
 

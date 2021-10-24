@@ -1,6 +1,6 @@
 use super::lex::{emit_source_info, SourceInfo, SourceToken, Token};
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
-use crate::semantic_analysis::{StaticInfo, StructInfo};
+use crate::semantic_analysis::{StaticInfo, StructInfo, EnumInfo};
 use crate::type_data::{ExpressionType, ValueType};
 use indexmap::IndexMap;
 use std::collections::HashSet;
@@ -83,7 +83,14 @@ pub struct ParameterNode {
 pub struct StructNode {
    pub name: StrId,
    pub fields: Vec<(StrId, ExpressionType)>,
-   pub struct_begin_location: SourceInfo,
+   pub begin_location: SourceInfo,
+}
+
+#[derive(Clone)]
+pub struct EnumNode {
+   pub name: StrId,
+   pub variants: Vec<StrId>,
+   pub begin_location: SourceInfo,
 }
 
 #[derive(Clone)]
@@ -193,12 +200,14 @@ pub struct BlockNode {
 #[derive(Clone)]
 pub struct Program {
    // These fields are populated by the parser
+   pub enums: Vec<EnumNode>,
    pub procedures: Vec<ProcedureNode>,
    pub structs: Vec<StructNode>,
    pub statics: Vec<StaticNode>,
 
    // These fields are populated during semantic analysis
    pub literals: HashSet<StrId>,
+   pub enum_info: IndexMap<StrId, EnumInfo>,
    pub struct_info: IndexMap<StrId, StructInfo>,
    pub static_info: IndexMap<StrId, StaticInfo>,
 }
@@ -208,6 +217,7 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
 
    let mut procedures = vec![];
    let mut structs = vec![];
+   let mut enums = vec![];
    let mut statics = vec![];
 
    while let Some(peeked_token) = lexer.peek_token() {
@@ -227,6 +237,11 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
             let def = lexer.next().unwrap();
             let s = parse_struct(&mut lexer, err_stream, def.source_info, interner)?;
             structs.push(s);
+         }
+         Token::KeywordEnumDef => {
+            let def = lexer.next().unwrap();
+            let s = parse_enum(&mut lexer, err_stream, def.source_info, interner)?;
+            enums.push(s);
          }
          Token::KeywordStatic => {
             let a_static = lexer.next().unwrap();
@@ -254,11 +269,13 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
 
    Ok(Program {
       procedures,
+      enums,
       structs,
       statics,
       literals: HashSet::new(),
       struct_info: IndexMap::new(),
       static_info: IndexMap::new(),
+      enum_info: IndexMap::new(),
    })
 }
 
@@ -326,9 +343,7 @@ fn parse_struct<W: Write>(
          let _ = l.next();
          break;
       } else if let Some(&Token::Identifier(x)) = l.peek_token().as_ref() {
-         let struct_name_str = interner.lookup(struct_name);
-         let identifier_str = interner.lookup(*x);
-         writeln!(err_stream, "While parsing definition of struct `{}`, encountered an unexpected identifier `{}`. Are you missing a comma?", struct_name_str, identifier_str).unwrap();
+         writeln!(err_stream, "While parsing definition of struct `{}`, encountered an unexpected identifier `{}`. Are you missing a comma?", interner.lookup(struct_name), interner.lookup(*x)).unwrap();
          emit_source_info(err_stream, l.peek_source().unwrap());
          return Result::Err(());
       } else {
@@ -338,7 +353,41 @@ fn parse_struct<W: Write>(
    Ok(StructNode {
       name: struct_name,
       fields,
-      struct_begin_location: source_info,
+      begin_location: source_info,
+   })
+}
+
+fn parse_enum<W: Write>(
+   l: &mut Lexer,
+   err_stream: &mut W,
+   source_info: SourceInfo,
+   interner: &Interner,
+) -> Result<EnumNode, ()> {
+   let enum_name = extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
+   expect(l, err_stream, &Token::OpenBrace)?;
+   let mut variants: Vec<StrId> = vec![];
+   loop {
+      if let Some(&Token::CloseBrace) = l.peek_token() {
+         let _ = l.next();
+         break;
+      }
+      let identifier = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
+      variants.push(extract_identifier(identifier.token));
+      if let Some(&Token::CloseBrace) = l.peek_token() {
+         let _ = l.next();
+         break;
+      } else if let Some(&Token::Identifier(x)) = l.peek_token().as_ref() {
+         writeln!(err_stream, "While parsing definition of enum `{}`, encountered an unexpected identifier `{}`. Are you missing a comma?", interner.lookup(enum_name), interner.lookup(*x)).unwrap();
+         emit_source_info(err_stream, l.peek_source().unwrap());
+         return Result::Err(());
+      } else {
+         expect(l, err_stream, &Token::Comma)?;
+      };
+   }
+   Ok(EnumNode {
+      name: enum_name,
+      variants,
+      begin_location: source_info,
    })
 }
 

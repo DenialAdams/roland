@@ -22,6 +22,7 @@ pub enum Token {
    KeywordIf,
    KeywordProcedureDef,
    KeywordStructDef,
+   KeywordEnumDef,
    KeywordLet,
    KeywordReturn,
    KeywordLoop,
@@ -88,6 +89,7 @@ impl Token {
          Token::KeywordNamed => "keyword named",
          Token::KeywordAnd => "keyword and",
          Token::KeywordOr => "keyword or",
+         Token::KeywordEnumDef => "keyword enum",
          Token::OpenBrace => "{",
          Token::CloseBrace => "}",
          Token::OpenParen => "(",
@@ -157,6 +159,7 @@ fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
       "named" => Token::KeywordNamed,
       "and" => Token::KeywordAnd,
       "or" => Token::KeywordOr,
+      "enum" => Token::KeywordEnumDef,
       other => Token::Identifier(interner.intern(other)),
    }
 }

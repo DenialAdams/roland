@@ -18,6 +18,12 @@ pub struct ProcedureInfo {
 }
 
 #[derive(Clone)]
+pub struct EnumInfo {
+   pub variants: Vec<StrId>,
+   pub enum_begin_location: SourceInfo,
+}
+
+#[derive(Clone)]
 pub struct StructInfo {
    pub field_types: IndexMap<StrId, ExpressionType>,
    pub struct_begin_location: SourceInfo,

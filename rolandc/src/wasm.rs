@@ -1,7 +1,7 @@
 use crate::interner::{Interner, StrId};
 use crate::parse::{BinOp, Expression, ExpressionNode, ParameterNode, Program, Statement, StatementNode, UnOp};
 use crate::semantic_analysis::StructInfo;
-use crate::type_data::{ExpressionType, FloatWidth, IntWidth, USIZE_TYPE, ValueType};
+use crate::type_data::{ExpressionType, FloatWidth, IntWidth, ValueType, USIZE_TYPE};
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
 use std::io::Write;
