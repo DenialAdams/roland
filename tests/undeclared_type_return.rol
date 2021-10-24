@@ -1,0 +1,7 @@
+func foo() -> Y {
+
+}
+
+proc main() {
+   foo();
+}

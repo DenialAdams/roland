@@ -79,6 +79,7 @@ pub enum ValueType {
    Array(Box<ExpressionType>, i64),
    CompileError,
    Enum(StrId),
+   Unresolved(StrId),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -208,8 +209,13 @@ impl ExpressionType {
 impl ValueType {
    fn is_concrete_type(&self) -> bool {
       match self {
-         ValueType::UnknownInt | ValueType::UnknownFloat | ValueType::CompileError => false,
-         ValueType::Int(_) | ValueType::Float(_) | ValueType::Bool | ValueType::Unit | ValueType::Struct(_) | ValueType::Enum(_) => true,
+         ValueType::UnknownInt | ValueType::UnknownFloat | ValueType::CompileError | ValueType::Unresolved(_) => false,
+         ValueType::Int(_)
+         | ValueType::Float(_)
+         | ValueType::Bool
+         | ValueType::Unit
+         | ValueType::Struct(_)
+         | ValueType::Enum(_) => true,
          ValueType::Array(exp, _) => exp.is_concrete_type(),
       }
    }
@@ -243,6 +249,7 @@ impl ValueType {
          ValueType::Array(i_type, length) => {
             Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info(interner), length))
          }
+         ValueType::Unresolved(x) => Cow::Owned(format!("{}", interner.lookup(*x))),
       }
    }
 }

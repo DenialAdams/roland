@@ -1,0 +1,6 @@
+struct Foo {}
+enum Foo {}
+
+proc main() {
+   print("Nothing to see here, officer");
+}

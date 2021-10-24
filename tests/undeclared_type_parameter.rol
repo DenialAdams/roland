@@ -1,0 +1,7 @@
+func foo(x: Y) {
+
+}
+
+proc main() {
+   foo();
+}

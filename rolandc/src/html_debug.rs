@@ -177,7 +177,14 @@ fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode, int
          writeln!(out, "</ul></li>").unwrap();
       }
       Expression::EnumLiteral(name, variant) => {
-         writeln!(out, "<li><span>{}::{}{}</span></li>", interner.lookup(*name), interner.lookup(*variant), type_text).unwrap();         
+         writeln!(
+            out,
+            "<li><span>{}::{}{}</span></li>",
+            interner.lookup(*name),
+            interner.lookup(*variant),
+            type_text
+         )
+         .unwrap();
       }
    }
 }

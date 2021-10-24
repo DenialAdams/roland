@@ -1,6 +1,6 @@
 use super::lex::{emit_source_info, SourceInfo, SourceToken, Token};
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
-use crate::semantic_analysis::{StaticInfo, StructInfo, EnumInfo};
+use crate::semantic_analysis::{EnumInfo, StaticInfo, StructInfo};
 use crate::type_data::{ExpressionType, ValueType};
 use indexmap::IndexMap;
 use std::collections::HashSet;
@@ -153,7 +153,7 @@ pub enum Expression {
    Extend(ExpressionType, Box<ExpressionNode>),
    Truncate(ExpressionType, Box<ExpressionNode>),
    Transmute(ExpressionType, Box<ExpressionNode>),
-   EnumLiteral(StrId, StrId)
+   EnumLiteral(StrId, StrId),
 }
 
 #[derive(Clone, Debug)]
@@ -745,7 +745,7 @@ fn parse_type<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner) 
             "u8" => crate::type_data::U8_TYPE,
             "f32" => crate::type_data::F32_TYPE,
             "f64" => crate::type_data::F64_TYPE,
-            _ => ValueType::Struct(type_s),
+            _ => ValueType::Unresolved(type_s),
          }
       }
    };
@@ -779,7 +779,8 @@ fn pratt<W: Write>(
             Expression::ProcedureCall(s, args.into_boxed_slice())
          } else if l.peek_token() == Some(&Token::DoubleColon) {
             let _ = l.next();
-            let variant_identifier = extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
+            let variant_identifier =
+               extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
             Expression::EnumLiteral(s, variant_identifier)
          } else if !if_head && l.peek_token() == Some(&Token::OpenBrace) {
             let _ = l.next();

@@ -49,6 +49,7 @@ fn recursive_struct_check(
    let mut is_recursive = false;
 
    for struct_field in struct_fields.iter().flat_map(|x| match &x.1 {
+      ExpressionType::Value(ValueType::Unresolved(x)) => Some(*x),
       ExpressionType::Value(ValueType::Struct(x)) => Some(*x),
       _ => None,
    }) {
@@ -64,6 +65,39 @@ fn recursive_struct_check(
    }
 
    is_recursive
+}
+
+fn resolve_type(t_type: &mut ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) -> Result<(), ()> {
+   match t_type {
+      ExpressionType::Value(vt) => resolve_value_type(vt, ei, si),
+      ExpressionType::Pointer(_, vt) => resolve_value_type(vt, ei, si),
+   }
+}
+
+fn resolve_value_type(v_type: &mut ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) -> Result<(), ()> {
+   match v_type {
+      ValueType::UnknownInt => Ok(()),
+      ValueType::UnknownFloat => Ok(()),
+      ValueType::Int(_) => Ok(()),
+      ValueType::Float(_) => Ok(()),
+      ValueType::Bool => Ok(()),
+      ValueType::Unit => Ok(()),
+      ValueType::Struct(_) => Ok(()),
+      ValueType::Array(exp, _) => resolve_type(exp, ei, si),
+      ValueType::CompileError => Ok(()),
+      ValueType::Enum(_) => Ok(()),
+      ValueType::Unresolved(x) => {
+         if ei.contains_key(x) {
+            *v_type = ValueType::Enum(*x);
+            Ok(())
+         } else if si.contains_key(x) {
+            *v_type = ValueType::Struct(*x);
+            Ok(())
+         } else {
+            Err(())
+         }
+      },
+   }
 }
 
 pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut W, interner: &mut Interner) -> u64 {
@@ -113,100 +147,9 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
    }
 
    let mut dupe_check = HashSet::new();
-   for procedure in program.procedures.iter_mut() {
-      dupe_check.clear();
-      dupe_check.reserve(procedure.parameters.len());
-
-      let mut first_named_param = None;
-      let mut reported_named_error = false;
-      for (i, param) in procedure.parameters.iter().enumerate() {
-         if !dupe_check.insert(param.name) {
-            error_count += 1;
-            writeln!(
-               err_stream,
-               "Procedure/function `{}` has a duplicate parameter `{}`",
-               interner.lookup(procedure.name),
-               interner.lookup(param.name),
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ procedure/function defined @ line {}, column {}",
-               procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
-            )
-            .unwrap();
-         }
-
-         if param.named && first_named_param.is_none() {
-            first_named_param = Some(i);
-         }
-
-         if !param.named && first_named_param.is_some() && !reported_named_error {
-            reported_named_error = true;
-            error_count += 1;
-            writeln!(
-               err_stream,
-               "Procedure/function `{}` has named parameter(s) which come before non-named parameter(s)",
-               interner.lookup(procedure.name),
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ procedure/function defined @ line {}, column {}",
-               procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
-            )
-            .unwrap();
-         }
-      }
-
-      if !reported_named_error && first_named_param.is_some() {
-         if let Some(i) = first_named_param {
-            // It doesn't really matter how we sort these, as long as we do it consistently for arguments
-            // AND that there are no equal elements (in this case, we already check that parameters don't have the same name)
-            procedure.parameters[i..].sort_unstable_by_key(|x| x.name);
-         }
-      }
-
-      if let Some(old_procedure) = procedure_info.insert(
-         procedure.name,
-         ProcedureInfo {
-            pure: procedure.pure,
-            parameters: procedure.parameters.iter().map(|x| x.p_type.clone()).collect(),
-            named_parameters: procedure
-               .parameters
-               .iter()
-               .filter(|x| x.named)
-               .map(|x| (x.name, x.p_type.clone()))
-               .collect(),
-            ret_type: procedure.ret_type.clone(),
-            procedure_begin_location: procedure.procedure_begin_location,
-         },
-      ) {
-         error_count += 1;
-         let procedure_name_str = interner.lookup(procedure.name);
-         writeln!(
-            err_stream,
-            "Encountered duplicate procedures/functions with the same name `{}`",
-            procedure_name_str
-         )
-         .unwrap();
-         writeln!(
-            err_stream,
-            "↳ first procedure/function defined @ line {}, column {}",
-            old_procedure.procedure_begin_location.line, old_procedure.procedure_begin_location.col
-         )
-         .unwrap();
-         writeln!(
-            err_stream,
-            "↳ second procedure/function defined @ line {}, column {}",
-            procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
-         )
-         .unwrap();
-      }
-   }
-
    for a_enum in program.enums.iter() {
       dupe_check.clear();
+      dupe_check.reserve(a_enum.variants.len());
       for variant in a_enum.variants.iter().copied() {
          if !dupe_check.insert(variant) {
             error_count += 1;
@@ -305,7 +248,10 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       }
    }
 
-   for struct_i in struct_info.iter() {
+   // This clone is only necessary for rust's borrowing rules;
+   // if hot we can try a different approach
+   let cloned_struct_info = struct_info.clone();
+   for struct_i in struct_info.iter_mut() {
       if let Some(enum_i) = enum_info.get(struct_i.0) {
          error_count += 1;
          writeln!(
@@ -328,10 +274,11 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          .unwrap();
       }
 
-      for (field, e_type) in struct_i.1.field_types.iter().filter(|(_, e_type)| match e_type {
-         ExpressionType::Value(ValueType::Struct(s)) => struct_info.get(s).is_none(),
-         _ => false,
-      }) {
+      for (field, e_type) in struct_i.1.field_types.iter_mut() {
+         if resolve_type(e_type, &enum_info, &cloned_struct_info).is_ok() {
+            continue;
+         }
+
          error_count += 1;
          let etype_str = e_type.as_roland_type_info(interner);
          writeln!(
@@ -350,7 +297,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          .unwrap();
       }
 
-      if recursive_struct_check(*struct_i.0, &struct_i.1.field_types, &struct_info) {
+      if recursive_struct_check(*struct_i.0, &struct_i.1.field_types, &cloned_struct_info) {
          error_count += 1;
          writeln!(
             err_stream,
@@ -367,14 +314,11 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       }
    }
 
-   for static_node in program.statics.iter() {
-      let static_type = &static_node.static_type;
+   for static_node in program.statics.iter_mut() {
+      let static_type = &mut static_node.static_type;
       let si = &static_node.static_begin_location;
 
-      if match static_type {
-         ExpressionType::Value(ValueType::Struct(s)) => struct_info.get(s).is_none(),
-         _ => false,
-      } {
+      if resolve_type(static_type, &enum_info, &struct_info).is_err() {
          error_count += 1;
          let static_type_str = static_type.as_roland_type_info(interner);
          writeln!(
@@ -411,6 +355,137 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
             err_stream,
             "↳ second static defined @ line {}, column {}",
             static_node.static_begin_location.line, static_node.static_begin_location.col
+         )
+         .unwrap();
+      }
+   }
+
+   for procedure in program.procedures.iter_mut() {
+      dupe_check.clear();
+      dupe_check.reserve(procedure.parameters.len());
+
+      let mut first_named_param = None;
+      let mut reported_named_error = false;
+      for (i, param) in procedure.parameters.iter().enumerate() {
+         if !dupe_check.insert(param.name) {
+            error_count += 1;
+            writeln!(
+               err_stream,
+               "Procedure/function `{}` has a duplicate parameter `{}`",
+               interner.lookup(procedure.name),
+               interner.lookup(param.name),
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ procedure/function defined @ line {}, column {}",
+               procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
+            )
+            .unwrap();
+         }
+
+         if param.named && first_named_param.is_none() {
+            first_named_param = Some(i);
+         }
+
+         if !param.named && first_named_param.is_some() && !reported_named_error {
+            reported_named_error = true;
+            error_count += 1;
+            writeln!(
+               err_stream,
+               "Procedure/function `{}` has named parameter(s) which come before non-named parameter(s)",
+               interner.lookup(procedure.name),
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ procedure/function defined @ line {}, column {}",
+               procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
+            )
+            .unwrap();
+         }
+      }
+
+      if !reported_named_error && first_named_param.is_some() {
+         if let Some(i) = first_named_param {
+            // It doesn't really matter how we sort these, as long as we do it consistently for arguments
+            // AND that there are no equal elements (in this case, we already check that parameters don't have the same name)
+            procedure.parameters[i..].sort_unstable_by_key(|x| x.name);
+         }
+      }
+
+      for parameter in procedure.parameters.iter_mut() {
+         if resolve_type(&mut parameter.p_type, &enum_info, &struct_info).is_err() {
+            error_count += 1;
+            let etype_str = parameter.p_type.as_roland_type_info(interner);
+            writeln!(
+               err_stream,
+               "Parameter `{}` of procedure/function `{}` is of undeclared type `{}`",
+               interner.lookup(parameter.name),
+               interner.lookup(procedure.name),
+               etype_str,
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ procedure/function defined @ line {}, column {}",
+               procedure.procedure_begin_location.line, procedure.procedure_begin_location.col,
+            )
+            .unwrap();
+         }
+      }
+      
+      if resolve_type(&mut procedure.ret_type, &enum_info, &struct_info).is_err() {
+         error_count += 1;
+         let etype_str = procedure.ret_type.as_roland_type_info(interner);
+         writeln!(
+            err_stream,
+            "Return type of procedure/function `{}` is of undeclared type `{}`",
+            interner.lookup(procedure.name),
+            etype_str,
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ procedure/function defined @ line {}, column {}",
+            procedure.procedure_begin_location.line, procedure.procedure_begin_location.col,
+         )
+         .unwrap();
+      }
+
+      if let Some(old_procedure) = procedure_info.insert(
+         procedure.name,
+         ProcedureInfo {
+            pure: procedure.pure,
+            parameters: procedure.parameters.iter().map(|x| x.p_type.clone()).collect(),
+            named_parameters: procedure
+               .parameters
+               .iter()
+               .filter(|x| x.named)
+               .map(|x| (x.name, x.p_type.clone()))
+               .collect(),
+            ret_type: procedure.ret_type.clone(),
+            procedure_begin_location: procedure.procedure_begin_location,
+         },
+      ) {
+         error_count += 1;
+         let procedure_name_str = interner.lookup(procedure.name);
+         writeln!(
+            err_stream,
+            "Encountered duplicate procedures/functions with the same name `{}`",
+            procedure_name_str
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ first procedure/function defined @ line {}, column {}",
+            old_procedure.procedure_begin_location.line, old_procedure.procedure_begin_location.col
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ second procedure/function defined @ line {}, column {}",
+            procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
          )
          .unwrap();
       }
@@ -453,7 +528,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
    }
 
    // We won't proceed with type checking because there could be false positives due to
-   // procedure/struct definition errors.
+   // procedure/struct definition errors, and probably invalidated invariants
    if validation_context.error_count > 0 {
       return validation_context.error_count;
    }
@@ -698,7 +773,9 @@ fn type_statement<W: Write>(
       Statement::VariableDeclaration(id, en, dt) => {
          do_type(err_stream, en, validation_context, interner);
 
-         if let Some(v) = dt.as_ref() {
+         if let Some(v) = dt.as_mut() {
+            // Failure to resolve is handled below
+            let _ = resolve_type(v, validation_context.enum_info, validation_context.struct_info);
             try_set_inferred_type(v, en, validation_context, err_stream, interner);
          }
 
@@ -726,11 +803,7 @@ fn type_statement<W: Write>(
             ExpressionType::Value(ValueType::CompileError)
          } else if dt
             .as_ref()
-            .and_then(|x| match x {
-               ExpressionType::Value(ValueType::Struct(s)) => Some(s),
-               _ => None,
-            })
-            .map(|x| validation_context.struct_info.get(x).is_none())
+            .map(|x| matches!(x, ExpressionType::Value(ValueType::Unresolved(_))))
             .unwrap_or(false)
          {
             validation_context.error_count += 1;
@@ -1000,9 +1073,7 @@ fn do_type<W: Write>(
             BinOp::Equality | BinOp::NotEquality => {
                &[TypeValidator::AnyInt, TypeValidator::Bool, TypeValidator::AnyEnum]
             }
-            BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor => {
-               &[TypeValidator::AnyInt, TypeValidator::Bool]
-            }
+            BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor => &[TypeValidator::AnyInt, TypeValidator::Bool],
          };
 
          try_set_inferred_type(
@@ -1814,6 +1885,6 @@ fn do_type<W: Write>(
 
             Some(ExpressionType::Value(ValueType::CompileError))
          };
-      },
+      }
    }
 }

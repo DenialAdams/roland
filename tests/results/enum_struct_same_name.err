@@ -1,0 +1,4 @@
+Enum and struct share the same name `Foo`
+↳ enum defined @ line 2, column 1
+↳ struct defined @ line 1, column 1
+There were 1 semantic errors, bailing

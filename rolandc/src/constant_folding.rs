@@ -532,7 +532,7 @@ pub fn fold_expr<W: Write>(
 
          None
       }
-      Expression::EnumLiteral(_, _) => None
+      Expression::EnumLiteral(_, _) => None,
    }
 }
 
