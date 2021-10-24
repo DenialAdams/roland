@@ -41,6 +41,7 @@ pub enum Token {
    CloseParen,
    OpenSquareBracket,
    CloseSquareBracket,
+   DoubleColon,
    Colon,
    Caret,
    Amp,
@@ -97,6 +98,7 @@ impl Token {
          Token::OpenSquareBracket => "[",
          Token::CloseSquareBracket => "]",
          Token::Colon => ":",
+         Token::DoubleColon => "::",
          Token::Caret => "^",
          Token::Amp => "&",
          Token::Pipe => "|",
@@ -225,12 +227,21 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
                source_info.col += 1;
                let _ = chars.next().unwrap();
             } else if c == ':' {
-               tokens.push(SourceToken {
-                  source_info,
-                  token: Token::Colon,
-               });
-               source_info.col += 1;
                let _ = chars.next().unwrap();
+               if chars.peek() == Some(&':') {
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::DoubleColon,
+                  });
+                  source_info.col += 2;
+                  let _ = chars.next().unwrap();
+               } else {
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::Colon,
+                  });
+                  source_info.col += 1;
+               }
             } else if c == ';' {
                tokens.push(SourceToken {
                   source_info,

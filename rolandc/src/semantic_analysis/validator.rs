@@ -11,6 +11,7 @@ use std::io::Write;
 
 #[derive(Debug)]
 enum TypeValidator {
+   AnyEnum,
    Bool,
    AnyInt,
    AnyFloat,
@@ -28,6 +29,7 @@ fn matches(type_validation: &TypeValidator, et: &ExpressionType) -> bool {
          | (TypeValidator::AnyInt, ExpressionType::Value(ValueType::UnknownInt))
          | (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::Float(_)))
          | (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::UnknownFloat))
+         | (TypeValidator::AnyEnum, &ExpressionType::Value(ValueType::Enum(_)))
    )
 }
 
@@ -227,7 +229,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       if let Some(old_enum) = enum_info.insert(
          a_enum.name,
          EnumInfo {
-            variants: a_enum.variants.clone(),
+            variants: a_enum.variants.iter().copied().collect(),
             enum_begin_location: a_enum.begin_location,
          },
       ) {
@@ -419,6 +421,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       variable_types: HashMap::new(),
       error_count,
       procedure_info: &procedure_info,
+      enum_info: &enum_info,
       struct_info: &struct_info,
       static_info: &static_info,
       cur_procedure_info: None,
@@ -994,7 +997,10 @@ fn do_type<W: Write>(
             | BinOp::LessThan
             | BinOp::LessThanOrEqualTo => &[TypeValidator::AnyInt, TypeValidator::AnyFloat],
             BinOp::LogicalAnd | BinOp::LogicalOr => &[TypeValidator::Bool],
-            BinOp::Equality | BinOp::NotEquality | BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor => {
+            BinOp::Equality | BinOp::NotEquality => {
+               &[TypeValidator::AnyInt, TypeValidator::Bool, TypeValidator::AnyEnum]
+            }
+            BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor => {
                &[TypeValidator::AnyInt, TypeValidator::Bool]
             }
          };
@@ -1769,5 +1775,45 @@ fn do_type<W: Write>(
             None => unreachable!(),
          };
       }
+      Expression::EnumLiteral(x, v) => {
+         expr_node.exp_type = if let Some(enum_info) = validation_context.enum_info.get(x) {
+            if enum_info.variants.contains(v) {
+               Some(ExpressionType::Value(ValueType::Enum(*x)))
+            } else {
+               validation_context.error_count += 1;
+               writeln!(
+                  err_stream,
+                  "Attempted to instantiate enum variant `{}` of enum `{}`, which is not a valid variant",
+                  interner.lookup(*v),
+                  interner.lookup(*x),
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ enum literal @ line {}, column {}",
+                  expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+               )
+               .unwrap();
+
+               Some(ExpressionType::Value(ValueType::CompileError))
+            }
+         } else {
+            validation_context.error_count += 1;
+            writeln!(
+               err_stream,
+               "Attempted to instantiate enum `{}`, which does not exist",
+               interner.lookup(*x),
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ enum literal @ line {}, column {}",
+               expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+            )
+            .unwrap();
+
+            Some(ExpressionType::Value(ValueType::CompileError))
+         };
+      },
    }
 }

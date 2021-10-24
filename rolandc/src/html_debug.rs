@@ -101,16 +101,14 @@ fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode, int
          writeln!(out, "<li><span>{}{}</span></li>", x, type_text).unwrap();
       }
       Expression::StringLiteral(x) => {
-         let str_value = interner.lookup(*x);
-         writeln!(out, "<li><span>\"{}\"{}</span></li>", str_value, type_text).unwrap();
+         writeln!(out, "<li><span>\"{}\"{}</span></li>", interner.lookup(*x), type_text).unwrap();
       }
       Expression::Variable(x) => {
          let var_str = interner.lookup(*x);
          writeln!(out, "<li><span>{}{}</span></li>", var_str, type_text).unwrap();
       }
       Expression::ProcedureCall(x, args) => {
-         let procedure_str = interner.lookup(*x);
-         writeln!(out, "<li><span>{}(){}</span>", procedure_str, type_text).unwrap();
+         writeln!(out, "<li><span>{}(){}</span>", interner.lookup(*x), type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
          for arg in args.iter() {
             print_expression(out, &arg.expr, interner);
@@ -149,8 +147,7 @@ fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode, int
          writeln!(out, "</ul></li>").unwrap();
       }
       Expression::StructLiteral(type_name, fields) => {
-         let type_name_str = interner.lookup(*type_name);
-         writeln!(out, "<li><span>{}{}</span>", type_name_str, type_text).unwrap();
+         writeln!(out, "<li><span>{}{}</span>", interner.lookup(*type_name), type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
          for field in fields {
             print_expression(out, &field.1, interner);
@@ -178,6 +175,9 @@ fn print_expression<W: Write>(out: &mut W, expression_node: &ExpressionNode, int
          print_expression(out, array_expr, interner);
          print_expression(out, index_expr, interner);
          writeln!(out, "</ul></li>").unwrap();
+      }
+      Expression::EnumLiteral(name, variant) => {
+         writeln!(out, "<li><span>{}::{}{}</span></li>", interner.lookup(*name), interner.lookup(*variant), type_text).unwrap();         
       }
    }
 }

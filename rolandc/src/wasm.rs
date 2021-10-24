@@ -1,6 +1,6 @@
 use crate::interner::{Interner, StrId};
 use crate::parse::{BinOp, Expression, ExpressionNode, ParameterNode, Program, Statement, StatementNode, UnOp};
-use crate::semantic_analysis::StructInfo;
+use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth, ValueType, USIZE_TYPE};
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
@@ -15,6 +15,7 @@ struct GenerationContext<'a> {
    local_offsets_mem: HashMap<StrId, u32>,
    struct_info: &'a IndexMap<StrId, StructInfo>,
    struct_size_info: HashMap<StrId, SizeInfo>,
+   enum_info: &'a IndexMap<StrId, EnumInfo>,
    needed_store_fns: IndexSet<ExpressionType>,
    sum_sizeof_locals_mem: u32,
    loop_depth: u64,
@@ -59,6 +60,7 @@ impl<'a> PrettyWasmWriter {
       name: StrId,
       params: &[ParameterNode],
       result_type: &ExpressionType,
+      ei: &IndexMap<StrId, EnumInfo>,
       si: &IndexMap<StrId, StructInfo>,
       interner: &Interner,
    ) {
@@ -66,18 +68,18 @@ impl<'a> PrettyWasmWriter {
       write!(self.out, "(func ${}", interner.lookup(name)).unwrap();
       for param in params.iter() {
          self.out.push(b' ');
-         write_type_as_params(&param.p_type, &mut self.out, si);
+         write_type_as_params(&param.p_type, &mut self.out, ei, si);
       }
       self.out.push(b' ');
-      write_type_as_result(result_type, &mut self.out, si);
+      write_type_as_result(result_type, &mut self.out, ei, si);
       self.out.push(b'\n');
       self.depth += 1;
    }
 
-   fn emit_store_function_start(&mut self, index: usize, param: &ExpressionType, si: &IndexMap<StrId, StructInfo>) {
+   fn emit_store_function_start(&mut self, index: usize, param: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) {
       self.emit_spaces();
       write!(self.out, "(func $::store::{} (param i32) ", index).unwrap();
-      write_type_as_params(param, &mut self.out, si);
+      write_type_as_params(param, &mut self.out, ei, si);
       self.out.push(b'\n');
       self.depth += 1;
    }
@@ -100,10 +102,10 @@ impl<'a> PrettyWasmWriter {
       writeln!(self.out, "end").unwrap();
    }
 
-   fn emit_if_start(&mut self, result_type: &ExpressionType, si: &IndexMap<StrId, StructInfo>) {
+   fn emit_if_start(&mut self, result_type: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) {
       self.emit_spaces();
       write!(self.out, "(if ").unwrap();
-      write_type_as_result(result_type, &mut self.out, si);
+      write_type_as_result(result_type, &mut self.out, ei, si);
       self.out.push(b'\n');
       self.depth += 1;
    }
@@ -189,21 +191,26 @@ impl<'a> PrettyWasmWriter {
    }
 }
 
-fn write_type_as_result(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
+fn write_type_as_result(e: &ExpressionType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) {
    match e {
-      ExpressionType::Value(x) => write_value_type_as_result(x, out, si),
+      ExpressionType::Value(x) => write_value_type_as_result(x, out, ei, si),
       ExpressionType::Pointer(_, _) => write!(out, "(result i32)").unwrap(),
    }
 }
 
-fn write_value_type_as_result(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
+fn write_value_type_as_result(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::UnknownFloat => unreachable!(),
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => write!(out, "(result i64)").unwrap(),
          _ => write!(out, "(result i32)").unwrap(),
-      },
+      }
+      ValueType::Enum(_) => {
+         write!(out, "(result ").unwrap();
+         value_type_to_s(e, out, ei, si);
+         write!(out, ")").unwrap();
+      }
       ValueType::Float(x) => match x.width {
          FloatWidth::Eight => write!(out, "(result f64)").unwrap(),
          FloatWidth::Four => write!(out, "(result i32)").unwrap(),
@@ -214,7 +221,7 @@ fn write_value_type_as_result(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<St
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
          for e_type in field_types.values() {
-            write_type_as_result(e_type, out, si);
+            write_type_as_result(e_type, out, ei, si);
             out.push(b' ');
          }
          if !field_types.is_empty() {
@@ -223,7 +230,7 @@ fn write_value_type_as_result(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<St
       }
       ValueType::Array(a_type, len) => {
          for _ in 0..*len {
-            write_type_as_result(a_type, out, si);
+            write_type_as_result(a_type, out, ei, si);
             out.push(b' ');
          }
          if *len > 0 {
@@ -233,32 +240,37 @@ fn write_value_type_as_result(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<St
    }
 }
 
-fn write_type_as_params(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
+fn write_type_as_params(e: &ExpressionType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) {
    match e {
-      ExpressionType::Value(x) => write_value_type_as_params(x, out, si),
+      ExpressionType::Value(x) => write_value_type_as_params(x, out, ei, si),
       ExpressionType::Pointer(_, _) => write!(out, "(param i32)").unwrap(),
    }
 }
 
-fn write_value_type_as_params(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
+fn write_value_type_as_params(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::UnknownFloat => unreachable!(),
+      ValueType::Enum(_) => {
+         write!(out, "(param ").unwrap();
+         value_type_to_s(e, out, ei, si);
+         write!(out, ")").unwrap();
+      }
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => write!(out, "(param i64)").unwrap(),
          _ => write!(out, "(param i32)").unwrap(),
-      },
+      }
       ValueType::Float(x) => match x.width {
          FloatWidth::Eight => write!(out, "(param f64)").unwrap(),
          FloatWidth::Four => write!(out, "(param i32)").unwrap(),
-      },
+      }
       ValueType::Bool => write!(out, "(param i32)").unwrap(),
       ValueType::Unit => (),
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
          for e_type in field_types.values() {
-            write_type_as_params(e_type, out, si);
+            write_type_as_params(e_type, out, ei, si);
             out.push(b' ');
          }
          if !field_types.is_empty() {
@@ -267,7 +279,7 @@ fn write_value_type_as_params(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<St
       }
       ValueType::Array(a_type, len) => {
          for _ in 0..*len {
-            write_type_as_params(a_type, out, si);
+            write_type_as_params(a_type, out, ei, si);
             out.push(b' ');
          }
          if *len > 0 {
@@ -277,14 +289,14 @@ fn write_value_type_as_params(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<St
    }
 }
 
-fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
+fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) {
    match e {
-      ExpressionType::Value(x) => value_type_to_s(x, out, si),
+      ExpressionType::Value(x) => value_type_to_s(x, out, ei, si),
       ExpressionType::Pointer(_, _) => write!(out, "i32").unwrap(),
    }
 }
 
-fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
+fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::UnknownFloat => unreachable!(),
@@ -299,10 +311,18 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<StrId, Struct
       ValueType::Bool => write!(out, "i32").unwrap(),
       ValueType::Unit => unreachable!(),
       ValueType::CompileError => unreachable!(),
+      ValueType::Enum(x) => {
+         let num_variants = ei.get(x).unwrap().variants.len();
+         if num_variants > u32::MAX as usize {
+            write!(out, "i64").unwrap();
+         } else {
+            write!(out, "i32").unwrap();
+         }
+      }
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
          for e_type in field_types.values() {
-            type_to_s(e_type, out, si);
+            type_to_s(e_type, out, ei, si);
             out.push(b' ');
          }
          if !field_types.is_empty() {
@@ -311,7 +331,7 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<StrId, Struct
       }
       ValueType::Array(a_type, len) => {
          for _ in 0..*len {
-            type_to_s(a_type, out, si);
+            type_to_s(a_type, out, ei, si);
             out.push(b' ');
          }
          if *len > 0 {
@@ -322,17 +342,29 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, si: &IndexMap<StrId, Struct
 }
 
 /// The size of a type as it's stored in memory
-fn sizeof_type_mem(e: &ExpressionType, si: &HashMap<StrId, SizeInfo>) -> u32 {
+fn sizeof_type_mem(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
-      ExpressionType::Value(x) => sizeof_value_type_mem(x, si),
+      ExpressionType::Value(x) => sizeof_value_type_mem(x, ei, si),
       ExpressionType::Pointer(_, _) => 4,
    }
 }
 
-fn sizeof_value_type_mem(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32 {
+fn sizeof_value_type_mem(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::UnknownFloat => unreachable!(),
+      ValueType::Enum(x) => {
+         let num_variants = ei.get(x).unwrap().variants.len();
+         if num_variants > u32::MAX as usize {
+            8
+         } else if num_variants > u16::MAX as usize {
+            4
+         } else if num_variants > u8::MAX as usize {
+            2
+         } else {
+            1
+         }
+      }
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => 8,
          IntWidth::Four | IntWidth::Pointer => 4,
@@ -347,7 +379,7 @@ fn sizeof_value_type_mem(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32 {
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().mem_size,
-      ValueType::Array(a_type, len) => sizeof_type_mem(a_type, si) * (*len as u32),
+      ValueType::Array(a_type, len) => sizeof_type_mem(a_type, ei, si) * (*len as u32),
    }
 }
 
@@ -360,17 +392,29 @@ fn aligned_address(v: u32, a: u32) -> u32 {
    }
 }
 
-fn mem_alignment(e: &ExpressionType, si: &HashMap<StrId, SizeInfo>) -> u32 {
+fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
-      ExpressionType::Value(x) => value_type_mem_alignment(x, si),
+      ExpressionType::Value(x) => value_type_mem_alignment(x, ei, si),
       ExpressionType::Pointer(_, _) => 4,
    }
 }
 
-fn value_type_mem_alignment(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32 {
+fn value_type_mem_alignment(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::UnknownFloat => unreachable!(),
+      ValueType::Enum(x) => {
+         let num_variants = ei.get(x).unwrap().variants.len();
+         if num_variants > u32::MAX as usize {
+            8
+         } else if num_variants > u16::MAX as usize {
+            4
+         } else if num_variants > u8::MAX as usize {
+            2
+         } else {
+            1
+         }
+      }
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => 8,
          IntWidth::Four | IntWidth::Pointer => 4,
@@ -385,7 +429,7 @@ fn value_type_mem_alignment(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32
       ValueType::Unit => 1,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().strictest_alignment,
-      ValueType::Array(a_type, _len) => mem_alignment(a_type, si),
+      ValueType::Array(a_type, _len) => mem_alignment(a_type, ei, si),
    }
 }
 
@@ -401,6 +445,7 @@ fn sizeof_value_type_values(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::UnknownFloat => unreachable!(),
+      ValueType::Enum(_) => 1,
       ValueType::Int(_) => 1,
       ValueType::Float(_) => 1,
       ValueType::Bool => 1,
@@ -412,17 +457,25 @@ fn sizeof_value_type_values(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32
 }
 
 /// The size of a type, in bytes, as it's stored in locals (minimum size 4 bytes)
-fn sizeof_type_wasm(e: &ExpressionType, si: &HashMap<StrId, SizeInfo>) -> u32 {
+fn sizeof_type_wasm(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
-      ExpressionType::Value(x) => sizeof_value_type_wasm(x, si),
+      ExpressionType::Value(x) => sizeof_value_type_wasm(x, ei, si),
       ExpressionType::Pointer(_, _) => 4,
    }
 }
 
-fn sizeof_value_type_wasm(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32 {
+fn sizeof_value_type_wasm(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ValueType::UnknownInt => unreachable!(),
       ValueType::UnknownFloat => unreachable!(),
+      ValueType::Enum(x) => {
+         let num_variants = ei.get(x).unwrap().variants.len();
+         if num_variants > u32::MAX as usize {
+            8
+         } else {
+            4
+         }
+      }
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => 8,
          _ => 4,
@@ -435,12 +488,13 @@ fn sizeof_value_type_wasm(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32 {
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().wasm_size,
-      ValueType::Array(a_type, len) => sizeof_type_wasm(a_type, si) * (*len as u32),
+      ValueType::Array(a_type, len) => sizeof_type_wasm(a_type, ei, si) * (*len as u32),
    }
 }
 
 fn calculate_struct_size_info(
    name: StrId,
+   enum_info: &IndexMap<StrId, EnumInfo>,
    struct_info: &IndexMap<StrId, StructInfo>,
    struct_size_info: &mut HashMap<StrId, SizeInfo>,
 ) {
@@ -451,15 +505,15 @@ fn calculate_struct_size_info(
    for field_t in struct_info.get(&name).unwrap().field_types.values() {
       if let ExpressionType::Value(ValueType::Struct(s)) = field_t {
          if !struct_size_info.contains_key(s) {
-            calculate_struct_size_info(*s, struct_info, struct_size_info);
+            calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
          }
       }
 
       // todo: Check this?
-      sum_mem += sizeof_type_mem(field_t, struct_size_info);
-      sum_wasm += sizeof_type_wasm(field_t, struct_size_info);
+      sum_mem += sizeof_type_mem(field_t, enum_info, struct_size_info);
+      sum_wasm += sizeof_type_wasm(field_t, enum_info, struct_size_info);
       sum_values += sizeof_type_values(field_t, struct_size_info);
-      strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(field_t, struct_size_info));
+      strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(field_t, enum_info, struct_size_info));
    }
    struct_size_info.insert(
       name.to_owned(),
@@ -496,7 +550,7 @@ fn dynamic_move_locals_of_type_to_dest(
          generation_context.out.emit_const_add_i32(*offset);
          generation_context.out.emit_get_local(*local_index);
          simple_store(field, generation_context);
-         *offset += sizeof_type_mem(field, &generation_context.struct_size_info);
+         *offset += sizeof_type_mem(field, generation_context.enum_info, &generation_context.struct_size_info);
          *local_index += 1;
       }
    }
@@ -509,7 +563,7 @@ fn dynamic_move_locals_of_type_to_dest(
 pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
    let mut struct_size_info: HashMap<StrId, SizeInfo> = HashMap::with_capacity(program.struct_info.len());
    for s in program.struct_info.iter() {
-      calculate_struct_size_info(*s.0, &program.struct_info, &mut struct_size_info);
+      calculate_struct_size_info(*s.0, &program.enum_info, &program.struct_info, &mut struct_size_info);
    }
 
    let mut generation_context = GenerationContext {
@@ -524,6 +578,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
       needed_store_fns: IndexSet::new(),
       struct_info: &program.struct_info,
       struct_size_info,
+      enum_info: &program.enum_info,
       sum_sizeof_locals_mem: 0,
       loop_counter: 0,
       loop_depth: 0,
@@ -559,7 +614,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
          .sort_by(|_k_1, v_1, _k_2, v_2| compare_alignment_fn(&v_1.static_type, &v_2.static_type, &generation_context));
 
       let strictest_alignment = if let Some(v) = program.static_info.first() {
-         mem_alignment(&v.1.static_type, &generation_context.struct_size_info)
+         mem_alignment(&v.1.static_type, generation_context.enum_info, &generation_context.struct_size_info)
       } else {
          1
       };
@@ -568,7 +623,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
    }
    for (static_name, static_details) in program.static_info.iter() {
       generation_context.static_offsets.insert(*static_name, offset);
-      offset += sizeof_type_mem(&static_details.static_type, &generation_context.struct_size_info);
+      offset += sizeof_type_mem(&static_details.static_type, generation_context.enum_info, &generation_context.struct_size_info);
    }
 
    // keep stack aligned
@@ -600,6 +655,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
       interner.intern("wasm_memory_size"),
       &[],
       &ExpressionType::Value(USIZE_TYPE),
+      &program.enum_info,
       &program.struct_info,
       interner,
    );
@@ -616,6 +672,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
       interner.intern("wasm_memory_grow"),
       &[new_pages_param],
       &ExpressionType::Value(USIZE_TYPE),
+      &program.enum_info,
       &program.struct_info,
       interner,
    );
@@ -641,6 +698,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
             full_name,
             &[param],
             field.1,
+            &program.enum_info,
             &program.struct_info,
             interner,
          );
@@ -670,7 +728,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
             .sort_by(|_k_1, v_1, _k_2, v_2| compare_alignment_fn(v_1, v_2, &generation_context));
 
          let strictest_alignment = if let Some(v) = procedure.locals.first() {
-            mem_alignment(v.1, &generation_context.struct_size_info)
+            mem_alignment(v.1, generation_context.enum_info, &generation_context.struct_size_info)
          } else {
             1
          };
@@ -683,20 +741,21 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
          // last element could have been a struct, and so we need to pad
          generation_context.sum_sizeof_locals_mem = aligned_address(
             generation_context.sum_sizeof_locals_mem,
-            mem_alignment(local.1, &generation_context.struct_size_info),
+            mem_alignment(local.1, generation_context.enum_info, &generation_context.struct_size_info),
          );
          generation_context
             .local_offsets_mem
             .insert(*local.0, generation_context.sum_sizeof_locals_mem);
 
          // TODO: should we check for overflow on this value?
-         generation_context.sum_sizeof_locals_mem += sizeof_type_mem(local.1, &generation_context.struct_size_info);
+         generation_context.sum_sizeof_locals_mem += sizeof_type_mem(local.1, generation_context.enum_info, &generation_context.struct_size_info);
       }
 
       generation_context.out.emit_function_start_named_params(
          procedure.name,
          &procedure.parameters,
          &procedure.ret_type,
+         &program.enum_info,
          &program.struct_info,
          interner,
       );
@@ -750,7 +809,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
    for (i, e_type) in needed_store_fns.iter().enumerate() {
       generation_context
          .out
-         .emit_store_function_start(i, e_type, generation_context.struct_info);
+         .emit_store_function_start(i, e_type, generation_context.enum_info, generation_context.struct_info);
       dynamic_move_locals_of_type_to_dest("local.get 0", &mut 0, &mut 1, e_type, &mut generation_context);
       generation_context.out.close();
    }
@@ -765,13 +824,13 @@ fn compare_alignment_fn(
    e_2: &ExpressionType,
    generation_context: &GenerationContext,
 ) -> std::cmp::Ordering {
-   let v_2_alignment = mem_alignment(e_2, &generation_context.struct_size_info);
-   let v_1_alignment = mem_alignment(e_1, &generation_context.struct_size_info);
+   let v_2_alignment = mem_alignment(e_2, generation_context.enum_info, &generation_context.struct_size_info);
+   let v_1_alignment = mem_alignment(e_1, generation_context.enum_info, &generation_context.struct_size_info);
 
-   let v_2_rem = sizeof_type_mem(e_2, &generation_context.struct_size_info) % v_2_alignment;
+   let v_2_rem = sizeof_type_mem(e_2, generation_context.enum_info, &generation_context.struct_size_info) % v_2_alignment;
    let v_2_required_padding = if v_2_rem == 0 { 0 } else { v_2_alignment - v_2_rem };
 
-   let v_1_rem = sizeof_type_mem(e_1, &generation_context.struct_size_info) % v_1_alignment;
+   let v_1_rem = sizeof_type_mem(e_1, generation_context.enum_info, &generation_context.struct_size_info) % v_1_alignment;
    let v_1_required_padding = if v_1_rem == 0 { 0 } else { v_1_alignment - v_1_rem };
 
    // The idea is to process the types with the strictest alignment first, to minimize the amount of padding
@@ -851,7 +910,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          do_emit_and_load_lval(en, generation_context, interner);
          generation_context
             .out
-            .emit_if_start(&ExpressionType::Value(ValueType::Unit), generation_context.struct_info);
+            .emit_if_start(&ExpressionType::Value(ValueType::Unit), generation_context.enum_info, generation_context.struct_info);
          // then
          generation_context.out.emit_then_start();
          for statement in &block_1.statements {
@@ -892,6 +951,22 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       Expression::BoolLiteral(x) => {
          generation_context.out.emit_const_i32(*x as u32);
       }
+      Expression::EnumLiteral(name, variant) => {
+         let wasm_type = match expr_node.exp_type.as_ref().unwrap() {
+            ExpressionType::Value(ValueType::Enum(x)) => {
+               let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
+               if num_variants > u32::MAX as usize {
+                  "i64"
+               } else {
+                  "i32"
+               }
+            },
+            _ => unreachable!(),
+         };
+         let index = generation_context.enum_info.get(name).unwrap().variants.get_index_of(variant).unwrap();
+         generation_context.out.emit_spaces();
+         writeln!(generation_context.out.out, "{}.const {}", wasm_type, index).unwrap();
+      }
       Expression::IntLiteral(x) => {
          let wasm_type = match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => match x.width {
@@ -923,7 +998,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          do_emit_and_load_lval(&e.0, generation_context, interner);
          generation_context
             .out
-            .emit_if_start(&ExpressionType::Value(ValueType::Bool), generation_context.struct_info);
+            .emit_if_start(&ExpressionType::Value(ValueType::Bool), generation_context.enum_info, generation_context.struct_info);
          // then
          generation_context.out.emit_then_start();
          do_emit_and_load_lval(&e.1, generation_context, interner);
@@ -939,7 +1014,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          do_emit_and_load_lval(&e.0, generation_context, interner);
          generation_context
             .out
-            .emit_if_start(&ExpressionType::Value(ValueType::Bool), generation_context.struct_info);
+            .emit_if_start(&ExpressionType::Value(ValueType::Bool), generation_context.enum_info, generation_context.struct_info);
          // then
          generation_context.out.emit_then_start();
          generation_context.out.emit_const_i32(1);
@@ -1110,7 +1185,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          // anything else is a nop
 
          // this is taking advantage of the fact that truncating is guaranteed to go downwards
-         if sizeof_type_wasm(e.exp_type.as_ref().unwrap(), &generation_context.struct_size_info) > 4 {
+         if sizeof_type_wasm(e.exp_type.as_ref().unwrap(), generation_context.enum_info, &generation_context.struct_size_info) > 4 {
             generation_context.out.emit_constant_instruction("i32.wrap_i64");
          }
       }
@@ -1152,7 +1227,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                      break;
                   }
 
-                  mem_offset += sizeof_type_mem(field.1, &generation_context.struct_size_info);
+                  mem_offset += sizeof_type_mem(field.1, generation_context.enum_info, &generation_context.struct_size_info);
                }
             }
 
@@ -1161,7 +1236,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                   break;
                }
 
-               mem_offset += sizeof_type_mem(field.1, &generation_context.struct_size_info);
+               mem_offset += sizeof_type_mem(field.1, generation_context.enum_info, &generation_context.struct_size_info);
             }
 
             generation_context.out.emit_const_add_i32(mem_offset);
@@ -1214,7 +1289,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          if lhs.expression.is_lvalue() {
             let sizeof_inner = match &lhs.exp_type {
                Some(ExpressionType::Value(ValueType::Array(x, _))) => {
-                  sizeof_type_mem(&*x, &generation_context.struct_size_info)
+                  sizeof_type_mem(&*x, generation_context.enum_info, &generation_context.struct_size_info)
                }
                _ => unreachable!(),
             };
@@ -1283,7 +1358,7 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
                std::cmp::Ordering::Greater => complex_load(offset, field, generation_context),
             }
 
-            offset += sizeof_type_mem(field, &generation_context.struct_size_info);
+            offset += sizeof_type_mem(field, generation_context.enum_info, &generation_context.struct_size_info);
          }
       }
       ExpressionType::Value(ValueType::Array(a_type, len)) => {
@@ -1300,7 +1375,7 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
                }
             }
 
-            offset += sizeof_type_mem(a_type, &generation_context.struct_size_info);
+            offset += sizeof_type_mem(a_type, generation_context.enum_info, &generation_context.struct_size_info);
          }
       }
       _ => unreachable!(),
@@ -1311,13 +1386,14 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
    if sizeof_type_values(val_type, &generation_context.struct_size_info) == 0 {
       // Drop the load address; nothing to load
       generation_context.out.emit_constant_instruction("drop");
-   } else if sizeof_type_mem(val_type, &generation_context.struct_size_info)
-      == sizeof_type_wasm(val_type, &generation_context.struct_size_info)
+   } else if sizeof_type_mem(val_type, generation_context.enum_info, &generation_context.struct_size_info)
+      == sizeof_type_wasm(val_type, generation_context.enum_info, &generation_context.struct_size_info)
    {
       generation_context.out.emit_spaces();
       type_to_s(
          val_type,
          &mut generation_context.out.out,
+         generation_context.enum_info,
          generation_context.struct_info,
       );
       writeln!(generation_context.out.out, ".load").unwrap();
@@ -1341,6 +1417,7 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
       type_to_s(
          val_type,
          &mut generation_context.out.out,
+         generation_context.enum_info,
          generation_context.struct_info,
       );
       writeln!(generation_context.out.out, ".load{}{}", load_suffx, sign_suffix).unwrap();
@@ -1363,13 +1440,14 @@ fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext, 
 
 // VALUE STACK: i32 MEMORY_OFFSET, (any 1 value)
 fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   if sizeof_type_mem(val_type, &generation_context.struct_size_info)
-      == sizeof_type_wasm(val_type, &generation_context.struct_size_info)
+   if sizeof_type_mem(val_type, generation_context.enum_info, &generation_context.struct_size_info)
+      == sizeof_type_wasm(val_type, generation_context.enum_info, &generation_context.struct_size_info)
    {
       generation_context.out.emit_spaces();
       type_to_s(
          val_type,
          &mut generation_context.out.out,
+         generation_context.enum_info,
          generation_context.struct_info,
       );
       writeln!(generation_context.out.out, ".store").unwrap();
@@ -1389,6 +1467,7 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
       type_to_s(
          val_type,
          &mut generation_context.out.out,
+         generation_context.enum_info,
          generation_context.struct_info,
       );
       writeln!(generation_context.out.out, ".store{}", load_suffx,).unwrap();

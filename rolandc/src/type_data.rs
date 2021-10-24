@@ -78,6 +78,7 @@ pub enum ValueType {
    Struct(StrId),
    Array(Box<ExpressionType>, i64),
    CompileError,
+   Enum(StrId),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -208,7 +209,7 @@ impl ValueType {
    fn is_concrete_type(&self) -> bool {
       match self {
          ValueType::UnknownInt | ValueType::UnknownFloat | ValueType::CompileError => false,
-         ValueType::Int(_) | ValueType::Float(_) | ValueType::Bool | ValueType::Unit | ValueType::Struct(_) => true,
+         ValueType::Int(_) | ValueType::Float(_) | ValueType::Bool | ValueType::Unit | ValueType::Struct(_) | ValueType::Enum(_) => true,
          ValueType::Array(exp, _) => exp.is_concrete_type(),
       }
    }
@@ -238,6 +239,7 @@ impl ValueType {
          ValueType::CompileError => Cow::Borrowed("ERROR"),
          ValueType::Struct(x) if *x == interner.intern("String") => Cow::Borrowed("String"),
          ValueType::Struct(x) => Cow::Owned(format!("Struct {}", interner.lookup(*x))),
+         ValueType::Enum(x) => Cow::Owned(format!("Enum {}", interner.lookup(*x))),
          ValueType::Array(i_type, length) => {
             Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info(interner), length))
          }

@@ -127,5 +127,6 @@ fn set_inferred_type<W: Write>(
          set_inferred_type(&array_type, array_expr, validation_context, err_stream, interner);
          expr_node.exp_type = Some(e_type.clone());
       }
+      Expression::EnumLiteral(_, _) => unreachable!(),
    }
 }

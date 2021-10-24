@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::interner::StrId;
 use crate::lex::SourceInfo;
@@ -19,7 +19,7 @@ pub struct ProcedureInfo {
 
 #[derive(Clone)]
 pub struct EnumInfo {
-   pub variants: Vec<StrId>,
+   pub variants: IndexSet<StrId>,
    pub enum_begin_location: SourceInfo,
 }
 
@@ -37,6 +37,7 @@ pub struct StaticInfo {
 
 pub struct ValidationContext<'a> {
    pub procedure_info: &'a IndexMap<StrId, ProcedureInfo>,
+   pub enum_info: &'a IndexMap<StrId, EnumInfo>,
    pub struct_info: &'a IndexMap<StrId, StructInfo>,
    pub static_info: &'a IndexMap<StrId, StaticInfo>,
    pub cur_procedure_info: Option<&'a ProcedureInfo>,

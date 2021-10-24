@@ -153,6 +153,7 @@ pub enum Expression {
    Extend(ExpressionType, Box<ExpressionNode>),
    Truncate(ExpressionType, Box<ExpressionNode>),
    Transmute(ExpressionType, Box<ExpressionNode>),
+   EnumLiteral(StrId, StrId)
 }
 
 #[derive(Clone, Debug)]
@@ -776,6 +777,10 @@ fn pratt<W: Write>(
             let args = parse_arguments(l, err_stream, interner)?;
             expect(l, err_stream, &Token::CloseParen)?;
             Expression::ProcedureCall(s, args.into_boxed_slice())
+         } else if l.peek_token() == Some(&Token::DoubleColon) {
+            let _ = l.next();
+            let variant_identifier = extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
+            Expression::EnumLiteral(s, variant_identifier)
          } else if !if_head && l.peek_token() == Some(&Token::OpenBrace) {
             let _ = l.next();
             let mut fields = vec![];
