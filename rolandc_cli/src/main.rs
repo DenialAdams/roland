@@ -1,4 +1,4 @@
-use rolandc::CompilationError;
+use rolandc::{CompilationError, Target};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
@@ -18,6 +18,7 @@ struct Opts {
    output: PathBuf,
    output_html_ast: bool,
    skip_constant_folding: bool,
+   wasm4: bool,
 }
 
 fn parse_path(s: &std::ffi::OsStr) -> Result<std::path::PathBuf, &'static str> {
@@ -32,6 +33,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
       output: pargs.value_from_os_str("--output", parse_path)?,
       output_html_ast: pargs.contains("--output-html-ast"),
       skip_constant_folding: pargs.contains("--skip-constant-folding"),
+      wasm4: pargs.contains("--wasm4"),
    };
 
    Ok(opts)
@@ -39,6 +41,12 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
 
 fn main() {
    let mut opts = parse_args().unwrap();
+
+   let target = if opts.wasm4 {
+      Target::Wasm4
+   } else {
+      Target::Wasi
+   };
 
    let user_program_s = std::fs::read_to_string(opts.source_file).unwrap();
    let mut ast_out: Option<BufWriter<File>> = if opts.output_html_ast {
@@ -58,6 +66,7 @@ fn main() {
       &mut err_stream_l,
       ast_out.as_mut(),
       !opts.skip_constant_folding,
+      target,
    );
    if let Some(x) = ast_out.as_mut() {
       writeln!(x, "</body>\n</html>").unwrap()
@@ -73,7 +82,11 @@ fn main() {
       }
    };
 
-   opts.output.set_extension("wast");
+   if target == Target::Wasm4 {
+      opts.output.set_extension("wasm");
+   } else {
+      opts.output.set_extension("wast");
+   }
    let mut wasm_out = File::create(opts.output).unwrap();
    wasm_out.write_all(&out_bytes).unwrap();
 }

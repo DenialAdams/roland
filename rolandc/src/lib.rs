@@ -12,6 +12,12 @@ use std::io::Write;
 
 use crate::interner::Interner;
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Target {
+   Wasi,
+   Wasm4,
+}
+
 pub enum CompilationError {
    Lex,
    Parse,
@@ -23,19 +29,22 @@ pub fn compile<E: Write, A: Write>(
    err_stream: &mut E,
    html_ast_out: Option<&mut A>,
    do_constant_folding: bool,
+   target: Target,
 ) -> Result<Vec<u8>, CompilationError> {
    let mut interner = Interner::with_capacity(1024);
 
    let mut user_program = lex_and_parse(user_program_s, err_stream, &mut interner)?;
-
-   let std_lib_s = include_str!("../../lib/print.rol");
-   let std_lib = lex_and_parse(std_lib_s, err_stream, &mut interner)?;
    let num_procedures_before_merge = user_program.procedures.len();
 
-   merge_programs(&mut user_program, &mut [std_lib]);
+   if target == Target::Wasi {
+      let std_lib_s = include_str!("../../lib/print.rol");
+      let std_lib = lex_and_parse(std_lib_s, err_stream, &mut interner)?;
+   
+      merge_programs(&mut user_program, &mut [std_lib]);
+   }
 
    let mut err_count =
-      semantic_analysis::validator::type_and_check_validity(&mut user_program, err_stream, &mut interner);
+      semantic_analysis::validator::type_and_check_validity(&mut user_program, err_stream, &mut interner, target);
 
    if err_count == 0 && do_constant_folding {
       err_count = constant_folding::fold_constants(&mut user_program, err_stream);
@@ -51,7 +60,15 @@ pub fn compile<E: Write, A: Write>(
       return Err(CompilationError::Semantic(err_count));
    }
 
-   Ok(wasm::emit_wasm(&mut user_program, &mut interner))
+   match target {
+      Target::Wasi => {
+         Ok(wasm::emit_wasm(&mut user_program, &mut interner, 0, false))
+      }
+      Target::Wasm4 => {
+         let wat = wasm::emit_wasm(&mut user_program, &mut interner, 0x19a0, true);
+         Ok(wat::parse_bytes(&wat).unwrap().into_owned())
+      }
+   }
 }
 
 fn merge_programs(main_program: &mut Program, other_programs: &mut [Program]) {

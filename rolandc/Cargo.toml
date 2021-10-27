@@ -7,3 +7,4 @@ edition = "2018"
 [dependencies]
 indexmap = "1"
 fast-float = "0.2"
+wat = "1"

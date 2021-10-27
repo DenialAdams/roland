@@ -1,4 +1,5 @@
 use rolandc::CompilationError;
+use rolandc::Target;
 use std::io::Write;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -30,6 +31,7 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
       &mut err_out,
       Some(&mut ast_out),
       do_constant_folding.checked(),
+      Target::Wasi,
    );
 
    if let Err(CompilationError::Semantic(err_count)) = compile_result.as_ref() {

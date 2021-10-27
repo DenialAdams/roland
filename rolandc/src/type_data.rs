@@ -220,7 +220,7 @@ impl ValueType {
       }
    }
 
-   fn as_roland_type_info(&self, interner: &mut Interner) -> Cow<str> {
+   fn as_roland_type_info<'i>(&self, interner: &'i mut Interner) -> Cow<'i, str> {
       match self {
          ValueType::UnknownFloat => Cow::Borrowed("?? Float"),
          ValueType::UnknownInt => Cow::Borrowed("?? Int"),
@@ -249,7 +249,7 @@ impl ValueType {
          ValueType::Array(i_type, length) => {
             Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info(interner), length))
          }
-         ValueType::Unresolved(x) => Cow::Owned(format!("{}", interner.lookup(*x))),
+         ValueType::Unresolved(x) => Cow::Borrowed(interner.lookup(*x)),
       }
    }
 }

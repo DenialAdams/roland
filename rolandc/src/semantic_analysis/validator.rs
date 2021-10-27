@@ -1,5 +1,6 @@
 use super::type_inference::try_set_inferred_type;
 use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
+use crate::Target;
 use crate::interner::{Interner, StrId};
 use crate::lex::SourceInfo;
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
@@ -100,7 +101,7 @@ fn resolve_value_type(v_type: &mut ValueType, ei: &IndexMap<StrId, EnumInfo>, si
    }
 }
 
-pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut W, interner: &mut Interner) -> u64 {
+pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut W, interner: &mut Interner, target: Target) -> u64 {
    let mut procedure_info: IndexMap<StrId, ProcedureInfo> = IndexMap::new();
    let mut enum_info: IndexMap<StrId, EnumInfo> = IndexMap::new();
    let mut struct_info: IndexMap<StrId, StructInfo> = IndexMap::new();
@@ -506,25 +507,33 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
       unknown_floats: 0,
    };
 
-   let main_token = interner.intern("main");
-   if !validation_context.procedure_info.contains_key(&main_token) {
+   let necessary_token = match target {
+      Target::Wasm4 => {
+         interner.intern("update")
+      }
+      Target::Wasi => {
+         interner.intern("main")
+      }
+   };
+   if !validation_context.procedure_info.contains_key(&necessary_token) {
       validation_context.error_count += 1;
-      writeln!(err_stream, "A procedure with the name `main` must be present").unwrap();
-   } else if validation_context.procedure_info.get(&main_token).unwrap().ret_type
-      != ExpressionType::Value(ValueType::Unit)
+      writeln!(err_stream, "A procedure with the name `{}` must be present for this target", interner.lookup(necessary_token)).unwrap();
+   } else if validation_context.procedure_info.get(&necessary_token).unwrap().ret_type
+      != ExpressionType::Value(ValueType::Unit) || !validation_context.procedure_info.get(&necessary_token).unwrap().parameters.is_empty()
    {
       validation_context.error_count += 1;
       writeln!(
          err_stream,
-         "`main` is a special procedure and is not allowed to return a value"
+         "`{}` is a special procedure for this target and is not allowed to return a value or take arguments",
+         interner.lookup(necessary_token)
       )
       .unwrap();
       let si = validation_context
          .procedure_info
-         .get(&main_token)
+         .get(&necessary_token)
          .unwrap()
          .procedure_begin_location;
-      writeln!(err_stream, "↳ main defined @ line {}, column {}", si.line, si.col).unwrap();
+      writeln!(err_stream, "↳ {} defined @ line {}, column {}", interner.lookup(necessary_token), si.line, si.col).unwrap();
    }
 
    // We won't proceed with type checking because there could be false positives due to

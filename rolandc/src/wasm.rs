@@ -49,12 +49,6 @@ impl<'a> PrettyWasmWriter {
       }
    }
 
-   fn emit_module_start(&mut self) {
-      self.emit_spaces();
-      writeln!(self.out, "(module").unwrap();
-      self.depth += 1;
-   }
-
    fn emit_function_start_named_params(
       &mut self,
       name: StrId,
@@ -602,7 +596,7 @@ fn dynamic_move_locals_of_type_to_dest(
 // 0-l literals
 // l-s statics
 // s+ program stack (local variables and parameters are pushed here during runtime)
-pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
+pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u32, wasm4: bool) -> Vec<u8> {
    let mut struct_size_info: HashMap<StrId, SizeInfo> = HashMap::with_capacity(program.struct_info.len());
    for s in program.struct_info.iter() {
       calculate_struct_size_info(*s.0, &program.enum_info, &program.struct_info, &mut struct_size_info);
@@ -626,18 +620,22 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
       loop_depth: 0,
    };
 
-   generation_context.out.emit_module_start();
-   generation_context.out.emit_constant_sexp(
-      "(import \"wasi_unstable\" \"fd_write\" (func $fd_write (param i32 i32 i32 i32) (result i32)))",
-   );
-   generation_context.out.emit_constant_sexp("(memory 1)");
-   generation_context
-      .out
-      .emit_constant_sexp("(export \"memory\" (memory 0))");
+   if wasm4 {
+      generation_context.out.emit_constant_sexp("(import \"env\" \"memory\" (memory 1 1))");
+      generation_context.out.emit_constant_sexp("(export \"update\" (func $update)");
+   } else {
+      generation_context.out.emit_constant_sexp(
+         "(import \"wasi_unstable\" \"fd_write\" (func $fd_write (param i32 i32 i32 i32) (result i32)))",
+      );
+      generation_context.out.emit_constant_sexp("(memory 1)");
+      generation_context
+         .out
+         .emit_constant_sexp("(export \"memory\" (memory 0))");
+   }
 
    // Data section
 
-   let mut offset: u32 = 0;
+   let mut offset: u32 = memory_base;
 
    for s in program.literals.iter() {
       let str_value = interner.lookup(*s);
@@ -818,7 +816,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
          interner,
       );
 
-      if procedure.name == interner.intern("main") {
+      if procedure.name == interner.intern("main") && !wasm4 {
          generation_context.out.emit_constant_sexp("(export \"_start\")");
       }
 
@@ -874,8 +872,6 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner) -> Vec<u8> {
       dynamic_move_locals_of_type_to_dest("local.get 0", &mut 0, &mut 1, e_type, &mut generation_context);
       generation_context.out.close();
    }
-
-   generation_context.out.close();
 
    generation_context.out.out
 }
