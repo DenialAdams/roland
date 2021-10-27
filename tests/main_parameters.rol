@@ -1,0 +1,3 @@
+proc main(named foo: u32) {
+
+}
