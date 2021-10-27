@@ -39,7 +39,7 @@ pub fn compile<E: Write, A: Write>(
    if target == Target::Wasi {
       let std_lib_s = include_str!("../../lib/print.rol");
       let std_lib = lex_and_parse(std_lib_s, err_stream, &mut interner)?;
-   
+
       merge_programs(&mut user_program, &mut [std_lib]);
    }
 
@@ -61,9 +61,7 @@ pub fn compile<E: Write, A: Write>(
    }
 
    match target {
-      Target::Wasi => {
-         Ok(wasm::emit_wasm(&mut user_program, &mut interner, 0, false))
-      }
+      Target::Wasi => Ok(wasm::emit_wasm(&mut user_program, &mut interner, 0, false)),
       Target::Wasm4 => {
          let wat = wasm::emit_wasm(&mut user_program, &mut interner, 0x19a0, true);
          Ok(wat::parse_bytes(&wat).unwrap().into_owned())

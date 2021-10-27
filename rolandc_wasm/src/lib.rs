@@ -1,5 +1,4 @@
-use rolandc::CompilationError;
-use rolandc::Target;
+use rolandc::{CompilationError, Target};
 use std::io::Write;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;

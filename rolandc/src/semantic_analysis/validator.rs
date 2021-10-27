@@ -1,11 +1,11 @@
 use super::type_inference::try_set_inferred_type;
 use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
-use crate::Target;
 use crate::interner::{Interner, StrId};
 use crate::lex::SourceInfo;
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
 use crate::semantic_analysis::EnumInfo;
 use crate::type_data::{ExpressionType, IntWidth, ValueType, ISIZE_TYPE, USIZE_TYPE};
+use crate::Target;
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
@@ -68,14 +68,22 @@ fn recursive_struct_check(
    is_recursive
 }
 
-fn resolve_type(t_type: &mut ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) -> Result<(), ()> {
+fn resolve_type(
+   t_type: &mut ExpressionType,
+   ei: &IndexMap<StrId, EnumInfo>,
+   si: &IndexMap<StrId, StructInfo>,
+) -> Result<(), ()> {
    match t_type {
       ExpressionType::Value(vt) => resolve_value_type(vt, ei, si),
       ExpressionType::Pointer(_, vt) => resolve_value_type(vt, ei, si),
    }
 }
 
-fn resolve_value_type(v_type: &mut ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) -> Result<(), ()> {
+fn resolve_value_type(
+   v_type: &mut ValueType,
+   ei: &IndexMap<StrId, EnumInfo>,
+   si: &IndexMap<StrId, StructInfo>,
+) -> Result<(), ()> {
    match v_type {
       ValueType::UnknownInt => Ok(()),
       ValueType::UnknownFloat => Ok(()),
@@ -97,11 +105,16 @@ fn resolve_value_type(v_type: &mut ValueType, ei: &IndexMap<StrId, EnumInfo>, si
          } else {
             Err(())
          }
-      },
+      }
    }
 }
 
-pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut W, interner: &mut Interner, target: Target) -> u64 {
+pub fn type_and_check_validity<W: Write>(
+   program: &mut Program,
+   err_stream: &mut W,
+   interner: &mut Interner,
+   target: Target,
+) -> u64 {
    let mut procedure_info: IndexMap<StrId, ProcedureInfo> = IndexMap::new();
    let mut enum_info: IndexMap<StrId, EnumInfo> = IndexMap::new();
    let mut struct_info: IndexMap<StrId, StructInfo> = IndexMap::new();
@@ -109,31 +122,36 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
    let mut error_count = 0;
 
    // Built-In functions
-   let standard_lib_procs = [
-      (
-         interner.intern("wasm_memory_size"),
-         false,
-         vec![],
-         ExpressionType::Value(USIZE_TYPE),
-      ),
-      (
-         interner.intern("wasm_memory_grow"),
-         false,
-         vec![ExpressionType::Value(USIZE_TYPE)],
-         ExpressionType::Value(USIZE_TYPE),
-      ),
-      (
-         interner.intern("fd_write"),
-         false,
+   let standard_lib_procs = match target {
+      Target::Wasi => {
          vec![
-            ExpressionType::Value(USIZE_TYPE),
-            ExpressionType::Pointer(1, USIZE_TYPE),
-            ExpressionType::Value(USIZE_TYPE),
-            ExpressionType::Pointer(1, USIZE_TYPE),
-         ],
-         ExpressionType::Value(ISIZE_TYPE),
-      ),
-   ];
+            (
+               interner.intern("wasm_memory_size"),
+               false,
+               vec![],
+               ExpressionType::Value(USIZE_TYPE),
+            ),
+            (
+               interner.intern("wasm_memory_grow"),
+               false,
+               vec![ExpressionType::Value(USIZE_TYPE)],
+               ExpressionType::Value(USIZE_TYPE),
+            ),
+            (
+               interner.intern("fd_write"),
+               false,
+               vec![
+                  ExpressionType::Value(USIZE_TYPE),
+                  ExpressionType::Pointer(1, USIZE_TYPE),
+                  ExpressionType::Value(USIZE_TYPE),
+                  ExpressionType::Pointer(1, USIZE_TYPE),
+               ],
+               ExpressionType::Value(ISIZE_TYPE),
+            ),
+         ]
+      }
+      Target::Wasm4 => vec![],
+   };
    for p in standard_lib_procs.iter() {
       procedure_info.insert(
          p.0,
@@ -435,7 +453,7 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
             .unwrap();
          }
       }
-      
+
       if resolve_type(&mut procedure.ret_type, &enum_info, &struct_info).is_err() {
          error_count += 1;
          let etype_str = procedure.ret_type.as_roland_type_info(interner);
@@ -508,18 +526,29 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
    };
 
    let necessary_token = match target {
-      Target::Wasm4 => {
-         interner.intern("update")
-      }
-      Target::Wasi => {
-         interner.intern("main")
-      }
+      Target::Wasm4 => interner.intern("update"),
+      Target::Wasi => interner.intern("main"),
    };
    if !validation_context.procedure_info.contains_key(&necessary_token) {
       validation_context.error_count += 1;
-      writeln!(err_stream, "A procedure with the name `{}` must be present for this target", interner.lookup(necessary_token)).unwrap();
-   } else if validation_context.procedure_info.get(&necessary_token).unwrap().ret_type
-      != ExpressionType::Value(ValueType::Unit) || !validation_context.procedure_info.get(&necessary_token).unwrap().parameters.is_empty()
+      writeln!(
+         err_stream,
+         "A procedure with the name `{}` must be present for this target",
+         interner.lookup(necessary_token)
+      )
+      .unwrap();
+   } else if validation_context
+      .procedure_info
+      .get(&necessary_token)
+      .unwrap()
+      .ret_type
+      != ExpressionType::Value(ValueType::Unit)
+      || !validation_context
+         .procedure_info
+         .get(&necessary_token)
+         .unwrap()
+         .parameters
+         .is_empty()
    {
       validation_context.error_count += 1;
       writeln!(
@@ -533,7 +562,14 @@ pub fn type_and_check_validity<W: Write>(program: &mut Program, err_stream: &mut
          .get(&necessary_token)
          .unwrap()
          .procedure_begin_location;
-      writeln!(err_stream, "↳ {} defined @ line {}, column {}", interner.lookup(necessary_token), si.line, si.col).unwrap();
+      writeln!(
+         err_stream,
+         "↳ {} defined @ line {}, column {}",
+         interner.lookup(necessary_token),
+         si.line,
+         si.col
+      )
+      .unwrap();
    }
 
    // We won't proceed with type checking because there could be false positives due to

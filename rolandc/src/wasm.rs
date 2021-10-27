@@ -621,8 +621,12 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
    };
 
    if wasm4 {
-      generation_context.out.emit_constant_sexp("(import \"env\" \"memory\" (memory 1 1))");
-      generation_context.out.emit_constant_sexp("(export \"update\" (func $update)");
+      generation_context
+         .out
+         .emit_constant_sexp("(import \"env\" \"memory\" (memory 1 1))");
+      generation_context
+         .out
+         .emit_constant_sexp("(export \"update\" (func $update)");
    } else {
       generation_context.out.emit_constant_sexp(
          "(import \"wasi_unstable\" \"fd_write\" (func $fd_write (param i32 i32 i32 i32) (result i32)))",
@@ -1113,11 +1117,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             }
             ExpressionType::Value(ValueType::Enum(x)) => {
                let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
-               (if num_variants > u32::MAX as usize {
-                  "i64"
-               } else {
-                  "i32"
-               }, "_u")
+               (if num_variants > u32::MAX as usize { "i64" } else { "i32" }, "_u")
             }
             ExpressionType::Value(ValueType::Float(x)) => match x.width {
                FloatWidth::Eight => ("f64", ""),
@@ -1517,15 +1517,18 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
          }
          ExpressionType::Value(ValueType::Enum(x)) => {
             let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
-            (if num_variants > u32::MAX as usize {
-               "64"
-            } else if num_variants > u16::MAX as usize {
-               "32"
-            } else if num_variants > u8::MAX as usize {
-               "16"
-            } else {
-               "8"
-            }, "_u")
+            (
+               if num_variants > u32::MAX as usize {
+                  "64"
+               } else if num_variants > u16::MAX as usize {
+                  "32"
+               } else if num_variants > u8::MAX as usize {
+                  "16"
+               } else {
+                  "8"
+               },
+               "_u",
+            )
          }
          ExpressionType::Value(ValueType::Float(_)) => ("", ""),
          ExpressionType::Value(ValueType::Bool) => ("32", "_u"),

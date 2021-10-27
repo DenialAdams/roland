@@ -42,11 +42,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
 fn main() {
    let mut opts = parse_args().unwrap();
 
-   let target = if opts.wasm4 {
-      Target::Wasm4
-   } else {
-      Target::Wasi
-   };
+   let target = if opts.wasm4 { Target::Wasm4 } else { Target::Wasi };
 
    let user_program_s = std::fs::read_to_string(opts.source_file).unwrap();
    let mut ast_out: Option<BufWriter<File>> = if opts.output_html_ast {
