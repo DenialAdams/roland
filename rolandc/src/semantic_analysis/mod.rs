@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use indexmap::{IndexMap, IndexSet};
 
+use crate::Target;
 use crate::interner::StrId;
 use crate::lex::SourceInfo;
 use crate::type_data::ExpressionType;
@@ -37,6 +38,7 @@ pub struct StaticInfo {
 }
 
 pub struct ValidationContext<'a> {
+   pub target: Target,
    pub procedure_info: &'a IndexMap<StrId, ProcedureInfo>,
    pub enum_info: &'a IndexMap<StrId, EnumInfo>,
    pub struct_info: &'a IndexMap<StrId, StructInfo>,

@@ -651,6 +651,9 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
       generation_context
          .out
          .emit_constant_sexp("(export \"update\" (func $update))");
+      generation_context
+         .out
+         .emit_constant_sexp("(export \"start\" (func $start))");
    } else {
       generation_context.out.emit_constant_sexp(
          "(import \"wasi_unstable\" \"fd_write\" (func $fd_write (param i32 i32 i32 i32) (result i32)))",

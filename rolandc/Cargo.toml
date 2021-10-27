@@ -5,6 +5,7 @@ authors = ["Richard McCormack <brick@brick.codes>"]
 edition = "2021"
 
 [dependencies]
+arrayvec = "0.7"
 indexmap = "1"
 fast-float = "0.2"
 wat = "1"

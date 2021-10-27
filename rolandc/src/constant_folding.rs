@@ -450,6 +450,7 @@ pub fn fold_expr<W: Write>(
                   expression_begin_location: expr_to_fold.expression_begin_location,
                }),
                Some(Literal::Bool(_)) => unreachable!(),
+               Some(Literal::Enum(_, _)) => unreachable!(),
                Some(Literal::Float(v)) => Some(ExpressionNode {
                   expression: Expression::FloatLiteral(-v),
                   exp_type: expr_to_fold.exp_type.take(),
@@ -470,6 +471,7 @@ pub fn fold_expr<W: Write>(
                   expression_begin_location: expr_to_fold.expression_begin_location,
                }),
                Some(Literal::Float(_)) => unreachable!(),
+               Some(Literal::Enum(_, _)) => unreachable!(),
                None => None,
             },
             // nothing to do
@@ -530,21 +532,15 @@ pub fn fold_expr<W: Write>(
       Expression::Transmute(_, expr) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
 
-         // This works fine currently, but I'm not sure how the wasm backend will deal with this when we allow transmut from i.e. f64 -> i64
-         // It will just see a float literal but have to emit a cast to assuage the type difference,
-         // and it gets more complicated when dealing with compound literals
-         Some(ExpressionNode {
-            expression: expr.expression.clone(),
-            exp_type: expr_to_fold.exp_type.take(),
-            expression_begin_location: expr_to_fold.expression_begin_location,
-         })
+         None
       }
       Expression::EnumLiteral(_, _) => None,
    }
 }
 
-fn is_const(expr: &Expression) -> bool {
+pub fn is_const(expr: &Expression) -> bool {
    match expr {
+      Expression::EnumLiteral(_, _) => true,
       Expression::IntLiteral(_) => true,
       Expression::FloatLiteral(_) => true,
       Expression::BoolLiteral(_) => true,
@@ -559,6 +555,7 @@ enum Literal {
    Int(i64),
    Float(f64),
    Bool(bool),
+   Enum(StrId, StrId),
 }
 
 impl Literal {
@@ -654,6 +651,7 @@ fn extract_literal(expr: &Expression) -> Option<Literal> {
       Expression::IntLiteral(x) => Some(Literal::Int(*x)),
       Expression::FloatLiteral(x) => Some(Literal::Float(*x)),
       Expression::BoolLiteral(x) => Some(Literal::Bool(*x)),
+      Expression::EnumLiteral(x, y) => Some(Literal::Enum(*x, *y)),
       _ => None,
    }
 }

@@ -6,9 +6,21 @@ use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statem
 use crate::semantic_analysis::EnumInfo;
 use crate::type_data::{ExpressionType, IntWidth, ValueType, I32_TYPE, ISIZE_TYPE, U32_TYPE, U8_TYPE, USIZE_TYPE};
 use crate::Target;
+use arrayvec::ArrayVec;
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
+
+fn is_special_procedure(target: Target, name: StrId, interner: &mut Interner) -> bool {
+   get_special_procedures(target, interner).contains(&name)
+}
+
+fn get_special_procedures(target: Target, interner: &mut Interner) -> ArrayVec<StrId, 2> {
+   match target {
+      Target::Wasm4 => ArrayVec::from([interner.intern("start"), interner.intern("update")]),
+      Target::Wasi => [interner.intern("main")].as_slice().try_into().unwrap(),
+   }
+}
 
 #[derive(Debug)]
 enum TypeValidator {
@@ -605,6 +617,7 @@ pub fn type_and_check_validity<W: Write>(
    }
 
    let mut validation_context = ValidationContext {
+      target,
       string_literals: HashSet::new(),
       variable_types: HashMap::new(),
       error_count,
@@ -619,51 +632,50 @@ pub fn type_and_check_validity<W: Write>(
       unknown_floats: 0,
    };
 
-   let necessary_token = match target {
-      Target::Wasm4 => interner.intern("update"),
-      Target::Wasi => interner.intern("main"),
-   };
-   if !validation_context.procedure_info.contains_key(&necessary_token) {
-      validation_context.error_count += 1;
-      writeln!(
-         err_stream,
-         "A procedure with the name `{}` must be present for this target",
-         interner.lookup(necessary_token)
-      )
-      .unwrap();
-   } else if validation_context
-      .procedure_info
-      .get(&necessary_token)
-      .unwrap()
-      .ret_type
-      != ExpressionType::Value(ValueType::Unit)
-      || !validation_context
+   let special_procs = get_special_procedures(target, interner);
+   for special_proc_name in special_procs.iter().copied() {
+      if !validation_context.procedure_info.contains_key(&special_proc_name) {
+         validation_context.error_count += 1;
+         writeln!(
+            err_stream,
+            "A procedure with the name `{}` must be present for this target",
+            interner.lookup(special_proc_name),
+         )
+         .unwrap();
+      } else if validation_context
          .procedure_info
-         .get(&necessary_token)
+         .get(&special_proc_name)
          .unwrap()
-         .parameters
-         .is_empty()
-   {
-      validation_context.error_count += 1;
-      writeln!(
-         err_stream,
-         "`{}` is a special procedure for this target and is not allowed to return a value or take arguments",
-         interner.lookup(necessary_token)
-      )
-      .unwrap();
-      let si = validation_context
-         .procedure_info
-         .get(&necessary_token)
-         .unwrap()
-         .procedure_begin_location;
-      writeln!(
-         err_stream,
-         "↳ {} defined @ line {}, column {}",
-         interner.lookup(necessary_token),
-         si.line,
-         si.col
-      )
-      .unwrap();
+         .ret_type
+         != ExpressionType::Value(ValueType::Unit)
+         || !validation_context
+            .procedure_info
+            .get(&special_proc_name)
+            .unwrap()
+            .parameters
+            .is_empty()
+      {
+         validation_context.error_count += 1;
+         writeln!(
+            err_stream,
+            "`{}` is a special procedure for this target and is not allowed to return a value or take arguments",
+            interner.lookup(special_proc_name)
+         )
+         .unwrap();
+         let si = validation_context
+            .procedure_info
+            .get(&special_proc_name)
+            .unwrap()
+            .procedure_begin_location;
+         writeln!(
+            err_stream,
+            "↳ {} defined @ line {}, column {}",
+            interner.lookup(special_proc_name),
+            si.line,
+            si.col
+         )
+         .unwrap();
+      }
    }
 
    // We won't proceed with type checking because there could be false positives due to
@@ -1412,11 +1424,12 @@ fn do_type<W: Write>(
             do_type(err_stream, &mut arg.expr, validation_context, interner);
          }
 
-         if *name == interner.intern("main") {
+         if is_special_procedure(validation_context.target, *name, interner) {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
-               "`main` is a special procedure and is not allowed to be called"
+               "`{}` is a special procedure and is not allowed to be called",
+               interner.lookup(*name),
             )
             .unwrap();
             writeln!(
