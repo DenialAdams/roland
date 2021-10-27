@@ -4,7 +4,7 @@ use crate::interner::{Interner, StrId};
 use crate::lex::SourceInfo;
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
 use crate::semantic_analysis::EnumInfo;
-use crate::type_data::{ExpressionType, IntWidth, ValueType, ISIZE_TYPE, USIZE_TYPE};
+use crate::type_data::{ExpressionType, I32_TYPE, ISIZE_TYPE, IntWidth, U32_TYPE, U8_TYPE, USIZE_TYPE, ValueType};
 use crate::Target;
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
@@ -150,7 +150,85 @@ pub fn type_and_check_validity<W: Write>(
             ),
          ]
       }
-      Target::Wasm4 => vec![],
+      Target::Wasm4 => {
+         vec![
+            // drawing
+            (
+               interner.intern("blit"),
+               false,
+               vec![
+                  ExpressionType::Pointer(1, U8_TYPE),
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(U32_TYPE),
+                  ExpressionType::Value(U32_TYPE),
+                  ExpressionType::Value(U32_TYPE),
+               ],
+               ExpressionType::Value(ValueType::Unit),
+            ),
+            (
+               interner.intern("blit_sub"),
+               false,
+               vec![
+                  ExpressionType::Pointer(1, U8_TYPE),
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(U32_TYPE),
+                  ExpressionType::Value(U32_TYPE),
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(U32_TYPE),
+                  ExpressionType::Value(U32_TYPE),
+               ],
+               ExpressionType::Value(ValueType::Unit),
+            ),
+            (
+               interner.intern("line"),
+               false,
+               vec![
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(I32_TYPE),
+               ],
+               ExpressionType::Value(ValueType::Unit),
+            ),
+            (
+               interner.intern("oval"),
+               false,
+               vec![
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(U32_TYPE),
+                  ExpressionType::Value(U32_TYPE),
+               ],
+               ExpressionType::Value(ValueType::Unit),
+            ),
+            (
+               interner.intern("rect"),
+               false,
+               vec![
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(U32_TYPE),
+                  ExpressionType::Value(U32_TYPE),
+               ],
+               ExpressionType::Value(ValueType::Unit),
+            ),
+            // TODO: add text, trace (need to add function that converts from roland string to 2 params)
+            (
+               interner.intern("tone"),
+               false,
+               vec![
+                  ExpressionType::Value(U32_TYPE),
+                  ExpressionType::Value(U32_TYPE),
+                  ExpressionType::Value(U32_TYPE),
+                  ExpressionType::Value(U32_TYPE),
+               ],
+               ExpressionType::Value(ValueType::Unit),
+            ),
+         ]
+      },
    };
    for p in standard_lib_procs.iter() {
       procedure_info.insert(

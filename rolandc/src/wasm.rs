@@ -626,6 +626,24 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
          .emit_constant_sexp("(import \"env\" \"memory\" (memory 1 1))");
       generation_context
          .out
+         .emit_constant_sexp("(import \"env\" \"blit\" (func $blit (param i32 i32 i32 i32 i32)))");
+      generation_context
+         .out
+         .emit_constant_sexp("(import \"env\" \"blitSub\" (func $blit_sub (param i32 i32 i32 i32 i32 i32 i32 i32 i32)))");
+      generation_context
+         .out
+         .emit_constant_sexp("(import \"env\" \"line\" (func $line (param i32 i32 i32 i32)))");
+         generation_context
+         .out
+         .emit_constant_sexp("(import \"env\" \"oval\" (func $oval (param i32 i32 i32 i32)))");
+      generation_context
+         .out
+         .emit_constant_sexp("(import \"env\" \"rect\" (func $rect (param i32 i32 i32 i32)))");
+      generation_context
+         .out
+         .emit_constant_sexp("(import \"env\" \"tone\" (func $tone (param i32 i32 i32 i32)))");
+      generation_context
+         .out
          .emit_constant_sexp("(export \"update\" (func $update))");
    } else {
       generation_context.out.emit_constant_sexp(
