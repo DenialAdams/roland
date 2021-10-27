@@ -36,11 +36,19 @@ pub fn compile<E: Write, A: Write>(
    let mut user_program = lex_and_parse(user_program_s, err_stream, &mut interner)?;
    let num_procedures_before_merge = user_program.procedures.len();
 
-   if target == Target::Wasi {
-      let std_lib_s = include_str!("../../lib/print.rol");
-      let std_lib = lex_and_parse(std_lib_s, err_stream, &mut interner)?;
+   match target {
+      Target::Wasi => {
+         let std_lib_s = include_str!("../../lib/print.rol");
+         let std_lib = lex_and_parse(std_lib_s, err_stream, &mut interner)?;
 
-      merge_programs(&mut user_program, &mut [std_lib]);
+         merge_programs(&mut user_program, &mut [std_lib]);
+      }
+      Target::Wasm4 => {
+         let std_lib_s = include_str!("../../lib/wasm4.rol");
+         let std_lib = lex_and_parse(std_lib_s, err_stream, &mut interner)?;
+
+         merge_programs(&mut user_program, &mut [std_lib]);
+      }
    }
 
    let mut err_count =

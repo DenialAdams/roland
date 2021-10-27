@@ -627,13 +627,13 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
       generation_context
          .out
          .emit_constant_sexp("(import \"env\" \"blit\" (func $blit (param i32 i32 i32 i32 i32)))");
-      generation_context
-         .out
-         .emit_constant_sexp("(import \"env\" \"blitSub\" (func $blit_sub (param i32 i32 i32 i32 i32 i32 i32 i32 i32)))");
+      generation_context.out.emit_constant_sexp(
+         "(import \"env\" \"blitSub\" (func $blit_sub (param i32 i32 i32 i32 i32 i32 i32 i32 i32)))",
+      );
       generation_context
          .out
          .emit_constant_sexp("(import \"env\" \"line\" (func $line (param i32 i32 i32 i32)))");
-         generation_context
+      generation_context
          .out
          .emit_constant_sexp("(import \"env\" \"oval\" (func $oval (param i32 i32 i32 i32)))");
       generation_context
@@ -642,6 +642,12 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
       generation_context
          .out
          .emit_constant_sexp("(import \"env\" \"tone\" (func $tone (param i32 i32 i32 i32)))");
+      generation_context
+         .out
+         .emit_constant_sexp("(import \"env\" \"textUtf8\" (func $textUtf8 (param i32 i32 i32 i32)))");
+      generation_context
+         .out
+         .emit_constant_sexp("(import \"env\" \"traceUtf8\" (func $traceUtf8 (param i32 i32)))");
       generation_context
          .out
          .emit_constant_sexp("(export \"update\" (func $update))");
@@ -653,7 +659,9 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
       generation_context
          .out
          .emit_constant_sexp("(export \"memory\" (memory 0))");
-      generation_context.out.emit_constant_sexp("(export \"_start\" (func $main))");
+      generation_context
+         .out
+         .emit_constant_sexp("(export \"_start\" (func $main))");
    }
 
    // Data section
@@ -1189,7 +1197,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
       }
       Expression::UnaryOperator(un_op, e) => {
-         let wasm_type = match expr_node.exp_type.as_ref().unwrap() {
+         let get_wasm_type = || match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => match x.width {
                IntWidth::Eight => "i64",
                _ => "i32",
@@ -1217,6 +1225,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                }
             }
             UnOp::Complement => {
+               let wasm_type = get_wasm_type();
                do_emit_and_load_lval(e, generation_context, interner);
 
                if *e.exp_type.as_ref().unwrap() == ExpressionType::Value(ValueType::Bool) {
@@ -1227,6 +1236,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                }
             }
             UnOp::Negate => {
+               let wasm_type = get_wasm_type();
                do_emit_and_load_lval(e, generation_context, interner);
 
                match expr_node.exp_type.as_ref().unwrap() {
