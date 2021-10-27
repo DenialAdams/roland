@@ -626,7 +626,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
          .emit_constant_sexp("(import \"env\" \"memory\" (memory 1 1))");
       generation_context
          .out
-         .emit_constant_sexp("(export \"update\" (func $update)");
+         .emit_constant_sexp("(export \"update\" (func $update))");
    } else {
       generation_context.out.emit_constant_sexp(
          "(import \"wasi_unstable\" \"fd_write\" (func $fd_write (param i32 i32 i32 i32) (result i32)))",
@@ -635,6 +635,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
       generation_context
          .out
          .emit_constant_sexp("(export \"memory\" (memory 0))");
+      generation_context.out.emit_constant_sexp("(export \"_start\" (func $main))");
    }
 
    // Data section
@@ -819,10 +820,6 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
          &program.struct_info,
          interner,
       );
-
-      if procedure.name == interner.intern("main") && !wasm4 {
-         generation_context.out.emit_constant_sexp("(export \"_start\")");
-      }
 
       adjust_stack_function_entry(&mut generation_context);
 
