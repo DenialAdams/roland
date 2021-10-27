@@ -530,7 +530,14 @@ pub fn fold_expr<W: Write>(
       Expression::Transmute(_, expr) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
 
-         None
+         // This works fine currently, but I'm not sure how the wasm backend will deal with this when we allow transmut from i.e. f64 -> i64
+         // It will just see a float literal but have to emit a cast to assuage the type difference,
+         // and it gets more complicated when dealing with compound literals
+         Some(ExpressionNode {
+            expression: expr.expression.clone(),
+            exp_type: expr_to_fold.exp_type.take(),
+            expression_begin_location: expr_to_fold.expression_begin_location,
+         })
       }
       Expression::EnumLiteral(_, _) => None,
    }
