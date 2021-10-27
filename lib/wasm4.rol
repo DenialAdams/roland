@@ -1,0 +1,12 @@
+struct String {
+   pointer: &u8,
+   length: usize,
+}
+
+proc text(txt: String, x: u32, y: u32) {
+   textUtf8(txt.pointer, txt.length, x, y);
+}
+
+proc trace(txt: String) {
+   traceUtf8(txt.pointer, txt.length);
+}
