@@ -83,6 +83,7 @@ fn merge_programs(main_program: &mut Program, other_programs: &mut [Program]) {
       main_program.procedures.extend(program.procedures.drain(0..));
       main_program.structs.extend(program.structs.drain(0..));
       main_program.statics.extend(program.statics.drain(0..));
+      main_program.enums.extend(program.enums.drain(0..));
    }
 }
 
