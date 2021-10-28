@@ -1,0 +1,7 @@
+proc main() {
+   let x: i64 = 0xfb12;
+   let y: i64 = 0b1111101100010010;
+   let z: i64 = 64274;
+   print_bool(x == y);
+   print_bool(y == z);
+}
