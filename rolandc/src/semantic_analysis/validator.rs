@@ -206,6 +206,26 @@ pub fn type_and_check_validity<W: Write>(
                ExpressionType::Value(ValueType::Unit),
             ),
             (
+               interner.intern("hline"),
+               false,
+               vec![
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(I32_TYPE),
+               ],
+               ExpressionType::Value(ValueType::Unit),
+            ),
+            (
+               interner.intern("vline"),
+               false,
+               vec![
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(I32_TYPE),
+                  ExpressionType::Value(I32_TYPE),
+               ],
+               ExpressionType::Value(ValueType::Unit),
+            ),
+            (
                interner.intern("oval"),
                false,
                vec![
@@ -254,6 +274,18 @@ pub fn type_and_check_validity<W: Write>(
                   ExpressionType::Value(U32_TYPE),
                ],
                ExpressionType::Value(ValueType::Unit),
+            ),
+            (
+               interner.intern("diskr"),
+               false,
+               vec![ExpressionType::Pointer(1, U8_TYPE), ExpressionType::Value(USIZE_TYPE)],
+               ExpressionType::Value(USIZE_TYPE),
+            ),
+            (
+               interner.intern("diskw"),
+               false,
+               vec![ExpressionType::Pointer(1, U8_TYPE), ExpressionType::Value(USIZE_TYPE)],
+               ExpressionType::Value(USIZE_TYPE),
             ),
          ]
       }
