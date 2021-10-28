@@ -10,3 +10,22 @@ proc text(txt: String, x: u32, y: u32) {
 proc trace(txt: String) {
    traceUtf8(txt.pointer, txt.length);
 }
+
+// This should not be necessary, but sometimes life be like that
+proc set_wasm4_statics() {
+   PALETTE = 0x04 transmute &[u32; 4];
+   DRAW_COLORS = 0x14 transmute &u16;
+   GAMEPADS = 0x16 transmute &[u8; 4];
+   MOUSE_X = 0x1a transmute &i16;
+   MOUSE_Y = 0x1c transmute &i16;
+   MOUSE_BUTTONS = 0x1e transmute &u8;
+   FRAMEBUFFER = 0xa0 transmute &[u8; 6400];
+}
+
+static PALETTE: &[u32; 4];
+static DRAW_COLORS: &u16;
+static GAMEPADS: &[u8; 4];
+static MOUSE_X: &i16;
+static MOUSE_Y: &i16;
+static MOUSE_BUTTONS: &u8;
+static FRAMEBUFFER: &[u8; 6400];

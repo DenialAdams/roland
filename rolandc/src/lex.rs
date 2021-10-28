@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::num::IntErrorKind;
 
 use crate::interner::{Interner, StrId};
 
@@ -488,10 +489,11 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
             mode = LexMode::StringLiteral;
          }
          LexMode::NumericLiteral => {
-            if c.is_ascii_digit() {
+            // Alphanumeric because we support parsing hex, i.e. 0xff
+            if c.is_ascii_alphanumeric() {
                str_buf.push(c);
                let _ = chars.next().unwrap();
-            } else if c == '.' && !is_float {
+            } else if c == '.' {
                is_float = true;
                str_buf.push(c);
                let _ = chars.next().unwrap();
@@ -572,16 +574,14 @@ fn finish_numeric_literal<W: Write>(
          }
       };
       Token::FloatLiteral(float_value)
+   } else if s.starts_with("0x") {
+      let rest_of_s = &s[2..];
+      parse_int(rest_of_s, 16, err_stream, source_info)?
+   } else if s.starts_with("0b") {
+      let rest_of_s = &s[2..];
+      parse_int(rest_of_s, 2, err_stream, source_info)?
    } else {
-      let int_value = match parse_int(s) {
-         Ok(v) => v,
-         Err(_) => {
-            writeln!(err_stream, "Encountered number that is TOO BIG!!").unwrap();
-            emit_source_info(err_stream, source_info);
-            return Err(());
-         }
-      };
-      Token::IntLiteral(int_value)
+      parse_int(s, 10, err_stream, source_info)?
    };
    Ok(SourceToken {
       source_info,
@@ -589,34 +589,28 @@ fn finish_numeric_literal<W: Write>(
    })
 }
 
-// The string provided MUST be a valid number, or we'll assert
-// An Err is returned if overflow would occur
-fn parse_int(s: &str) -> Result<i64, ()> {
-   let mut int_value: i64 = 0;
-
-   for b in s.as_bytes() {
-      let digit: i64 = match b {
-         b'0' => 0,
-         b'1' => 1,
-         b'2' => 2,
-         b'3' => 3,
-         b'4' => 4,
-         b'5' => 5,
-         b'6' => 6,
-         b'7' => 7,
-         b'8' => 8,
-         b'9' => 9,
-         _ => unreachable!(),
-      };
-
-      let new_val = int_value.checked_mul(10).and_then(|x| x.checked_add(digit));
-
-      int_value = if let Some(v) = new_val {
-         v
-      } else {
-         return Err(());
-      };
+fn parse_int<W: Write>(s: &str, radix: u32, err_stream: &mut W, source_info: SourceInfo) -> Result<Token, ()> {
+   match i64::from_str_radix(s, radix) {
+      Ok(v) => Ok(Token::IntLiteral(v)),
+      Err(pe) if *pe.kind() == IntErrorKind::InvalidDigit => {
+         writeln!(err_stream, "Encountered invalid digit while parsing integer").unwrap();
+         emit_source_info(err_stream, source_info);
+         Err(())
+      }
+      Err(pe) if *pe.kind() == IntErrorKind::PosOverflow => {
+         writeln!(err_stream, "Encountered overly big integer").unwrap();
+         emit_source_info(err_stream, source_info);
+         Err(())
+      }
+      Err(pe) if *pe.kind() == IntErrorKind::Empty => {
+         writeln!(
+            err_stream,
+            "Encountered empty integer literal (prefix that is not followed by a number)"
+         )
+         .unwrap();
+         emit_source_info(err_stream, source_info);
+         Err(())
+      }
+      Err(_) => unreachable!(),
    }
-
-   Ok(int_value)
 }

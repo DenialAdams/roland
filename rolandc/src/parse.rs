@@ -93,7 +93,7 @@ pub struct EnumNode {
    pub begin_location: SourceInfo,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StaticNode {
    pub name: StrId,
    pub static_type: ExpressionType,

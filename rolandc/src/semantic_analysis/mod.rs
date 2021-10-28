@@ -2,10 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::Target;
 use crate::interner::StrId;
 use crate::lex::SourceInfo;
 use crate::type_data::ExpressionType;
+use crate::Target;
 
 pub mod type_inference;
 pub mod validator;
@@ -31,7 +31,7 @@ pub struct StructInfo {
    pub struct_begin_location: SourceInfo,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StaticInfo {
    pub static_type: ExpressionType,
    pub static_begin_location: SourceInfo,
