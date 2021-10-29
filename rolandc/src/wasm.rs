@@ -1208,6 +1208,12 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             BinOp::BitwiseXor => {
                writeln!(generation_context.out.out, "{}.xor", wasm_type).unwrap();
             }
+            BinOp::BitwiseLeftShift => {
+               writeln!(generation_context.out.out, "{}.shl", wasm_type).unwrap();
+            },
+            BinOp::BitwiseRightShift => {
+               writeln!(generation_context.out.out, "{}.shr{}", wasm_type, suffix).unwrap();
+            },
             BinOp::LogicalAnd | BinOp::LogicalOr => unreachable!(),
          }
       }
@@ -1297,20 +1303,55 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
 
          // nop, width is the same
       }
-      Expression::Truncate(_target_type, e) => {
+      Expression::Truncate(target_type, e) => {
          do_emit_and_load_lval(e, generation_context, interner);
 
-         // 8bytes -> (4, 2, 1) bytes is a wrap
-         // anything else is a nop
+         if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Int(_))) && matches!(target_type, ExpressionType::Value(ValueType::Int(_)))  {
+            // int -> smaller int
+            // 8bytes -> (4, 2, 1) bytes is a wrap
+            // anything else is a nop
 
-         // this is taking advantage of the fact that truncating is guaranteed to go downwards
-         if sizeof_type_wasm(
-            e.exp_type.as_ref().unwrap(),
-            generation_context.enum_info,
-            &generation_context.struct_size_info,
-         ) > 4
-         {
-            generation_context.out.emit_constant_instruction("i32.wrap_i64");
+            // this is taking advantage of the fact that truncating is guaranteed to go downwards
+            if sizeof_type_wasm(
+               e.exp_type.as_ref().unwrap(),
+               generation_context.enum_info,
+               &generation_context.struct_size_info,
+            ) > 4
+            {
+               generation_context.out.emit_constant_instruction("i32.wrap_i64");
+            }
+         } else {
+            // float -> int
+            // i32.trunc_f32_s
+            let (target_type_str, suffix) = match target_type {
+               ExpressionType::Value(ValueType::Int(x)) => {
+                  let base_str = match x.width {
+                    IntWidth::Pointer => "i32",
+                    IntWidth::Eight => "i64",
+                    IntWidth::Four => "i32",
+                    IntWidth::Two => "i16",
+                    IntWidth::One => "i8",
+                };
+                  (
+                     base_str, if x.signed {
+                        "_s"
+                     } else {
+                        "_u"
+                     }
+                  )
+               }
+               _ => unreachable!(),
+            };
+            let dest_type_str = match e.exp_type.as_ref().unwrap() {
+               ExpressionType::Value(ValueType::Float(x)) => {
+                  match x.width {
+                    FloatWidth::Eight => "f64",
+                    FloatWidth::Four => "f32",
+                }
+               }
+               _ => unreachable!(),
+            };
+            write!(generation_context.out.out, "{}.trunc_sat_{}{}", target_type_str, dest_type_str, suffix).unwrap();
          }
       }
       Expression::Variable(id) => {

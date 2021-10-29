@@ -3,7 +3,7 @@ use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statem
 use crate::type_data::{ExpressionType, ValueType};
 use std::collections::HashMap;
 use std::io::Write;
-use std::ops::{BitAnd, BitOr, BitXor};
+use std::ops::{BitAnd, BitOr, BitXor, Shl};
 
 pub struct FoldingContext {
    pub error_count: u64,
@@ -426,6 +426,14 @@ pub fn fold_expr<W: Write>(
                exp_type: expr_to_fold.exp_type.take(),
                expression_begin_location: expr_to_fold.expression_begin_location,
             }),
+            // int
+            BinOp::BitwiseLeftShift => Some(ExpressionNode {
+               expression: lhs << rhs,
+               exp_type: expr_to_fold.exp_type.take(),
+               expression_begin_location: expr_to_fold.expression_begin_location,
+            }),
+            // runtime behavior may differ based on signed/unsigned - best not to mess this up (for now) TODO
+            BinOp::BitwiseRightShift => None,
             // bool
             BinOp::LogicalAnd => Some(ExpressionNode {
                expression: lhs & rhs,
@@ -634,6 +642,17 @@ impl BitAnd for Literal {
          _ => unreachable!(),
       }
    }
+}
+
+impl Shl for Literal {
+    type Output = Expression;
+
+    fn shl(self, rhs: Self) -> Self::Output {
+      match (self, rhs) {
+         (Literal::Int(i), Literal::Int(j)) => Expression::IntLiteral(i << j),
+         _ => unreachable!(),
+      }
+    }
 }
 
 impl PartialOrd for Literal {

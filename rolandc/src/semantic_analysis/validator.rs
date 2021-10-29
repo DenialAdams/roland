@@ -1206,6 +1206,9 @@ fn do_type<W: Write>(
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
                   x.width.as_bytes() > y.width.as_bytes()
                }
+               (ExpressionType::Value(ValueType::Float(_)), ExpressionType::Value(ValueType::Int(_))) => {
+                  true
+               }
                _ => false,
             };
 
@@ -1257,6 +1260,7 @@ fn do_type<W: Write>(
                &[TypeValidator::AnyInt, TypeValidator::Bool, TypeValidator::AnyEnum]
             }
             BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor => &[TypeValidator::AnyInt, TypeValidator::Bool],
+            BinOp::BitwiseLeftShift | BinOp::BitwiseRightShift => &[TypeValidator::AnyInt],
          };
 
          try_set_inferred_type(
@@ -1348,7 +1352,9 @@ fn do_type<W: Write>(
                | BinOp::Remainder
                | BinOp::BitwiseAnd
                | BinOp::BitwiseOr
-               | BinOp::BitwiseXor => lhs_type.clone(),
+               | BinOp::BitwiseXor
+               | BinOp::BitwiseLeftShift
+               | BinOp::BitwiseRightShift => lhs_type.clone(),
                BinOp::Equality
                | BinOp::NotEquality
                | BinOp::GreaterThan

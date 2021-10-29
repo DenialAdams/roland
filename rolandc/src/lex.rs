@@ -65,6 +65,8 @@ pub enum Token {
    LessThanOrEqualTo,
    GreaterThan,
    GreaterThanOrEqualTo,
+   ShiftLeft,
+   ShiftRight,
    Comma,
    Exclam,
    Period,
@@ -124,6 +126,8 @@ impl Token {
          Token::Comma => ",",
          Token::Exclam => "!",
          Token::Period => ".",
+         Token::ShiftLeft => "<<",
+         Token::ShiftRight => ">>",
       }
    }
 }
@@ -353,6 +357,13 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
                   });
                   source_info.col += 2;
                   let _ = chars.next().unwrap();
+               } else if chars.peek() == Some(&'>') {
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::ShiftRight,
+                  });
+                  source_info.col += 2;
+                  let _ = chars.next().unwrap();
                } else {
                   tokens.push(SourceToken {
                      source_info,
@@ -369,6 +380,13 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
                   });
                   source_info.col += 2;
                   let _ = chars.next().unwrap();
+               } else if chars.peek() == Some(&'<') {
+                     tokens.push(SourceToken {
+                        source_info,
+                        token: Token::ShiftLeft,
+                     });
+                     source_info.col += 2;
+                     let _ = chars.next().unwrap();
                } else {
                   tokens.push(SourceToken {
                      source_info,
@@ -574,11 +592,9 @@ fn finish_numeric_literal<W: Write>(
          }
       };
       Token::FloatLiteral(float_value)
-   } else if s.starts_with("0x") {
-      let rest_of_s = &s[2..];
+   } else if let Some(rest_of_s) = s.strip_prefix("0x") {
       parse_int(rest_of_s, 16, err_stream, source_info)?
-   } else if s.starts_with("0b") {
-      let rest_of_s = &s[2..];
+   } else if let Some(rest_of_s) = s.strip_prefix("0b") {
       parse_int(rest_of_s, 2, err_stream, source_info)?
    } else {
       parse_int(s, 10, err_stream, source_info)?

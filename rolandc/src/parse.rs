@@ -116,6 +116,8 @@ pub enum BinOp {
    BitwiseAnd,
    BitwiseOr,
    BitwiseXor,
+   BitwiseLeftShift,
+   BitwiseRightShift,
    LogicalAnd,
    LogicalOr,
 }
@@ -899,7 +901,9 @@ fn pratt<W: Write>(
          | Some(x @ &Token::KeywordExtend)
          | Some(x @ &Token::KeywordTruncate)
          | Some(x @ &Token::KeywordTransmute)
-         | Some(x @ &Token::OpenSquareBracket) => x,
+         | Some(x @ &Token::OpenSquareBracket)
+         | Some(x @ &Token::ShiftLeft)
+         | Some(x @ &Token::ShiftRight) => x,
          Some(&Token::Period) => {
             let mut fields = vec![];
             loop {
@@ -971,6 +975,8 @@ fn pratt<W: Write>(
          Token::GreaterThanOrEqualTo => BinOp::GreaterThanOrEqualTo,
          Token::LessThan => BinOp::LessThan,
          Token::LessThanOrEqualTo => BinOp::LessThanOrEqualTo,
+         Token::ShiftLeft => BinOp::BitwiseLeftShift,
+         Token::ShiftRight => BinOp::BitwiseRightShift,
          Token::Equality => BinOp::Equality,
          Token::NotEquality => BinOp::NotEquality,
          Token::Caret => BinOp::BitwiseXor,
@@ -998,10 +1004,10 @@ fn prefix_binding_power(op: &Token) -> ((), u8) {
 
 fn postfix_binding_power(op: &Token) -> Option<(u8, ())> {
    match &op {
-      Token::OpenSquareBracket => Some((18, ())),
-      Token::KeywordExtend => Some((16, ())),
-      Token::KeywordTruncate => Some((16, ())),
-      Token::KeywordTransmute => Some((16, ())),
+      Token::OpenSquareBracket => Some((20, ())),
+      Token::KeywordExtend => Some((18, ())),
+      Token::KeywordTruncate => Some((18, ())),
+      Token::KeywordTransmute => Some((18, ())),
       _ => None,
    }
 }
@@ -1019,8 +1025,9 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
       Token::Pipe => (6, 7),
       Token::Caret => (8, 9),
       Token::Amp => (10, 11),
-      Token::Plus | Token::Minus => (12, 13),
-      Token::MultiplyDeref | Token::Divide | Token::Remainder => (14, 15),
+      Token::ShiftLeft | Token::ShiftRight => (12, 13),
+      Token::Plus | Token::Minus => (14, 15),
+      Token::MultiplyDeref | Token::Divide | Token::Remainder => (16, 17),
       _ => unreachable!(),
    }
 }
