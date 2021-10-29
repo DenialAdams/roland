@@ -130,7 +130,7 @@ impl IntWidth {
    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct IntType {
    pub signed: bool,
    pub width: IntWidth,

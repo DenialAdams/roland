@@ -187,6 +187,7 @@ pub enum Statement {
    Assignment(ExpressionNode, ExpressionNode),
    Block(BlockNode),
    Loop(BlockNode),
+   For(StrId, ExpressionNode, ExpressionNode, BlockNode),
    Continue,
    Break,
    Expression(ExpressionNode),
@@ -428,6 +429,20 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
                statement_begin_location: break_token.source_info,
             });
             expect(l, err_stream, &Token::Semicolon)?;
+         }
+         Some(Token::KeywordFor) => {
+            let for_token = l.next().unwrap();
+            let variable_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
+            let _ = expect(l, err_stream, &Token::KeywordIn)?;
+            let start_en = parse_expression(l, err_stream, true, interner)?;
+            let _ = expect(l, err_stream, &Token::DoublePeriod)?;
+            let end_en = parse_expression(l, err_stream, true, interner)?;
+            let new_block = parse_block(l, err_stream, interner)?;
+            statements.push(StatementNode {
+               // TODO: instead of extracting here, we could preserve the source information and give better errors in the validator
+               statement: Statement::For(extract_identifier(variable_name.token), start_en, end_en, new_block),
+               statement_begin_location: for_token.source_info,
+            });
          }
          Some(Token::KeywordLoop) => {
             let loop_token = l.next().unwrap();

@@ -1,0 +1,7 @@
+proc main() {
+   let x: u32 = 0;
+   let y: usize = 64; 
+   for i in x..y {
+      print(int_to_string(i));
+   }
+}

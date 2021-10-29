@@ -964,6 +964,9 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             emit_statement(statement, generation_context, interner);
          }
       }
+      Statement::For(var, start_expr, end_expr, bn) => {
+         todo!();
+      }
       Statement::Loop(bn) => {
          generation_context.loop_depth += 1;
          generation_context.out.emit_block_start(generation_context.loop_counter);

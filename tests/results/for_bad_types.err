@@ -1,0 +1,4 @@
+Beginning and end of range must be integer types of the same kind
+↳ Start of range expression @ line 4, column 13 is of type `u32`
+↳ End of range expression @ line 4, column 16 is of type `usize`
+There were 1 semantic errors, bailing

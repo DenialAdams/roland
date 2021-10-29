@@ -40,6 +40,11 @@ pub fn fold_statement<W: Write>(statement: &mut Statement, err_stream: &mut W, f
          fold_block(if_block, err_stream, folding_context);
          fold_statement(&mut else_statement.statement, err_stream, folding_context);
       }
+      Statement::For(_var, start_expr, end_expr, block) => {
+         try_fold_and_replace_expr(start_expr, err_stream, folding_context);
+         try_fold_and_replace_expr(end_expr, err_stream, folding_context);
+         fold_block(block, err_stream, folding_context);
+      }
       Statement::Loop(block) => {
          fold_block(block, err_stream, folding_context);
       }

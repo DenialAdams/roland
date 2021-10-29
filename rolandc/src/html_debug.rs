@@ -38,6 +38,16 @@ fn print_statement<W: Write>(out: &mut W, statement_node: &StatementNode, intern
          }
          writeln!(out, "</ul></li>").unwrap();
       }
+      Statement::For(var, start_expr, end_expr, bn) => {
+         writeln!(out, "<li><span>For</span>").unwrap();
+         writeln!(out, "<li><span>{}</span>", interner.lookup(*var)).unwrap();
+         print_expression(out, start_expr, interner);
+         print_expression(out, end_expr, interner);
+         for statement in bn.statements.iter() {
+            print_statement(out, statement, interner);
+         }
+         writeln!(out, "</ul></li>").unwrap();
+      }
       Statement::Loop(bn) => {
          writeln!(out, "<li><span>Loop</span>").unwrap();
          writeln!(out, "<ul>").unwrap();
@@ -74,8 +84,7 @@ fn print_statement<W: Write>(out: &mut W, statement_node: &StatementNode, intern
       Statement::VariableDeclaration(ident, e, _) => {
          writeln!(out, "<li><span>Variable Declaration</span>").unwrap();
          writeln!(out, "<ul>").unwrap();
-         let ident_str = interner.lookup(*ident);
-         writeln!(out, "<li><span>{}</span>", ident_str).unwrap();
+         writeln!(out, "<li><span>{}</span>", interner.lookup(*ident)).unwrap();
          print_expression(out, e, interner);
          writeln!(out, "</ul></li>").unwrap();
       }

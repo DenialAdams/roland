@@ -36,6 +36,8 @@ pub enum Token {
    KeywordNamed,
    KeywordAnd,
    KeywordOr,
+   KeywordFor,
+   KeywordIn,
    OpenBrace,
    CloseBrace,
    OpenParen,
@@ -70,6 +72,7 @@ pub enum Token {
    Comma,
    Exclam,
    Period,
+   DoublePeriod,
 }
 
 impl Token {
@@ -126,8 +129,11 @@ impl Token {
          Token::Comma => ",",
          Token::Exclam => "!",
          Token::Period => ".",
+         Token::DoublePeriod => ".",
          Token::ShiftLeft => "<<",
          Token::ShiftRight => ">>",
+         Token::KeywordFor => "keyword for",
+         Token::KeywordIn => "keyword in",
       }
    }
 }
@@ -167,6 +173,8 @@ fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
       "and" => Token::KeywordAnd,
       "or" => Token::KeywordOr,
       "enum" => Token::KeywordEnumDef,
+      "in" => Token::KeywordIn,
+      "for" => Token::KeywordFor,
       other => Token::Identifier(interner.intern(other)),
    }
 }
@@ -411,12 +419,21 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
                   source_info.col += 1;
                }
             } else if c == '.' {
-               tokens.push(SourceToken {
-                  source_info,
-                  token: Token::Period,
-               });
-               source_info.col += 1;
                let _ = chars.next().unwrap();
+               if chars.peek() == Some(&'.') {
+                  let _ = chars.next().unwrap();
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::DoublePeriod,
+                  });
+                  source_info.col += 2;
+               } else {
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::Period,
+                  });
+                  source_info.col += 1;
+               }
             } else if c == '[' {
                tokens.push(SourceToken {
                   source_info,

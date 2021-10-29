@@ -890,6 +890,50 @@ fn type_statement<W: Write>(
             .unwrap();
          }
       }
+      Statement::For(var, start_expr, end_expr, bn) => {
+         do_type(err_stream, start_expr, validation_context, interner);
+         do_type(err_stream, end_expr, validation_context, interner);
+
+         let result_type = match (start_expr.exp_type.as_ref().unwrap(), end_expr.exp_type.as_ref().unwrap()) {
+            (ExpressionType::Value(ValueType::CompileError), _) => {
+               ExpressionType::Value(ValueType::CompileError)
+            }
+            (_, ExpressionType::Value(ValueType::CompileError)) => {
+               ExpressionType::Value(ValueType::CompileError)
+            }
+            (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) if x == y => {
+               ExpressionType::Value(ValueType::Int(*x))
+            }
+            _ => {
+               validation_context.error_count += 1;
+               writeln!(err_stream, "Beginning and end of range must be integer types of the same kind").unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ Start of range expression @ line {}, column {} is of type `{}`",
+                  start_expr.expression_begin_location.line, start_expr.expression_begin_location.col,
+                  start_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner)
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ End of range expression @ line {}, column {} is of type `{}`",
+                  end_expr.expression_begin_location.line, end_expr.expression_begin_location.col,
+                  end_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner)
+               )
+               .unwrap();
+               ExpressionType::Value(ValueType::CompileError)
+            }
+         };
+
+         // This way the variable is declared at the depth that we'll be typing in
+         validation_context.block_depth += 1;
+         declare_variable(err_stream, *var, result_type, statement.statement_begin_location, validation_context, cur_procedure_locals, interner);
+         validation_context.block_depth -= 1;
+
+         validation_context.loop_depth += 1;
+         type_block(err_stream, bn, validation_context, cur_procedure_locals, interner);
+         validation_context.loop_depth -= 1;
+      }
       Statement::Loop(bn) => {
          validation_context.loop_depth += 1;
          type_block(err_stream, bn, validation_context, cur_procedure_locals, interner);
@@ -1009,27 +1053,39 @@ fn type_statement<W: Write>(
             en.exp_type.clone().unwrap()
          };
 
-         if validation_context.static_info.contains_key(id) || validation_context.variable_types.contains_key(id) {
-            validation_context.error_count += 1;
-            writeln!(
-               err_stream,
-               "Variable shadowing is not supported at this time (`{}`)",
-               interner.lookup(*id)
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               statement.statement_begin_location.line, statement.statement_begin_location.col
-            )
-            .unwrap();
-         } else {
-            validation_context
-               .variable_types
-               .insert(*id, (en.exp_type.clone().unwrap(), validation_context.block_depth));
-            cur_procedure_locals.insert(*id, result_type);
-         }
+         declare_variable(err_stream, *id, result_type, statement.statement_begin_location, validation_context, cur_procedure_locals, interner);
       }
+   }
+}
+
+fn declare_variable<W: Write>(
+   err_stream: &mut W,
+   id: StrId,
+   var_type: ExpressionType,
+   source_info: SourceInfo,
+   validation_context: &mut ValidationContext,
+   cur_procedure_locals: &mut IndexMap<StrId, ExpressionType>,
+   interner: &mut Interner,
+) {
+   if validation_context.static_info.contains_key(&id) || validation_context.variable_types.contains_key(&id) {
+      validation_context.error_count += 1;
+      writeln!(
+         err_stream,
+         "Variable shadowing is not supported at this time (`{}`)",
+         interner.lookup(id)
+      )
+      .unwrap();
+      writeln!(
+         err_stream,
+         "↳ line {}, column {}",
+         source_info.line, source_info.col
+      )
+      .unwrap();
+   } else {
+      validation_context
+         .variable_types
+         .insert(id, (var_type.clone(), validation_context.block_depth));
+      cur_procedure_locals.insert(id, var_type);
    }
 }
 
