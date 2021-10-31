@@ -187,7 +187,7 @@ pub enum Statement {
    Assignment(ExpressionNode, ExpressionNode),
    Block(BlockNode),
    Loop(BlockNode),
-   For(StrId, ExpressionNode, ExpressionNode, BlockNode),
+   For(StrId, ExpressionNode, ExpressionNode, BlockNode, bool),
    Continue,
    Break,
    Expression(ExpressionNode),
@@ -436,11 +436,17 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
             let _ = expect(l, err_stream, &Token::KeywordIn)?;
             let start_en = parse_expression(l, err_stream, true, interner)?;
             let _ = expect(l, err_stream, &Token::DoublePeriod)?;
+            let inclusive = if l.peek_token() == Some(&Token::Assignment) {
+               let _ = l.next();
+               true
+            } else {
+               false
+            };
             let end_en = parse_expression(l, err_stream, true, interner)?;
             let new_block = parse_block(l, err_stream, interner)?;
             statements.push(StatementNode {
                // TODO: instead of extracting here, we could preserve the source information and give better errors in the validator
-               statement: Statement::For(extract_identifier(variable_name.token), start_en, end_en, new_block),
+               statement: Statement::For(extract_identifier(variable_name.token), start_en, end_en, new_block, inclusive),
                statement_begin_location: for_token.source_info,
             });
          }

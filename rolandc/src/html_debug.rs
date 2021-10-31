@@ -38,7 +38,7 @@ fn print_statement<W: Write>(out: &mut W, statement_node: &StatementNode, intern
          }
          writeln!(out, "</ul></li>").unwrap();
       }
-      Statement::For(var, start_expr, end_expr, bn) => {
+      Statement::For(var, start_expr, end_expr, bn, _) => {
          writeln!(out, "<li><span>For</span>").unwrap();
          writeln!(out, "<li><span>{}</span>", interner.lookup(*var)).unwrap();
          print_expression(out, start_expr, interner);

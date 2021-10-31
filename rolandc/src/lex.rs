@@ -529,9 +529,27 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
                str_buf.push(c);
                let _ = chars.next().unwrap();
             } else if c == '.' {
-               is_float = true;
-               str_buf.push(c);
                let _ = chars.next().unwrap();
+               if chars.peek() == Some(&'.') {
+                  // This is pretty hacky, but oh well
+
+                  tokens.push(finish_numeric_literal(&str_buf, err_stream, source_info, is_float)?);
+                  source_info.col += str_buf.len();
+                  is_float = false;
+                  str_buf.clear();
+                  mode = LexMode::Normal;
+
+
+                  let _ = chars.next().unwrap();
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::DoublePeriod,
+                  });
+                  source_info.col += 2;
+               } else {
+                  is_float = true;
+                  str_buf.push(c);
+               }
             } else {
                tokens.push(finish_numeric_literal(&str_buf, err_stream, source_info, is_float)?);
                source_info.col += str_buf.len();

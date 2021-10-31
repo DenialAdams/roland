@@ -1,0 +1,14 @@
+proc start() -> u64 {
+   print("Start expr");
+   return 0;
+}
+proc end() -> u64 {
+   print("End expr");
+   return 3;
+}
+
+proc main() {
+   for i in start()..end() {
+      print("Loop body");
+   }
+}

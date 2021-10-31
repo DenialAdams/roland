@@ -890,9 +890,24 @@ fn type_statement<W: Write>(
             .unwrap();
          }
       }
-      Statement::For(var, start_expr, end_expr, bn) => {
+      Statement::For(var, start_expr, end_expr, bn, _) => {
          do_type(err_stream, start_expr, validation_context, interner);
          do_type(err_stream, end_expr, validation_context, interner);
+
+         try_set_inferred_type(
+            start_expr.exp_type.as_ref().unwrap(),
+            end_expr,
+            validation_context,
+            err_stream,
+            interner,
+         );
+         try_set_inferred_type(
+            end_expr.exp_type.as_ref().unwrap(),
+            start_expr,
+            validation_context,
+            err_stream,
+            interner,
+         );
 
          let result_type = match (start_expr.exp_type.as_ref().unwrap(), end_expr.exp_type.as_ref().unwrap()) {
             (ExpressionType::Value(ValueType::CompileError), _) => {
@@ -1085,6 +1100,8 @@ fn declare_variable<W: Write>(
       validation_context
          .variable_types
          .insert(id, (var_type.clone(), validation_context.block_depth));
+      // TODO: need to fix
+      debug_assert!(!cur_procedure_locals.contains_key(&id));
       cur_procedure_locals.insert(id, var_type);
    }
 }

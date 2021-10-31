@@ -175,7 +175,7 @@ fn main() -> Result<(), &'static str> {
 
 fn print_diff<W: WriteColor>(t: &mut W, expected: &str, actual: &str) {
    if expected.ends_with("\r\n") {
-      println!("<expected value ends with \\r\\n!>")
+      writeln!(t, "<expected value ends with \\r\\n!>").unwrap();
    }
 
    let diff = TextDiff::from_lines(expected, actual);

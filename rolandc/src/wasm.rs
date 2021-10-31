@@ -1,7 +1,7 @@
 use crate::interner::{Interner, StrId};
 use crate::parse::{BinOp, Expression, ExpressionNode, ParameterNode, Program, Statement, StatementNode, UnOp};
 use crate::semantic_analysis::{EnumInfo, StructInfo};
-use crate::type_data::{ExpressionType, FloatWidth, IntWidth, ValueType, USIZE_TYPE};
+use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, USIZE_TYPE, ValueType};
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
 use std::io::Write;
@@ -367,6 +367,15 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumIn
          }
       }
    }
+}
+
+fn int_to_wasm_runtime_and_suffix(x: &IntType) -> (&'static str, &'static str) {
+   let wasm_type = match x.width {
+      IntWidth::Eight => "i64",
+      _ => "i32",
+   };
+   let suffix = if x.signed { "_s" } else { "_u" };
+   (wasm_type, suffix)
 }
 
 /// The size of a type as it's stored in memory
@@ -964,8 +973,75 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             emit_statement(statement, generation_context, interner);
          }
       }
-      Statement::For(var, start_expr, end_expr, bn) => {
-         todo!();
+      Statement::For(var, start_expr, end_expr, bn, inclusive) => {
+         let (wasm_type, suffix) = match start_expr.exp_type.as_ref().unwrap() {
+            ExpressionType::Value(ValueType::Int(x)) => int_to_wasm_runtime_and_suffix(x),
+            _ => unreachable!(),
+         };
+
+         if *inclusive {
+            todo!();
+         }
+         // Set var
+         {
+            get_stack_address_of_local(*var, generation_context);
+            do_emit_and_load_lval(start_expr, generation_context, interner);
+            store(start_expr.exp_type.as_ref().unwrap(), generation_context, interner);
+         }
+         generation_context.loop_depth += 1;
+         generation_context.out.emit_block_start(generation_context.loop_counter);
+         generation_context.out.emit_loop_start(generation_context.loop_counter);
+         generation_context.loop_counter += 1;
+         // Check and break if needed
+         {
+            get_stack_address_of_local(*var, generation_context);
+            load(start_expr.exp_type.as_ref().unwrap(), generation_context);
+            // TODO!! we don't want to emit this every iteration, need to hoist
+            do_emit_and_load_lval(end_expr, generation_context, interner);
+            writeln!(generation_context.out.out, "{}.ge{}", wasm_type, suffix).unwrap();
+
+            generation_context.out.emit_if_start(
+               &ExpressionType::Value(ValueType::Unit),
+               generation_context.enum_info,
+               generation_context.struct_info,
+            );
+            // then
+            generation_context.out.emit_then_start();
+            generation_context.out.emit_spaces();
+            writeln!(
+               generation_context.out.out,
+               "br $b_{}",
+               generation_context.loop_counter - generation_context.loop_depth
+            )
+            .unwrap();
+            generation_context.out.close();
+            // finish if
+            generation_context.out.close();
+         }
+         for statement in &bn.statements {
+            emit_statement(statement, generation_context, interner);
+         }
+         // Increment
+         {
+            get_stack_address_of_local(*var, generation_context);
+            get_stack_address_of_local(*var, generation_context);
+            load(start_expr.exp_type.as_ref().unwrap(), generation_context);
+            generation_context.out.emit_spaces();
+            writeln!(generation_context.out.out, "{}.const 1", wasm_type).unwrap();
+            generation_context.out.emit_spaces();
+            writeln!(generation_context.out.out, "{}.add", wasm_type).unwrap();
+            store(start_expr.exp_type.as_ref().unwrap(), generation_context, interner);
+         }
+         generation_context.out.emit_spaces();
+         writeln!(
+            generation_context.out.out,
+            "br $l_{}",
+            generation_context.loop_counter - generation_context.loop_depth
+         )
+         .unwrap();
+         generation_context.out.emit_end();
+         generation_context.out.emit_end();
+         generation_context.loop_depth -= 1;
       }
       Statement::Loop(bn) => {
          generation_context.loop_depth += 1;
@@ -1148,14 +1224,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          do_emit_and_load_lval(&e.1, generation_context, interner);
 
          let (wasm_type, suffix) = match e.0.exp_type.as_ref().unwrap() {
-            ExpressionType::Value(ValueType::Int(x)) => {
-               let wasm_type = match x.width {
-                  IntWidth::Eight => "i64",
-                  _ => "i32",
-               };
-               let suffix = if x.signed { "_s" } else { "_u" };
-               (wasm_type, suffix)
-            }
+            ExpressionType::Value(ValueType::Int(x)) => int_to_wasm_runtime_and_suffix(x),
             ExpressionType::Value(ValueType::Enum(x)) => {
                let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
                (if num_variants > u32::MAX as usize { "i64" } else { "i32" }, "_u")
