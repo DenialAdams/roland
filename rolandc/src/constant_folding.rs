@@ -650,14 +650,14 @@ impl BitAnd for Literal {
 }
 
 impl Shl for Literal {
-    type Output = Expression;
+   type Output = Expression;
 
-    fn shl(self, rhs: Self) -> Self::Output {
+   fn shl(self, rhs: Self) -> Self::Output {
       match (self, rhs) {
          (Literal::Int(i), Literal::Int(j)) => Expression::IntLiteral(i << j),
          _ => unreachable!(),
       }
-    }
+   }
 }
 
 impl PartialOrd for Literal {

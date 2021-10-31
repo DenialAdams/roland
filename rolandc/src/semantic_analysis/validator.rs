@@ -724,7 +724,11 @@ pub fn type_and_check_validity<W: Write>(
          validation_context
             .variable_types
             .insert(parameter.name, (parameter.p_type.clone(), 0));
-         procedure.locals.insert(parameter.name, parameter.p_type.clone());
+         procedure
+            .locals
+            .entry(parameter.name)
+            .or_insert_with(HashSet::new)
+            .insert(parameter.p_type.clone());
       }
 
       type_block(
@@ -804,7 +808,7 @@ fn type_statement<W: Write>(
    err_stream: &mut W,
    statement: &mut StatementNode,
    validation_context: &mut ValidationContext,
-   cur_procedure_locals: &mut IndexMap<StrId, ExpressionType>,
+   cur_procedure_locals: &mut IndexMap<StrId, HashSet<ExpressionType>>,
    interner: &mut Interner,
 ) {
    match &mut statement.statement {
@@ -909,30 +913,35 @@ fn type_statement<W: Write>(
             interner,
          );
 
-         let result_type = match (start_expr.exp_type.as_ref().unwrap(), end_expr.exp_type.as_ref().unwrap()) {
-            (ExpressionType::Value(ValueType::CompileError), _) => {
-               ExpressionType::Value(ValueType::CompileError)
-            }
-            (_, ExpressionType::Value(ValueType::CompileError)) => {
-               ExpressionType::Value(ValueType::CompileError)
-            }
+         let result_type = match (
+            start_expr.exp_type.as_ref().unwrap(),
+            end_expr.exp_type.as_ref().unwrap(),
+         ) {
+            (ExpressionType::Value(ValueType::CompileError), _) => ExpressionType::Value(ValueType::CompileError),
+            (_, ExpressionType::Value(ValueType::CompileError)) => ExpressionType::Value(ValueType::CompileError),
             (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) if x == y => {
                ExpressionType::Value(ValueType::Int(*x))
             }
             _ => {
                validation_context.error_count += 1;
-               writeln!(err_stream, "Beginning and end of range must be integer types of the same kind").unwrap();
+               writeln!(
+                  err_stream,
+                  "Beginning and end of range must be integer types of the same kind"
+               )
+               .unwrap();
                writeln!(
                   err_stream,
                   "↳ Start of range expression @ line {}, column {} is of type `{}`",
-                  start_expr.expression_begin_location.line, start_expr.expression_begin_location.col,
+                  start_expr.expression_begin_location.line,
+                  start_expr.expression_begin_location.col,
                   start_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner)
                )
                .unwrap();
                writeln!(
                   err_stream,
                   "↳ End of range expression @ line {}, column {} is of type `{}`",
-                  end_expr.expression_begin_location.line, end_expr.expression_begin_location.col,
+                  end_expr.expression_begin_location.line,
+                  end_expr.expression_begin_location.col,
                   end_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner)
                )
                .unwrap();
@@ -942,7 +951,15 @@ fn type_statement<W: Write>(
 
          // This way the variable is declared at the depth that we'll be typing in
          validation_context.block_depth += 1;
-         declare_variable(err_stream, *var, result_type, statement.statement_begin_location, validation_context, cur_procedure_locals, interner);
+         declare_variable(
+            err_stream,
+            *var,
+            result_type,
+            statement.statement_begin_location,
+            validation_context,
+            cur_procedure_locals,
+            interner,
+         );
          validation_context.block_depth -= 1;
 
          validation_context.loop_depth += 1;
@@ -1068,7 +1085,15 @@ fn type_statement<W: Write>(
             en.exp_type.clone().unwrap()
          };
 
-         declare_variable(err_stream, *id, result_type, statement.statement_begin_location, validation_context, cur_procedure_locals, interner);
+         declare_variable(
+            err_stream,
+            *id,
+            result_type,
+            statement.statement_begin_location,
+            validation_context,
+            cur_procedure_locals,
+            interner,
+         );
       }
    }
 }
@@ -1079,7 +1104,7 @@ fn declare_variable<W: Write>(
    var_type: ExpressionType,
    source_info: SourceInfo,
    validation_context: &mut ValidationContext,
-   cur_procedure_locals: &mut IndexMap<StrId, ExpressionType>,
+   cur_procedure_locals: &mut IndexMap<StrId, HashSet<ExpressionType>>,
    interner: &mut Interner,
 ) {
    if validation_context.static_info.contains_key(&id) || validation_context.variable_types.contains_key(&id) {
@@ -1090,19 +1115,15 @@ fn declare_variable<W: Write>(
          interner.lookup(id)
       )
       .unwrap();
-      writeln!(
-         err_stream,
-         "↳ line {}, column {}",
-         source_info.line, source_info.col
-      )
-      .unwrap();
+      writeln!(err_stream, "↳ line {}, column {}", source_info.line, source_info.col).unwrap();
    } else {
       validation_context
          .variable_types
          .insert(id, (var_type.clone(), validation_context.block_depth));
-      // TODO: need to fix
-      debug_assert!(!cur_procedure_locals.contains_key(&id));
-      cur_procedure_locals.insert(id, var_type);
+      cur_procedure_locals
+         .entry(id)
+         .or_insert_with(HashSet::new)
+         .insert(var_type);
    }
 }
 
@@ -1110,7 +1131,7 @@ fn type_block<W: Write>(
    err_stream: &mut W,
    bn: &mut BlockNode,
    validation_context: &mut ValidationContext,
-   cur_procedure_locals: &mut IndexMap<StrId, ExpressionType>,
+   cur_procedure_locals: &mut IndexMap<StrId, HashSet<ExpressionType>>,
    interner: &mut Interner,
 ) {
    validation_context.block_depth += 1;
@@ -1279,9 +1300,7 @@ fn do_type<W: Write>(
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
                   x.width.as_bytes() > y.width.as_bytes()
                }
-               (ExpressionType::Value(ValueType::Float(_)), ExpressionType::Value(ValueType::Int(_))) => {
-                  true
-               }
+               (ExpressionType::Value(ValueType::Float(_)), ExpressionType::Value(ValueType::Int(_))) => true,
                _ => false,
             };
 

@@ -65,7 +65,8 @@ fn expect<W: Write>(l: &mut Lexer, err_stream: &mut W, token: &Token) -> Result<
 pub struct ProcedureNode {
    pub name: StrId,
    pub parameters: Vec<ParameterNode>,
-   pub locals: IndexMap<StrId, ExpressionType>,
+   // TODO: if we use id-s for types (ala strings), we could use tinyset?
+   pub locals: IndexMap<StrId, HashSet<ExpressionType>>,
    pub block: BlockNode,
    pub ret_type: ExpressionType,
    pub pure: bool,
@@ -446,7 +447,13 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
             let new_block = parse_block(l, err_stream, interner)?;
             statements.push(StatementNode {
                // TODO: instead of extracting here, we could preserve the source information and give better errors in the validator
-               statement: Statement::For(extract_identifier(variable_name.token), start_en, end_en, new_block, inclusive),
+               statement: Statement::For(
+                  extract_identifier(variable_name.token),
+                  start_en,
+                  end_en,
+                  new_block,
+                  inclusive,
+               ),
                statement_begin_location: for_token.source_info,
             });
          }

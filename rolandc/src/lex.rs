@@ -389,12 +389,12 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
                   source_info.col += 2;
                   let _ = chars.next().unwrap();
                } else if chars.peek() == Some(&'<') {
-                     tokens.push(SourceToken {
-                        source_info,
-                        token: Token::ShiftLeft,
-                     });
-                     source_info.col += 2;
-                     let _ = chars.next().unwrap();
+                  tokens.push(SourceToken {
+                     source_info,
+                     token: Token::ShiftLeft,
+                  });
+                  source_info.col += 2;
+                  let _ = chars.next().unwrap();
                } else {
                   tokens.push(SourceToken {
                      source_info,
@@ -538,7 +538,6 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
                   is_float = false;
                   str_buf.clear();
                   mode = LexMode::Normal;
-
 
                   let _ = chars.next().unwrap();
                   tokens.push(SourceToken {

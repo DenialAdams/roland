@@ -1,7 +1,7 @@
 use crate::interner::{Interner, StrId};
 use crate::parse::{BinOp, Expression, ExpressionNode, ParameterNode, Program, Statement, StatementNode, UnOp};
 use crate::semantic_analysis::{EnumInfo, StructInfo};
-use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, USIZE_TYPE, ValueType};
+use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, USIZE_TYPE};
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
 use std::io::Write;
@@ -704,9 +704,9 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
 
    // Handle alignment of statics
    {
-      program
-         .static_info
-         .sort_by(|_k_1, v_1, _k_2, v_2| compare_alignment_fn(&v_1.static_type, &v_2.static_type, &generation_context));
+      program.static_info.sort_by(|_k_1, v_1, _k_2, v_2| {
+         compare_type_alignment(&v_1.static_type, &v_2.static_type, &generation_context)
+      });
 
       let strictest_alignment = if let Some(v) = program.static_info.first() {
          mem_alignment(
@@ -824,42 +824,44 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
       // 0-4 == value of previous frame base pointer
       generation_context.sum_sizeof_locals_mem = MINIMUM_STACK_FRAME_SIZE;
 
+      let mut mem_info: IndexMap<StrId, (u32, u32)> = procedure
+         .locals
+         .iter()
+         .map(|x| {
+            let strictest_alignment =
+               x.1.iter()
+                  .map(|y| mem_alignment(y, generation_context.enum_info, &generation_context.struct_size_info))
+                  .max()
+                  .unwrap();
+            let biggest_size =
+               x.1.iter()
+                  .map(|y| sizeof_type_mem(y, generation_context.enum_info, &generation_context.struct_size_info))
+                  .max()
+                  .unwrap();
+            (*x.0, (strictest_alignment, biggest_size))
+         })
+         .collect();
+
       // Handle alignment within frame
       {
-         procedure
-            .locals
-            .sort_by(|_k_1, v_1, _k_2, v_2| compare_alignment_fn(v_1, v_2, &generation_context));
+         mem_info.sort_by(|_k_1, v_1, _k_2, v_2| compare_alignment(v_1.0, v_1.1, v_2.0, v_2.1));
 
-         let strictest_alignment = if let Some(v) = procedure.locals.first() {
-            mem_alignment(v.1, generation_context.enum_info, &generation_context.struct_size_info)
-         } else {
-            1
-         };
+         let strictest_alignment = if let Some(v) = mem_info.first() { v.1 .0 } else { 1 };
 
          generation_context.sum_sizeof_locals_mem =
             aligned_address(generation_context.sum_sizeof_locals_mem, strictest_alignment);
       }
 
-      for local in procedure.locals.iter() {
+      for local in mem_info.iter() {
          // last element could have been a struct, and so we need to pad
-         generation_context.sum_sizeof_locals_mem = aligned_address(
-            generation_context.sum_sizeof_locals_mem,
-            mem_alignment(
-               local.1,
-               generation_context.enum_info,
-               &generation_context.struct_size_info,
-            ),
-         );
+         generation_context.sum_sizeof_locals_mem =
+            aligned_address(generation_context.sum_sizeof_locals_mem, local.1 .0);
          generation_context
             .local_offsets_mem
             .insert(*local.0, generation_context.sum_sizeof_locals_mem);
 
          // TODO: should we check for overflow on this value?
-         generation_context.sum_sizeof_locals_mem += sizeof_type_mem(
-            local.1,
-            generation_context.enum_info,
-            &generation_context.struct_size_info,
-         );
+         generation_context.sum_sizeof_locals_mem += local.1 .1;
       }
 
       generation_context.out.emit_function_start_named_params(
@@ -927,21 +929,12 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
    generation_context.out.out
 }
 
-fn compare_alignment_fn(
-   e_1: &ExpressionType,
-   e_2: &ExpressionType,
-   generation_context: &GenerationContext,
-) -> std::cmp::Ordering {
-   let v_2_alignment = mem_alignment(e_2, generation_context.enum_info, &generation_context.struct_size_info);
-   let v_1_alignment = mem_alignment(e_1, generation_context.enum_info, &generation_context.struct_size_info);
+fn compare_alignment(alignment_1: u32, sizeof_1: u32, alignment_2: u32, sizeof_2: u32) -> std::cmp::Ordering {
+   let rem_1 = sizeof_1 % alignment_1;
+   let required_padding_1 = if rem_1 == 0 { 0 } else { alignment_1 - rem_1 };
 
-   let v_2_rem =
-      sizeof_type_mem(e_2, generation_context.enum_info, &generation_context.struct_size_info) % v_2_alignment;
-   let v_2_required_padding = if v_2_rem == 0 { 0 } else { v_2_alignment - v_2_rem };
-
-   let v_1_rem =
-      sizeof_type_mem(e_1, generation_context.enum_info, &generation_context.struct_size_info) % v_1_alignment;
-   let v_1_required_padding = if v_1_rem == 0 { 0 } else { v_1_alignment - v_1_rem };
+   let rem_2 = sizeof_2 % alignment_2;
+   let required_padding_2 = if rem_2 == 0 { 0 } else { alignment_2 - rem_2 };
 
    // The idea is to process the types with the strictest alignment first, to minimize the amount of padding
    // Some amount of padding between objects is still necessary because we have structs
@@ -949,9 +942,23 @@ fn compare_alignment_fn(
    // (example: a struct that would require 7 bytes of padding if the following element was a u64 would
    // only require 3 bytes if the following element is a u32)
    // ... I'm actually not sure this makes sense, maybe it's better to confirm this empirically
-   v_2_alignment
-      .cmp(&v_1_alignment)
-      .then(v_1_required_padding.cmp(&v_2_required_padding))
+   alignment_2
+      .cmp(&alignment_1)
+      .then(required_padding_1.cmp(&required_padding_2))
+}
+
+fn compare_type_alignment(
+   e_1: &ExpressionType,
+   e_2: &ExpressionType,
+   generation_context: &GenerationContext,
+) -> std::cmp::Ordering {
+   let alignment_1 = mem_alignment(e_1, generation_context.enum_info, &generation_context.struct_size_info);
+   let alignment_2 = mem_alignment(e_2, generation_context.enum_info, &generation_context.struct_size_info);
+
+   let sizeof_1 = sizeof_type_mem(e_1, generation_context.enum_info, &generation_context.struct_size_info);
+   let sizeof_2 = sizeof_type_mem(e_1, generation_context.enum_info, &generation_context.struct_size_info);
+
+   compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
 }
 
 fn emit_statement(statement: &StatementNode, generation_context: &mut GenerationContext, interner: &mut Interner) {
@@ -1282,10 +1289,10 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             }
             BinOp::BitwiseLeftShift => {
                writeln!(generation_context.out.out, "{}.shl", wasm_type).unwrap();
-            },
+            }
             BinOp::BitwiseRightShift => {
                writeln!(generation_context.out.out, "{}.shr{}", wasm_type, suffix).unwrap();
-            },
+            }
             BinOp::LogicalAnd | BinOp::LogicalOr => unreachable!(),
          }
       }
@@ -1378,7 +1385,9 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       Expression::Truncate(target_type, e) => {
          do_emit_and_load_lval(e, generation_context, interner);
 
-         if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Int(_))) && matches!(target_type, ExpressionType::Value(ValueType::Int(_)))  {
+         if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Int(_)))
+            && matches!(target_type, ExpressionType::Value(ValueType::Int(_)))
+         {
             // int -> smaller int
             // 8bytes -> (4, 2, 1) bytes is a wrap
             // anything else is a nop
@@ -1398,32 +1407,29 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             let (target_type_str, suffix) = match target_type {
                ExpressionType::Value(ValueType::Int(x)) => {
                   let base_str = match x.width {
-                    IntWidth::Pointer => "i32",
-                    IntWidth::Eight => "i64",
-                    IntWidth::Four => "i32",
-                    IntWidth::Two => "i16",
-                    IntWidth::One => "i8",
-                };
-                  (
-                     base_str, if x.signed {
-                        "_s"
-                     } else {
-                        "_u"
-                     }
-                  )
+                     IntWidth::Pointer => "i32",
+                     IntWidth::Eight => "i64",
+                     IntWidth::Four => "i32",
+                     IntWidth::Two => "i16",
+                     IntWidth::One => "i8",
+                  };
+                  (base_str, if x.signed { "_s" } else { "_u" })
                }
                _ => unreachable!(),
             };
             let dest_type_str = match e.exp_type.as_ref().unwrap() {
-               ExpressionType::Value(ValueType::Float(x)) => {
-                  match x.width {
-                    FloatWidth::Eight => "f64",
-                    FloatWidth::Four => "f32",
-                }
-               }
+               ExpressionType::Value(ValueType::Float(x)) => match x.width {
+                  FloatWidth::Eight => "f64",
+                  FloatWidth::Four => "f32",
+               },
                _ => unreachable!(),
             };
-            write!(generation_context.out.out, "{}.trunc_sat_{}{}", target_type_str, dest_type_str, suffix).unwrap();
+            write!(
+               generation_context.out.out,
+               "{}.trunc_sat_{}{}",
+               target_type_str, dest_type_str, suffix
+            )
+            .unwrap();
          }
       }
       Expression::Variable(id) => {
