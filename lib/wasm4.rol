@@ -11,6 +11,50 @@ proc trace(txt: String) {
    traceUtf8(txt.pointer, txt.length);
 }
 
+func count_digits(value: u32) -> u8 {
+   let digit_count: u8 = 0;
+
+   loop {
+      if value <= 9 {
+         return digit_count + 1;
+      }
+
+      digit_count = digit_count + 1;
+      value = value / 10;
+   }
+
+   return 0;
+}
+
+
+proc int_to_string(value: u32, buf: &[u8; 10]) -> String {
+   let total_len = count_digits(value) extend usize;
+   let next_digit: u8 = 0;
+   let i: usize = 0;
+
+   for j in i..10 {
+      (*buf)[j] = 32;
+   }
+
+   loop {
+      if value <= 9 {
+         next_digit = value truncate u8;
+         (*buf)[total_len - i] = next_digit + 48;
+         i = i + 1;
+         break;
+      }
+      next_digit = (value % 10) truncate u8;
+      value = value / 10;
+      (*buf)[total_len - i] = next_digit + 48;
+      i = i + 1;
+   }
+
+   return String {
+      length: i,
+      pointer: &(*buf)[0],
+   };
+}
+
 // This should not be necessary, but sometimes life be like that
 proc set_wasm4_statics() {
    PALETTE = 0x04 transmute &[u32; 4];

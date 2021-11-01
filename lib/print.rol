@@ -65,7 +65,6 @@ proc int_to_string(value: u64) -> String {
       i = i + 1;
    }
 
-
    return String {
       length: i,
       pointer: buf,
