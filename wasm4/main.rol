@@ -1,0 +1,89 @@
+static TIMER: u32;
+
+static PLAYER_X: f64;
+static PLAYER_Y: f64;
+static JUMP_SPEED: f64;
+static JUMP_STATE: JumpState;
+static RNG: u64;
+static OBSTACLES: [Obstacle; 4]; 
+
+struct Obstacle {
+   x: f64,
+   y: f64,
+}
+
+enum JumpState {
+   Standing,
+   Jumping,
+   Falling,
+}
+
+proc rand() -> u64 {
+   RNG = RNG ^ (RNG << 13);
+   RNG = RNG ^ (RNG >> 7);
+   RNG = RNG ^ (RNG << 17);
+   return RNG;
+}
+
+proc rand_range(rand_min: u64, rand_max: u64) -> u64 {
+   return rand() % (rand_max + 1 - rand_min) + rand_min;
+}
+
+proc one_in(x: u64) -> bool {
+   return rand_range(0, x - 1) == 0;
+}
+
+proc start() {
+   set_wasm4_statics();
+   *PALETTE = [16774867, 16361589, 15428463, 8142680];
+   TIMER = 0;
+   PLAYER_X = 0.0;
+   PLAYER_Y = 0.0;
+   JUMP_SPEED = 0.0;
+   JUMP_STATE = JumpState::Standing;
+   RNG = 01189998819991197253;
+   for i in 0..4 {
+      OBSTACLES[i] = Obstacle {
+         x: -100.0,
+         y: -100.0,
+      };
+   }
+}
+
+proc update() {
+   TIMER = TIMER + 1;
+
+   PLAYER_X = PLAYER_X + 1.0;
+
+   // Always keep camera centered
+   let camera_offset_x = PLAYER_X - 10.0;
+   let camera_offset_y: f64 = -140.0;
+
+   rect((PLAYER_X - camera_offset_x) truncate i32, (-PLAYER_Y - camera_offset_y) truncate i32, 10, 20);
+
+   if (*GAMEPADS)[0] & BUTTON_1 > 0 and JUMP_STATE == JumpState::Standing {
+      JUMP_STATE = JumpState::Jumping;
+      JUMP_SPEED = 10.0;
+   }
+
+   // Do jumping
+   {
+      if JUMP_STATE == JumpState::Jumping {
+         JUMP_SPEED = JUMP_SPEED - 1.0;
+         PLAYER_Y = PLAYER_Y + JUMP_SPEED;
+         if (JUMP_SPEED <= 0.0) {
+            JUMP_SPEED = 0.0;
+            JUMP_STATE = JumpState::Falling;
+         }
+      } else if JUMP_STATE == JumpState::Falling {
+         JUMP_SPEED = JUMP_SPEED + 1.0;
+         PLAYER_Y = PLAYER_Y - JUMP_SPEED;
+         if PLAYER_Y <= 0.0 {
+            PLAYER_Y = 0.0;
+            JUMP_STATE = JumpState::Standing;
+         }
+      }
+   }
+   
+   text("SCORE: ", 0, 0);
+}
