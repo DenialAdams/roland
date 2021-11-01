@@ -2,10 +2,13 @@ static TIMER: u32;
 
 static PLAYER_X: f64;
 static PLAYER_Y: f64;
+static FORWARD_SPEED: f64;
 static JUMP_SPEED: f64;
 static JUMP_STATE: JumpState;
 static RNG: u64;
-static OBSTACLES: [Obstacle; 4]; 
+static OBSTACLES: [Obstacle; 4];
+static OBSTACLE_COUNT: usize;
+static SCORE_BUF: [u8; 10];
 
 struct Obstacle {
    x: f64,
@@ -33,16 +36,27 @@ proc one_in(x: u64) -> bool {
    return rand_range(0, x - 1) == 0;
 }
 
+func rectangles_collide(x1: f64, y1: f64, width1: f64, height1: f64, x2: f64, y2: f64, width2: f64, height2: f64) -> bool {
+   return
+    (x2 + width2 > x1) &
+    (y2 + height2 > y1) &
+    (x1 + width1 > x2) &
+    (y1 + height1 > y2);
+}
+
 proc start() {
    set_wasm4_statics();
    *PALETTE = [16774867, 16361589, 15428463, 8142680];
    TIMER = 0;
    PLAYER_X = 0.0;
    PLAYER_Y = 0.0;
+   FORWARD_SPEED = 1.0;
    JUMP_SPEED = 0.0;
    JUMP_STATE = JumpState::Standing;
    RNG = 01189998819991197253;
-   for i in 0..4 {
+   let len: usize = 4;
+   OBSTACLE_COUNT = 4;
+   for i in 0..OBSTACLE_COUNT {
       OBSTACLES[i] = Obstacle {
          x: -100.0,
          y: -100.0,
@@ -53,17 +67,19 @@ proc start() {
 proc update() {
    TIMER = TIMER + 1;
 
-   PLAYER_X = PLAYER_X + 1.0;
+   if FORWARD_SPEED < 5.0 and FORWARD_SPEED > 0.0 {
+      FORWARD_SPEED = FORWARD_SPEED + 0.001;
+   }
+   PLAYER_X = PLAYER_X + FORWARD_SPEED;
 
    // Always keep camera centered
    let camera_offset_x = PLAYER_X - 10.0;
    let camera_offset_y: f64 = -140.0;
 
-   rect((PLAYER_X - camera_offset_x) truncate i32, (-PLAYER_Y - camera_offset_y) truncate i32, 10, 20);
-
-   if (*GAMEPADS)[0] & BUTTON_1 > 0 and JUMP_STATE == JumpState::Standing {
+   if (*GAMEPADS)[0] & BUTTON_1 > 0 and JUMP_STATE == JumpState::Standing and FORWARD_SPEED > 0.0 {
       JUMP_STATE = JumpState::Jumping;
       JUMP_SPEED = 10.0;
+      tone(300 | (800 << 16), 6, 50, TONE_MODE1);
    }
 
    // Do jumping
@@ -76,7 +92,7 @@ proc update() {
             JUMP_STATE = JumpState::Falling;
          }
       } else if JUMP_STATE == JumpState::Falling {
-         JUMP_SPEED = JUMP_SPEED + 1.0;
+         JUMP_SPEED = JUMP_SPEED + 0.3;
          PLAYER_Y = PLAYER_Y - JUMP_SPEED;
          if PLAYER_Y <= 0.0 {
             PLAYER_Y = 0.0;
@@ -84,6 +100,42 @@ proc update() {
          }
       }
    }
-   
-   text("SCORE: ", 0, 0);
+
+   // Spawn new obstacles
+   {
+      if one_in(100) {
+         if !(OBSTACLES[0].x >= (PLAYER_X - 10.0)) {
+            OBSTACLES[0].x = PLAYER_X + 200.0;
+            OBSTACLES[0].y = 0.0;
+         }
+      }
+
+      if one_in(100) {
+         if !(OBSTACLES[1].x >= (PLAYER_X - 10.0)) {
+            OBSTACLES[1].x = PLAYER_X + 200.0;
+            OBSTACLES[1].y = 0.0;
+         }
+      }
+   }
+
+   // Draw player
+   rect((PLAYER_X - camera_offset_x) truncate i32, (-PLAYER_Y - camera_offset_y) truncate i32, 10, 20);
+
+   // Draw obstacles
+   for i in 0..OBSTACLE_COUNT {
+      rect((OBSTACLES[i].x - camera_offset_x) truncate i32, (-OBSTACLES[i].y - camera_offset_y + 10.0) truncate i32, 10, 10);
+   }
+
+   for i in 0..OBSTACLE_COUNT {
+      if rectangles_collide(PLAYER_X, PLAYER_Y, 10.0, 20.0, OBSTACLES[i].x, OBSTACLES[i].y, 10.0, 10.0) {
+         text("GAME OVER.", 5, 30);
+         text("Press R to restart.", 5, 50);
+         FORWARD_SPEED = 0.0;
+         JUMP_SPEED = 0.0;
+         JUMP_STATE = JumpState::Standing;
+      }
+   }
+
+   text("SCORE: ", 2, 2);
+   text(int_to_string(PLAYER_X truncate u32, &SCORE_BUF), 39, 2);
 }
