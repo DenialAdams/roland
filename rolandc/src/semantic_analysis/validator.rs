@@ -831,7 +831,7 @@ fn type_statement<W: Write>(
             || rhs_type == &ExpressionType::Value(ValueType::CompileError)
          {
             // avoid cascading errors
-         } else if lhs_type != rhs_type && lhs_type.is_concrete_type() && rhs_type.is_concrete_type() {
+         } else if lhs_type != rhs_type && lhs_type.is_concrete_type() {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
@@ -856,7 +856,7 @@ fn type_statement<W: Write>(
             validation_context.error_count += 1;
             writeln!(
                err_stream,
-               "Left hand side of assignment is not a valid memory location; i.e. a variable, field, or parameter"
+               "Left hand side of assignment is not a valid memory location; i.e. a variable, field, or array index"
             )
             .unwrap();
             writeln!(
