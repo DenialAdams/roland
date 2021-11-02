@@ -1038,7 +1038,7 @@ fn type_statement<W: Write>(
             try_set_inferred_type(v, en, validation_context, err_stream, interner);
          }
 
-         let result_type = if dt.is_some() && *dt != en.exp_type && en.exp_type.as_ref().unwrap().is_concrete_type() {
+         let result_type = if dt.is_some() && *dt != en.exp_type && en.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::CompileError) {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
