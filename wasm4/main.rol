@@ -76,7 +76,9 @@ proc update() {
    let camera_offset_x = PLAYER_X - 10.0;
    let camera_offset_y: f64 = -140.0;
 
-   if (*GAMEPADS)[0] & BUTTON_1 > 0 and JUMP_STATE == JumpState::Standing and FORWARD_SPEED > 0.0 {
+   let button_pressed = ((*GAMEPADS)[0] & BUTTON_1) > 0;
+   let mouse_pressed = (*MOUSE_BUTTONS & 1) > 0;
+   if (button_pressed | mouse_pressed) and JUMP_STATE == JumpState::Standing and FORWARD_SPEED > 0.0 {
       JUMP_STATE = JumpState::Jumping;
       JUMP_SPEED = 10.0;
       tone(300 | (800 << 16), 6, 50, TONE_MODE1);
