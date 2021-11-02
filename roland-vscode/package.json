@@ -1,5 +1,7 @@
 {
     "name": "roland",
+    "publisher": "brickcodes",
+    "repository": "https://www.github.com/DenialAdams/roland",
     "displayName": "Roland",
     "description": "Support for the Roland programming language",
     "version": "0.0.1",
@@ -10,16 +12,25 @@
         "Programming Languages"
     ],
     "contributes": {
-        "languages": [{
-            "id": "roland",
-            "aliases": ["Roland", "roland"],
-            "extensions": [".rol"],
-            "configuration": "./language-configuration.json"
-        }],
-        "grammars": [{
-            "language": "roland",
-            "scopeName": "source.roland",
-            "path": "./syntaxes/roland.tmLanguage.json"
-        }]
+        "languages": [
+            {
+                "id": "roland",
+                "aliases": [
+                    "Roland",
+                    "roland"
+                ],
+                "extensions": [
+                    ".rol"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "roland",
+                "scopeName": "source.roland",
+                "path": "./syntaxes/roland.tmLanguage.json"
+            }
+        ]
     }
 }

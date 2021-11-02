@@ -1,32 +1,544 @@
 {
-	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-	"name": "Roland",
-	"patterns": [
-		{
-			"include": "#keywords"
-		},
-		{
-			"include": "#strings"
-		}
-	],
-	"repository": {
-		"keywords": {
-			"patterns": [{
-				"name": "keyword.control.roland",
-				"match": "\\b(if|while|for|return)\\b"
-			}]
-		},
-		"strings": {
-			"name": "string.quoted.double.roland",
-			"begin": "\"",
-			"end": "\"",
-			"patterns": [
-				{
-					"name": "constant.character.escape.roland",
-					"match": "\\\\."
-				}
-			]
-		}
-	},
-	"scopeName": "source.roland"
+   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+   "name": "Roland",
+   "fileTypes": [
+      "rol"
+   ],
+   "scopeName": "source.roland",
+   "patterns": [
+      {
+         "include": "#comments"
+      },
+      {
+         "include": "#constants"
+      },
+      {
+         "include": "#functions"
+      },
+      {
+         "include": "#types"
+      },
+      {
+         "include": "#keywords"
+      },
+      {
+         "include": "#punctuation"
+      },
+      {
+         "include": "#strings"
+      },
+      {
+         "include": "#variables"
+      }
+   ],
+   "repository": {
+      "comments": {
+         "patterns": [
+            {
+               "comment": "documentation comments",
+               "name": "comment.line.documentation.roland",
+               "match": "^\\s*///.*"
+            },
+            {
+               "comment": "line comments",
+               "name": "comment.line.double-slash.roland",
+               "match": "\\s*//.*"
+            }
+         ]
+      },
+      "constants": {
+         "patterns": [
+            {
+               "comment": "ALL CAPS constants",
+               "name": "constant.other.caps.roland",
+               "match": "\\b[A-Z]{2}[A-Z0-9_]*\\b"
+            },
+            {
+               "comment": "constant declarations",
+               "match": "\\b(const)\\s+([A-Z][A-Za-z0-9_]*)\\b",
+               "captures": {
+                  "1": {
+                     "name": "storage.type.roland"
+                  },
+                  "2": {
+                     "name": "constant.other.caps.roland"
+                  }
+               }
+            },
+            {
+               "comment": "decimal integers and floats",
+               "name": "constant.numeric.decimal.roland",
+               "match": "\\b\\d[\\d_]*(\\.?)[\\d_]*(?:(E)([+-])([\\d_]+))?\\b",
+               "captures": {
+                  "1": {
+                     "name": "punctuation.separator.dot.decimal.roland"
+                  },
+                  "2": {
+                     "name": "keyword.operator.exponent.roland"
+                  },
+                  "3": {
+                     "name": "keyword.operator.exponent.sign.roland"
+                  },
+                  "4": {
+                     "name": "constant.numeric.decimal.exponent.mantissa.roland"
+                  }
+               }
+            },
+            {
+               "comment": "hexadecimal integers",
+               "name": "constant.numeric.hex.roland",
+               "match": "\\b0x[\\da-fA-F_]+(i128|i16|i32|i64|i8|isize|u128|u16|u32|u64|u8|usize)?\\b",
+               "captures": {
+                  "1": {
+                     "name": "entity.name.type.numeric.roland"
+                  }
+               }
+            },
+            {
+               "comment": "octal integers",
+               "name": "constant.numeric.oct.roland",
+               "match": "\\b0o[0-7_]+(i128|i16|i32|i64|i8|isize|u128|u16|u32|u64|u8|usize)?\\b",
+               "captures": {
+                  "1": {
+                     "name": "entity.name.type.numeric.roland"
+                  }
+               }
+            },
+            {
+               "comment": "binary integers",
+               "name": "constant.numeric.bin.roland",
+               "match": "\\b0b[01_]+(i128|i16|i32|i64|i8|isize|u128|u16|u32|u64|u8|usize)?\\b",
+               "captures": {
+                  "1": {
+                     "name": "entity.name.type.numeric.roland"
+                  }
+               }
+            },
+            {
+               "comment": "booleans",
+               "name": "constant.language.bool.roland",
+               "match": "\\b(true|false)\\b"
+            }
+         ]
+      },
+      "escapes": {
+         "comment": "escapes: ASCII, byte, Unicode, quote, regex",
+         "name": "constant.character.escape.roland",
+         "match": "(\\\\)(?:(?:(x[0-7][0-7a-fA-F])|(u(\\{)[\\da-fA-F]{4,6}(\\}))|.))",
+         "captures": {
+            "1": {
+               "name": "constant.character.escape.backslash.roland"
+            },
+            "2": {
+               "name": "constant.character.escape.bit.roland"
+            },
+            "3": {
+               "name": "constant.character.escape.unicode.roland"
+            },
+            "4": {
+               "name": "constant.character.escape.unicode.punctuation.roland"
+            },
+            "5": {
+               "name": "constant.character.escape.unicode.punctuation.roland"
+            }
+         }
+      },
+      "functions": {
+         "patterns": [
+            {
+               "comment": "pub as a function",
+               "match": "\\b(pub)(\\()",
+               "captures": {
+                  "1": {
+                     "name": "keyword.other.roland"
+                  },
+                  "2": {
+                     "name": "punctuation.brackets.round.roland"
+                  }
+               }
+            },
+            {
+               "comment": "function definition",
+               "name": "meta.function.definition.roland",
+               "begin": "\\b(fn)\\s+((?:r#(?!crate|[Ss]elf|super))?[A-Za-z0-9_]+)((\\()|(<))",
+               "beginCaptures": {
+                  "1": {
+                     "name": "keyword.other.fn.roland"
+                  },
+                  "2": {
+                     "name": "entity.name.function.roland"
+                  },
+                  "4": {
+                     "name": "punctuation.brackets.round.roland"
+                  },
+                  "5": {
+                     "name": "punctuation.brackets.angle.roland"
+                  }
+               },
+               "end": "\\{|;",
+               "endCaptures": {
+                  "0": {
+                     "name": "punctuation.brackets.curly.roland"
+                  }
+               },
+               "patterns": [
+                  {
+                     "include": "#comments"
+                  },
+                  {
+                     "include": "#keywords"
+                  },
+                  {
+                     "include": "#constants"
+                  },
+                  {
+                     "include": "#functions"
+                  },
+                  {
+                     "include": "#punctuation"
+                  },
+                  {
+                     "include": "#strings"
+                  },
+                  {
+                     "include": "#types"
+                  },
+                  {
+                     "include": "#variables"
+                  }
+               ]
+            },
+            {
+               "comment": "function/method calls, chaining",
+               "name": "meta.function.call.roland",
+               "begin": "((?:r#(?!crate|[Ss]elf|super))?[A-Za-z0-9_]+)(\\()",
+               "beginCaptures": {
+                  "1": {
+                     "name": "entity.name.function.roland"
+                  },
+                  "2": {
+                     "name": "punctuation.brackets.round.roland"
+                  }
+               },
+               "end": "\\)",
+               "endCaptures": {
+                  "0": {
+                     "name": "punctuation.brackets.round.roland"
+                  }
+               },
+               "patterns": [
+                  {
+                     "include": "#comments"
+                  },
+                  {
+                     "include": "#keywords"
+                  },
+                  {
+                     "include": "#constants"
+                  },
+                  {
+                     "include": "#functions"
+                  },
+                  {
+                     "include": "#punctuation"
+                  },
+                  {
+                     "include": "#strings"
+                  },
+                  {
+                     "include": "#types"
+                  },
+                  {
+                     "include": "#variables"
+                  }
+               ]
+            }
+         ]
+      },
+      "keywords": {
+         "patterns": [
+            {
+               "comment": "control flow keywords",
+               "name": "keyword.control.roland",
+               "match": "\\b(break|continue|else|for|if|loop|return)\\b"
+            },
+            {
+               "comment": "storage keywords",
+               "name": "keyword.other.roland storage.type.roland",
+               "match": "\\b(let)\\b"
+            },
+            {
+               "comment": "enum keyword",
+               "name": "keyword.declaration.enum.roland storage.type.roland",
+               "match": "\\b(enum)\\b"
+            },
+            {
+               "comment": "struct keyword",
+               "name": "keyword.declaration.struct.roland storage.type.roland",
+               "match": "\\b(struct)\\b"
+            },
+            {
+               "comment": "other keywords",
+               "name": "keyword.other.roland",
+               "match": "\\b(in|extend|transmute|truncate)\\b"
+            },
+            {
+               "comment": "fn",
+               "name": "keyword.other.fn.roland",
+               "match": "\\b(func|proc)\\b"
+            },
+            {
+               "comment": "logical operators",
+               "name": "keyword.operator.logical.roland",
+               "match": "(\\^|\\||or|and|<<|>>|!)(?!=)"
+            },
+            {
+               "comment": "borrow references",
+               "name": "keyword.operator.borrow.roland",
+               "match": "&"
+            },
+            {
+               "comment": "single equal",
+               "name": "keyword.operator.assignment.equal.roland",
+               "match": "(?<![<>])=(?!=|>)"
+            },
+            {
+               "comment": "comparison operators",
+               "name": "keyword.operator.comparison.roland",
+               "match": "(=(=)?(?!>)|!=|<=|(?<!=)>=)"
+            },
+            {
+               "comment": "math operators",
+               "name": "keyword.operator.math.roland",
+               "match": "(([+%]|(\\*(?!\\w)))(?!=))|(-(?!>))|(/(?!/))"
+            },
+            {
+               "comment": "less than, greater than (special case)",
+               "match": "(?:\\b|(?:(\\))|(\\])|(\\})))[ \\t]+([<>])[ \\t]+(?:\\b|(?:(\\()|(\\[)|(\\{)))",
+               "captures": {
+                  "1": {
+                     "name": "punctuation.brackets.round.roland"
+                  },
+                  "2": {
+                     "name": "punctuation.brackets.square.roland"
+                  },
+                  "3": {
+                     "name": "punctuation.brackets.curly.roland"
+                  },
+                  "4": {
+                     "name": "keyword.operator.comparison.roland"
+                  },
+                  "5": {
+                     "name": "punctuation.brackets.round.roland"
+                  },
+                  "6": {
+                     "name": "punctuation.brackets.square.roland"
+                  },
+                  "7": {
+                     "name": "punctuation.brackets.curly.roland"
+                  }
+               }
+            },
+            {
+               "comment": "namespace operator",
+               "name": "keyword.operator.namespace.roland",
+               "match": "::"
+            },
+            {
+               "comment": "dereference asterisk",
+               "match": "(\\*)(?=\\w+)",
+               "captures": {
+                  "1": {
+                     "name": "keyword.operator.dereference.roland"
+                  }
+               }
+            },
+            {
+               "comment": "dot access",
+               "name": "keyword.operator.access.dot.roland",
+               "match": "\\.(?!\\.)"
+            },
+            {
+               "comment": "ranges, range patterns",
+               "name": "keyword.operator.range.roland",
+               "match": "\\.{2}(=|\\.)?"
+            },
+            {
+               "comment": "colon",
+               "name": "keyword.operator.key-value.roland",
+               "match": ":(?!:)"
+            },
+            {
+               "comment": "dashrocket, skinny arrow",
+               "name": "keyword.operator.arrow.skinny.roland",
+               "match": "->"
+            }
+         ]
+      },
+      "types": {
+         "patterns": [
+            {
+               "comment": "numeric types",
+               "match": "(?<![A-Za-z])(f32|f64|i16|i32|i64|i8|isize|u16|u32|u64|u8|usize)\\b",
+               "captures": {
+                  "1": {
+                     "name": "entity.name.type.numeric.roland"
+                  }
+               }
+            },
+            {
+               "comment": "primitive types",
+               "name": "entity.name.type.primitive.roland",
+               "match": "\\b(bool)\\b"
+            },
+            {
+               "comment": "struct declarations",
+               "match": "\\b(struct)\\s+([A-Z][A-Za-z0-9]*)\\b",
+               "captures": {
+                  "1": {
+                     "name": "keyword.declaration.struct.roland storage.type.roland"
+                  },
+                  "2": {
+                     "name": "entity.name.type.struct.roland"
+                  }
+               }
+            },
+            {
+               "comment": "enum declarations",
+               "match": "\\b(enum)\\s+([A-Z][A-Za-z0-9_]*)\\b",
+               "captures": {
+                  "1": {
+                     "name": "keyword.declaration.enum.roland storage.type.roland"
+                  },
+                  "2": {
+                     "name": "entity.name.type.enum.roland"
+                  }
+               }
+            },
+            {
+               "comment": "types",
+               "name": "entity.name.type.roland",
+               "match": "\\b[A-Z][A-Za-z0-9]*\\b(?!!)"
+            }
+         ]
+      },
+      "punctuation": {
+         "patterns": [
+            {
+               "comment": "comma",
+               "name": "punctuation.comma.roland",
+               "match": ","
+            },
+            {
+               "comment": "curly braces",
+               "name": "punctuation.brackets.curly.roland",
+               "match": "[{}]"
+            },
+            {
+               "comment": "parentheses, round brackets",
+               "name": "punctuation.brackets.round.roland",
+               "match": "[()]"
+            },
+            {
+               "comment": "semicolon",
+               "name": "punctuation.semi.roland",
+               "match": ";"
+            },
+            {
+               "comment": "square brackets",
+               "name": "punctuation.brackets.square.roland",
+               "match": "[\\[\\]]"
+            }
+         ]
+      },
+      "strings": {
+         "patterns": [
+            {
+               "comment": "double-quoted strings and byte strings",
+               "name": "string.quoted.double.roland",
+               "begin": "(b?)(\")",
+               "beginCaptures": {
+                  "1": {
+                     "name": "string.quoted.byte.raw.roland"
+                  },
+                  "2": {
+                     "name": "punctuation.definition.string.roland"
+                  }
+               },
+               "end": "\"",
+               "endCaptures": {
+                  "0": {
+                     "name": "punctuation.definition.string.roland"
+                  }
+               },
+               "patterns": [
+                  {
+                     "include": "#escapes"
+                  },
+                  {
+                     "include": "#interpolations"
+                  }
+               ]
+            },
+            {
+               "comment": "double-quoted raw strings and raw byte strings",
+               "name": "string.quoted.double.roland",
+               "begin": "(b?r)(#*)(\")",
+               "beginCaptures": {
+                  "1": {
+                     "name": "string.quoted.byte.raw.roland"
+                  },
+                  "2": {
+                     "name": "punctuation.definition.string.raw.roland"
+                  },
+                  "3": {
+                     "name": "punctuation.definition.string.roland"
+                  }
+               },
+               "end": "(\")(\\2)",
+               "endCaptures": {
+                  "1": {
+                     "name": "punctuation.definition.string.roland"
+                  },
+                  "2": {
+                     "name": "punctuation.definition.string.raw.roland"
+                  }
+               }
+            },
+            {
+               "comment": "characters and bytes",
+               "name": "string.quoted.single.char.roland",
+               "begin": "(b)?(')",
+               "beginCaptures": {
+                  "1": {
+                     "name": "string.quoted.byte.raw.roland"
+                  },
+                  "2": {
+                     "name": "punctuation.definition.char.roland"
+                  }
+               },
+               "end": "'",
+               "endCaptures": {
+                  "0": {
+                     "name": "punctuation.definition.char.roland"
+                  }
+               },
+               "patterns": [
+                  {
+                     "include": "#escapes"
+                  }
+               ]
+            }
+         ]
+      },
+      "variables": {
+         "patterns": [
+            {
+               "comment": "variables",
+               "name": "variable.other.roland",
+               "match": "\\b(?<!(?<!\\.)\\.)(?:r#(?!(crate|[Ss]elf|super)))?[a-z0-9_]+\\b"
+            }
+         ]
+      }
+   }
 }
