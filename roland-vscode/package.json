@@ -1,0 +1,25 @@
+{
+    "name": "roland",
+    "displayName": "Roland",
+    "description": "Support for the Roland programming language",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.61.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [{
+            "id": "roland",
+            "aliases": ["Roland", "roland"],
+            "extensions": [".rol"],
+            "configuration": "./language-configuration.json"
+        }],
+        "grammars": [{
+            "language": "roland",
+            "scopeName": "source.roland",
+            "path": "./syntaxes/roland.tmLanguage.json"
+        }]
+    }
+}
