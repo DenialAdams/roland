@@ -51,7 +51,6 @@ proc start() {
    JUMP_SPEED = 0.0;
    JUMP_STATE = JumpState::Standing;
    RNG = 01189998819991197253;
-   let len: usize = 4;
    OBSTACLE_COUNT = 4;
    for i in 0..OBSTACLE_COUNT {
       OBSTACLES[i] = Obstacle {
