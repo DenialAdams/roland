@@ -1005,6 +1005,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             load(start_expr.exp_type.as_ref().unwrap(), generation_context);
             // TODO!! we don't want to emit this every iteration, need to hoist
             do_emit_and_load_lval(end_expr, generation_context, interner);
+            generation_context.out.emit_spaces();
             writeln!(generation_context.out.out, "{}.ge{}", wasm_type, suffix).unwrap();
 
             generation_context.out.emit_if_start(
@@ -1424,7 +1425,8 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                },
                _ => unreachable!(),
             };
-            write!(
+            generation_context.out.emit_spaces();
+            writeln!(
                generation_context.out.out,
                "{}.trunc_sat_{}{}",
                target_type_str, dest_type_str, suffix
