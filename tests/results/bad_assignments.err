@@ -1,4 +1,4 @@
-Left hand side of assignment is not a valid memory location; i.e. a variable, field, or parameter
+Left hand side of assignment is not a valid memory location; i.e. a variable, field, or array index
 ↳ line 2, column 4
 Left hand side of assignment has type String which does not match the type of the right hand side u64
 ↳ left hand side @ line 5, column 4

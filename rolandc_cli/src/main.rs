@@ -15,7 +15,7 @@ const HTML_HEADER: &str = "<!DOCTYPE HTML>
 #[derive(Debug)]
 struct Opts {
    source_file: PathBuf,
-   output: PathBuf,
+   output: Option<PathBuf>,
    output_html_ast: bool,
    skip_constant_folding: bool,
    wasm4: bool,
@@ -30,7 +30,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
 
    let opts = Opts {
       source_file: pargs.free_from_os_str(parse_path)?,
-      output: pargs.value_from_os_str("--output", parse_path)?,
+      output: pargs.opt_value_from_os_str("--output", parse_path)?,
       output_html_ast: pargs.contains("--output-html-ast"),
       skip_constant_folding: pargs.contains("--skip-constant-folding"),
       wasm4: pargs.contains("--wasm4"),
@@ -40,11 +40,11 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
 }
 
 fn main() {
-   let mut opts = parse_args().unwrap();
+   let opts = parse_args().unwrap();
 
    let target = if opts.wasm4 { Target::Wasm4 } else { Target::Wasi };
 
-   let user_program_s = std::fs::read_to_string(opts.source_file).unwrap();
+   let user_program_s = std::fs::read_to_string(&opts.source_file).unwrap();
    let mut ast_out: Option<BufWriter<File>> = if opts.output_html_ast {
       let out_f = File::create("ast.html").unwrap();
       let mut writer = BufWriter::new(out_f);
@@ -78,11 +78,18 @@ fn main() {
       }
    };
 
-   if target == Target::Wasm4 {
-      opts.output.set_extension("wasm");
+   let output_path = if let Some(v) = opts.output {
+      v
    } else {
-      opts.output.set_extension("wast");
-   }
-   let mut wasm_out = File::create(opts.output).unwrap();
+      let mut output_path = opts.source_file.clone();
+      if target == Target::Wasm4 {
+         output_path.set_extension("wasm");
+      } else {
+         output_path.set_extension("wast");
+      }
+      output_path
+   };
+
+   let mut wasm_out = File::create(output_path).unwrap();
    wasm_out.write_all(&out_bytes).unwrap();
 }

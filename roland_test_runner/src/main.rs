@@ -75,8 +75,6 @@ fn main() -> Result<(), &'static str> {
    entries.par_iter().for_each(|entry| {
       let tc_output = Command::new(&opts.tc_path)
          .arg(entry.file_name().unwrap())
-         .arg("--output")
-         .arg(entry.file_stem().unwrap())
          .output()
          .unwrap();
       let test_ok = test_result(&tc_output, entry, &result_dir);
