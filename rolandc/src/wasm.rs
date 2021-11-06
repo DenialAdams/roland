@@ -11,7 +11,7 @@ const MINIMUM_STACK_FRAME_SIZE: u32 = 4;
 struct GenerationContext<'a> {
    out: PrettyWasmWriter,
    literal_offsets: HashMap<StrId, (u32, u32)>,
-   static_offsets: HashMap<StrId, u32>,
+   static_addresses: HashMap<StrId, u32>,
    local_offsets_mem: HashMap<StrId, u32>,
    struct_info: &'a IndexMap<StrId, StructInfo>,
    struct_size_info: HashMap<StrId, SizeInfo>,
@@ -618,7 +618,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
       },
       // todo: just reuse the same map?
       literal_offsets: HashMap::with_capacity(program.literals.len()),
-      static_offsets: HashMap::with_capacity(program.static_info.len()),
+      static_addresses: HashMap::with_capacity(program.static_info.len()),
       local_offsets_mem: HashMap::new(),
       needed_store_fns: IndexSet::new(),
       struct_info: &program.struct_info,
@@ -721,7 +721,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
       offset = aligned_address(offset, strictest_alignment);
    }
    for (static_name, static_details) in program.static_info.iter() {
-      generation_context.static_offsets.insert(*static_name, offset);
+      generation_context.static_addresses.insert(*static_name, offset);
       offset += sizeof_type_mem(
          &static_details.static_type,
          generation_context.enum_info,
@@ -1435,7 +1435,11 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
       }
       Expression::Variable(id) => {
-         get_stack_address_of_local(*id, generation_context);
+         if let Some(v) = generation_context.static_addresses.get(id).copied() {
+            generation_context.out.emit_const_i32(v);
+         } else {
+            get_stack_address_of_local(*id, generation_context);
+         }
       }
       Expression::ProcedureCall(name, args) => {
          for arg in args.iter() {
@@ -1579,11 +1583,7 @@ fn complement_val(t_type: &ExpressionType, wasm_type: &str, generation_context: 
 
 /// Places the address of given local on the stack
 fn get_stack_address_of_local(id: StrId, generation_context: &mut GenerationContext) {
-   let offset = *generation_context
-      .static_offsets
-      .get(&id)
-      .or_else(|| generation_context.local_offsets_mem.get(&id))
-      .unwrap();
+   let offset = generation_context.local_offsets_mem.get(&id).copied().unwrap();
    generation_context.out.emit_get_global("bp");
    generation_context.out.emit_const_add_i32(offset);
 }
