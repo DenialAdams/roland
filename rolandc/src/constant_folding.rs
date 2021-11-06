@@ -559,6 +559,9 @@ pub fn is_const(expr: &Expression) -> bool {
       Expression::BoolLiteral(_) => true,
       Expression::ArrayLiteral(exprs) => exprs.iter().all(|x| is_const(&x.expression)),
       Expression::StructLiteral(_, exprs) => exprs.iter().all(|(_, x)| is_const(&x.expression)),
+      // Tentative - I'm not sure how we'll handle transmuting of unalike types in the wasm backend,
+      // but conceptually this seems sound
+      Expression::Transmute(_, expr) => is_const(&expr.expression),
       _ => false,
    }
 }

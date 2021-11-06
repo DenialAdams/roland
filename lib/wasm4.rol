@@ -51,24 +51,13 @@ proc int_to_string(value: u32, buf: &[u8; 10]) -> String {
    };
 }
 
-// This should not be necessary, but sometimes life be like that
-proc set_wasm4_statics() {
-   PALETTE = 0x04 transmute &[u32; 4];
-   DRAW_COLORS = 0x14 transmute &u16;
-   GAMEPADS = 0x16 transmute &[u8; 4];
-   MOUSE_X = 0x1a transmute &i16;
-   MOUSE_Y = 0x1c transmute &i16;
-   MOUSE_BUTTONS = 0x1e transmute &u8;
-   FRAMEBUFFER = 0xa0 transmute &[u8; 6400];
-}
-
-static PALETTE: &[u32; 4];
-static DRAW_COLORS: &u16;
-static GAMEPADS: &[u8; 4];
-static MOUSE_X: &i16;
-static MOUSE_Y: &i16;
-static MOUSE_BUTTONS: &u8;
-static FRAMEBUFFER: &[u8; 6400];
+const PALETTE: &[u32; 4] = 0x04 transmute &[u32; 4];
+const DRAW_COLORS: &u16 = 0x14 transmute &u16;
+const GAMEPADS: &[u8; 4] = 0x16 transmute &[u8; 4];
+const MOUSE_X: &i16 = 0x1a transmute &i16;
+const MOUSE_Y: &i16 = 0x1c transmute &i16;
+const MOUSE_BUTTONS: &u8 = 0x1e transmute &u8;
+const FRAMEBUFFER: &[u8; 6400] = 0xa0 transmute &[u8; 6400];
 
 const BUTTON_1: u8 = 1;
 const BUTTON_2: u8 = 2;
