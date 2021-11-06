@@ -78,7 +78,8 @@ pub fn compile<E: Write, A: Write>(
       Target::Wasi => Ok(wasm::emit_wasm(&mut user_program, &mut interner, 0, false)),
       Target::Wasm4 => {
          let wat = wasm::emit_wasm(&mut user_program, &mut interner, 0x19a0, true);
-         Ok(wat::parse_bytes(&wat).unwrap().into_owned())
+         //Ok(wat::parse_bytes(&wat).unwrap().into_owned())
+         Ok(wat)
       }
    }
 }

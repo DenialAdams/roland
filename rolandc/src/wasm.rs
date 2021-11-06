@@ -413,7 +413,7 @@ fn sizeof_value_type_mem(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &Has
          FloatWidth::Eight => 8,
          FloatWidth::Four => 4,
       },
-      ValueType::Bool => 4,
+      ValueType::Bool => 1,
       ValueType::Unit => 0,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().mem_size,
@@ -464,7 +464,7 @@ fn value_type_mem_alignment(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &
          FloatWidth::Eight => 8,
          FloatWidth::Four => 4,
       },
-      ValueType::Bool => 4,
+      ValueType::Bool => 1,
       ValueType::Unit => 1,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().strictest_alignment,
@@ -1692,7 +1692,7 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
             )
          }
          ExpressionType::Value(ValueType::Float(_)) => ("", ""),
-         ExpressionType::Value(ValueType::Bool) => ("32", "_u"),
+         ExpressionType::Value(ValueType::Bool) => ("8", "_u"),
          _ => unreachable!(),
       };
       generation_context.out.emit_spaces();
@@ -1760,7 +1760,7 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
             }
          }
          ExpressionType::Value(ValueType::Float(_)) => "",
-         ExpressionType::Value(ValueType::Bool) => "32",
+         ExpressionType::Value(ValueType::Bool) => "8",
          _ => unreachable!(),
       };
       generation_context.out.emit_spaces();
