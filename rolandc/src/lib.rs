@@ -1,3 +1,4 @@
+mod const_lowering;
 mod constant_folding;
 mod html_debug;
 mod interner;
@@ -54,8 +55,13 @@ pub fn compile<E: Write, A: Write>(
    let mut err_count =
       semantic_analysis::validator::type_and_check_validity(&mut user_program, err_stream, &mut interner, target);
 
-   if err_count == 0 && do_constant_folding {
-      err_count = constant_folding::fold_constants(&mut user_program, err_stream);
+   if err_count == 0 {
+      const_lowering::lower_consts(&mut user_program, err_stream);
+      user_program.static_info.retain(|_, v| !v.is_const);
+
+      if do_constant_folding {
+         err_count = constant_folding::fold_constants(&mut user_program, err_stream);
+      }
    }
 
    if let Some(w) = html_ast_out {
@@ -84,6 +90,7 @@ fn merge_programs(main_program: &mut Program, other_programs: &mut [Program]) {
       main_program.structs.extend(program.structs.drain(0..));
       main_program.statics.extend(program.statics.drain(0..));
       main_program.enums.extend(program.enums.drain(0..));
+      main_program.consts.extend(program.consts.drain(0..));
    }
 }
 

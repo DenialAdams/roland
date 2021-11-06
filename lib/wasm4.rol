@@ -60,28 +60,6 @@ proc set_wasm4_statics() {
    MOUSE_Y = 0x1c transmute &i16;
    MOUSE_BUTTONS = 0x1e transmute &u8;
    FRAMEBUFFER = 0xa0 transmute &[u8; 6400];
-
-   BUTTON_1 = 1;
-   BUTTON_2 = 2;
-   BUTTON_LEFT = 16;
-   BUTTON_RIGHT = 32;
-   BUTTON_UP = 64;
-   BUTTON_DOWN = 128;
-
-   BLIT_2BPP = 1;
-   BLIT_1BPP = 0;
-   BLIT_FLIP_X = 2;
-   BLIT_FLIP_Y = 4;
-   BLIT_ROTATE = 8;
-
-   TONE_PULSE1 = 0;
-   TONE_PULSE2 = 1;
-   TONE_TRIANGLE = 2;
-   TONE_NOISE = 3;
-   TONE_MODE1 = 0;
-   TONE_MODE2 = 4;
-   TONE_MODE3 = 8;
-   TONE_MODE4 = 12;
 }
 
 static PALETTE: &[u32; 4];
@@ -92,24 +70,24 @@ static MOUSE_Y: &i16;
 static MOUSE_BUTTONS: &u8;
 static FRAMEBUFFER: &[u8; 6400];
 
-static BUTTON_1: u8;
-static BUTTON_2: u8;
-static BUTTON_LEFT: u8;
-static BUTTON_RIGHT: u8;
-static BUTTON_UP: u8;
-static BUTTON_DOWN: u8;
+const BUTTON_1: u8 = 1;
+const BUTTON_2: u8 = 2;
+const BUTTON_LEFT: u8 = 16;
+const BUTTON_RIGHT: u8 = 32;
+const BUTTON_UP: u8 = 64;
+const BUTTON_DOWN: u8 = 128;
 
-static BLIT_2BPP: u32;
-static BLIT_1BPP: u32;
-static BLIT_FLIP_X: u32;
-static BLIT_FLIP_Y: u32;
-static BLIT_ROTATE: u32;
+const BLIT_2BPP: u32 = 1;
+const BLIT_1BPP: u32 = 0;
+const BLIT_FLIP_X: u32 = 2;
+const BLIT_FLIP_Y: u32 = 4;
+const BLIT_ROTATE: u32 = 8;
 
-static TONE_PULSE1: u32;
-static TONE_PULSE2: u32;
-static TONE_TRIANGLE: u32;
-static TONE_NOISE: u32;
-static TONE_MODE1: u32;
-static TONE_MODE2: u32;
-static TONE_MODE3: u32;
-static TONE_MODE4: u32;
+const TONE_PULSE1: u32 = 0;
+const TONE_PULSE2: u32 = 1;
+const TONE_TRIANGLE: u32 = 2;
+const TONE_NOISE: u32 = 3;
+const TONE_MODE1: u32 = 0;
+const TONE_MODE2: u32 = 4;
+const TONE_MODE3: u32 = 8;
+const TONE_MODE4: u32 = 12;
