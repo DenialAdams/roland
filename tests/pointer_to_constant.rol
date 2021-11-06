@@ -1,0 +1,5 @@
+const FOO: u64 = 0;
+
+proc main() {
+   let x = &FOO;
+}

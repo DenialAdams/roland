@@ -95,6 +95,14 @@ pub struct EnumNode {
 }
 
 #[derive(Clone, Debug)]
+pub struct ConstNode {
+   pub name: StrId,
+   pub const_type: ExpressionType,
+   pub value: ExpressionNode,
+   pub const_begin_location: SourceInfo,
+}
+
+#[derive(Clone, Debug)]
 pub struct StaticNode {
    pub name: StrId,
    pub static_type: ExpressionType,
@@ -208,6 +216,7 @@ pub struct Program {
    pub enums: Vec<EnumNode>,
    pub procedures: Vec<ProcedureNode>,
    pub structs: Vec<StructNode>,
+   pub consts: Vec<ConstNode>,
    pub statics: Vec<StaticNode>,
 
    // These fields are populated during semantic analysis
@@ -223,6 +232,7 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
    let mut procedures = vec![];
    let mut structs = vec![];
    let mut enums = vec![];
+   let mut consts = vec![];
    let mut statics = vec![];
 
    while let Some(peeked_token) = lexer.peek_token() {
@@ -247,6 +257,21 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
             let def = lexer.next().unwrap();
             let s = parse_enum(&mut lexer, err_stream, def.source_info, interner)?;
             enums.push(s);
+         }
+         Token::KeywordConst => {
+            let a_static = lexer.next().unwrap();
+            let variable_name = expect(&mut lexer, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
+            expect(&mut lexer, err_stream, &Token::Colon)?;
+            let t_type = parse_type(&mut lexer, err_stream, interner)?;
+            expect(&mut lexer, err_stream, &Token::Assignment)?;
+            let exp = parse_expression(&mut lexer, err_stream, false, interner)?;
+            expect(&mut lexer, err_stream, &Token::Semicolon)?;
+            consts.push(ConstNode {
+               name: extract_identifier(variable_name.token),
+               const_type: t_type,
+               const_begin_location: a_static.source_info,
+               value: exp,
+            });
          }
          Token::KeywordStatic => {
             let a_static = lexer.next().unwrap();
@@ -276,6 +301,7 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
       procedures,
       enums,
       structs,
+      consts,
       statics,
       literals: HashSet::new(),
       struct_info: IndexMap::new(),

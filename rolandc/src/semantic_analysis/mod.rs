@@ -34,7 +34,8 @@ pub struct StructInfo {
 #[derive(Clone, Debug)]
 pub struct StaticInfo {
    pub static_type: ExpressionType,
-   pub static_begin_location: SourceInfo,
+   pub begin_location: SourceInfo,
+   pub is_const: bool,
 }
 
 pub struct ValidationContext<'a> {

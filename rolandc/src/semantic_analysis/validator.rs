@@ -1,5 +1,6 @@
 use super::type_inference::try_set_inferred_type;
 use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
+use crate::constant_folding::{try_fold_and_replace_expr, FoldingContext};
 use crate::interner::{Interner, StrId};
 use crate::lex::SourceInfo;
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
@@ -471,6 +472,53 @@ pub fn type_and_check_validity<W: Write>(
       }
    }
 
+   for const_node in program.consts.iter_mut() {
+      let const_type = &mut const_node.const_type;
+      let si = &const_node.const_begin_location;
+
+      if resolve_type(const_type, &enum_info, &struct_info).is_err() {
+         error_count += 1;
+         let static_type_str = const_type.as_roland_type_info(interner);
+         writeln!(
+            err_stream,
+            "Const `{}` is of undeclared type `{}`",
+            interner.lookup(const_node.name),
+            static_type_str,
+         )
+         .unwrap();
+         writeln!(err_stream, "↳ const defined @ line {}, column {}", si.line, si.col).unwrap();
+      }
+
+      if let Some(old_value) = static_info.insert(
+         const_node.name,
+         StaticInfo {
+            static_type: const_node.const_type.clone(),
+            begin_location: const_node.const_begin_location,
+            is_const: true,
+         },
+      ) {
+         error_count += 1;
+         writeln!(
+            err_stream,
+            "Encountered duplicate static/const with the same name `{}`",
+            interner.lookup(const_node.name),
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ first static/const defined @ line {}, column {}",
+            old_value.begin_location.line, old_value.begin_location.col
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ second static/const defined @ line {}, column {}",
+            const_node.const_begin_location.line, const_node.const_begin_location.col
+         )
+         .unwrap();
+      }
+   }
+
    for static_node in program.statics.iter_mut() {
       let static_type = &mut static_node.static_type;
       let si = &static_node.static_begin_location;
@@ -488,29 +536,30 @@ pub fn type_and_check_validity<W: Write>(
          writeln!(err_stream, "↳ static defined @ line {}, column {}", si.line, si.col).unwrap();
       }
 
-      if let Some(old_static) = static_info.insert(
+      if let Some(old_value) = static_info.insert(
          static_node.name,
          StaticInfo {
             static_type: static_node.static_type.clone(),
-            static_begin_location: static_node.static_begin_location,
+            begin_location: static_node.static_begin_location,
+            is_const: false,
          },
       ) {
          error_count += 1;
          writeln!(
             err_stream,
-            "Encountered duplicate statics with the same name `{}`",
+            "Encountered duplicate static/const with the same name `{}`",
             interner.lookup(static_node.name),
          )
          .unwrap();
          writeln!(
             err_stream,
-            "↳ first static defined @ line {}, column {}",
-            old_static.static_begin_location.line, old_static.static_begin_location.col
+            "↳ first static/const defined @ line {}, column {}",
+            old_value.begin_location.line, old_value.begin_location.col
          )
          .unwrap();
          writeln!(
             err_stream,
-            "↳ second static defined @ line {}, column {}",
+            "↳ second static/const defined @ line {}, column {}",
             static_node.static_begin_location.line, static_node.static_begin_location.col
          )
          .unwrap();
@@ -716,6 +765,68 @@ pub fn type_and_check_validity<W: Write>(
       return validation_context.error_count;
    }
 
+   for p_const in program.consts.iter_mut() {
+      // p_const.const_type is guaranteed to be resolved at this point
+      do_type(err_stream, &mut p_const.value, &mut validation_context, interner);
+      try_set_inferred_type(
+         &p_const.const_type,
+         &mut p_const.value,
+         &mut validation_context,
+         err_stream,
+         interner,
+      );
+
+      if p_const.const_type != *p_const.value.exp_type.as_ref().unwrap()
+         && p_const.value.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::CompileError)
+      {
+         validation_context.error_count += 1;
+         let actual_type_str = p_const.value.exp_type.as_ref().unwrap().as_roland_type_info(interner);
+         writeln!(
+            err_stream,
+            "Declared type {} of const `{}` does not match actual expression type {}",
+            p_const.const_type.as_roland_type_info(interner),
+            interner.lookup(p_const.name),
+            actual_type_str,
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ const @ line {}, column {}",
+            p_const.const_begin_location.line, p_const.const_begin_location.col
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ expression @ line {}, column {}",
+            p_const.value.expression_begin_location.line, p_const.value.expression_begin_location.col
+         )
+         .unwrap();
+      }
+
+      try_fold_and_replace_expr(&mut p_const.value, err_stream, &mut FoldingContext { error_count: 0 });
+      if !crate::constant_folding::is_const(&p_const.value.expression) {
+         validation_context.error_count += 1;
+         writeln!(
+            err_stream,
+            "Value of const `{}` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static.",
+            interner.lookup(p_const.name),
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ const @ line {}, column {}",
+            p_const.const_begin_location.line, p_const.const_begin_location.col
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ expression @ line {}, column {}",
+            p_const.value.expression_begin_location.line, p_const.value.expression_begin_location.col
+         )
+         .unwrap();
+      }
+   }
+
    for procedure in program.procedures.iter_mut() {
       validation_context.variable_types.clear();
       validation_context.cur_procedure_info = procedure_info.get(&procedure.name);
@@ -865,6 +976,26 @@ fn type_statement<W: Write>(
                len.expression_begin_location.line, len.expression_begin_location.col
             )
             .unwrap();
+         } else if let Expression::Variable(var) = len.expression {
+            if validation_context
+               .static_info
+               .get(&var)
+               .map(|x| x.is_const)
+               .unwrap_or(false)
+            {
+               validation_context.error_count += 1;
+               writeln!(
+               err_stream,
+               "Left hand side of assignment is a constant, which does not have a memory location and can't be reassigned"
+            )
+            .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ line {}, column {}",
+                  len.expression_begin_location.line, len.expression_begin_location.col
+               )
+               .unwrap();
+            }
          }
       }
       Statement::Block(bn) => {
@@ -1038,7 +1169,10 @@ fn type_statement<W: Write>(
             try_set_inferred_type(v, en, validation_context, err_stream, interner);
          }
 
-         let result_type = if dt.is_some() && *dt != en.exp_type && en.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::CompileError) {
+         let result_type = if dt.is_some()
+            && *dt != en.exp_type
+            && en.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::CompileError)
+         {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
@@ -1519,6 +1653,29 @@ fn do_type<W: Write>(
             )
             .unwrap();
             ExpressionType::Value(ValueType::CompileError)
+         } else if *un_op == UnOp::AddressOf {
+            if let Expression::Variable(var) = e.expression {
+               if validation_context
+                  .static_info
+                  .get(&var)
+                  .map(|x| x.is_const)
+                  .unwrap_or(false)
+               {
+                  validation_context.error_count += 1;
+                  writeln!(
+                  err_stream,
+                  "Attempting to take a pointer to a const, which does not have a memory location"
+               )
+               .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ line {}, column {}",
+                     e.expression_begin_location.line, e.expression_begin_location.col
+                  )
+                  .unwrap();
+               }
+            }
+            node_type
          } else {
             node_type
          };

@@ -1,0 +1,3 @@
+Attempting to take a pointer to a const, which does not have a memory location
+↳ line 4, column 13
+There were 1 semantic errors, bailing
