@@ -57,6 +57,7 @@ const GAMEPADS: &[u8; 4] = 0x16 transmute &[u8; 4];
 const MOUSE_X: &i16 = 0x1a transmute &i16;
 const MOUSE_Y: &i16 = 0x1c transmute &i16;
 const MOUSE_BUTTONS: &u8 = 0x1e transmute &u8;
+const SYSTEM_FLAGS: &u8 = 0x1f transmute &u8;
 const FRAMEBUFFER: &[u8; 6400] = 0xa0 transmute &[u8; 6400];
 
 const BUTTON_1: u8 = 1;
@@ -65,6 +66,13 @@ const BUTTON_LEFT: u8 = 16;
 const BUTTON_RIGHT: u8 = 32;
 const BUTTON_UP: u8 = 64;
 const BUTTON_DOWN: u8 = 128;
+
+const MOUSE_LEFT: u8 = 1;
+const MOUSE_RIGHT: u8 = 2;
+const MOUSE_MIDDLE: u8 = 4;
+
+const SYSTEM_PRESERVE_FRAMEBUFFER: u8 = 1;
+const SYSTEM_HIDE_GAMEPAD_OVERLAY: u8 = 2;
 
 const BLIT_2BPP: u32 = 1;
 const BLIT_1BPP: u32 = 0;
