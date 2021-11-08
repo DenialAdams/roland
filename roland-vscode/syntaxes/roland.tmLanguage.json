@@ -280,7 +280,7 @@
             {
                "comment": "other keywords",
                "name": "keyword.other.roland",
-               "match": "\\b(in|extend|transmute|truncate)\\b"
+               "match": "\\b(in|extend|transmute|truncate|named)\\b"
             },
             {
                "comment": "fn",
