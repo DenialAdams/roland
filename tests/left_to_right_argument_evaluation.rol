@@ -1,0 +1,12 @@
+proc eval(foo: String) -> bool {
+   print(foo);
+   return true;
+}
+
+proc aux(x: bool, y: bool, named a: bool, named b: bool) {
+   print("done");
+}
+
+proc main() {
+   aux(eval("x"), eval("y"), b: eval("b"), a: eval("a"));
+}
