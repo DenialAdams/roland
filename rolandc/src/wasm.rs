@@ -1543,16 +1543,23 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          do_emit(lhs, generation_context, interner);
 
          if lhs.expression.is_lvalue() {
-            if matches!(index_e.expression, Expression::IntLiteral(0)) {
-               // Already the correct address
-            } else {
-               let sizeof_inner = match &lhs.exp_type {
-                  Some(ExpressionType::Value(ValueType::Array(x, _))) => {
-                     sizeof_type_mem(&*x, generation_context.enum_info, &generation_context.struct_size_info)
-                  }
-                  _ => unreachable!(),
-               };
+            let sizeof_inner = match &lhs.exp_type {
+               Some(ExpressionType::Value(ValueType::Array(x, _))) => {
+                  sizeof_type_mem(&*x, generation_context.enum_info, &generation_context.struct_size_info)
+               }
+               _ => unreachable!(),
+            };
 
+            if let Expression::IntLiteral(x) = index_e.expression {
+               // Safe assert due to inference validating this
+               // TODO: this is not actually safe right now (we'll get compiler panics)
+               // because constant folding can result in overflow.
+               // We should fix this in constant folding so that it errors.
+               let val_32 = u32::try_from(x).unwrap();
+               let result = sizeof_inner.wrapping_mul(val_32);
+               // This won't emit anything if result == 0
+               generation_context.out.emit_const_add_i32(result);
+            } else {
                do_emit_and_load_lval(index_e, generation_context, interner);
                generation_context.out.emit_const_mul_i32(sizeof_inner);
                generation_context.out.emit_constant_instruction("i32.add");
