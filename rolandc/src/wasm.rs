@@ -1541,17 +1541,22 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       }
       Expression::ArrayIndex(lhs, index_e) => {
          do_emit(lhs, generation_context, interner);
-         do_emit_and_load_lval(index_e, generation_context, interner);
 
          if lhs.expression.is_lvalue() {
-            let sizeof_inner = match &lhs.exp_type {
-               Some(ExpressionType::Value(ValueType::Array(x, _))) => {
-                  sizeof_type_mem(&*x, generation_context.enum_info, &generation_context.struct_size_info)
-               }
-               _ => unreachable!(),
-            };
-            generation_context.out.emit_const_mul_i32(sizeof_inner);
-            generation_context.out.emit_constant_instruction("i32.add");
+            if matches!(index_e.expression, Expression::IntLiteral(0)) {
+               // Already the correct address
+            } else {
+               let sizeof_inner = match &lhs.exp_type {
+                  Some(ExpressionType::Value(ValueType::Array(x, _))) => {
+                     sizeof_type_mem(&*x, generation_context.enum_info, &generation_context.struct_size_info)
+                  }
+                  _ => unreachable!(),
+               };
+
+               do_emit_and_load_lval(index_e, generation_context, interner);
+               generation_context.out.emit_const_mul_i32(sizeof_inner);
+               generation_context.out.emit_constant_instruction("i32.add");
+            }
          } else {
             todo!()
          }
