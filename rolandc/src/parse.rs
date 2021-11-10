@@ -484,7 +484,6 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
             let end_en = parse_expression(l, err_stream, true, interner)?;
             let new_block = parse_block(l, err_stream, interner)?;
             statements.push(StatementNode {
-               // TODO: instead of extracting here, we could preserve the source information and give better errors in the validator
                statement: Statement::For(
                   IdentifierNode {
                      begin_location: variable_name.source_info,
