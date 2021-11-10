@@ -7,7 +7,7 @@ pub fn lower_consts<W: Write>(program: &mut Program, err_stream: &mut W) {
    let mut const_replacements: HashMap<StrId, ExpressionNode> = HashMap::new();
 
    for p_const in program.consts.drain(0..) {
-      const_replacements.insert(p_const.name, p_const.value);
+      const_replacements.insert(p_const.name.identifier, p_const.value);
    }
 
    for procedure in program.procedures.iter_mut() {

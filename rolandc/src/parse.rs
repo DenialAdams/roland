@@ -96,7 +96,7 @@ pub struct EnumNode {
 
 #[derive(Clone, Debug)]
 pub struct ConstNode {
-   pub name: StrId,
+   pub name: IdentifierNode,
    pub const_type: ExpressionType,
    pub value: ExpressionNode,
    pub const_begin_location: SourceInfo,
@@ -104,7 +104,7 @@ pub struct ConstNode {
 
 #[derive(Clone, Debug)]
 pub struct StaticNode {
-   pub name: StrId,
+   pub name: IdentifierNode,
    pub static_type: ExpressionType,
    pub static_begin_location: SourceInfo,
 }
@@ -205,7 +205,7 @@ pub enum Statement {
    VariableDeclaration(IdentifierNode, ExpressionNode, Option<ExpressionType>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct IdentifierNode {
    pub identifier: StrId,
    pub begin_location: SourceInfo,
@@ -273,7 +273,10 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
             let exp = parse_expression(&mut lexer, err_stream, false, interner)?;
             expect(&mut lexer, err_stream, &Token::Semicolon)?;
             consts.push(ConstNode {
-               name: extract_identifier(variable_name.token),
+               name: IdentifierNode {
+                  identifier: extract_identifier(variable_name.token),
+                  begin_location: variable_name.source_info,
+               },
                const_type: t_type,
                const_begin_location: a_static.source_info,
                value: exp,
@@ -286,7 +289,10 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
             let t_type = parse_type(&mut lexer, err_stream, interner)?;
             expect(&mut lexer, err_stream, &Token::Semicolon)?;
             statics.push(StaticNode {
-               name: extract_identifier(variable_name.token),
+               name: IdentifierNode {
+                  identifier: extract_identifier(variable_name.token),
+                  begin_location: variable_name.source_info,
+               },
                static_type: t_type,
                static_begin_location: a_static.source_info,
             });

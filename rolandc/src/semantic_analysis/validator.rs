@@ -495,7 +495,7 @@ pub fn type_and_check_validity<W: Write>(
          writeln!(
             err_stream,
             "Const `{}` is of undeclared type `{}`",
-            interner.lookup(const_node.name),
+            interner.lookup(const_node.name.identifier),
             static_type_str,
          )
          .unwrap();
@@ -503,7 +503,7 @@ pub fn type_and_check_validity<W: Write>(
       }
 
       if let Some(old_value) = static_info.insert(
-         const_node.name,
+         const_node.name.identifier,
          StaticInfo {
             static_type: const_node.const_type.clone(),
             begin_location: const_node.const_begin_location,
@@ -514,7 +514,7 @@ pub fn type_and_check_validity<W: Write>(
          writeln!(
             err_stream,
             "Encountered duplicate static/const with the same name `{}`",
-            interner.lookup(const_node.name),
+            interner.lookup(const_node.name.identifier),
          )
          .unwrap();
          writeln!(
@@ -542,7 +542,7 @@ pub fn type_and_check_validity<W: Write>(
          writeln!(
             err_stream,
             "Static `{}` is of undeclared type `{}`",
-            interner.lookup(static_node.name),
+            interner.lookup(static_node.name.identifier),
             static_type_str,
          )
          .unwrap();
@@ -550,7 +550,7 @@ pub fn type_and_check_validity<W: Write>(
       }
 
       if let Some(old_value) = static_info.insert(
-         static_node.name,
+         static_node.name.identifier,
          StaticInfo {
             static_type: static_node.static_type.clone(),
             begin_location: static_node.static_begin_location,
@@ -561,7 +561,7 @@ pub fn type_and_check_validity<W: Write>(
          writeln!(
             err_stream,
             "Encountered duplicate static/const with the same name `{}`",
-            interner.lookup(static_node.name),
+            interner.lookup(static_node.name.identifier),
          )
          .unwrap();
          writeln!(
@@ -798,7 +798,7 @@ pub fn type_and_check_validity<W: Write>(
             err_stream,
             "Declared type {} of const `{}` does not match actual expression type {}",
             p_const.const_type.as_roland_type_info(interner),
-            interner.lookup(p_const.name),
+            interner.lookup(p_const.name.identifier),
             actual_type_str,
          )
          .unwrap();
@@ -822,7 +822,7 @@ pub fn type_and_check_validity<W: Write>(
          writeln!(
             err_stream,
             "Value of const `{}` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static.",
-            interner.lookup(p_const.name),
+            interner.lookup(p_const.name.identifier),
          )
          .unwrap();
          writeln!(
