@@ -52,20 +52,18 @@ fn set_inferred_type<W: Write>(
       Expression::IntLiteral(val) => {
          validation_context.unknown_ints -= 1;
          let overflowing_literal = match &e_type {
-            ExpressionType::Value(I8_TYPE) => *val > i64::from(i8::MAX) || *val < i64::from(i8::MIN),
-            ExpressionType::Value(I16_TYPE) => *val > i64::from(i16::MAX) || *val < i64::from(i16::MIN),
-            ExpressionType::Value(I32_TYPE) => *val > i64::from(i32::MAX) || *val < i64::from(i32::MIN),
+            ExpressionType::Value(I8_TYPE) => *val > i128::from(i8::MAX) || *val < i128::from(i8::MIN),
+            ExpressionType::Value(I16_TYPE) => *val > i128::from(i16::MAX) || *val < i128::from(i16::MIN),
+            ExpressionType::Value(I32_TYPE) => *val > i128::from(i32::MAX) || *val < i128::from(i32::MIN),
             // @FixedPointerWidth
-            ExpressionType::Value(ISIZE_TYPE) => *val > i64::from(i32::MAX) || *val < i64::from(i32::MIN),
-            // TODO: add checking for i64 type (currently doesn't make sense because we lex literals as i64 instead of i128 or larger)
-            ExpressionType::Value(I64_TYPE) => false,
-            ExpressionType::Value(U8_TYPE) => *val > i64::from(u8::MAX) || *val < i64::from(u8::MIN),
-            ExpressionType::Value(U16_TYPE) => *val > i64::from(u16::MAX) || *val < i64::from(u16::MIN),
-            ExpressionType::Value(U32_TYPE) => *val > i64::from(u32::MAX) || *val < i64::from(u32::MIN),
+            ExpressionType::Value(ISIZE_TYPE) => *val > i128::from(i32::MAX) || *val < i128::from(i32::MIN),
+            ExpressionType::Value(I64_TYPE) => *val > i128::from(i64::MAX) || *val < i128::from(i64::MIN),
+            ExpressionType::Value(U8_TYPE) => *val > i128::from(u8::MAX) || *val < i128::from(u8::MIN),
+            ExpressionType::Value(U16_TYPE) => *val > i128::from(u16::MAX) || *val < i128::from(u16::MIN),
+            ExpressionType::Value(U32_TYPE) => *val > i128::from(u32::MAX) || *val < i128::from(u32::MIN),
             // @FixedPointerWidth
-            ExpressionType::Value(USIZE_TYPE) => *val > i64::from(u32::MAX) || *val < i64::from(u32::MIN),
-            // TODO: add checking for overflow of u64 type (currently impossible pending lexer)
-            ExpressionType::Value(U64_TYPE) => *val < 0,
+            ExpressionType::Value(USIZE_TYPE) => *val > i128::from(u32::MAX) || *val < i128::from(u32::MIN),
+            ExpressionType::Value(U64_TYPE) => *val > i128::from(u64::MAX) || *val < i128::from(u64::MIN),
             _ => unreachable!(),
          };
          if overflowing_literal {

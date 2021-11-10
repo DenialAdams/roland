@@ -153,7 +153,7 @@ pub enum Expression {
    ArrayIndex(Box<ExpressionNode>, Box<ExpressionNode>),
    BoolLiteral(bool),
    StringLiteral(StrId),
-   IntLiteral(i64),
+   IntLiteral(i128),
    FloatLiteral(f64),
    UnitLiteral,
    Variable(StrId),
@@ -317,7 +317,7 @@ fn extract_identifier(t: Token) -> StrId {
    }
 }
 
-fn extract_int_literal(t: Token) -> i64 {
+fn extract_int_literal(t: Token) -> i128 {
    match t {
       Token::IntLiteral(v) => v,
       _ => unreachable!(),

@@ -54,7 +54,7 @@ pub enum Token {
    Identifier(StrId),
    BoolLiteral(bool),
    StringLiteral(StrId),
-   IntLiteral(i64),
+   IntLiteral(i128),
    FloatLiteral(f64),
    Plus,
    Minus,
@@ -643,7 +643,7 @@ fn finish_numeric_literal<W: Write>(
 }
 
 fn parse_int<W: Write>(s: &str, radix: u32, err_stream: &mut W, source_info: SourceInfo) -> Result<Token, ()> {
-   match i64::from_str_radix(s, radix) {
+   match i128::from_str_radix(s, radix) {
       Ok(v) => Ok(Token::IntLiteral(v)),
       Err(pe) if *pe.kind() == IntErrorKind::InvalidDigit => {
          writeln!(err_stream, "Encountered invalid digit while parsing integer").unwrap();

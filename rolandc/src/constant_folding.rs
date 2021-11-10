@@ -81,9 +81,9 @@ pub fn fold_expr<W: Write>(
 
          // TODO @FixedPointerWidth
          if let Some(Literal::Uint32(v)) = extract_literal(&index) {
-            // TODO: @IntLiteral64 (len should be u32/usize, not i64, and we should be validating it before now)
+            // TODO: (len should be u32/usize, not i128. and we should be validating it before now)
             // (maybe we already are?? but I don't think so)
-            if i64::from(v) >= len {
+            if i128::from(v) >= len {
                folding_context.error_count += 1;
                writeln!(
                   err_stream,
@@ -569,17 +569,16 @@ enum Literal {
 }
 
 impl Literal {
-   fn int_max_value(self) -> i64 {
+   fn int_max_value(self) -> i128 {
       match self {
-        Literal::Int8(_) => i64::from(i8::MAX),
-        Literal::Int16(_) => i64::from(i16::MAX),
-        Literal::Int32(_) => i64::from(i32::MAX),
-        Literal::Int64(_) => i64::MAX,
-        Literal::Uint8(_) => i64::from(u8::MAX),
-        Literal::Uint16(_) => i64::from(u16::MAX),
-        Literal::Uint32(_) => i64::from(u32::MAX),
-        // TODO: @IntLiteral64
-        Literal::Uint64(_) => todo!(),
+        Literal::Int8(_) => i128::from(i8::MAX),
+        Literal::Int16(_) => i128::from(i16::MAX),
+        Literal::Int32(_) => i128::from(i32::MAX),
+        Literal::Int64(_) => i128::from(i64::MAX),
+        Literal::Uint8(_) => i128::from(u8::MAX),
+        Literal::Uint16(_) => i128::from(u16::MAX),
+        Literal::Uint32(_) => i128::from(u32::MAX),
+        Literal::Uint64(_) => i128::from(u64::MAX),
         _ => unreachable!(),
       }
    }
@@ -597,17 +596,14 @@ impl Literal {
 
    fn checked_add(self, other: Self) -> Option<Expression> {
       match (self, other) {
-         (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i.checked_add(j)?)),
-         (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_add(j)?))),
-         (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_add(j)?))),
-         (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_add(j)?))),
-         // TODO: @IntLiteral64
-         (Literal::Uint64(i), Literal::Uint64(j)) => {
-            Some(Expression::IntLiteral(i.checked_add(j)?.try_into().unwrap()))
-         }
-         (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_add(j)?))),
-         (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_add(j)?))),
-         (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_add(j)?))),
+         (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i128::from(i.checked_add(j)?))),
+         (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i128::from(i.checked_add(j)?))),
+         (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i128::from(i.checked_add(j)?))),
+         (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i128::from(i.checked_add(j)?))),
+         (Literal::Uint64(i), Literal::Uint64(j)) => Some(Expression::IntLiteral(i128::from(i.checked_add(j)?))),
+         (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i128::from(i.checked_add(j)?))),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i128::from(i.checked_add(j)?))),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i128::from(i.checked_add(j)?))),
          (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i + j)),
          (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i - j))),
          _ => unreachable!(),
@@ -616,17 +612,14 @@ impl Literal {
 
    fn checked_sub(self, other: Self) -> Option<Expression> {
       match (self, other) {
-         (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i.checked_sub(j)?)),
-         (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_sub(j)?))),
-         (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_sub(j)?))),
-         (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_sub(j)?))),
-         // TODO: @IntLiteral64
-         (Literal::Uint64(i), Literal::Uint64(j)) => {
-            Some(Expression::IntLiteral(i.checked_sub(j)?.try_into().unwrap()))
-         }
-         (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_sub(j)?))),
-         (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_sub(j)?))),
-         (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_sub(j)?))),
+         (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i128::from(i.checked_sub(j)?))),
+         (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i128::from(i.checked_sub(j)?))),
+         (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i128::from(i.checked_sub(j)?))),
+         (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i128::from(i.checked_sub(j)?))),
+         (Literal::Uint64(i), Literal::Uint64(j)) => Some(Expression::IntLiteral(i128::from(i.checked_sub(j)?))),
+         (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i128::from(i.checked_sub(j)?))),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i128::from(i.checked_sub(j)?))),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i128::from(i.checked_sub(j)?))),
          (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i - j)),
          (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i - j))),
          _ => unreachable!(),
@@ -635,17 +628,14 @@ impl Literal {
 
    fn checked_mul(self, other: Self) -> Option<Expression> {
       match (self, other) {
-         (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i.checked_mul(j)?)),
-         (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_mul(j)?))),
-         (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_mul(j)?))),
-         (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_mul(j)?))),
-         // TODO: @IntLiteral64
-         (Literal::Uint64(i), Literal::Uint64(j)) => {
-            Some(Expression::IntLiteral(i.checked_mul(j)?.try_into().unwrap()))
-         }
-         (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_mul(j)?))),
-         (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_mul(j)?))),
-         (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_mul(j)?))),
+         (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i128::from(i.checked_mul(j)?))),
+         (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i128::from(i.checked_mul(j)?))),
+         (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i128::from(i.checked_mul(j)?))),
+         (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i128::from(i.checked_mul(j)?))),
+         (Literal::Uint64(i), Literal::Uint64(j)) => Some(Expression::IntLiteral(i.checked_mul(j)?.try_into().unwrap())),
+         (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i128::from(i.checked_mul(j)?))),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i128::from(i.checked_mul(j)?))),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i128::from(i.checked_mul(j)?))),
          (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i * j)),
          (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i * j))),
          _ => unreachable!(),
@@ -654,17 +644,14 @@ impl Literal {
 
    fn checked_rem(self, other: Self) -> Option<Expression> {
       match (self, other) {
-         (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i.checked_rem(j)?)),
-         (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_rem(j)?))),
-         (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_rem(j)?))),
-         (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_rem(j)?))),
-         // TODO: @IntLiteral64
-         (Literal::Uint64(i), Literal::Uint64(j)) => {
-            Some(Expression::IntLiteral(i.checked_rem(j)?.try_into().unwrap()))
-         }
-         (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_rem(j)?))),
-         (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_rem(j)?))),
-         (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_rem(j)?))),
+         (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i128::from(i.checked_rem(j)?))),
+         (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i128::from(i.checked_rem(j)?))),
+         (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i128::from(i.checked_rem(j)?))),
+         (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i128::from(i.checked_rem(j)?))),
+         (Literal::Uint64(i), Literal::Uint64(j)) => Some(Expression::IntLiteral(i128::from(i.checked_rem(j)?))),
+         (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i128::from(i.checked_rem(j)?))),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i128::from(i.checked_rem(j)?))),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i128::from(i.checked_rem(j)?))),
          (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i % j)),
          (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i % j))),
          _ => unreachable!(),
@@ -673,17 +660,14 @@ impl Literal {
 
    fn checked_div(self, other: Self) -> Option<Expression> {
       match (self, other) {
-         (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i.checked_div(j)?)),
-         (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_div(j)?))),
-         (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_div(j)?))),
-         (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_div(j)?))),
-         // TODO: @IntLiteral64
-         (Literal::Uint64(i), Literal::Uint64(j)) => {
-            Some(Expression::IntLiteral(i.checked_div(j)?.try_into().unwrap()))
-         }
-         (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_div(j)?))),
-         (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_div(j)?))),
-         (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_div(j)?))),
+         (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i128::from(i.checked_div(j)?))),
+         (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i128::from(i.checked_div(j)?))),
+         (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i128::from(i.checked_div(j)?))),
+         (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i128::from(i.checked_div(j)?))),
+         (Literal::Uint64(i), Literal::Uint64(j)) => Some(Expression::IntLiteral(i128::from(i.checked_div(j)?))),
+         (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i128::from(i.checked_div(j)?))),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i128::from(i.checked_div(j)?))),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i128::from(i.checked_div(j)?))),
          (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i / j)),
          (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i / j))),
          _ => unreachable!(),
@@ -692,10 +676,10 @@ impl Literal {
 
    fn negate(self) -> Expression {
       match self {
-         Literal::Int64(i) => Expression::IntLiteral(-i),
-         Literal::Int32(i) => Expression::IntLiteral(i64::from(-i)),
-         Literal::Int16(i) => Expression::IntLiteral(i64::from(-i)),
-         Literal::Int8(i) => Expression::IntLiteral(i64::from(-i)),
+         Literal::Int64(i) => Expression::IntLiteral(i128::from(-i)),
+         Literal::Int32(i) => Expression::IntLiteral(i128::from(-i)),
+         Literal::Int16(i) => Expression::IntLiteral(i128::from(-i)),
+         Literal::Int8(i) => Expression::IntLiteral(i128::from(-i)),
          Literal::Float64(i) => Expression::FloatLiteral(-i),
          Literal::Float32(i) => Expression::FloatLiteral(f64::from(-i)),
          _ => unreachable!(),
@@ -704,15 +688,14 @@ impl Literal {
 
    fn complement(self) -> Expression {
       match self {
-         Literal::Int64(i) => Expression::IntLiteral(!i),
-         Literal::Int32(i) => Expression::IntLiteral(i64::from(!i)),
-         Literal::Int16(i) => Expression::IntLiteral(i64::from(!i)),
-         Literal::Int8(i) => Expression::IntLiteral(i64::from(!i)),
-         // TODO: @IntLiteral64
-         Literal::Uint64(i) => Expression::IntLiteral((!i).try_into().unwrap()),
-         Literal::Uint32(i) => Expression::IntLiteral(i64::from(!i)),
-         Literal::Uint16(i) => Expression::IntLiteral(i64::from(!i)),
-         Literal::Uint8(i) => Expression::IntLiteral(i64::from(!i)),
+         Literal::Int64(i) => Expression::IntLiteral(i128::from(!i)),
+         Literal::Int32(i) => Expression::IntLiteral(i128::from(!i)),
+         Literal::Int16(i) => Expression::IntLiteral(i128::from(!i)),
+         Literal::Int8(i) => Expression::IntLiteral(i128::from(!i)),
+         Literal::Uint64(i) => Expression::IntLiteral(i128::from(!i)),
+         Literal::Uint32(i) => Expression::IntLiteral(i128::from(!i)),
+         Literal::Uint16(i) => Expression::IntLiteral(i128::from(!i)),
+         Literal::Uint8(i) => Expression::IntLiteral(i128::from(!i)),
          Literal::Bool(b) => Expression::BoolLiteral(!b),
          _ => unreachable!(),
       }
@@ -724,15 +707,14 @@ impl BitXor for Literal {
 
    fn bitxor(self, other: Self) -> Self::Output {
       match (self, other) {
-         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral(i ^ j),
-         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral(i64::from(i ^ j)),
-         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral(i64::from(i ^ j)),
-         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral(i64::from(i ^ j)),
-         // TODO: @IntLiteral64
-         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral((i ^ j).try_into().unwrap()),
-         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral(i64::from(i ^ j)),
-         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral(i64::from(i ^ j)),
-         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral(i64::from(i ^ j)),
+         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral(i128::from(i ^ j)),
+         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral(i128::from(i ^ j)),
+         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral(i128::from(i ^ j)),
+         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral(i128::from(i ^ j)),
+         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral(i128::from(i ^ j)),
+         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral(i128::from(i ^ j)),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral(i128::from(i ^ j)),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral(i128::from(i ^ j)),
          (Literal::Bool(i), Literal::Bool(j)) => Expression::BoolLiteral(i ^ j),
          _ => unreachable!(),
       }
@@ -744,15 +726,14 @@ impl BitOr for Literal {
 
    fn bitor(self, other: Self) -> Self::Output {
       match (self, other) {
-         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral(i | j),
-         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral(i64::from(i | j)),
-         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral(i64::from(i | j)),
-         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral(i64::from(i | j)),
-         // TODO: @IntLiteral64
-         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral((i | j).try_into().unwrap()),
-         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral(i64::from(i | j)),
-         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral(i64::from(i | j)),
-         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral(i64::from(i | j)),
+         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral(i128::from(i | j)),
+         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral(i128::from(i | j)),
+         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral(i128::from(i | j)),
+         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral(i128::from(i | j)),
+         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral(i128::from(i | j)),
+         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral(i128::from(i | j)),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral(i128::from(i | j)),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral(i128::from(i | j)),
          (Literal::Bool(i), Literal::Bool(j)) => Expression::BoolLiteral(i | j),
          _ => unreachable!(),
       }
@@ -764,15 +745,14 @@ impl BitAnd for Literal {
 
    fn bitand(self, other: Self) -> Self::Output {
       match (self, other) {
-         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral(i & j),
-         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral(i64::from(i & j)),
-         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral(i64::from(i & j)),
-         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral(i64::from(i & j)),
-         // TODO: @IntLiteral64
-         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral((i & j).try_into().unwrap()),
-         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral(i64::from(i & j)),
-         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral(i64::from(i & j)),
-         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral(i64::from(i & j)),
+         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral(i128::from(i & j)),
+         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral(i128::from(i & j)),
+         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral(i128::from(i & j)),
+         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral(i128::from(i & j)),
+         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral(i128::from(i & j)),
+         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral(i128::from(i & j)),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral(i128::from(i & j)),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral(i128::from(i & j)),
          (Literal::Bool(i), Literal::Bool(j)) => Expression::BoolLiteral(i & j),
          _ => unreachable!(),
       }
@@ -784,15 +764,14 @@ impl Shl for Literal {
 
    fn shl(self, rhs: Self) -> Self::Output {
       match (self, rhs) {
-         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral(i << j),
-         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral(i64::from(i << j)),
-         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral(i64::from(i << j)),
-         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral(i64::from(i << j)),
-         // TODO: @IntLiteral64
-         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral((i << j).try_into().unwrap()),
-         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral(i64::from(i << j)),
-         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral(i64::from(i << j)),
-         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral(i64::from(i << j)),
+         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral(i128::from(i << j)),
+         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral(i128::from(i << j)),
+         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral(i128::from(i << j)),
+         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral(i128::from(i << j)),
+         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral(i128::from(i << j)),
+         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral(i128::from(i << j)),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral(i128::from(i << j)),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral(i128::from(i << j)),
          _ => unreachable!(),
       }
    }
@@ -803,15 +782,14 @@ impl Shr for Literal {
 
    fn shr(self, rhs: Self) -> Self::Output {
       match (self, rhs) {
-         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral(i >> j),
-         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral(i64::from(i >> j)),
-         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral(i64::from(i >> j)),
-         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral(i64::from(i >> j)),
-         // TODO: @IntLiteral64
-         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral((i >> j).try_into().unwrap()),
-         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral(i64::from(i >> j)),
-         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral(i64::from(i >> j)),
-         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral(i64::from(i >> j)),
+         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral(i128::from(i >> j)),
+         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral(i128::from(i >> j)),
+         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral(i128::from(i >> j)),
+         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral(i128::from(i >> j)),
+         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral(i128::from(i >> j)),
+         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral(i128::from(i >> j)),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral(i128::from(i >> j)),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral(i128::from(i >> j)),
          _ => unreachable!(),
       }
    }
@@ -839,13 +817,12 @@ fn extract_literal(expr_node: &ExpressionNode) -> Option<Literal> {
    match expr_node.expression {
       Expression::IntLiteral(x) => {
          match expr_node.exp_type.as_ref().unwrap() {
-            ExpressionType::Value(I64_TYPE) => Some(Literal::Int64(x)),
+            ExpressionType::Value(I64_TYPE) => Some(Literal::Int64(x.try_into().unwrap())),
             ExpressionType::Value(I32_TYPE) => Some(Literal::Int32(x.try_into().unwrap())),
             ExpressionType::Value(I16_TYPE) => Some(Literal::Int16(x.try_into().unwrap())),
             ExpressionType::Value(I8_TYPE) => Some(Literal::Int8(x.try_into().unwrap())),
             // @FixedPointerWidth
             ExpressionType::Value(ISIZE_TYPE) => Some(Literal::Int32(x.try_into().unwrap())),
-            // TODO: @IntLiteral64
             ExpressionType::Value(U64_TYPE) => Some(Literal::Uint64(x.try_into().unwrap())),
             ExpressionType::Value(U32_TYPE) => Some(Literal::Uint32(x.try_into().unwrap())),
             ExpressionType::Value(U16_TYPE) => Some(Literal::Uint16(x.try_into().unwrap())),

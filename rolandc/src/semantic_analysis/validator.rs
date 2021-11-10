@@ -2223,14 +2223,14 @@ fn do_type<W: Write>(
          } else if elems.is_empty() {
             expr_node.exp_type = Some(ExpressionType::Value(ValueType::Array(
                Box::new(ExpressionType::Value(ValueType::Unit)),
-               elems.len() as i64,
+               elems.len() as i128,
             )));
          } else {
             let a_type = elems[0].exp_type.clone().unwrap();
 
             expr_node.exp_type = Some(ExpressionType::Value(ValueType::Array(
                Box::new(a_type),
-               elems.len() as i64,
+               elems.len() as i128,
             )));
          }
       }
