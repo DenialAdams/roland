@@ -3,7 +3,10 @@ use std::io::Write;
 use super::ValidationContext;
 use crate::interner::Interner;
 use crate::parse::{Expression, ExpressionNode, UnOp};
-use crate::type_data::{ExpressionType, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, IntType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE, USIZE_TYPE, ValueType};
+use crate::type_data::{
+   ExpressionType, IntType, ValueType, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
+   U8_TYPE, USIZE_TYPE,
+};
 
 // Returns false if the types being inferred are incompatible
 // Inference may still not be possible for other reasons
@@ -96,7 +99,12 @@ fn set_inferred_type<W: Write>(
       Expression::UnaryOperator(unop, e) => {
          set_inferred_type(e_type, e, validation_context, err_stream, interner);
 
-         if *unop == UnOp::Negate && matches!(e.exp_type, Some(ExpressionType::Value(ValueType::Int(IntType { signed: false, ..})))) {
+         if *unop == UnOp::Negate
+            && matches!(
+               e.exp_type,
+               Some(ExpressionType::Value(ValueType::Int(IntType { signed: false, .. })))
+            )
+         {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
