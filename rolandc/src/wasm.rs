@@ -991,7 +991,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          }
          // Set var
          {
-            get_stack_address_of_local(*var, generation_context);
+            get_stack_address_of_local(var.identifier, generation_context);
             do_emit_and_load_lval(start_expr, generation_context, interner);
             store(start_expr.exp_type.as_ref().unwrap(), generation_context, interner);
          }
@@ -1001,7 +1001,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          generation_context.loop_counter += 1;
          // Check and break if needed
          {
-            get_stack_address_of_local(*var, generation_context);
+            get_stack_address_of_local(var.identifier, generation_context);
             load(start_expr.exp_type.as_ref().unwrap(), generation_context);
             // TODO!! we don't want to emit this every iteration, need to hoist
             do_emit_and_load_lval(end_expr, generation_context, interner);
@@ -1031,8 +1031,8 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          }
          // Increment
          {
-            get_stack_address_of_local(*var, generation_context);
-            get_stack_address_of_local(*var, generation_context);
+            get_stack_address_of_local(var.identifier, generation_context);
+            get_stack_address_of_local(var.identifier, generation_context);
             load(start_expr.exp_type.as_ref().unwrap(), generation_context);
             generation_context.out.emit_spaces();
             writeln!(generation_context.out.out, "{}.const 1", wasm_type).unwrap();

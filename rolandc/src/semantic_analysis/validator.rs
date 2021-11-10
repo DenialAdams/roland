@@ -1097,9 +1097,9 @@ fn type_statement<W: Write>(
          validation_context.block_depth += 1;
          declare_variable(
             err_stream,
-            *var,
+            var.identifier,
             result_type,
-            statement.statement_begin_location,
+            var.begin_location,
             validation_context,
             cur_procedure_locals,
             interner,

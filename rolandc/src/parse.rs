@@ -196,13 +196,19 @@ pub enum Statement {
    Assignment(ExpressionNode, ExpressionNode),
    Block(BlockNode),
    Loop(BlockNode),
-   For(StrId, ExpressionNode, ExpressionNode, BlockNode, bool),
+   For(IdentifierNode, ExpressionNode, ExpressionNode, BlockNode, bool),
    Continue,
    Break,
    Expression(ExpressionNode),
    IfElse(ExpressionNode, BlockNode, Box<StatementNode>),
    Return(ExpressionNode),
    VariableDeclaration(StrId, ExpressionNode, Option<ExpressionType>),
+}
+
+#[derive(Clone)]
+pub struct IdentifierNode {
+   pub identifier: StrId,
+   pub begin_location: SourceInfo,
 }
 
 #[derive(Clone)]
@@ -474,7 +480,10 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
             statements.push(StatementNode {
                // TODO: instead of extracting here, we could preserve the source information and give better errors in the validator
                statement: Statement::For(
-                  extract_identifier(variable_name.token),
+                  IdentifierNode {
+                     begin_location: variable_name.source_info,
+                     identifier: extract_identifier(variable_name.token),
+                  },
                   start_en,
                   end_en,
                   new_block,

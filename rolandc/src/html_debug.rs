@@ -40,7 +40,7 @@ fn print_statement<W: Write>(out: &mut W, statement_node: &StatementNode, intern
       }
       Statement::For(var, start_expr, end_expr, bn, _) => {
          writeln!(out, "<li><span>For</span>").unwrap();
-         writeln!(out, "<li><span>{}</span>", interner.lookup(*var)).unwrap();
+         writeln!(out, "<li><span>{}</span>", interner.lookup(var.identifier)).unwrap();
          print_expression(out, start_expr, interner);
          print_expression(out, end_expr, interner);
          for statement in bn.statements.iter() {
