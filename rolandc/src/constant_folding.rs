@@ -152,7 +152,7 @@ pub fn fold_expr<W: Write>(
          {
             // First we handle the non-commutative cases
             match (rhs, *op) {
-               (Some(Literal::Int64(0)), BinOp::Divide) => {
+               (Some(x), BinOp::Divide) if x.is_int_zero() => {
                   folding_context.error_count += 1;
                   writeln!(err_stream, "During constant folding, got a divide by zero",).unwrap();
                   writeln!(
@@ -175,7 +175,7 @@ pub fn fold_expr<W: Write>(
                   .unwrap();
                   return None;
                }
-               (Some(Literal::Int64(1)), BinOp::Divide) => {
+               (Some(x), BinOp::Divide) if x.is_int_one() => {
                   return Some(ExpressionNode {
                      expression: exprs.0.expression.clone(),
                      exp_type: expr_to_fold.exp_type.take(),
@@ -192,28 +192,21 @@ pub fn fold_expr<W: Write>(
             };
 
             match (one_literal, *op) {
-               // TODO: this i64::MAX (in several places) is very gross. We should store literal based on actual type? Or something?
-               // constant does not affect LHS
-               (Literal::Int64(1), BinOp::Multiply)
-               | (Literal::Int64(0), BinOp::Add)
-               | (Literal::Bool(false), BinOp::BitwiseOr)
-               | (Literal::Bool(true), BinOp::BitwiseAnd)
-               | (Literal::Int64(i64::MAX), BinOp::BitwiseAnd)
-               | (Literal::Int64(0), BinOp::BitwiseOr) => {
+               (x, b_op) if is_commutative_noop(x, b_op) => {
                   return Some(ExpressionNode {
                      expression: non_literal_expr.clone(),
                      exp_type: expr_to_fold.exp_type.take(),
                      expression_begin_location: expr_to_fold.expression_begin_location,
                   });
                }
-               (Literal::Int64(i64::MAX), BinOp::BitwiseOr) => {
+               (x, BinOp::BitwiseOr) if x.is_int_max() => {
                   return Some(ExpressionNode {
-                     expression: Expression::IntLiteral(i64::MAX),
+                     expression: Expression::IntLiteral(x.int_max_value()),
                      exp_type: expr_to_fold.exp_type.take(),
                      expression_begin_location: expr_to_fold.expression_begin_location,
                   });
                }
-               (Literal::Int64(0), BinOp::BitwiseAnd) => {
+               (x, BinOp::BitwiseAnd) if x.is_int_zero() => {
                   return Some(ExpressionNode {
                      expression: Expression::IntLiteral(0),
                      exp_type: expr_to_fold.exp_type.take(),
@@ -234,7 +227,7 @@ pub fn fold_expr<W: Write>(
                      expression_begin_location: expr_to_fold.expression_begin_location,
                   });
                }
-               (Literal::Int64(0), BinOp::Multiply) => {
+               (x, BinOp::Multiply) if x.is_int_zero() => {
                   return Some(ExpressionNode {
                      expression: Expression::IntLiteral(0),
                      exp_type: expr_to_fold.exp_type.take(),
@@ -576,6 +569,32 @@ enum Literal {
 }
 
 impl Literal {
+   fn int_max_value(self) -> i64 {
+      match self {
+        Literal::Int8(_) => i64::from(i8::MAX),
+        Literal::Int16(_) => i64::from(i16::MAX),
+        Literal::Int32(_) => i64::from(i32::MAX),
+        Literal::Int64(_) => i64::MAX,
+        Literal::Uint8(_) => i64::from(u8::MAX),
+        Literal::Uint16(_) => i64::from(u16::MAX),
+        Literal::Uint32(_) => i64::from(u32::MAX),
+        // TODO: @IntLiteral64
+        Literal::Uint64(_) => todo!(),
+        _ => unreachable!(),
+      }
+   }
+
+   fn is_int_max(self) -> bool {
+      matches!(self, Literal::Int8(i8::MAX) | Literal::Int16(i16::MAX) | Literal::Int32(i32::MAX) | Literal::Int64(i64::MAX) | Literal::Uint8(u8::MAX) | Literal::Uint16(u16::MAX) | Literal::Uint32(u32::MAX) | Literal::Uint64(u64::MAX))
+   }
+   fn is_int_zero(self) -> bool {
+      matches!(self, Literal::Int8(0) | Literal::Int16(0) | Literal::Int32(0) | Literal::Int64(0) | Literal::Uint8(0) | Literal::Uint16(0) | Literal::Uint32(0) | Literal::Uint64(0))
+   }
+
+   fn is_int_one(self) -> bool {
+      matches!(self, Literal::Int8(1) | Literal::Int16(1) | Literal::Int32(1) | Literal::Int64(1) | Literal::Uint8(1) | Literal::Uint16(1) | Literal::Uint32(1) | Literal::Uint64(1))
+   }
+
    fn checked_add(self, other: Self) -> Option<Expression> {
       match (self, other) {
          (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i.checked_add(j)?)),
@@ -855,4 +874,13 @@ pub fn try_fold_and_replace_expr<W: Write>(
    if let Some(new_node) = fold_expr(node, err_stream, folding_context) {
       *node = new_node;
    }
+}
+
+fn is_commutative_noop(literal: Literal, op: BinOp) -> bool {
+   (literal.is_int_one() & (op == BinOp::Multiply)) ||
+   (literal.is_int_zero() & (op == BinOp::Add)) ||
+   (literal.is_int_zero() & (op == BinOp::BitwiseOr)) ||
+   ((literal == Literal::Bool(false)) & (op == BinOp::BitwiseOr)) ||
+   ((literal == Literal::Bool(true)) & (op == BinOp::BitwiseAnd)) ||
+   (literal.is_int_max() & (op == BinOp::BitwiseAnd))
 }
