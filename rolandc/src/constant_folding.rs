@@ -1,9 +1,12 @@
 use crate::interner::StrId;
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, UnOp};
-use crate::type_data::{ExpressionType, ValueType};
+use crate::type_data::{
+   ExpressionType, ValueType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE,
+   U32_TYPE, U64_TYPE, U8_TYPE, USIZE_TYPE,
+};
 use std::collections::HashMap;
 use std::io::Write;
-use std::ops::{BitAnd, BitOr, BitXor, Shl};
+use std::ops::{BitAnd, BitOr, BitXor, Shl, Shr};
 
 pub struct FoldingContext {
    pub error_count: u64,
@@ -76,8 +79,11 @@ pub fn fold_expr<W: Write>(
             _ => unreachable!(),
          };
 
-         if let Some(Literal::Int(v)) = extract_literal(&index.expression) {
-            if v < 0 || v >= len || v >= i64::from(std::u32::MAX) {
+         // TODO @FixedPointerWidth
+         if let Some(Literal::Uint32(v)) = extract_literal(&index) {
+            // TODO: @IntLiteral64 (len should be u32/usize, not i64, and we should be validating it before now)
+            // (maybe we already are?? but I don't think so)
+            if i64::from(v) >= len {
                folding_context.error_count += 1;
                writeln!(
                   err_stream,
@@ -135,8 +141,8 @@ pub fn fold_expr<W: Write>(
 
          debug_assert!(exprs.0.exp_type == exprs.1.exp_type);
 
-         let lhs = extract_literal(&exprs.0.expression);
-         let rhs = extract_literal(&exprs.1.expression);
+         let lhs = extract_literal(&exprs.0);
+         let rhs = extract_literal(&exprs.1);
 
          if lhs.is_none() && rhs.is_none() {
             return None;
@@ -146,7 +152,7 @@ pub fn fold_expr<W: Write>(
          {
             // First we handle the non-commutative cases
             match (rhs, *op) {
-               (Some(Literal::Int(0)), BinOp::Divide) => {
+               (Some(Literal::Int64(0)), BinOp::Divide) => {
                   folding_context.error_count += 1;
                   writeln!(err_stream, "During constant folding, got a divide by zero",).unwrap();
                   writeln!(
@@ -169,7 +175,7 @@ pub fn fold_expr<W: Write>(
                   .unwrap();
                   return None;
                }
-               (Some(Literal::Int(1)), BinOp::Divide) => {
+               (Some(Literal::Int64(1)), BinOp::Divide) => {
                   return Some(ExpressionNode {
                      expression: exprs.0.expression.clone(),
                      exp_type: expr_to_fold.exp_type.take(),
@@ -188,26 +194,26 @@ pub fn fold_expr<W: Write>(
             match (one_literal, *op) {
                // TODO: this i64::MAX (in several places) is very gross. We should store literal based on actual type? Or something?
                // constant does not affect LHS
-               (Literal::Int(1), BinOp::Multiply)
-               | (Literal::Int(0), BinOp::Add)
+               (Literal::Int64(1), BinOp::Multiply)
+               | (Literal::Int64(0), BinOp::Add)
                | (Literal::Bool(false), BinOp::BitwiseOr)
                | (Literal::Bool(true), BinOp::BitwiseAnd)
-               | (Literal::Int(i64::MAX), BinOp::BitwiseAnd)
-               | (Literal::Int(0), BinOp::BitwiseOr) => {
+               | (Literal::Int64(i64::MAX), BinOp::BitwiseAnd)
+               | (Literal::Int64(0), BinOp::BitwiseOr) => {
                   return Some(ExpressionNode {
                      expression: non_literal_expr.clone(),
                      exp_type: expr_to_fold.exp_type.take(),
                      expression_begin_location: expr_to_fold.expression_begin_location,
                   });
                }
-               (Literal::Int(i64::MAX), BinOp::BitwiseOr) => {
+               (Literal::Int64(i64::MAX), BinOp::BitwiseOr) => {
                   return Some(ExpressionNode {
                      expression: Expression::IntLiteral(i64::MAX),
                      exp_type: expr_to_fold.exp_type.take(),
                      expression_begin_location: expr_to_fold.expression_begin_location,
                   });
                }
-               (Literal::Int(0), BinOp::BitwiseAnd) => {
+               (Literal::Int64(0), BinOp::BitwiseAnd) => {
                   return Some(ExpressionNode {
                      expression: Expression::IntLiteral(0),
                      exp_type: expr_to_fold.exp_type.take(),
@@ -228,7 +234,7 @@ pub fn fold_expr<W: Write>(
                      expression_begin_location: expr_to_fold.expression_begin_location,
                   });
                }
-               (Literal::Int(0), BinOp::Multiply) => {
+               (Literal::Int64(0), BinOp::Multiply) => {
                   return Some(ExpressionNode {
                      expression: Expression::IntLiteral(0),
                      exp_type: expr_to_fold.exp_type.take(),
@@ -437,8 +443,11 @@ pub fn fold_expr<W: Write>(
                exp_type: expr_to_fold.exp_type.take(),
                expression_begin_location: expr_to_fold.expression_begin_location,
             }),
-            // runtime behavior may differ based on signed/unsigned - best not to mess this up (for now) TODO
-            BinOp::BitwiseRightShift => None,
+            BinOp::BitwiseRightShift => Some(ExpressionNode {
+               expression: lhs >> rhs,
+               exp_type: expr_to_fold.exp_type.take(),
+               expression_begin_location: expr_to_fold.expression_begin_location,
+            }),
             // bool
             BinOp::LogicalAnd => Some(ExpressionNode {
                expression: lhs & rhs,
@@ -454,41 +463,25 @@ pub fn fold_expr<W: Write>(
       }
       Expression::UnaryOperator(op, expr) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
-         match op {
-            // float and int
-            UnOp::Negate => match extract_literal(&expr.expression) {
-               Some(Literal::Int(v)) => Some(ExpressionNode {
-                  expression: Expression::IntLiteral(-v),
+         if let Some(literal) = extract_literal(&expr) {
+            match op {
+               // float and signed int
+               UnOp::Negate => Some(ExpressionNode {
+                  expression: literal.negate(),
                   exp_type: expr_to_fold.exp_type.take(),
                   expression_begin_location: expr_to_fold.expression_begin_location,
                }),
-               Some(Literal::Bool(_)) => unreachable!(),
-               Some(Literal::Enum(_, _)) => unreachable!(),
-               Some(Literal::Float(v)) => Some(ExpressionNode {
-                  expression: Expression::FloatLiteral(-v),
+               // int and bool
+               UnOp::Complement => Some(ExpressionNode {
+                  expression: literal.complement(),
                   exp_type: expr_to_fold.exp_type.take(),
                   expression_begin_location: expr_to_fold.expression_begin_location,
                }),
-               None => None,
-            },
-            // int and bool
-            UnOp::Complement => match extract_literal(&expr.expression) {
-               Some(Literal::Int(v)) => Some(ExpressionNode {
-                  expression: Expression::IntLiteral(!v),
-                  exp_type: expr_to_fold.exp_type.take(),
-                  expression_begin_location: expr_to_fold.expression_begin_location,
-               }),
-               Some(Literal::Bool(v)) => Some(ExpressionNode {
-                  expression: Expression::BoolLiteral(!v),
-                  exp_type: expr_to_fold.exp_type.take(),
-                  expression_begin_location: expr_to_fold.expression_begin_location,
-               }),
-               Some(Literal::Float(_)) => unreachable!(),
-               Some(Literal::Enum(_, _)) => unreachable!(),
-               None => None,
-            },
-            // nothing to do
-            UnOp::AddressOf | UnOp::Dereference => None,
+               // nothing to do
+               UnOp::AddressOf | UnOp::Dereference => None,
+            }
+         } else {
+            None
          }
       }
       Expression::StructLiteral(_, field_exprs) => {
@@ -568,8 +561,16 @@ pub fn is_const(expr: &Expression) -> bool {
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 enum Literal {
-   Int(i64),
-   Float(f64),
+   Int8(i8),
+   Int16(i16),
+   Int32(i32),
+   Int64(i64),
+   Uint8(u8),
+   Uint16(u16),
+   Uint32(u32),
+   Uint64(u64),
+   Float64(f64),
+   Float32(f32),
    Bool(bool),
    Enum(StrId, StrId),
 }
@@ -577,40 +578,123 @@ enum Literal {
 impl Literal {
    fn checked_add(self, other: Self) -> Option<Expression> {
       match (self, other) {
-         (Literal::Int(i), Literal::Int(j)) => Some(Expression::IntLiteral(i.checked_add(j)?)),
-         (Literal::Float(i), Literal::Float(j)) => Some(Expression::FloatLiteral(i + j)),
+         (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i.checked_add(j)?)),
+         (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_add(j)?))),
+         (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_add(j)?))),
+         (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_add(j)?))),
+         // TODO: @IntLiteral64
+         (Literal::Uint64(i), Literal::Uint64(j)) => {
+            Some(Expression::IntLiteral(i.checked_add(j)?.try_into().unwrap()))
+         }
+         (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_add(j)?))),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_add(j)?))),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_add(j)?))),
+         (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i + j)),
+         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i - j))),
          _ => unreachable!(),
       }
    }
 
    fn checked_sub(self, other: Self) -> Option<Expression> {
       match (self, other) {
-         (Literal::Int(i), Literal::Int(j)) => Some(Expression::IntLiteral(i.checked_sub(j)?)),
-         (Literal::Float(i), Literal::Float(j)) => Some(Expression::FloatLiteral(i - j)),
+         (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i.checked_sub(j)?)),
+         (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_sub(j)?))),
+         (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_sub(j)?))),
+         (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_sub(j)?))),
+         // TODO: @IntLiteral64
+         (Literal::Uint64(i), Literal::Uint64(j)) => {
+            Some(Expression::IntLiteral(i.checked_sub(j)?.try_into().unwrap()))
+         }
+         (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_sub(j)?))),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_sub(j)?))),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_sub(j)?))),
+         (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i - j)),
+         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i - j))),
          _ => unreachable!(),
       }
    }
 
    fn checked_mul(self, other: Self) -> Option<Expression> {
       match (self, other) {
-         (Literal::Int(i), Literal::Int(j)) => Some(Expression::IntLiteral(i.checked_mul(j)?)),
-         (Literal::Float(i), Literal::Float(j)) => Some(Expression::FloatLiteral(i * j)),
+         (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i.checked_mul(j)?)),
+         (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_mul(j)?))),
+         (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_mul(j)?))),
+         (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_mul(j)?))),
+         // TODO: @IntLiteral64
+         (Literal::Uint64(i), Literal::Uint64(j)) => {
+            Some(Expression::IntLiteral(i.checked_mul(j)?.try_into().unwrap()))
+         }
+         (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_mul(j)?))),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_mul(j)?))),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_mul(j)?))),
+         (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i * j)),
+         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i * j))),
          _ => unreachable!(),
       }
    }
 
    fn checked_rem(self, other: Self) -> Option<Expression> {
       match (self, other) {
-         (Literal::Int(i), Literal::Int(j)) => Some(Expression::IntLiteral(i.checked_rem(j)?)),
-         (Literal::Float(i), Literal::Float(j)) => Some(Expression::FloatLiteral(i % j)),
+         (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i.checked_rem(j)?)),
+         (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_rem(j)?))),
+         (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_rem(j)?))),
+         (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_rem(j)?))),
+         // TODO: @IntLiteral64
+         (Literal::Uint64(i), Literal::Uint64(j)) => {
+            Some(Expression::IntLiteral(i.checked_rem(j)?.try_into().unwrap()))
+         }
+         (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_rem(j)?))),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_rem(j)?))),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_rem(j)?))),
+         (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i % j)),
+         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i % j))),
          _ => unreachable!(),
       }
    }
 
    fn checked_div(self, other: Self) -> Option<Expression> {
       match (self, other) {
-         (Literal::Int(i), Literal::Int(j)) => Some(Expression::IntLiteral(i.checked_div(j)?)),
-         (Literal::Float(i), Literal::Float(j)) => Some(Expression::FloatLiteral(i / j)),
+         (Literal::Int64(i), Literal::Int64(j)) => Some(Expression::IntLiteral(i.checked_div(j)?)),
+         (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_div(j)?))),
+         (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_div(j)?))),
+         (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_div(j)?))),
+         // TODO: @IntLiteral64
+         (Literal::Uint64(i), Literal::Uint64(j)) => {
+            Some(Expression::IntLiteral(i.checked_div(j)?.try_into().unwrap()))
+         }
+         (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_div(j)?))),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_div(j)?))),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_div(j)?))),
+         (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i / j)),
+         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i / j))),
+         _ => unreachable!(),
+      }
+   }
+
+   fn negate(self) -> Expression {
+      match self {
+         Literal::Int64(i) => Expression::IntLiteral(-i),
+         Literal::Int32(i) => Expression::IntLiteral(i64::from(-i)),
+         Literal::Int16(i) => Expression::IntLiteral(i64::from(-i)),
+         Literal::Int8(i) => Expression::IntLiteral(i64::from(-i)),
+         Literal::Float64(i) => Expression::FloatLiteral(-i),
+         Literal::Float32(i) => Expression::FloatLiteral(f64::from(-i)),
+         _ => unreachable!(),
+      }
+   }
+
+   fn complement(self) -> Expression {
+      match self {
+         Literal::Int64(i) => Expression::IntLiteral(!i),
+         Literal::Int32(i) => Expression::IntLiteral(i64::from(!i)),
+         Literal::Int16(i) => Expression::IntLiteral(i64::from(!i)),
+         Literal::Int8(i) => Expression::IntLiteral(i64::from(!i)),
+         // TODO: @IntLiteral64
+         Literal::Uint64(i) => Expression::IntLiteral((!i).try_into().unwrap()),
+         Literal::Uint32(i) => Expression::IntLiteral(i64::from(!i)),
+         Literal::Uint16(i) => Expression::IntLiteral(i64::from(!i)),
+         Literal::Uint8(i) => Expression::IntLiteral(i64::from(!i)),
+         Literal::Bool(b) => Expression::BoolLiteral(!b),
          _ => unreachable!(),
       }
    }
@@ -621,7 +705,15 @@ impl BitXor for Literal {
 
    fn bitxor(self, other: Self) -> Self::Output {
       match (self, other) {
-         (Literal::Int(i), Literal::Int(j)) => Expression::IntLiteral(i ^ j),
+         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral(i ^ j),
+         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral(i64::from(i ^ j)),
+         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral(i64::from(i ^ j)),
+         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral(i64::from(i ^ j)),
+         // TODO: @IntLiteral64
+         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral((i ^ j).try_into().unwrap()),
+         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral(i64::from(i ^ j)),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral(i64::from(i ^ j)),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral(i64::from(i ^ j)),
          (Literal::Bool(i), Literal::Bool(j)) => Expression::BoolLiteral(i ^ j),
          _ => unreachable!(),
       }
@@ -633,7 +725,15 @@ impl BitOr for Literal {
 
    fn bitor(self, other: Self) -> Self::Output {
       match (self, other) {
-         (Literal::Int(i), Literal::Int(j)) => Expression::IntLiteral(i | j),
+         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral(i | j),
+         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral(i64::from(i | j)),
+         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral(i64::from(i | j)),
+         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral(i64::from(i | j)),
+         // TODO: @IntLiteral64
+         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral((i | j).try_into().unwrap()),
+         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral(i64::from(i | j)),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral(i64::from(i | j)),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral(i64::from(i | j)),
          (Literal::Bool(i), Literal::Bool(j)) => Expression::BoolLiteral(i | j),
          _ => unreachable!(),
       }
@@ -645,7 +745,15 @@ impl BitAnd for Literal {
 
    fn bitand(self, other: Self) -> Self::Output {
       match (self, other) {
-         (Literal::Int(i), Literal::Int(j)) => Expression::IntLiteral(i & j),
+         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral(i & j),
+         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral(i64::from(i & j)),
+         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral(i64::from(i & j)),
+         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral(i64::from(i & j)),
+         // TODO: @IntLiteral64
+         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral((i & j).try_into().unwrap()),
+         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral(i64::from(i & j)),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral(i64::from(i & j)),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral(i64::from(i & j)),
          (Literal::Bool(i), Literal::Bool(j)) => Expression::BoolLiteral(i & j),
          _ => unreachable!(),
       }
@@ -657,7 +765,34 @@ impl Shl for Literal {
 
    fn shl(self, rhs: Self) -> Self::Output {
       match (self, rhs) {
-         (Literal::Int(i), Literal::Int(j)) => Expression::IntLiteral(i << j),
+         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral(i << j),
+         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral(i64::from(i << j)),
+         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral(i64::from(i << j)),
+         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral(i64::from(i << j)),
+         // TODO: @IntLiteral64
+         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral((i << j).try_into().unwrap()),
+         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral(i64::from(i << j)),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral(i64::from(i << j)),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral(i64::from(i << j)),
+         _ => unreachable!(),
+      }
+   }
+}
+
+impl Shr for Literal {
+   type Output = Expression;
+
+   fn shr(self, rhs: Self) -> Self::Output {
+      match (self, rhs) {
+         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral(i >> j),
+         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral(i64::from(i >> j)),
+         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral(i64::from(i >> j)),
+         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral(i64::from(i >> j)),
+         // TODO: @IntLiteral64
+         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral((i >> j).try_into().unwrap()),
+         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral(i64::from(i >> j)),
+         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral(i64::from(i >> j)),
+         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral(i64::from(i >> j)),
          _ => unreachable!(),
       }
    }
@@ -666,19 +801,48 @@ impl Shl for Literal {
 impl PartialOrd for Literal {
    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
       match (self, other) {
-         (Literal::Int(i), Literal::Int(j)) => i.partial_cmp(j),
-         (Literal::Float(i), Literal::Float(j)) => i.partial_cmp(j),
+         (Literal::Int64(i), Literal::Int64(j)) => i.partial_cmp(j),
+         (Literal::Int32(i), Literal::Int32(j)) => i.partial_cmp(j),
+         (Literal::Int16(i), Literal::Int16(j)) => i.partial_cmp(j),
+         (Literal::Int8(i), Literal::Int8(j)) => i.partial_cmp(j),
+         (Literal::Uint64(i), Literal::Uint64(j)) => i.partial_cmp(j),
+         (Literal::Uint32(i), Literal::Uint32(j)) => i.partial_cmp(j),
+         (Literal::Uint16(i), Literal::Uint16(j)) => i.partial_cmp(j),
+         (Literal::Uint8(i), Literal::Uint8(j)) => i.partial_cmp(j),
+         (Literal::Float64(i), Literal::Float64(j)) => i.partial_cmp(j),
+         (Literal::Float32(i), Literal::Float32(j)) => i.partial_cmp(j),
          _ => unreachable!(),
       }
    }
 }
 
-fn extract_literal(expr: &Expression) -> Option<Literal> {
-   match expr {
-      Expression::IntLiteral(x) => Some(Literal::Int(*x)),
-      Expression::FloatLiteral(x) => Some(Literal::Float(*x)),
-      Expression::BoolLiteral(x) => Some(Literal::Bool(*x)),
-      Expression::EnumLiteral(x, y) => Some(Literal::Enum(*x, *y)),
+fn extract_literal(expr_node: &ExpressionNode) -> Option<Literal> {
+   match expr_node.expression {
+      Expression::IntLiteral(x) => {
+         match expr_node.exp_type.as_ref().unwrap() {
+            ExpressionType::Value(I64_TYPE) => Some(Literal::Int64(x)),
+            ExpressionType::Value(I32_TYPE) => Some(Literal::Int32(x.try_into().unwrap())),
+            ExpressionType::Value(I16_TYPE) => Some(Literal::Int16(x.try_into().unwrap())),
+            ExpressionType::Value(I8_TYPE) => Some(Literal::Int8(x.try_into().unwrap())),
+            // @FixedPointerWidth
+            ExpressionType::Value(ISIZE_TYPE) => Some(Literal::Int32(x.try_into().unwrap())),
+            // TODO: @IntLiteral64
+            ExpressionType::Value(U64_TYPE) => Some(Literal::Uint64(x.try_into().unwrap())),
+            ExpressionType::Value(U32_TYPE) => Some(Literal::Uint32(x.try_into().unwrap())),
+            ExpressionType::Value(U16_TYPE) => Some(Literal::Uint16(x.try_into().unwrap())),
+            ExpressionType::Value(U8_TYPE) => Some(Literal::Uint8(x.try_into().unwrap())),
+            // @FixedPointerWidth
+            ExpressionType::Value(USIZE_TYPE) => Some(Literal::Uint32(x.try_into().unwrap())),
+            _ => unreachable!(),
+         }
+      }
+      Expression::FloatLiteral(x) => match expr_node.exp_type.as_ref().unwrap() {
+         ExpressionType::Value(F64_TYPE) => Some(Literal::Float64(x)),
+         ExpressionType::Value(F32_TYPE) => Some(Literal::Float32(x as f32)),
+         _ => unreachable!(),
+      },
+      Expression::BoolLiteral(x) => Some(Literal::Bool(x)),
+      Expression::EnumLiteral(x, y) => Some(Literal::Enum(x, y)),
       _ => None,
    }
 }

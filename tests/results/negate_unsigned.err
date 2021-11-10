@@ -1,0 +1,5 @@
+Expected type [AnySignedInt, AnyFloat] for expression Negate; instead got u64
+↳ line 4, column 12
+Unsigned integers (i.e. u64) can't be negated. Hint: Should this be a signed integer?
+↳ line 6, column 20
+There were 2 semantic errors, bailing

@@ -1,5 +1,7 @@
-use crate::{interner::StrId, parse::{BlockNode, Expression, ExpressionNode, Program, Statement}};
-use std::{collections::HashMap, io::Write};
+use crate::interner::StrId;
+use crate::parse::{BlockNode, Expression, ExpressionNode, Program, Statement};
+use std::collections::HashMap;
+use std::io::Write;
 
 pub fn lower_consts<W: Write>(program: &mut Program, err_stream: &mut W) {
    let mut const_replacements: HashMap<StrId, ExpressionNode> = HashMap::new();
@@ -13,13 +15,21 @@ pub fn lower_consts<W: Write>(program: &mut Program, err_stream: &mut W) {
    }
 }
 
-fn lower_block<W: Write>(block: &mut BlockNode, err_stream: &mut W, const_replacements: &HashMap<StrId, ExpressionNode>) {
+fn lower_block<W: Write>(
+   block: &mut BlockNode,
+   err_stream: &mut W,
+   const_replacements: &HashMap<StrId, ExpressionNode>,
+) {
    for statement in block.statements.iter_mut() {
       lower_statement(&mut statement.statement, err_stream, const_replacements);
    }
 }
 
-fn lower_statement<W: Write>(statement: &mut Statement, err_stream: &mut W, const_replacements: &HashMap<StrId, ExpressionNode>) {
+fn lower_statement<W: Write>(
+   statement: &mut Statement,
+   err_stream: &mut W,
+   const_replacements: &HashMap<StrId, ExpressionNode>,
+) {
    match statement {
       Statement::Assignment(lhs_expr, rhs_expr) => {
          try_lower_and_replace_expr(lhs_expr, err_stream, const_replacements);
@@ -67,9 +77,7 @@ fn lower_expr<W: Write>(
 
          None
       }
-      Expression::Variable(x) => {
-         const_replacements.get(x).cloned()
-      },
+      Expression::Variable(x) => const_replacements.get(x).cloned(),
       Expression::ProcedureCall(_name, args) => {
          for arg in args.iter_mut() {
             try_lower_and_replace_expr(&mut arg.expr, err_stream, const_replacements);

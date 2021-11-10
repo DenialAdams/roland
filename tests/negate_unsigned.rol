@@ -1,0 +1,7 @@
+proc main() {
+   let x: u64 = 10;
+   // This exercises simple type matching validation
+   let z = -x;
+   // This excercises validation in type inference
+   let other: u64 = -10;
+}

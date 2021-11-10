@@ -2,11 +2,8 @@ use std::io::Write;
 
 use super::ValidationContext;
 use crate::interner::Interner;
-use crate::parse::{Expression, ExpressionNode};
-use crate::type_data::{
-   ExpressionType, ValueType, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE,
-   USIZE_TYPE,
-};
+use crate::parse::{Expression, ExpressionNode, UnOp};
+use crate::type_data::{ExpressionType, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, IntType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE, USIZE_TYPE, ValueType};
 
 // Returns false if the types being inferred are incompatible
 // Inference may still not be possible for other reasons
@@ -96,8 +93,25 @@ fn set_inferred_type<W: Write>(
          set_inferred_type(e_type, &mut e.1, validation_context, err_stream, interner);
          expr_node.exp_type = Some(e_type.clone());
       }
-      Expression::UnaryOperator(_, e) => {
+      Expression::UnaryOperator(unop, e) => {
          set_inferred_type(e_type, e, validation_context, err_stream, interner);
+
+         if *unop == UnOp::Negate && matches!(e.exp_type, Some(ExpressionType::Value(ValueType::Int(IntType { signed: false, ..})))) {
+            validation_context.error_count += 1;
+            writeln!(
+               err_stream,
+               "Unsigned integers (i.e. {}) can't be negated. Hint: Should this be a signed integer?",
+               e_type.as_roland_type_info(interner),
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ line {}, column {}",
+               expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+            )
+            .unwrap();
+         }
+
          expr_node.exp_type = Some(e_type.clone());
       }
       Expression::UnitLiteral => unreachable!(),

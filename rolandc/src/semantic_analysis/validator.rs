@@ -5,7 +5,9 @@ use crate::interner::{Interner, StrId};
 use crate::lex::SourceInfo;
 use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
 use crate::semantic_analysis::EnumInfo;
-use crate::type_data::{ExpressionType, IntWidth, ValueType, I32_TYPE, ISIZE_TYPE, U32_TYPE, U8_TYPE, USIZE_TYPE};
+use crate::type_data::{
+   ExpressionType, IntType, IntWidth, ValueType, I32_TYPE, ISIZE_TYPE, U32_TYPE, U8_TYPE, USIZE_TYPE,
+};
 use crate::Target;
 use arrayvec::ArrayVec;
 use indexmap::IndexMap;
@@ -28,6 +30,7 @@ enum TypeValidator {
    AnyEnum,
    Bool,
    AnyInt,
+   AnySignedInt,
    AnyFloat,
    AnyPointer,
    Any,
@@ -41,9 +44,19 @@ fn matches(type_validation: &TypeValidator, et: &ExpressionType) -> bool {
          | (TypeValidator::Bool, ExpressionType::Value(ValueType::Bool))
          | (TypeValidator::AnyInt, ExpressionType::Value(ValueType::Int(_)))
          | (TypeValidator::AnyInt, ExpressionType::Value(ValueType::UnknownInt))
+         | (
+            TypeValidator::AnySignedInt,
+            ExpressionType::Value(ValueType::Int(IntType { signed: true, .. }))
+         )
+         | (
+            TypeValidator::AnySignedInt,
+            // It looks weird that we accept this,
+            // but the trick is that we double validate this for the pertinent nodes after we've inferred types
+            ExpressionType::Value(ValueType::UnknownInt)
+         )
          | (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::Float(_)))
          | (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::UnknownFloat))
-         | (TypeValidator::AnyEnum, &ExpressionType::Value(ValueType::Enum(_)))
+         | (TypeValidator::AnyEnum, ExpressionType::Value(ValueType::Enum(_)))
    )
 }
 
@@ -1605,7 +1618,7 @@ fn do_type<W: Write>(
                (&[TypeValidator::AnyPointer], new_type)
             }
             UnOp::Negate => (
-               &[TypeValidator::AnyInt, TypeValidator::AnyFloat],
+               &[TypeValidator::AnySignedInt, TypeValidator::AnyFloat],
                e.exp_type.clone().unwrap(),
             ),
             UnOp::Complement => (
@@ -1663,10 +1676,10 @@ fn do_type<W: Write>(
                {
                   validation_context.error_count += 1;
                   writeln!(
-                  err_stream,
-                  "Attempting to take a pointer to a const, which does not have a memory location"
-               )
-               .unwrap();
+                     err_stream,
+                     "Attempting to take a pointer to a const, which does not have a memory location"
+                  )
+                  .unwrap();
                   writeln!(
                      err_stream,
                      "↳ line {}, column {}",
