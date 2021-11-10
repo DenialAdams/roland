@@ -202,7 +202,7 @@ pub enum Statement {
    Expression(ExpressionNode),
    IfElse(ExpressionNode, BlockNode, Box<StatementNode>),
    Return(ExpressionNode),
-   VariableDeclaration(StrId, ExpressionNode, Option<ExpressionType>),
+   VariableDeclaration(IdentifierNode, ExpressionNode, Option<ExpressionType>),
 }
 
 #[derive(Clone)]
@@ -532,7 +532,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
             let e = parse_expression(l, err_stream, false, interner)?;
             expect(l, err_stream, &Token::Semicolon)?;
             statements.push(StatementNode {
-               statement: Statement::VariableDeclaration(extract_identifier(variable_name.token), e, declared_type),
+               statement: Statement::VariableDeclaration(IdentifierNode {identifier: extract_identifier(variable_name.token), begin_location: variable_name.source_info}, e, declared_type),
                statement_begin_location: let_token.source_info,
             });
          }

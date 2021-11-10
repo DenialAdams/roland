@@ -970,7 +970,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          store(val_type, generation_context, interner);
       }
       Statement::VariableDeclaration(id, en, _) => {
-         get_stack_address_of_local(*id, generation_context);
+         get_stack_address_of_local(id.identifier, generation_context);
          do_emit_and_load_lval(en, generation_context, interner);
          let val_type = en.exp_type.as_ref().unwrap();
          store(val_type, generation_context, interner);

@@ -80,7 +80,7 @@ pub fn fold_expr<W: Write>(
          };
 
          // TODO @FixedPointerWidth
-         if let Some(Literal::Uint32(v)) = extract_literal(&index) {
+         if let Some(Literal::Uint32(v)) = extract_literal(index) {
             // TODO: (len should be u32/usize, not i128. and we should be validating it before now)
             // (maybe we already are?? but I don't think so)
             if i128::from(v) >= len {
@@ -456,7 +456,7 @@ pub fn fold_expr<W: Write>(
       }
       Expression::UnaryOperator(op, expr) => {
          try_fold_and_replace_expr(expr, err_stream, folding_context);
-         if let Some(literal) = extract_literal(&expr) {
+         if let Some(literal) = extract_literal(expr) {
             match op {
                // float and signed int
                UnOp::Negate => Some(ExpressionNode {

@@ -84,7 +84,7 @@ fn print_statement<W: Write>(out: &mut W, statement_node: &StatementNode, intern
       Statement::VariableDeclaration(ident, e, _) => {
          writeln!(out, "<li><span>Variable Declaration</span>").unwrap();
          writeln!(out, "<ul>").unwrap();
-         writeln!(out, "<li><span>{}</span>", interner.lookup(*ident)).unwrap();
+         writeln!(out, "<li><span>{}</span>", interner.lookup(ident.identifier)).unwrap();
          print_expression(out, e, interner);
          writeln!(out, "</ul></li>").unwrap();
       }

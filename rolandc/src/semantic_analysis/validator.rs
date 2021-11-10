@@ -3,7 +3,7 @@ use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
 use crate::constant_folding::{try_fold_and_replace_expr, FoldingContext};
 use crate::interner::{Interner, StrId};
 use crate::lex::SourceInfo;
-use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, StatementNode, UnOp};
+use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, IdentifierNode, Program, Statement, StatementNode, UnOp};
 use crate::semantic_analysis::EnumInfo;
 use crate::type_data::{
    ExpressionType, IntType, IntWidth, ValueType, I32_TYPE, ISIZE_TYPE, U32_TYPE, U8_TYPE, USIZE_TYPE,
@@ -1097,9 +1097,8 @@ fn type_statement<W: Write>(
          validation_context.block_depth += 1;
          declare_variable(
             err_stream,
-            var.identifier,
+            var,
             result_type,
-            var.begin_location,
             validation_context,
             cur_procedure_locals,
             interner,
@@ -1217,7 +1216,7 @@ fn type_statement<W: Write>(
             writeln!(
                err_stream,
                "Variable `{}` is declared with undefined type `{}`",
-               interner.lookup(*id),
+               interner.lookup(id.identifier),
                dt_str,
             )
             .unwrap();
@@ -1234,9 +1233,8 @@ fn type_statement<W: Write>(
 
          declare_variable(
             err_stream,
-            *id,
+            id,
             result_type,
-            statement.statement_begin_location,
             validation_context,
             cur_procedure_locals,
             interner,
@@ -1247,28 +1245,27 @@ fn type_statement<W: Write>(
 
 fn declare_variable<W: Write>(
    err_stream: &mut W,
-   id: StrId,
+   id: &IdentifierNode,
    var_type: ExpressionType,
-   source_info: SourceInfo,
    validation_context: &mut ValidationContext,
    cur_procedure_locals: &mut IndexMap<StrId, HashSet<ExpressionType>>,
    interner: &mut Interner,
 ) {
-   if validation_context.static_info.contains_key(&id) || validation_context.variable_types.contains_key(&id) {
+   if validation_context.static_info.contains_key(&id.identifier) || validation_context.variable_types.contains_key(&id.identifier) {
       validation_context.error_count += 1;
       writeln!(
          err_stream,
          "Variable shadowing is not supported at this time (`{}`)",
-         interner.lookup(id)
+         interner.lookup(id.identifier)
       )
       .unwrap();
-      writeln!(err_stream, "↳ line {}, column {}", source_info.line, source_info.col).unwrap();
+      writeln!(err_stream, "↳ line {}, column {}", id.begin_location.line, id.begin_location.col).unwrap();
    } else {
       validation_context
          .variable_types
-         .insert(id, (var_type.clone(), validation_context.block_depth));
+         .insert(id.identifier, (var_type.clone(), validation_context.block_depth));
       cur_procedure_locals
-         .entry(id)
+         .entry(id.identifier)
          .or_insert_with(HashSet::new)
          .insert(var_type);
    }
