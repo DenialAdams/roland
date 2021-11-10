@@ -571,27 +571,57 @@ enum Literal {
 impl Literal {
    fn int_max_value(self) -> i128 {
       match self {
-        Literal::Int8(_) => i128::from(i8::MAX),
-        Literal::Int16(_) => i128::from(i16::MAX),
-        Literal::Int32(_) => i128::from(i32::MAX),
-        Literal::Int64(_) => i128::from(i64::MAX),
-        Literal::Uint8(_) => i128::from(u8::MAX),
-        Literal::Uint16(_) => i128::from(u16::MAX),
-        Literal::Uint32(_) => i128::from(u32::MAX),
-        Literal::Uint64(_) => i128::from(u64::MAX),
-        _ => unreachable!(),
+         Literal::Int8(_) => i128::from(i8::MAX),
+         Literal::Int16(_) => i128::from(i16::MAX),
+         Literal::Int32(_) => i128::from(i32::MAX),
+         Literal::Int64(_) => i128::from(i64::MAX),
+         Literal::Uint8(_) => i128::from(u8::MAX),
+         Literal::Uint16(_) => i128::from(u16::MAX),
+         Literal::Uint32(_) => i128::from(u32::MAX),
+         Literal::Uint64(_) => i128::from(u64::MAX),
+         _ => unreachable!(),
       }
    }
 
    fn is_int_max(self) -> bool {
-      matches!(self, Literal::Int8(i8::MAX) | Literal::Int16(i16::MAX) | Literal::Int32(i32::MAX) | Literal::Int64(i64::MAX) | Literal::Uint8(u8::MAX) | Literal::Uint16(u16::MAX) | Literal::Uint32(u32::MAX) | Literal::Uint64(u64::MAX))
+      matches!(
+         self,
+         Literal::Int8(i8::MAX)
+            | Literal::Int16(i16::MAX)
+            | Literal::Int32(i32::MAX)
+            | Literal::Int64(i64::MAX)
+            | Literal::Uint8(u8::MAX)
+            | Literal::Uint16(u16::MAX)
+            | Literal::Uint32(u32::MAX)
+            | Literal::Uint64(u64::MAX)
+      )
    }
    fn is_int_zero(self) -> bool {
-      matches!(self, Literal::Int8(0) | Literal::Int16(0) | Literal::Int32(0) | Literal::Int64(0) | Literal::Uint8(0) | Literal::Uint16(0) | Literal::Uint32(0) | Literal::Uint64(0))
+      matches!(
+         self,
+         Literal::Int8(0)
+            | Literal::Int16(0)
+            | Literal::Int32(0)
+            | Literal::Int64(0)
+            | Literal::Uint8(0)
+            | Literal::Uint16(0)
+            | Literal::Uint32(0)
+            | Literal::Uint64(0)
+      )
    }
 
    fn is_int_one(self) -> bool {
-      matches!(self, Literal::Int8(1) | Literal::Int16(1) | Literal::Int32(1) | Literal::Int64(1) | Literal::Uint8(1) | Literal::Uint16(1) | Literal::Uint32(1) | Literal::Uint64(1))
+      matches!(
+         self,
+         Literal::Int8(1)
+            | Literal::Int16(1)
+            | Literal::Int32(1)
+            | Literal::Int64(1)
+            | Literal::Uint8(1)
+            | Literal::Uint16(1)
+            | Literal::Uint32(1)
+            | Literal::Uint64(1)
+      )
    }
 
    fn checked_add(self, other: Self) -> Option<Expression> {
@@ -632,7 +662,9 @@ impl Literal {
          (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i128::from(i.checked_mul(j)?))),
          (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i128::from(i.checked_mul(j)?))),
          (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i128::from(i.checked_mul(j)?))),
-         (Literal::Uint64(i), Literal::Uint64(j)) => Some(Expression::IntLiteral(i.checked_mul(j)?.try_into().unwrap())),
+         (Literal::Uint64(i), Literal::Uint64(j)) => {
+            Some(Expression::IntLiteral(i.checked_mul(j)?.try_into().unwrap()))
+         }
          (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(i128::from(i.checked_mul(j)?))),
          (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(i128::from(i.checked_mul(j)?))),
          (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(i128::from(i.checked_mul(j)?))),
@@ -854,10 +886,10 @@ pub fn try_fold_and_replace_expr<W: Write>(
 }
 
 fn is_commutative_noop(literal: Literal, op: BinOp) -> bool {
-   (literal.is_int_one() & (op == BinOp::Multiply)) ||
-   (literal.is_int_zero() & (op == BinOp::Add)) ||
-   (literal.is_int_zero() & (op == BinOp::BitwiseOr)) ||
-   ((literal == Literal::Bool(false)) & (op == BinOp::BitwiseOr)) ||
-   ((literal == Literal::Bool(true)) & (op == BinOp::BitwiseAnd)) ||
-   (literal.is_int_max() & (op == BinOp::BitwiseAnd))
+   (literal.is_int_one() & (op == BinOp::Multiply))
+      || (literal.is_int_zero() & (op == BinOp::Add))
+      || (literal.is_int_zero() & (op == BinOp::BitwiseOr))
+      || ((literal == Literal::Bool(false)) & (op == BinOp::BitwiseOr))
+      || ((literal == Literal::Bool(true)) & (op == BinOp::BitwiseAnd))
+      || (literal.is_int_max() & (op == BinOp::BitwiseAnd))
 }
