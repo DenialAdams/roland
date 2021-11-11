@@ -17,7 +17,16 @@ pipeline {
          }
       }
 
-      stage('Deploy') {
+      stage('Build CLI') {
+         steps {
+            dir('rolandc_cli') {
+               sh 'cargo build --release'
+               sh 'cargo build --release --target x86_64-pc-windows-gnu'
+            }
+         }
+      }
+
+      stage('Deploy Site') {
          when {
             expression { env.BRANCH_NAME == "master" }
          }
@@ -32,6 +41,8 @@ pipeline {
                sh 'cp ../rolandc_wasm/index.html .'
                sh 'cp ../rolandc_wasm/index.js .'
                sh 'cp ../rolandc_wasm/stylesheet.css .'
+               sh 'cp ../target/x86_64-pc-windows-gnu/release/rolandc_cli.exe ./rolandc.exe'
+               sh 'cp ../target/release/rolandc_cli ./rolandc'
                sshagent (credentials: ['jenkins-ssh-nfs']) {
                   sh 'rsync -avr -e "ssh -l flandoo_brickcodes -o StrictHostKeyChecking=no" --exclude ".git" --exclude "pkg@tmp" . ssh.phx.nearlyfreespeech.net:/home/public/roland'
                }
