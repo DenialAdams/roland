@@ -10,6 +10,8 @@ Roland does not yet have an official release cycle. However, I do publish binari
 Linux: http://www.brick.codes/roland/rolandc
 Windows: http://www.brick.codes/roland/rolandc.exe
 
+Alternatively, you can build `rolandc` yourself by running `cargo build --release` and taking the binary out of the `target/release/` directory.
+
 ## Informal Specification
 
 Roland is a procedural programming language roughly at the level of C. If you have experience programming in any C-like language, you won't find much surprising here. That being said, here I'll enumerate the fundamentals and notable features.
