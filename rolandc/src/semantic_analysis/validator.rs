@@ -976,7 +976,7 @@ fn type_statement<W: Write>(
                en.expression_begin_location.line, en.expression_begin_location.col
             )
             .unwrap();
-         } else if !len.expression.is_lvalue() {
+         } else if !len.expression.is_lvalue(validation_context.static_info) {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
@@ -989,26 +989,6 @@ fn type_statement<W: Write>(
                len.expression_begin_location.line, len.expression_begin_location.col
             )
             .unwrap();
-         } else if let Expression::Variable(var) = len.expression {
-            if validation_context
-               .static_info
-               .get(&var)
-               .map(|x| x.is_const)
-               .unwrap_or(false)
-            {
-               validation_context.error_count += 1;
-               writeln!(
-               err_stream,
-               "Left hand side of assignment is a constant, which does not have a memory location and can't be reassigned"
-            )
-            .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ line {}, column {}",
-                  len.expression_begin_location.line, len.expression_begin_location.col
-               )
-               .unwrap();
-            }
          }
       }
       Statement::Block(bn) => {
@@ -1649,19 +1629,33 @@ fn do_type<W: Write>(
             )
             .unwrap();
             ExpressionType::Value(ValueType::CompileError)
-         } else if *un_op == UnOp::AddressOf && !e.expression.is_lvalue() {
+         } else if *un_op == UnOp::AddressOf && !e.expression.is_lvalue(validation_context.static_info) {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
-               "A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter"
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
-            )
-            .unwrap();
+            if e.expression.is_lvalue_disregard_consts() {
+               writeln!(
+                  err_stream,
+                  "Attempting to take a pointer to a const, which can't be done as they don't reside in memory"
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ line {}, column {}",
+                  expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+               )
+               .unwrap();
+            } else {
+               writeln!(
+                  err_stream,
+                  "A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter"
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ line {}, column {}",
+                  expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+               )
+               .unwrap();
+            }
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf {
             if let Expression::Variable(var) = e.expression {

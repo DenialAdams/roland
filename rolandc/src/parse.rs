@@ -174,12 +174,22 @@ pub struct ArgumentNode {
 }
 
 impl Expression {
-   pub fn is_lvalue(&self) -> bool {
+   pub fn is_lvalue(&self, static_info: &IndexMap<StrId, StaticInfo>) -> bool {
+      match self {
+         Expression::Variable(x) => static_info.get(x).map(|x| !x.is_const).unwrap_or(true),
+         Expression::ArrayIndex(array_exp, _) => array_exp.expression.is_lvalue(static_info),
+         Expression::UnaryOperator(UnOp::Dereference, _) => true,
+         Expression::FieldAccess(_, lhs) => lhs.expression.is_lvalue(static_info),
+         _ => false,
+      }
+   }
+
+   pub fn is_lvalue_disregard_consts(&self) -> bool {
       match self {
          Expression::Variable(_) => true,
-         Expression::ArrayIndex(array_exp, _) => array_exp.expression.is_lvalue(),
+         Expression::ArrayIndex(array_exp, _) => array_exp.expression.is_lvalue_disregard_consts(),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
-         Expression::FieldAccess(_, lhs) => lhs.expression.is_lvalue(),
+         Expression::FieldAccess(_, lhs) => lhs.expression.is_lvalue_disregard_consts(),
          _ => false,
       }
    }

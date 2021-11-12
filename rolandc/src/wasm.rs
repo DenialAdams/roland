@@ -635,7 +635,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
          .emit_constant_sexp("(import \"env\" \"memory\" (memory 1 1))");
       generation_context
          .out
-         .emit_constant_sexp("(import \"env\" \"blit\" (func $blit (param i32 i32 i32 i32 i32)))");
+         .emit_constant_sexp("(import \"env\" \"blit\" (func $blit (param i32 i32 i32 i32 i32 i32)))");
       generation_context.out.emit_constant_sexp(
          "(import \"env\" \"blitSub\" (func $blit_sub (param i32 i32 i32 i32 i32 i32 i32 i32 i32)))",
       );
@@ -1130,7 +1130,7 @@ fn do_emit_and_load_lval(
 ) {
    do_emit(expr_node, generation_context, interner);
 
-   if expr_node.expression.is_lvalue() {
+   if expr_node.expression.is_lvalue_disregard_consts() {
       load(expr_node.exp_type.as_ref().unwrap(), generation_context);
    }
 }
@@ -1321,7 +1321,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             UnOp::Dereference => {
                do_emit(e, generation_context, interner);
 
-               if e.expression.is_lvalue() {
+               if e.expression.is_lvalue_disregard_consts() {
                   load(e.exp_type.as_ref().unwrap(), generation_context);
                }
             }
@@ -1459,7 +1459,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       Expression::FieldAccess(field_names, lhs) => {
          do_emit(lhs, generation_context, interner);
 
-         if lhs.expression.is_lvalue() {
+         if lhs.expression.is_lvalue_disregard_consts() {
             let mut si = match lhs.exp_type.as_ref() {
                Some(ExpressionType::Value(ValueType::Struct(x))) => generation_context.struct_info.get(x).unwrap(),
                _ => unreachable!(),
@@ -1542,7 +1542,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       Expression::ArrayIndex(lhs, index_e) => {
          do_emit(lhs, generation_context, interner);
 
-         if lhs.expression.is_lvalue() {
+         if lhs.expression.is_lvalue_disregard_consts() {
             let sizeof_inner = match &lhs.exp_type {
                Some(ExpressionType::Value(ValueType::Array(x, _))) => {
                   sizeof_type_mem(&*x, generation_context.enum_info, &generation_context.struct_size_info)
