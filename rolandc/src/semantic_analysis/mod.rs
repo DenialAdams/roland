@@ -11,7 +11,6 @@ pub mod type_inference;
 pub mod validator;
 
 pub struct ProcedureInfo {
-   pub pure: bool,
    // This includes named parameters
    pub parameters: Vec<ExpressionType>,
    pub named_parameters: HashMap<StrId, ExpressionType>,

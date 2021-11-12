@@ -7,9 +7,8 @@ pub fn print_ast_as_html<W: Write>(out: &mut W, program: &Program, interner: &mu
    writeln!(out, "<li><span>Program</span>").unwrap();
    writeln!(out, "<ul>").unwrap();
    for procedure in program.procedures.iter() {
-      let label = if procedure.pure { "func" } else { "proc" };
       let proc_str_name = interner.lookup(procedure.name);
-      writeln!(out, "<li><span>{} «{}»</span>", label, proc_str_name).unwrap();
+      writeln!(out, "<li><span>proc «{}»</span>", proc_str_name).unwrap();
       writeln!(out, "<ul>").unwrap();
       for statement_node in procedure.block.statements.iter() {
          print_statement(out, statement_node, interner);

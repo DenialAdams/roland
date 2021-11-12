@@ -1,4 +1,4 @@
-func foo() -> Y {
+proc foo() -> Y {
 
 }
 

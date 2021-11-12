@@ -27,7 +27,7 @@ proc print_bool(value: bool) {
    }
 }
 
-func count_digits(value: u64) -> u8 {
+proc count_digits(value: u64) -> u8 {
    let digit_count: u8 = 0;
 
    loop {

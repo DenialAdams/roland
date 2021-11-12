@@ -6,7 +6,7 @@ const FIB =
    print_bool(x == 34);
 }
 
-func fib(n: u64) -> u64 {
+proc fib(n: u64) -> u64 {
    if n == 0 {
       return 0;
    } else if n == 1 {

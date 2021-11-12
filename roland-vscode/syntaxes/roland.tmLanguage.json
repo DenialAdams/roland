@@ -285,7 +285,7 @@
             {
                "comment": "fn",
                "name": "keyword.other.fn.roland",
-               "match": "\\b(func|proc)\\b"
+               "match": "\\b(proc)\\b"
             },
             {
                "comment": "logical operators",

@@ -3,7 +3,7 @@ struct X {
    my_other_field: Y,
 }
 
-func foo() -> Y {
+proc foo() -> Y {
    return Y {
       another_field: 123,
    };

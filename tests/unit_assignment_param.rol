@@ -4,6 +4,6 @@ proc main() {
    print("hello");
 }
 
-func foo(x: ()) {
+proc foo(x: ()) {
 
 }

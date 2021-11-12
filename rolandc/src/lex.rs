@@ -19,7 +19,6 @@ pub struct SourceToken {
 pub enum Token {
    Arrow,
    KeywordElse,
-   KeywordFuncDef,
    KeywordIf,
    KeywordProcedureDef,
    KeywordStructDef,
@@ -81,7 +80,6 @@ impl Token {
       match self {
          Token::Arrow => "->",
          Token::KeywordElse => "keyword else",
-         Token::KeywordFuncDef => "keyword func",
          Token::KeywordIf => "keyword if",
          Token::KeywordProcedureDef => "keyword proc",
          Token::KeywordStructDef => "keyword struct",
@@ -158,7 +156,6 @@ fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
       "true" => Token::BoolLiteral(true),
       "false" => Token::BoolLiteral(false),
       "else" => Token::KeywordElse,
-      "func" => Token::KeywordFuncDef,
       "if" => Token::KeywordIf,
       "proc" => Token::KeywordProcedureDef,
       "struct" => Token::KeywordStructDef,

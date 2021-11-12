@@ -147,25 +147,22 @@ pub fn type_and_check_validity<W: Write>(
    let mut static_info: IndexMap<StrId, StaticInfo> = IndexMap::new();
    let mut error_count = 0;
 
-   // Built-In functions
+   // Built-In procedures
    let standard_lib_procs = match target {
       Target::Wasi => {
          vec![
             (
                interner.intern("wasm_memory_size"),
-               false,
                vec![],
                ExpressionType::Value(USIZE_TYPE),
             ),
             (
                interner.intern("wasm_memory_grow"),
-               false,
                vec![ExpressionType::Value(USIZE_TYPE)],
                ExpressionType::Value(USIZE_TYPE),
             ),
             (
                interner.intern("fd_write"),
-               false,
                vec![
                   ExpressionType::Value(USIZE_TYPE),
                   ExpressionType::Pointer(1, USIZE_TYPE),
@@ -181,7 +178,6 @@ pub fn type_and_check_validity<W: Write>(
             // drawing
             (
                interner.intern("blit"),
-               false,
                vec![
                   ExpressionType::Pointer(1, U8_TYPE),
                   ExpressionType::Value(I32_TYPE),
@@ -194,7 +190,6 @@ pub fn type_and_check_validity<W: Write>(
             ),
             (
                interner.intern("blit_sub"),
-               false,
                vec![
                   ExpressionType::Pointer(1, U8_TYPE),
                   ExpressionType::Value(I32_TYPE),
@@ -210,7 +205,6 @@ pub fn type_and_check_validity<W: Write>(
             ),
             (
                interner.intern("line"),
-               false,
                vec![
                   ExpressionType::Value(I32_TYPE),
                   ExpressionType::Value(I32_TYPE),
@@ -221,7 +215,6 @@ pub fn type_and_check_validity<W: Write>(
             ),
             (
                interner.intern("hline"),
-               false,
                vec![
                   ExpressionType::Value(I32_TYPE),
                   ExpressionType::Value(I32_TYPE),
@@ -231,7 +224,6 @@ pub fn type_and_check_validity<W: Write>(
             ),
             (
                interner.intern("vline"),
-               false,
                vec![
                   ExpressionType::Value(I32_TYPE),
                   ExpressionType::Value(I32_TYPE),
@@ -241,7 +233,6 @@ pub fn type_and_check_validity<W: Write>(
             ),
             (
                interner.intern("oval"),
-               false,
                vec![
                   ExpressionType::Value(I32_TYPE),
                   ExpressionType::Value(I32_TYPE),
@@ -252,7 +243,6 @@ pub fn type_and_check_validity<W: Write>(
             ),
             (
                interner.intern("rect"),
-               false,
                vec![
                   ExpressionType::Value(I32_TYPE),
                   ExpressionType::Value(I32_TYPE),
@@ -263,7 +253,6 @@ pub fn type_and_check_validity<W: Write>(
             ),
             (
                interner.intern("textUtf8"),
-               false,
                vec![
                   ExpressionType::Pointer(1, U8_TYPE),
                   ExpressionType::Value(USIZE_TYPE),
@@ -274,13 +263,11 @@ pub fn type_and_check_validity<W: Write>(
             ),
             (
                interner.intern("traceUtf8"),
-               false,
                vec![ExpressionType::Pointer(1, U8_TYPE), ExpressionType::Value(USIZE_TYPE)],
                ExpressionType::Value(ValueType::Unit),
             ),
             (
                interner.intern("tone"),
-               false,
                vec![
                   ExpressionType::Value(U32_TYPE),
                   ExpressionType::Value(U32_TYPE),
@@ -291,13 +278,11 @@ pub fn type_and_check_validity<W: Write>(
             ),
             (
                interner.intern("diskr"),
-               false,
                vec![ExpressionType::Pointer(1, U8_TYPE), ExpressionType::Value(USIZE_TYPE)],
                ExpressionType::Value(USIZE_TYPE),
             ),
             (
                interner.intern("diskw"),
-               false,
                vec![ExpressionType::Pointer(1, U8_TYPE), ExpressionType::Value(USIZE_TYPE)],
                ExpressionType::Value(USIZE_TYPE),
             ),
@@ -308,10 +293,9 @@ pub fn type_and_check_validity<W: Write>(
       procedure_info.insert(
          p.0,
          ProcedureInfo {
-            pure: p.1,
-            parameters: p.2.clone(),
+            parameters: p.1.clone(),
             named_parameters: HashMap::new(),
-            ret_type: p.3.clone(),
+            ret_type: p.2.clone(),
             procedure_begin_location: SourceInfo { line: 0, col: 0 },
          },
       );
@@ -590,14 +574,14 @@ pub fn type_and_check_validity<W: Write>(
             error_count += 1;
             writeln!(
                err_stream,
-               "Procedure/function `{}` has a duplicate parameter `{}`",
+               "Procedure `{}` has a duplicate parameter `{}`",
                interner.lookup(procedure.name),
                interner.lookup(param.name),
             )
             .unwrap();
             writeln!(
                err_stream,
-               "↳ procedure/function defined @ line {}, column {}",
+               "↳ procedure defined @ line {}, column {}",
                procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
             )
             .unwrap();
@@ -612,13 +596,13 @@ pub fn type_and_check_validity<W: Write>(
             error_count += 1;
             writeln!(
                err_stream,
-               "Procedure/function `{}` has named parameter(s) which come before non-named parameter(s)",
+               "Procedure `{}` has named parameter(s) which come before non-named parameter(s)",
                interner.lookup(procedure.name),
             )
             .unwrap();
             writeln!(
                err_stream,
-               "↳ procedure/function defined @ line {}, column {}",
+               "↳ procedure defined @ line {}, column {}",
                procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
             )
             .unwrap();
@@ -639,7 +623,7 @@ pub fn type_and_check_validity<W: Write>(
             let etype_str = parameter.p_type.as_roland_type_info(interner);
             writeln!(
                err_stream,
-               "Parameter `{}` of procedure/function `{}` is of undeclared type `{}`",
+               "Parameter `{}` of procedure `{}` is of undeclared type `{}`",
                interner.lookup(parameter.name),
                interner.lookup(procedure.name),
                etype_str,
@@ -647,7 +631,7 @@ pub fn type_and_check_validity<W: Write>(
             .unwrap();
             writeln!(
                err_stream,
-               "↳ procedure/function defined @ line {}, column {}",
+               "↳ procedure defined @ line {}, column {}",
                procedure.procedure_begin_location.line, procedure.procedure_begin_location.col,
             )
             .unwrap();
@@ -659,14 +643,14 @@ pub fn type_and_check_validity<W: Write>(
          let etype_str = procedure.ret_type.as_roland_type_info(interner);
          writeln!(
             err_stream,
-            "Return type of procedure/function `{}` is of undeclared type `{}`",
+            "Return type of procedure `{}` is of undeclared type `{}`",
             interner.lookup(procedure.name),
             etype_str,
          )
          .unwrap();
          writeln!(
             err_stream,
-            "↳ procedure/function defined @ line {}, column {}",
+            "↳ procedure defined @ line {}, column {}",
             procedure.procedure_begin_location.line, procedure.procedure_begin_location.col,
          )
          .unwrap();
@@ -675,7 +659,6 @@ pub fn type_and_check_validity<W: Write>(
       if let Some(old_procedure) = procedure_info.insert(
          procedure.name,
          ProcedureInfo {
-            pure: procedure.pure,
             parameters: procedure.parameters.iter().map(|x| x.p_type.clone()).collect(),
             named_parameters: procedure
                .parameters
@@ -691,19 +674,19 @@ pub fn type_and_check_validity<W: Write>(
          let procedure_name_str = interner.lookup(procedure.name);
          writeln!(
             err_stream,
-            "Encountered duplicate procedures/functions with the same name `{}`",
+            "Encountered duplicate procedures with the same name `{}`",
             procedure_name_str
          )
          .unwrap();
          writeln!(
             err_stream,
-            "↳ first procedure/function defined @ line {}, column {}",
+            "↳ first procedure defined @ line {}, column {}",
             old_procedure.procedure_begin_location.line, old_procedure.procedure_begin_location.col
          )
          .unwrap();
          writeln!(
             err_stream,
-            "↳ second procedure/function defined @ line {}, column {}",
+            "↳ second procedure defined @ line {}, column {}",
             procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
          )
          .unwrap();
@@ -876,14 +859,14 @@ pub fn type_and_check_validity<W: Write>(
             let x_str = x.as_roland_type_info(interner);
             writeln!(
                err_stream,
-               "Procedure/function `{}` is declared to return type {} but is missing a final return statement",
+               "Procedure `{}` is declared to return type {} but is missing a final return statement",
                interner.lookup(procedure.name),
                x_str,
             )
             .unwrap();
             writeln!(
                err_stream,
-               "↳ procedure/function defined @ line {}, column {}",
+               "↳ procedure defined @ line {}, column {}",
                procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
             )
             .unwrap();
@@ -1735,22 +1718,6 @@ fn do_type<W: Write>(
             Some(procedure_info) => {
                expr_node.exp_type = Some(procedure_info.ret_type.clone());
 
-               if validation_context.cur_procedure_info.unwrap().pure && !procedure_info.pure {
-                  validation_context.error_count += 1;
-                  writeln!(
-                     err_stream,
-                     "Encountered call to procedure `{}` (impure) in func (pure)",
-                     interner.lookup(*name)
-                  )
-                  .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ line {}, column {}",
-                     expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
-                  )
-                  .unwrap();
-               }
-
                // Validate that there are no non-named arguments after named arguments, then reorder the argument list
                let first_named_arg = args.iter().enumerate().find(|(_, arg)| arg.name.is_some()).map(|x| x.0);
                let last_normal_arg = args
@@ -1882,7 +1849,7 @@ fn do_type<W: Write>(
                validation_context.error_count += 1;
                writeln!(
                   err_stream,
-                  "Encountered call to undefined procedure/function `{}`",
+                  "Encountered call to undefined procedure `{}`",
                   interner.lookup(*name),
                )
                .unwrap();

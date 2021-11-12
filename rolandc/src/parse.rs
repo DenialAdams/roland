@@ -69,7 +69,6 @@ pub struct ProcedureNode {
    pub locals: IndexMap<StrId, HashSet<ExpressionType>>,
    pub block: BlockNode,
    pub ret_type: ExpressionType,
-   pub pure: bool,
    pub procedure_begin_location: SourceInfo,
 }
 
@@ -253,12 +252,6 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
 
    while let Some(peeked_token) = lexer.peek_token() {
       match peeked_token {
-         Token::KeywordFuncDef => {
-            let def = lexer.next().unwrap();
-            let mut p = parse_procedure(&mut lexer, err_stream, def.source_info, interner)?;
-            p.pure = true;
-            procedures.push(p);
-         }
          Token::KeywordProcedureDef => {
             let def = lexer.next().unwrap();
             let p = parse_procedure(&mut lexer, err_stream, def.source_info, interner)?;
@@ -310,7 +303,7 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
          x => {
             writeln!(
                err_stream,
-               "While parsing top level - unexpected token '{}'; was expecting a function, procedure, or struct declaration",
+               "While parsing top level - unexpected token '{}'; was expecting a procedure, const, static, enum, or struct declaration",
                x.for_parse_err()
             ).unwrap();
             emit_source_info(err_stream, lexer.peek_source().unwrap());
@@ -369,7 +362,6 @@ fn parse_procedure<W: Write>(
       locals: IndexMap::new(),
       block,
       ret_type,
-      pure: false,
       procedure_begin_location: source_info,
    })
 }

@@ -116,8 +116,6 @@ proc main() {
 }
 ```
 
-Pure functions can be declared with `func` instead of `proc`, though there's currently no advantage in doing so.
-
 Roland also supports named parameters:
 
 ```roland

@@ -1,4 +1,4 @@
-func foo(named a: bool, b: bool) -> bool {
+proc foo(named a: bool, b: bool) -> bool {
    return a & b;
 }
 

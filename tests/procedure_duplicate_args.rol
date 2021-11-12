@@ -1,4 +1,4 @@
-func foo(x: u8, x: u8) -> u8 {
+proc foo(x: u8, x: u8) -> u8 {
    return x + 1;
 }
 

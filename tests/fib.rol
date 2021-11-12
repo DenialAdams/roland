@@ -5,7 +5,7 @@ proc main() {
    print_bool(x == z);
 }
 
-func fib(n: u64) -> u64 {
+proc fib(n: u64) -> u64 {
    if n == 0 {
       return 0;
    } else if n == 1 {
@@ -14,7 +14,7 @@ func fib(n: u64) -> u64 {
    return fib(n - 1) + fib(n - 2);
 }
 
-func fast_fib(n: u64) -> u64 {
+proc fast_fib(n: u64) -> u64 {
    if n == 0 {
       return 0;
    } else if n == 1 {
