@@ -961,17 +961,31 @@ fn type_statement<W: Write>(
             .unwrap();
          } else if !len.expression.is_lvalue(validation_context.static_info) {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
-               "Left hand side of assignment is not a valid memory location; i.e. a variable, field, or array index"
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               len.expression_begin_location.line, len.expression_begin_location.col
-            )
-            .unwrap();
+            if len.expression.is_lvalue_disregard_consts() {
+               writeln!(
+                  err_stream,
+                  "Left hand side of assignment is a constant, which does not have a memory location and can't be reassigned"
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ line {}, column {}",
+                  len.expression_begin_location.line, len.expression_begin_location.col
+               )
+               .unwrap();
+            } else {
+               writeln!(
+                  err_stream,
+                  "Left hand side of assignment is not a valid memory location; i.e. a variable, field, or array index"
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ line {}, column {}",
+                  len.expression_begin_location.line, len.expression_begin_location.col
+               )
+               .unwrap();
+            }
          }
       }
       Statement::Block(bn) => {

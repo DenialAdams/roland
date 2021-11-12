@@ -1,3 +1,3 @@
-Left hand side of assignment is not a valid memory location; i.e. a variable, field, or array index
+Left hand side of assignment is a constant, which does not have a memory location and can't be reassigned
 ↳ line 4, column 4
 There were 1 semantic errors, bailing
