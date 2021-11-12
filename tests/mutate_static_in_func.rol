@@ -1,0 +1,12 @@
+static FOO: u64;
+
+static ARR: [u64; 10];
+
+func pure() {
+   FOO = 10;
+   ARR[2] = 10;
+}
+
+proc main() {
+   pure();
+}

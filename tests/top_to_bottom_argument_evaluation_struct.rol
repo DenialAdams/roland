@@ -1,0 +1,28 @@
+struct Foo {
+   x: u64,
+   y: u64,
+   z: u64,
+}
+
+proc x() -> u64 {
+   print("x");
+   return 1;
+}
+
+proc y() -> u64 {
+   print("y");
+   return 1;
+}
+
+proc z() -> u64{
+   print("z");
+   return 1;
+}
+
+proc main() {
+   Foo {
+      z: z(),
+      x: x(),
+      y: y(),
+   };
+}
