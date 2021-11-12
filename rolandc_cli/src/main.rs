@@ -28,12 +28,28 @@ fn parse_path(s: &std::ffi::OsStr) -> Result<std::path::PathBuf, &'static str> {
 fn parse_args() -> Result<Opts, pico_args::Error> {
    let mut pargs = pico_args::Arguments::from_env();
 
+   if pargs.contains("--help") {
+      println!(r"
+Usage: rolandc (source.rol) [OPTION]+
+
+Valid boolean options are:
+--wasm4
+--skip-constant-folding
+--output-html-ast
+
+Valid options with arguments are:
+--output (output_file.wasm)
+");
+
+      std::process::exit(0);
+   }
+
    let opts = Opts {
-      source_file: pargs.free_from_os_str(parse_path)?,
-      output: pargs.opt_value_from_os_str("--output", parse_path)?,
       output_html_ast: pargs.contains("--output-html-ast"),
       skip_constant_folding: pargs.contains("--skip-constant-folding"),
       wasm4: pargs.contains("--wasm4"),
+      output: pargs.opt_value_from_os_str("--output", parse_path)?,
+      source_file: pargs.free_from_os_str(parse_path)?,
    };
 
    Ok(opts)
@@ -44,7 +60,17 @@ fn main() {
 
    let target = if opts.wasm4 { Target::Wasm4 } else { Target::Wasi };
 
-   let user_program_s = std::fs::read_to_string(&opts.source_file).unwrap();
+   let err_stream = std::io::stderr();
+   let mut err_stream_l = err_stream.lock();
+
+   let user_program_s = if let Ok(s) = std::fs::read_to_string(&opts.source_file) {
+      s
+   } else {
+      writeln!(err_stream_l, "Failed to open the file {}", opts.source_file.to_string_lossy()).unwrap();
+      std::process::exit(1);
+   };
+
+
    let mut ast_out: Option<BufWriter<File>> = if opts.output_html_ast {
       let out_f = File::create("ast.html").unwrap();
       let mut writer = BufWriter::new(out_f);
@@ -53,9 +79,6 @@ fn main() {
    } else {
       None
    };
-
-   let err_stream = std::io::stderr();
-   let mut err_stream_l = err_stream.lock();
 
    let compile_result = rolandc::compile(
       &user_program_s,
