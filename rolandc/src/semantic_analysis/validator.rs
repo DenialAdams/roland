@@ -471,7 +471,7 @@ pub fn type_and_check_validity<W: Write>(
 
    for const_node in program.consts.iter_mut() {
       let const_type = &mut const_node.const_type;
-      let si = &const_node.const_begin_location;
+      let si = &const_node.begin_location;
 
       if resolve_type(const_type, &enum_info, &struct_info).is_err() {
          error_count += 1;
@@ -490,7 +490,7 @@ pub fn type_and_check_validity<W: Write>(
          const_node.name.identifier,
          StaticInfo {
             static_type: const_node.const_type.clone(),
-            begin_location: const_node.const_begin_location,
+            begin_location: const_node.begin_location,
             is_const: true,
          },
       ) {
@@ -510,7 +510,7 @@ pub fn type_and_check_validity<W: Write>(
          writeln!(
             err_stream,
             "↳ second static/const defined @ line {}, column {}",
-            const_node.const_begin_location.line, const_node.const_begin_location.col
+            const_node.begin_location.line, const_node.begin_location.col
          )
          .unwrap();
       }
@@ -788,7 +788,7 @@ pub fn type_and_check_validity<W: Write>(
          writeln!(
             err_stream,
             "↳ const @ line {}, column {}",
-            p_const.const_begin_location.line, p_const.const_begin_location.col
+            p_const.begin_location.line, p_const.begin_location.col
          )
          .unwrap();
          writeln!(
@@ -811,13 +811,52 @@ pub fn type_and_check_validity<W: Write>(
          writeln!(
             err_stream,
             "↳ const @ line {}, column {}",
-            p_const.const_begin_location.line, p_const.const_begin_location.col
+            p_const.begin_location.line, p_const.begin_location.col
          )
          .unwrap();
          writeln!(
             err_stream,
             "↳ expression @ line {}, column {}",
             p_const.value.expression_begin_location.line, p_const.value.expression_begin_location.col
+         )
+         .unwrap();
+      }
+   }
+
+   for p_static in program.statics.iter_mut().filter(|x| x.value.is_some()) {
+      // p_static.static_type is guaranteed to be resolved at this point
+      do_type(err_stream, p_static.value.as_mut().unwrap(), &mut validation_context, interner);
+      try_set_inferred_type(
+         &p_static.static_type,
+         p_static.value.as_mut().unwrap(),
+         &mut validation_context,
+         err_stream,
+         interner,
+      );
+
+      if p_static.static_type != *p_static.value.as_ref().unwrap().exp_type.as_ref().unwrap()
+         && p_static.value.as_ref().unwrap().exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::CompileError)
+      {
+         validation_context.error_count += 1;
+         let actual_type_str = p_static.value.as_ref().unwrap().exp_type.as_ref().unwrap().as_roland_type_info(interner);
+         writeln!(
+            err_stream,
+            "Declared type {} of static `{}` does not match actual expression type {}",
+            p_static.static_type.as_roland_type_info(interner),
+            interner.lookup(p_static.name.identifier),
+            actual_type_str,
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ static @ line {}, column {}",
+            p_static.static_begin_location.line, p_static.static_begin_location.col
+         )
+         .unwrap();
+         writeln!(
+            err_stream,
+            "↳ expression @ line {}, column {}",
+            p_static.value.as_ref().unwrap().expression_begin_location.line, p_static.value.as_ref().unwrap().expression_begin_location.col
          )
          .unwrap();
       }

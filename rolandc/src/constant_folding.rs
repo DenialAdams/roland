@@ -19,6 +19,12 @@ pub fn fold_constants<W: Write>(program: &mut Program, err_stream: &mut W) -> u6
       fold_block(&mut procedure.block, err_stream, &mut folding_context);
    }
 
+   for p_static in program.statics.iter_mut() {
+      if let Some(v) = p_static.value.as_mut() {
+         try_fold_and_replace_expr(v, err_stream, &mut folding_context);
+      }
+   }
+
    folding_context.error_count
 }
 

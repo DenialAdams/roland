@@ -98,13 +98,14 @@ pub struct ConstNode {
    pub name: IdentifierNode,
    pub const_type: ExpressionType,
    pub value: ExpressionNode,
-   pub const_begin_location: SourceInfo,
+   pub begin_location: SourceInfo,
 }
 
 #[derive(Clone, Debug)]
 pub struct StaticNode {
    pub name: IdentifierNode,
    pub static_type: ExpressionType,
+   pub value: Option<ExpressionNode>,
    pub static_begin_location: SourceInfo,
 }
 
@@ -281,7 +282,7 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
                   begin_location: variable_name.source_info,
                },
                const_type: t_type,
-               const_begin_location: a_static.source_info,
+               begin_location: a_static.source_info,
                value: exp,
             });
          }
@@ -290,6 +291,12 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
             let variable_name = expect(&mut lexer, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
             expect(&mut lexer, err_stream, &Token::Colon)?;
             let t_type = parse_type(&mut lexer, err_stream, interner)?;
+            let exp = if lexer.peek_token() == Some(&Token::Assignment) {
+               let _ = lexer.next();
+               Some(parse_expression(&mut lexer, err_stream, false, interner)?)
+            } else {
+               None
+            };
             expect(&mut lexer, err_stream, &Token::Semicolon)?;
             statics.push(StaticNode {
                name: IdentifierNode {
@@ -298,6 +305,7 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
                },
                static_type: t_type,
                static_begin_location: a_static.source_info,
+               value: exp,
             });
          }
          x => {

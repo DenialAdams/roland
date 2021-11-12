@@ -13,6 +13,12 @@ pub fn lower_consts<W: Write>(program: &mut Program, err_stream: &mut W) {
    for procedure in program.procedures.iter_mut() {
       lower_block(&mut procedure.block, err_stream, &const_replacements);
    }
+
+   for p_static in program.statics.iter_mut() {
+      if let Some(v) = p_static.value.as_mut() {
+         try_lower_and_replace_expr(v, err_stream, &const_replacements);
+      }
+   }
 }
 
 fn lower_block<W: Write>(
