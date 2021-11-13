@@ -715,8 +715,9 @@ pub fn type_and_check_validity<W: Write>(
          validation_context.error_count += 1;
          writeln!(
             err_stream,
-            "A procedure with the name `{}` must be present for this target",
+            "A procedure with the name `{}` must be present for this target ({})",
             interner.lookup(special_proc_name),
+            validation_context.target,
          )
          .unwrap();
       } else if validation_context
@@ -735,8 +736,9 @@ pub fn type_and_check_validity<W: Write>(
          validation_context.error_count += 1;
          writeln!(
             err_stream,
-            "`{}` is a special procedure for this target and is not allowed to return a value or take arguments",
-            interner.lookup(special_proc_name)
+            "`{}` is a special procedure for this target ({}) and is not allowed to return a value or take arguments",
+            interner.lookup(special_proc_name),
+            validation_context.target,
          )
          .unwrap();
          let si = validation_context

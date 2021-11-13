@@ -9,7 +9,7 @@ mod type_data;
 mod wasm;
 
 use parse::Program;
-use std::io::Write;
+use std::{fmt::Display, io::Write};
 
 use crate::interner::Interner;
 
@@ -17,6 +17,15 @@ use crate::interner::Interner;
 pub enum Target {
    Wasi,
    Wasm4,
+}
+
+impl Display for Target {
+   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      match self {
+         Target::Wasi => write!(f, "WASI"),
+         Target::Wasm4 => write!(f, "WASM-4"),
+      }
+   }
 }
 
 impl Target {
