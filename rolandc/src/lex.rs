@@ -295,6 +295,7 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
             } else if c == '/' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'/') {
+                  let _ = chars.next().unwrap();
                   mode = LexMode::Comment;
                   source_info.col += 2;
                } else {
@@ -304,7 +305,6 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
                   });
                   source_info.col += 1;
                }
-               let _ = chars.next().unwrap();
             } else if c == '%' {
                tokens.push(SourceToken {
                   source_info,
