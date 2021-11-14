@@ -396,7 +396,7 @@ fn parse_struct<W: Write>(
          let _ = l.next();
          break;
       } else if let Some(&Token::Identifier(x)) = l.peek_token().as_ref() {
-         writeln!(err_stream, "While parsing definition of struct `{}`, encountered an unexpected identifier `{}`. Are you missing a comma?", interner.lookup(struct_name), interner.lookup(*x)).unwrap();
+         writeln!(err_stream, "While parsing definition of struct `{}`, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?", interner.lookup(struct_name), interner.lookup(*x)).unwrap();
          emit_source_info(err_stream, l.peek_source().unwrap());
          return Result::Err(());
       } else {
@@ -430,7 +430,7 @@ fn parse_enum<W: Write>(
          let _ = l.next();
          break;
       } else if let Some(&Token::Identifier(x)) = l.peek_token().as_ref() {
-         writeln!(err_stream, "While parsing definition of enum `{}`, encountered an unexpected identifier `{}`. Are you missing a comma?", interner.lookup(enum_name), interner.lookup(*x)).unwrap();
+         writeln!(err_stream, "While parsing definition of enum `{}`, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?", interner.lookup(enum_name), interner.lookup(*x)).unwrap();
          emit_source_info(err_stream, l.peek_source().unwrap());
          return Result::Err(());
       } else {
@@ -880,7 +880,7 @@ fn pratt<W: Write>(
                } else if let Some(&Token::Identifier(x)) = l.peek_token().as_ref() {
                   let struct_str = interner.lookup(s);
                   let identifier_str = interner.lookup(*x);
-                  writeln!(err_stream, "While parsing instantiation of struct `{}`, encountered an unexpected identifier `{}`. Are you missing a comma?", struct_str, identifier_str).unwrap();
+                  writeln!(err_stream, "While parsing instantiation of struct `{}`, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?", struct_str, identifier_str).unwrap();
                   emit_source_info(err_stream, l.peek_source().unwrap());
                   return Result::Err(());
                } else {

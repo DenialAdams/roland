@@ -590,7 +590,7 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
       LexMode::StringLiteral | LexMode::StringLiteralEscape => {
          writeln!(
             err_stream,
-            "Encountered EOF while parsing string literal; Are you missing a closing \"?"
+            "Encountered EOF while parsing string literal; Hint: Are you missing a closing \"?"
          )
          .unwrap();
          writeln!(
