@@ -951,7 +951,7 @@ fn pratt<W: Write>(
             s
          )
          .unwrap();
-         if let Some(si) = l.peek_source() {
+         if let Some(si) = lhs_source {
             emit_source_info(err_stream, si);
          }
          return Err(());
