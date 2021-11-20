@@ -55,20 +55,18 @@ pub fn compile<E: Write, A: Write>(
    let mut user_program = lex_and_parse(user_program_s, err_stream, &mut interner)?;
    let num_procedures_before_merge = user_program.procedures.len();
 
-   match target {
+   let std_lib = match target {
       Target::Wasi => {
          let std_lib_s = include_str!("../../lib/print.rol");
-         let std_lib = lex_and_parse(std_lib_s, err_stream, &mut interner)?;
-
-         merge_programs(&mut user_program, &mut [std_lib]);
+         lex_and_parse(std_lib_s, err_stream, &mut interner)
       }
       Target::Wasm4 => {
          let std_lib_s = include_str!("../../lib/wasm4.rol");
-         let std_lib = lex_and_parse(std_lib_s, err_stream, &mut interner)?;
-
-         merge_programs(&mut user_program, &mut [std_lib]);
+         lex_and_parse(std_lib_s, err_stream, &mut interner)
       }
-   }
+   }?;
+
+   merge_programs(&mut user_program, &mut [std_lib]);
 
    let mut err_count =
       semantic_analysis::validator::type_and_check_validity(&mut user_program, err_stream, &mut interner, target);
