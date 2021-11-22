@@ -806,7 +806,7 @@ pub fn type_and_check_validity<W: Write>(
          validation_context.error_count += 1;
          writeln!(
             err_stream,
-            "Value of const `{}` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static.",
+            "Value of const `{}` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static and initialize it on program start.",
             interner.lookup(p_const.name.identifier),
          )
          .unwrap();
@@ -861,6 +861,31 @@ pub fn type_and_check_validity<W: Write>(
             p_static.value.as_ref().unwrap().expression_begin_location.line, p_static.value.as_ref().unwrap().expression_begin_location.col
          )
          .unwrap();
+      }
+
+      if let Some(v) = p_static.value.as_mut() {
+         try_fold_and_replace_expr(v, err_stream, &mut FoldingContext { error_count: 0 });
+         if !crate::constant_folding::is_const(&v.expression) {
+            validation_context.error_count += 1;
+            writeln!(
+               err_stream,
+               "Value of static `{}` can't be constant folded. Hint: Either simplify the expression, or initialize it yourself on program start.",
+               interner.lookup(p_static.name.identifier),
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ const @ line {}, column {}",
+               p_static.static_begin_location.line, p_static.static_begin_location.col
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ expression @ line {}, column {}",
+               v.expression_begin_location.line, v.expression_begin_location.col
+            )
+            .unwrap();
+         }
       }
    }
 

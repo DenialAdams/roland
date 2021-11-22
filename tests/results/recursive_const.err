@@ -1,7 +1,7 @@
-Value of const `X` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static.
+Value of const `X` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static and initialize it on program start.
 ↳ const @ line 1, column 1
 ↳ expression @ line 1, column 16
-Value of const `Y` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static.
+Value of const `Y` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static and initialize it on program start.
 ↳ const @ line 2, column 1
 ↳ expression @ line 2, column 16
 There were 2 semantic errors, bailing
