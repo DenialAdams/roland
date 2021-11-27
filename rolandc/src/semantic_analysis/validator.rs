@@ -3,7 +3,9 @@ use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
 use crate::constant_folding::{try_fold_and_replace_expr, FoldingContext};
 use crate::interner::{Interner, StrId};
 use crate::lex::SourceInfo;
-use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, IdentifierNode, Program, Statement, StatementNode, UnOp};
+use crate::parse::{
+   BinOp, BlockNode, Expression, ExpressionNode, IdentifierNode, Program, Statement, StatementNode, UnOp,
+};
 use crate::semantic_analysis::EnumInfo;
 use crate::type_data::{
    ExpressionType, IntType, IntWidth, ValueType, I32_TYPE, ISIZE_TYPE, U32_TYPE, U8_TYPE, USIZE_TYPE,
@@ -827,7 +829,12 @@ pub fn type_and_check_validity<W: Write>(
 
    for p_static in program.statics.iter_mut().filter(|x| x.value.is_some()) {
       // p_static.static_type is guaranteed to be resolved at this point
-      do_type(err_stream, p_static.value.as_mut().unwrap(), &mut validation_context, interner);
+      do_type(
+         err_stream,
+         p_static.value.as_mut().unwrap(),
+         &mut validation_context,
+         interner,
+      );
       try_set_inferred_type(
          &p_static.static_type,
          p_static.value.as_mut().unwrap(),
@@ -837,10 +844,18 @@ pub fn type_and_check_validity<W: Write>(
       );
 
       if p_static.static_type != *p_static.value.as_ref().unwrap().exp_type.as_ref().unwrap()
-         && p_static.value.as_ref().unwrap().exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::CompileError)
+         && p_static.value.as_ref().unwrap().exp_type.as_ref().unwrap()
+            != &ExpressionType::Value(ValueType::CompileError)
       {
          validation_context.error_count += 1;
-         let actual_type_str = p_static.value.as_ref().unwrap().exp_type.as_ref().unwrap().as_roland_type_info(interner);
+         let actual_type_str = p_static
+            .value
+            .as_ref()
+            .unwrap()
+            .exp_type
+            .as_ref()
+            .unwrap()
+            .as_roland_type_info(interner);
          writeln!(
             err_stream,
             "Declared type {} of static `{}` does not match actual expression type {}",
@@ -858,7 +873,8 @@ pub fn type_and_check_validity<W: Write>(
          writeln!(
             err_stream,
             "↳ expression @ line {}, column {}",
-            p_static.value.as_ref().unwrap().expression_begin_location.line, p_static.value.as_ref().unwrap().expression_begin_location.col
+            p_static.value.as_ref().unwrap().expression_begin_location.line,
+            p_static.value.as_ref().unwrap().expression_begin_location.col
          )
          .unwrap();
       }
@@ -1294,7 +1310,9 @@ fn declare_variable<W: Write>(
    cur_procedure_locals: &mut IndexMap<StrId, HashSet<ExpressionType>>,
    interner: &mut Interner,
 ) {
-   if validation_context.static_info.contains_key(&id.identifier) || validation_context.variable_types.contains_key(&id.identifier) {
+   if validation_context.static_info.contains_key(&id.identifier)
+      || validation_context.variable_types.contains_key(&id.identifier)
+   {
       validation_context.error_count += 1;
       writeln!(
          err_stream,
@@ -1302,7 +1320,12 @@ fn declare_variable<W: Write>(
          interner.lookup(id.identifier)
       )
       .unwrap();
-      writeln!(err_stream, "↳ line {}, column {}", id.begin_location.line, id.begin_location.col).unwrap();
+      writeln!(
+         err_stream,
+         "↳ line {}, column {}",
+         id.begin_location.line, id.begin_location.col
+      )
+      .unwrap();
    } else {
       validation_context
          .variable_types

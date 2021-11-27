@@ -1,8 +1,8 @@
-use crate::Target;
 use crate::interner::{Interner, StrId};
 use crate::parse::{BinOp, Expression, ExpressionNode, ParameterNode, Program, Statement, StatementNode, UnOp};
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, USIZE_TYPE};
+use crate::Target;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
 use std::io::Write;
@@ -830,7 +830,11 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
       );
 
       for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
-         let static_address = generation_context.static_addresses.get(&p_static.name.identifier).copied().unwrap();
+         let static_address = generation_context
+            .static_addresses
+            .get(&p_static.name.identifier)
+            .copied()
+            .unwrap();
          generation_context.out.emit_const_i32(static_address);
          do_emit_and_load_lval(p_static.value.as_ref().unwrap(), &mut generation_context, interner);
          store(&p_static.static_type, &mut generation_context, interner);
@@ -895,11 +899,15 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
       );
 
       if wasm4 && interner.lookup(procedure.name) == Target::Wasm4.entry_point() {
-         generation_context.out.emit_call(interner.intern("::initialize_statics"), interner);
+         generation_context
+            .out
+            .emit_call(interner.intern("::initialize_statics"), interner);
       }
 
       if !wasm4 && interner.lookup(procedure.name) == Target::Wasi.entry_point() {
-         generation_context.out.emit_call(interner.intern("::initialize_statics"), interner);
+         generation_context
+            .out
+            .emit_call(interner.intern("::initialize_statics"), interner);
       }
 
       adjust_stack_function_entry(&mut generation_context);

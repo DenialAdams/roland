@@ -9,7 +9,8 @@ mod type_data;
 mod wasm;
 
 use parse::Program;
-use std::{fmt::Display, io::Write};
+use std::fmt::Display;
+use std::io::Write;
 
 use crate::interner::Interner;
 
