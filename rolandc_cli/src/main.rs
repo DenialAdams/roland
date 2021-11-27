@@ -3,14 +3,25 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
-const HTML_HEADER: &str = "<!DOCTYPE HTML>
-<html lang=\"en\">
+const HTML_HEADER: &str = r#"<!DOCTYPE HTML>
+<html lang="en">
 <head>
-  <meta charset=\"utf-8\">
+  <meta charset="utf-8">
   <title>rolandc AST debug</title>
-  <link rel=\"stylesheet\" href=\"./ast.css\">
+  <link rel="stylesheet" href="./ast.css">
 </head>
-<body>";
+<body>"#;
+
+const HELP: &str = r"
+Usage: rolandc (source.rol) [OPTION]+
+
+Valid boolean options are:
+--wasm4
+--skip-constant-folding
+--output-html-ast
+
+Valid options with arguments are:
+--output (output_file.wasm)";
 
 #[derive(Debug)]
 struct Opts {
@@ -29,17 +40,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
    let mut pargs = pico_args::Arguments::from_env();
 
    if pargs.contains("--help") {
-      println!(r"
-Usage: rolandc (source.rol) [OPTION]+
-
-Valid boolean options are:
---wasm4
---skip-constant-folding
---output-html-ast
-
-Valid options with arguments are:
---output (output_file.wasm)
-");
+      println!("{}", HELP);
 
       std::process::exit(0);
    }
@@ -56,12 +57,19 @@ Valid options with arguments are:
 }
 
 fn main() {
-   let opts = parse_args().unwrap();
-
-   let target = if opts.wasm4 { Target::Wasm4 } else { Target::Wasi };
-
    let err_stream = std::io::stderr();
    let mut err_stream_l = err_stream.lock();
+
+   let opts = match parse_args() {
+      Ok(v) => v,
+      Err(e) => {
+         writeln!(err_stream_l, "We didn't understand the arguments you provided: {}", e).unwrap();
+         println!("{}", HELP);
+         std::process::exit(1);
+      },
+   };
+
+   let target = if opts.wasm4 { Target::Wasm4 } else { Target::Wasi };
 
    let user_program_s = if let Ok(s) = std::fs::read_to_string(&opts.source_file) {
       s
