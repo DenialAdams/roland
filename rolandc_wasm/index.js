@@ -68,14 +68,14 @@ window.compileUpdateAll = async function compileUpdateAll() {
 
 function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
 
-   var view = new DataView(instance.exports.memory.buffer);
+   let view = new DataView(instance.exports.memory.buffer);
 
    let sum = 0;
 
-   var buffers = Array.from({ length: iovsLen }, function (_, i) {
-      var ptr = iovs + i * 8;
-      var buf = view.getUint32(ptr, true);
-      var bufLen = view.getUint32(ptr + 4, true);
+   let buffers = Array.from({ length: iovsLen }, function (_, i) {
+      let ptr = iovs + i * 8;
+      let buf = view.getUint32(ptr, true);
+      let bufLen = view.getUint32(ptr + 4, true);
 
       sum += bufLen;
 
