@@ -72,11 +72,11 @@ fn lower_statement<W: Write>(
 
 #[must_use]
 fn lower_expr<W: Write>(
-   expr_to_fold: &mut ExpressionNode,
+   expr_to_lower: &mut ExpressionNode,
    err_stream: &mut W,
    const_replacements: &HashMap<StrId, ExpressionNode>,
 ) -> Option<ExpressionNode> {
-   match &mut expr_to_fold.expression {
+   match &mut expr_to_lower.expression {
       Expression::ArrayIndex(array, index) => {
          try_lower_and_replace_expr(array, err_stream, const_replacements);
          try_lower_and_replace_expr(index, err_stream, const_replacements);
