@@ -1577,9 +1577,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
       }
       Expression::ArrayIndex(lhs, index_e) => {
-         do_emit(lhs, generation_context, interner);
-
-         if lhs.expression.is_lvalue_disregard_consts() {
+         fn calculate_offset(lhs: &ExpressionNode, index_e: &ExpressionNode, generation_context: &mut GenerationContext, interner: &mut Interner) {
             let sizeof_inner = match &lhs.exp_type {
                Some(ExpressionType::Value(ValueType::Array(x, _))) => {
                   sizeof_type_mem(&*x, generation_context.enum_info, &generation_context.struct_size_info)
@@ -1598,8 +1596,23 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
                generation_context.out.emit_const_mul_i32(sizeof_inner);
                generation_context.out.emit_constant_instruction("i32.add");
             }
+         }
+
+         if lhs.expression.is_lvalue_disregard_consts() {
+            do_emit(lhs, generation_context, interner);
+            calculate_offset(lhs, index_e, generation_context, interner);
          } else {
-            todo!()
+            // spill to the top of the stack. i'm not sure what the best thing to do is here
+            generation_context.out.emit_get_global("sp");
+            do_emit(lhs, generation_context, interner);
+            store(lhs.exp_type.as_ref().unwrap(), generation_context, interner);
+
+            // Now that we've spilled, we can proceed to load like normal
+            generation_context.out.emit_get_global("sp");
+            calculate_offset(lhs, index_e, generation_context, interner);
+
+            // ...but we're an rvalue, so we have to load
+            load(expr_node.exp_type.as_ref().unwrap(), generation_context);
          }
       }
    }
