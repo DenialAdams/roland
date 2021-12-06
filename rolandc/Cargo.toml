@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["Richard McCormack <brick@brick.codes>"]
 edition = "2021"
 
+[target.'cfg(fuzzing)'.dependencies]
+stacker = "0.1"
+
 [dependencies]
 arrayvec = "0.7"
 indexmap = "1"

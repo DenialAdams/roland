@@ -53,7 +53,8 @@ pub fn compile<E: Write, A: Write>(
 ) -> Result<Vec<u8>, CompilationError> {
    let mut interner = Interner::with_capacity(1024);
 
-   let mut user_program = lex_and_parse(user_program_s, err_stream, &mut interner)?;
+   let mut user_program = parse_user_program(user_program_s, err_stream, &mut interner)?;
+
    let num_procedures_before_merge = user_program.procedures.len();
 
    let std_lib = match target {
@@ -98,6 +99,16 @@ pub fn compile<E: Write, A: Write>(
          Ok(wat::parse_bytes(&wat).unwrap().into_owned())
       }
    }
+}
+
+#[cfg(fuzzing)]
+fn parse_user_program<W: Write>(user_program_s: &str, err_stream: &mut W, interner: &mut Interner) -> Result<Program, CompilationError> {
+   stacker::grow(16777216, || lex_and_parse(user_program_s, err_stream, interner))
+}
+
+#[cfg(not(fuzzing))]
+fn parse_user_program<W: Write>(user_program_s: &str, err_stream: &mut W, interner: &mut Interner) -> Result<Program, CompilationError> {
+   lex_and_parse(user_program_s, err_stream, interner)
 }
 
 fn merge_programs(main_program: &mut Program, other_programs: &mut [Program]) {

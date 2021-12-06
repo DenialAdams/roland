@@ -681,7 +681,7 @@ fn parse_parameters<W: Write>(
             } else {
                false
             };
-            let id = l.next().unwrap();
+            let id = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
             expect(l, err_stream, &Token::Colon)?;
             let e_type = parse_type(l, err_stream, interner)?;
             parameters.push(ParameterNode {
