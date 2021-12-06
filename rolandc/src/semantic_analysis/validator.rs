@@ -15,6 +15,7 @@ use arrayvec::ArrayVec;
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
+use std::ops::BitOrAssign;
 
 fn is_special_procedure(target: Target, name: StrId, interner: &mut Interner) -> bool {
    get_special_procedures(target, interner).contains(&name)
@@ -70,27 +71,56 @@ fn any_match(type_validations: &[TypeValidator], et: &ExpressionType) -> bool {
    any_match
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum RecursiveStructCheckResult {
+   NotRecursive,
+   // The struct doesn't contain itself directly or indirectly, but it contains a struct that does
+   ContainsRecursiveStruct,
+   ContainsSelf,
+}
+
+impl BitOrAssign for RecursiveStructCheckResult {
+   fn bitor_assign(&mut self, rhs: Self) {
+      *self = match (&self, rhs) {
+         (RecursiveStructCheckResult::ContainsSelf, _) => RecursiveStructCheckResult::ContainsSelf,
+         (RecursiveStructCheckResult::ContainsRecursiveStruct, RecursiveStructCheckResult::ContainsSelf) => RecursiveStructCheckResult::ContainsSelf,
+         (RecursiveStructCheckResult::ContainsRecursiveStruct, _) => RecursiveStructCheckResult::ContainsRecursiveStruct,
+         (RecursiveStructCheckResult::NotRecursive, _) => rhs,
+      };
+   }
+}
+
 fn recursive_struct_check(
    base_name: StrId,
+   seen_structs: &mut HashSet<StrId>,
    struct_fields: &IndexMap<StrId, ExpressionType>,
    struct_info: &IndexMap<StrId, StructInfo>,
-) -> bool {
-   let mut is_recursive = false;
+) -> RecursiveStructCheckResult {
+   let mut is_recursive = RecursiveStructCheckResult::NotRecursive;
 
    for struct_field in struct_fields.iter().flat_map(|x| match &x.1 {
-      ExpressionType::Value(ValueType::Unresolved(x)) => Some(*x),
       ExpressionType::Value(ValueType::Struct(x)) => Some(*x),
+      // Types should be fully resolved at this point, but may not be if there is an error in the program
+      // (in that case, it's fine to ignore it as we'll already error out)
+      ExpressionType::Value(ValueType::Unresolved(x)) => Some(*x),
       _ => None,
    }) {
       if struct_field == base_name {
-         is_recursive = true;
+         is_recursive = RecursiveStructCheckResult::ContainsSelf;
          break;
       }
 
+      if seen_structs.contains(&struct_field) {
+         is_recursive = RecursiveStructCheckResult::ContainsRecursiveStruct;
+         continue;
+      }
+
+      seen_structs.insert(struct_field);
+
       is_recursive |= struct_info
          .get(&struct_field)
-         .map(|si| recursive_struct_check(base_name, &si.field_types, struct_info))
-         .unwrap_or(false);
+         .map(|si| recursive_struct_check(base_name, seen_structs, &si.field_types, struct_info))
+         .unwrap_or(RecursiveStructCheckResult::NotRecursive);
    }
 
    is_recursive
@@ -453,8 +483,13 @@ pub fn type_and_check_validity<W: Write>(
          )
          .unwrap();
       }
+   }
 
-      if recursive_struct_check(*struct_i.0, &struct_i.1.field_types, &cloned_struct_info) {
+   // Check for recursive structs only after we've attempted to resolve all of the field types
+   let mut seen_structs = HashSet::new();
+   for struct_i in struct_info.iter() {
+      seen_structs.clear();
+      if recursive_struct_check(*struct_i.0, &mut seen_structs, &struct_i.1.field_types, &struct_info) == RecursiveStructCheckResult::ContainsSelf {
          error_count += 1;
          writeln!(
             err_stream,

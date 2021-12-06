@@ -103,7 +103,7 @@ pub fn compile<E: Write, A: Write>(
 
 #[cfg(fuzzing)]
 fn parse_user_program<W: Write>(user_program_s: &str, err_stream: &mut W, interner: &mut Interner) -> Result<Program, CompilationError> {
-   stacker::grow(16777216, || lex_and_parse(user_program_s, err_stream, interner))
+   stacker::grow(33554432, || lex_and_parse(user_program_s, err_stream, interner))
 }
 
 #[cfg(not(fuzzing))]
