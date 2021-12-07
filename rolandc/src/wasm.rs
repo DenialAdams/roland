@@ -1577,7 +1577,12 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
       }
       Expression::ArrayIndex(lhs, index_e) => {
-         fn calculate_offset(lhs: &ExpressionNode, index_e: &ExpressionNode, generation_context: &mut GenerationContext, interner: &mut Interner) {
+         fn calculate_offset(
+            lhs: &ExpressionNode,
+            index_e: &ExpressionNode,
+            generation_context: &mut GenerationContext,
+            interner: &mut Interner,
+         ) {
             let sizeof_inner = match &lhs.exp_type {
                Some(ExpressionType::Value(ValueType::Array(x, _))) => {
                   sizeof_type_mem(&*x, generation_context.enum_info, &generation_context.struct_size_info)

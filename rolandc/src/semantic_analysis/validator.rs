@@ -83,8 +83,12 @@ impl BitOrAssign for RecursiveStructCheckResult {
    fn bitor_assign(&mut self, rhs: Self) {
       *self = match (&self, rhs) {
          (RecursiveStructCheckResult::ContainsSelf, _) => RecursiveStructCheckResult::ContainsSelf,
-         (RecursiveStructCheckResult::ContainsRecursiveStruct, RecursiveStructCheckResult::ContainsSelf) => RecursiveStructCheckResult::ContainsSelf,
-         (RecursiveStructCheckResult::ContainsRecursiveStruct, _) => RecursiveStructCheckResult::ContainsRecursiveStruct,
+         (RecursiveStructCheckResult::ContainsRecursiveStruct, RecursiveStructCheckResult::ContainsSelf) => {
+            RecursiveStructCheckResult::ContainsSelf
+         }
+         (RecursiveStructCheckResult::ContainsRecursiveStruct, _) => {
+            RecursiveStructCheckResult::ContainsRecursiveStruct
+         }
          (RecursiveStructCheckResult::NotRecursive, _) => rhs,
       };
    }
@@ -489,7 +493,9 @@ pub fn type_and_check_validity<W: Write>(
    let mut seen_structs = HashSet::new();
    for struct_i in struct_info.iter() {
       seen_structs.clear();
-      if recursive_struct_check(*struct_i.0, &mut seen_structs, &struct_i.1.field_types, &struct_info) == RecursiveStructCheckResult::ContainsSelf {
+      if recursive_struct_check(*struct_i.0, &mut seen_structs, &struct_i.1.field_types, &struct_info)
+         == RecursiveStructCheckResult::ContainsSelf
+      {
          error_count += 1;
          writeln!(
             err_stream,
