@@ -45,6 +45,7 @@ pub enum CompilationError {
    Semantic(u64),
 }
 
+#[cfg(fuzzing)]
 pub fn compile_for_fuzzer<E: Write, A: Write>(
    user_program: &[u8],
    err_stream: &mut E,
@@ -126,7 +127,7 @@ pub fn compile_for_fuzzer<E: Write, A: Write>(
       });
    }
 
-   let user_program = parse::astify(tokens, err_stream, &interner).map_err(|()| CompilationError::Parse)?;
+   let user_program = stacker::grow(67108864, || parse::astify(tokens, err_stream, &interner).map_err(|()| CompilationError::Parse))?;
    compile_program(
       user_program,
       err_stream,

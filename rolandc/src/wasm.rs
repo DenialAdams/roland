@@ -1607,6 +1607,9 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             do_emit(lhs, generation_context, interner);
             calculate_offset(lhs, index_e, generation_context, interner);
          } else {
+            // The below strategy is unsound, because the index_expression might try to use the stack after we've spilled and before we've read the value out
+            // ------
+
             // spill to the top of the stack. i'm not sure what the best thing to do is here
             generation_context.out.emit_get_global("sp");
             do_emit(lhs, generation_context, interner);
