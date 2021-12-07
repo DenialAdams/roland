@@ -8,7 +8,6 @@ mod semantic_analysis;
 mod type_data;
 mod wasm;
 
-use lex::{SourceInfo, SourceToken};
 use parse::Program;
 use std::fmt::Display;
 use std::io::Write;
@@ -53,6 +52,8 @@ pub fn compile_for_fuzzer<E: Write, A: Write>(
    do_constant_folding: bool,
    target: Target,
 ) -> Result<Vec<u8>, CompilationError> {
+   use lex::{SourceInfo, SourceToken};
+
    let mut interner = Interner::with_capacity(1024);
    let an_ident = interner.intern("");
    let a_literal = interner.intern("");
