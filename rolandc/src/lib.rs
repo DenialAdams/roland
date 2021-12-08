@@ -5,6 +5,7 @@ mod interner;
 mod lex;
 mod parse;
 mod semantic_analysis;
+mod ssa;
 mod type_data;
 mod wasm;
 
