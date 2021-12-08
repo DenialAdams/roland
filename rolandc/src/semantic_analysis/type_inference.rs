@@ -2,7 +2,7 @@ use std::io::Write;
 
 use super::ValidationContext;
 use crate::interner::Interner;
-use crate::parse::{Expression, ExpressionNode, UnOp};
+use crate::parse::{Expression, ExpressionNode, UnOp, ExpressionIndex};
 use crate::type_data::{
    ExpressionType, IntType, ValueType, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
    U8_TYPE, USIZE_TYPE,
@@ -24,27 +24,30 @@ fn inference_is_impossible(source_type: &ExpressionType, target_type: &Expressio
 
 pub fn try_set_inferred_type<W: Write>(
    e_type: &ExpressionType,
-   expr_node: &mut ExpressionNode,
+   expr_index: ExpressionIndex,
    validation_context: &mut ValidationContext,
    err_stream: &mut W,
+   expressions: &mut [ExpressionNode],
    interner: &mut Interner,
 ) {
-   let source_type = expr_node.exp_type.as_ref().unwrap();
+   let source_type = expressions[expr_index.0].exp_type.as_ref().unwrap();
    if inference_is_impossible(source_type, e_type) {
       return;
    }
 
-   set_inferred_type(e_type, expr_node, validation_context, err_stream, interner)
+   set_inferred_type(e_type, expr_index, validation_context, err_stream, expressions, interner)
 }
 
 fn set_inferred_type<W: Write>(
    e_type: &ExpressionType,
-   expr_node: &mut ExpressionNode,
+   expr_index: ExpressionIndex,
    validation_context: &mut ValidationContext,
    err_stream: &mut W,
+   expressions: &mut [ExpressionNode],
    interner: &mut Interner,
 ) {
-   match &mut expr_node.expression {
+   let en = &mut expressions[expr_index.0];
+   match &mut en.expression {
       Expression::Extend(_, _) => unreachable!(),
       Expression::Truncate(_, _) => unreachable!(),
       Expression::Transmute(_, _) => unreachable!(),
@@ -78,28 +81,28 @@ fn set_inferred_type<W: Write>(
             writeln!(
                err_stream,
                "↳ line {}, column {}",
-               expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+               en.expression_begin_location.line, en.expression_begin_location.col
             )
             .unwrap();
          }
-         expr_node.exp_type = Some(e_type.clone());
+         en.exp_type = Some(e_type.clone());
       }
       Expression::FloatLiteral(_) => {
          validation_context.unknown_floats -= 1;
-         expr_node.exp_type = Some(e_type.clone());
+         en.exp_type = Some(e_type.clone());
       }
       Expression::StringLiteral(_) => unreachable!(),
-      Expression::BinaryOperator(_, e) => {
-         set_inferred_type(e_type, &mut e.0, validation_context, err_stream, interner);
-         set_inferred_type(e_type, &mut e.1, validation_context, err_stream, interner);
-         expr_node.exp_type = Some(e_type.clone());
+      Expression::BinaryOperator { lhs, rhs, .. } => {
+         set_inferred_type(e_type, *lhs, validation_context, err_stream, expressions, interner);
+         set_inferred_type(e_type, *rhs, validation_context, err_stream, expressions, interner);
+         en.exp_type = Some(e_type.clone());
       }
       Expression::UnaryOperator(unop, e) => {
-         set_inferred_type(e_type, e, validation_context, err_stream, interner);
+         set_inferred_type(e_type, *e, validation_context, err_stream, expressions, interner);
 
          if *unop == UnOp::Negate
             && matches!(
-               e.exp_type,
+               en.exp_type,
                Some(ExpressionType::Value(ValueType::Int(IntType { signed: false, .. })))
             )
          {
@@ -113,12 +116,12 @@ fn set_inferred_type<W: Write>(
             writeln!(
                err_stream,
                "↳ line {}, column {}",
-               expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+               en.expression_begin_location.line, en.expression_begin_location.col
             )
             .unwrap();
          }
 
-         expr_node.exp_type = Some(e_type.clone());
+         en.exp_type = Some(e_type.clone());
       }
       Expression::UnitLiteral => unreachable!(),
       Expression::Variable(_) => (),
@@ -132,11 +135,11 @@ fn set_inferred_type<W: Write>(
          };
 
          for expr in exprs.iter_mut() {
-            set_inferred_type(target_elem_type, expr, validation_context, err_stream, interner);
+            set_inferred_type(target_elem_type, *expr, validation_context, err_stream, expressions, interner);
          }
 
          // It's important that we don't override the length here; that can't be inferred
-         match &mut expr_node.exp_type {
+         match &mut en.exp_type {
             Some(ExpressionType::Value(ValueType::Array(a_type, _))) => *a_type = target_elem_type.clone(),
             _ => unreachable!(),
          }
@@ -144,8 +147,8 @@ fn set_inferred_type<W: Write>(
       Expression::ArrayIndex(array_expr, _index_expr) => {
          // The length is bogus, but we don't care about that during inference anyway
          let array_type = ExpressionType::Value(ValueType::Array(Box::new(e_type.clone()), 0));
-         set_inferred_type(&array_type, array_expr, validation_context, err_stream, interner);
-         expr_node.exp_type = Some(e_type.clone());
+         set_inferred_type(&array_type, *array_expr, validation_context, err_stream, expressions, interner);
+         en.exp_type = Some(e_type.clone());
       }
       Expression::EnumLiteral(_, _) => unreachable!(),
    }
