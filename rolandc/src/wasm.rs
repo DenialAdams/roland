@@ -1,9 +1,11 @@
 use crate::interner::{Interner, StrId};
-use crate::parse::{BinOp, Expression, ExpressionNode, ParameterNode, Program, Statement, StatementNode, UnOp, ExpressionIndex};
+use crate::parse::{
+   BinOp, Expression, ExpressionIndex, ExpressionNode, ParameterNode, Program, Statement, StatementNode, UnOp,
+};
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, USIZE_TYPE};
-use crate::Target;
 use crate::typed_index_vec::HandleMap;
+use crate::Target;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
 use std::io::Write;
@@ -22,7 +24,7 @@ struct GenerationContext<'a> {
    sum_sizeof_locals_mem: u32,
    loop_depth: u64,
    loop_counter: u64,
-   expressions: &'a HandleMap<ExpressionIndex, ExpressionNode>
+   expressions: &'a HandleMap<ExpressionIndex, ExpressionNode>,
 }
 
 struct SizeInfo {
@@ -608,7 +610,13 @@ fn dynamic_move_locals_of_type_to_dest(
 // 0-l literals
 // l-s statics
 // s+ program stack (local variables and parameters are pushed here during runtime)
-pub fn emit_wasm(program: &mut Program, interner: &mut Interner, expressions: &HandleMap<ExpressionIndex, ExpressionNode>, memory_base: u32, wasm4: bool) -> Vec<u8> {
+pub fn emit_wasm(
+   program: &mut Program,
+   interner: &mut Interner,
+   expressions: &HandleMap<ExpressionIndex, ExpressionNode>,
+   memory_base: u32,
+   wasm4: bool,
+) -> Vec<u8> {
    let mut struct_size_info: HashMap<StrId, SizeInfo> = HashMap::with_capacity(program.struct_info.len());
    for s in program.struct_info.iter() {
       calculate_struct_size_info(*s.0, &program.enum_info, &program.struct_info, &mut struct_size_info);
@@ -1132,7 +1140,10 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
       }
       Statement::Expression(en) => {
          do_emit(*en, generation_context, interner);
-         for _ in 0..sizeof_type_values(generation_context.expressions[*en].exp_type.as_ref().unwrap(), &generation_context.struct_size_info) {
+         for _ in 0..sizeof_type_values(
+            generation_context.expressions[*en].exp_type.as_ref().unwrap(),
+            &generation_context.struct_size_info,
+         ) {
             generation_context.out.emit_constant_instruction("drop");
          }
       }
@@ -1173,7 +1184,10 @@ fn do_emit_and_load_lval(
    do_emit(expr_index, generation_context, interner);
 
    let expr_node = &generation_context.expressions[expr_index];
-   if expr_node.expression.is_lvalue_disregard_consts(generation_context.expressions) {
+   if expr_node
+      .expression
+      .is_lvalue_disregard_consts(generation_context.expressions)
+   {
       load(expr_node.exp_type.as_ref().unwrap(), generation_context);
    }
 }
@@ -1234,7 +1248,11 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
          generation_context.out.emit_const_i32(*offset);
          generation_context.out.emit_const_i32(*len);
       }
-      Expression::BinaryOperator { operator: BinOp::LogicalAnd, lhs, rhs } => {
+      Expression::BinaryOperator {
+         operator: BinOp::LogicalAnd,
+         lhs,
+         rhs,
+      } => {
          do_emit_and_load_lval(*lhs, generation_context, interner);
          generation_context.out.emit_if_start(
             &ExpressionType::Value(ValueType::Bool),
@@ -1252,7 +1270,11 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
          // finish if
          generation_context.out.close();
       }
-      Expression::BinaryOperator { operator: BinOp::LogicalOr, lhs, rhs } => {
+      Expression::BinaryOperator {
+         operator: BinOp::LogicalOr,
+         lhs,
+         rhs,
+      } => {
          do_emit_and_load_lval(*lhs, generation_context, interner);
          generation_context.out.emit_if_start(
             &ExpressionType::Value(ValueType::Bool),
@@ -1511,7 +1533,10 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
 
          let lhs = &generation_context.expressions[*lhs];
 
-         if lhs.expression.is_lvalue_disregard_consts(generation_context.expressions) {
+         if lhs
+            .expression
+            .is_lvalue_disregard_consts(generation_context.expressions)
+         {
             let mut si = match lhs.exp_type.as_ref() {
                Some(ExpressionType::Value(ValueType::Struct(x))) => generation_context.struct_info.get(x).unwrap(),
                _ => unreachable!(),
@@ -1618,7 +1643,10 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
             }
          }
 
-         if generation_context.expressions[*array].expression.is_lvalue_disregard_consts(generation_context.expressions) {
+         if generation_context.expressions[*array]
+            .expression
+            .is_lvalue_disregard_consts(generation_context.expressions)
+         {
             do_emit(*array, generation_context, interner);
             calculate_offset(*array, *index, generation_context, interner);
          } else {
@@ -1628,7 +1656,11 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
             // spill to the top of the stack. i'm not sure what the best thing to do is here
             generation_context.out.emit_get_global("sp");
             do_emit(*array, generation_context, interner);
-            store(generation_context.expressions[*array].exp_type.as_ref().unwrap(), generation_context, interner);
+            store(
+               generation_context.expressions[*array].exp_type.as_ref().unwrap(),
+               generation_context,
+               interner,
+            );
 
             // Now that we've spilled, we can proceed to load like normal
             generation_context.out.emit_get_global("sp");

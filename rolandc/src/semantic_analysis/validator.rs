@@ -4,14 +4,15 @@ use crate::constant_folding::{try_fold_and_replace_expr, FoldingContext};
 use crate::interner::{Interner, StrId};
 use crate::lex::SourceInfo;
 use crate::parse::{
-   BinOp, BlockNode, Expression, IdentifierNode, Program, Statement, StatementNode, UnOp, ExpressionIndex, ExpressionNode,
+   BinOp, BlockNode, Expression, ExpressionIndex, ExpressionNode, IdentifierNode, Program, Statement, StatementNode,
+   UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::type_data::{
    ExpressionType, IntType, IntWidth, ValueType, I32_TYPE, ISIZE_TYPE, U32_TYPE, U8_TYPE, USIZE_TYPE,
 };
-use crate::Target;
 use crate::typed_index_vec::HandleMap;
+use crate::Target;
 use arrayvec::ArrayVec;
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
@@ -852,7 +853,14 @@ pub fn type_and_check_validity<W: Write>(
          }
       }
 
-      try_fold_and_replace_expr(p_const.value, err_stream, &mut FoldingContext { error_count: 0, expressions: validation_context.expressions });
+      try_fold_and_replace_expr(
+         p_const.value,
+         err_stream,
+         &mut FoldingContext {
+            error_count: 0,
+            expressions: validation_context.expressions,
+         },
+      );
       let p_const_expr = &validation_context.expressions[p_const.value];
 
       if !crate::constant_folding::is_const(&p_const_expr.expression, validation_context.expressions) {
@@ -880,12 +888,7 @@ pub fn type_and_check_validity<W: Write>(
 
    for p_static in program.statics.iter_mut().filter(|x| x.value.is_some()) {
       // p_static.static_type is guaranteed to be resolved at this point
-      do_type(
-         err_stream,
-         p_static.value.unwrap(),
-         &mut validation_context,
-         interner,
-      );
+      do_type(err_stream, p_static.value.unwrap(), &mut validation_context, interner);
       try_set_inferred_type(
          &p_static.static_type,
          p_static.value.unwrap(),
@@ -897,15 +900,10 @@ pub fn type_and_check_validity<W: Write>(
       let p_static_expr = &validation_context.expressions[p_static.value.unwrap()];
 
       if p_static.static_type != *p_static_expr.exp_type.as_ref().unwrap()
-         && p_static_expr.exp_type.as_ref().unwrap()
-            != &ExpressionType::Value(ValueType::CompileError)
+         && p_static_expr.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::CompileError)
       {
          validation_context.error_count += 1;
-         let actual_type_str = p_static_expr
-            .exp_type
-            .as_ref()
-            .unwrap()
-            .as_roland_type_info(interner);
+         let actual_type_str = p_static_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
          writeln!(
             err_stream,
             "Declared type {} of static `{}` does not match actual expression type {}",
@@ -923,14 +921,20 @@ pub fn type_and_check_validity<W: Write>(
          writeln!(
             err_stream,
             "↳ expression @ line {}, column {}",
-            p_static_expr.expression_begin_location.line,
-            p_static_expr.expression_begin_location.col
+            p_static_expr.expression_begin_location.line, p_static_expr.expression_begin_location.col
          )
          .unwrap();
       }
 
       if let Some(v) = p_static.value.as_mut() {
-         try_fold_and_replace_expr(*v, err_stream, &mut FoldingContext { error_count: 0, expressions: validation_context.expressions });
+         try_fold_and_replace_expr(
+            *v,
+            err_stream,
+            &mut FoldingContext {
+               error_count: 0,
+               expressions: validation_context.expressions,
+            },
+         );
          let v = &validation_context.expressions[*v];
          if !crate::constant_folding::is_const(&v.expression, validation_context.expressions) {
             validation_context.error_count += 1;
@@ -1095,9 +1099,15 @@ fn type_statement<W: Write>(
                en.expression_begin_location.line, en.expression_begin_location.col
             )
             .unwrap();
-         } else if !len.expression.is_lvalue(validation_context.expressions, validation_context.static_info) {
+         } else if !len
+            .expression
+            .is_lvalue(validation_context.expressions, validation_context.static_info)
+         {
             validation_context.error_count += 1;
-            if len.expression.is_lvalue_disregard_consts(validation_context.expressions) {
+            if len
+               .expression
+               .is_lvalue_disregard_consts(validation_context.expressions)
+            {
                writeln!(
                   err_stream,
                   "Left hand side of assignment is a constant, which does not have a memory location and can't be reassigned"
@@ -1436,12 +1446,8 @@ fn get_type<W: Write>(
    let expr_node = &mut validation_context.expressions[expr_index] as *mut ExpressionNode;
 
    match unsafe { &mut (*expr_node).expression } {
-      Expression::UnitLiteral => {
-         ExpressionType::Value(ValueType::Unit)
-      }
-      Expression::BoolLiteral(_) => {
-         ExpressionType::Value(ValueType::Bool)
-      }
+      Expression::UnitLiteral => ExpressionType::Value(ValueType::Unit),
+      Expression::BoolLiteral(_) => ExpressionType::Value(ValueType::Bool),
       Expression::IntLiteral(_) => {
          validation_context.unknown_ints += 1;
          ExpressionType::Value(ValueType::UnknownInt)
@@ -1783,7 +1789,11 @@ fn get_type<W: Write>(
             )
             .unwrap();
             ExpressionType::Value(ValueType::CompileError)
-         } else if *un_op == UnOp::AddressOf && !e.expression.is_lvalue(validation_context.expressions, validation_context.static_info) {
+         } else if *un_op == UnOp::AddressOf
+            && !e
+               .expression
+               .is_lvalue(validation_context.expressions, validation_context.static_info)
+         {
             validation_context.error_count += 1;
             if e.expression.is_lvalue_disregard_consts(validation_context.expressions) {
                writeln!(
@@ -2234,9 +2244,7 @@ fn get_type<W: Write>(
             }
 
             match current_struct_info.get(fields.last().unwrap()) {
-               Some(e_type) => {
-                  e_type.clone()
-               }
+               Some(e_type) => e_type.clone(),
                None => {
                   validation_context.error_count += 1;
                   writeln!(
@@ -2361,10 +2369,7 @@ fn get_type<W: Write>(
          } else {
             let a_type = validation_context.expressions[elems[0]].exp_type.clone().unwrap();
 
-            ExpressionType::Value(ValueType::Array(
-               Box::new(a_type),
-               elems.len() as i128,
-            ))
+            ExpressionType::Value(ValueType::Array(Box::new(a_type), elems.len() as i128))
          }
       }
       Expression::ArrayIndex { array, index } => {
@@ -2481,5 +2486,6 @@ fn do_type<W: Write>(
    validation_context: &mut ValidationContext,
    interner: &mut Interner,
 ) {
-   validation_context.expressions[expr_index].exp_type = Some(get_type(err_stream, expr_index, validation_context, interner));
+   validation_context.expressions[expr_index].exp_type =
+      Some(get_type(err_stream, expr_index, validation_context, interner));
 }

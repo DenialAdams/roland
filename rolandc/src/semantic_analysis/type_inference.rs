@@ -2,7 +2,7 @@ use std::io::Write;
 
 use super::ValidationContext;
 use crate::interner::Interner;
-use crate::parse::{Expression, UnOp, ExpressionIndex};
+use crate::parse::{Expression, ExpressionIndex, UnOp};
 use crate::type_data::{
    ExpressionType, IntType, ValueType, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
    U8_TYPE, USIZE_TYPE,
@@ -83,7 +83,10 @@ fn set_inferred_type<W: Write>(
             writeln!(
                err_stream,
                "↳ line {}, column {}",
-               validation_context.expressions[expr_index].expression_begin_location.line, validation_context.expressions[expr_index].expression_begin_location.col
+               validation_context.expressions[expr_index]
+                  .expression_begin_location
+                  .line,
+               validation_context.expressions[expr_index].expression_begin_location.col
             )
             .unwrap();
          }
@@ -118,7 +121,10 @@ fn set_inferred_type<W: Write>(
             writeln!(
                err_stream,
                "↳ line {}, column {}",
-               validation_context.expressions[expr_index].expression_begin_location.line, validation_context.expressions[expr_index].expression_begin_location.col
+               validation_context.expressions[expr_index]
+                  .expression_begin_location
+                  .line,
+               validation_context.expressions[expr_index].expression_begin_location.col
             )
             .unwrap();
          }

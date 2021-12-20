@@ -1,5 +1,5 @@
 use crate::interner::StrId;
-use crate::parse::{BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, UnOp, ExpressionIndex};
+use crate::parse::{BinOp, BlockNode, Expression, ExpressionIndex, ExpressionNode, Program, Statement, UnOp};
 use crate::type_data::{
    ExpressionType, ValueType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE,
    U32_TYPE, U64_TYPE, U8_TYPE, USIZE_TYPE,
@@ -14,8 +14,15 @@ pub struct FoldingContext<'a> {
    pub error_count: u64,
 }
 
-pub fn fold_constants<W: Write>(program: &mut Program, err_stream: &mut W, expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>) -> u64 {
-   let mut folding_context = FoldingContext { error_count: 0, expressions };
+pub fn fold_constants<W: Write>(
+   program: &mut Program,
+   err_stream: &mut W,
+   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+) -> u64 {
+   let mut folding_context = FoldingContext {
+      error_count: 0,
+      expressions,
+   };
 
    for procedure in program.procedures.iter_mut() {
       fold_block(&mut procedure.block, err_stream, &mut folding_context);
@@ -66,14 +73,14 @@ pub fn fold_statement<W: Write>(statement: &mut Statement, err_stream: &mut W, f
 }
 
 pub fn try_fold_and_replace_expr<W: Write>(
-      node: ExpressionIndex,
-      err_stream: &mut W,
-      folding_context: &mut FoldingContext,
-   ) {
-      if let Some(new_node) = fold_expr(node, err_stream, folding_context) {
-         folding_context.expressions[node] = new_node;
-      }
+   node: ExpressionIndex,
+   err_stream: &mut W,
+   folding_context: &mut FoldingContext,
+) {
+   if let Some(new_node) = fold_expr(node, err_stream, folding_context) {
+      folding_context.expressions[node] = new_node;
    }
+}
 
 #[must_use]
 fn fold_expr<W: Write>(
@@ -81,10 +88,8 @@ fn fold_expr<W: Write>(
    err_stream: &mut W,
    folding_context: &mut FoldingContext,
 ) -> Option<ExpressionNode> {
-
    let expr_to_fold_location = folding_context.expressions[expr_index].expression_begin_location;
    let expr_to_fold_type = folding_context.expressions[expr_index].exp_type.clone();
-
 
    // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
    // while this pointer is alive. We don't do this, because we update this expression in place.
@@ -133,7 +138,11 @@ fn fold_expr<W: Write>(
                   _ => unreachable!(),
                };
 
-               let chosen_elem = folding_context.expressions.get(array_elems[v as usize]).unwrap().clone();
+               let chosen_elem = folding_context
+                  .expressions
+                  .get(array_elems[v as usize])
+                  .unwrap()
+                  .clone();
 
                return Some(ExpressionNode {
                   expression: chosen_elem.expression,
@@ -577,8 +586,14 @@ pub fn is_const(expr: &Expression, expressions: &HandleMap<ExpressionIndex, Expr
       Expression::IntLiteral(_) => true,
       Expression::FloatLiteral(_) => true,
       Expression::BoolLiteral(_) => true,
-      Expression::ArrayLiteral(exprs) => exprs.iter().copied().all(|x| is_const(&expressions[x].expression, expressions)),
-      Expression::StructLiteral(_, exprs) => exprs.iter().copied().all(|(_, x)| is_const(&expressions[x].expression, expressions)),
+      Expression::ArrayLiteral(exprs) => exprs
+         .iter()
+         .copied()
+         .all(|x| is_const(&expressions[x].expression, expressions)),
+      Expression::StructLiteral(_, exprs) => exprs
+         .iter()
+         .copied()
+         .all(|(_, x)| is_const(&expressions[x].expression, expressions)),
       // Tentative - I'm not sure how we'll handle transmuting of unalike types in the wasm backend,
       // but conceptually this seems sound
       Expression::Transmute(_, x) => is_const(&expressions[*x].expression, expressions),

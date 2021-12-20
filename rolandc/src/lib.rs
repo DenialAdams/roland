@@ -9,10 +9,10 @@ mod type_data;
 mod typed_index_vec;
 mod wasm;
 
-use parse::{Program, ExpressionNode, ExpressionIndex};
-use typed_index_vec::{HandleMap};
+use parse::{ExpressionIndex, ExpressionNode, Program};
 use std::fmt::Display;
 use std::io::Write;
+use typed_index_vec::HandleMap;
 
 use crate::interner::Interner;
 
@@ -130,7 +130,9 @@ pub fn compile_for_fuzzer<E: Write, A: Write>(
       });
    }
 
-   let user_program = stacker::grow(67108864, || parse::astify(tokens, err_stream, &interner).map_err(|()| CompilationError::Parse))?;
+   let user_program = stacker::grow(67108864, || {
+      parse::astify(tokens, err_stream, &interner).map_err(|()| CompilationError::Parse)
+   })?;
    compile_program(
       user_program,
       err_stream,
@@ -189,8 +191,13 @@ fn compile_program<E: Write, A: Write>(
 
    merge_programs(&mut user_program, &mut [std_lib]);
 
-   let mut err_count =
-      semantic_analysis::validator::type_and_check_validity(&mut user_program, err_stream, interner, expressions, target);
+   let mut err_count = semantic_analysis::validator::type_and_check_validity(
+      &mut user_program,
+      err_stream,
+      interner,
+      expressions,
+      target,
+   );
 
    if let Some(w) = html_ast_out {
       let mut program_without_std = user_program.clone();
@@ -234,7 +241,9 @@ fn parse_user_program<W: Write>(
    interner: &mut Interner,
    expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
 ) -> Result<Program, CompilationError> {
-   stacker::grow(33554432, || lex_and_parse(user_program_s, err_stream, interner, expressions))
+   stacker::grow(33554432, || {
+      lex_and_parse(user_program_s, err_stream, interner, expressions)
+   })
 }
 
 #[cfg(not(fuzzing))]
@@ -258,7 +267,12 @@ fn merge_programs(main_program: &mut Program, other_programs: &mut [Program]) {
    }
 }
 
-fn lex_and_parse<W: Write>(s: &str, err_stream: &mut W, interner: &mut Interner, expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,) -> Result<Program, CompilationError> {
+fn lex_and_parse<W: Write>(
+   s: &str,
+   err_stream: &mut W,
+   interner: &mut Interner,
+   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+) -> Result<Program, CompilationError> {
    let tokens = match lex::lex(s, err_stream, interner) {
       Err(()) => return Err(CompilationError::Lex),
       Ok(v) => v,

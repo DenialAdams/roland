@@ -6,8 +6,8 @@ use crate::interner::StrId;
 use crate::lex::SourceInfo;
 use crate::parse::{ExpressionIndex, ExpressionNode};
 use crate::type_data::ExpressionType;
-use crate::Target;
 use crate::typed_index_vec::HandleMap;
+use crate::Target;
 
 pub mod type_inference;
 pub mod validator;

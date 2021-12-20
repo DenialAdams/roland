@@ -1,9 +1,14 @@
 use crate::interner::Interner;
-use crate::parse::{Expression, ExpressionNode, Program, Statement, StatementNode, ExpressionIndex};
+use crate::parse::{Expression, ExpressionIndex, ExpressionNode, Program, Statement, StatementNode};
 use crate::typed_index_vec::HandleMap;
 use std::io::Write;
 
-pub fn print_ast_as_html<W: Write>(out: &mut W, program: &Program, interner: &mut Interner, expressions: &HandleMap<ExpressionIndex, ExpressionNode>,) {
+pub fn print_ast_as_html<W: Write>(
+   out: &mut W,
+   program: &Program,
+   interner: &mut Interner,
+   expressions: &HandleMap<ExpressionIndex, ExpressionNode>,
+) {
    writeln!(out, "<ul class=\"tree\">").unwrap();
    writeln!(out, "<li><span>Program</span>").unwrap();
    writeln!(out, "<ul>").unwrap();
@@ -21,7 +26,12 @@ pub fn print_ast_as_html<W: Write>(out: &mut W, program: &Program, interner: &mu
    writeln!(out, "</ul>").unwrap();
 }
 
-fn print_statement<W: Write>(out: &mut W, statement_node: &StatementNode, expressions: &HandleMap<ExpressionIndex, ExpressionNode>, interner: &mut Interner) {
+fn print_statement<W: Write>(
+   out: &mut W,
+   statement_node: &StatementNode,
+   expressions: &HandleMap<ExpressionIndex, ExpressionNode>,
+   interner: &mut Interner,
+) {
    match &statement_node.statement {
       Statement::Assignment(le, e) => {
          writeln!(out, "<li><span>Assignment</span>").unwrap();
@@ -91,7 +101,12 @@ fn print_statement<W: Write>(out: &mut W, statement_node: &StatementNode, expres
    }
 }
 
-fn print_expression<W: Write>(out: &mut W, expression_index: ExpressionIndex, expressions: &HandleMap<ExpressionIndex, ExpressionNode>, interner: &mut Interner) {
+fn print_expression<W: Write>(
+   out: &mut W,
+   expression_index: ExpressionIndex,
+   expressions: &HandleMap<ExpressionIndex, ExpressionNode>,
+   interner: &mut Interner,
+) {
    let expression_node = &expressions[expression_index];
    let type_text = match &expression_node.exp_type {
       Some(x) => format!("<br><span class=\"type\">{}</span>", x.as_roland_type_info(interner)),
@@ -125,7 +140,7 @@ fn print_expression<W: Write>(out: &mut W, expression_index: ExpressionIndex, ex
          }
          writeln!(out, "</ul></li>").unwrap()
       }
-      Expression::BinaryOperator{ operator, lhs, rhs } => {
+      Expression::BinaryOperator { operator, lhs, rhs } => {
          writeln!(out, "<li><span>{:?}{}</span>", operator, type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
          print_expression(out, *lhs, expressions, interner);

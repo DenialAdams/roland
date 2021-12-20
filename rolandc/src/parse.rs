@@ -160,19 +160,25 @@ impl Handle for ExpressionIndex {
    }
 }
 
-
 #[derive(Clone, Debug)]
 pub enum Expression {
    ProcedureCall(StrId, Box<[ArgumentNode]>),
    ArrayLiteral(Box<[ExpressionIndex]>),
-   ArrayIndex { array: ExpressionIndex, index: ExpressionIndex },
+   ArrayIndex {
+      array: ExpressionIndex,
+      index: ExpressionIndex,
+   },
    BoolLiteral(bool),
    StringLiteral(StrId),
    IntLiteral(i128),
    FloatLiteral(f64),
    UnitLiteral,
    Variable(StrId),
-   BinaryOperator { operator: BinOp, lhs: ExpressionIndex, rhs: ExpressionIndex },
+   BinaryOperator {
+      operator: BinOp,
+      lhs: ExpressionIndex,
+      rhs: ExpressionIndex,
+   },
    UnaryOperator(UnOp, ExpressionIndex),
    StructLiteral(StrId, Vec<(StrId, ExpressionIndex)>),
    FieldAccess(Vec<StrId>, ExpressionIndex),
@@ -191,10 +197,14 @@ pub struct ArgumentNode {
 }
 
 impl Expression {
-   pub fn is_lvalue(&self, expressions: &HandleMap<ExpressionIndex, ExpressionNode>, static_info: &IndexMap<StrId, StaticInfo>) -> bool {
+   pub fn is_lvalue(
+      &self,
+      expressions: &HandleMap<ExpressionIndex, ExpressionNode>,
+      static_info: &IndexMap<StrId, StaticInfo>,
+   ) -> bool {
       match self {
          Expression::Variable(x) => static_info.get(x).map(|x| !x.is_const).unwrap_or(true),
-         Expression::ArrayIndex{array, ..} => expressions[*array].expression.is_lvalue(expressions, static_info),
+         Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue(expressions, static_info),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
          Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue(expressions, static_info),
          _ => false,
@@ -205,7 +215,7 @@ impl Expression {
    pub fn is_lvalue_disregard_consts(&self, expressions: &HandleMap<ExpressionIndex, ExpressionNode>) -> bool {
       match self {
          Expression::Variable(_) => true,
-         Expression::ArrayIndex{array, ..} => expressions[*array].expression.is_lvalue_disregard_consts(expressions),
+         Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue_disregard_consts(expressions),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
          Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue_disregard_consts(expressions),
          _ => false,
@@ -262,7 +272,12 @@ pub struct Program {
    pub static_info: IndexMap<StrId, StaticInfo>,
 }
 
-pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: &Interner, expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,) -> Result<Program, ()> {
+pub fn astify<W: Write>(
+   tokens: Vec<SourceToken>,
+   err_stream: &mut W,
+   interner: &Interner,
+   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+) -> Result<Program, ()> {
    let mut lexer = Lexer::from_tokens(tokens);
 
    let mut procedures = vec![];
@@ -465,7 +480,12 @@ fn parse_enum<W: Write>(
    })
 }
 
-fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>, interner: &Interner) -> Result<BlockNode, ()> {
+fn parse_block<W: Write>(
+   l: &mut Lexer,
+   err_stream: &mut W,
+   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+   interner: &Interner,
+) -> Result<BlockNode, ()> {
    expect(l, err_stream, &Token::OpenBrace)?;
 
    let mut statements: Vec<StatementNode> = vec![];
@@ -739,7 +759,12 @@ fn parse_parameters<W: Write>(
    Ok(parameters)
 }
 
-fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W, expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>, interner: &Interner) -> Result<Vec<ArgumentNode>, ()> {
+fn parse_arguments<W: Write>(
+   l: &mut Lexer,
+   err_stream: &mut W,
+   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+   interner: &Interner,
+) -> Result<Vec<ArgumentNode>, ()> {
    let mut arguments = vec![];
 
    loop {
@@ -1037,7 +1062,10 @@ fn pratt<W: Write>(
             Token::OpenSquareBracket => {
                let inner = parse_expression(l, err_stream, false, expressions, interner)?;
                expect(l, err_stream, &Token::CloseSquareBracket)?;
-               Expression::ArrayIndex { array: wrap(lhs, lhs_source.unwrap(), expressions), index: inner }
+               Expression::ArrayIndex {
+                  array: wrap(lhs, lhs_source.unwrap(), expressions),
+                  index: inner,
+               }
             }
             Token::KeywordExtend => {
                let a_type = parse_type(l, err_stream, interner)?;
@@ -1138,7 +1166,11 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
    }
 }
 
-fn wrap(expression: Expression, source_info: SourceInfo, expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>) -> ExpressionIndex {
+fn wrap(
+   expression: Expression,
+   source_info: SourceInfo,
+   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+) -> ExpressionIndex {
    expressions.push(ExpressionNode {
       expression,
       exp_type: None,
