@@ -4,7 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::interner::StrId;
 use crate::lex::SourceInfo;
-use crate::parse::ExpressionPool;
+use crate::parse::{ExpressionIndex, ExpressionPool};
 use crate::type_data::ExpressionType;
 use crate::Target;
 
@@ -47,6 +47,7 @@ pub struct ValidationContext<'a> {
    pub cur_procedure_info: Option<&'a ProcedureInfo>,
    pub string_literals: HashSet<StrId>,
    pub variable_types: HashMap<StrId, (ExpressionType, u64)>,
+   pub array_index_rvalue_fixups: Vec<ExpressionIndex>,
    pub error_count: u64,
    pub block_depth: u64,
    pub loop_depth: u64,

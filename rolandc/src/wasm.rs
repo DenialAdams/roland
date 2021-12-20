@@ -1659,11 +1659,10 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
             do_emit(*array, generation_context, interner);
             calculate_offset(*array, *index, generation_context, interner);
          } else {
-            // The below strategy is unsound, because the index_expression might try to use the stack after we've spilled and before we've read the value out
-            // ------
+            let array_var_id = interner.intern(&format!("::{}", array.index()));
 
-            // spill to the top of the stack. i'm not sure what the best thing to do is here
-            generation_context.out.emit_get_global("sp");
+            // spill to the virtual variable
+            get_stack_address_of_local(array_var_id, generation_context);
             do_emit(*array, generation_context, interner);
             store(
                generation_context.expressions[*array].exp_type.as_ref().unwrap(),
@@ -1672,7 +1671,7 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
             );
 
             // Now that we've spilled, we can proceed to load like normal
-            generation_context.out.emit_get_global("sp");
+            get_stack_address_of_local(array_var_id, generation_context);
             calculate_offset(*array, *index, generation_context, interner);
 
             // ...but we're an rvalue, so we have to load
@@ -1845,6 +1844,25 @@ fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext, 
 
 // VALUE STACK: i32 MEMORY_OFFSET, (any 1 value)
 fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+   // If this is a tiny struct or array, drill into the inner type
+   match val_type {
+      ExpressionType::Value(ValueType::Struct(x)) => {
+         let si = generation_context.struct_info.get(x).unwrap();
+         // Find the first non-zero-sized struct field and store that
+         // (there should only be one if we're in simple_store)
+         for (_, field_type) in si.field_types.iter() {
+            match sizeof_type_values(field_type, &generation_context.struct_size_info) {
+               0 => continue,
+               1 => return simple_store(field_type, generation_context),
+               _ => unreachable!(),
+            }
+         }
+      }
+      ExpressionType::Value(ValueType::Array(inner_type, _len)) => {
+         return simple_store(inner_type, generation_context);
+      }
+      _ => (),
+   }
    if sizeof_type_mem(
       val_type,
       generation_context.enum_info,

@@ -754,6 +754,7 @@ pub fn type_and_check_validity<W: Write>(
       unknown_ints: 0,
       unknown_floats: 0,
       expressions,
+      array_index_rvalue_fixups: Vec::new(),
    };
 
    let special_procs = get_special_procedures(target, interner);
@@ -961,6 +962,7 @@ pub fn type_and_check_validity<W: Write>(
    }
 
    for procedure in program.procedures.iter_mut() {
+      validation_context.array_index_rvalue_fixups.clear();
       validation_context.variable_types.clear();
       validation_context.cur_procedure_info = procedure_info.get(&procedure.name);
 
@@ -982,6 +984,14 @@ pub fn type_and_check_validity<W: Write>(
          &mut procedure.locals,
          interner,
       );
+
+      for fixup_expr in validation_context.array_index_rvalue_fixups.iter().copied() {
+         procedure
+            .locals
+            .entry(interner.intern(&format!("::{}", fixup_expr.index())))
+            .or_insert_with(HashSet::new)
+            .insert(validation_context.expressions[fixup_expr].exp_type.clone().unwrap());
+      }
 
       // Ensure that the last statement is a return statement
       // (it has already been type checked, so we don't have to check that)
@@ -1183,6 +1193,7 @@ fn type_statement<W: Write>(
          let start_expr = &validation_context.expressions[*start];
          let end_expr = &validation_context.expressions[*end];
 
+         // This virtual variable will be used to hoist the end expression out of the loop
          cur_procedure_locals
             .entry(interner.intern(&format!("::{}", end.index())))
             .or_insert_with(HashSet::new)
@@ -1448,7 +1459,8 @@ fn get_type<W: Write>(
    let expr_location = validation_context.expressions[expr_index].expression_begin_location;
 
    // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
-   // while this pointer is alive. We don't do this, because we update this expression in place.
+   // while this pointer is alive. We don't do this, because we update this expression in place and don't
+   // add new expressions during validation.
    let expr_node = &mut validation_context.expressions[expr_index] as *mut ExpressionNode;
 
    match unsafe { &mut (*expr_node).expression } {
@@ -2392,6 +2404,16 @@ fn get_type<W: Write>(
 
          let array_expression = &validation_context.expressions[*array];
          let index_expression = &validation_context.expressions[*index];
+
+         // If this is an rvalue, we need to store this array in memory to do the indexing
+         // and hence declare a virtual variable here. It's important that this
+         // runs after validation, because we need type inference to be complete
+         if !array_expression
+            .expression
+            .is_lvalue(validation_context.expressions, validation_context.static_info)
+         {
+            validation_context.array_index_rvalue_fixups.push(*array);
+         }
 
          if !index_expression.exp_type.as_ref().unwrap().is_concrete_type() {
             // avoid cascading errors
