@@ -1,9 +1,29 @@
+// drawing
+extern proc blit(sprite_ptr: &u8, x: i32, y: i32, width: u32, height: u32, flags: u32);
+extern proc blit_sub(sprite_ptr: &u8, x: i32, y: i32, width: u32, height: u32, src_x: i32, src_y: i32, stride: u32, flags: u32);
+extern proc line(x1: i32, y1: i32, x2: i32, y2: i32);
+extern proc hline(x: i32, y: i32, len: i32);
+extern proc vline(x: i32, y: i32, len: i32);
+extern proc oval(x: i32, y: i32, width: u32, height: u32);
+extern proc rect(x: i32, y: i32, width: u32, height: u32);
+extern proc textUtf8(str_pointer: &u8, str_length: usize, x: i32, y: i32);
+
+// debug
+extern proc traceUtf8(str_pointer: &u8, str_length: usize);
+
+// audio
+extern proc tone(frequency: u32, duration: u32, volume: u32, flags: u32);
+
+// disk
+extern proc diskr(dest_ptr: &u8, size: usize) -> usize;
+extern proc diskw(src_ptr: &u8, size: usize) -> usize;
+
 struct String {
    pointer: &u8,
    length: usize,
 }
 
-proc text(txt: String, x: u32, y: u32) {
+proc text(txt: String, x: i32, y: i32) {
    textUtf8(txt.pointer, txt.length, x, y);
 }
 

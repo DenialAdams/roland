@@ -17,6 +17,7 @@ pub struct ProcedureInfo {
    pub named_parameters: HashMap<StrId, ExpressionType>,
    pub ret_type: ExpressionType,
    pub procedure_begin_location: SourceInfo,
+   pub is_external: bool,
 }
 
 #[derive(Clone)]

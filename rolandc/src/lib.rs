@@ -252,6 +252,9 @@ fn parse_user_program<W: Write>(
 fn merge_programs(main_program: &mut Program, other_programs: &mut [Program]) {
    for program in other_programs {
       main_program.literals.extend(program.literals.drain());
+      main_program
+         .external_procedures
+         .extend(program.external_procedures.drain(0..));
       main_program.procedures.extend(program.procedures.drain(0..));
       main_program.structs.extend(program.structs.drain(0..));
       main_program.statics.extend(program.statics.drain(0..));

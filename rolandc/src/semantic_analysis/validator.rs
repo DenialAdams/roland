@@ -2,15 +2,12 @@ use super::type_inference::try_set_inferred_type;
 use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
 use crate::constant_folding::{try_fold_and_replace_expr, FoldingContext};
 use crate::interner::{Interner, StrId};
-use crate::lex::SourceInfo;
 use crate::parse::{
    BinOp, BlockNode, Expression, ExpressionIndex, ExpressionNode, ExpressionPool, IdentifierNode, Program, Statement,
    StatementNode, UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
-use crate::type_data::{
-   ExpressionType, IntType, IntWidth, ValueType, I32_TYPE, ISIZE_TYPE, U32_TYPE, U8_TYPE, USIZE_TYPE,
-};
+use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, USIZE_TYPE};
 use crate::typed_index_vec::Handle;
 use crate::Target;
 use arrayvec::ArrayVec;
@@ -185,160 +182,6 @@ pub fn type_and_check_validity<W: Write>(
    let mut struct_info: IndexMap<StrId, StructInfo> = IndexMap::new();
    let mut static_info: IndexMap<StrId, StaticInfo> = IndexMap::new();
    let mut error_count = 0;
-
-   // Built-In procedures
-   let standard_lib_procs = match target {
-      Target::Wasi => {
-         vec![
-            (
-               interner.intern("wasm_memory_size"),
-               vec![],
-               ExpressionType::Value(USIZE_TYPE),
-            ),
-            (
-               interner.intern("wasm_memory_grow"),
-               vec![ExpressionType::Value(USIZE_TYPE)],
-               ExpressionType::Value(USIZE_TYPE),
-            ),
-            (
-               interner.intern("fd_write"),
-               vec![
-                  ExpressionType::Value(USIZE_TYPE),
-                  ExpressionType::Pointer(1, USIZE_TYPE),
-                  ExpressionType::Value(USIZE_TYPE),
-                  ExpressionType::Pointer(1, USIZE_TYPE),
-               ],
-               ExpressionType::Value(ISIZE_TYPE),
-            ),
-         ]
-      }
-      Target::Wasm4 => {
-         vec![
-            // drawing
-            (
-               interner.intern("blit"),
-               vec![
-                  ExpressionType::Pointer(1, U8_TYPE),
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-               ],
-               ExpressionType::Value(ValueType::Unit),
-            ),
-            (
-               interner.intern("blit_sub"),
-               vec![
-                  ExpressionType::Pointer(1, U8_TYPE),
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-               ],
-               ExpressionType::Value(ValueType::Unit),
-            ),
-            (
-               interner.intern("line"),
-               vec![
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(I32_TYPE),
-               ],
-               ExpressionType::Value(ValueType::Unit),
-            ),
-            (
-               interner.intern("hline"),
-               vec![
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(I32_TYPE),
-               ],
-               ExpressionType::Value(ValueType::Unit),
-            ),
-            (
-               interner.intern("vline"),
-               vec![
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(I32_TYPE),
-               ],
-               ExpressionType::Value(ValueType::Unit),
-            ),
-            (
-               interner.intern("oval"),
-               vec![
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-               ],
-               ExpressionType::Value(ValueType::Unit),
-            ),
-            (
-               interner.intern("rect"),
-               vec![
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(I32_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-               ],
-               ExpressionType::Value(ValueType::Unit),
-            ),
-            (
-               interner.intern("textUtf8"),
-               vec![
-                  ExpressionType::Pointer(1, U8_TYPE),
-                  ExpressionType::Value(USIZE_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-               ],
-               ExpressionType::Value(ValueType::Unit),
-            ),
-            (
-               interner.intern("traceUtf8"),
-               vec![ExpressionType::Pointer(1, U8_TYPE), ExpressionType::Value(USIZE_TYPE)],
-               ExpressionType::Value(ValueType::Unit),
-            ),
-            (
-               interner.intern("tone"),
-               vec![
-                  ExpressionType::Value(U32_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-                  ExpressionType::Value(U32_TYPE),
-               ],
-               ExpressionType::Value(ValueType::Unit),
-            ),
-            (
-               interner.intern("diskr"),
-               vec![ExpressionType::Pointer(1, U8_TYPE), ExpressionType::Value(USIZE_TYPE)],
-               ExpressionType::Value(USIZE_TYPE),
-            ),
-            (
-               interner.intern("diskw"),
-               vec![ExpressionType::Pointer(1, U8_TYPE), ExpressionType::Value(USIZE_TYPE)],
-               ExpressionType::Value(USIZE_TYPE),
-            ),
-         ]
-      }
-   };
-   for p in standard_lib_procs.iter() {
-      procedure_info.insert(
-         p.0,
-         ProcedureInfo {
-            parameters: p.1.clone(),
-            named_parameters: HashMap::new(),
-            ret_type: p.2.clone(),
-            procedure_begin_location: SourceInfo { line: 0, col: 0 },
-         },
-      );
-   }
 
    let mut dupe_check = HashSet::new();
    for a_enum in program.enums.iter() {
@@ -609,32 +452,59 @@ pub fn type_and_check_validity<W: Write>(
       }
    }
 
-   for procedure in program.procedures.iter_mut() {
+   for (definition, source_location, is_external) in program
+      .external_procedures
+      .iter_mut()
+      .map(|x| (&mut x.definition, x.procedure_begin_location, true))
+      .chain(
+         program
+            .procedures
+            .iter_mut()
+            .map(|x| (&mut x.definition, x.procedure_begin_location, false)),
+      )
+   {
       dupe_check.clear();
-      dupe_check.reserve(procedure.parameters.len());
+      dupe_check.reserve(definition.parameters.len());
 
       let mut first_named_param = None;
       let mut reported_named_error = false;
-      for (i, param) in procedure.parameters.iter().enumerate() {
+      for (i, param) in definition.parameters.iter().enumerate() {
          if !dupe_check.insert(param.name) {
             error_count += 1;
             writeln!(
                err_stream,
                "Procedure `{}` has a duplicate parameter `{}`",
-               interner.lookup(procedure.name),
+               interner.lookup(definition.name),
                interner.lookup(param.name),
             )
             .unwrap();
             writeln!(
                err_stream,
-               "↳ procedure defined @ line {}, column {}",
-               procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
+               "↳ procedure declared @ line {}, column {}",
+               source_location.line, source_location.col
             )
             .unwrap();
          }
 
          if param.named && first_named_param.is_none() {
             first_named_param = Some(i);
+
+            if is_external {
+               reported_named_error = true;
+               error_count += 1;
+               writeln!(
+                  err_stream,
+                  "External procedure `{}` has named parameters, which isn't supported",
+                  interner.lookup(definition.name),
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ procedure declared @ line {}, column {}",
+                  source_location.line, source_location.col
+               )
+               .unwrap();
+            }
          }
 
          if !param.named && first_named_param.is_some() && !reported_named_error {
@@ -643,13 +513,13 @@ pub fn type_and_check_validity<W: Write>(
             writeln!(
                err_stream,
                "Procedure `{}` has named parameter(s) which come before non-named parameter(s)",
-               interner.lookup(procedure.name),
+               interner.lookup(definition.name),
             )
             .unwrap();
             writeln!(
                err_stream,
-               "↳ procedure defined @ line {}, column {}",
-               procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
+               "↳ procedure declared @ line {}, column {}",
+               source_location.line, source_location.col
             )
             .unwrap();
          }
@@ -659,11 +529,11 @@ pub fn type_and_check_validity<W: Write>(
          if let Some(i) = first_named_param {
             // It doesn't really matter how we sort these, as long as we do it consistently for arguments
             // AND that there are no equal elements (in this case, we already check that parameters don't have the same name)
-            procedure.parameters[i..].sort_unstable_by_key(|x| x.name);
+            definition.parameters[i..].sort_unstable_by_key(|x| x.name);
          }
       }
 
-      for parameter in procedure.parameters.iter_mut() {
+      for parameter in definition.parameters.iter_mut() {
          if resolve_type(&mut parameter.p_type, &enum_info, &struct_info).is_err() {
             error_count += 1;
             let etype_str = parameter.p_type.as_roland_type_info(interner);
@@ -671,53 +541,54 @@ pub fn type_and_check_validity<W: Write>(
                err_stream,
                "Parameter `{}` of procedure `{}` is of undeclared type `{}`",
                interner.lookup(parameter.name),
-               interner.lookup(procedure.name),
+               interner.lookup(definition.name),
                etype_str,
             )
             .unwrap();
             writeln!(
                err_stream,
-               "↳ procedure defined @ line {}, column {}",
-               procedure.procedure_begin_location.line, procedure.procedure_begin_location.col,
+               "↳ procedure declared @ line {}, column {}",
+               source_location.line, source_location.col,
             )
             .unwrap();
          }
       }
 
-      if resolve_type(&mut procedure.ret_type, &enum_info, &struct_info).is_err() {
+      if resolve_type(&mut definition.ret_type, &enum_info, &struct_info).is_err() {
          error_count += 1;
-         let etype_str = procedure.ret_type.as_roland_type_info(interner);
+         let etype_str = definition.ret_type.as_roland_type_info(interner);
          writeln!(
             err_stream,
             "Return type of procedure `{}` is of undeclared type `{}`",
-            interner.lookup(procedure.name),
+            interner.lookup(definition.name),
             etype_str,
          )
          .unwrap();
          writeln!(
             err_stream,
-            "↳ procedure defined @ line {}, column {}",
-            procedure.procedure_begin_location.line, procedure.procedure_begin_location.col,
+            "↳ procedure declared @ line {}, column {}",
+            source_location.line, source_location.col,
          )
          .unwrap();
       }
 
       if let Some(old_procedure) = procedure_info.insert(
-         procedure.name,
+         definition.name,
          ProcedureInfo {
-            parameters: procedure.parameters.iter().map(|x| x.p_type.clone()).collect(),
-            named_parameters: procedure
+            parameters: definition.parameters.iter().map(|x| x.p_type.clone()).collect(),
+            named_parameters: definition
                .parameters
                .iter()
                .filter(|x| x.named)
                .map(|x| (x.name, x.p_type.clone()))
                .collect(),
-            ret_type: procedure.ret_type.clone(),
-            procedure_begin_location: procedure.procedure_begin_location,
+            ret_type: definition.ret_type.clone(),
+            procedure_begin_location: source_location,
+            is_external,
          },
       ) {
          error_count += 1;
-         let procedure_name_str = interner.lookup(procedure.name);
+         let procedure_name_str = interner.lookup(definition.name);
          writeln!(
             err_stream,
             "Encountered duplicate procedures with the same name `{}`",
@@ -726,14 +597,14 @@ pub fn type_and_check_validity<W: Write>(
          .unwrap();
          writeln!(
             err_stream,
-            "↳ first procedure defined @ line {}, column {}",
+            "↳ first procedure declared @ line {}, column {}",
             old_procedure.procedure_begin_location.line, old_procedure.procedure_begin_location.col
          )
          .unwrap();
          writeln!(
             err_stream,
-            "↳ second procedure defined @ line {}, column {}",
-            procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
+            "↳ second procedure declared @ line {}, column {}",
+            source_location.line, source_location.col
          )
          .unwrap();
       }
@@ -964,9 +835,9 @@ pub fn type_and_check_validity<W: Write>(
    for procedure in program.procedures.iter_mut() {
       validation_context.array_index_rvalue_fixups.clear();
       validation_context.variable_types.clear();
-      validation_context.cur_procedure_info = procedure_info.get(&procedure.name);
+      validation_context.cur_procedure_info = procedure_info.get(&procedure.definition.name);
 
-      for parameter in procedure.parameters.iter() {
+      for parameter in procedure.definition.parameters.iter() {
          validation_context
             .variable_types
             .insert(parameter.name, (parameter.p_type.clone(), 0));
@@ -996,7 +867,7 @@ pub fn type_and_check_validity<W: Write>(
       // Ensure that the last statement is a return statement
       // (it has already been type checked, so we don't have to check that)
       match (
-         &procedure.ret_type,
+         &procedure.definition.ret_type,
          procedure.block.statements.last().map(|x| &x.statement),
       ) {
          (ExpressionType::Value(ValueType::Unit), _) => (),
@@ -1007,7 +878,7 @@ pub fn type_and_check_validity<W: Write>(
             writeln!(
                err_stream,
                "Procedure `{}` is declared to return type {} but is missing a final return statement",
-               interner.lookup(procedure.name),
+               interner.lookup(procedure.definition.name),
                x_str,
             )
             .unwrap();

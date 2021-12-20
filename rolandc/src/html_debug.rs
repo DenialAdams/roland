@@ -12,7 +12,7 @@ pub fn print_ast_as_html<W: Write>(
    writeln!(out, "<li><span>Program</span>").unwrap();
    writeln!(out, "<ul>").unwrap();
    for procedure in program.procedures.iter() {
-      let proc_str_name = interner.lookup(procedure.name);
+      let proc_str_name = interner.lookup(procedure.definition.name);
       writeln!(out, "<li><span>proc «{}»</span>", proc_str_name).unwrap();
       writeln!(out, "<ul>").unwrap();
       for statement_node in procedure.block.statements.iter() {

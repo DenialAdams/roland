@@ -1,0 +1,5 @@
+extern proc foo(x: u64, named my_flag: bool);
+
+proc main() {
+    
+}

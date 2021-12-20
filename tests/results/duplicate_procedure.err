@@ -1,4 +1,4 @@
 Encountered duplicate procedures with the same name `foo`
-↳ first procedure defined @ line 5, column 1
-↳ second procedure defined @ line 9, column 1
+↳ first procedure declared @ line 5, column 1
+↳ second procedure declared @ line 9, column 1
 There were 1 semantic errors, bailing

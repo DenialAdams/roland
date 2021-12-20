@@ -641,46 +641,49 @@ pub fn emit_wasm(
       expressions,
    };
 
+   for external_procedure in program.external_procedures.iter() {
+      // These are roland builtins and not WASI; a way to distinguish this at the roland level might be good
+      if external_procedure.definition.name == interner.intern("wasm_memory_grow")
+         || external_procedure.definition.name == interner.intern("wasm_memory_size")
+      {
+         continue;
+      }
+
+      if wasm4 {
+         writeln!(
+            generation_context.out.out,
+            "(import \"env\" \"{}\" ",
+            interner.lookup(external_procedure.definition.name),
+         )
+         .unwrap();
+      } else {
+         writeln!(
+            generation_context.out.out,
+            "(import \"wasi_unstable\" \"{}\" ",
+            interner.lookup(external_procedure.definition.name),
+         )
+         .unwrap();
+      }
+
+      generation_context.out.emit_function_start_named_params(
+         external_procedure.definition.name,
+         &external_procedure.definition.parameters,
+         &external_procedure.definition.ret_type,
+         &program.enum_info,
+         &program.struct_info,
+         interner,
+      );
+      generation_context.out.close();
+
+      // close the import
+      generation_context.out.out.push(b')');
+      generation_context.out.out.push(b'\n');
+   }
+
    if wasm4 {
       generation_context
          .out
          .emit_constant_sexp("(import \"env\" \"memory\" (memory 1 1))");
-      generation_context
-         .out
-         .emit_constant_sexp("(import \"env\" \"blit\" (func $blit (param i32 i32 i32 i32 i32 i32)))");
-      generation_context.out.emit_constant_sexp(
-         "(import \"env\" \"blitSub\" (func $blit_sub (param i32 i32 i32 i32 i32 i32 i32 i32 i32)))",
-      );
-      generation_context
-         .out
-         .emit_constant_sexp("(import \"env\" \"line\" (func $line (param i32 i32 i32 i32)))");
-      generation_context
-         .out
-         .emit_constant_sexp("(import \"env\" \"hline\" (func $hline (param i32 i32 i32)))");
-      generation_context
-         .out
-         .emit_constant_sexp("(import \"env\" \"vline\" (func $vline (param i32 i32 i32)))");
-      generation_context
-         .out
-         .emit_constant_sexp("(import \"env\" \"oval\" (func $oval (param i32 i32 i32 i32)))");
-      generation_context
-         .out
-         .emit_constant_sexp("(import \"env\" \"rect\" (func $rect (param i32 i32 i32 i32)))");
-      generation_context
-         .out
-         .emit_constant_sexp("(import \"env\" \"tone\" (func $tone (param i32 i32 i32 i32)))");
-      generation_context
-         .out
-         .emit_constant_sexp("(import \"env\" \"textUtf8\" (func $textUtf8 (param i32 i32 i32 i32)))");
-      generation_context
-         .out
-         .emit_constant_sexp("(import \"env\" \"traceUtf8\" (func $traceUtf8 (param i32 i32)))");
-      generation_context
-         .out
-         .emit_constant_sexp("(import \"env\" \"diskr\" (func $diskr (param i32 i32) (result i32)))");
-      generation_context
-         .out
-         .emit_constant_sexp("(import \"env\" \"diskw\" (func $diskw (param i32 i32) (result i32)))");
       generation_context
          .out
          .emit_constant_sexp("(export \"update\" (func $update))");
@@ -688,9 +691,6 @@ pub fn emit_wasm(
          .out
          .emit_constant_sexp("(export \"start\" (func $start))");
    } else {
-      generation_context.out.emit_constant_sexp(
-         "(import \"wasi_unstable\" \"fd_write\" (func $fd_write (param i32 i32 i32 i32) (result i32)))",
-      );
       generation_context.out.emit_constant_sexp("(memory 1)");
       generation_context
          .out
@@ -901,21 +901,21 @@ pub fn emit_wasm(
       }
 
       generation_context.out.emit_function_start_named_params(
-         procedure.name,
-         &procedure.parameters,
-         &procedure.ret_type,
+         procedure.definition.name,
+         &procedure.definition.parameters,
+         &procedure.definition.ret_type,
          &program.enum_info,
          &program.struct_info,
          interner,
       );
 
-      if wasm4 && interner.lookup(procedure.name) == Target::Wasm4.entry_point() {
+      if wasm4 && interner.lookup(procedure.definition.name) == Target::Wasm4.entry_point() {
          generation_context
             .out
             .emit_call(interner.intern("::initialize_statics"), interner);
       }
 
-      if !wasm4 && interner.lookup(procedure.name) == Target::Wasi.entry_point() {
+      if !wasm4 && interner.lookup(procedure.definition.name) == Target::Wasi.entry_point() {
          generation_context
             .out
             .emit_call(interner.intern("::initialize_statics"), interner);
@@ -925,7 +925,7 @@ pub fn emit_wasm(
 
       // Copy parameters to stack memory so we can take pointers
       let mut values_index = 0;
-      for param in &procedure.parameters {
+      for param in &procedure.definition.parameters {
          match sizeof_type_values(&param.p_type, &generation_context.struct_size_info).cmp(&1) {
             std::cmp::Ordering::Less => (),
             std::cmp::Ordering::Equal => {

@@ -65,13 +65,24 @@ fn expect<W: Write>(l: &mut Lexer, err_stream: &mut W, token: &Token) -> Result<
 }
 
 #[derive(Clone)]
-pub struct ProcedureNode {
+pub struct ProcedureDefinition {
    pub name: StrId,
    pub parameters: Vec<ParameterNode>,
+   pub ret_type: ExpressionType,
+}
+
+#[derive(Clone)]
+pub struct ProcedureNode {
+   pub definition: ProcedureDefinition,
    // TODO: if we use id-s for types (ala strings), we could use tinyset?
    pub locals: IndexMap<StrId, HashSet<ExpressionType>>,
    pub block: BlockNode,
-   pub ret_type: ExpressionType,
+   pub procedure_begin_location: SourceInfo,
+}
+
+#[derive(Clone)]
+pub struct ExternalProcedureNode {
+   pub definition: ProcedureDefinition,
    pub procedure_begin_location: SourceInfo,
 }
 
@@ -258,6 +269,7 @@ pub struct BlockNode {
 pub struct Program {
    // These fields are populated by the parser
    pub enums: Vec<EnumNode>,
+   pub external_procedures: Vec<ExternalProcedureNode>,
    pub procedures: Vec<ProcedureNode>,
    pub structs: Vec<StructNode>,
    pub consts: Vec<ConstNode>,
@@ -278,6 +290,7 @@ pub fn astify<W: Write>(
 ) -> Result<Program, ()> {
    let mut lexer = Lexer::from_tokens(tokens);
 
+   let mut external_procedures = vec![];
    let mut procedures = vec![];
    let mut structs = vec![];
    let mut enums = vec![];
@@ -286,6 +299,12 @@ pub fn astify<W: Write>(
 
    while let Some(peeked_token) = lexer.peek_token() {
       match peeked_token {
+         Token::KeywordExtern => {
+            let extern_kw = lexer.next().unwrap();
+            expect(&mut lexer, err_stream, &Token::KeywordProcedureDef)?;
+            let p = parse_external_procedure(&mut lexer, err_stream, extern_kw.source_info, interner)?;
+            external_procedures.push(p);
+         }
          Token::KeywordProcedureDef => {
             let def = lexer.next().unwrap();
             let p = parse_procedure(&mut lexer, err_stream, def.source_info, expressions, interner)?;
@@ -354,6 +373,7 @@ pub fn astify<W: Write>(
    }
 
    Ok(Program {
+      external_procedures,
       procedures,
       enums,
       structs,
@@ -387,7 +407,7 @@ fn parse_procedure<W: Write>(
    expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<ProcedureNode, ()> {
-   let function_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
+   let procedure_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
    expect(l, err_stream, &Token::OpenParen)?;
    let parameters = parse_parameters(l, err_stream, interner)?;
    expect(l, err_stream, &Token::CloseParen)?;
@@ -399,11 +419,40 @@ fn parse_procedure<W: Write>(
    };
    let block = parse_block(l, err_stream, expressions, interner)?;
    Ok(ProcedureNode {
-      name: extract_identifier(function_name.token),
-      parameters,
+      definition: ProcedureDefinition {
+         name: extract_identifier(procedure_name.token),
+         parameters,
+         ret_type,
+      },
       locals: IndexMap::new(),
       block,
-      ret_type,
+      procedure_begin_location: source_info,
+   })
+}
+
+fn parse_external_procedure<W: Write>(
+   l: &mut Lexer,
+   err_stream: &mut W,
+   source_info: SourceInfo,
+   interner: &Interner,
+) -> Result<ExternalProcedureNode, ()> {
+   let procedure_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
+   expect(l, err_stream, &Token::OpenParen)?;
+   let parameters = parse_parameters(l, err_stream, interner)?;
+   expect(l, err_stream, &Token::CloseParen)?;
+   let ret_type = if let Some(&Token::Arrow) = l.peek_token() {
+      let _ = l.next();
+      parse_type(l, err_stream, interner)?
+   } else {
+      ExpressionType::Value(ValueType::Unit)
+   };
+   expect(l, err_stream, &Token::Semicolon)?;
+   Ok(ExternalProcedureNode {
+      definition: ProcedureDefinition {
+         name: extract_identifier(procedure_name.token),
+         parameters,
+         ret_type,
+      },
       procedure_begin_location: source_info,
    })
 }
