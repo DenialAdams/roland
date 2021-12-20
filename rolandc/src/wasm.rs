@@ -1,8 +1,9 @@
 use crate::interner::{Interner, StrId};
-use crate::parse::{BinOp, Expression, ExpressionNode, ParameterNode, Program, Statement, StatementNode, UnOp};
+use crate::parse::{BinOp, Expression, ExpressionNode, ParameterNode, Program, Statement, StatementNode, UnOp, ExpressionIndex};
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, USIZE_TYPE};
 use crate::Target;
+use crate::typed_index_vec::HandleMap;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
 use std::io::Write;
@@ -21,6 +22,7 @@ struct GenerationContext<'a> {
    sum_sizeof_locals_mem: u32,
    loop_depth: u64,
    loop_counter: u64,
+   expressions: &'a HandleMap<ExpressionIndex, ExpressionNode>
 }
 
 struct SizeInfo {
@@ -606,7 +608,7 @@ fn dynamic_move_locals_of_type_to_dest(
 // 0-l literals
 // l-s statics
 // s+ program stack (local variables and parameters are pushed here during runtime)
-pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u32, wasm4: bool) -> Vec<u8> {
+pub fn emit_wasm(program: &mut Program, interner: &mut Interner, expressions: &HandleMap<ExpressionIndex, ExpressionNode>, memory_base: u32, wasm4: bool) -> Vec<u8> {
    let mut struct_size_info: HashMap<StrId, SizeInfo> = HashMap::with_capacity(program.struct_info.len());
    for s in program.struct_info.iter() {
       calculate_struct_size_info(*s.0, &program.enum_info, &program.struct_info, &mut struct_size_info);
@@ -628,6 +630,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
       sum_sizeof_locals_mem: 0,
       loop_counter: 0,
       loop_depth: 0,
+      expressions,
    };
 
    if wasm4 {
@@ -836,7 +839,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, memory_base: u3
             .copied()
             .unwrap();
          generation_context.out.emit_const_i32(static_address);
-         do_emit_and_load_lval(p_static.value.as_ref().unwrap(), &mut generation_context, interner);
+         do_emit_and_load_lval(p_static.value.unwrap(), &mut generation_context, interner);
          store(&p_static.static_type, &mut generation_context, interner);
       }
 
@@ -1001,15 +1004,15 @@ fn compare_type_alignment(
 fn emit_statement(statement: &StatementNode, generation_context: &mut GenerationContext, interner: &mut Interner) {
    match &statement.statement {
       Statement::Assignment(len, en) => {
-         do_emit(len, generation_context, interner);
-         do_emit_and_load_lval(en, generation_context, interner);
-         let val_type = en.exp_type.as_ref().unwrap();
+         do_emit(*len, generation_context, interner);
+         do_emit_and_load_lval(*en, generation_context, interner);
+         let val_type = generation_context.expressions[*en].exp_type.as_ref().unwrap();
          store(val_type, generation_context, interner);
       }
       Statement::VariableDeclaration(id, en, _) => {
          get_stack_address_of_local(id.identifier, generation_context);
-         do_emit_and_load_lval(en, generation_context, interner);
-         let val_type = en.exp_type.as_ref().unwrap();
+         do_emit_and_load_lval(*en, generation_context, interner);
+         let val_type = generation_context.expressions[*en].exp_type.as_ref().unwrap();
          store(val_type, generation_context, interner);
       }
       Statement::Block(bn) => {
@@ -1017,7 +1020,9 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             emit_statement(statement, generation_context, interner);
          }
       }
-      Statement::For(var, start_expr, end_expr, bn, inclusive) => {
+      Statement::For(var, start, end, bn, inclusive) => {
+         let start_expr = &generation_context.expressions[*start];
+
          let (wasm_type, suffix) = match start_expr.exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => int_to_wasm_runtime_and_suffix(x),
             _ => unreachable!(),
@@ -1029,7 +1034,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          // Set var
          {
             get_stack_address_of_local(var.identifier, generation_context);
-            do_emit_and_load_lval(start_expr, generation_context, interner);
+            do_emit_and_load_lval(*start, generation_context, interner);
             store(start_expr.exp_type.as_ref().unwrap(), generation_context, interner);
          }
          generation_context.loop_depth += 1;
@@ -1041,7 +1046,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             get_stack_address_of_local(var.identifier, generation_context);
             load(start_expr.exp_type.as_ref().unwrap(), generation_context);
             // TODO!! we don't want to emit this every iteration, need to hoist
-            do_emit_and_load_lval(end_expr, generation_context, interner);
+            do_emit_and_load_lval(*end, generation_context, interner);
             generation_context.out.emit_spaces();
             writeln!(generation_context.out.out, "{}.ge{}", wasm_type, suffix).unwrap();
 
@@ -1126,13 +1131,13 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          .unwrap();
       }
       Statement::Expression(en) => {
-         do_emit(en, generation_context, interner);
-         for _ in 0..sizeof_type_values(en.exp_type.as_ref().unwrap(), &generation_context.struct_size_info) {
+         do_emit(*en, generation_context, interner);
+         for _ in 0..sizeof_type_values(generation_context.expressions[*en].exp_type.as_ref().unwrap(), &generation_context.struct_size_info) {
             generation_context.out.emit_constant_instruction("drop");
          }
       }
       Statement::IfElse(en, block_1, block_2) => {
-         do_emit_and_load_lval(en, generation_context, interner);
+         do_emit_and_load_lval(*en, generation_context, interner);
          generation_context.out.emit_if_start(
             &ExpressionType::Value(ValueType::Unit),
             generation_context.enum_info,
@@ -1152,7 +1157,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          generation_context.out.close();
       }
       Statement::Return(en) => {
-         do_emit_and_load_lval(en, generation_context, interner);
+         do_emit_and_load_lval(*en, generation_context, interner);
 
          adjust_stack_function_exit(generation_context);
          generation_context.out.emit_constant_instruction("return");
@@ -1161,18 +1166,20 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
 }
 
 fn do_emit_and_load_lval(
-   expr_node: &ExpressionNode,
+   expr_index: ExpressionIndex,
    generation_context: &mut GenerationContext,
    interner: &mut Interner,
 ) {
-   do_emit(expr_node, generation_context, interner);
+   do_emit(expr_index, generation_context, interner);
 
-   if expr_node.expression.is_lvalue_disregard_consts() {
+   let expr_node = &generation_context.expressions[expr_index];
+   if expr_node.expression.is_lvalue_disregard_consts(generation_context.expressions) {
       load(expr_node.exp_type.as_ref().unwrap(), generation_context);
    }
 }
 
-fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContext, interner: &mut Interner) {
+fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationContext, interner: &mut Interner) {
+   let expr_node = &generation_context.expressions[expr_index];
    match &expr_node.expression {
       Expression::UnitLiteral => (),
       Expression::BoolLiteral(x) => {
@@ -1227,8 +1234,8 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          generation_context.out.emit_const_i32(*offset);
          generation_context.out.emit_const_i32(*len);
       }
-      Expression::BinaryOperator(BinOp::LogicalAnd, e) => {
-         do_emit_and_load_lval(&e.0, generation_context, interner);
+      Expression::BinaryOperator { operator: BinOp::LogicalAnd, lhs, rhs } => {
+         do_emit_and_load_lval(*lhs, generation_context, interner);
          generation_context.out.emit_if_start(
             &ExpressionType::Value(ValueType::Bool),
             generation_context.enum_info,
@@ -1236,7 +1243,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          );
          // then
          generation_context.out.emit_then_start();
-         do_emit_and_load_lval(&e.1, generation_context, interner);
+         do_emit_and_load_lval(*rhs, generation_context, interner);
          generation_context.out.close();
          // else
          generation_context.out.emit_else_start();
@@ -1245,8 +1252,8 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          // finish if
          generation_context.out.close();
       }
-      Expression::BinaryOperator(BinOp::LogicalOr, e) => {
-         do_emit_and_load_lval(&e.0, generation_context, interner);
+      Expression::BinaryOperator { operator: BinOp::LogicalOr, lhs, rhs } => {
+         do_emit_and_load_lval(*lhs, generation_context, interner);
          generation_context.out.emit_if_start(
             &ExpressionType::Value(ValueType::Bool),
             generation_context.enum_info,
@@ -1258,17 +1265,17 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          generation_context.out.close();
          // else
          generation_context.out.emit_else_start();
-         do_emit_and_load_lval(&e.1, generation_context, interner);
+         do_emit_and_load_lval(*rhs, generation_context, interner);
          generation_context.out.close();
          // finish if
          generation_context.out.close();
       }
-      Expression::BinaryOperator(bin_op, e) => {
-         do_emit_and_load_lval(&e.0, generation_context, interner);
+      Expression::BinaryOperator { operator, lhs, rhs } => {
+         do_emit_and_load_lval(*lhs, generation_context, interner);
 
-         do_emit_and_load_lval(&e.1, generation_context, interner);
+         do_emit_and_load_lval(*rhs, generation_context, interner);
 
-         let (wasm_type, suffix) = match e.0.exp_type.as_ref().unwrap() {
+         let (wasm_type, suffix) = match generation_context.expressions[*lhs].exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => int_to_wasm_runtime_and_suffix(x),
             ExpressionType::Value(ValueType::Enum(x)) => {
                let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
@@ -1282,7 +1289,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             _ => unreachable!(),
          };
          generation_context.out.emit_spaces();
-         match bin_op {
+         match operator {
             BinOp::Add => {
                writeln!(generation_context.out.out, "{}.add", wasm_type).unwrap();
             }
@@ -1334,7 +1341,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             BinOp::LogicalAnd | BinOp::LogicalOr => unreachable!(),
          }
       }
-      Expression::UnaryOperator(un_op, e) => {
+      Expression::UnaryOperator(un_op, e_index) => {
          let get_wasm_type = || match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => match x.width {
                IntWidth::Eight => "i64",
@@ -1349,22 +1356,24 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             _ => unreachable!(),
          };
 
+         let e = &generation_context.expressions[*e_index];
+
          match un_op {
             UnOp::AddressOf => {
-               do_emit(e, generation_context, interner);
+               do_emit(*e_index, generation_context, interner);
 
                // This operator coaxes the lvalue to an rvalue without a load
             }
             UnOp::Dereference => {
-               do_emit(e, generation_context, interner);
+               do_emit(*e_index, generation_context, interner);
 
-               if e.expression.is_lvalue_disregard_consts() {
+               if e.expression.is_lvalue_disregard_consts(generation_context.expressions) {
                   load(e.exp_type.as_ref().unwrap(), generation_context);
                }
             }
             UnOp::Complement => {
                let wasm_type = get_wasm_type();
-               do_emit_and_load_lval(e, generation_context, interner);
+               do_emit_and_load_lval(*e_index, generation_context, interner);
 
                if *e.exp_type.as_ref().unwrap() == ExpressionType::Value(ValueType::Bool) {
                   generation_context.out.emit_spaces();
@@ -1375,7 +1384,7 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             }
             UnOp::Negate => {
                let wasm_type = get_wasm_type();
-               do_emit_and_load_lval(e, generation_context, interner);
+               do_emit_and_load_lval(*e_index, generation_context, interner);
 
                match expr_node.exp_type.as_ref().unwrap() {
                   ExpressionType::Value(ValueType::Int(_)) | ExpressionType::Value(ValueType::Bool) => {
@@ -1394,7 +1403,9 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
       }
       Expression::Extend(target_type, e) => {
-         do_emit_and_load_lval(e, generation_context, interner);
+         do_emit_and_load_lval(*e, generation_context, interner);
+
+         let e = &generation_context.expressions[*e];
 
          let source_is_signed = match e.exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => x.signed,
@@ -1416,12 +1427,14 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
          }
       }
       Expression::Transmute(_target_type, e) => {
-         do_emit_and_load_lval(e, generation_context, interner);
+         do_emit_and_load_lval(*e, generation_context, interner);
 
          // nop, width is the same
       }
       Expression::Truncate(target_type, e) => {
-         do_emit_and_load_lval(e, generation_context, interner);
+         do_emit_and_load_lval(*e, generation_context, interner);
+
+         let e = &generation_context.expressions[*e];
 
          if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Int(_)))
             && matches!(target_type, ExpressionType::Value(ValueType::Int(_)))
@@ -1480,23 +1493,25 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       }
       Expression::ProcedureCall(name, args) => {
          for arg in args.iter() {
-            do_emit_and_load_lval(&arg.expr, generation_context, interner);
+            do_emit_and_load_lval(arg.expr, generation_context, interner);
          }
          generation_context.out.emit_call(*name, interner);
       }
       Expression::StructLiteral(s_name, fields) => {
          // We need to emit this in the proper order!!
-         let map: HashMap<StrId, &ExpressionNode> = fields.iter().map(|x| (x.0, &x.1)).collect();
+         let map: HashMap<StrId, ExpressionIndex> = fields.iter().map(|x| (x.0, x.1)).collect();
          let si = generation_context.struct_info.get(s_name).unwrap();
          for field in si.field_types.iter() {
-            let value_of_field = map.get(field.0).unwrap();
+            let value_of_field = map.get(field.0).copied().unwrap();
             do_emit_and_load_lval(value_of_field, generation_context, interner);
          }
       }
       Expression::FieldAccess(field_names, lhs) => {
-         do_emit(lhs, generation_context, interner);
+         do_emit(*lhs, generation_context, interner);
 
-         if lhs.expression.is_lvalue_disregard_consts() {
+         let lhs = &generation_context.expressions[*lhs];
+
+         if lhs.expression.is_lvalue_disregard_consts(generation_context.expressions) {
             let mut si = match lhs.exp_type.as_ref() {
                Some(ExpressionType::Value(ValueType::Struct(x))) => generation_context.struct_info.get(x).unwrap(),
                _ => unreachable!(),
@@ -1573,24 +1588,24 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
-            do_emit_and_load_lval(expr, generation_context, interner);
+            do_emit_and_load_lval(*expr, generation_context, interner);
          }
       }
-      Expression::ArrayIndex(lhs, index_e) => {
+      Expression::ArrayIndex { array, index } => {
          fn calculate_offset(
-            lhs: &ExpressionNode,
-            index_e: &ExpressionNode,
+            array: ExpressionIndex,
+            index_e: ExpressionIndex,
             generation_context: &mut GenerationContext,
             interner: &mut Interner,
          ) {
-            let sizeof_inner = match &lhs.exp_type {
+            let sizeof_inner = match &generation_context.expressions[array].exp_type {
                Some(ExpressionType::Value(ValueType::Array(x, _))) => {
                   sizeof_type_mem(&*x, generation_context.enum_info, &generation_context.struct_size_info)
                }
                _ => unreachable!(),
             };
 
-            if let Expression::IntLiteral(x) = index_e.expression {
+            if let Expression::IntLiteral(x) = generation_context.expressions[index_e].expression {
                // Safe assert due to inference and constant folding validating this
                let val_32 = u32::try_from(x).unwrap();
                let result = sizeof_inner.wrapping_mul(val_32);
@@ -1603,21 +1618,21 @@ fn do_emit(expr_node: &ExpressionNode, generation_context: &mut GenerationContex
             }
          }
 
-         if lhs.expression.is_lvalue_disregard_consts() {
-            do_emit(lhs, generation_context, interner);
-            calculate_offset(lhs, index_e, generation_context, interner);
+         if generation_context.expressions[*array].expression.is_lvalue_disregard_consts(generation_context.expressions) {
+            do_emit(*array, generation_context, interner);
+            calculate_offset(*array, *index, generation_context, interner);
          } else {
             // The below strategy is unsound, because the index_expression might try to use the stack after we've spilled and before we've read the value out
             // ------
 
             // spill to the top of the stack. i'm not sure what the best thing to do is here
             generation_context.out.emit_get_global("sp");
-            do_emit(lhs, generation_context, interner);
-            store(lhs.exp_type.as_ref().unwrap(), generation_context, interner);
+            do_emit(*array, generation_context, interner);
+            store(generation_context.expressions[*array].exp_type.as_ref().unwrap(), generation_context, interner);
 
             // Now that we've spilled, we can proceed to load like normal
             generation_context.out.emit_get_global("sp");
-            calculate_offset(lhs, index_e, generation_context, interner);
+            calculate_offset(*array, *index, generation_context, interner);
 
             // ...but we're an rvalue, so we have to load
             load(expr_node.exp_type.as_ref().unwrap(), generation_context);

@@ -2,6 +2,7 @@ use super::lex::{emit_source_info, SourceInfo, SourceToken, Token};
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
 use crate::semantic_analysis::{EnumInfo, StaticInfo, StructInfo};
 use crate::type_data::{ExpressionType, ValueType};
+use crate::typed_index_vec::{Handle, HandleMap};
 use indexmap::IndexMap;
 use std::collections::HashSet;
 use std::io::Write;
@@ -146,16 +147,25 @@ pub struct ExpressionNode {
    pub expression_begin_location: SourceInfo,
 }
 
-#[derive(Copy, Clone, Debug)]
-// TODO: implement our own vec methods so we don't have to make the inner field pub?
-// can be generic
-pub struct ExpressionIndex(pub usize);
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct ExpressionIndex(usize);
+
+impl Handle for ExpressionIndex {
+   fn new(x: usize) -> Self {
+      ExpressionIndex(x)
+   }
+
+   fn index(self) -> usize {
+      self.0
+   }
+}
+
 
 #[derive(Clone, Debug)]
 pub enum Expression {
    ProcedureCall(StrId, Box<[ArgumentNode]>),
    ArrayLiteral(Box<[ExpressionIndex]>),
-   ArrayIndex(ExpressionIndex, ExpressionIndex),
+   ArrayIndex { array: ExpressionIndex, index: ExpressionIndex },
    BoolLiteral(bool),
    StringLiteral(StrId),
    IntLiteral(i128),
@@ -172,6 +182,8 @@ pub enum Expression {
    EnumLiteral(StrId, StrId),
 }
 
+// TODO: it would be cool if StrId was NonZero so that this struct (and others like it)
+// could be smaller
 #[derive(Clone, Debug)]
 pub struct ArgumentNode {
    pub name: Option<StrId>,
@@ -179,23 +191,23 @@ pub struct ArgumentNode {
 }
 
 impl Expression {
-   pub fn is_lvalue(&self, static_info: &IndexMap<StrId, StaticInfo>) -> bool {
+   pub fn is_lvalue(&self, expressions: &HandleMap<ExpressionIndex, ExpressionNode>, static_info: &IndexMap<StrId, StaticInfo>) -> bool {
       match self {
          Expression::Variable(x) => static_info.get(x).map(|x| !x.is_const).unwrap_or(true),
-         Expression::ArrayIndex(array_exp, _) => array_exp.expression.is_lvalue(static_info),
+         Expression::ArrayIndex{array, ..} => expressions[*array].expression.is_lvalue(expressions, static_info),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
-         Expression::FieldAccess(_, lhs) => lhs.expression.is_lvalue(static_info),
+         Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue(expressions, static_info),
          _ => false,
       }
    }
 
    // After constants are lowered, we don't need to care about constants and pass a bulky data structure around
-   pub fn is_lvalue_disregard_consts(&self) -> bool {
+   pub fn is_lvalue_disregard_consts(&self, expressions: &HandleMap<ExpressionIndex, ExpressionNode>) -> bool {
       match self {
          Expression::Variable(_) => true,
-         Expression::ArrayIndex(array_exp, _) => array_exp.expression.is_lvalue_disregard_consts(),
+         Expression::ArrayIndex{array, ..} => expressions[*array].expression.is_lvalue_disregard_consts(expressions),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
-         Expression::FieldAccess(_, lhs) => lhs.expression.is_lvalue_disregard_consts(),
+         Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue_disregard_consts(expressions),
          _ => false,
       }
    }
@@ -243,8 +255,6 @@ pub struct Program {
    pub consts: Vec<ConstNode>,
    pub statics: Vec<StaticNode>,
 
-   pub expressions: Vec<ExpressionNode>,
-
    // These fields are populated during semantic analysis
    pub literals: HashSet<StrId>,
    pub enum_info: IndexMap<StrId, EnumInfo>,
@@ -252,7 +262,7 @@ pub struct Program {
    pub static_info: IndexMap<StrId, StaticInfo>,
 }
 
-pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: &Interner) -> Result<Program, ()> {
+pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: &Interner, expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,) -> Result<Program, ()> {
    let mut lexer = Lexer::from_tokens(tokens);
 
    let mut procedures = vec![];
@@ -261,13 +271,11 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
    let mut consts = vec![];
    let mut statics = vec![];
 
-   let mut expressions = vec![];
-
    while let Some(peeked_token) = lexer.peek_token() {
       match peeked_token {
          Token::KeywordProcedureDef => {
             let def = lexer.next().unwrap();
-            let p = parse_procedure(&mut lexer, err_stream, def.source_info, &mut expressions, interner)?;
+            let p = parse_procedure(&mut lexer, err_stream, def.source_info, expressions, interner)?;
             procedures.push(p);
          }
          Token::KeywordStructDef => {
@@ -286,7 +294,7 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
             expect(&mut lexer, err_stream, &Token::Colon)?;
             let t_type = parse_type(&mut lexer, err_stream, interner)?;
             expect(&mut lexer, err_stream, &Token::Assignment)?;
-            let exp = parse_expression(&mut lexer, err_stream, false, &mut expressions, interner)?;
+            let exp = parse_expression(&mut lexer, err_stream, false, expressions, interner)?;
             expect(&mut lexer, err_stream, &Token::Semicolon)?;
             consts.push(ConstNode {
                name: IdentifierNode {
@@ -305,7 +313,7 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
             let t_type = parse_type(&mut lexer, err_stream, interner)?;
             let exp = if lexer.peek_token() == Some(&Token::Assignment) {
                let _ = lexer.next();
-               Some(parse_expression(&mut lexer, err_stream, false, &mut expressions, interner)?)
+               Some(parse_expression(&mut lexer, err_stream, false, expressions, interner)?)
             } else {
                None
             };
@@ -338,7 +346,6 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
       structs,
       consts,
       statics,
-      expressions,
       literals: HashSet::new(),
       struct_info: IndexMap::new(),
       static_info: IndexMap::new(),
@@ -364,7 +371,7 @@ fn parse_procedure<W: Write>(
    l: &mut Lexer,
    err_stream: &mut W,
    source_info: SourceInfo,
-   expressions: &mut Vec<ExpressionNode>,
+   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
    interner: &Interner,
 ) -> Result<ProcedureNode, ()> {
    let function_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
@@ -458,7 +465,7 @@ fn parse_enum<W: Write>(
    })
 }
 
-fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, expressions: &mut Vec<ExpressionNode>, interner: &Interner) -> Result<BlockNode, ()> {
+fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>, interner: &Interner) -> Result<BlockNode, ()> {
    expect(l, err_stream, &Token::OpenBrace)?;
 
    let mut statements: Vec<StatementNode> = vec![];
@@ -588,7 +595,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, expressions: &mut Ve
                   let _ = l.next();
                   let re = parse_expression(l, err_stream, false, expressions, interner)?;
                   expect(l, err_stream, &Token::Semicolon)?;
-                  let statement_begin_location = expressions[e.0].expression_begin_location;
+                  let statement_begin_location = expressions[e].expression_begin_location;
                   statements.push(StatementNode {
                      statement: Statement::Assignment(e, re),
                      statement_begin_location,
@@ -596,7 +603,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, expressions: &mut Ve
                }
                Some(&Token::Semicolon) => {
                   let _ = l.next();
-                  let statement_begin_location = expressions[e.0].expression_begin_location;
+                  let statement_begin_location = expressions[e].expression_begin_location;
                   statements.push(StatementNode {
                      statement: Statement::Expression(e),
                      statement_begin_location,
@@ -647,7 +654,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, expressions: &mut Ve
 fn parse_if_else_statement<W: Write>(
    l: &mut Lexer,
    err_stream: &mut W,
-   expressions: &mut Vec<ExpressionNode>,
+   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
    interner: &Interner,
 ) -> Result<StatementNode, ()> {
    let if_token = l.next().unwrap();
@@ -732,7 +739,7 @@ fn parse_parameters<W: Write>(
    Ok(parameters)
 }
 
-fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W, expressions: &mut Vec<ExpressionNode>, interner: &Interner) -> Result<Vec<ArgumentNode>, ()> {
+fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W, expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>, interner: &Interner) -> Result<Vec<ArgumentNode>, ()> {
    let mut arguments = vec![];
 
    loop {
@@ -798,7 +805,7 @@ fn parse_expression<W: Write>(
    l: &mut Lexer,
    err_stream: &mut W,
    if_head: bool,
-   expressions: &mut Vec<ExpressionNode>,
+   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
    interner: &Interner,
 ) -> Result<ExpressionIndex, ()> {
    let begin_info = l.peek_source();
@@ -861,7 +868,7 @@ fn pratt<W: Write>(
    err_stream: &mut W,
    min_bp: u8,
    if_head: bool,
-   expressions: &mut Vec<ExpressionNode>,
+   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
    interner: &Interner,
 ) -> Result<Expression, ()> {
    let lhs_token = l.next();
@@ -1030,7 +1037,7 @@ fn pratt<W: Write>(
             Token::OpenSquareBracket => {
                let inner = parse_expression(l, err_stream, false, expressions, interner)?;
                expect(l, err_stream, &Token::CloseSquareBracket)?;
-               Expression::ArrayIndex(wrap(lhs, lhs_source.unwrap(), expressions), inner)
+               Expression::ArrayIndex { array: wrap(lhs, lhs_source.unwrap(), expressions), index: inner }
             }
             Token::KeywordExtend => {
                let a_type = parse_type(l, err_stream, interner)?;
@@ -1131,12 +1138,10 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
    }
 }
 
-fn wrap(expression: Expression, source_info: SourceInfo, expressions: &mut Vec<ExpressionNode>) -> ExpressionIndex {
-   let len_before_push = expressions.len();
+fn wrap(expression: Expression, source_info: SourceInfo, expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>) -> ExpressionIndex {
    expressions.push(ExpressionNode {
       expression,
       exp_type: None,
       expression_begin_location: source_info,
-   });
-   ExpressionIndex(len_before_push)
+   })
 }

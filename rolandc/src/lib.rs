@@ -6,9 +6,11 @@ mod lex;
 mod parse;
 mod semantic_analysis;
 mod type_data;
+mod typed_index_vec;
 mod wasm;
 
-use parse::Program;
+use parse::{Program, ExpressionNode, ExpressionIndex};
+use typed_index_vec::{HandleMap};
 use std::fmt::Display;
 use std::io::Write;
 
@@ -148,7 +150,9 @@ pub fn compile<E: Write, A: Write>(
 ) -> Result<Vec<u8>, CompilationError> {
    let mut interner = Interner::with_capacity(1024);
 
-   let user_program = parse_user_program(user_program_s, err_stream, &mut interner)?;
+   let mut expressions = HandleMap::new();
+
+   let user_program = parse_user_program(user_program_s, err_stream, &mut interner, &mut expressions)?;
 
    compile_program(
       user_program,
@@ -157,6 +161,7 @@ pub fn compile<E: Write, A: Write>(
       do_constant_folding,
       target,
       &mut interner,
+      &mut expressions,
    )
 }
 
@@ -167,48 +172,56 @@ fn compile_program<E: Write, A: Write>(
    do_constant_folding: bool,
    target: Target,
    interner: &mut Interner,
+   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
 ) -> Result<Vec<u8>, CompilationError> {
    let num_procedures_before_merge = user_program.procedures.len();
 
    let std_lib = match target {
       Target::Wasi => {
          let std_lib_s = include_str!("../../lib/print.rol");
-         lex_and_parse(std_lib_s, err_stream, interner)
+         lex_and_parse(std_lib_s, err_stream, interner, expressions)
       }
       Target::Wasm4 => {
          let std_lib_s = include_str!("../../lib/wasm4.rol");
-         lex_and_parse(std_lib_s, err_stream, interner)
+         lex_and_parse(std_lib_s, err_stream, interner, expressions)
       }
    }?;
 
    merge_programs(&mut user_program, &mut [std_lib]);
 
    let mut err_count =
-      semantic_analysis::validator::type_and_check_validity(&mut user_program, err_stream, interner, target);
-
-   if err_count == 0 {
-      const_lowering::lower_consts(&mut user_program, err_stream);
-      user_program.static_info.retain(|_, v| !v.is_const);
-
-      if do_constant_folding {
-         err_count = constant_folding::fold_constants(&mut user_program, err_stream);
-      }
-   }
+      semantic_analysis::validator::type_and_check_validity(&mut user_program, err_stream, interner, expressions, target);
 
    if let Some(w) = html_ast_out {
       let mut program_without_std = user_program.clone();
       program_without_std.procedures.truncate(num_procedures_before_merge);
-      html_debug::print_ast_as_html(w, &program_without_std, interner);
+      html_debug::print_ast_as_html(w, &program_without_std, interner, expressions);
    }
+
+   if err_count == 0 {
+      const_lowering::lower_consts(&mut user_program, expressions);
+      user_program.static_info.retain(|_, v| !v.is_const);
+
+      if do_constant_folding {
+         err_count = constant_folding::fold_constants(&mut user_program, err_stream, expressions);
+      }
+   }
+
+   /*nocheckin
+   if let Some(w) = html_ast_out {
+      let mut program_without_std = user_program.clone();
+      program_without_std.procedures.truncate(num_procedures_before_merge);
+      html_debug::print_ast_as_html(w, &program_without_std, interner, expressions);
+   }*/
 
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));
    }
 
    match target {
-      Target::Wasi => Ok(wasm::emit_wasm(&mut user_program, interner, 0, false)),
+      Target::Wasi => Ok(wasm::emit_wasm(&mut user_program, interner, expressions, 0, false)),
       Target::Wasm4 => {
-         let wat = wasm::emit_wasm(&mut user_program, interner, 0x19a0, true);
+         let wat = wasm::emit_wasm(&mut user_program, interner, expressions, 0x19a0, true);
          Ok(wat::parse_bytes(&wat).unwrap().into_owned())
       }
    }
@@ -219,8 +232,9 @@ fn parse_user_program<W: Write>(
    user_program_s: &str,
    err_stream: &mut W,
    interner: &mut Interner,
+   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
 ) -> Result<Program, CompilationError> {
-   stacker::grow(33554432, || lex_and_parse(user_program_s, err_stream, interner))
+   stacker::grow(33554432, || lex_and_parse(user_program_s, err_stream, interner, expressions))
 }
 
 #[cfg(not(fuzzing))]
@@ -228,8 +242,9 @@ fn parse_user_program<W: Write>(
    user_program_s: &str,
    err_stream: &mut W,
    interner: &mut Interner,
+   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
 ) -> Result<Program, CompilationError> {
-   lex_and_parse(user_program_s, err_stream, interner)
+   lex_and_parse(user_program_s, err_stream, interner, expressions)
 }
 
 fn merge_programs(main_program: &mut Program, other_programs: &mut [Program]) {
@@ -243,12 +258,12 @@ fn merge_programs(main_program: &mut Program, other_programs: &mut [Program]) {
    }
 }
 
-fn lex_and_parse<W: Write>(s: &str, err_stream: &mut W, interner: &mut Interner) -> Result<Program, CompilationError> {
+fn lex_and_parse<W: Write>(s: &str, err_stream: &mut W, interner: &mut Interner, expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,) -> Result<Program, CompilationError> {
    let tokens = match lex::lex(s, err_stream, interner) {
       Err(()) => return Err(CompilationError::Lex),
       Ok(v) => v,
    };
-   match parse::astify(tokens, err_stream, interner) {
+   match parse::astify(tokens, err_stream, interner, expressions) {
       Err(()) => Err(CompilationError::Parse),
       Ok(v) => Ok(v),
    }

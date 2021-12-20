@@ -4,13 +4,14 @@ use crate::constant_folding::{try_fold_and_replace_expr, FoldingContext};
 use crate::interner::{Interner, StrId};
 use crate::lex::SourceInfo;
 use crate::parse::{
-   BinOp, BlockNode, Expression, ExpressionNode, IdentifierNode, Program, Statement, StatementNode, UnOp,
+   BinOp, BlockNode, Expression, IdentifierNode, Program, Statement, StatementNode, UnOp, ExpressionIndex, ExpressionNode,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::type_data::{
    ExpressionType, IntType, IntWidth, ValueType, I32_TYPE, ISIZE_TYPE, U32_TYPE, U8_TYPE, USIZE_TYPE,
 };
 use crate::Target;
+use crate::typed_index_vec::HandleMap;
 use arrayvec::ArrayVec;
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
@@ -175,6 +176,7 @@ pub fn type_and_check_validity<W: Write>(
    program: &mut Program,
    err_stream: &mut W,
    interner: &mut Interner,
+   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
    target: Target,
 ) -> u64 {
    let mut procedure_info: IndexMap<StrId, ProcedureInfo> = IndexMap::new();
@@ -750,6 +752,7 @@ pub fn type_and_check_validity<W: Write>(
       loop_depth: 0,
       unknown_ints: 0,
       unknown_floats: 0,
+      expressions,
    };
 
    let special_procs = get_special_procedures(target, interner);
@@ -808,44 +811,51 @@ pub fn type_and_check_validity<W: Write>(
 
    for p_const in program.consts.iter_mut() {
       // p_const.const_type is guaranteed to be resolved at this point
-      do_type(err_stream, &mut p_const.value, &mut validation_context, interner);
+      do_type(err_stream, p_const.value, &mut validation_context, interner);
       try_set_inferred_type(
          &p_const.const_type,
-         &mut p_const.value,
+         p_const.value,
          &mut validation_context,
          err_stream,
          interner,
       );
 
-      if p_const.const_type != *p_const.value.exp_type.as_ref().unwrap()
-         && p_const.value.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::CompileError)
+      // In a seperate scope for borrowck
       {
-         validation_context.error_count += 1;
-         let actual_type_str = p_const.value.exp_type.as_ref().unwrap().as_roland_type_info(interner);
-         writeln!(
-            err_stream,
-            "Declared type {} of const `{}` does not match actual expression type {}",
-            p_const.const_type.as_roland_type_info(interner),
-            interner.lookup(p_const.name.identifier),
-            actual_type_str,
-         )
-         .unwrap();
-         writeln!(
-            err_stream,
-            "↳ const @ line {}, column {}",
-            p_const.begin_location.line, p_const.begin_location.col
-         )
-         .unwrap();
-         writeln!(
-            err_stream,
-            "↳ expression @ line {}, column {}",
-            p_const.value.expression_begin_location.line, p_const.value.expression_begin_location.col
-         )
-         .unwrap();
+         let p_const_expr = &validation_context.expressions[p_const.value];
+
+         if p_const.const_type != *p_const_expr.exp_type.as_ref().unwrap()
+            && p_const_expr.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::CompileError)
+         {
+            validation_context.error_count += 1;
+            let actual_type_str = p_const_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
+            writeln!(
+               err_stream,
+               "Declared type {} of const `{}` does not match actual expression type {}",
+               p_const.const_type.as_roland_type_info(interner),
+               interner.lookup(p_const.name.identifier),
+               actual_type_str,
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ const @ line {}, column {}",
+               p_const.begin_location.line, p_const.begin_location.col
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ expression @ line {}, column {}",
+               p_const_expr.expression_begin_location.line, p_const_expr.expression_begin_location.col
+            )
+            .unwrap();
+         }
       }
 
-      try_fold_and_replace_expr(&mut p_const.value, err_stream, &mut FoldingContext { error_count: 0 });
-      if !crate::constant_folding::is_const(&p_const.value.expression) {
+      try_fold_and_replace_expr(p_const.value, err_stream, &mut FoldingContext { error_count: 0, expressions: validation_context.expressions });
+      let p_const_expr = &validation_context.expressions[p_const.value];
+
+      if !crate::constant_folding::is_const(&p_const_expr.expression, validation_context.expressions) {
          validation_context.error_count += 1;
          writeln!(
             err_stream,
@@ -862,7 +872,7 @@ pub fn type_and_check_validity<W: Write>(
          writeln!(
             err_stream,
             "↳ expression @ line {}, column {}",
-            p_const.value.expression_begin_location.line, p_const.value.expression_begin_location.col
+            p_const_expr.expression_begin_location.line, p_const_expr.expression_begin_location.col
          )
          .unwrap();
       }
@@ -872,27 +882,26 @@ pub fn type_and_check_validity<W: Write>(
       // p_static.static_type is guaranteed to be resolved at this point
       do_type(
          err_stream,
-         p_static.value.as_mut().unwrap(),
+         p_static.value.unwrap(),
          &mut validation_context,
          interner,
       );
       try_set_inferred_type(
          &p_static.static_type,
-         p_static.value.as_mut().unwrap(),
+         p_static.value.unwrap(),
          &mut validation_context,
          err_stream,
          interner,
       );
 
-      if p_static.static_type != *p_static.value.as_ref().unwrap().exp_type.as_ref().unwrap()
-         && p_static.value.as_ref().unwrap().exp_type.as_ref().unwrap()
+      let p_static_expr = &validation_context.expressions[p_static.value.unwrap()];
+
+      if p_static.static_type != *p_static_expr.exp_type.as_ref().unwrap()
+         && p_static_expr.exp_type.as_ref().unwrap()
             != &ExpressionType::Value(ValueType::CompileError)
       {
          validation_context.error_count += 1;
-         let actual_type_str = p_static
-            .value
-            .as_ref()
-            .unwrap()
+         let actual_type_str = p_static_expr
             .exp_type
             .as_ref()
             .unwrap()
@@ -914,15 +923,16 @@ pub fn type_and_check_validity<W: Write>(
          writeln!(
             err_stream,
             "↳ expression @ line {}, column {}",
-            p_static.value.as_ref().unwrap().expression_begin_location.line,
-            p_static.value.as_ref().unwrap().expression_begin_location.col
+            p_static_expr.expression_begin_location.line,
+            p_static_expr.expression_begin_location.col
          )
          .unwrap();
       }
 
       if let Some(v) = p_static.value.as_mut() {
-         try_fold_and_replace_expr(v, err_stream, &mut FoldingContext { error_count: 0 });
-         if !crate::constant_folding::is_const(&v.expression) {
+         try_fold_and_replace_expr(*v, err_stream, &mut FoldingContext { error_count: 0, expressions: validation_context.expressions });
+         let v = &validation_context.expressions[*v];
+         if !crate::constant_folding::is_const(&v.expression, validation_context.expressions) {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
@@ -1042,17 +1052,20 @@ fn type_statement<W: Write>(
    interner: &mut Interner,
 ) {
    match &mut statement.statement {
-      Statement::Assignment(len, en) => {
-         do_type(err_stream, len, validation_context, interner);
-         do_type(err_stream, en, validation_context, interner);
+      Statement::Assignment(lhs, rhs) => {
+         do_type(err_stream, *lhs, validation_context, interner);
+         do_type(err_stream, *rhs, validation_context, interner);
 
          try_set_inferred_type(
-            len.exp_type.as_ref().unwrap(),
-            en,
+            &validation_context.expressions[*lhs].exp_type.clone().unwrap(),
+            *rhs,
             validation_context,
             err_stream,
             interner,
          );
+
+         let len = &validation_context.expressions[*lhs];
+         let en = &validation_context.expressions[*rhs];
 
          let lhs_type = len.exp_type.as_ref().unwrap();
          let rhs_type = en.exp_type.as_ref().unwrap();
@@ -1082,9 +1095,9 @@ fn type_statement<W: Write>(
                en.expression_begin_location.line, en.expression_begin_location.col
             )
             .unwrap();
-         } else if !len.expression.is_lvalue(validation_context.static_info) {
+         } else if !len.expression.is_lvalue(validation_context.expressions, validation_context.static_info) {
             validation_context.error_count += 1;
-            if len.expression.is_lvalue_disregard_consts() {
+            if len.expression.is_lvalue_disregard_consts(validation_context.expressions) {
                writeln!(
                   err_stream,
                   "Left hand side of assignment is a constant, which does not have a memory location and can't be reassigned"
@@ -1138,24 +1151,27 @@ fn type_statement<W: Write>(
             .unwrap();
          }
       }
-      Statement::For(var, start_expr, end_expr, bn, _) => {
-         do_type(err_stream, start_expr, validation_context, interner);
-         do_type(err_stream, end_expr, validation_context, interner);
+      Statement::For(var, start, end, bn, _) => {
+         do_type(err_stream, *start, validation_context, interner);
+         do_type(err_stream, *end, validation_context, interner);
 
          try_set_inferred_type(
-            start_expr.exp_type.as_ref().unwrap(),
-            end_expr,
+            &validation_context.expressions[*start].exp_type.clone().unwrap(),
+            *end,
             validation_context,
             err_stream,
             interner,
          );
          try_set_inferred_type(
-            end_expr.exp_type.as_ref().unwrap(),
-            start_expr,
+            &validation_context.expressions[*end].exp_type.clone().unwrap(),
+            *start,
             validation_context,
             err_stream,
             interner,
          );
+
+         let start_expr = &validation_context.expressions[*start];
+         let end_expr = &validation_context.expressions[*end];
 
          let result_type = match (
             start_expr.exp_type.as_ref().unwrap(),
@@ -1215,12 +1231,14 @@ fn type_statement<W: Write>(
          validation_context.loop_depth -= 1;
       }
       Statement::Expression(en) => {
-         do_type(err_stream, en, validation_context, interner);
+         do_type(err_stream, *en, validation_context, interner);
       }
       Statement::IfElse(en, block_1, block_2) => {
          type_block(err_stream, block_1, validation_context, cur_procedure_locals, interner);
          type_statement(err_stream, block_2, validation_context, cur_procedure_locals, interner);
-         do_type(err_stream, en, validation_context, interner);
+         do_type(err_stream, *en, validation_context, interner);
+
+         let en = &validation_context.expressions[*en];
          let if_exp_type = en.exp_type.as_ref().unwrap();
          if if_exp_type != &ExpressionType::Value(ValueType::Bool)
             && if_exp_type != &ExpressionType::Value(ValueType::CompileError)
@@ -1241,17 +1259,19 @@ fn type_statement<W: Write>(
          }
       }
       Statement::Return(en) => {
-         do_type(err_stream, en, validation_context, interner);
+         do_type(err_stream, *en, validation_context, interner);
          let cur_procedure_info = validation_context.cur_procedure_info.unwrap();
 
          // Type Inference
          try_set_inferred_type(
             &cur_procedure_info.ret_type,
-            en,
+            *en,
             validation_context,
             err_stream,
             interner,
          );
+
+         let en = &validation_context.expressions[*en];
 
          if en.exp_type.as_ref().unwrap().is_concrete_type()
             && en.exp_type.as_ref().unwrap() != &cur_procedure_info.ret_type
@@ -1273,13 +1293,15 @@ fn type_statement<W: Write>(
          }
       }
       Statement::VariableDeclaration(id, en, dt) => {
-         do_type(err_stream, en, validation_context, interner);
+         do_type(err_stream, *en, validation_context, interner);
 
          if let Some(v) = dt.as_mut() {
             // Failure to resolve is handled below
             let _ = resolve_type(v, validation_context.enum_info, validation_context.struct_info);
-            try_set_inferred_type(v, en, validation_context, err_stream, interner);
+            try_set_inferred_type(v, *en, validation_context, err_stream, interner);
          }
+
+         let en = &validation_context.expressions[*en];
 
          let result_type = if dt.is_some()
             && *dt != en.exp_type
@@ -1402,37 +1424,43 @@ fn type_block<W: Write>(
    validation_context.variable_types.retain(|_, v| v.1 <= cur_block_depth);
 }
 
-fn do_type<W: Write>(
+fn get_type<W: Write>(
    err_stream: &mut W,
-   expr_node: &mut ExpressionNode,
+   expr_index: ExpressionIndex,
    validation_context: &mut ValidationContext,
    interner: &mut Interner,
-) {
-   match &mut expr_node.expression {
+) -> ExpressionType {
+   let expr_location = validation_context.expressions[expr_index].expression_begin_location;
+
+   // SAFETY: nocheckin
+   let expr_node = &mut validation_context.expressions[expr_index] as *mut ExpressionNode;
+
+   match unsafe { &mut (*expr_node).expression } {
       Expression::UnitLiteral => {
-         expr_node.exp_type = Some(ExpressionType::Value(ValueType::Unit));
+         ExpressionType::Value(ValueType::Unit)
       }
       Expression::BoolLiteral(_) => {
-         expr_node.exp_type = Some(ExpressionType::Value(ValueType::Bool));
+         ExpressionType::Value(ValueType::Bool)
       }
       Expression::IntLiteral(_) => {
          validation_context.unknown_ints += 1;
-         expr_node.exp_type = Some(ExpressionType::Value(ValueType::UnknownInt));
+         ExpressionType::Value(ValueType::UnknownInt)
       }
       Expression::FloatLiteral(_) => {
          validation_context.unknown_floats += 1;
-         expr_node.exp_type = Some(ExpressionType::Value(ValueType::UnknownFloat));
+         ExpressionType::Value(ValueType::UnknownFloat)
       }
       Expression::StringLiteral(lit) => {
          validation_context.string_literals.insert(*lit);
-         expr_node.exp_type = Some(ExpressionType::Value(ValueType::Struct(interner.intern("String"))));
+         ExpressionType::Value(ValueType::Struct(interner.intern("String")))
       }
       Expression::Extend(target_type, e) => {
-         do_type(err_stream, e, validation_context, interner);
+         do_type(err_stream, *e, validation_context, interner);
 
+         let e = &validation_context.expressions[*e];
          let e_type = e.exp_type.as_ref().unwrap();
 
-         let result_type = if !e_type.is_concrete_type() {
+         if !e_type.is_concrete_type() {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
          } else {
@@ -1458,7 +1486,7 @@ fn do_type<W: Write>(
                writeln!(
                   err_stream,
                   "↳ extend @ line {}, column {}",
-                  expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                  expr_location.line, expr_location.col
                )
                .unwrap();
                writeln!(
@@ -1469,26 +1497,25 @@ fn do_type<W: Write>(
                .unwrap();
                ExpressionType::Value(ValueType::CompileError)
             }
-         };
-
-         expr_node.exp_type = Some(result_type);
+         }
       }
       Expression::Transmute(target_type, e) => {
-         do_type(err_stream, e, validation_context, interner);
+         do_type(err_stream, *e, validation_context, interner);
 
          if target_type.is_pointer() {
             try_set_inferred_type(
                &ExpressionType::Value(USIZE_TYPE),
-               e,
+               *e,
                validation_context,
                err_stream,
                interner,
             );
          }
 
+         let e = &validation_context.expressions[*e];
          let e_type = e.exp_type.as_ref().unwrap();
 
-         let result_type = if !e_type.is_concrete_type() {
+         if !e_type.is_concrete_type() {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
          } else {
@@ -1523,7 +1550,7 @@ fn do_type<W: Write>(
                writeln!(
                   err_stream,
                   "↳ transmute @ line {}, column {}",
-                  expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                  expr_location.line, expr_location.col
                )
                .unwrap();
                writeln!(
@@ -1534,16 +1561,15 @@ fn do_type<W: Write>(
                .unwrap();
                ExpressionType::Value(ValueType::CompileError)
             }
-         };
-
-         expr_node.exp_type = Some(result_type);
+         }
       }
       Expression::Truncate(target_type, e) => {
-         do_type(err_stream, e, validation_context, interner);
+         do_type(err_stream, *e, validation_context, interner);
 
+         let e = &validation_context.expressions[*e];
          let e_type = e.exp_type.as_ref().unwrap();
 
-         let result_type = if !e_type.is_concrete_type() {
+         if !e_type.is_concrete_type() {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
          } else {
@@ -1569,7 +1595,7 @@ fn do_type<W: Write>(
                writeln!(
                   err_stream,
                   "↳ truncate @ line {}, column {}",
-                  expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                  expr_location.line, expr_location.col
                )
                .unwrap();
                writeln!(
@@ -1580,15 +1606,13 @@ fn do_type<W: Write>(
                .unwrap();
                ExpressionType::Value(ValueType::CompileError)
             }
-         };
-
-         expr_node.exp_type = Some(result_type);
+         }
       }
-      Expression::BinaryOperator(bin_op, e) => {
-         do_type(err_stream, &mut e.0, validation_context, interner);
-         do_type(err_stream, &mut e.1, validation_context, interner);
+      Expression::BinaryOperator { operator, lhs, rhs } => {
+         do_type(err_stream, *lhs, validation_context, interner);
+         do_type(err_stream, *rhs, validation_context, interner);
 
-         let correct_arg_types: &[TypeValidator] = match bin_op {
+         let correct_arg_types: &[TypeValidator] = match operator {
             BinOp::Add
             | BinOp::Subtract
             | BinOp::Multiply
@@ -1607,24 +1631,27 @@ fn do_type<W: Write>(
          };
 
          try_set_inferred_type(
-            e.0.exp_type.as_ref().unwrap(),
-            &mut e.1,
+            &validation_context.expressions[*lhs].exp_type.clone().unwrap(),
+            *rhs,
             validation_context,
             err_stream,
             interner,
          );
          try_set_inferred_type(
-            e.1.exp_type.as_ref().unwrap(),
-            &mut e.0,
+            &validation_context.expressions[*rhs].exp_type.clone().unwrap(),
+            *lhs,
             validation_context,
             err_stream,
             interner,
          );
 
-         let lhs_type = e.0.exp_type.as_ref().unwrap();
-         let rhs_type = e.1.exp_type.as_ref().unwrap();
+         let lhs_expr = &validation_context.expressions[*lhs];
+         let rhs_expr = &validation_context.expressions[*rhs];
 
-         let result_type = if lhs_type == &ExpressionType::Value(ValueType::CompileError)
+         let lhs_type = lhs_expr.exp_type.as_ref().unwrap();
+         let rhs_type = rhs_expr.exp_type.as_ref().unwrap();
+
+         if lhs_type == &ExpressionType::Value(ValueType::CompileError)
             || rhs_type == &ExpressionType::Value(ValueType::CompileError)
          {
             // Avoid cascading errors
@@ -1634,7 +1661,7 @@ fn do_type<W: Write>(
             writeln!(
                err_stream,
                "Binary operator {:?} requires LHS to have type matching {:?}; instead got {}",
-               bin_op,
+               operator,
                correct_arg_types,
                lhs_type.as_roland_type_info(interner)
             )
@@ -1642,7 +1669,7 @@ fn do_type<W: Write>(
             writeln!(
                err_stream,
                "↳ line {}, column {}",
-               e.0.expression_begin_location.line, e.0.expression_begin_location.col
+               lhs_expr.expression_begin_location.line, lhs_expr.expression_begin_location.col
             )
             .unwrap();
             ExpressionType::Value(ValueType::CompileError)
@@ -1651,7 +1678,7 @@ fn do_type<W: Write>(
             writeln!(
                err_stream,
                "Binary operator {:?} requires RHS to have type matching {:?}; instead got {}",
-               bin_op,
+               operator,
                correct_arg_types,
                rhs_type.as_roland_type_info(interner)
             )
@@ -1659,7 +1686,7 @@ fn do_type<W: Write>(
             writeln!(
                err_stream,
                "↳ line {}, column {}",
-               e.1.expression_begin_location.line, e.1.expression_begin_location.col
+               rhs_expr.expression_begin_location.line, rhs_expr.expression_begin_location.col
             )
             .unwrap();
             ExpressionType::Value(ValueType::CompileError)
@@ -1668,7 +1695,7 @@ fn do_type<W: Write>(
             writeln!(
                err_stream,
                "Binary operator {:?} requires LHS and RHS to have identical type; instead got {} and {}",
-               bin_op,
+               operator,
                lhs_type.as_roland_type_info(interner),
                rhs_type.as_roland_type_info(interner)
             )
@@ -1676,18 +1703,18 @@ fn do_type<W: Write>(
             writeln!(
                err_stream,
                "↳ left hand side @ line {}, column {}",
-               e.0.expression_begin_location.line, e.0.expression_begin_location.col
+               lhs_expr.expression_begin_location.line, lhs_expr.expression_begin_location.col
             )
             .unwrap();
             writeln!(
                err_stream,
                "↳ right hand side @ line {}, column {}",
-               e.1.expression_begin_location.line, e.1.expression_begin_location.col
+               rhs_expr.expression_begin_location.line, rhs_expr.expression_begin_location.col
             )
             .unwrap();
             ExpressionType::Value(ValueType::CompileError)
          } else {
-            match bin_op {
+            match operator {
                BinOp::Add
                | BinOp::Subtract
                | BinOp::Multiply
@@ -1707,12 +1734,12 @@ fn do_type<W: Write>(
                | BinOp::LogicalAnd
                | BinOp::LogicalOr => ExpressionType::Value(ValueType::Bool),
             }
-         };
-
-         expr_node.exp_type = Some(result_type);
+         }
       }
       Expression::UnaryOperator(un_op, e) => {
-         do_type(err_stream, e, validation_context, interner);
+         do_type(err_stream, *e, validation_context, interner);
+
+         let e = &validation_context.expressions[*e];
 
          let (correct_type, node_type): (&[TypeValidator], _) = match un_op {
             UnOp::Dereference => {
@@ -1736,7 +1763,7 @@ fn do_type<W: Write>(
             }
          };
 
-         let result_type = if e.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::CompileError) {
+         if e.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::CompileError) {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_type, e.exp_type.as_ref().unwrap()) {
@@ -1756,9 +1783,9 @@ fn do_type<W: Write>(
             )
             .unwrap();
             ExpressionType::Value(ValueType::CompileError)
-         } else if *un_op == UnOp::AddressOf && !e.expression.is_lvalue(validation_context.static_info) {
+         } else if *un_op == UnOp::AddressOf && !e.expression.is_lvalue(validation_context.expressions, validation_context.static_info) {
             validation_context.error_count += 1;
-            if e.expression.is_lvalue_disregard_consts() {
+            if e.expression.is_lvalue_disregard_consts(validation_context.expressions) {
                writeln!(
                   err_stream,
                   "Attempting to take a pointer to a const, which can't be done as they don't reside in memory"
@@ -1767,7 +1794,7 @@ fn do_type<W: Write>(
                writeln!(
                   err_stream,
                   "↳ line {}, column {}",
-                  expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                  expr_location.line, expr_location.col
                )
                .unwrap();
             } else {
@@ -1779,7 +1806,7 @@ fn do_type<W: Write>(
                writeln!(
                   err_stream,
                   "↳ line {}, column {}",
-                  expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                  expr_location.line, expr_location.col
                )
                .unwrap();
             }
@@ -1809,9 +1836,7 @@ fn do_type<W: Write>(
             node_type
          } else {
             node_type
-         };
-
-         expr_node.exp_type = Some(result_type);
+         }
       }
       Expression::Variable(id) => {
          let defined_type = validation_context
@@ -1820,7 +1845,7 @@ fn do_type<W: Write>(
             .map(|x| &x.static_type)
             .or_else(|| validation_context.variable_types.get(id).map(|x| &x.0));
 
-         let result_type = match defined_type {
+         match defined_type {
             Some(t) => t.clone(),
             None => {
                validation_context.error_count += 1;
@@ -1828,18 +1853,16 @@ fn do_type<W: Write>(
                writeln!(
                   err_stream,
                   "↳ line {}, column {}",
-                  expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                  expr_location.line, expr_location.col
                )
                .unwrap();
                ExpressionType::Value(ValueType::CompileError)
             }
-         };
-
-         expr_node.exp_type = Some(result_type);
+         }
       }
       Expression::ProcedureCall(name, args) => {
          for arg in args.iter_mut() {
-            do_type(err_stream, &mut arg.expr, validation_context, interner);
+            do_type(err_stream, arg.expr, validation_context, interner);
          }
 
          if is_special_procedure(validation_context.target, *name, interner) {
@@ -1853,15 +1876,13 @@ fn do_type<W: Write>(
             writeln!(
                err_stream,
                "↳ line {}, column {}",
-               expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+               expr_location.line, expr_location.col
             )
             .unwrap();
          }
 
          match validation_context.procedure_info.get(name) {
             Some(procedure_info) => {
-               expr_node.exp_type = Some(procedure_info.ret_type.clone());
-
                // Validate that there are no non-named arguments after named arguments, then reorder the argument list
                let first_named_arg = args.iter().enumerate().find(|(_, arg)| arg.name.is_some()).map(|x| x.0);
                let last_normal_arg = args
@@ -1884,7 +1905,7 @@ fn do_type<W: Write>(
                   writeln!(
                      err_stream,
                      "↳ line {}, column {}",
-                     expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                     expr_location.line, expr_location.col
                   )
                   .unwrap();
                } else if let Some(i) = first_named_arg {
@@ -1904,10 +1925,10 @@ fn do_type<W: Write>(
                   writeln!(
                      err_stream,
                      "↳ line {}, column {}",
-                     expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                     expr_location.line, expr_location.col
                   )
                   .unwrap();
-               // We shortcircuit here, because there will likely be lots of mistmatched types if an arg was forgotten
+                  // We shortcircuit here, because there will likely be lots of mismatched types if an arg was forgotten
                } else if args_in_order {
                   let expected_types = procedure_info.parameters.iter();
                   for (actual, expected) in args.iter_mut().zip(expected_types) {
@@ -1916,9 +1937,11 @@ fn do_type<W: Write>(
                         break;
                      }
 
-                     try_set_inferred_type(expected, &mut actual.expr, validation_context, err_stream, interner);
+                     try_set_inferred_type(expected, actual.expr, validation_context, err_stream, interner);
 
-                     let actual_type = actual.expr.exp_type.as_ref().unwrap();
+                     let actual_expr = &validation_context.expressions[actual.expr];
+                     let actual_type = actual_expr.exp_type.as_ref().unwrap();
+
                      if actual_type != expected && *actual_type != ExpressionType::Value(ValueType::CompileError) {
                         validation_context.error_count += 1;
                         let actual_type_str = actual_type.as_roland_type_info(interner);
@@ -1934,7 +1957,7 @@ fn do_type<W: Write>(
                         writeln!(
                            err_stream,
                            "↳ line {}, column {}",
-                           expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                           expr_location.line, expr_location.col
                         )
                         .unwrap();
                      }
@@ -1955,7 +1978,7 @@ fn do_type<W: Write>(
                         writeln!(
                            err_stream,
                            "↳ line {}, column {}",
-                           expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                           expr_location.line, expr_location.col
                         )
                         .unwrap();
                         continue;
@@ -1963,9 +1986,11 @@ fn do_type<W: Write>(
 
                      let expected = expected.unwrap();
 
-                     try_set_inferred_type(expected, &mut arg.expr, validation_context, err_stream, interner);
+                     try_set_inferred_type(expected, arg.expr, validation_context, err_stream, interner);
 
-                     let actual_type = arg.expr.exp_type.as_ref().unwrap();
+                     let arg_expr = &validation_context.expressions[arg.expr];
+
+                     let actual_type = arg_expr.exp_type.as_ref().unwrap();
                      if actual_type != expected && *actual_type != ExpressionType::Value(ValueType::CompileError) {
                         validation_context.error_count += 1;
                         let actual_type_str = actual_type.as_roland_type_info(interner);
@@ -1982,12 +2007,14 @@ fn do_type<W: Write>(
                         writeln!(
                            err_stream,
                            "↳ line {}, column {}",
-                           expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                           expr_location.line, expr_location.col
                         )
                         .unwrap();
                      }
                   }
                }
+
+               procedure_info.ret_type.clone()
             }
             None => {
                validation_context.error_count += 1;
@@ -2000,22 +2027,20 @@ fn do_type<W: Write>(
                writeln!(
                   err_stream,
                   "↳ line {}, column {}",
-                  expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                  expr_location.line, expr_location.col
                )
                .unwrap();
-               expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
+               ExpressionType::Value(ValueType::CompileError)
             }
          }
       }
       Expression::StructLiteral(struct_name, fields) => {
          for field in fields.iter_mut() {
-            do_type(err_stream, &mut field.1, validation_context, interner);
+            do_type(err_stream, field.1, validation_context, interner);
          }
 
          match validation_context.struct_info.get(struct_name) {
             Some(defined_struct) => {
-               expr_node.exp_type = Some(ExpressionType::Value(ValueType::Struct(*struct_name)));
-
                let defined_fields = &defined_struct.field_types;
 
                let mut unmatched_fields: HashSet<StrId> = defined_fields.keys().copied().collect();
@@ -2041,7 +2066,7 @@ fn do_type<W: Write>(
                         writeln!(
                            err_stream,
                            "↳ struct instantiated @ line {}, column {}",
-                           expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                           expr_location.line, expr_location.col
                         )
                         .unwrap();
                         continue;
@@ -2067,18 +2092,20 @@ fn do_type<W: Write>(
                      writeln!(
                         err_stream,
                         "↳ struct instantiated @ line {}, column {}",
-                        expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                        expr_location.line, expr_location.col
                      )
                      .unwrap();
                   }
 
-                  try_set_inferred_type(defined_type, &mut field.1, validation_context, err_stream, interner);
+                  try_set_inferred_type(defined_type, field.1, validation_context, err_stream, interner);
 
-                  if field.1.exp_type.as_ref().unwrap() != defined_type
-                     && field.1.exp_type.as_ref().unwrap().is_concrete_type()
+                  let field_expr = &validation_context.expressions[field.1];
+
+                  if field_expr.exp_type.as_ref().unwrap() != defined_type
+                     && field_expr.exp_type.as_ref().unwrap().is_concrete_type()
                   {
                      validation_context.error_count += 1;
-                     let field_1_type_str = field.1.exp_type.as_ref().unwrap().as_roland_type_info(interner);
+                     let field_1_type_str = field_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
                      let defined_type_str = defined_type.as_roland_type_info(interner);
                      writeln!(
                         err_stream,
@@ -2098,17 +2125,18 @@ fn do_type<W: Write>(
                      writeln!(
                         err_stream,
                         "↳ struct instantiated @ line {}, column {}",
-                        expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                        expr_location.line, expr_location.col
                      )
                      .unwrap();
                      writeln!(
                         err_stream,
                         "↳ field value @ line {}, column {}",
-                        field.1.expression_begin_location.line, field.1.expression_begin_location.col
+                        field_expr.expression_begin_location.line, field_expr.expression_begin_location.col
                      )
                      .unwrap();
                   }
                }
+
                // Missing field check
                if !unmatched_fields.is_empty() {
                   validation_context.error_count += 1;
@@ -2129,10 +2157,12 @@ fn do_type<W: Write>(
                   writeln!(
                      err_stream,
                      "↳ struct instantiated @ line {}, column {}",
-                     expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                     expr_location.line, expr_location.col
                   )
                   .unwrap();
                }
+
+               ExpressionType::Value(ValueType::Struct(*struct_name))
             }
             None => {
                validation_context.error_count += 1;
@@ -2145,15 +2175,17 @@ fn do_type<W: Write>(
                writeln!(
                   err_stream,
                   "↳ line {}, column {}",
-                  expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                  expr_location.line, expr_location.col
                )
                .unwrap();
-               expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
+               ExpressionType::Value(ValueType::CompileError)
             }
          }
       }
       Expression::FieldAccess(fields, lhs) => {
-         do_type(err_stream, lhs, validation_context, interner);
+         do_type(err_stream, *lhs, validation_context, interner);
+
+         let lhs = &validation_context.expressions[*lhs];
 
          if let Some(ExpressionType::Value(ValueType::Struct(base_struct_name))) = lhs.exp_type.as_ref() {
             let mut current_struct = *base_struct_name;
@@ -2176,11 +2208,10 @@ fn do_type<W: Write>(
                      writeln!(
                         err_stream,
                         "↳ line {}, column {}",
-                        expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                        expr_location.line, expr_location.col
                      )
                      .unwrap();
-                     expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
-                     break;
+                     return ExpressionType::Value(ValueType::CompileError);
                   }
                   None => {
                      validation_context.error_count += 1;
@@ -2194,37 +2225,34 @@ fn do_type<W: Write>(
                      writeln!(
                         err_stream,
                         "↳ line {}, column {}",
-                        expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                        expr_location.line, expr_location.col
                      )
                      .unwrap();
-                     expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
-                     break;
+                     return ExpressionType::Value(ValueType::CompileError);
                   }
                }
             }
 
-            if expr_node.exp_type != Some(ExpressionType::Value(ValueType::CompileError)) {
-               match current_struct_info.get(fields.last().unwrap()) {
-                  Some(e_type) => {
-                     expr_node.exp_type = Some(e_type.clone());
-                  }
-                  None => {
-                     validation_context.error_count += 1;
-                     writeln!(
-                        err_stream,
-                        "Struct `{}` does not have a field `{}`",
-                        interner.lookup(current_struct),
-                        interner.lookup(*fields.last().unwrap()),
-                     )
-                     .unwrap();
-                     writeln!(
-                        err_stream,
-                        "↳ line {}, column {}",
-                        expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
-                     )
-                     .unwrap();
-                     expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
-                  }
+            match current_struct_info.get(fields.last().unwrap()) {
+               Some(e_type) => {
+                  e_type.clone()
+               }
+               None => {
+                  validation_context.error_count += 1;
+                  writeln!(
+                     err_stream,
+                     "Struct `{}` does not have a field `{}`",
+                     interner.lookup(current_struct),
+                     interner.lookup(*fields.last().unwrap()),
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ line {}, column {}",
+                     expr_location.line, expr_location.col
+                  )
+                  .unwrap();
+                  ExpressionType::Value(ValueType::CompileError)
                }
             }
          } else {
@@ -2238,62 +2266,65 @@ fn do_type<W: Write>(
             writeln!(
                err_stream,
                "↳ line {}, column {}",
-               expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+               expr_location.line, expr_location.col
             )
             .unwrap();
-            expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
+            ExpressionType::Value(ValueType::CompileError)
          }
       }
       Expression::ArrayLiteral(elems) => {
          for elem in elems.iter_mut() {
-            do_type(err_stream, elem, validation_context, interner);
+            do_type(err_stream, *elem, validation_context, interner);
          }
 
          let mut any_error = false;
 
          for i in 1..elems.len() {
             try_set_inferred_type(
-               &elems[i - 1].exp_type.clone().unwrap(),
-               &mut elems[i],
+               &validation_context.expressions[elems[i - 1]].exp_type.clone().unwrap(),
+               elems[i],
                validation_context,
                err_stream,
                interner,
             );
 
-            if !elems[i - 1].exp_type.as_ref().unwrap().is_concrete_type()
-               || !elems[i].exp_type.as_ref().unwrap().is_concrete_type()
+            let last_elem_expr = &validation_context.expressions[elems[i - 1]];
+            let this_elem_expr = &validation_context.expressions[elems[i]];
+
+            if !last_elem_expr.exp_type.as_ref().unwrap().is_concrete_type()
+               || this_elem_expr.exp_type.as_ref().unwrap().is_concrete_type()
             {
                // avoid cascading errors
                continue;
-            } else if elems[i - 1].exp_type != elems[i].exp_type {
+            } else if last_elem_expr.exp_type.as_ref().unwrap() != this_elem_expr.exp_type.as_ref().unwrap() {
                validation_context.error_count += 1;
                writeln!(
                   err_stream,
                   "Element at array index {} has type of {}, but element at array index {} has mismatching type of {}",
                   i - 1,
-                  elems[i - 1].exp_type.as_ref().unwrap().as_roland_type_info(interner),
+                  last_elem_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
                   i,
-                  elems[i].exp_type.as_ref().unwrap().as_roland_type_info(interner),
+                  last_elem_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
                )
                .unwrap();
                writeln!(
                   err_stream,
                   "↳ array literal @ line {}, column {}",
-                  expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                  expr_location.line, expr_location.col
                )
                .unwrap();
                writeln!(
                   err_stream,
                   "↳ element {} @ line {}, column {}",
                   i - 1,
-                  elems[i - 1].expression_begin_location.line,
-                  elems[i - 1].expression_begin_location.col
+                  last_elem_expr.expression_begin_location.line,
+                  last_elem_expr.expression_begin_location.col
                )
                .unwrap();
                writeln!(
                   err_stream,
                   "↳ element {} @ line {}, column {}",
-                  i, elems[i].expression_begin_location.line, elems[i].expression_begin_location.col
+                  i, this_elem_expr.expression_begin_location.line, this_elem_expr.expression_begin_location.col
                )
                .unwrap();
 
@@ -2315,38 +2346,41 @@ fn do_type<W: Write>(
             writeln!(
                err_stream,
                "↳ array literal @ line {}, column {}",
-               expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+               expr_location.line, expr_location.col
             )
             .unwrap();
          }
 
          if any_error {
-            expr_node.exp_type = Some(ExpressionType::Value(ValueType::CompileError));
+            ExpressionType::Value(ValueType::CompileError)
          } else if elems.is_empty() {
-            expr_node.exp_type = Some(ExpressionType::Value(ValueType::Array(
+            ExpressionType::Value(ValueType::Array(
                Box::new(ExpressionType::Value(ValueType::Unit)),
                elems.len() as i128,
-            )));
+            ))
          } else {
-            let a_type = elems[0].exp_type.clone().unwrap();
+            let a_type = validation_context.expressions[elems[0]].exp_type.clone().unwrap();
 
-            expr_node.exp_type = Some(ExpressionType::Value(ValueType::Array(
+            ExpressionType::Value(ValueType::Array(
                Box::new(a_type),
                elems.len() as i128,
-            )));
+            ))
          }
       }
-      Expression::ArrayIndex(array_expression, index_expression) => {
-         do_type(err_stream, array_expression, validation_context, interner);
-         do_type(err_stream, index_expression, validation_context, interner);
+      Expression::ArrayIndex { array, index } => {
+         do_type(err_stream, *array, validation_context, interner);
+         do_type(err_stream, *index, validation_context, interner);
 
          try_set_inferred_type(
             &ExpressionType::Value(USIZE_TYPE),
-            &mut *index_expression,
+            *index,
             validation_context,
             err_stream,
             interner,
          );
+
+         let array_expression = &validation_context.expressions[*array];
+         let index_expression = &validation_context.expressions[*index];
 
          if !index_expression.exp_type.as_ref().unwrap().is_concrete_type() {
             // avoid cascading errors
@@ -2369,11 +2403,9 @@ fn do_type<W: Write>(
             .unwrap();
          }
 
-         expr_node.exp_type = match &array_expression.exp_type {
-            Some(ExpressionType::Value(ValueType::CompileError)) => {
-               Some(ExpressionType::Value(ValueType::CompileError))
-            }
-            Some(ExpressionType::Value(ValueType::Array(b, _))) => Some(*b.clone()),
+         match &array_expression.exp_type {
+            Some(ExpressionType::Value(ValueType::CompileError)) => ExpressionType::Value(ValueType::CompileError),
+            Some(ExpressionType::Value(ValueType::Array(b, _))) => *b.clone(),
             Some(x) => {
                validation_context.error_count += 1;
                writeln!(
@@ -2395,15 +2427,15 @@ fn do_type<W: Write>(
                )
                .unwrap();
 
-               Some(ExpressionType::Value(ValueType::CompileError))
+               ExpressionType::Value(ValueType::CompileError)
             }
             None => unreachable!(),
-         };
+         }
       }
       Expression::EnumLiteral(x, v) => {
-         expr_node.exp_type = if let Some(enum_info) = validation_context.enum_info.get(x) {
+         if let Some(enum_info) = validation_context.enum_info.get(x) {
             if enum_info.variants.contains(v) {
-               Some(ExpressionType::Value(ValueType::Enum(*x)))
+               ExpressionType::Value(ValueType::Enum(*x))
             } else {
                validation_context.error_count += 1;
                writeln!(
@@ -2416,11 +2448,11 @@ fn do_type<W: Write>(
                writeln!(
                   err_stream,
                   "↳ enum literal @ line {}, column {}",
-                  expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+                  expr_location.line, expr_location.col
                )
                .unwrap();
 
-               Some(ExpressionType::Value(ValueType::CompileError))
+               ExpressionType::Value(ValueType::CompileError)
             }
          } else {
             validation_context.error_count += 1;
@@ -2433,12 +2465,21 @@ fn do_type<W: Write>(
             writeln!(
                err_stream,
                "↳ enum literal @ line {}, column {}",
-               expr_node.expression_begin_location.line, expr_node.expression_begin_location.col
+               expr_location.line, expr_location.col
             )
             .unwrap();
 
-            Some(ExpressionType::Value(ValueType::CompileError))
-         };
+            ExpressionType::Value(ValueType::CompileError)
+         }
       }
    }
+}
+
+fn do_type<W: Write>(
+   err_stream: &mut W,
+   expr_index: ExpressionIndex,
+   validation_context: &mut ValidationContext,
+   interner: &mut Interner,
+) {
+   validation_context.expressions[expr_index].exp_type = Some(get_type(err_stream, expr_index, validation_context, interner));
 }
