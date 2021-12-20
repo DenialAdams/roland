@@ -40,7 +40,7 @@ where
    K: Handle,
 {
    keys: PhantomData<K>,
-   pub values: Vec<V>,
+   values: Vec<V>,
 }
 
 impl<K, V> Default for HandleMap<K, V>
