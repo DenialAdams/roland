@@ -812,7 +812,7 @@ pub fn type_and_check_validity<W: Write>(
 
    for p_const in program.consts.iter_mut() {
       // p_const.const_type is guaranteed to be resolved at this point
-      do_type(err_stream, p_const.value, &mut validation_context, interner);
+      type_expression(err_stream, p_const.value, &mut validation_context, interner);
       try_set_inferred_type(
          &p_const.const_type,
          p_const.value,
@@ -888,7 +888,7 @@ pub fn type_and_check_validity<W: Write>(
 
    for p_static in program.statics.iter_mut().filter(|x| x.value.is_some()) {
       // p_static.static_type is guaranteed to be resolved at this point
-      do_type(err_stream, p_static.value.unwrap(), &mut validation_context, interner);
+      type_expression(err_stream, p_static.value.unwrap(), &mut validation_context, interner);
       try_set_inferred_type(
          &p_static.static_type,
          p_static.value.unwrap(),
@@ -1057,8 +1057,8 @@ fn type_statement<W: Write>(
 ) {
    match &mut statement.statement {
       Statement::Assignment(lhs, rhs) => {
-         do_type(err_stream, *lhs, validation_context, interner);
-         do_type(err_stream, *rhs, validation_context, interner);
+         type_expression(err_stream, *lhs, validation_context, interner);
+         type_expression(err_stream, *rhs, validation_context, interner);
 
          try_set_inferred_type(
             &validation_context.expressions[*lhs].exp_type.clone().unwrap(),
@@ -1162,8 +1162,8 @@ fn type_statement<W: Write>(
          }
       }
       Statement::For(var, start, end, bn, _) => {
-         do_type(err_stream, *start, validation_context, interner);
-         do_type(err_stream, *end, validation_context, interner);
+         type_expression(err_stream, *start, validation_context, interner);
+         type_expression(err_stream, *end, validation_context, interner);
 
          try_set_inferred_type(
             &validation_context.expressions[*start].exp_type.clone().unwrap(),
@@ -1246,12 +1246,12 @@ fn type_statement<W: Write>(
          validation_context.loop_depth -= 1;
       }
       Statement::Expression(en) => {
-         do_type(err_stream, *en, validation_context, interner);
+         type_expression(err_stream, *en, validation_context, interner);
       }
       Statement::IfElse(en, block_1, block_2) => {
          type_block(err_stream, block_1, validation_context, cur_procedure_locals, interner);
          type_statement(err_stream, block_2, validation_context, cur_procedure_locals, interner);
-         do_type(err_stream, *en, validation_context, interner);
+         type_expression(err_stream, *en, validation_context, interner);
 
          let en = &validation_context.expressions[*en];
          let if_exp_type = en.exp_type.as_ref().unwrap();
@@ -1274,7 +1274,7 @@ fn type_statement<W: Write>(
          }
       }
       Statement::Return(en) => {
-         do_type(err_stream, *en, validation_context, interner);
+         type_expression(err_stream, *en, validation_context, interner);
          let cur_procedure_info = validation_context.cur_procedure_info.unwrap();
 
          // Type Inference
@@ -1308,7 +1308,7 @@ fn type_statement<W: Write>(
          }
       }
       Statement::VariableDeclaration(id, en, dt) => {
-         do_type(err_stream, *en, validation_context, interner);
+         type_expression(err_stream, *en, validation_context, interner);
 
          if let Some(v) = dt.as_mut() {
             // Failure to resolve is handled below
@@ -1467,7 +1467,7 @@ fn get_type<W: Write>(
          ExpressionType::Value(ValueType::Struct(interner.intern("String")))
       }
       Expression::Extend(target_type, e) => {
-         do_type(err_stream, *e, validation_context, interner);
+         type_expression(err_stream, *e, validation_context, interner);
 
          let e = &validation_context.expressions[*e];
          let e_type = e.exp_type.as_ref().unwrap();
@@ -1512,7 +1512,7 @@ fn get_type<W: Write>(
          }
       }
       Expression::Transmute(target_type, e) => {
-         do_type(err_stream, *e, validation_context, interner);
+         type_expression(err_stream, *e, validation_context, interner);
 
          if target_type.is_pointer() {
             try_set_inferred_type(
@@ -1576,7 +1576,7 @@ fn get_type<W: Write>(
          }
       }
       Expression::Truncate(target_type, e) => {
-         do_type(err_stream, *e, validation_context, interner);
+         type_expression(err_stream, *e, validation_context, interner);
 
          let e = &validation_context.expressions[*e];
          let e_type = e.exp_type.as_ref().unwrap();
@@ -1621,8 +1621,8 @@ fn get_type<W: Write>(
          }
       }
       Expression::BinaryOperator { operator, lhs, rhs } => {
-         do_type(err_stream, *lhs, validation_context, interner);
-         do_type(err_stream, *rhs, validation_context, interner);
+         type_expression(err_stream, *lhs, validation_context, interner);
+         type_expression(err_stream, *rhs, validation_context, interner);
 
          let correct_arg_types: &[TypeValidator] = match operator {
             BinOp::Add
@@ -1749,7 +1749,7 @@ fn get_type<W: Write>(
          }
       }
       Expression::UnaryOperator(un_op, e) => {
-         do_type(err_stream, *e, validation_context, interner);
+         type_expression(err_stream, *e, validation_context, interner);
 
          let e = &validation_context.expressions[*e];
 
@@ -1878,7 +1878,7 @@ fn get_type<W: Write>(
       }
       Expression::ProcedureCall(name, args) => {
          for arg in args.iter_mut() {
-            do_type(err_stream, arg.expr, validation_context, interner);
+            type_expression(err_stream, arg.expr, validation_context, interner);
          }
 
          if is_special_procedure(validation_context.target, *name, interner) {
@@ -2052,7 +2052,7 @@ fn get_type<W: Write>(
       }
       Expression::StructLiteral(struct_name, fields) => {
          for field in fields.iter_mut() {
-            do_type(err_stream, field.1, validation_context, interner);
+            type_expression(err_stream, field.1, validation_context, interner);
          }
 
          match validation_context.struct_info.get(struct_name) {
@@ -2199,7 +2199,7 @@ fn get_type<W: Write>(
          }
       }
       Expression::FieldAccess(fields, lhs) => {
-         do_type(err_stream, *lhs, validation_context, interner);
+         type_expression(err_stream, *lhs, validation_context, interner);
 
          let lhs = &validation_context.expressions[*lhs];
 
@@ -2288,7 +2288,7 @@ fn get_type<W: Write>(
       }
       Expression::ArrayLiteral(elems) => {
          for elem in elems.iter_mut() {
-            do_type(err_stream, *elem, validation_context, interner);
+            type_expression(err_stream, *elem, validation_context, interner);
          }
 
          let mut any_error = false;
@@ -2379,8 +2379,8 @@ fn get_type<W: Write>(
          }
       }
       Expression::ArrayIndex { array, index } => {
-         do_type(err_stream, *array, validation_context, interner);
-         do_type(err_stream, *index, validation_context, interner);
+         type_expression(err_stream, *array, validation_context, interner);
+         type_expression(err_stream, *index, validation_context, interner);
 
          try_set_inferred_type(
             &ExpressionType::Value(USIZE_TYPE),
@@ -2486,7 +2486,7 @@ fn get_type<W: Write>(
    }
 }
 
-fn do_type<W: Write>(
+fn type_expression<W: Write>(
    err_stream: &mut W,
    expr_index: ExpressionIndex,
    validation_context: &mut ValidationContext,
