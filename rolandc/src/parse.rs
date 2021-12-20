@@ -2,10 +2,13 @@ use super::lex::{emit_source_info, SourceInfo, SourceToken, Token};
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
 use crate::semantic_analysis::{EnumInfo, StaticInfo, StructInfo};
 use crate::type_data::{ExpressionType, ValueType};
+use crate::typed_index_vec::{Handle, HandleMap};
 use indexmap::IndexMap;
 use std::collections::HashSet;
 use std::io::Write;
 use std::mem::discriminant;
+
+pub type ExpressionPool = HandleMap<ExpressionIndex, ExpressionNode>;
 
 struct Lexer {
    tokens: Vec<SourceToken>,
@@ -97,7 +100,7 @@ pub struct EnumNode {
 pub struct ConstNode {
    pub name: IdentifierNode,
    pub const_type: ExpressionType,
-   pub value: ExpressionNode,
+   pub value: ExpressionIndex,
    pub begin_location: SourceInfo,
 }
 
@@ -105,7 +108,7 @@ pub struct ConstNode {
 pub struct StaticNode {
    pub name: IdentifierNode,
    pub static_type: ExpressionType,
-   pub value: Option<ExpressionNode>,
+   pub value: Option<ExpressionIndex>,
    pub static_begin_location: SourceInfo,
 }
 
@@ -146,50 +149,73 @@ pub struct ExpressionNode {
    pub expression_begin_location: SourceInfo,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct ExpressionIndex(usize);
+
+impl Handle for ExpressionIndex {
+   fn new(x: usize) -> Self {
+      ExpressionIndex(x)
+   }
+
+   fn index(self) -> usize {
+      self.0
+   }
+}
+
 #[derive(Clone, Debug)]
 pub enum Expression {
    ProcedureCall(StrId, Box<[ArgumentNode]>),
-   ArrayLiteral(Box<[ExpressionNode]>),
-   ArrayIndex(Box<ExpressionNode>, Box<ExpressionNode>),
+   ArrayLiteral(Box<[ExpressionIndex]>),
+   ArrayIndex {
+      array: ExpressionIndex,
+      index: ExpressionIndex,
+   },
    BoolLiteral(bool),
    StringLiteral(StrId),
    IntLiteral(i128),
    FloatLiteral(f64),
    UnitLiteral,
    Variable(StrId),
-   BinaryOperator(BinOp, Box<(ExpressionNode, ExpressionNode)>),
-   UnaryOperator(UnOp, Box<ExpressionNode>),
-   StructLiteral(StrId, Vec<(StrId, ExpressionNode)>),
-   FieldAccess(Vec<StrId>, Box<ExpressionNode>),
-   Extend(ExpressionType, Box<ExpressionNode>),
-   Truncate(ExpressionType, Box<ExpressionNode>),
-   Transmute(ExpressionType, Box<ExpressionNode>),
+   BinaryOperator {
+      operator: BinOp,
+      lhs: ExpressionIndex,
+      rhs: ExpressionIndex,
+   },
+   UnaryOperator(UnOp, ExpressionIndex),
+   StructLiteral(StrId, Vec<(StrId, ExpressionIndex)>),
+   FieldAccess(Vec<StrId>, ExpressionIndex),
+   Extend(ExpressionType, ExpressionIndex),
+   Truncate(ExpressionType, ExpressionIndex),
+   Transmute(ExpressionType, ExpressionIndex),
    EnumLiteral(StrId, StrId),
 }
 
+// TODO: it would be cool if StrId was NonZero so that this struct (and others like it)
+// could be smaller
 #[derive(Clone, Debug)]
 pub struct ArgumentNode {
    pub name: Option<StrId>,
-   pub expr: ExpressionNode,
+   pub expr: ExpressionIndex,
 }
 
 impl Expression {
-   pub fn is_lvalue(&self, static_info: &IndexMap<StrId, StaticInfo>) -> bool {
+   pub fn is_lvalue(&self, expressions: &ExpressionPool, static_info: &IndexMap<StrId, StaticInfo>) -> bool {
       match self {
          Expression::Variable(x) => static_info.get(x).map(|x| !x.is_const).unwrap_or(true),
-         Expression::ArrayIndex(array_exp, _) => array_exp.expression.is_lvalue(static_info),
+         Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue(expressions, static_info),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
-         Expression::FieldAccess(_, lhs) => lhs.expression.is_lvalue(static_info),
+         Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue(expressions, static_info),
          _ => false,
       }
    }
 
-   pub fn is_lvalue_disregard_consts(&self) -> bool {
+   // After constants are lowered, we don't need to care about constants and pass a bulky data structure around
+   pub fn is_lvalue_disregard_consts(&self, expressions: &ExpressionPool) -> bool {
       match self {
          Expression::Variable(_) => true,
-         Expression::ArrayIndex(array_exp, _) => array_exp.expression.is_lvalue_disregard_consts(),
+         Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue_disregard_consts(expressions),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
-         Expression::FieldAccess(_, lhs) => lhs.expression.is_lvalue_disregard_consts(),
+         Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue_disregard_consts(expressions),
          _ => false,
       }
    }
@@ -203,16 +229,18 @@ pub struct StatementNode {
 
 #[derive(Clone)]
 pub enum Statement {
-   Assignment(ExpressionNode, ExpressionNode),
+   Assignment(ExpressionIndex, ExpressionIndex),
    Block(BlockNode),
    Loop(BlockNode),
-   For(IdentifierNode, ExpressionNode, ExpressionNode, BlockNode, bool),
+   For(IdentifierNode, ExpressionIndex, ExpressionIndex, BlockNode, bool),
    Continue,
    Break,
-   Expression(ExpressionNode),
-   IfElse(ExpressionNode, BlockNode, Box<StatementNode>),
-   Return(ExpressionNode),
-   VariableDeclaration(IdentifierNode, ExpressionNode, Option<ExpressionType>),
+   Expression(ExpressionIndex),
+   // TODO: banish this Box. The type is misleading here, because an if else always has either a block or another if-else,
+   // so we should try to rectify that too.
+   IfElse(ExpressionIndex, BlockNode, Box<StatementNode>),
+   Return(ExpressionIndex),
+   VariableDeclaration(IdentifierNode, ExpressionIndex, Option<ExpressionType>),
 }
 
 #[derive(Clone, Debug)]
@@ -242,7 +270,12 @@ pub struct Program {
    pub static_info: IndexMap<StrId, StaticInfo>,
 }
 
-pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: &Interner) -> Result<Program, ()> {
+pub fn astify<W: Write>(
+   tokens: Vec<SourceToken>,
+   err_stream: &mut W,
+   interner: &Interner,
+   expressions: &mut ExpressionPool,
+) -> Result<Program, ()> {
    let mut lexer = Lexer::from_tokens(tokens);
 
    let mut procedures = vec![];
@@ -255,7 +288,7 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
       match peeked_token {
          Token::KeywordProcedureDef => {
             let def = lexer.next().unwrap();
-            let p = parse_procedure(&mut lexer, err_stream, def.source_info, interner)?;
+            let p = parse_procedure(&mut lexer, err_stream, def.source_info, expressions, interner)?;
             procedures.push(p);
          }
          Token::KeywordStructDef => {
@@ -274,7 +307,7 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
             expect(&mut lexer, err_stream, &Token::Colon)?;
             let t_type = parse_type(&mut lexer, err_stream, interner)?;
             expect(&mut lexer, err_stream, &Token::Assignment)?;
-            let exp = parse_expression(&mut lexer, err_stream, false, interner)?;
+            let exp = parse_expression(&mut lexer, err_stream, false, expressions, interner)?;
             expect(&mut lexer, err_stream, &Token::Semicolon)?;
             consts.push(ConstNode {
                name: IdentifierNode {
@@ -293,7 +326,7 @@ pub fn astify<W: Write>(tokens: Vec<SourceToken>, err_stream: &mut W, interner: 
             let t_type = parse_type(&mut lexer, err_stream, interner)?;
             let exp = if lexer.peek_token() == Some(&Token::Assignment) {
                let _ = lexer.next();
-               Some(parse_expression(&mut lexer, err_stream, false, interner)?)
+               Some(parse_expression(&mut lexer, err_stream, false, expressions, interner)?)
             } else {
                None
             };
@@ -351,6 +384,7 @@ fn parse_procedure<W: Write>(
    l: &mut Lexer,
    err_stream: &mut W,
    source_info: SourceInfo,
+   expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<ProcedureNode, ()> {
    let function_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
@@ -363,7 +397,7 @@ fn parse_procedure<W: Write>(
    } else {
       ExpressionType::Value(ValueType::Unit)
    };
-   let block = parse_block(l, err_stream, interner)?;
+   let block = parse_block(l, err_stream, expressions, interner)?;
    Ok(ProcedureNode {
       name: extract_identifier(function_name.token),
       parameters,
@@ -444,7 +478,12 @@ fn parse_enum<W: Write>(
    })
 }
 
-fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner) -> Result<BlockNode, ()> {
+fn parse_block<W: Write>(
+   l: &mut Lexer,
+   err_stream: &mut W,
+   expressions: &mut ExpressionPool,
+   interner: &Interner,
+) -> Result<BlockNode, ()> {
    expect(l, err_stream, &Token::OpenBrace)?;
 
    let mut statements: Vec<StatementNode> = vec![];
@@ -453,7 +492,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
       match l.peek_token() {
          Some(Token::OpenBrace) => {
             let source = l.peek_source().unwrap();
-            let new_block = parse_block(l, err_stream, interner)?;
+            let new_block = parse_block(l, err_stream, expressions, interner)?;
             statements.push(StatementNode {
                statement: Statement::Block(new_block),
                statement_begin_location: source,
@@ -483,7 +522,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
             let for_token = l.next().unwrap();
             let variable_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
             let _ = expect(l, err_stream, &Token::KeywordIn)?;
-            let start_en = parse_expression(l, err_stream, true, interner)?;
+            let start_en = parse_expression(l, err_stream, true, expressions, interner)?;
             let _ = expect(l, err_stream, &Token::DoublePeriod)?;
             let inclusive = if l.peek_token() == Some(&Token::Assignment) {
                let _ = l.next();
@@ -491,8 +530,8 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
             } else {
                false
             };
-            let end_en = parse_expression(l, err_stream, true, interner)?;
-            let new_block = parse_block(l, err_stream, interner)?;
+            let end_en = parse_expression(l, err_stream, true, expressions, interner)?;
+            let new_block = parse_block(l, err_stream, expressions, interner)?;
             statements.push(StatementNode {
                statement: Statement::For(
                   IdentifierNode {
@@ -509,7 +548,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
          }
          Some(Token::KeywordLoop) => {
             let loop_token = l.next().unwrap();
-            let new_block = parse_block(l, err_stream, interner)?;
+            let new_block = parse_block(l, err_stream, expressions, interner)?;
             statements.push(StatementNode {
                statement: Statement::Loop(new_block),
                statement_begin_location: loop_token.source_info,
@@ -519,13 +558,9 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
             let return_token = l.next().unwrap();
             let e = if let Some(Token::Semicolon) = l.peek_token() {
                let _ = l.next().unwrap();
-               ExpressionNode {
-                  expression: Expression::UnitLiteral,
-                  exp_type: None,
-                  expression_begin_location: return_token.source_info,
-               }
+               wrap(Expression::UnitLiteral, return_token.source_info, expressions)
             } else {
-               let e = parse_expression(l, err_stream, false, interner)?;
+               let e = parse_expression(l, err_stream, false, expressions, interner)?;
                expect(l, err_stream, &Token::Semicolon)?;
                e
             };
@@ -544,7 +579,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
                declared_type = Some(parse_type(l, err_stream, interner)?);
             }
             expect(l, err_stream, &Token::Assignment)?;
-            let e = parse_expression(l, err_stream, false, interner)?;
+            let e = parse_expression(l, err_stream, false, expressions, interner)?;
             expect(l, err_stream, &Token::Semicolon)?;
             statements.push(StatementNode {
                statement: Statement::VariableDeclaration(
@@ -559,7 +594,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
             });
          }
          Some(Token::KeywordIf) => {
-            let s = parse_if_else_statement(l, err_stream, interner)?;
+            let s = parse_if_else_statement(l, err_stream, expressions, interner)?;
             statements.push(s);
          }
          Some(Token::BoolLiteral(_))
@@ -572,13 +607,13 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
          | Some(Token::MultiplyDeref)
          | Some(Token::Identifier(_))
          | Some(Token::Minus) => {
-            let e = parse_expression(l, err_stream, false, interner)?;
+            let e = parse_expression(l, err_stream, false, expressions, interner)?;
             match l.peek_token() {
                Some(&Token::Assignment) => {
                   let _ = l.next();
-                  let re = parse_expression(l, err_stream, false, interner)?;
+                  let re = parse_expression(l, err_stream, false, expressions, interner)?;
                   expect(l, err_stream, &Token::Semicolon)?;
-                  let statement_begin_location = e.expression_begin_location;
+                  let statement_begin_location = expressions[e].expression_begin_location;
                   statements.push(StatementNode {
                      statement: Statement::Assignment(e, re),
                      statement_begin_location,
@@ -586,7 +621,7 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
                }
                Some(&Token::Semicolon) => {
                   let _ = l.next();
-                  let statement_begin_location = e.expression_begin_location;
+                  let statement_begin_location = expressions[e].expression_begin_location;
                   statements.push(StatementNode {
                      statement: Statement::Expression(e),
                      statement_begin_location,
@@ -637,20 +672,21 @@ fn parse_block<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner)
 fn parse_if_else_statement<W: Write>(
    l: &mut Lexer,
    err_stream: &mut W,
+   expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<StatementNode, ()> {
    let if_token = l.next().unwrap();
-   let e = parse_expression(l, err_stream, true, interner)?;
-   let if_block = parse_block(l, err_stream, interner)?;
+   let e = parse_expression(l, err_stream, true, expressions, interner)?;
+   let if_block = parse_block(l, err_stream, expressions, interner)?;
    let else_statement = match (l.peek_token(), l.double_peek_token()) {
       (Some(&Token::KeywordElse), Some(&Token::KeywordIf)) => {
          let _ = l.next();
-         parse_if_else_statement(l, err_stream, interner)?
+         parse_if_else_statement(l, err_stream, expressions, interner)?
       }
       (Some(&Token::KeywordElse), _) => {
          let else_token = l.next().unwrap();
          StatementNode {
-            statement: Statement::Block(parse_block(l, err_stream, interner)?),
+            statement: Statement::Block(parse_block(l, err_stream, expressions, interner)?),
             statement_begin_location: else_token.source_info,
          }
       }
@@ -721,7 +757,12 @@ fn parse_parameters<W: Write>(
    Ok(parameters)
 }
 
-fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner) -> Result<Vec<ArgumentNode>, ()> {
+fn parse_arguments<W: Write>(
+   l: &mut Lexer,
+   err_stream: &mut W,
+   expressions: &mut ExpressionPool,
+   interner: &Interner,
+) -> Result<Vec<ArgumentNode>, ()> {
    let mut arguments = vec![];
 
    loop {
@@ -748,7 +789,7 @@ fn parse_arguments<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Inter
             } else {
                None
             };
-            let expr = parse_expression(l, err_stream, false, interner)?;
+            let expr = parse_expression(l, err_stream, false, expressions, interner)?;
             arguments.push(ArgumentNode { name, expr });
             let next_discrim = l.peek_token().map(discriminant);
             if next_discrim == Some(discriminant(&Token::CloseParen)) {
@@ -787,11 +828,12 @@ fn parse_expression<W: Write>(
    l: &mut Lexer,
    err_stream: &mut W,
    if_head: bool,
+   expressions: &mut ExpressionPool,
    interner: &Interner,
-) -> Result<ExpressionNode, ()> {
+) -> Result<ExpressionIndex, ()> {
    let begin_info = l.peek_source();
-   let exp = pratt(l, err_stream, 0, if_head, interner)?;
-   Ok(wrap(exp, begin_info.unwrap()))
+   let exp = pratt(l, err_stream, 0, if_head, expressions, interner)?;
+   Ok(wrap(exp, begin_info.unwrap(), expressions))
 }
 
 fn parse_type<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner) -> Result<ExpressionType, ()> {
@@ -849,6 +891,7 @@ fn pratt<W: Write>(
    err_stream: &mut W,
    min_bp: u8,
    if_head: bool,
+   expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<Expression, ()> {
    let lhs_token = l.next();
@@ -861,7 +904,7 @@ fn pratt<W: Write>(
       Some(Token::Identifier(s)) => {
          if l.peek_token() == Some(&Token::OpenParen) {
             let _ = l.next();
-            let args = parse_arguments(l, err_stream, interner)?;
+            let args = parse_arguments(l, err_stream, expressions, interner)?;
             expect(l, err_stream, &Token::CloseParen)?;
             Expression::ProcedureCall(s, args.into_boxed_slice())
          } else if l.peek_token() == Some(&Token::DoubleColon) {
@@ -879,7 +922,7 @@ fn pratt<W: Write>(
                }
                let identifier = extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
                let _ = expect(l, err_stream, &Token::Colon)?;
-               let val = parse_expression(l, err_stream, false, interner)?;
+               let val = parse_expression(l, err_stream, false, expressions, interner)?;
                fields.push((identifier, val));
                if let Some(&Token::CloseBrace) = l.peek_token() {
                   let _ = l.next();
@@ -904,7 +947,7 @@ fn pratt<W: Write>(
             let _ = l.next();
             Expression::UnitLiteral
          } else {
-            let new_lhs = pratt(l, err_stream, 0, false, interner)?;
+            let new_lhs = pratt(l, err_stream, 0, false, expressions, interner)?;
             expect(l, err_stream, &Token::CloseParen)?;
             new_lhs
          }
@@ -916,7 +959,7 @@ fn pratt<W: Write>(
             if let Some(Token::CloseSquareBracket) = l.peek_token() {
                break;
             }
-            es.push(parse_expression(l, err_stream, false, interner)?);
+            es.push(parse_expression(l, err_stream, false, expressions, interner)?);
             if let Some(Token::CloseSquareBracket) = l.peek_token() {
                break;
             } else {
@@ -929,26 +972,26 @@ fn pratt<W: Write>(
       Some(x @ Token::Minus) => {
          let ((), r_bp) = prefix_binding_power(&x);
          let begin_location = l.peek_source();
-         let rhs = pratt(l, err_stream, r_bp, if_head, interner)?;
-         Expression::UnaryOperator(UnOp::Negate, Box::new(wrap(rhs, begin_location.unwrap())))
+         let rhs = pratt(l, err_stream, r_bp, if_head, expressions, interner)?;
+         Expression::UnaryOperator(UnOp::Negate, wrap(rhs, begin_location.unwrap(), expressions))
       }
       Some(x @ Token::Exclam) => {
          let ((), r_bp) = prefix_binding_power(&x);
          let begin_location = l.peek_source();
-         let rhs = pratt(l, err_stream, r_bp, if_head, interner)?;
-         Expression::UnaryOperator(UnOp::Complement, Box::new(wrap(rhs, begin_location.unwrap())))
+         let rhs = pratt(l, err_stream, r_bp, if_head, expressions, interner)?;
+         Expression::UnaryOperator(UnOp::Complement, wrap(rhs, begin_location.unwrap(), expressions))
       }
       Some(x @ Token::Amp) => {
          let ((), r_bp) = prefix_binding_power(&x);
          let begin_location = l.peek_source();
-         let rhs = pratt(l, err_stream, r_bp, if_head, interner)?;
-         Expression::UnaryOperator(UnOp::AddressOf, Box::new(wrap(rhs, begin_location.unwrap())))
+         let rhs = pratt(l, err_stream, r_bp, if_head, expressions, interner)?;
+         Expression::UnaryOperator(UnOp::AddressOf, wrap(rhs, begin_location.unwrap(), expressions))
       }
       Some(x @ Token::MultiplyDeref) => {
          let ((), r_bp) = prefix_binding_power(&x);
          let begin_location = l.peek_source();
-         let rhs = pratt(l, err_stream, r_bp, if_head, interner)?;
-         Expression::UnaryOperator(UnOp::Dereference, Box::new(wrap(rhs, begin_location.unwrap())))
+         let rhs = pratt(l, err_stream, r_bp, if_head, expressions, interner)?;
+         Expression::UnaryOperator(UnOp::Dereference, wrap(rhs, begin_location.unwrap(), expressions))
       }
       x => {
          let s = x.map(|x| x.for_parse_err()).unwrap_or("EOF");
@@ -1000,7 +1043,7 @@ fn pratt<W: Write>(
                   break;
                }
             }
-            lhs = Expression::FieldAccess(fields, Box::new(wrap(lhs, lhs_source.unwrap())));
+            lhs = Expression::FieldAccess(fields, wrap(lhs, lhs_source.unwrap(), expressions));
             continue;
          }
          _ => break,
@@ -1015,21 +1058,24 @@ fn pratt<W: Write>(
 
          lhs = match op {
             Token::OpenSquareBracket => {
-               let inner = parse_expression(l, err_stream, false, interner)?;
+               let inner = parse_expression(l, err_stream, false, expressions, interner)?;
                expect(l, err_stream, &Token::CloseSquareBracket)?;
-               Expression::ArrayIndex(Box::new(wrap(lhs, lhs_source.unwrap())), Box::new(inner))
+               Expression::ArrayIndex {
+                  array: wrap(lhs, lhs_source.unwrap(), expressions),
+                  index: inner,
+               }
             }
             Token::KeywordExtend => {
                let a_type = parse_type(l, err_stream, interner)?;
-               Expression::Extend(a_type, Box::new(wrap(lhs, lhs_source.unwrap())))
+               Expression::Extend(a_type, wrap(lhs, lhs_source.unwrap(), expressions))
             }
             Token::KeywordTruncate => {
                let a_type = parse_type(l, err_stream, interner)?;
-               Expression::Truncate(a_type, Box::new(wrap(lhs, lhs_source.unwrap())))
+               Expression::Truncate(a_type, wrap(lhs, lhs_source.unwrap(), expressions))
             }
             Token::KeywordTransmute => {
                let a_type = parse_type(l, err_stream, interner)?;
-               Expression::Transmute(a_type, Box::new(wrap(lhs, lhs_source.unwrap())))
+               Expression::Transmute(a_type, wrap(lhs, lhs_source.unwrap(), expressions))
             }
             _ => unreachable!(),
          };
@@ -1044,7 +1090,7 @@ fn pratt<W: Write>(
 
       let next_token = l.next().unwrap();
       let op = next_token.token;
-      let rhs = pratt(l, err_stream, r_b, if_head, interner)?;
+      let rhs = pratt(l, err_stream, r_b, if_head, expressions, interner)?;
 
       let bin_op = match op {
          Token::Plus => BinOp::Add,
@@ -1068,10 +1114,11 @@ fn pratt<W: Write>(
          _ => unreachable!(),
       };
 
-      lhs = Expression::BinaryOperator(
-         bin_op,
-         Box::new((wrap(lhs, lhs_source.unwrap()), wrap(rhs, next_token.source_info))),
-      );
+      lhs = Expression::BinaryOperator {
+         operator: bin_op,
+         lhs: wrap(lhs, lhs_source.unwrap(), expressions),
+         rhs: wrap(rhs, next_token.source_info, expressions),
+      };
    }
 
    Ok(lhs)
@@ -1117,10 +1164,10 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
    }
 }
 
-fn wrap(expression: Expression, source_info: SourceInfo) -> ExpressionNode {
-   ExpressionNode {
+fn wrap(expression: Expression, source_info: SourceInfo, expressions: &mut ExpressionPool) -> ExpressionIndex {
+   expressions.push(ExpressionNode {
       expression,
       exp_type: None,
       expression_begin_location: source_info,
-   }
+   })
 }
