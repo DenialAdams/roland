@@ -1442,7 +1442,8 @@ fn get_type<W: Write>(
 ) -> ExpressionType {
    let expr_location = validation_context.expressions[expr_index].expression_begin_location;
 
-   // SAFETY: nocheckin
+   // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
+   // while this pointer is alive. We don't do this, because we update this expression in place.
    let expr_node = &mut validation_context.expressions[expr_index] as *mut ExpressionNode;
 
    match unsafe { &mut (*expr_node).expression } {
