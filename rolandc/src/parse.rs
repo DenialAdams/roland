@@ -8,6 +8,8 @@ use std::collections::HashSet;
 use std::io::Write;
 use std::mem::discriminant;
 
+pub type ExpressionPool = HandleMap<ExpressionIndex, ExpressionNode>;
+
 struct Lexer {
    tokens: Vec<SourceToken>,
 }
@@ -197,11 +199,7 @@ pub struct ArgumentNode {
 }
 
 impl Expression {
-   pub fn is_lvalue(
-      &self,
-      expressions: &HandleMap<ExpressionIndex, ExpressionNode>,
-      static_info: &IndexMap<StrId, StaticInfo>,
-   ) -> bool {
+   pub fn is_lvalue(&self, expressions: &ExpressionPool, static_info: &IndexMap<StrId, StaticInfo>) -> bool {
       match self {
          Expression::Variable(x) => static_info.get(x).map(|x| !x.is_const).unwrap_or(true),
          Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue(expressions, static_info),
@@ -212,7 +210,7 @@ impl Expression {
    }
 
    // After constants are lowered, we don't need to care about constants and pass a bulky data structure around
-   pub fn is_lvalue_disregard_consts(&self, expressions: &HandleMap<ExpressionIndex, ExpressionNode>) -> bool {
+   pub fn is_lvalue_disregard_consts(&self, expressions: &ExpressionPool) -> bool {
       match self {
          Expression::Variable(_) => true,
          Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue_disregard_consts(expressions),
@@ -276,7 +274,7 @@ pub fn astify<W: Write>(
    tokens: Vec<SourceToken>,
    err_stream: &mut W,
    interner: &Interner,
-   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &mut ExpressionPool,
 ) -> Result<Program, ()> {
    let mut lexer = Lexer::from_tokens(tokens);
 
@@ -386,7 +384,7 @@ fn parse_procedure<W: Write>(
    l: &mut Lexer,
    err_stream: &mut W,
    source_info: SourceInfo,
-   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<ProcedureNode, ()> {
    let function_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
@@ -483,7 +481,7 @@ fn parse_enum<W: Write>(
 fn parse_block<W: Write>(
    l: &mut Lexer,
    err_stream: &mut W,
-   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<BlockNode, ()> {
    expect(l, err_stream, &Token::OpenBrace)?;
@@ -674,7 +672,7 @@ fn parse_block<W: Write>(
 fn parse_if_else_statement<W: Write>(
    l: &mut Lexer,
    err_stream: &mut W,
-   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<StatementNode, ()> {
    let if_token = l.next().unwrap();
@@ -762,7 +760,7 @@ fn parse_parameters<W: Write>(
 fn parse_arguments<W: Write>(
    l: &mut Lexer,
    err_stream: &mut W,
-   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<Vec<ArgumentNode>, ()> {
    let mut arguments = vec![];
@@ -830,7 +828,7 @@ fn parse_expression<W: Write>(
    l: &mut Lexer,
    err_stream: &mut W,
    if_head: bool,
-   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<ExpressionIndex, ()> {
    let begin_info = l.peek_source();
@@ -893,7 +891,7 @@ fn pratt<W: Write>(
    err_stream: &mut W,
    min_bp: u8,
    if_head: bool,
-   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<Expression, ()> {
    let lhs_token = l.next();
@@ -1166,11 +1164,7 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
    }
 }
 
-fn wrap(
-   expression: Expression,
-   source_info: SourceInfo,
-   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
-) -> ExpressionIndex {
+fn wrap(expression: Expression, source_info: SourceInfo, expressions: &mut ExpressionPool) -> ExpressionIndex {
    expressions.push(ExpressionNode {
       expression,
       exp_type: None,

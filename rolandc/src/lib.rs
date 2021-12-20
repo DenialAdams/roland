@@ -9,7 +9,7 @@ mod type_data;
 mod typed_index_vec;
 mod wasm;
 
-use parse::{ExpressionIndex, ExpressionNode, Program};
+use parse::{ExpressionPool, Program};
 use std::fmt::Display;
 use std::io::Write;
 use typed_index_vec::HandleMap;
@@ -174,7 +174,7 @@ fn compile_program<E: Write, A: Write>(
    do_constant_folding: bool,
    target: Target,
    interner: &mut Interner,
-   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &mut ExpressionPool,
 ) -> Result<Vec<u8>, CompilationError> {
    let num_procedures_before_merge = user_program.procedures.len();
 
@@ -232,7 +232,7 @@ fn parse_user_program<W: Write>(
    user_program_s: &str,
    err_stream: &mut W,
    interner: &mut Interner,
-   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &mut ExpressionPool,
 ) -> Result<Program, CompilationError> {
    stacker::grow(33554432, || {
       lex_and_parse(user_program_s, err_stream, interner, expressions)
@@ -244,7 +244,7 @@ fn parse_user_program<W: Write>(
    user_program_s: &str,
    err_stream: &mut W,
    interner: &mut Interner,
-   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &mut ExpressionPool,
 ) -> Result<Program, CompilationError> {
    lex_and_parse(user_program_s, err_stream, interner, expressions)
 }
@@ -264,7 +264,7 @@ fn lex_and_parse<W: Write>(
    s: &str,
    err_stream: &mut W,
    interner: &mut Interner,
-   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &mut ExpressionPool,
 ) -> Result<Program, CompilationError> {
    let tokens = match lex::lex(s, err_stream, interner) {
       Err(()) => return Err(CompilationError::Lex),

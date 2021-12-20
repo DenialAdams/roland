@@ -1,13 +1,12 @@
 use crate::interner::Interner;
-use crate::parse::{Expression, ExpressionIndex, ExpressionNode, Program, Statement, StatementNode};
-use crate::typed_index_vec::HandleMap;
+use crate::parse::{Expression, ExpressionIndex, ExpressionPool, Program, Statement, StatementNode};
 use std::io::Write;
 
 pub fn print_ast_as_html<W: Write>(
    out: &mut W,
    program: &Program,
    interner: &mut Interner,
-   expressions: &HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &ExpressionPool,
 ) {
    writeln!(out, "<ul class=\"tree\">").unwrap();
    writeln!(out, "<li><span>Program</span>").unwrap();
@@ -29,7 +28,7 @@ pub fn print_ast_as_html<W: Write>(
 fn print_statement<W: Write>(
    out: &mut W,
    statement_node: &StatementNode,
-   expressions: &HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &ExpressionPool,
    interner: &mut Interner,
 ) {
    match &statement_node.statement {
@@ -104,7 +103,7 @@ fn print_statement<W: Write>(
 fn print_expression<W: Write>(
    out: &mut W,
    expression_index: ExpressionIndex,
-   expressions: &HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &ExpressionPool,
    interner: &mut Interner,
 ) {
    let expression_node = &expressions[expression_index];

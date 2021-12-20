@@ -1,10 +1,9 @@
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   BinOp, Expression, ExpressionIndex, ExpressionNode, ParameterNode, Program, Statement, StatementNode, UnOp,
+   BinOp, Expression, ExpressionIndex, ExpressionPool, ParameterNode, Program, Statement, StatementNode, UnOp,
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, USIZE_TYPE};
-use crate::typed_index_vec::HandleMap;
 use crate::Target;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
@@ -24,7 +23,7 @@ struct GenerationContext<'a> {
    sum_sizeof_locals_mem: u32,
    loop_depth: u64,
    loop_counter: u64,
-   expressions: &'a HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &'a ExpressionPool,
 }
 
 struct SizeInfo {
@@ -613,7 +612,7 @@ fn dynamic_move_locals_of_type_to_dest(
 pub fn emit_wasm(
    program: &mut Program,
    interner: &mut Interner,
-   expressions: &HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &ExpressionPool,
    memory_base: u32,
    wasm4: bool,
 ) -> Vec<u8> {

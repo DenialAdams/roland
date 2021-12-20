@@ -4,14 +4,13 @@ use crate::constant_folding::{try_fold_and_replace_expr, FoldingContext};
 use crate::interner::{Interner, StrId};
 use crate::lex::SourceInfo;
 use crate::parse::{
-   BinOp, BlockNode, Expression, ExpressionIndex, ExpressionNode, IdentifierNode, Program, Statement, StatementNode,
-   UnOp,
+   BinOp, BlockNode, Expression, ExpressionIndex, ExpressionNode, ExpressionPool, IdentifierNode, Program, Statement,
+   StatementNode, UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::type_data::{
    ExpressionType, IntType, IntWidth, ValueType, I32_TYPE, ISIZE_TYPE, U32_TYPE, U8_TYPE, USIZE_TYPE,
 };
-use crate::typed_index_vec::HandleMap;
 use crate::Target;
 use arrayvec::ArrayVec;
 use indexmap::IndexMap;
@@ -177,7 +176,7 @@ pub fn type_and_check_validity<W: Write>(
    program: &mut Program,
    err_stream: &mut W,
    interner: &mut Interner,
-   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
+   expressions: &mut ExpressionPool,
    target: Target,
 ) -> u64 {
    let mut procedure_info: IndexMap<StrId, ProcedureInfo> = IndexMap::new();

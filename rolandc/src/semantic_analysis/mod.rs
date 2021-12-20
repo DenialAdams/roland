@@ -4,9 +4,8 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::interner::StrId;
 use crate::lex::SourceInfo;
-use crate::parse::{ExpressionIndex, ExpressionNode};
+use crate::parse::ExpressionPool;
 use crate::type_data::ExpressionType;
-use crate::typed_index_vec::HandleMap;
 use crate::Target;
 
 pub mod type_inference;
@@ -53,5 +52,5 @@ pub struct ValidationContext<'a> {
    pub loop_depth: u64,
    pub unknown_ints: u64,
    pub unknown_floats: u64,
-   pub expressions: &'a mut HandleMap<ExpressionIndex, ExpressionNode>,
+   pub expressions: &'a mut ExpressionPool,
 }

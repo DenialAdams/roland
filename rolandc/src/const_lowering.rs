@@ -1,9 +1,9 @@
 use crate::interner::StrId;
-use crate::parse::{Expression, ExpressionIndex, ExpressionNode, Program};
-use crate::typed_index_vec::{Handle, HandleMap};
+use crate::parse::{Expression, ExpressionIndex, ExpressionPool, Program};
+use crate::typed_index_vec::Handle;
 use std::collections::HashMap;
 
-pub fn lower_consts(program: &mut Program, expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>) {
+pub fn lower_consts(program: &mut Program, expressions: &mut ExpressionPool) {
    let mut const_replacements: HashMap<StrId, ExpressionIndex> = HashMap::new();
 
    for p_const in program.consts.drain(0..) {

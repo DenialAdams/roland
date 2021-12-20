@@ -1,24 +1,21 @@
 use crate::interner::StrId;
-use crate::parse::{BinOp, BlockNode, Expression, ExpressionIndex, ExpressionNode, Program, Statement, UnOp};
+use crate::parse::{
+   BinOp, BlockNode, Expression, ExpressionIndex, ExpressionNode, ExpressionPool, Program, Statement, UnOp,
+};
 use crate::type_data::{
    ExpressionType, ValueType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE,
    U32_TYPE, U64_TYPE, U8_TYPE, USIZE_TYPE,
 };
-use crate::typed_index_vec::HandleMap;
 use std::collections::HashMap;
 use std::io::Write;
 use std::ops::{BitAnd, BitOr, BitXor, Shl, Shr};
 
 pub struct FoldingContext<'a> {
-   pub expressions: &'a mut HandleMap<ExpressionIndex, ExpressionNode>,
+   pub expressions: &'a mut ExpressionPool,
    pub error_count: u64,
 }
 
-pub fn fold_constants<W: Write>(
-   program: &mut Program,
-   err_stream: &mut W,
-   expressions: &mut HandleMap<ExpressionIndex, ExpressionNode>,
-) -> u64 {
+pub fn fold_constants<W: Write>(program: &mut Program, err_stream: &mut W, expressions: &mut ExpressionPool) -> u64 {
    let mut folding_context = FoldingContext {
       error_count: 0,
       expressions,
@@ -580,7 +577,7 @@ fn fold_expr<W: Write>(
    }
 }
 
-pub fn is_const(expr: &Expression, expressions: &HandleMap<ExpressionIndex, ExpressionNode>) -> bool {
+pub fn is_const(expr: &Expression, expressions: &ExpressionPool) -> bool {
    match expr {
       Expression::EnumLiteral(_, _) => true,
       Expression::IntLiteral(_) => true,
