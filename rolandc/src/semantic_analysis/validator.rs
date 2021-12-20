@@ -11,6 +11,7 @@ use crate::semantic_analysis::EnumInfo;
 use crate::type_data::{
    ExpressionType, IntType, IntWidth, ValueType, I32_TYPE, ISIZE_TYPE, U32_TYPE, U8_TYPE, USIZE_TYPE,
 };
+use crate::typed_index_vec::Handle;
 use crate::Target;
 use arrayvec::ArrayVec;
 use indexmap::IndexMap;
@@ -1181,6 +1182,11 @@ fn type_statement<W: Write>(
 
          let start_expr = &validation_context.expressions[*start];
          let end_expr = &validation_context.expressions[*end];
+
+         cur_procedure_locals
+            .entry(interner.intern(&format!("::{}", end.index())))
+            .or_insert_with(HashSet::new)
+            .insert(start_expr.exp_type.clone().unwrap());
 
          let result_type = match (
             start_expr.exp_type.as_ref().unwrap(),

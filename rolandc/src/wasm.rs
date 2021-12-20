@@ -4,6 +4,7 @@ use crate::parse::{
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, USIZE_TYPE};
+use crate::typed_index_vec::Handle;
 use crate::Target;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
@@ -1038,10 +1039,19 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          if *inclusive {
             todo!();
          }
-         // Set var
+
+         let end_var_id = interner.intern(&format!("::{}", end.index()));
+
+         // Set start var
          {
             get_stack_address_of_local(var.identifier, generation_context);
             do_emit_and_load_lval(*start, generation_context, interner);
+            store(start_expr.exp_type.as_ref().unwrap(), generation_context, interner);
+         }
+         // Set end var
+         {
+            get_stack_address_of_local(end_var_id, generation_context);
+            do_emit_and_load_lval(*end, generation_context, interner);
             store(start_expr.exp_type.as_ref().unwrap(), generation_context, interner);
          }
          generation_context.loop_depth += 1;
@@ -1052,8 +1062,8 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          {
             get_stack_address_of_local(var.identifier, generation_context);
             load(start_expr.exp_type.as_ref().unwrap(), generation_context);
-            // TODO!! we don't want to emit this every iteration, need to hoist
-            do_emit_and_load_lval(*end, generation_context, interner);
+            get_stack_address_of_local(end_var_id, generation_context);
+            load(start_expr.exp_type.as_ref().unwrap(), generation_context);
             generation_context.out.emit_spaces();
             writeln!(generation_context.out.out, "{}.ge{}", wasm_type, suffix).unwrap();
 
