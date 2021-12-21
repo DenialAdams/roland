@@ -1,3 +1,4 @@
+// |-- WASM4
 // drawing
 extern proc blit(sprite_ptr: &u8, x: i32, y: i32, width: u32, height: u32, flags: u32);
 extern proc blit_sub(sprite_ptr: &u8, x: i32, y: i32, width: u32, height: u32, src_x: i32, src_y: i32, stride: u32, flags: u32);
@@ -8,15 +9,55 @@ extern proc oval(x: i32, y: i32, width: u32, height: u32);
 extern proc rect(x: i32, y: i32, width: u32, height: u32);
 extern proc textUtf8(str_pointer: &u8, str_length: usize, x: i32, y: i32);
 
+const BLIT_2BPP: u32 = 1;
+const BLIT_1BPP: u32 = 0;
+const BLIT_FLIP_X: u32 = 2;
+const BLIT_FLIP_Y: u32 = 4;
+const BLIT_ROTATE: u32 = 8;
+
 // debug
 extern proc traceUtf8(str_pointer: &u8, str_length: usize);
 
 // audio
 extern proc tone(frequency: u32, duration: u32, volume: u32, flags: u32);
 
+const TONE_PULSE1: u32 = 0;
+const TONE_PULSE2: u32 = 1;
+const TONE_TRIANGLE: u32 = 2;
+const TONE_NOISE: u32 = 3;
+const TONE_MODE1: u32 = 0;
+const TONE_MODE2: u32 = 4;
+const TONE_MODE3: u32 = 8;
+const TONE_MODE4: u32 = 12;
+
 // disk
 extern proc diskr(dest_ptr: &u8, size: usize) -> usize;
 extern proc diskw(src_ptr: &u8, size: usize) -> usize;
+
+// misc. constants
+const PALETTE: &[u32; 4] = 0x04 transmute &[u32; 4];
+const DRAW_COLORS: &u16 = 0x14 transmute &u16;
+const GAMEPADS: &[u8; 4] = 0x16 transmute &[u8; 4];
+const MOUSE_X: &i16 = 0x1a transmute &i16;
+const MOUSE_Y: &i16 = 0x1c transmute &i16;
+const MOUSE_BUTTONS: &u8 = 0x1e transmute &u8;
+const SYSTEM_FLAGS: &u8 = 0x1f transmute &u8;
+const FRAMEBUFFER: &[u8; 6400] = 0xa0 transmute &[u8; 6400];
+
+const BUTTON_1: u8 = 1;
+const BUTTON_2: u8 = 2;
+const BUTTON_LEFT: u8 = 16;
+const BUTTON_RIGHT: u8 = 32;
+const BUTTON_UP: u8 = 64;
+const BUTTON_DOWN: u8 = 128;
+
+const MOUSE_LEFT: u8 = 1;
+const MOUSE_RIGHT: u8 = 2;
+const MOUSE_MIDDLE: u8 = 4;
+
+const SYSTEM_PRESERVE_FRAMEBUFFER: u8 = 1;
+const SYSTEM_HIDE_GAMEPAD_OVERLAY: u8 = 2;
+// --|
 
 struct String {
    pointer: &u8,
@@ -46,7 +87,6 @@ proc count_digits(value: u32) -> u8 {
    return 0;
 }
 
-
 proc int_to_string(value: u32, buf: &[u8; 10]) -> String {
    let total_len = count_digits(value) extend usize;
    let next_digit: u8 = 0;
@@ -70,41 +110,3 @@ proc int_to_string(value: u32, buf: &[u8; 10]) -> String {
       pointer: &(*buf)[0],
    };
 }
-
-const PALETTE: &[u32; 4] = 0x04 transmute &[u32; 4];
-const DRAW_COLORS: &u16 = 0x14 transmute &u16;
-const GAMEPADS: &[u8; 4] = 0x16 transmute &[u8; 4];
-const MOUSE_X: &i16 = 0x1a transmute &i16;
-const MOUSE_Y: &i16 = 0x1c transmute &i16;
-const MOUSE_BUTTONS: &u8 = 0x1e transmute &u8;
-const SYSTEM_FLAGS: &u8 = 0x1f transmute &u8;
-const FRAMEBUFFER: &[u8; 6400] = 0xa0 transmute &[u8; 6400];
-
-const BUTTON_1: u8 = 1;
-const BUTTON_2: u8 = 2;
-const BUTTON_LEFT: u8 = 16;
-const BUTTON_RIGHT: u8 = 32;
-const BUTTON_UP: u8 = 64;
-const BUTTON_DOWN: u8 = 128;
-
-const MOUSE_LEFT: u8 = 1;
-const MOUSE_RIGHT: u8 = 2;
-const MOUSE_MIDDLE: u8 = 4;
-
-const SYSTEM_PRESERVE_FRAMEBUFFER: u8 = 1;
-const SYSTEM_HIDE_GAMEPAD_OVERLAY: u8 = 2;
-
-const BLIT_2BPP: u32 = 1;
-const BLIT_1BPP: u32 = 0;
-const BLIT_FLIP_X: u32 = 2;
-const BLIT_FLIP_Y: u32 = 4;
-const BLIT_ROTATE: u32 = 8;
-
-const TONE_PULSE1: u32 = 0;
-const TONE_PULSE2: u32 = 1;
-const TONE_TRIANGLE: u32 = 2;
-const TONE_NOISE: u32 = 3;
-const TONE_MODE1: u32 = 0;
-const TONE_MODE2: u32 = 4;
-const TONE_MODE3: u32 = 8;
-const TONE_MODE4: u32 = 12;
