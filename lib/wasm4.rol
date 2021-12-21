@@ -1,7 +1,7 @@
 // |-- WASM4
 // drawing
 extern proc blit(sprite_ptr: &u8, x: i32, y: i32, width: u32, height: u32, flags: u32);
-extern proc blit_sub(sprite_ptr: &u8, x: i32, y: i32, width: u32, height: u32, src_x: i32, src_y: i32, stride: u32, flags: u32);
+extern proc blitSub(sprite_ptr: &u8, x: i32, y: i32, width: u32, height: u32, src_x: i32, src_y: i32, stride: u32, flags: u32);
 extern proc line(x1: i32, y1: i32, x2: i32, y2: i32);
 extern proc hline(x: i32, y: i32, len: i32);
 extern proc vline(x: i32, y: i32, len: i32);
@@ -62,6 +62,10 @@ const SYSTEM_HIDE_GAMEPAD_OVERLAY: u8 = 2;
 struct String {
    pointer: &u8,
    length: usize,
+}
+
+proc blit_sub(sprite_ptr: &u8, x: i32, y: i32, width: u32, height: u32, src_x: i32, src_y: i32, stride: u32, flags: u32) {
+   blitSub(sprite_ptr, x, y, width, height, src_x, src_y, stride, flags);
 }
 
 proc text(txt: String, x: i32, y: i32) {
