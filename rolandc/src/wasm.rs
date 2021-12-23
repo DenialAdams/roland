@@ -5,7 +5,6 @@ use crate::parse::{
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, USIZE_TYPE};
 use crate::typed_index_vec::Handle;
-use crate::Target;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
 use std::io::Write;
@@ -151,7 +150,7 @@ impl<'a> PrettyWasmWriter {
             b'\n' => write!(self.out, "\\n").unwrap(),
             b'\r' => write!(self.out, "\\r").unwrap(),
             b'\t' => write!(self.out, "\\t").unwrap(),
-            b'\0' => write!(self.out, "\u{0}").unwrap(),
+            b'\0' => write!(self.out, "\\u{{0}}").unwrap(),
             b'"' => write!(self.out, "\\\"").unwrap(),
             _ => self.out.push(*byte),
          }
@@ -734,11 +733,25 @@ pub fn emit_wasm(
    }
    for (static_name, static_details) in program.static_info.iter() {
       generation_context.static_addresses.insert(*static_name, offset);
+
       offset += sizeof_type_mem(
          &static_details.static_type,
          generation_context.enum_info,
          &generation_context.struct_size_info,
       );
+   }
+
+   for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
+      let static_address = generation_context
+         .static_addresses
+         .get(&p_static.name.identifier)
+         .copied()
+         .unwrap();
+
+      generation_context.out.emit_spaces();
+      write!(&mut generation_context.out.out, "(data 0 (i32.const {}) \"", static_address).unwrap();
+      emit_literal_bytes(p_static.value.unwrap(), &mut generation_context, interner);
+      writeln!(generation_context.out.out, "\")").unwrap();
    }
 
    // keep stack aligned
@@ -830,30 +843,6 @@ pub fn emit_wasm(
       }
    }
 
-   {
-      generation_context.out.emit_function_start_named_params(
-         interner.intern("::initialize_statics"),
-         &[],
-         &ExpressionType::Value(ValueType::Unit),
-         &program.enum_info,
-         &program.struct_info,
-         interner,
-      );
-
-      for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
-         let static_address = generation_context
-            .static_addresses
-            .get(&p_static.name.identifier)
-            .copied()
-            .unwrap();
-         generation_context.out.emit_const_i32(static_address);
-         do_emit_and_load_lval(p_static.value.unwrap(), &mut generation_context, interner);
-         store(&p_static.static_type, &mut generation_context, interner);
-      }
-
-      generation_context.out.close();
-   }
-
    for procedure in program.procedures.iter_mut() {
       generation_context.local_offsets_mem.clear();
 
@@ -908,18 +897,6 @@ pub fn emit_wasm(
          &program.struct_info,
          interner,
       );
-
-      if wasm4 && interner.lookup(procedure.definition.name) == Target::Wasm4.entry_point() {
-         generation_context
-            .out
-            .emit_call(interner.intern("::initialize_statics"), interner);
-      }
-
-      if !wasm4 && interner.lookup(procedure.definition.name) == Target::Wasi.entry_point() {
-         generation_context
-            .out
-            .emit_call(interner.intern("::initialize_statics"), interner);
-      }
 
       adjust_stack_function_entry(&mut generation_context);
 
@@ -1201,6 +1178,105 @@ fn do_emit_and_load_lval(
    }
 }
 
+fn emit_literal_bytes(expr_index: ExpressionIndex, generation_context: &mut GenerationContext, interner: &mut Interner) {
+   let expr_node = &generation_context.expressions[expr_index];
+   match &expr_node.expression {
+      Expression::UnitLiteral => (),
+      Expression::BoolLiteral(x) => {
+         write!(generation_context.out.out, "\\{:02x}", *x as u8).unwrap();
+      }
+      Expression::EnumLiteral(name, variant) => {
+         let width: u8 = match expr_node.exp_type.as_ref().unwrap() {
+            ExpressionType::Value(ValueType::Enum(x)) => {
+               let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
+               if num_variants > u32::MAX as usize {
+                  8
+               } else if num_variants > u16::MAX as usize {
+                  4
+               } else if num_variants > u8::MAX as usize {
+                  2
+               } else {
+                  1
+               }
+            }
+            _ => unreachable!(),
+         };
+         let index = generation_context
+            .enum_info
+            .get(name)
+            .unwrap()
+            .variants
+            .get_index_of(variant)
+            .unwrap();
+         generation_context.out.emit_spaces();
+         for w in 0..width {
+            let val = (index >> (8*w)) & 0xff;
+            write!(generation_context.out.out, "\\{:02x}", val).unwrap()
+         }
+      }
+      Expression::IntLiteral(x) => {
+         let width = match expr_node.exp_type.as_ref().unwrap() {
+            ExpressionType::Value(ValueType::Int(x)) => x.width,
+            ExpressionType::Pointer(_, _) => IntWidth::Pointer,
+            _ => unreachable!(),
+         }.as_bytes();
+         for w in 0..width {
+            let val = (x >> (8*w)) & 0xff;
+            write!(generation_context.out.out, "\\{:02x}", val).unwrap()
+         }
+      }
+      Expression::FloatLiteral(x) => {
+         let width = match expr_node.exp_type.as_ref().unwrap() {
+            ExpressionType::Value(ValueType::Float(x)) => x.width,
+            _ => unreachable!(),
+         };
+         match width {
+            FloatWidth::Eight => {
+               let bytes: u64 = x.to_bits();
+               for w in 0..width.as_num() {
+                  let val = (bytes >> (8*w)) & 0xff;
+                  write!(generation_context.out.out, "\\{:02x}", val).unwrap()
+               }
+            }
+            FloatWidth::Four => {
+               let bytes = (*x as f32).to_bits();
+               for w in 0..width.as_num() {
+                  let val = (bytes >> (8*w)) & 0xff;
+                  write!(generation_context.out.out, "\\{:02x}", val).unwrap()
+               }
+            }
+         }
+      }
+      Expression::StringLiteral(str) => {
+         let (offset, len) = generation_context.literal_offsets.get(str).unwrap();
+         for w in 0..4 {
+            let val = (*offset >> (8*w)) & 0xff;
+            write!(generation_context.out.out, "\\{:02x}", val).unwrap()
+         }
+         for w in 0..4 {
+            let val = (*len >> (8*w)) & 0xff;
+            write!(generation_context.out.out, "\\{:02x}", val).unwrap()
+         }
+      }
+      Expression::StructLiteral(s_name, fields) => {
+         // We need to emit this in the proper order!!
+         let map: HashMap<StrId, ExpressionIndex> = fields.iter().map(|x| (x.0, x.1)).collect();
+         let si = generation_context.struct_info.get(s_name).unwrap();
+         for field in si.field_types.iter() {
+            let value_of_field = map.get(field.0).copied().unwrap();
+            emit_literal_bytes(value_of_field, generation_context, interner);
+         }
+      }
+      Expression::ArrayLiteral(exprs) => {
+         for expr in exprs.iter() {
+            emit_literal_bytes(*expr, generation_context, interner);
+         }
+      }
+      _ => unreachable!(),
+   }
+}
+
+
 fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationContext, interner: &mut Interner) {
    let expr_node = &generation_context.expressions[expr_index];
    match &expr_node.expression {
@@ -1236,6 +1312,7 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
                IntWidth::Eight => "i64",
                _ => "i32",
             },
+            ExpressionType::Pointer(_, _) => "i32",
             _ => unreachable!(),
          };
          generation_context.out.emit_spaces();

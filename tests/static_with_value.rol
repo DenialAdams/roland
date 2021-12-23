@@ -1,4 +1,4 @@
-static X: u64 = 123;
+static X: u64 = 123456;
 
 proc main() {
    print(int_to_string(X));

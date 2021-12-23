@@ -571,7 +571,18 @@ fn fold_expr<W: Write>(
       Expression::Transmute(_, expr) => {
          try_fold_and_replace_expr(*expr, err_stream, folding_context);
 
-         None
+         let expr = &folding_context.expressions[*expr];
+
+         if let Some(literal) = extract_literal(expr) {
+            let transmuted = literal.transmute(expr_to_fold_type.as_ref().unwrap());
+            Some(ExpressionNode {
+               expression: transmuted,
+               exp_type: expr_to_fold_type,
+               expression_begin_location: expr_to_fold_location,
+            })
+         } else {
+            None
+         }
       }
       Expression::EnumLiteral(_, _) => None,
    }
@@ -579,6 +590,7 @@ fn fold_expr<W: Write>(
 
 pub fn is_const(expr: &Expression, expressions: &ExpressionPool) -> bool {
    match expr {
+      Expression::UnitLiteral => true,
       Expression::EnumLiteral(_, _) => true,
       Expression::IntLiteral(_) => true,
       Expression::FloatLiteral(_) => true,
@@ -591,9 +603,6 @@ pub fn is_const(expr: &Expression, expressions: &ExpressionPool) -> bool {
          .iter()
          .copied()
          .all(|(_, x)| is_const(&expressions[x].expression, expressions)),
-      // Tentative - I'm not sure how we'll handle transmuting of unalike types in the wasm backend,
-      // but conceptually this seems sound
-      Expression::Transmute(_, x) => is_const(&expressions[*x].expression, expressions),
       _ => false,
    }
 }
@@ -612,6 +621,7 @@ enum Literal {
    Float32(f32),
    Bool(bool),
    Enum(StrId, StrId),
+   Unit,
 }
 
 impl Literal {
@@ -668,6 +678,37 @@ impl Literal {
             | Literal::Uint32(1)
             | Literal::Uint64(1)
       )
+   }
+
+   fn transmute(self, target_type: &ExpressionType) -> Expression {
+      match (self, target_type) {
+         // Transmute to pointer
+         (Literal::Int32(i), ExpressionType::Pointer(_, _)) => Expression::IntLiteral(i128::from(i)),
+         (Literal::Uint32(i), ExpressionType::Pointer(_, _)) => Expression::IntLiteral(i128::from(i)),
+
+         // Transmute signed -> unsigned
+         (Literal::Int64(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => Expression::IntLiteral(i128::from(i as u64)),
+         (Literal::Int32(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => Expression::IntLiteral(i128::from(i as u32)),
+         (Literal::Int16(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => Expression::IntLiteral(i128::from(i as u16)),
+         (Literal::Int8(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => Expression::IntLiteral(i128::from(i as u8)),
+
+         // Transmute unsigned -> signed
+         (Literal::Uint64(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => Expression::IntLiteral(i128::from(i as i64)),
+         (Literal::Uint32(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => Expression::IntLiteral(i128::from(i as i32)),
+         (Literal::Uint16(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => Expression::IntLiteral(i128::from(i as i16)),
+         (Literal::Uint8(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => Expression::IntLiteral(i128::from(i as i8)),
+
+         // Noop
+         (Literal::Int64(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral(i128::from(i)),
+         (Literal::Int32(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral(i128::from(i)),
+         (Literal::Int16(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral(i128::from(i)),
+         (Literal::Int8(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral(i128::from(i)),
+         (Literal::Uint64(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral(i128::from(i)),
+         (Literal::Uint32(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral(i128::from(i)),
+         (Literal::Uint16(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral(i128::from(i)),
+         (Literal::Uint8(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral(i128::from(i)),
+         _ => unreachable!(),
+      }
    }
 
    fn checked_add(self, other: Self) -> Option<Expression> {
@@ -907,6 +948,8 @@ fn extract_literal(expr_node: &ExpressionNode) -> Option<Literal> {
             ExpressionType::Value(U8_TYPE) => Some(Literal::Uint8(x.try_into().unwrap())),
             // @FixedPointerWidth
             ExpressionType::Value(USIZE_TYPE) => Some(Literal::Uint32(x.try_into().unwrap())),
+            // @FixedPointerWidth
+            ExpressionType::Pointer(_, _) => Some(Literal::Uint32(x.try_into().unwrap())),
             _ => unreachable!(),
          }
       }
@@ -917,6 +960,7 @@ fn extract_literal(expr_node: &ExpressionNode) -> Option<Literal> {
       },
       Expression::BoolLiteral(x) => Some(Literal::Bool(x)),
       Expression::EnumLiteral(x, y) => Some(Literal::Enum(x, y)),
+      Expression::UnitLiteral => Some(Literal::Unit),
       _ => None,
    }
 }

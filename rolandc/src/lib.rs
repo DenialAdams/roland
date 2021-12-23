@@ -31,15 +31,6 @@ impl Display for Target {
    }
 }
 
-impl Target {
-   fn entry_point(self) -> &'static str {
-      match self {
-         Target::Wasi => "main",
-         Target::Wasm4 => "start",
-      }
-   }
-}
-
 pub enum CompilationError {
    Lex,
    Parse,

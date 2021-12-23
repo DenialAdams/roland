@@ -89,7 +89,7 @@ pub enum FloatWidth {
 }
 
 impl FloatWidth {
-   fn as_num(&self) -> u8 {
+   pub fn as_num(&self) -> u8 {
       match self {
          FloatWidth::Eight => 8,
          FloatWidth::Four => 4,
