@@ -112,6 +112,7 @@ pub fn compile_for_fuzzer<E: Write, A: Write>(
          53 => lex::Token::Exclam,
          54 => lex::Token::Period,
          55 => lex::Token::DoublePeriod,
+         56 => lex::Token::KeywordExtern,
          _ => unreachable!(),
       };
 
