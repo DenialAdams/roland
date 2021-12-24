@@ -1219,7 +1219,7 @@ fn emit_literal_bytes(expr_index: ExpressionIndex, generation_context: &mut Gene
             ExpressionType::Value(ValueType::Int(x)) => x.width,
             ExpressionType::Pointer(_, _) => IntWidth::Pointer,
             _ => unreachable!(),
-         }.as_bytes();
+         }.as_num_bytes();
          for w in 0..width {
             let val = (x >> (8*w)) & 0xff;
             write!(generation_context.out.out, "\\{:02x}", val).unwrap()
@@ -1233,14 +1233,14 @@ fn emit_literal_bytes(expr_index: ExpressionIndex, generation_context: &mut Gene
          match width {
             FloatWidth::Eight => {
                let bytes: u64 = x.to_bits();
-               for w in 0..width.as_num() {
+               for w in 0..width.as_num_bytes() {
                   let val = (bytes >> (8*w)) & 0xff;
                   write!(generation_context.out.out, "\\{:02x}", val).unwrap()
                }
             }
             FloatWidth::Four => {
                let bytes = (*x as f32).to_bits();
-               for w in 0..width.as_num() {
+               for w in 0..width.as_num_bytes() {
                   let val = (bytes >> (8*w)) & 0xff;
                   write!(generation_context.out.out, "\\{:02x}", val).unwrap()
                }

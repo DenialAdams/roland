@@ -89,7 +89,7 @@ pub enum FloatWidth {
 }
 
 impl FloatWidth {
-   pub fn as_num(&self) -> u8 {
+   pub fn as_num_bytes(&self) -> u8 {
       match self {
          FloatWidth::Eight => 8,
          FloatWidth::Four => 4,
@@ -105,7 +105,7 @@ impl PartialOrd for FloatWidth {
 
 impl Ord for FloatWidth {
    fn cmp(&self, other: &FloatWidth) -> Ordering {
-      self.as_num().cmp(&other.as_num())
+      self.as_num_bytes().cmp(&other.as_num_bytes())
    }
 }
 
@@ -119,7 +119,7 @@ pub enum IntWidth {
 }
 
 impl IntWidth {
-   pub fn as_bytes(&self) -> u8 {
+   pub fn as_num_bytes(&self) -> u8 {
       match self {
          IntWidth::Eight => 8,
          // @FixedPointerWidth

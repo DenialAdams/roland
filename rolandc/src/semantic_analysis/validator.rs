@@ -1361,7 +1361,7 @@ fn get_type<W: Write>(
          } else {
             let valid_cast = match (e_type, &target_type) {
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
-                  x.width.as_bytes() < y.width.as_bytes()
+                  x.width.as_num_bytes() < y.width.as_num_bytes()
                }
                (ExpressionType::Value(ValueType::Bool), ExpressionType::Value(ValueType::Int(_))) => true,
                _ => false,
@@ -1426,7 +1426,7 @@ fn get_type<W: Write>(
                   true
                }
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
-                  x.width.as_bytes() == y.width.as_bytes()
+                  x.width.as_num_bytes() == y.width.as_num_bytes()
                }
                _ => false,
             };
@@ -1470,7 +1470,7 @@ fn get_type<W: Write>(
          } else {
             let valid_cast = match (e_type, &target_type) {
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
-                  x.width.as_bytes() > y.width.as_bytes()
+                  x.width.as_num_bytes() > y.width.as_num_bytes()
                }
                (ExpressionType::Value(ValueType::Float(_)), ExpressionType::Value(ValueType::Int(_))) => true,
                _ => false,
@@ -1721,7 +1721,8 @@ fn get_type<W: Write>(
                   validation_context.error_count += 1;
                   writeln!(
                      err_stream,
-                     "Attempting to take a pointer to a const, which does not have a memory location"
+                     "Attempting to take a pointer to a const, which does not have a memory location. Hint: Should `{}` be a static?",
+                     interner.lookup(var),
                   )
                   .unwrap();
                   writeln!(
