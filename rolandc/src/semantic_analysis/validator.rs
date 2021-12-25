@@ -1519,7 +1519,7 @@ fn get_type<W: Write>(
             | BinOp::LessThanOrEqualTo => &[TypeValidator::AnyInt, TypeValidator::AnyFloat],
             BinOp::LogicalAnd | BinOp::LogicalOr => &[TypeValidator::Bool],
             BinOp::Equality | BinOp::NotEquality => {
-               &[TypeValidator::AnyInt, TypeValidator::Bool, TypeValidator::AnyEnum]
+               &[TypeValidator::AnyInt, TypeValidator::Bool, TypeValidator::AnyEnum, TypeValidator::AnyFloat]
             }
             BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor => &[TypeValidator::AnyInt, TypeValidator::Bool],
             BinOp::BitwiseLeftShift | BinOp::BitwiseRightShift => &[TypeValidator::AnyInt],
