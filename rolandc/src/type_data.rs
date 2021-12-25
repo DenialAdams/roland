@@ -63,6 +63,7 @@ pub const F64_TYPE: ValueType = ValueType::Float(FloatType {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ExpressionType {
+   TypeType,
    Value(ValueType),
    Pointer(usize, ValueType),
 }
@@ -144,6 +145,7 @@ pub struct FloatType {
 impl ExpressionType {
    pub fn is_concrete_type(&self) -> bool {
       match self {
+         ExpressionType::TypeType => unreachable!(),
          ExpressionType::Value(x) => x.is_concrete_type(),
          ExpressionType::Pointer(_, x) => x.is_concrete_type(),
       }
@@ -163,6 +165,7 @@ impl ExpressionType {
 
    pub fn as_roland_type_info(&self, interner: &mut Interner) -> String {
       match self {
+         ExpressionType::TypeType => "(type)".into(),
          ExpressionType::Value(x) => x.as_roland_type_info(interner).into(),
          ExpressionType::Pointer(x, y) => {
             let base_type = y.as_roland_type_info(interner);
@@ -178,6 +181,7 @@ impl ExpressionType {
 
    pub fn increment_indirection_count(&mut self) {
       match self {
+         ExpressionType::TypeType => unreachable!(),
          ExpressionType::Value(v) => {
             // UGH this clone is so un-necessary, i don't know how to fix safely
             // TODO
@@ -191,6 +195,7 @@ impl ExpressionType {
 
    pub fn decrement_indirection_count(&mut self) -> Result<(), ()> {
       match self {
+         ExpressionType::TypeType => unreachable!(),
          ExpressionType::Value(_) => Err(()),
          ExpressionType::Pointer(1, v) => {
             // UGH this clone is so un-necessary, i don't know how to fix safely
