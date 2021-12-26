@@ -15,6 +15,7 @@ pub struct ProcedureInfo {
    // This includes named parameters
    pub parameters: Vec<ExpressionType>,
    pub named_parameters: HashMap<StrId, ExpressionType>,
+   pub type_parameters: usize,
    pub ret_type: ExpressionType,
    pub procedure_begin_location: SourceInfo,
    pub is_external: bool,

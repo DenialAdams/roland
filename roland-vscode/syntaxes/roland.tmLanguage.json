@@ -146,21 +146,9 @@
       "functions": {
          "patterns": [
             {
-               "comment": "pub as a function",
-               "match": "\\b(pub)(\\()",
-               "captures": {
-                  "1": {
-                     "name": "keyword.other.roland"
-                  },
-                  "2": {
-                     "name": "punctuation.brackets.round.roland"
-                  }
-               }
-            },
-            {
                "comment": "function definition",
                "name": "meta.function.definition.roland",
-               "begin": "\\b(fn)\\s+((?:r#(?!crate|[Ss]elf|super))?[A-Za-z0-9_]+)((\\()|(<))",
+               "begin": "\\b(proc)\\s+([A-Za-z0-9_]+)((\\()|(<))",
                "beginCaptures": {
                   "1": {
                      "name": "keyword.other.fn.roland"
@@ -168,10 +156,10 @@
                   "2": {
                      "name": "entity.name.function.roland"
                   },
-                  "4": {
+                  "3": {
                      "name": "punctuation.brackets.round.roland"
                   },
-                  "5": {
+                  "4": {
                      "name": "punctuation.brackets.angle.roland"
                   }
                },
@@ -209,14 +197,20 @@
                ]
             },
             {
-               "comment": "function/method calls, chaining",
+               "comment": "function calls, chaining",
                "name": "meta.function.call.roland",
-               "begin": "((?:r#(?!crate|[Ss]elf|super))?[A-Za-z0-9_]+)(\\()",
+               "begin": "([A-Za-z0-9_]+)((\\$)([A-Za-z0-9]+))*(\\()",
                "beginCaptures": {
                   "1": {
                      "name": "entity.name.function.roland"
                   },
-                  "2": {
+                  "3": {
+                     "name": "punctuation.dollar.roland"
+                  },
+                  "4": {
+                     "name": "entity.name.type.roland"
+                  },
+                  "5": {
                      "name": "punctuation.brackets.round.roland"
                   }
                },
@@ -428,6 +422,11 @@
                "comment": "comma",
                "name": "punctuation.comma.roland",
                "match": ","
+            },
+            {
+               "comment": "dollar",
+               "name": "punctuation.dollar.roland",
+               "match": "$"
             },
             {
                "comment": "curly braces",

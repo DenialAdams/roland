@@ -687,16 +687,32 @@ impl Literal {
          (Literal::Uint32(i), ExpressionType::Pointer(_, _)) => Expression::IntLiteral(i128::from(i)),
 
          // Transmute signed -> unsigned
-         (Literal::Int64(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => Expression::IntLiteral(i128::from(i as u64)),
-         (Literal::Int32(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => Expression::IntLiteral(i128::from(i as u32)),
-         (Literal::Int16(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => Expression::IntLiteral(i128::from(i as u16)),
-         (Literal::Int8(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => Expression::IntLiteral(i128::from(i as u8)),
+         (Literal::Int64(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => {
+            Expression::IntLiteral(i128::from(i as u64))
+         }
+         (Literal::Int32(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => {
+            Expression::IntLiteral(i128::from(i as u32))
+         }
+         (Literal::Int16(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => {
+            Expression::IntLiteral(i128::from(i as u16))
+         }
+         (Literal::Int8(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => {
+            Expression::IntLiteral(i128::from(i as u8))
+         }
 
          // Transmute unsigned -> signed
-         (Literal::Uint64(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => Expression::IntLiteral(i128::from(i as i64)),
-         (Literal::Uint32(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => Expression::IntLiteral(i128::from(i as i32)),
-         (Literal::Uint16(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => Expression::IntLiteral(i128::from(i as i16)),
-         (Literal::Uint8(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => Expression::IntLiteral(i128::from(i as i8)),
+         (Literal::Uint64(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => {
+            Expression::IntLiteral(i128::from(i as i64))
+         }
+         (Literal::Uint32(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => {
+            Expression::IntLiteral(i128::from(i as i32))
+         }
+         (Literal::Uint16(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => {
+            Expression::IntLiteral(i128::from(i as i16))
+         }
+         (Literal::Uint8(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => {
+            Expression::IntLiteral(i128::from(i as i8))
+         }
 
          // Noop
          (Literal::Int64(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral(i128::from(i)),

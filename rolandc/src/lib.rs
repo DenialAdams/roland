@@ -1,15 +1,19 @@
-mod const_lowering;
+mod const_and_sizeof_lowering;
 mod constant_folding;
 mod html_debug;
 mod interner;
 mod lex;
 mod parse;
 mod semantic_analysis;
+mod size_info;
 mod type_data;
 mod typed_index_vec;
 mod wasm;
 
+use interner::StrId;
 use parse::{ExpressionPool, Program};
+use size_info::{calculate_struct_size_info, SizeInfo};
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::io::Write;
 use typed_index_vec::HandleMap;
@@ -191,8 +195,28 @@ fn compile_program<E: Write, A: Write>(
       target,
    );
 
+   if err_count > 0 {
+      if let Some(w) = html_ast_out {
+         let mut program_without_std = user_program.clone();
+         program_without_std.procedures.truncate(num_procedures_before_merge);
+         html_debug::print_ast_as_html(w, &program_without_std, interner, expressions);
+      }
+      return Err(CompilationError::Semantic(err_count));
+   }
+
+   // We calculate this earlier than you might expect, because we need it for sizeof lowering
+   let mut struct_size_info: HashMap<StrId, SizeInfo> = HashMap::with_capacity(user_program.struct_info.len());
+   for s in user_program.struct_info.iter() {
+      calculate_struct_size_info(
+         *s.0,
+         &user_program.enum_info,
+         &user_program.struct_info,
+         &mut struct_size_info,
+      );
+   }
+
    if err_count == 0 {
-      const_lowering::lower_consts(&mut user_program, expressions, interner);
+      const_and_sizeof_lowering::lower_consts(&struct_size_info, &mut user_program, expressions, interner);
       user_program.static_info.retain(|_, v| !v.is_const);
 
       if do_constant_folding {
@@ -211,9 +235,23 @@ fn compile_program<E: Write, A: Write>(
    }
 
    match target {
-      Target::Wasi => Ok(wasm::emit_wasm(&mut user_program, interner, expressions, 0, false)),
+      Target::Wasi => Ok(wasm::emit_wasm(
+         &struct_size_info,
+         &mut user_program,
+         interner,
+         expressions,
+         0,
+         false,
+      )),
       Target::Wasm4 => {
-         let wat = wasm::emit_wasm(&mut user_program, interner, expressions, 0x19a0, true);
+         let wat = wasm::emit_wasm(
+            &struct_size_info,
+            &mut user_program,
+            interner,
+            expressions,
+            0x19a0,
+            true,
+         );
          Ok(wat::parse_bytes(&wat).unwrap().into_owned())
       }
    }

@@ -131,7 +131,11 @@ fn print_expression<W: Write>(
          let var_str = interner.lookup(*x);
          writeln!(out, "<li><span>{}{}</span></li>", var_str, type_text).unwrap();
       }
-      Expression::ProcedureCall { proc_name: x, args, generic_args: _generic_args } => {
+      Expression::ProcedureCall {
+         proc_name: x,
+         args,
+         generic_args: _generic_args,
+      } => {
          writeln!(out, "<li><span>{}(){}</span>", interner.lookup(*x), type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
          for arg in args.iter() {

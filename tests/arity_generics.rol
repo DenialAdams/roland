@@ -1,0 +1,4 @@
+proc main() {
+   let x = sizeof();
+   let y = sizeof$i64$i32();
+}

@@ -1,0 +1,4 @@
+proc main() {
+   let x = sizeof$i64();
+   print_bool(x == 8);
+}

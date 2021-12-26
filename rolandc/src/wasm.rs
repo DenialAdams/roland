@@ -3,6 +3,7 @@ use crate::parse::{
    BinOp, Expression, ExpressionIndex, ExpressionPool, ParameterNode, Program, Statement, StatementNode, UnOp,
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
+use crate::size_info::{mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo};
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, USIZE_TYPE};
 use crate::typed_index_vec::Handle;
 use indexmap::{IndexMap, IndexSet};
@@ -17,20 +18,13 @@ struct GenerationContext<'a> {
    static_addresses: HashMap<StrId, u32>,
    local_offsets_mem: HashMap<StrId, u32>,
    struct_info: &'a IndexMap<StrId, StructInfo>,
-   struct_size_info: HashMap<StrId, SizeInfo>,
+   struct_size_info: &'a HashMap<StrId, SizeInfo>,
    enum_info: &'a IndexMap<StrId, EnumInfo>,
    needed_store_fns: IndexSet<ExpressionType>,
    sum_sizeof_locals_mem: u32,
    loop_depth: u64,
    loop_counter: u64,
    expressions: &'a ExpressionPool,
-}
-
-struct SizeInfo {
-   values_size: u32,
-   mem_size: u32,
-   wasm_size: u32,
-   strictest_alignment: u32,
 }
 
 struct PrettyWasmWriter {
@@ -382,49 +376,6 @@ fn int_to_wasm_runtime_and_suffix(x: &IntType) -> (&'static str, &'static str) {
    (wasm_type, suffix)
 }
 
-/// The size of a type as it's stored in memory
-fn sizeof_type_mem(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
-   match e {
-      ExpressionType::Value(x) => sizeof_value_type_mem(x, ei, si),
-      ExpressionType::Pointer(_, _) => 4,
-   }
-}
-
-fn sizeof_value_type_mem(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
-   match e {
-      ValueType::Unresolved(_) => unreachable!(),
-      ValueType::UnknownInt => unreachable!(),
-      ValueType::UnknownFloat => unreachable!(),
-      ValueType::Enum(x) => {
-         let num_variants = ei.get(x).unwrap().variants.len();
-         if num_variants > u32::MAX as usize {
-            8
-         } else if num_variants > u16::MAX as usize {
-            4
-         } else if num_variants > u8::MAX as usize {
-            2
-         } else {
-            1
-         }
-      }
-      ValueType::Int(x) => match x.width {
-         IntWidth::Eight => 8,
-         IntWidth::Four | IntWidth::Pointer => 4,
-         IntWidth::Two => 2,
-         IntWidth::One => 1,
-      },
-      ValueType::Float(x) => match x.width {
-         FloatWidth::Eight => 8,
-         FloatWidth::Four => 4,
-      },
-      ValueType::Bool => 1,
-      ValueType::Unit => 0,
-      ValueType::CompileError => unreachable!(),
-      ValueType::Struct(x) => si.get(x).unwrap().mem_size,
-      ValueType::Array(a_type, len) => sizeof_type_mem(a_type, ei, si) * (*len as u32),
-   }
-}
-
 fn aligned_address(v: u32, a: u32) -> u32 {
    let rem = v % a;
    if rem != 0 {
@@ -432,143 +383,6 @@ fn aligned_address(v: u32, a: u32) -> u32 {
    } else {
       v
    }
-}
-
-fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
-   match e {
-      ExpressionType::Value(x) => value_type_mem_alignment(x, ei, si),
-      ExpressionType::Pointer(_, _) => 4,
-   }
-}
-
-fn value_type_mem_alignment(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
-   match e {
-      ValueType::Unresolved(_) => unreachable!(),
-      ValueType::UnknownInt => unreachable!(),
-      ValueType::UnknownFloat => unreachable!(),
-      ValueType::Enum(x) => {
-         let num_variants = ei.get(x).unwrap().variants.len();
-         if num_variants > u32::MAX as usize {
-            8
-         } else if num_variants > u16::MAX as usize {
-            4
-         } else if num_variants > u8::MAX as usize {
-            2
-         } else {
-            1
-         }
-      }
-      ValueType::Int(x) => match x.width {
-         IntWidth::Eight => 8,
-         IntWidth::Four | IntWidth::Pointer => 4,
-         IntWidth::Two => 2,
-         IntWidth::One => 1,
-      },
-      ValueType::Float(x) => match x.width {
-         FloatWidth::Eight => 8,
-         FloatWidth::Four => 4,
-      },
-      ValueType::Bool => 1,
-      ValueType::Unit => 1,
-      ValueType::CompileError => unreachable!(),
-      ValueType::Struct(x) => si.get(x).unwrap().strictest_alignment,
-      ValueType::Array(a_type, _len) => mem_alignment(a_type, ei, si),
-   }
-}
-
-/// The size of a type, in number of WASM values
-fn sizeof_type_values(e: &ExpressionType, si: &HashMap<StrId, SizeInfo>) -> u32 {
-   match e {
-      ExpressionType::Value(x) => sizeof_value_type_values(x, si),
-      ExpressionType::Pointer(_, _) => 1,
-   }
-}
-
-fn sizeof_value_type_values(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32 {
-   match e {
-      ValueType::Unresolved(_) => unreachable!(),
-      ValueType::UnknownInt => unreachable!(),
-      ValueType::UnknownFloat => unreachable!(),
-      ValueType::Enum(_) => 1,
-      ValueType::Int(_) => 1,
-      ValueType::Float(_) => 1,
-      ValueType::Bool => 1,
-      ValueType::Unit => 0,
-      ValueType::CompileError => unreachable!(),
-      ValueType::Struct(x) => si.get(x).unwrap().values_size,
-      ValueType::Array(a_type, len) => sizeof_type_values(a_type, si) * (*len as u32),
-   }
-}
-
-/// The size of a type, in bytes, as it's stored in locals (minimum size 4 bytes)
-fn sizeof_type_wasm(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
-   match e {
-      ExpressionType::Value(x) => sizeof_value_type_wasm(x, ei, si),
-      ExpressionType::Pointer(_, _) => 4,
-   }
-}
-
-fn sizeof_value_type_wasm(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
-   match e {
-      ValueType::Unresolved(_) => unreachable!(),
-      ValueType::UnknownInt => unreachable!(),
-      ValueType::UnknownFloat => unreachable!(),
-      ValueType::Enum(x) => {
-         let num_variants = ei.get(x).unwrap().variants.len();
-         if num_variants > u32::MAX as usize {
-            8
-         } else {
-            4
-         }
-      }
-      ValueType::Int(x) => match x.width {
-         IntWidth::Eight => 8,
-         _ => 4,
-      },
-      ValueType::Float(x) => match x.width {
-         FloatWidth::Eight => 8,
-         FloatWidth::Four => 4,
-      },
-      ValueType::Bool => 4,
-      ValueType::Unit => 0,
-      ValueType::CompileError => unreachable!(),
-      ValueType::Struct(x) => si.get(x).unwrap().wasm_size,
-      ValueType::Array(a_type, len) => sizeof_type_wasm(a_type, ei, si) * (*len as u32),
-   }
-}
-
-fn calculate_struct_size_info(
-   name: StrId,
-   enum_info: &IndexMap<StrId, EnumInfo>,
-   struct_info: &IndexMap<StrId, StructInfo>,
-   struct_size_info: &mut HashMap<StrId, SizeInfo>,
-) {
-   let mut sum_mem = 0;
-   let mut sum_wasm = 0;
-   let mut sum_values = 0;
-   let mut strictest_alignment = 1;
-   for field_t in struct_info.get(&name).unwrap().field_types.values() {
-      if let ExpressionType::Value(ValueType::Struct(s)) = field_t {
-         if !struct_size_info.contains_key(s) {
-            calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
-         }
-      }
-
-      // todo: Check this?
-      sum_mem += sizeof_type_mem(field_t, enum_info, struct_size_info);
-      sum_wasm += sizeof_type_wasm(field_t, enum_info, struct_size_info);
-      sum_values += sizeof_type_values(field_t, struct_size_info);
-      strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(field_t, enum_info, struct_size_info));
-   }
-   struct_size_info.insert(
-      name.to_owned(),
-      SizeInfo {
-         mem_size: sum_mem,
-         wasm_size: sum_wasm,
-         values_size: sum_values,
-         strictest_alignment,
-      },
-   );
 }
 
 fn dynamic_move_locals_of_type_to_dest(
@@ -595,11 +409,7 @@ fn dynamic_move_locals_of_type_to_dest(
          generation_context.out.emit_const_add_i32(*offset);
          generation_context.out.emit_get_local(*local_index);
          simple_store(field, generation_context);
-         *offset += sizeof_type_mem(
-            field,
-            generation_context.enum_info,
-            &generation_context.struct_size_info,
-         );
+         *offset += sizeof_type_mem(field, generation_context.enum_info, generation_context.struct_size_info);
          *local_index += 1;
       }
    }
@@ -610,17 +420,13 @@ fn dynamic_move_locals_of_type_to_dest(
 // l-s statics
 // s+ program stack (local variables and parameters are pushed here during runtime)
 pub fn emit_wasm(
+   struct_size_info: &HashMap<StrId, SizeInfo>,
    program: &mut Program,
    interner: &mut Interner,
    expressions: &ExpressionPool,
    memory_base: u32,
    wasm4: bool,
 ) -> Vec<u8> {
-   let mut struct_size_info: HashMap<StrId, SizeInfo> = HashMap::with_capacity(program.struct_info.len());
-   for s in program.struct_info.iter() {
-      calculate_struct_size_info(*s.0, &program.enum_info, &program.struct_info, &mut struct_size_info);
-   }
-
    let mut generation_context = GenerationContext {
       out: PrettyWasmWriter {
          out: Vec::new(),
@@ -723,7 +529,7 @@ pub fn emit_wasm(
          mem_alignment(
             &v.1.static_type,
             generation_context.enum_info,
-            &generation_context.struct_size_info,
+            generation_context.struct_size_info,
          )
       } else {
          1
@@ -737,7 +543,7 @@ pub fn emit_wasm(
       offset += sizeof_type_mem(
          &static_details.static_type,
          generation_context.enum_info,
-         &generation_context.struct_size_info,
+         generation_context.struct_size_info,
       );
    }
 
@@ -749,7 +555,12 @@ pub fn emit_wasm(
          .unwrap();
 
       generation_context.out.emit_spaces();
-      write!(&mut generation_context.out.out, "(data 0 (i32.const {}) \"", static_address).unwrap();
+      write!(
+         &mut generation_context.out.out,
+         "(data 0 (i32.const {}) \"",
+         static_address
+      )
+      .unwrap();
       emit_literal_bytes(p_static.value.unwrap(), &mut generation_context, interner);
       writeln!(generation_context.out.out, "\")").unwrap();
    }
@@ -831,7 +642,7 @@ pub fn emit_wasm(
             interner,
          );
 
-         let offset_end = offset_begin + sizeof_type_values(field.1, &generation_context.struct_size_info);
+         let offset_end = offset_begin + sizeof_type_values(field.1, generation_context.struct_size_info);
 
          for i in offset_begin..offset_end {
             generation_context.out.emit_get_local(i);
@@ -855,12 +666,12 @@ pub fn emit_wasm(
          .map(|x| {
             let strictest_alignment =
                x.1.iter()
-                  .map(|y| mem_alignment(y, generation_context.enum_info, &generation_context.struct_size_info))
+                  .map(|y| mem_alignment(y, generation_context.enum_info, generation_context.struct_size_info))
                   .max()
                   .unwrap();
             let biggest_size =
                x.1.iter()
-                  .map(|y| sizeof_type_mem(y, generation_context.enum_info, &generation_context.struct_size_info))
+                  .map(|y| sizeof_type_mem(y, generation_context.enum_info, generation_context.struct_size_info))
                   .max()
                   .unwrap();
             (*x.0, (strictest_alignment, biggest_size))
@@ -903,7 +714,7 @@ pub fn emit_wasm(
       // Copy parameters to stack memory so we can take pointers
       let mut values_index = 0;
       for param in &procedure.definition.parameters {
-         match sizeof_type_values(&param.p_type, &generation_context.struct_size_info).cmp(&1) {
+         match sizeof_type_values(&param.p_type, generation_context.struct_size_info).cmp(&1) {
             std::cmp::Ordering::Less => (),
             std::cmp::Ordering::Equal => {
                get_stack_address_of_local(param.name, &mut generation_context);
@@ -977,11 +788,11 @@ fn compare_type_alignment(
    e_2: &ExpressionType,
    generation_context: &GenerationContext,
 ) -> std::cmp::Ordering {
-   let alignment_1 = mem_alignment(e_1, generation_context.enum_info, &generation_context.struct_size_info);
-   let alignment_2 = mem_alignment(e_2, generation_context.enum_info, &generation_context.struct_size_info);
+   let alignment_1 = mem_alignment(e_1, generation_context.enum_info, generation_context.struct_size_info);
+   let alignment_2 = mem_alignment(e_2, generation_context.enum_info, generation_context.struct_size_info);
 
-   let sizeof_1 = sizeof_type_mem(e_1, generation_context.enum_info, &generation_context.struct_size_info);
-   let sizeof_2 = sizeof_type_mem(e_1, generation_context.enum_info, &generation_context.struct_size_info);
+   let sizeof_1 = sizeof_type_mem(e_1, generation_context.enum_info, generation_context.struct_size_info);
+   let sizeof_2 = sizeof_type_mem(e_1, generation_context.enum_info, generation_context.struct_size_info);
 
    compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
 }
@@ -1128,7 +939,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          do_emit(*en, generation_context, interner);
          for _ in 0..sizeof_type_values(
             generation_context.expressions[*en].exp_type.as_ref().unwrap(),
-            &generation_context.struct_size_info,
+            generation_context.struct_size_info,
          ) {
             generation_context.out.emit_constant_instruction("drop");
          }
@@ -1178,7 +989,11 @@ fn do_emit_and_load_lval(
    }
 }
 
-fn emit_literal_bytes(expr_index: ExpressionIndex, generation_context: &mut GenerationContext, interner: &mut Interner) {
+fn emit_literal_bytes(
+   expr_index: ExpressionIndex,
+   generation_context: &mut GenerationContext,
+   interner: &mut Interner,
+) {
    let expr_node = &generation_context.expressions[expr_index];
    match &expr_node.expression {
       Expression::UnitLiteral => (),
@@ -1210,7 +1025,7 @@ fn emit_literal_bytes(expr_index: ExpressionIndex, generation_context: &mut Gene
             .unwrap();
          generation_context.out.emit_spaces();
          for w in 0..width {
-            let val = (index >> (8*w)) & 0xff;
+            let val = (index >> (8 * w)) & 0xff;
             write!(generation_context.out.out, "\\{:02x}", val).unwrap()
          }
       }
@@ -1219,9 +1034,10 @@ fn emit_literal_bytes(expr_index: ExpressionIndex, generation_context: &mut Gene
             ExpressionType::Value(ValueType::Int(x)) => x.width,
             ExpressionType::Pointer(_, _) => IntWidth::Pointer,
             _ => unreachable!(),
-         }.as_num_bytes();
+         }
+         .as_num_bytes();
          for w in 0..width {
-            let val = (x >> (8*w)) & 0xff;
+            let val = (x >> (8 * w)) & 0xff;
             write!(generation_context.out.out, "\\{:02x}", val).unwrap()
          }
       }
@@ -1234,14 +1050,14 @@ fn emit_literal_bytes(expr_index: ExpressionIndex, generation_context: &mut Gene
             FloatWidth::Eight => {
                let bytes: u64 = x.to_bits();
                for w in 0..width.as_num_bytes() {
-                  let val = (bytes >> (8*w)) & 0xff;
+                  let val = (bytes >> (8 * w)) & 0xff;
                   write!(generation_context.out.out, "\\{:02x}", val).unwrap()
                }
             }
             FloatWidth::Four => {
                let bytes = (*x as f32).to_bits();
                for w in 0..width.as_num_bytes() {
-                  let val = (bytes >> (8*w)) & 0xff;
+                  let val = (bytes >> (8 * w)) & 0xff;
                   write!(generation_context.out.out, "\\{:02x}", val).unwrap()
                }
             }
@@ -1250,11 +1066,11 @@ fn emit_literal_bytes(expr_index: ExpressionIndex, generation_context: &mut Gene
       Expression::StringLiteral(str) => {
          let (offset, len) = generation_context.literal_offsets.get(str).unwrap();
          for w in 0..4 {
-            let val = (*offset >> (8*w)) & 0xff;
+            let val = (*offset >> (8 * w)) & 0xff;
             write!(generation_context.out.out, "\\{:02x}", val).unwrap()
          }
          for w in 0..4 {
-            let val = (*len >> (8*w)) & 0xff;
+            let val = (*len >> (8 * w)) & 0xff;
             write!(generation_context.out.out, "\\{:02x}", val).unwrap()
          }
       }
@@ -1275,7 +1091,6 @@ fn emit_literal_bytes(expr_index: ExpressionIndex, generation_context: &mut Gene
       _ => unreachable!(),
    }
 }
-
 
 fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationContext, interner: &mut Interner) {
    let expr_node = &generation_context.expressions[expr_index];
@@ -1555,7 +1370,7 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
             if sizeof_type_wasm(
                e.exp_type.as_ref().unwrap(),
                generation_context.enum_info,
-               &generation_context.struct_size_info,
+               generation_context.struct_size_info,
             ) > 4
             {
                generation_context.out.emit_constant_instruction("i32.wrap_i64");
@@ -1599,7 +1414,11 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
             get_stack_address_of_local(*id, generation_context);
          }
       }
-      Expression::ProcedureCall { proc_name, args, generic_args: _generic_args} => {
+      Expression::ProcedureCall {
+         proc_name,
+         args,
+         generic_args: _generic_args,
+      } => {
          for arg in args.iter() {
             do_emit_and_load_lval(arg.expr, generation_context, interner);
          }
@@ -1642,7 +1461,7 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
                   mem_offset += sizeof_type_mem(
                      field.1,
                      generation_context.enum_info,
-                     &generation_context.struct_size_info,
+                     generation_context.struct_size_info,
                   );
                }
             }
@@ -1655,7 +1474,7 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
                mem_offset += sizeof_type_mem(
                   field.1,
                   generation_context.enum_info,
-                  &generation_context.struct_size_info,
+                  generation_context.struct_size_info,
                );
             }
 
@@ -1711,7 +1530,7 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
          ) {
             let sizeof_inner = match &generation_context.expressions[array].exp_type {
                Some(ExpressionType::Value(ValueType::Array(x, _))) => {
-                  sizeof_type_mem(&*x, generation_context.enum_info, &generation_context.struct_size_info)
+                  sizeof_type_mem(&*x, generation_context.enum_info, generation_context.struct_size_info)
                }
                _ => unreachable!(),
             };
@@ -1788,7 +1607,7 @@ fn get_stack_address_of_local(id: StrId, generation_context: &mut GenerationCont
 }
 
 fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   if sizeof_type_values(val_type, &generation_context.struct_size_info) > 1 {
+   if sizeof_type_values(val_type, generation_context.struct_size_info) > 1 {
       generation_context.out.emit_set_global("mem_address");
       complex_load(0, val_type, generation_context);
    } else {
@@ -1800,7 +1619,7 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
    match val_type {
       ExpressionType::Value(ValueType::Struct(x)) => {
          for field in generation_context.struct_info.get(x).unwrap().field_types.values() {
-            match sizeof_type_values(field, &generation_context.struct_size_info).cmp(&1) {
+            match sizeof_type_values(field, generation_context.struct_size_info).cmp(&1) {
                std::cmp::Ordering::Less => (),
                std::cmp::Ordering::Equal => {
                   generation_context.out.emit_get_global("mem_address");
@@ -1810,16 +1629,12 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
                std::cmp::Ordering::Greater => complex_load(offset, field, generation_context),
             }
 
-            offset += sizeof_type_mem(
-               field,
-               generation_context.enum_info,
-               &generation_context.struct_size_info,
-            );
+            offset += sizeof_type_mem(field, generation_context.enum_info, generation_context.struct_size_info);
          }
       }
       ExpressionType::Value(ValueType::Array(a_type, len)) => {
          for _ in 0..*len {
-            match sizeof_type_values(a_type, &generation_context.struct_size_info).cmp(&1) {
+            match sizeof_type_values(a_type, generation_context.struct_size_info).cmp(&1) {
                std::cmp::Ordering::Less => (),
                std::cmp::Ordering::Equal => {
                   generation_context.out.emit_get_global("mem_address");
@@ -1834,7 +1649,7 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
             offset += sizeof_type_mem(
                a_type,
                generation_context.enum_info,
-               &generation_context.struct_size_info,
+               generation_context.struct_size_info,
             );
          }
       }
@@ -1843,17 +1658,17 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
 }
 
 fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   if sizeof_type_values(val_type, &generation_context.struct_size_info) == 0 {
+   if sizeof_type_values(val_type, generation_context.struct_size_info) == 0 {
       // Drop the load address; nothing to load
       generation_context.out.emit_constant_instruction("drop");
    } else if sizeof_type_mem(
       val_type,
       generation_context.enum_info,
-      &generation_context.struct_size_info,
+      generation_context.struct_size_info,
    ) == sizeof_type_wasm(
       val_type,
       generation_context.enum_info,
-      &generation_context.struct_size_info,
+      generation_context.struct_size_info,
    ) {
       generation_context.out.emit_spaces();
       type_to_s(
@@ -1906,12 +1721,12 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
 }
 
 fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext, interner: &mut Interner) {
-   if sizeof_type_values(val_type, &generation_context.struct_size_info) == 0 {
+   if sizeof_type_values(val_type, generation_context.struct_size_info) == 0 {
       // drop the placement address
       generation_context.out.emit_constant_instruction("drop");
-   } else if sizeof_type_values(val_type, &generation_context.struct_size_info) == 1 {
+   } else if sizeof_type_values(val_type, generation_context.struct_size_info) == 1 {
       simple_store(val_type, generation_context);
-   } else if sizeof_type_values(val_type, &generation_context.struct_size_info) > 1 {
+   } else if sizeof_type_values(val_type, generation_context.struct_size_info) > 1 {
       let (store_fcn_index, _) = generation_context.needed_store_fns.insert_full(val_type.clone());
       generation_context
          .out
@@ -1928,7 +1743,7 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
          // Find the first non-zero-sized struct field and store that
          // (there should only be one if we're in simple_store)
          for (_, field_type) in si.field_types.iter() {
-            match sizeof_type_values(field_type, &generation_context.struct_size_info) {
+            match sizeof_type_values(field_type, generation_context.struct_size_info) {
                0 => continue,
                1 => return simple_store(field_type, generation_context),
                _ => unreachable!(),
@@ -1943,11 +1758,11 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
    if sizeof_type_mem(
       val_type,
       generation_context.enum_info,
-      &generation_context.struct_size_info,
+      generation_context.struct_size_info,
    ) == sizeof_type_wasm(
       val_type,
       generation_context.enum_info,
-      &generation_context.struct_size_info,
+      generation_context.struct_size_info,
    ) {
       generation_context.out.emit_spaces();
       type_to_s(

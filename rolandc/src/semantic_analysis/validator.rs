@@ -189,6 +189,7 @@ pub fn type_and_check_validity<W: Write>(
       ProcedureInfo {
          parameters: vec![],
          named_parameters: HashMap::new(),
+         type_parameters: 1,
          ret_type: ExpressionType::Value(USIZE_TYPE),
          procedure_begin_location: SourceInfo { line: 0, col: 0 },
          is_external: true,
@@ -587,6 +588,7 @@ pub fn type_and_check_validity<W: Write>(
       if let Some(old_procedure) = procedure_info.insert(
          definition.name,
          ProcedureInfo {
+            type_parameters: 0,
             parameters: definition.parameters.iter().map(|x| x.p_type.clone()).collect(),
             named_parameters: definition
                .parameters
@@ -1367,7 +1369,13 @@ fn get_type<W: Write>(
          let e = &validation_context.expressions[*e];
          let e_type = e.exp_type.as_ref().unwrap();
 
-         if resolve_type(target_type, validation_context.enum_info, validation_context.struct_info).is_err() {
+         if resolve_type(
+            target_type,
+            validation_context.enum_info,
+            validation_context.struct_info,
+         )
+         .is_err()
+         {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
@@ -1438,7 +1446,13 @@ fn get_type<W: Write>(
          let e = &validation_context.expressions[*e];
          let e_type = e.exp_type.as_ref().unwrap();
 
-         if resolve_type(target_type, validation_context.enum_info, validation_context.struct_info).is_err() {
+         if resolve_type(
+            target_type,
+            validation_context.enum_info,
+            validation_context.struct_info,
+         )
+         .is_err()
+         {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
@@ -1508,7 +1522,13 @@ fn get_type<W: Write>(
          let e = &validation_context.expressions[*e];
          let e_type = e.exp_type.as_ref().unwrap();
 
-         if resolve_type(target_type, validation_context.enum_info, validation_context.struct_info).is_err() {
+         if resolve_type(
+            target_type,
+            validation_context.enum_info,
+            validation_context.struct_info,
+         )
+         .is_err()
+         {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
@@ -1578,9 +1598,12 @@ fn get_type<W: Write>(
             | BinOp::LessThan
             | BinOp::LessThanOrEqualTo => &[TypeValidator::AnyInt, TypeValidator::AnyFloat],
             BinOp::LogicalAnd | BinOp::LogicalOr => &[TypeValidator::Bool],
-            BinOp::Equality | BinOp::NotEquality => {
-               &[TypeValidator::AnyInt, TypeValidator::Bool, TypeValidator::AnyEnum, TypeValidator::AnyFloat]
-            }
+            BinOp::Equality | BinOp::NotEquality => &[
+               TypeValidator::AnyInt,
+               TypeValidator::Bool,
+               TypeValidator::AnyEnum,
+               TypeValidator::AnyFloat,
+            ],
             BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor => &[TypeValidator::AnyInt, TypeValidator::Bool],
             BinOp::BitwiseLeftShift | BinOp::BitwiseRightShift => &[TypeValidator::AnyInt],
          };
@@ -1820,9 +1843,39 @@ fn get_type<W: Write>(
             }
          }
       }
-      Expression::ProcedureCall { proc_name, args, generic_args: _generic_args } => {
+      Expression::ProcedureCall {
+         proc_name,
+         args,
+         generic_args,
+      } => {
          for arg in args.iter_mut() {
             type_expression(err_stream, arg.expr, validation_context, interner);
+         }
+
+         for g_arg in generic_args.iter_mut() {
+            if resolve_type(
+               &mut g_arg.gtype,
+               validation_context.enum_info,
+               validation_context.struct_info,
+            )
+            .is_err()
+            {
+               validation_context.error_count += 1;
+               let etype_str = g_arg.gtype.as_roland_type_info(interner);
+               writeln!(
+                  err_stream,
+                  "Undeclared type `{}` given as a type argument to `{}`",
+                  etype_str,
+                  interner.lookup(*proc_name),
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ call @ line {}, column {}",
+                  expr_location.line, expr_location.col
+               )
+               .unwrap();
+            }
          }
 
          if is_special_procedure(validation_context.target, *proc_name, interner) {
@@ -1870,6 +1923,24 @@ fn get_type<W: Write>(
                   .unwrap();
                } else if let Some(i) = first_named_arg {
                   args[i..].sort_unstable_by_key(|x| x.name);
+               }
+
+               if procedure_info.type_parameters != generic_args.len() {
+                  validation_context.error_count += 1;
+                  writeln!(
+                     err_stream,
+                     "In call to `{}`, mismatched arity. Expected {} type arguments but got {}",
+                     interner.lookup(*proc_name),
+                     procedure_info.type_parameters,
+                     generic_args.len()
+                  )
+                  .unwrap();
+                  writeln!(
+                     err_stream,
+                     "↳ line {}, column {}",
+                     expr_location.line, expr_location.col
+                  )
+                  .unwrap();
                }
 
                if args_in_order && procedure_info.parameters.len() != args.len() {
