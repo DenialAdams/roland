@@ -170,10 +170,6 @@ fn print_expression<W: Write>(
          print_expression(out, *expr, expressions, interner);
          writeln!(out, "</ul></li>").unwrap();
       }
-      Expression::AType(the_type) => {
-         let inner_type_text = the_type.as_roland_type_info(interner);
-         writeln!(out, "<li><span>(type {}){}</span>", inner_type_text, type_text).unwrap();
-      }
       Expression::StructLiteral(type_name, fields) => {
          writeln!(out, "<li><span>{}{}</span>", interner.lookup(*type_name), type_text).unwrap();
          writeln!(out, "<ul>").unwrap();

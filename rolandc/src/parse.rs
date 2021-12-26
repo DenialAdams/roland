@@ -199,7 +199,6 @@ pub enum Expression {
    Truncate(ExpressionType, ExpressionIndex),
    Transmute(ExpressionType, ExpressionIndex),
    EnumLiteral(StrId, StrId),
-   AType(ExpressionType),
 }
 
 // TODO: it would be cool if StrId was NonZero so that this struct (and others like it)
@@ -656,7 +655,6 @@ fn parse_block<W: Write>(
          | Some(Token::Amp)
          | Some(Token::MultiplyDeref)
          | Some(Token::Identifier(_))
-         | Some(Token::KeywordType)
          | Some(Token::Minus) => {
             let e = parse_expression(l, err_stream, false, expressions, interner)?;
             match l.peek_token() {
@@ -828,7 +826,6 @@ fn parse_arguments<W: Write>(
          | Some(Token::Amp)
          | Some(Token::Exclam)
          | Some(Token::MultiplyDeref)
-         | Some(Token::KeywordType)
          | Some(Token::Minus) => {
             let name: Option<StrId> = if let Some(Token::Identifier(x)) = l.peek_token().copied() {
                if l.double_peek_token() == Some(&Token::Colon) {
@@ -949,10 +946,6 @@ fn pratt<W: Write>(
    let lhs_token = l.next();
    let lhs_source = lhs_token.as_ref().map(|x| x.source_info);
    let mut lhs = match lhs_token.map(|x| x.token) {
-      Some(Token::KeywordType) => {
-         let et = parse_type(l, err_stream, interner)?;
-         Expression::AType(et)
-      }
       Some(Token::BoolLiteral(x)) => Expression::BoolLiteral(x),
       Some(Token::IntLiteral(x)) => Expression::IntLiteral(x),
       Some(Token::FloatLiteral(x)) => Expression::FloatLiteral(x),

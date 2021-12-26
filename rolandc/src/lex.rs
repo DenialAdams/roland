@@ -39,7 +39,6 @@ pub enum Token {
    KeywordFor,
    KeywordIn,
    KeywordExtern,
-   KeywordType,
    OpenBrace,
    CloseBrace,
    OpenParen,
@@ -137,7 +136,6 @@ impl Token {
          Token::ShiftRight => ">>",
          Token::KeywordFor => "keyword for",
          Token::KeywordIn => "keyword in",
-         Token::KeywordType => "keyword type",
       }
    }
 }
@@ -180,7 +178,6 @@ fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
       "in" => Token::KeywordIn,
       "for" => Token::KeywordFor,
       "extern" => Token::KeywordExtern,
-      "type" => Token::KeywordType,
       other => Token::Identifier(interner.intern(other)),
    }
 }

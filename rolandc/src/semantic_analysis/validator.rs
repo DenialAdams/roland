@@ -137,7 +137,6 @@ fn resolve_type(
    match t_type {
       ExpressionType::Value(vt) => resolve_value_type(vt, ei, si),
       ExpressionType::Pointer(_, vt) => resolve_value_type(vt, ei, si),
-      ExpressionType::TypeType => Ok(()),
    }
 }
 
@@ -1336,7 +1335,6 @@ fn get_type<W: Write>(
    let expr_node = &mut validation_context.expressions[expr_index] as *mut ExpressionNode;
 
    match unsafe { &mut (*expr_node).expression } {
-      Expression::AType(_) => ExpressionType::TypeType,
       Expression::UnitLiteral => ExpressionType::Value(ValueType::Unit),
       Expression::BoolLiteral(_) => ExpressionType::Value(ValueType::Bool),
       Expression::IntLiteral(_) => {

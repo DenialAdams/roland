@@ -165,7 +165,6 @@ fn fold_expr<W: Write>(
       Expression::IntLiteral(_) => None,
       Expression::FloatLiteral(_) => None,
       Expression::UnitLiteral => None,
-      Expression::AType(_) => None,
       Expression::BinaryOperator { operator, lhs, rhs } => {
          try_fold_and_replace_expr(*lhs, err_stream, folding_context);
          try_fold_and_replace_expr(*rhs, err_stream, folding_context);

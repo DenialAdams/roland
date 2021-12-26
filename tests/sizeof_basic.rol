@@ -1,4 +1,0 @@
-proc main() {
-   let x: usize = sizeof(type u64);
-   print_bool(x == 8);
-}

@@ -50,7 +50,6 @@ fn set_inferred_type<W: Write>(
    // this clone is very sad, but we do it for borrowck
    let expr = validation_context.expressions[expr_index].expression.clone();
    match &expr {
-      Expression::AType(_) => unreachable!(),
       Expression::Extend(_, _) => unreachable!(),
       Expression::Truncate(_, _) => unreachable!(),
       Expression::Transmute(_, _) => unreachable!(),

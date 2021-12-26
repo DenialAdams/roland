@@ -207,7 +207,6 @@ fn write_type_as_result(
    si: &IndexMap<StrId, StructInfo>,
 ) {
    match e {
-      ExpressionType::TypeType => unreachable!(),
       ExpressionType::Value(x) => write_value_type_as_result(x, out, ei, si),
       ExpressionType::Pointer(_, _) => write!(out, "(result i32)").unwrap(),
    }
@@ -268,7 +267,6 @@ fn write_type_as_params(
    si: &IndexMap<StrId, StructInfo>,
 ) {
    match e {
-      ExpressionType::TypeType => unreachable!(),
       ExpressionType::Value(x) => write_value_type_as_params(x, out, ei, si),
       ExpressionType::Pointer(_, _) => write!(out, "(param i32)").unwrap(),
    }
@@ -324,7 +322,6 @@ fn write_value_type_as_params(
 
 fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) {
    match e {
-      ExpressionType::TypeType => unreachable!(),
       ExpressionType::Value(x) => value_type_to_s(x, out, ei, si),
       ExpressionType::Pointer(_, _) => write!(out, "i32").unwrap(),
    }
@@ -388,7 +385,6 @@ fn int_to_wasm_runtime_and_suffix(x: &IntType) -> (&'static str, &'static str) {
 /// The size of a type as it's stored in memory
 fn sizeof_type_mem(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
-      ExpressionType::TypeType => unreachable!(),
       ExpressionType::Value(x) => sizeof_value_type_mem(x, ei, si),
       ExpressionType::Pointer(_, _) => 4,
    }
@@ -440,7 +436,6 @@ fn aligned_address(v: u32, a: u32) -> u32 {
 
 fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
-      ExpressionType::TypeType => unreachable!(),
       ExpressionType::Value(x) => value_type_mem_alignment(x, ei, si),
       ExpressionType::Pointer(_, _) => 4,
    }
@@ -484,7 +479,6 @@ fn value_type_mem_alignment(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &
 /// The size of a type, in number of WASM values
 fn sizeof_type_values(e: &ExpressionType, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
-      ExpressionType::TypeType => unreachable!(),
       ExpressionType::Value(x) => sizeof_value_type_values(x, si),
       ExpressionType::Pointer(_, _) => 1,
    }
@@ -509,7 +503,6 @@ fn sizeof_value_type_values(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32
 /// The size of a type, in bytes, as it's stored in locals (minimum size 4 bytes)
 fn sizeof_type_wasm(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
-      ExpressionType::TypeType => unreachable!(),
       ExpressionType::Value(x) => sizeof_value_type_wasm(x, ei, si),
       ExpressionType::Pointer(_, _) => 4,
    }
@@ -1287,7 +1280,6 @@ fn emit_literal_bytes(expr_index: ExpressionIndex, generation_context: &mut Gene
 fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationContext, interner: &mut Interner) {
    let expr_node = &generation_context.expressions[expr_index];
    match &expr_node.expression {
-      Expression::AType(_) => unreachable!(),
       Expression::UnitLiteral => (),
       Expression::BoolLiteral(x) => {
          generation_context.out.emit_const_i32(*x as u32);
