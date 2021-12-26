@@ -192,7 +192,7 @@ fn compile_program<E: Write, A: Write>(
    );
 
    if err_count == 0 {
-      const_lowering::lower_consts(&mut user_program, expressions);
+      const_lowering::lower_consts(&mut user_program, expressions, interner);
       user_program.static_info.retain(|_, v| !v.is_const);
 
       if do_constant_folding {

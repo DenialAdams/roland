@@ -152,7 +152,7 @@ fn fold_expr<W: Write>(
          None
       }
       Expression::Variable(_) => None,
-      Expression::ProcedureCall(_name, args) => {
+      Expression::ProcedureCall { args, .. } => {
          for arg in args.iter().map(|x| x.expr) {
             try_fold_and_replace_expr(arg, err_stream, folding_context);
          }

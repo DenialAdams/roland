@@ -2,6 +2,7 @@ use super::type_inference::try_set_inferred_type;
 use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
 use crate::constant_folding::{try_fold_and_replace_expr, FoldingContext};
 use crate::interner::{Interner, StrId};
+use crate::lex::SourceInfo;
 use crate::parse::{
    BinOp, BlockNode, Expression, ExpressionIndex, ExpressionNode, ExpressionPool, IdentifierNode, Program, Statement,
    StatementNode, UnOp,
@@ -182,6 +183,17 @@ pub fn type_and_check_validity<W: Write>(
    let mut struct_info: IndexMap<StrId, StructInfo> = IndexMap::new();
    let mut static_info: IndexMap<StrId, StaticInfo> = IndexMap::new();
    let mut error_count = 0;
+
+   procedure_info.insert(
+      interner.intern("sizeof"),
+      ProcedureInfo {
+         parameters: vec![],
+         named_parameters: HashMap::new(),
+         ret_type: ExpressionType::Value(USIZE_TYPE),
+         procedure_begin_location: SourceInfo { line: 0, col: 0 },
+         is_external: true,
+      },
+   );
 
    let mut dupe_check = HashSet::new();
    for a_enum in program.enums.iter() {
@@ -1355,7 +1367,23 @@ fn get_type<W: Write>(
          let e = &validation_context.expressions[*e];
          let e_type = e.exp_type.as_ref().unwrap();
 
-         if !e_type.is_concrete_type() {
+         if resolve_type(target_type, validation_context.enum_info, validation_context.struct_info).is_err() {
+            validation_context.error_count += 1;
+            writeln!(
+               err_stream,
+               "Undeclared type `{}`",
+               target_type.as_roland_type_info(interner),
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ line {}, column {}",
+               expr_location.line, expr_location.col,
+            )
+            .unwrap();
+
+            ExpressionType::Value(ValueType::CompileError)
+         } else if !e_type.is_concrete_type() {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
          } else {
@@ -1410,7 +1438,23 @@ fn get_type<W: Write>(
          let e = &validation_context.expressions[*e];
          let e_type = e.exp_type.as_ref().unwrap();
 
-         if !e_type.is_concrete_type() {
+         if resolve_type(target_type, validation_context.enum_info, validation_context.struct_info).is_err() {
+            validation_context.error_count += 1;
+            writeln!(
+               err_stream,
+               "Undeclared type `{}`",
+               target_type.as_roland_type_info(interner),
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ line {}, column {}",
+               expr_location.line, expr_location.col,
+            )
+            .unwrap();
+
+            ExpressionType::Value(ValueType::CompileError)
+         } else if !e_type.is_concrete_type() {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
          } else {
@@ -1464,7 +1508,23 @@ fn get_type<W: Write>(
          let e = &validation_context.expressions[*e];
          let e_type = e.exp_type.as_ref().unwrap();
 
-         if !e_type.is_concrete_type() {
+         if resolve_type(target_type, validation_context.enum_info, validation_context.struct_info).is_err() {
+            validation_context.error_count += 1;
+            writeln!(
+               err_stream,
+               "Undeclared type `{}`",
+               target_type.as_roland_type_info(interner),
+            )
+            .unwrap();
+            writeln!(
+               err_stream,
+               "↳ line {}, column {}",
+               expr_location.line, expr_location.col,
+            )
+            .unwrap();
+
+            ExpressionType::Value(ValueType::CompileError)
+         } else if !e_type.is_concrete_type() {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
          } else {
@@ -1760,17 +1820,17 @@ fn get_type<W: Write>(
             }
          }
       }
-      Expression::ProcedureCall(name, args) => {
+      Expression::ProcedureCall { proc_name, args, generic_args: _generic_args } => {
          for arg in args.iter_mut() {
             type_expression(err_stream, arg.expr, validation_context, interner);
          }
 
-         if is_special_procedure(validation_context.target, *name, interner) {
+         if is_special_procedure(validation_context.target, *proc_name, interner) {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
                "`{}` is a special procedure and is not allowed to be called",
-               interner.lookup(*name),
+               interner.lookup(*proc_name),
             )
             .unwrap();
             writeln!(
@@ -1781,7 +1841,7 @@ fn get_type<W: Write>(
             .unwrap();
          }
 
-         match validation_context.procedure_info.get(name) {
+         match validation_context.procedure_info.get(proc_name) {
             Some(procedure_info) => {
                // Validate that there are no non-named arguments after named arguments, then reorder the argument list
                let first_named_arg = args.iter().enumerate().find(|(_, arg)| arg.name.is_some()).map(|x| x.0);
@@ -1799,7 +1859,7 @@ fn get_type<W: Write>(
                   writeln!(
                      err_stream,
                      "Call to `{}` has named argument(s) which come before non-named argument(s)",
-                     interner.lookup(*name),
+                     interner.lookup(*proc_name),
                   )
                   .unwrap();
                   writeln!(
@@ -1817,7 +1877,7 @@ fn get_type<W: Write>(
                   writeln!(
                      err_stream,
                      "In call to `{}`, mismatched arity. Expected {} arguments but got {}",
-                     interner.lookup(*name),
+                     interner.lookup(*proc_name),
                      procedure_info.parameters.len(),
                      args.len()
                   )
@@ -1849,7 +1909,7 @@ fn get_type<W: Write>(
                         writeln!(
                            err_stream,
                            "In call to `{}`, encountered argument of type {} when we expected {}",
-                           interner.lookup(*name),
+                           interner.lookup(*proc_name),
                            actual_type_str,
                            expected_type_str,
                         )
@@ -1871,7 +1931,7 @@ fn get_type<W: Write>(
                         writeln!(
                            err_stream,
                            "In call to `{}`, encountered named argument `{}` that does not correspond to any named parameter",
-                           interner.lookup(*name),
+                           interner.lookup(*proc_name),
                            interner.lookup(arg.name.unwrap()),
                         )
                         .unwrap();
@@ -1898,7 +1958,7 @@ fn get_type<W: Write>(
                         writeln!(
                            err_stream,
                            "In call to `{}`, encountered argument of type {} when we expected {} for named parameter {}",
-                           interner.lookup(*name),
+                           interner.lookup(*proc_name),
                            actual_type_str,
                            expected_type_str,
                            interner.lookup(arg.name.unwrap())
@@ -1921,7 +1981,7 @@ fn get_type<W: Write>(
                writeln!(
                   err_stream,
                   "Encountered call to undefined procedure `{}`",
-                  interner.lookup(*name),
+                  interner.lookup(*proc_name),
                )
                .unwrap();
                writeln!(

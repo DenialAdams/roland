@@ -133,7 +133,7 @@ fn set_inferred_type<W: Write>(
       }
       Expression::UnitLiteral => unreachable!(),
       Expression::Variable(_) => (),
-      Expression::ProcedureCall(_, _) => unreachable!(),
+      Expression::ProcedureCall{ .. } => unreachable!(),
       Expression::StructLiteral(_, _) => unreachable!(),
       Expression::FieldAccess(_, _) => unreachable!(),
       Expression::ArrayLiteral(exprs) => {

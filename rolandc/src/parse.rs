@@ -175,7 +175,11 @@ impl Handle for ExpressionIndex {
 
 #[derive(Clone, Debug)]
 pub enum Expression {
-   ProcedureCall(StrId, Box<[ArgumentNode]>),
+   ProcedureCall {
+      proc_name: StrId,
+      generic_args: Box<[GenericArgumentNode]>,
+      args: Box<[ArgumentNode]>,
+   },
    ArrayLiteral(Box<[ExpressionIndex]>),
    ArrayIndex {
       array: ExpressionIndex,
@@ -207,6 +211,11 @@ pub enum Expression {
 pub struct ArgumentNode {
    pub name: Option<StrId>,
    pub expr: ExpressionIndex,
+}
+
+#[derive(Clone, Debug)]
+pub struct GenericArgumentNode {
+   pub gtype: ExpressionType,
 }
 
 impl Expression {
@@ -806,6 +815,22 @@ fn parse_parameters<W: Write>(
    Ok(parameters)
 }
 
+fn parse_generic_arguments<W: Write>(
+   l: &mut Lexer,
+   err_stream: &mut W,
+   interner: &Interner,
+) -> Result<Vec<GenericArgumentNode>, ()> {
+   let mut generic_arguments = vec![];
+
+   while let Some(Token::Dollar) = l.peek_token() {
+      let _ = l.next();
+      let gtype = parse_type(l, err_stream, interner)?;
+      generic_arguments.push(GenericArgumentNode { gtype });
+   }
+
+   Ok(generic_arguments)
+}
+
 fn parse_arguments<W: Write>(
    l: &mut Lexer,
    err_stream: &mut W,
@@ -951,11 +976,25 @@ fn pratt<W: Write>(
       Some(Token::FloatLiteral(x)) => Expression::FloatLiteral(x),
       Some(Token::StringLiteral(x)) => Expression::StringLiteral(x),
       Some(Token::Identifier(s)) => {
-         if l.peek_token() == Some(&Token::OpenParen) {
+         if l.peek_token() == Some(&Token::Dollar) {
+            let generic_args = parse_generic_arguments(l, err_stream, interner)?;
+            expect(l, err_stream, &Token::OpenParen)?;
+            let args = parse_arguments(l, err_stream, expressions, interner)?;
+            expect(l, err_stream, &Token::CloseParen)?;
+            Expression::ProcedureCall {
+               proc_name: s,
+               generic_args: generic_args.into_boxed_slice(),
+               args: args.into_boxed_slice(),
+            }
+         } else if l.peek_token() == Some(&Token::OpenParen) {
             let _ = l.next();
             let args = parse_arguments(l, err_stream, expressions, interner)?;
             expect(l, err_stream, &Token::CloseParen)?;
-            Expression::ProcedureCall(s, args.into_boxed_slice())
+            Expression::ProcedureCall {
+               proc_name: s,
+               generic_args: vec![].into_boxed_slice(),
+               args: args.into_boxed_slice(),
+            }
          } else if l.peek_token() == Some(&Token::DoubleColon) {
             let _ = l.next();
             let variant_identifier =

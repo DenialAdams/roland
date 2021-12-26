@@ -1599,11 +1599,11 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
             get_stack_address_of_local(*id, generation_context);
          }
       }
-      Expression::ProcedureCall(name, args) => {
+      Expression::ProcedureCall { proc_name, args, generic_args: _generic_args} => {
          for arg in args.iter() {
             do_emit_and_load_lval(arg.expr, generation_context, interner);
          }
-         generation_context.out.emit_call(*name, interner);
+         generation_context.out.emit_call(*proc_name, interner);
       }
       Expression::StructLiteral(s_name, fields) => {
          // We need to emit this in the proper order!!

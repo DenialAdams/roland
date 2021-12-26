@@ -74,6 +74,7 @@ pub enum Token {
    Exclam,
    Period,
    DoublePeriod,
+   Dollar,
 }
 
 impl Token {
@@ -136,6 +137,7 @@ impl Token {
          Token::ShiftRight => ">>",
          Token::KeywordFor => "keyword for",
          Token::KeywordIn => "keyword in",
+         Token::Dollar => "$",
       }
    }
 }
@@ -312,6 +314,13 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
                tokens.push(SourceToken {
                   source_info,
                   token: Token::Remainder,
+               });
+               source_info.col += 1;
+               let _ = chars.next().unwrap();
+            } else if c == '$' {
+               tokens.push(SourceToken {
+                  source_info,
+                  token: Token::Dollar,
                });
                source_info.col += 1;
                let _ = chars.next().unwrap();
