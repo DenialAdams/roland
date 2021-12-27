@@ -1,1 +1,3 @@
-asd
+Undeclared type `foo` given as a type argument to `sizeof`
+↳ call @ line 2, column 12
+There were 1 semantic errors, bailing
