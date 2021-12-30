@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::io::Write;
 use std::mem::discriminant;
 
-pub type ExpressionPool = HandleMap<ExpressionIndex, ExpressionNode>;
+pub type ExpressionPool = HandleMap<ExpressionId, ExpressionNode>;
 
 struct Lexer {
    tokens: Vec<SourceToken>,
@@ -79,7 +79,7 @@ pub struct ProcedureNode {
 
    // TODO: if we use id-s for types (ala strings), we could use tinyset?
    pub locals: IndexMap<StrId, HashSet<ExpressionType>>,
-   pub virtual_locals: IndexSet<ExpressionIndex>,
+   pub virtual_locals: IndexSet<ExpressionId>,
 }
 
 #[derive(Clone)]
@@ -113,7 +113,7 @@ pub struct EnumNode {
 pub struct ConstNode {
    pub name: IdentifierNode,
    pub const_type: ExpressionType,
-   pub value: ExpressionIndex,
+   pub value: ExpressionId,
    pub begin_location: SourceInfo,
 }
 
@@ -121,7 +121,7 @@ pub struct ConstNode {
 pub struct StaticNode {
    pub name: IdentifierNode,
    pub static_type: ExpressionType,
-   pub value: Option<ExpressionIndex>,
+   pub value: Option<ExpressionId>,
    pub static_begin_location: SourceInfo,
 }
 
@@ -163,11 +163,11 @@ pub struct ExpressionNode {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ExpressionIndex(usize);
+pub struct ExpressionId(usize);
 
-impl Handle for ExpressionIndex {
+impl Handle for ExpressionId {
    fn new(x: usize) -> Self {
-      ExpressionIndex(x)
+      ExpressionId(x)
    }
 
    fn index(self) -> usize {
@@ -182,10 +182,10 @@ pub enum Expression {
       generic_args: Box<[GenericArgumentNode]>,
       args: Box<[ArgumentNode]>,
    },
-   ArrayLiteral(Box<[ExpressionIndex]>),
+   ArrayLiteral(Box<[ExpressionId]>),
    ArrayIndex {
-      array: ExpressionIndex,
-      index: ExpressionIndex,
+      array: ExpressionId,
+      index: ExpressionId,
    },
    BoolLiteral(bool),
    StringLiteral(StrId),
@@ -195,15 +195,15 @@ pub enum Expression {
    Variable(StrId),
    BinaryOperator {
       operator: BinOp,
-      lhs: ExpressionIndex,
-      rhs: ExpressionIndex,
+      lhs: ExpressionId,
+      rhs: ExpressionId,
    },
-   UnaryOperator(UnOp, ExpressionIndex),
-   StructLiteral(StrId, Vec<(StrId, ExpressionIndex)>),
-   FieldAccess(Vec<StrId>, ExpressionIndex),
-   Extend(ExpressionType, ExpressionIndex),
-   Truncate(ExpressionType, ExpressionIndex),
-   Transmute(ExpressionType, ExpressionIndex),
+   UnaryOperator(UnOp, ExpressionId),
+   StructLiteral(StrId, Vec<(StrId, ExpressionId)>),
+   FieldAccess(Vec<StrId>, ExpressionId),
+   Extend(ExpressionType, ExpressionId),
+   Truncate(ExpressionType, ExpressionId),
+   Transmute(ExpressionType, ExpressionId),
    EnumLiteral(StrId, StrId),
 }
 
@@ -212,7 +212,7 @@ pub enum Expression {
 #[derive(Clone, Debug)]
 pub struct ArgumentNode {
    pub name: Option<StrId>,
-   pub expr: ExpressionIndex,
+   pub expr: ExpressionId,
 }
 
 #[derive(Clone, Debug)]
@@ -251,18 +251,18 @@ pub struct StatementNode {
 
 #[derive(Clone)]
 pub enum Statement {
-   Assignment(ExpressionIndex, ExpressionIndex),
+   Assignment(ExpressionId, ExpressionId),
    Block(BlockNode),
    Loop(BlockNode),
-   For(IdentifierNode, ExpressionIndex, ExpressionIndex, BlockNode, bool),
+   For(IdentifierNode, ExpressionId, ExpressionId, BlockNode, bool),
    Continue,
    Break,
-   Expression(ExpressionIndex),
+   Expression(ExpressionId),
    // TODO: banish this Box. The type is misleading here, because an if else always has either a block or another if-else,
    // so we should try to rectify that too.
-   IfElse(ExpressionIndex, BlockNode, Box<StatementNode>),
-   Return(ExpressionIndex),
-   VariableDeclaration(IdentifierNode, ExpressionIndex, Option<ExpressionType>),
+   IfElse(ExpressionId, BlockNode, Box<StatementNode>),
+   Return(ExpressionId),
+   VariableDeclaration(IdentifierNode, ExpressionId, Option<ExpressionType>),
 }
 
 #[derive(Clone, Debug)]
@@ -907,7 +907,7 @@ fn parse_expression<W: Write>(
    if_head: bool,
    expressions: &mut ExpressionPool,
    interner: &Interner,
-) -> Result<ExpressionIndex, ()> {
+) -> Result<ExpressionId, ()> {
    let begin_info = l.peek_source();
    let exp = pratt(l, err_stream, 0, if_head, expressions, interner)?;
    Ok(wrap(exp, begin_info.unwrap(), expressions))
@@ -1255,7 +1255,7 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
    }
 }
 
-fn wrap(expression: Expression, source_info: SourceInfo, expressions: &mut ExpressionPool) -> ExpressionIndex {
+fn wrap(expression: Expression, source_info: SourceInfo, expressions: &mut ExpressionPool) -> ExpressionId {
    expressions.push(ExpressionNode {
       expression,
       exp_type: None,

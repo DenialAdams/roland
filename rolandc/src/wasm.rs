@@ -1,6 +1,6 @@
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   BinOp, Expression, ExpressionIndex, ExpressionPool, ParameterNode, Program, Statement, StatementNode, UnOp,
+   BinOp, Expression, ExpressionId, ExpressionPool, ParameterNode, Program, Statement, StatementNode, UnOp,
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo};
@@ -985,7 +985,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
 }
 
 fn do_emit_and_load_lval(
-   expr_index: ExpressionIndex,
+   expr_index: ExpressionId,
    generation_context: &mut GenerationContext,
    interner: &mut Interner,
 ) {
@@ -1000,11 +1000,7 @@ fn do_emit_and_load_lval(
    }
 }
 
-fn emit_literal_bytes(
-   expr_index: ExpressionIndex,
-   generation_context: &mut GenerationContext,
-   interner: &mut Interner,
-) {
+fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut GenerationContext, interner: &mut Interner) {
    let expr_node = &generation_context.expressions[expr_index];
    match &expr_node.expression {
       Expression::UnitLiteral => (),
@@ -1087,7 +1083,7 @@ fn emit_literal_bytes(
       }
       Expression::StructLiteral(s_name, fields) => {
          // We need to emit this in the proper order!!
-         let map: HashMap<StrId, ExpressionIndex> = fields.iter().map(|x| (x.0, x.1)).collect();
+         let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
          let si = generation_context.struct_info.get(s_name).unwrap();
          for field in si.field_types.iter() {
             let value_of_field = map.get(field.0).copied().unwrap();
@@ -1103,7 +1099,7 @@ fn emit_literal_bytes(
    }
 }
 
-fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationContext, interner: &mut Interner) {
+fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext, interner: &mut Interner) {
    let expr_node = &generation_context.expressions[expr_index];
    match &expr_node.expression {
       Expression::UnitLiteral => (),
@@ -1450,7 +1446,7 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
          }
 
          // Then we load from the temps in the order the struct is laid out
-         let map: HashMap<StrId, ExpressionIndex> = fields.iter().map(|x| (x.0, x.1)).collect();
+         let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
          let si = generation_context.struct_info.get(s_name).unwrap();
          for field in si.field_types.iter() {
             let value_of_field = map.get(field.0).copied().unwrap();
@@ -1549,8 +1545,8 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
       }
       Expression::ArrayIndex { array, index } => {
          fn calculate_offset(
-            array: ExpressionIndex,
-            index_e: ExpressionIndex,
+            array: ExpressionId,
+            index_e: ExpressionId,
             generation_context: &mut GenerationContext,
             interner: &mut Interner,
          ) {

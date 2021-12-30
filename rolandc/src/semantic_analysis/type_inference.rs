@@ -2,7 +2,7 @@ use std::io::Write;
 
 use super::ValidationContext;
 use crate::interner::Interner;
-use crate::parse::{Expression, ExpressionIndex, UnOp};
+use crate::parse::{Expression, ExpressionId, UnOp};
 use crate::type_data::{
    ExpressionType, IntType, ValueType, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
    U8_TYPE, USIZE_TYPE,
@@ -27,7 +27,7 @@ fn inference_is_impossible(source_type: &ExpressionType, target_type: &Expressio
 // It would be nice to not have to do that
 pub fn try_set_inferred_type<W: Write>(
    e_type: &ExpressionType,
-   expr_index: ExpressionIndex,
+   expr_index: ExpressionId,
    validation_context: &mut ValidationContext,
    err_stream: &mut W,
    interner: &mut Interner,
@@ -42,7 +42,7 @@ pub fn try_set_inferred_type<W: Write>(
 
 fn set_inferred_type<W: Write>(
    e_type: &ExpressionType,
-   expr_index: ExpressionIndex,
+   expr_index: ExpressionId,
    validation_context: &mut ValidationContext,
    err_stream: &mut W,
    interner: &mut Interner,

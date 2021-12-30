@@ -4,7 +4,7 @@ use crate::constant_folding::{try_fold_and_replace_expr, FoldingContext};
 use crate::interner::{Interner, StrId};
 use crate::lex::SourceInfo;
 use crate::parse::{
-   BinOp, BlockNode, Expression, ExpressionIndex, ExpressionNode, ExpressionPool, IdentifierNode, Program, Statement,
+   BinOp, BlockNode, Expression, ExpressionId, ExpressionNode, ExpressionPool, IdentifierNode, Program, Statement,
    StatementNode, UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
@@ -1327,7 +1327,7 @@ fn type_block<W: Write>(
 
 fn get_type<W: Write>(
    err_stream: &mut W,
-   expr_index: ExpressionIndex,
+   expr_index: ExpressionId,
    validation_context: &mut ValidationContext,
    interner: &mut Interner,
 ) -> ExpressionType {
@@ -2505,7 +2505,7 @@ fn get_type<W: Write>(
 
 fn type_expression<W: Write>(
    err_stream: &mut W,
-   expr_index: ExpressionIndex,
+   expr_index: ExpressionId,
    validation_context: &mut ValidationContext,
    interner: &mut Interner,
 ) {

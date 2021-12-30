@@ -1,6 +1,6 @@
 use crate::interner::StrId;
 use crate::parse::{
-   BinOp, BlockNode, Expression, ExpressionIndex, ExpressionNode, ExpressionPool, Program, Statement, UnOp,
+   BinOp, BlockNode, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement, UnOp,
 };
 use crate::type_data::{
    ExpressionType, ValueType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE,
@@ -70,7 +70,7 @@ pub fn fold_statement<W: Write>(statement: &mut Statement, err_stream: &mut W, f
 }
 
 pub fn try_fold_and_replace_expr<W: Write>(
-   node: ExpressionIndex,
+   node: ExpressionId,
    err_stream: &mut W,
    folding_context: &mut FoldingContext,
 ) {
@@ -81,7 +81,7 @@ pub fn try_fold_and_replace_expr<W: Write>(
 
 #[must_use]
 fn fold_expr<W: Write>(
-   expr_index: ExpressionIndex,
+   expr_index: ExpressionId,
    err_stream: &mut W,
    folding_context: &mut FoldingContext,
 ) -> Option<ExpressionNode> {
@@ -534,7 +534,7 @@ fn fold_expr<W: Write>(
                match struct_literal {
                   Expression::StructLiteral(_, fields) => {
                      // We want O(1) field access in other places- consider unifying, perhaps at parse time? TODO
-                     let map: HashMap<StrId, ExpressionIndex> = fields.iter().map(|x| (x.0, x.1)).collect();
+                     let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
                      struct_literal = &folding_context.expressions[map.get(field_name).copied().unwrap()].expression;
                   }
                   _ => unreachable!(),
@@ -544,7 +544,7 @@ fn fold_expr<W: Write>(
             match struct_literal {
                Expression::StructLiteral(_, fields) => {
                   // We want O(1) field access in other places- consider unifying, perhaps at parse time? TODO
-                  let map: HashMap<StrId, ExpressionIndex> = fields.iter().map(|x| (x.0, x.1)).collect();
+                  let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
                   let inner_node = folding_context.expressions[*map.get(field_names.last().unwrap()).unwrap()].clone();
                   Some(ExpressionNode {
                      expression: inner_node.expression,

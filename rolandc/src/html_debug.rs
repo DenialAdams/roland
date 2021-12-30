@@ -1,5 +1,5 @@
 use crate::interner::Interner;
-use crate::parse::{Expression, ExpressionIndex, ExpressionPool, Program, Statement, StatementNode};
+use crate::parse::{Expression, ExpressionId, ExpressionPool, Program, Statement, StatementNode};
 use std::io::Write;
 
 pub fn print_ast_as_html<W: Write>(
@@ -102,7 +102,7 @@ fn print_statement<W: Write>(
 
 fn print_expression<W: Write>(
    out: &mut W,
-   expression_index: ExpressionIndex,
+   expression_index: ExpressionId,
    expressions: &ExpressionPool,
    interner: &mut Interner,
 ) {
