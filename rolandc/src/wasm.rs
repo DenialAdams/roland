@@ -7,7 +7,7 @@ use crate::size_info::{mem_alignment, sizeof_type_mem, sizeof_type_values, sizeo
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, USIZE_TYPE};
 use crate::typed_index_vec::Handle;
 use indexmap::{IndexMap, IndexSet};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 
 const MINIMUM_STACK_FRAME_SIZE: u32 = 4;
@@ -655,6 +655,17 @@ pub fn emit_wasm(
    }
 
    for procedure in program.procedures.iter_mut() {
+      // This is very hacky, we're creating a bunch of strings for things that don't need to be strings!
+      // We shouldn't do this, and instead make the following logic applicable to both StrId/ExpressionId
+      // But this is my lazy approach for now, and I at least moved the logic right next to where it should go
+      for expr in procedure.virtual_locals.iter().copied() {
+         procedure
+            .locals
+            .entry(interner.intern(&format!("::{}", expr.index())))
+            .or_insert_with(HashSet::new)
+            .insert(generation_context.expressions[expr].exp_type.clone().unwrap());
+      }
+
       generation_context.local_offsets_mem.clear();
 
       // 0-4 == value of previous frame base pointer
@@ -1425,12 +1436,27 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
          generation_context.out.emit_call(*proc_name, interner);
       }
       Expression::StructLiteral(s_name, fields) => {
-         // We need to emit this in the proper order!!
+         // First we emit the expressions *in the order they were written*,
+         // storing them into temps
+         for field in fields.iter() {
+            let field_virual_var = interner.reverse_lookup(&format!("::{}", field.1.index()));
+            get_stack_address_of_local(field_virual_var, generation_context);
+            do_emit_and_load_lval(field.1, generation_context, interner);
+            store(
+               generation_context.expressions[field.1].exp_type.as_ref().unwrap(),
+               generation_context,
+               interner,
+            );
+         }
+
+         // Then we load from the temps in the order the struct is laid out
          let map: HashMap<StrId, ExpressionIndex> = fields.iter().map(|x| (x.0, x.1)).collect();
          let si = generation_context.struct_info.get(s_name).unwrap();
          for field in si.field_types.iter() {
             let value_of_field = map.get(field.0).copied().unwrap();
-            do_emit_and_load_lval(value_of_field, generation_context, interner);
+            let field_virual_var = interner.reverse_lookup(&format!("::{}", value_of_field.index()));
+            get_stack_address_of_local(field_virual_var, generation_context);
+            load(field.1, generation_context);
          }
       }
       Expression::FieldAccess(field_names, lhs) => {
@@ -1555,7 +1581,7 @@ fn do_emit(expr_index: ExpressionIndex, generation_context: &mut GenerationConte
             do_emit(*array, generation_context, interner);
             calculate_offset(*array, *index, generation_context, interner);
          } else {
-            let array_var_id = interner.intern(&format!("::{}", array.index()));
+            let array_var_id = interner.reverse_lookup(&format!("::{}", array.index()));
 
             // spill to the virtual variable
             get_stack_address_of_local(array_var_id, generation_context);

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
 
@@ -47,9 +47,9 @@ pub struct ValidationContext<'a> {
    pub struct_info: &'a IndexMap<StrId, StructInfo>,
    pub static_info: &'a IndexMap<StrId, StaticInfo>,
    pub cur_procedure_info: Option<&'a ProcedureInfo>,
-   pub string_literals: HashSet<StrId>,
+   pub string_literals: IndexSet<StrId>,
    pub variable_types: HashMap<StrId, (ExpressionType, u64)>,
-   pub array_index_rvalue_fixups: Vec<ExpressionIndex>,
+   pub virtual_vars: IndexSet<ExpressionIndex>,
    pub error_count: u64,
    pub block_depth: u64,
    pub loop_depth: u64,

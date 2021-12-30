@@ -44,6 +44,15 @@ impl Interner {
       self.vec[id.0 as usize]
    }
 
+   /// Panics if the string is not present
+   pub fn reverse_lookup(&self, name: &str) -> StrId {
+      if let Some(&id) = self.map.get(name) {
+         return StrId(id);
+      }
+
+      unreachable!();
+   }
+
    unsafe fn alloc(&mut self, name: &str) -> &'static str {
       let cap = self.buf.capacity();
       if cap < self.buf.len() + name.len() {

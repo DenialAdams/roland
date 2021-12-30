@@ -9,10 +9,9 @@ use crate::parse::{
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, USIZE_TYPE};
-use crate::typed_index_vec::Handle;
 use crate::Target;
 use arrayvec::ArrayVec;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::ops::BitOrAssign;
@@ -626,7 +625,7 @@ pub fn type_and_check_validity<W: Write>(
 
    let mut validation_context = ValidationContext {
       target,
-      string_literals: HashSet::new(),
+      string_literals: IndexSet::new(),
       variable_types: HashMap::new(),
       error_count,
       procedure_info: &procedure_info,
@@ -639,7 +638,7 @@ pub fn type_and_check_validity<W: Write>(
       unknown_ints: 0,
       unknown_floats: 0,
       expressions,
-      array_index_rvalue_fixups: Vec::new(),
+      virtual_vars: IndexSet::new(),
    };
 
    let special_procs = get_special_procedures(target, interner);
@@ -847,7 +846,6 @@ pub fn type_and_check_validity<W: Write>(
    }
 
    for procedure in program.procedures.iter_mut() {
-      validation_context.array_index_rvalue_fixups.clear();
       validation_context.variable_types.clear();
       validation_context.cur_procedure_info = procedure_info.get(&procedure.definition.name);
 
@@ -870,13 +868,8 @@ pub fn type_and_check_validity<W: Write>(
          interner,
       );
 
-      for fixup_expr in validation_context.array_index_rvalue_fixups.iter().copied() {
-         procedure
-            .locals
-            .entry(interner.intern(&format!("::{}", fixup_expr.index())))
-            .or_insert_with(HashSet::new)
-            .insert(validation_context.expressions[fixup_expr].exp_type.clone().unwrap());
-      }
+      debug_assert!(procedure.virtual_locals.is_empty());
+      std::mem::swap(&mut procedure.virtual_locals, &mut validation_context.virtual_vars);
 
       // Ensure that the last statement is a return statement
       // (it has already been type checked, so we don't have to check that)
@@ -1079,10 +1072,7 @@ fn type_statement<W: Write>(
          let end_expr = &validation_context.expressions[*end];
 
          // This virtual variable will be used to hoist the end expression out of the loop
-         cur_procedure_locals
-            .entry(interner.intern(&format!("::{}", end.index())))
-            .or_insert_with(HashSet::new)
-            .insert(start_expr.exp_type.clone().unwrap());
+         validation_context.virtual_vars.insert(*end);
 
          let result_type = match (
             start_expr.exp_type.as_ref().unwrap(),
@@ -2068,6 +2058,8 @@ fn get_type<W: Write>(
       Expression::StructLiteral(struct_name, fields) => {
          for field in fields.iter_mut() {
             type_expression(err_stream, field.1, validation_context, interner);
+
+            validation_context.virtual_vars.insert(field.1);
          }
 
          match validation_context.struct_info.get(struct_name) {
@@ -2415,7 +2407,7 @@ fn get_type<W: Write>(
             .expression
             .is_lvalue(validation_context.expressions, validation_context.static_info)
          {
-            validation_context.array_index_rvalue_fixups.push(*array);
+            validation_context.virtual_vars.insert(*array);
          }
 
          if !index_expression.exp_type.as_ref().unwrap().is_concrete_type() {

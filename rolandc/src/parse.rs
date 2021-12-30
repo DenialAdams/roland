@@ -3,7 +3,7 @@ use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
 use crate::semantic_analysis::{EnumInfo, StaticInfo, StructInfo};
 use crate::type_data::{ExpressionType, ValueType};
 use crate::typed_index_vec::{Handle, HandleMap};
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use std::collections::HashSet;
 use std::io::Write;
 use std::mem::discriminant;
@@ -74,10 +74,12 @@ pub struct ProcedureDefinition {
 #[derive(Clone)]
 pub struct ProcedureNode {
    pub definition: ProcedureDefinition,
-   // TODO: if we use id-s for types (ala strings), we could use tinyset?
-   pub locals: IndexMap<StrId, HashSet<ExpressionType>>,
    pub block: BlockNode,
    pub procedure_begin_location: SourceInfo,
+
+   // TODO: if we use id-s for types (ala strings), we could use tinyset?
+   pub locals: IndexMap<StrId, HashSet<ExpressionType>>,
+   pub virtual_locals: IndexSet<ExpressionIndex>,
 }
 
 #[derive(Clone)]
@@ -160,7 +162,7 @@ pub struct ExpressionNode {
    pub expression_begin_location: SourceInfo,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ExpressionIndex(usize);
 
 impl Handle for ExpressionIndex {
@@ -285,7 +287,7 @@ pub struct Program {
    pub statics: Vec<StaticNode>,
 
    // These fields are populated during semantic analysis
-   pub literals: HashSet<StrId>,
+   pub literals: IndexSet<StrId>,
    pub enum_info: IndexMap<StrId, EnumInfo>,
    pub struct_info: IndexMap<StrId, StructInfo>,
    pub static_info: IndexMap<StrId, StaticInfo>,
@@ -388,7 +390,7 @@ pub fn astify<W: Write>(
       structs,
       consts,
       statics,
-      literals: HashSet::new(),
+      literals: IndexSet::new(),
       struct_info: IndexMap::new(),
       static_info: IndexMap::new(),
       enum_info: IndexMap::new(),
@@ -434,6 +436,7 @@ fn parse_procedure<W: Write>(
          ret_type,
       },
       locals: IndexMap::new(),
+      virtual_locals: IndexSet::new(),
       block,
       procedure_begin_location: source_info,
    })
