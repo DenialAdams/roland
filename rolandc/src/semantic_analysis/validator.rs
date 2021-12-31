@@ -1911,8 +1911,6 @@ fn get_type<W: Write>(
                      expr_location.line, expr_location.col
                   )
                   .unwrap();
-               } else if let Some(i) = first_named_arg {
-                  args[i..].sort_unstable_by_key(|x| x.name);
                }
 
                if procedure_info.type_parameters != generic_args.len() {
@@ -2004,6 +2002,8 @@ fn get_type<W: Write>(
                         .unwrap();
                         continue;
                      }
+
+                     validation_context.virtual_vars.insert(arg.expr);
 
                      let expected = expected.unwrap();
 

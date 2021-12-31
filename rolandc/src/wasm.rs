@@ -1426,9 +1426,42 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          args,
          generic_args: _generic_args,
       } => {
-         for arg in args.iter() {
+         // Output the non-named parameters
+         let mut first_named_arg = None;
+         for (i, arg) in args.iter().enumerate() {
+            if arg.name.is_some() {
+               first_named_arg = Some(i);
+               break;
+            }
+
             do_emit_and_load_lval(arg.expr, generation_context, interner);
          }
+
+         if let Some(i) = first_named_arg {
+            let mut named_args = vec![];
+            named_args.extend_from_slice(&args[i..]);
+
+            // Store each named param as virtual variables, evaluating *in the order they were written*
+            for arg in named_args.iter() {
+               let arg_virual_var = interner.reverse_lookup(&format!("::{}", arg.expr.index()));
+               get_stack_address_of_local(arg_virual_var, generation_context);
+               do_emit_and_load_lval(arg.expr, generation_context, interner);
+               store(
+                  generation_context.expressions[arg.expr].exp_type.as_ref().unwrap(),
+                  generation_context,
+                  interner,
+               );
+            }
+
+            // Output each named parameter in canonical order
+            named_args.sort_unstable_by_key(|x| x.name);
+            for named_arg in named_args {
+               let arg_virual_var = interner.reverse_lookup(&format!("::{}", named_arg.expr.index()));
+               get_stack_address_of_local(arg_virual_var, generation_context);
+               load(generation_context.expressions[named_arg.expr].exp_type.as_ref().unwrap(), generation_context);
+            }
+         }
+
          generation_context.out.emit_call(*proc_name, interner);
       }
       Expression::StructLiteral(s_name, fields) => {
