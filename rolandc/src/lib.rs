@@ -55,6 +55,8 @@ pub fn compile_for_fuzzer<E: Write, A: Write>(
    let an_ident = interner.intern("");
    let a_literal = interner.intern("");
 
+   let mut expressions = HandleMap::new();
+
    let mut tokens = Vec::with_capacity(user_program.len());
    for byte in user_program {
       let byte_in_range = byte % 56;
@@ -127,8 +129,9 @@ pub fn compile_for_fuzzer<E: Write, A: Write>(
    }
 
    let user_program = stacker::grow(67108864, || {
-      parse::astify(tokens, err_stream, &interner).map_err(|()| CompilationError::Parse)
+      parse::astify(tokens, err_stream, &interner, &mut expressions).map_err(|()| CompilationError::Parse)
    })?;
+
    compile_program(
       user_program,
       err_stream,
@@ -136,6 +139,7 @@ pub fn compile_for_fuzzer<E: Write, A: Write>(
       do_constant_folding,
       target,
       &mut interner,
+      &mut expressions,
    )
 }
 
