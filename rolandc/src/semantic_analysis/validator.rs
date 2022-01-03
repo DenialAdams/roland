@@ -2276,6 +2276,9 @@ fn get_type<W: Write>(
                   ExpressionType::Value(ValueType::CompileError)
                }
             }
+         } else if let Some(ExpressionType::Value(ValueType::CompileError)) = lhs.exp_type.as_ref() {
+            // Avoid cascading errors
+            ExpressionType::Value(ValueType::CompileError)
          } else {
             validation_context.error_count += 1;
             writeln!(
