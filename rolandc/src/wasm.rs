@@ -82,9 +82,9 @@ impl<'a> PrettyWasmWriter {
       self.depth += 1;
    }
 
-   fn emit_block_start(&mut self, label_val: u64) {
+   fn emit_block_start(&mut self, block_name: &'static str, label_val: u64) {
       self.emit_spaces();
-      writeln!(self.out, "block $b_{}", label_val).unwrap();
+      writeln!(self.out, "block ${}_{}", block_name, label_val).unwrap();
       self.depth += 1;
    }
 
@@ -854,8 +854,9 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             store(start_expr.exp_type.as_ref().unwrap(), generation_context, interner);
          }
          generation_context.loop_depth += 1;
-         generation_context.out.emit_block_start(generation_context.loop_counter);
+         generation_context.out.emit_block_start("b", generation_context.loop_counter);
          generation_context.out.emit_loop_start(generation_context.loop_counter);
+         generation_context.out.emit_block_start("bi", generation_context.loop_counter);
          generation_context.loop_counter += 1;
          // Check and break if needed
          {
@@ -887,6 +888,8 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          for statement in &bn.statements {
             emit_statement(statement, generation_context, interner);
          }
+         generation_context.out.emit_end(); // end block bi
+         generation_context.out.emit_spaces();
          // Increment
          {
             get_stack_address_of_local(var.identifier, generation_context);
@@ -911,12 +914,14 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
       }
       Statement::Loop(bn) => {
          generation_context.loop_depth += 1;
-         generation_context.out.emit_block_start(generation_context.loop_counter);
+         generation_context.out.emit_block_start("b", generation_context.loop_counter);
          generation_context.out.emit_loop_start(generation_context.loop_counter);
+         generation_context.out.emit_block_start("bi", generation_context.loop_counter);
          generation_context.loop_counter += 1;
          for statement in &bn.statements {
             emit_statement(statement, generation_context, interner);
          }
+         generation_context.out.emit_end(); // end block bi
          generation_context.out.emit_spaces();
          writeln!(
             generation_context.out.out,
@@ -924,8 +929,8 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             generation_context.loop_counter - generation_context.loop_depth
          )
          .unwrap();
-         generation_context.out.emit_end();
-         generation_context.out.emit_end();
+         generation_context.out.emit_end(); // end loop
+         generation_context.out.emit_end(); // end block b
          generation_context.loop_depth -= 1;
       }
       Statement::Break => {
@@ -941,7 +946,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          generation_context.out.emit_spaces();
          writeln!(
             generation_context.out.out,
-            "br $l_{}",
+            "br $bi_{}",
             generation_context.loop_counter - generation_context.loop_depth
          )
          .unwrap();

@@ -1,0 +1,10 @@
+proc main() {
+   let x: u8 = 3;
+   for i in 0..x {
+      if i == 1 {
+         // i still needs to increment to avoid an infinite loop
+         continue;
+      }
+      print("Hello from the loop");
+   }
+}
