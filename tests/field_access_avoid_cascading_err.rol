@@ -1,0 +1,3 @@
+proc main() {
+   let y: u32 = FOO.x;
+}
