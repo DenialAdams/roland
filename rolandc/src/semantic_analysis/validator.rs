@@ -1477,6 +1477,12 @@ fn get_type<W: Write>(
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
                   x.width.as_num_bytes() == y.width.as_num_bytes()
                }
+               (ExpressionType::Value(ValueType::Float(x)), ExpressionType::Value(ValueType::Int(y))) => {
+                  x.width.as_num_bytes() == y.width.as_num_bytes()
+               }
+               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Float(y))) => {
+                  x.width.as_num_bytes() == y.width.as_num_bytes()
+               }
                _ => false,
             };
 

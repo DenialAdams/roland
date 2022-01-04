@@ -4,7 +4,7 @@ use crate::parse::{
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo};
-use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, USIZE_TYPE};
+use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, USIZE_TYPE, F32_TYPE, F64_TYPE};
 use crate::typed_index_vec::Handle;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::{HashMap, HashSet};
@@ -1364,8 +1364,30 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             _ => unreachable!(),
          }
       }
-      Expression::Transmute(_target_type, e) => {
+      Expression::Transmute(target_type, e) => {
          do_emit_and_load_lval(*e, generation_context, interner);
+
+         let e = &generation_context.expressions[*e];
+
+         if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Float(_))) && matches!(target_type, ExpressionType::Value(ValueType::Int(_))) {
+            // float -> int
+            match target_type {
+               ExpressionType::Value(ValueType::Int(x)) if x.width.as_num_bytes() == 4 => generation_context.out.emit_constant_instruction("i32.reinterpret_f32"),
+               ExpressionType::Value(ValueType::Int(x)) if x.width.as_num_bytes() == 8 => generation_context.out.emit_constant_instruction("i64.reinterpret_f64"),
+               _ => unreachable!(),
+            }
+         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Int(_))) && matches!(target_type, ExpressionType::Value(ValueType::Float(_))) {
+            // int -> float
+            match target_type {
+               ExpressionType::Value(F32_TYPE) => generation_context.out.emit_constant_instruction("f32.reinterpret_i32"),
+               ExpressionType::Value(F64_TYPE) => generation_context.out.emit_constant_instruction("f64.reinterpret_i64"),
+               _ => unreachable!(),
+            }
+         } else {
+            // pointer or int
+            // nop
+         }
+
 
          // nop, width is the same
       }
