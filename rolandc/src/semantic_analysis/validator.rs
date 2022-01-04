@@ -8,7 +8,7 @@ use crate::parse::{
    StatementNode, UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
-use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, USIZE_TYPE};
+use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, USIZE_TYPE, F32_TYPE, F64_TYPE};
 use crate::Target;
 use arrayvec::ArrayVec;
 use indexmap::{IndexMap, IndexSet};
@@ -1389,6 +1389,7 @@ fn get_type<W: Write>(
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
                   x.width.as_num_bytes() < y.width.as_num_bytes()
                }
+               (ExpressionType::Value(F32_TYPE), ExpressionType::Value(F64_TYPE)) => true,
                (ExpressionType::Value(ValueType::Bool), ExpressionType::Value(ValueType::Int(_))) => true,
                _ => false,
             };
@@ -1542,7 +1543,9 @@ fn get_type<W: Write>(
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
                   x.width.as_num_bytes() > y.width.as_num_bytes()
                }
+               (ExpressionType::Value(F64_TYPE), ExpressionType::Value(F32_TYPE)) => true,
                (ExpressionType::Value(ValueType::Float(_)), ExpressionType::Value(ValueType::Int(_))) => true,
+               (ExpressionType::Value(ValueType::Int(_)), ExpressionType::Value(ValueType::Float(_))) => true,
                _ => false,
             };
 

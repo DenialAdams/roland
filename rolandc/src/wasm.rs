@@ -332,7 +332,7 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumIn
       },
       ValueType::Float(x) => match x.width {
          FloatWidth::Eight => write!(out, "f64").unwrap(),
-         FloatWidth::Four => write!(out, "i32").unwrap(),
+         FloatWidth::Four => write!(out, "f32").unwrap(),
       },
       ValueType::Bool => write!(out, "i32").unwrap(),
       ValueType::Unit => unreachable!(),
@@ -1358,6 +1358,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             ExpressionType::Value(ValueType::Int(_)) => {
                // nop
             }
+            ExpressionType::Value(ValueType::Float(_)) => {
+               generation_context.out.emit_constant_instruction("f64.promote_f32");
+            }
             _ => unreachable!(),
          }
       }
@@ -1387,7 +1390,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             {
                generation_context.out.emit_constant_instruction("i32.wrap_i64");
             }
-         } else {
+         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Float(_))) && matches!(target_type, ExpressionType::Value(ValueType::Int(_))) {
             // float -> int
             // i32.trunc_f32_s
             let (target_type_str, suffix) = match target_type {
@@ -1417,6 +1420,39 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                target_type_str, dest_type_str, suffix
             )
             .unwrap();
+         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Int(_))) && matches!(target_type, ExpressionType::Value(ValueType::Float(_))) {
+            // int -> float
+            let target_type_str = match target_type {
+               ExpressionType::Value(ValueType::Float(x)) => match x.width {
+                  FloatWidth::Eight => "f64",
+                  FloatWidth::Four => "f32",
+               },
+               _ => unreachable!(),
+            };
+
+            let (dest_type_str, suffix) = match e.exp_type.as_ref().unwrap() {
+               ExpressionType::Value(ValueType::Int(x)) => {
+                  let base_str = match x.width {
+                     IntWidth::Pointer => "i32",
+                     IntWidth::Eight => "i64",
+                     IntWidth::Four => "i32",
+                     IntWidth::Two => "i16",
+                     IntWidth::One => "i8",
+                  };
+                  (base_str, if x.signed { "_s" } else { "_u" })
+               }
+               _ => unreachable!(),
+            };
+            generation_context.out.emit_spaces();
+            writeln!(
+               generation_context.out.out,
+               "{}.convert_{}{}",
+               target_type_str, dest_type_str, suffix
+            )
+            .unwrap();
+         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Float(_))) && matches!(target_type, ExpressionType::Value(ValueType::Float(_))) {
+            // f64 -> f32
+            generation_context.out.emit_constant_instruction("f32.demote_f64");
          }
       }
       Expression::Variable(id) => {
