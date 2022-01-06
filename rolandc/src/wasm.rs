@@ -227,7 +227,7 @@ fn write_value_type_as_result(
       }
       ValueType::Float(x) => match x.width {
          FloatWidth::Eight => write!(out, "(result f64)").unwrap(),
-         FloatWidth::Four => write!(out, "(result i32)").unwrap(),
+         FloatWidth::Four => write!(out, "(result f32)").unwrap(),
       },
       ValueType::Bool => write!(out, "(result i32)").unwrap(),
       ValueType::Unit => (),
@@ -287,7 +287,7 @@ fn write_value_type_as_params(
       },
       ValueType::Float(x) => match x.width {
          FloatWidth::Eight => write!(out, "(param f64)").unwrap(),
-         FloatWidth::Four => write!(out, "(param i32)").unwrap(),
+         FloatWidth::Four => write!(out, "(param f32)").unwrap(),
       },
       ValueType::Bool => write!(out, "(param i32)").unwrap(),
       ValueType::Unit => (),
@@ -450,6 +450,8 @@ pub fn emit_wasm(
       // These are roland builtins and not WASI; a way to distinguish this at the roland level might be good
       if external_procedure.definition.name == interner.intern("wasm_memory_grow")
          || external_procedure.definition.name == interner.intern("wasm_memory_size")
+         || external_procedure.definition.name == interner.intern("sqrt")
+         || external_procedure.definition.name == interner.intern("sqrt_32")
       {
          continue;
       }
@@ -617,6 +619,40 @@ pub fn emit_wasm(
    );
    generation_context.out.emit_get_local(0);
    generation_context.out.emit_constant_instruction("memory.grow");
+   generation_context.out.close();
+
+   let sqrt_param = ParameterNode {
+      name: interner.intern("x"),
+      p_type: ExpressionType::Value(F64_TYPE),
+      named: false,
+   };
+   generation_context.out.emit_function_start_named_params(
+      interner.intern("sqrt"),
+      &[sqrt_param],
+      &ExpressionType::Value(F64_TYPE),
+      &program.enum_info,
+      &program.struct_info,
+      interner,
+   );
+   generation_context.out.emit_get_local(0);
+   generation_context.out.emit_constant_instruction("f64.sqrt");
+   generation_context.out.close();
+
+   let sqrt_32_param = ParameterNode {
+      name: interner.intern("x"),
+      p_type: ExpressionType::Value(F32_TYPE),
+      named: false,
+   };
+   generation_context.out.emit_function_start_named_params(
+      interner.intern("sqrt_f32"),
+      &[sqrt_32_param],
+      &ExpressionType::Value(F32_TYPE),
+      &program.enum_info,
+      &program.struct_info,
+      interner,
+   );
+   generation_context.out.emit_get_local(0);
+   generation_context.out.emit_constant_instruction("f32.sqrt");
    generation_context.out.close();
 
    for s in program.struct_info.iter() {

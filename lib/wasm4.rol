@@ -59,6 +59,10 @@ const SYSTEM_PRESERVE_FRAMEBUFFER: u8 = 1;
 const SYSTEM_HIDE_GAMEPAD_OVERLAY: u8 = 2;
 // --|
 
+extern proc sqrt(x: f64) -> f64;
+// It's very sad that we have to name it like this, we need generics
+extern proc sqrt_32(x: f32) -> f32;
+
 struct String {
    pointer: &u8,
    length: usize,

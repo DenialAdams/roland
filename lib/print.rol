@@ -1,5 +1,9 @@
 extern proc wasm_memory_size() -> usize;
 extern proc wasm_memory_grow(pages: usize) -> usize;
+extern proc sqrt(x: f64) -> f64;
+// It's very sad that we have to name it like this, we need generics
+extern proc sqrt_32(x: f32) -> f32;
+
 extern proc fd_write(handle: usize, strings_to_write: &usize, strings_to_write_len: usize, written_ptr: &usize) -> isize;
 
 struct String {
