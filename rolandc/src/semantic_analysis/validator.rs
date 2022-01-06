@@ -1591,7 +1591,6 @@ fn get_type<W: Write>(
             | BinOp::Subtract
             | BinOp::Multiply
             | BinOp::Divide
-            | BinOp::Remainder
             | BinOp::GreaterThan
             | BinOp::GreaterThanOrEqualTo
             | BinOp::LessThan
@@ -1604,7 +1603,7 @@ fn get_type<W: Write>(
                TypeValidator::AnyFloat,
             ],
             BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor => &[TypeValidator::AnyInt, TypeValidator::Bool],
-            BinOp::BitwiseLeftShift | BinOp::BitwiseRightShift => &[TypeValidator::AnyInt],
+            BinOp::BitwiseLeftShift | BinOp::BitwiseRightShift | BinOp::Remainder => &[TypeValidator::AnyInt],
          };
 
          try_set_inferred_type(
