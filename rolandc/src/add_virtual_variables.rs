@@ -121,8 +121,12 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
       Expression::Transmute(_, expr) => {
          vv_expr(*expr, vv_context);
       }
+      Expression::ArrayLiteral(exprs) => {
+         for expr in exprs.iter() {
+            vv_expr(*expr, vv_context);
+         }
+      },
       Expression::EnumLiteral(_, _) => (),
-      Expression::ArrayLiteral(_) => (),
       Expression::BoolLiteral(_) => (),
       Expression::StringLiteral(_) => (),
       Expression::IntLiteral(_) => (),

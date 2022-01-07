@@ -159,7 +159,13 @@ fn fold_expr<W: Write>(
 
          None
       }
-      Expression::ArrayLiteral(_) => None,
+      Expression::ArrayLiteral(exprs) => {
+         for expr in exprs.iter() {
+            try_fold_and_replace_expr(*expr, err_stream, folding_context);
+         }
+
+         None
+      },
       Expression::BoolLiteral(_) => None,
       Expression::StringLiteral(_) => None,
       Expression::IntLiteral(_) => None,
