@@ -165,7 +165,7 @@ fn fold_expr<W: Write>(
          }
 
          None
-      },
+      }
       Expression::BoolLiteral(_) => None,
       Expression::StringLiteral(_) => None,
       Expression::IntLiteral(_) => None,

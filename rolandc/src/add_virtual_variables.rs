@@ -125,7 +125,7 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
          for expr in exprs.iter() {
             vv_expr(*expr, vv_context);
          }
-      },
+      }
       Expression::EnumLiteral(_, _) => (),
       Expression::BoolLiteral(_) => (),
       Expression::StringLiteral(_) => (),
