@@ -638,7 +638,6 @@ pub fn type_and_check_validity<W: Write>(
       unknown_ints: 0,
       unknown_floats: 0,
       expressions,
-      virtual_vars: IndexSet::new(),
    };
 
    let special_procs = get_special_procedures(target, interner);
@@ -868,9 +867,6 @@ pub fn type_and_check_validity<W: Write>(
          interner,
       );
 
-      debug_assert!(procedure.virtual_locals.is_empty());
-      std::mem::swap(&mut procedure.virtual_locals, &mut validation_context.virtual_vars);
-
       // Ensure that the last statement is a return statement
       // (it has already been type checked, so we don't have to check that)
       match (
@@ -1070,9 +1066,6 @@ fn type_statement<W: Write>(
 
          let start_expr = &validation_context.expressions[*start];
          let end_expr = &validation_context.expressions[*end];
-
-         // This virtual variable will be used to hoist the end expression out of the loop
-         validation_context.virtual_vars.insert(*end);
 
          let result_type = match (
             start_expr.exp_type.as_ref().unwrap(),
@@ -2011,8 +2004,6 @@ fn get_type<W: Write>(
                         continue;
                      }
 
-                     validation_context.virtual_vars.insert(arg.expr);
-
                      let expected = expected.unwrap();
 
                      try_set_inferred_type(expected, arg.expr, validation_context, err_stream, interner);
@@ -2066,8 +2057,6 @@ fn get_type<W: Write>(
       Expression::StructLiteral(struct_name, fields) => {
          for field in fields.iter_mut() {
             type_expression(err_stream, field.1, validation_context, interner);
-
-            validation_context.virtual_vars.insert(field.1);
          }
 
          match validation_context.struct_info.get(struct_name) {
@@ -2410,16 +2399,6 @@ fn get_type<W: Write>(
 
          let array_expression = &validation_context.expressions[*array];
          let index_expression = &validation_context.expressions[*index];
-
-         // If this is an rvalue, we need to store this array in memory to do the indexing
-         // and hence declare a virtual variable here. It's important that this
-         // runs after validation, because we need type inference to be complete
-         if !array_expression
-            .expression
-            .is_lvalue(validation_context.expressions, validation_context.static_info)
-         {
-            validation_context.virtual_vars.insert(*array);
-         }
 
          if !index_expression.exp_type.as_ref().unwrap().is_concrete_type() {
             // avoid cascading errors

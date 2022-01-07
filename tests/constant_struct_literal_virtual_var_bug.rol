@@ -1,0 +1,11 @@
+const FOO: Bar = Bar { x: 0.0, y: 0.0 };
+
+struct Bar {
+   x: f64,
+   y: f64,
+}
+
+proc main() {
+   let z = FOO;
+   print("ok");
+}

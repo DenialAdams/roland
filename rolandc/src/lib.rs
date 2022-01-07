@@ -1,3 +1,4 @@
+mod add_virtual_variables;
 mod const_and_sizeof_lowering;
 mod constant_folding;
 mod html_debug;
@@ -237,6 +238,8 @@ fn compile_program<E: Write, A: Write>(
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));
    }
+
+   add_virtual_variables::add_virtual_vars(&mut user_program, expressions);
 
    match target {
       Target::Wasi => Ok(wasm::emit_wasm(

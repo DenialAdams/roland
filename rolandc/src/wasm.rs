@@ -1567,8 +1567,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          // First we emit the expressions *in the order they were written*,
          // storing them into temps
          for field in fields.iter() {
-            let field_virual_var = interner.reverse_lookup(&format!("::{}", field.1.index()));
-            get_stack_address_of_local(field_virual_var, generation_context);
+            let field_virtual_var = interner.reverse_lookup(&format!("::{}", field.1.index()));
+            get_stack_address_of_local(field_virtual_var, generation_context);
             do_emit_and_load_lval(field.1, generation_context, interner);
             store(
                generation_context.expressions[field.1].exp_type.as_ref().unwrap(),
