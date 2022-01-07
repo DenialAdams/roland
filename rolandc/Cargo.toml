@@ -10,5 +10,4 @@ stacker = "0.1"
 [dependencies]
 arrayvec = "0.7"
 indexmap = "1"
-fast-float = "0.2"
 wat = "1"

@@ -629,7 +629,7 @@ fn finish_numeric_literal<W: Write>(
    is_float: bool,
 ) -> Result<SourceToken, ()> {
    let resulting_token = if is_float {
-      let float_value = match fast_float::parse(s) {
+      let float_value = match s.parse::<f64>() {
          Ok(v) => v,
          Err(_) => {
             writeln!(err_stream, "Encountered number that can't be parsed as a float").unwrap();
