@@ -8,7 +8,7 @@ use crate::parse::{
    StatementNode, UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
-use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, USIZE_TYPE, F32_TYPE, F64_TYPE};
+use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE};
 use crate::Target;
 use arrayvec::ArrayVec;
 use indexmap::{IndexMap, IndexSet};

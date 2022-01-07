@@ -683,14 +683,20 @@ impl Literal {
    fn transmute(self, target_type: &ExpressionType) -> Expression {
       match (self, target_type) {
          // Transmute int to float
-         (Literal::Int32(i), ExpressionType::Value(F32_TYPE)) => Expression::FloatLiteral(f32::from_bits(i as u32) as f64),
+         (Literal::Int32(i), ExpressionType::Value(F32_TYPE)) => {
+            Expression::FloatLiteral(f32::from_bits(i as u32) as f64)
+         }
          (Literal::Uint32(i), ExpressionType::Value(F32_TYPE)) => Expression::FloatLiteral(f32::from_bits(i) as f64),
          (Literal::Int64(i), ExpressionType::Value(F64_TYPE)) => Expression::FloatLiteral(f64::from_bits(i as u64)),
          (Literal::Uint64(i), ExpressionType::Value(F64_TYPE)) => Expression::FloatLiteral(f64::from_bits(i)),
 
          // Transmute float to int
-         (Literal::Float32(f), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral(i128::from(f.to_bits())),
-         (Literal::Float64(f), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral(i128::from(f.to_bits())),
+         (Literal::Float32(f), ExpressionType::Value(ValueType::Int(_))) => {
+            Expression::IntLiteral(i128::from(f.to_bits()))
+         }
+         (Literal::Float64(f), ExpressionType::Value(ValueType::Int(_))) => {
+            Expression::IntLiteral(i128::from(f.to_bits()))
+         }
 
          // Transmute to pointer @FixedPointerWidth
          (Literal::Int32(i), ExpressionType::Pointer(_, _)) => Expression::IntLiteral(i128::from(i)),

@@ -1,6 +1,6 @@
 use indexmap::IndexSet;
 
-use crate::parse::{Statement, BlockNode, Program, ExpressionPool, ExpressionId, Expression};
+use crate::parse::{BlockNode, Expression, ExpressionId, ExpressionPool, Program, Statement};
 
 struct VvContext<'a> {
    expressions: &'a ExpressionPool,
@@ -27,7 +27,7 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext) {
    }
 }
 
- fn vv_statement(statement: &mut Statement, vv_context: &mut VvContext) {
+fn vv_statement(statement: &mut Statement, vv_context: &mut VvContext) {
    match statement {
       Statement::Assignment(lhs_expr, rhs_expr) => {
          vv_expr(*lhs_expr, vv_context);
@@ -65,10 +65,7 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext) {
    }
 }
 
-fn vv_expr(
-   expr_index: ExpressionId,
-   vv_context: &mut VvContext,
-) {
+fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
    match &vv_context.expressions[expr_index].expression {
       Expression::ArrayIndex { array, index } => {
          vv_expr(*array, vv_context);
@@ -87,16 +84,19 @@ fn vv_expr(
          }
       }
       Expression::ProcedureCall { args, .. } => {
-         for arg in args.iter(){
+         for arg in args.iter() {
             vv_expr(arg.expr, vv_context);
 
             if arg.name.is_some() {
                vv_context.virtual_vars.insert(arg.expr);
             }
          }
-
       }
-      Expression::BinaryOperator { operator: _operator, lhs, rhs } => {
+      Expression::BinaryOperator {
+         operator: _operator,
+         lhs,
+         rhs,
+      } => {
          vv_expr(*lhs, vv_context);
          vv_expr(*rhs, vv_context);
       }

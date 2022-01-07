@@ -4,7 +4,7 @@ use crate::parse::{
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo};
-use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, USIZE_TYPE, F32_TYPE, F64_TYPE};
+use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE};
 use crate::typed_index_vec::Handle;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::{HashMap, HashSet};
@@ -890,9 +890,13 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             store(start_expr.exp_type.as_ref().unwrap(), generation_context, interner);
          }
          generation_context.loop_depth += 1;
-         generation_context.out.emit_block_start("b", generation_context.loop_counter);
+         generation_context
+            .out
+            .emit_block_start("b", generation_context.loop_counter);
          generation_context.out.emit_loop_start(generation_context.loop_counter);
-         generation_context.out.emit_block_start("bi", generation_context.loop_counter);
+         generation_context
+            .out
+            .emit_block_start("bi", generation_context.loop_counter);
          generation_context.loop_counter += 1;
          // Check and break if needed
          {
@@ -950,9 +954,13 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
       }
       Statement::Loop(bn) => {
          generation_context.loop_depth += 1;
-         generation_context.out.emit_block_start("b", generation_context.loop_counter);
+         generation_context
+            .out
+            .emit_block_start("b", generation_context.loop_counter);
          generation_context.out.emit_loop_start(generation_context.loop_counter);
-         generation_context.out.emit_block_start("bi", generation_context.loop_counter);
+         generation_context
+            .out
+            .emit_block_start("bi", generation_context.loop_counter);
          generation_context.loop_counter += 1;
          for statement in &bn.statements {
             emit_statement(statement, generation_context, interner);
@@ -1405,25 +1413,36 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
 
          let e = &generation_context.expressions[*e];
 
-         if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Float(_))) && matches!(target_type, ExpressionType::Value(ValueType::Int(_))) {
+         if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Float(_)))
+            && matches!(target_type, ExpressionType::Value(ValueType::Int(_)))
+         {
             // float -> int
             match target_type {
-               ExpressionType::Value(ValueType::Int(x)) if x.width.as_num_bytes() == 4 => generation_context.out.emit_constant_instruction("i32.reinterpret_f32"),
-               ExpressionType::Value(ValueType::Int(x)) if x.width.as_num_bytes() == 8 => generation_context.out.emit_constant_instruction("i64.reinterpret_f64"),
+               ExpressionType::Value(ValueType::Int(x)) if x.width.as_num_bytes() == 4 => {
+                  generation_context.out.emit_constant_instruction("i32.reinterpret_f32")
+               }
+               ExpressionType::Value(ValueType::Int(x)) if x.width.as_num_bytes() == 8 => {
+                  generation_context.out.emit_constant_instruction("i64.reinterpret_f64")
+               }
                _ => unreachable!(),
             }
-         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Int(_))) && matches!(target_type, ExpressionType::Value(ValueType::Float(_))) {
+         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Int(_)))
+            && matches!(target_type, ExpressionType::Value(ValueType::Float(_)))
+         {
             // int -> float
             match target_type {
-               ExpressionType::Value(F32_TYPE) => generation_context.out.emit_constant_instruction("f32.reinterpret_i32"),
-               ExpressionType::Value(F64_TYPE) => generation_context.out.emit_constant_instruction("f64.reinterpret_i64"),
+               ExpressionType::Value(F32_TYPE) => {
+                  generation_context.out.emit_constant_instruction("f32.reinterpret_i32")
+               }
+               ExpressionType::Value(F64_TYPE) => {
+                  generation_context.out.emit_constant_instruction("f64.reinterpret_i64")
+               }
                _ => unreachable!(),
             }
          } else {
             // pointer or int
             // nop
          }
-
 
          // nop, width is the same
       }
@@ -1448,7 +1467,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             {
                generation_context.out.emit_constant_instruction("i32.wrap_i64");
             }
-         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Float(_))) && matches!(target_type, ExpressionType::Value(ValueType::Int(_))) {
+         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Float(_)))
+            && matches!(target_type, ExpressionType::Value(ValueType::Int(_)))
+         {
             // float -> int
             // i32.trunc_f32_s
             let (target_type_str, suffix) = match target_type {
@@ -1478,7 +1499,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                target_type_str, dest_type_str, suffix
             )
             .unwrap();
-         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Int(_))) && matches!(target_type, ExpressionType::Value(ValueType::Float(_))) {
+         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Int(_)))
+            && matches!(target_type, ExpressionType::Value(ValueType::Float(_)))
+         {
             // int -> float
             let target_type_str = match target_type {
                ExpressionType::Value(ValueType::Float(x)) => match x.width {
@@ -1508,7 +1531,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                target_type_str, dest_type_str, suffix
             )
             .unwrap();
-         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Float(_))) && matches!(target_type, ExpressionType::Value(ValueType::Float(_))) {
+         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Float(_)))
+            && matches!(target_type, ExpressionType::Value(ValueType::Float(_)))
+         {
             // f64 -> f32
             generation_context.out.emit_constant_instruction("f32.demote_f64");
          }
@@ -1557,7 +1582,13 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             for named_arg in named_args {
                let arg_virual_var = interner.reverse_lookup(&format!("::{}", named_arg.expr.index()));
                get_stack_address_of_local(arg_virual_var, generation_context);
-               load(generation_context.expressions[named_arg.expr].exp_type.as_ref().unwrap(), generation_context);
+               load(
+                  generation_context.expressions[named_arg.expr]
+                     .exp_type
+                     .as_ref()
+                     .unwrap(),
+                  generation_context,
+               );
             }
          }
 
