@@ -2403,6 +2403,7 @@ fn get_type<W: Write>(
          if !index_expression.exp_type.as_ref().unwrap().is_concrete_type() {
             // avoid cascading errors
          } else if index_expression.exp_type.as_ref().unwrap() != &ExpressionType::Value(USIZE_TYPE) {
+            validation_context.error_count += 1;
             writeln!(
                err_stream,
                "Attempted to index an array with a value of type {}, which is not usize",
