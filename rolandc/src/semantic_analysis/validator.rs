@@ -1951,7 +1951,7 @@ fn get_type<W: Write>(
                   // We shortcircuit here, because there will likely be lots of mismatched types if an arg was forgotten
                } else if args_in_order {
                   let expected_types = procedure_info.parameters.iter();
-                  for (actual, expected) in args.iter_mut().zip(expected_types) {
+                  for (i, (actual, expected)) in args.iter_mut().zip(expected_types).enumerate() {
                      // These should be at the end by now, so we've checked everything we needed to
                      if actual.name.is_some() {
                         break;
@@ -1976,8 +1976,8 @@ fn get_type<W: Write>(
                         .unwrap();
                         writeln!(
                            err_stream,
-                           "↳ line {}, column {}",
-                           expr_location.line, expr_location.col
+                           "↳ line {}, column {} (argument at position {})",
+                           expr_location.line, expr_location.col, i
                         )
                         .unwrap();
                      }
