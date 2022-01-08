@@ -1659,7 +1659,7 @@ fn get_type<W: Write>(
             )
             .unwrap();
             ExpressionType::Value(ValueType::CompileError)
-         } else if lhs_type != rhs_type && lhs_type.is_concrete_type() && rhs_type.is_concrete_type() {
+         } else if lhs_type != rhs_type {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
