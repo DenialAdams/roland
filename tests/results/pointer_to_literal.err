@@ -1,4 +1,5 @@
 A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter
 ↳ line 2, column 12
 We weren't able to determine the types of 1 int literals
+↳ line 2, column 13
 There were 2 semantic errors, bailing

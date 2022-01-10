@@ -1,4 +1,5 @@
 In call to `dual_custody_lock`, encountered named argument `param_1` that does not correspond to any named parameter
 ↳ line 8, column 4
 We weren't able to determine the types of 1 int literals
+↳ line 8, column 37
 There were 2 semantic errors, bailing

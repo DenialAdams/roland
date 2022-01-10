@@ -635,8 +635,8 @@ pub fn type_and_check_validity<W: Write>(
       cur_procedure_info: None,
       block_depth: 0,
       loop_depth: 0,
-      unknown_ints: 0,
-      unknown_floats: 0,
+      unknown_ints: IndexSet::new(),
+      unknown_floats: IndexSet::new(),
       expressions,
    };
 
@@ -903,24 +903,40 @@ pub fn type_and_check_validity<W: Write>(
       }
    }
 
-   if validation_context.unknown_ints > 0 {
+   if !validation_context.unknown_ints.is_empty() {
       validation_context.error_count += 1;
       writeln!(
          err_stream,
          "We weren't able to determine the types of {} int literals",
-         validation_context.unknown_ints
+         validation_context.unknown_ints.len()
       )
       .unwrap();
+      for expr_id in validation_context.unknown_ints.iter() {
+         let loc = validation_context.expressions[*expr_id].expression_begin_location;
+         writeln!(
+            err_stream,
+            "↳ line {}, column {}",
+            loc.line, loc.col,
+         ).unwrap()
+      }
    }
 
-   if validation_context.unknown_floats > 0 {
+   if !validation_context.unknown_floats.is_empty() {
       validation_context.error_count += 1;
       writeln!(
          err_stream,
          "We weren't able to determine the types of {} float literals",
-         validation_context.unknown_floats
+         validation_context.unknown_floats.len()
       )
       .unwrap();
+      for expr_id in validation_context.unknown_ints.iter() {
+         let loc = validation_context.expressions[*expr_id].expression_begin_location;
+         writeln!(
+            err_stream,
+            "↳ line {}, column {}",
+            loc.line, loc.col,
+         ).unwrap()
+      }
    }
 
    let err_count = validation_context.error_count;
@@ -1335,11 +1351,11 @@ fn get_type<W: Write>(
       Expression::UnitLiteral => ExpressionType::Value(ValueType::Unit),
       Expression::BoolLiteral(_) => ExpressionType::Value(ValueType::Bool),
       Expression::IntLiteral(_) => {
-         validation_context.unknown_ints += 1;
+         validation_context.unknown_ints.insert(expr_index);
          ExpressionType::Value(ValueType::UnknownInt)
       }
       Expression::FloatLiteral(_) => {
-         validation_context.unknown_floats += 1;
+         validation_context.unknown_floats.insert(expr_index);
          ExpressionType::Value(ValueType::UnknownFloat)
       }
       Expression::StringLiteral(lit) => {

@@ -55,7 +55,7 @@ fn set_inferred_type<W: Write>(
       Expression::Transmute(_, _) => unreachable!(),
       Expression::BoolLiteral(_) => unreachable!(),
       Expression::IntLiteral(val) => {
-         validation_context.unknown_ints -= 1;
+         validation_context.unknown_ints.remove(&expr_index);
          let overflowing_literal = match e_type {
             ExpressionType::Value(I8_TYPE) => *val > i128::from(i8::MAX) || *val < i128::from(i8::MIN),
             ExpressionType::Value(I16_TYPE) => *val > i128::from(i16::MAX) || *val < i128::from(i16::MIN),
@@ -93,7 +93,7 @@ fn set_inferred_type<W: Write>(
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }
       Expression::FloatLiteral(_) => {
-         validation_context.unknown_floats -= 1;
+         validation_context.unknown_floats.remove(&expr_index);
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }
       Expression::StringLiteral(_) => unreachable!(),

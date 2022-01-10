@@ -1,4 +1,5 @@
 Call to `dual_custody_lock` has named argument(s) which come before non-named argument(s)
 ↳ line 8, column 4
 We weren't able to determine the types of 1 int literals
+↳ line 8, column 31
 There were 2 semantic errors, bailing

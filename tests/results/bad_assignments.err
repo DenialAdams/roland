@@ -4,4 +4,6 @@ Left hand side of assignment has type String which does not match the type of th
 ↳ left hand side @ line 5, column 4
 ↳ right hand side @ line 5, column 8
 We weren't able to determine the types of 2 int literals
+↳ line 2, column 4
+↳ line 2, column 10
 There were 3 semantic errors, bailing
