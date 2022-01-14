@@ -640,6 +640,8 @@ fn finish_numeric_literal<W: Write>(
       Token::FloatLiteral(float_value)
    } else if let Some(rest_of_s) = s.strip_prefix("0x") {
       parse_int(rest_of_s, 16, err_stream, source_info)?
+   } else if let Some(rest_of_s) = s.strip_prefix("0o") {
+      parse_int(rest_of_s, 8, err_stream, source_info)?
    } else if let Some(rest_of_s) = s.strip_prefix("0b") {
       parse_int(rest_of_s, 2, err_stream, source_info)?
    } else {
