@@ -1,0 +1,12 @@
+struct X {
+  a: u64,
+  b: u8,
+}
+
+proc main() {
+  let arr: [X; 2] = [X{a: 0, b: 0}, X{a:0, b:0}];
+  let addr1 = (&arr[0]) transmute usize;
+  let addr2 = (&arr[1]) transmute usize;
+  print(int_to_string(addr2 extend u64 - addr1 extend u64));
+  print(int_to_string(sizeof$X() extend u64));
+}

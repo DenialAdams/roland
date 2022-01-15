@@ -13,6 +13,16 @@ pub struct SizeInfo {
    strictest_alignment: u32,
 }
 
+// TODO: this is duplicated
+fn aligned_address(v: u32, a: u32) -> u32 {
+   let rem = v % a;
+   if rem != 0 {
+      v + (a - rem)
+   } else {
+      v
+   }
+}
+
 pub fn calculate_struct_size_info(
    name: StrId,
    enum_info: &IndexMap<StrId, EnumInfo>,
@@ -35,6 +45,7 @@ pub fn calculate_struct_size_info(
       sum_wasm += sizeof_type_wasm(field_t, enum_info, struct_size_info);
       sum_values += sizeof_type_values(field_t, struct_size_info);
       strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(field_t, enum_info, struct_size_info));
+      sum_mem = aligned_address(sum_mem, strictest_alignment);
    }
    struct_size_info.insert(
       name.to_owned(),
