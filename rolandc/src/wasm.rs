@@ -1843,6 +1843,25 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
 }
 
 fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+   // If this is a tiny struct or array, drill into the inner type
+   match val_type {
+      ExpressionType::Value(ValueType::Struct(x)) => {
+         let si = generation_context.struct_info.get(x).unwrap();
+         // Find the first non-zero-sized struct field and load that
+         // (there should only be one if we're in simple_load)
+         for (_, field_type) in si.field_types.iter() {
+            match sizeof_type_values(field_type, generation_context.struct_size_info) {
+               0 => continue,
+               1 => return simple_load(field_type, generation_context),
+               _ => unreachable!(),
+            }
+         }
+      }
+      ExpressionType::Value(ValueType::Array(inner_type, _len)) => {
+         return simple_load(inner_type, generation_context);
+      }
+      _ => (),
+   }
    if sizeof_type_values(val_type, generation_context.struct_size_info) == 0 {
       // Drop the load address; nothing to load
       generation_context.out.emit_constant_instruction("drop");
