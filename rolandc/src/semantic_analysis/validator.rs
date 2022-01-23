@@ -1473,6 +1473,10 @@ fn get_type<W: Write>(
             ExpressionType::Value(ValueType::CompileError)
          } else {
             let valid_cast = match (e_type, &target_type) {
+               (ExpressionType::Pointer(_, _), ExpressionType::Pointer(_, _)) =>
+               {
+                  true
+               }
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Pointer(_, _))
                   if x.width == IntWidth::Pointer =>
                {
