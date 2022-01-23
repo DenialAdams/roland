@@ -22,8 +22,6 @@ struct GenerationContext<'a> {
    enum_info: &'a IndexMap<StrId, EnumInfo>,
    needed_store_fns: IndexSet<ExpressionType>,
    sum_sizeof_locals_mem: u32,
-   loop_depth: u64,
-   loop_counter: u64,
    expressions: &'a ExpressionPool,
 }
 
@@ -441,8 +439,6 @@ pub fn emit_wasm(
       struct_size_info,
       enum_info: &program.enum_info,
       sum_sizeof_locals_mem: 0,
-      loop_counter: 0,
-      loop_depth: 0,
       expressions,
    };
 
@@ -889,15 +885,13 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             do_emit_and_load_lval(*end, generation_context, interner);
             store(start_expr.exp_type.as_ref().unwrap(), generation_context, interner);
          }
-         generation_context.loop_depth += 1;
          generation_context
             .out
-            .emit_block_start("b", generation_context.loop_counter);
-         generation_context.out.emit_loop_start(generation_context.loop_counter);
+            .emit_block_start("b", 0);
+         generation_context.out.emit_loop_start(0);
          generation_context
             .out
-            .emit_block_start("bi", generation_context.loop_counter);
-         generation_context.loop_counter += 1;
+            .emit_block_start("bi", 0);
          // Check and break if needed
          {
             get_stack_address_of_local(var.identifier, generation_context);
@@ -918,7 +912,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             writeln!(
                generation_context.out.out,
                "br $b_{}",
-               generation_context.loop_counter - generation_context.loop_depth
+               0,
             )
             .unwrap();
             generation_context.out.close();
@@ -945,23 +939,20 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          writeln!(
             generation_context.out.out,
             "br $l_{}",
-            generation_context.loop_counter - generation_context.loop_depth
+            0
          )
          .unwrap();
          generation_context.out.emit_end();
          generation_context.out.emit_end();
-         generation_context.loop_depth -= 1;
       }
       Statement::Loop(bn) => {
-         generation_context.loop_depth += 1;
          generation_context
             .out
-            .emit_block_start("b", generation_context.loop_counter);
-         generation_context.out.emit_loop_start(generation_context.loop_counter);
+            .emit_block_start("b", 0);
+         generation_context.out.emit_loop_start(0);
          generation_context
             .out
-            .emit_block_start("bi", generation_context.loop_counter);
-         generation_context.loop_counter += 1;
+            .emit_block_start("bi", 0);
          for statement in &bn.statements {
             emit_statement(statement, generation_context, interner);
          }
@@ -970,19 +961,18 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          writeln!(
             generation_context.out.out,
             "br $l_{}",
-            generation_context.loop_counter - generation_context.loop_depth
+            0
          )
          .unwrap();
          generation_context.out.emit_end(); // end loop
          generation_context.out.emit_end(); // end block b
-         generation_context.loop_depth -= 1;
       }
       Statement::Break => {
          generation_context.out.emit_spaces();
          writeln!(
             generation_context.out.out,
             "br $b_{}",
-            generation_context.loop_counter - generation_context.loop_depth
+            0
          )
          .unwrap();
       }
@@ -991,7 +981,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          writeln!(
             generation_context.out.out,
             "br $bi_{}",
-            generation_context.loop_counter - generation_context.loop_depth
+            0
          )
          .unwrap();
       }

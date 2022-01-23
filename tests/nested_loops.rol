@@ -1,0 +1,9 @@
+proc main() {
+   loop {
+     loop {
+        print("ok");
+        break;
+     }
+     break;
+   }
+}
