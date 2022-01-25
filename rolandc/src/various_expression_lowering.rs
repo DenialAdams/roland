@@ -1,6 +1,7 @@
 use crate::interner::{Interner, StrId};
 use crate::parse::{Expression, ExpressionId, ExpressionPool, Program};
 use crate::size_info::SizeInfo;
+use crate::type_data::{ValueType, ExpressionType};
 use crate::typed_index_vec::Handle;
 use std::collections::HashMap;
 
@@ -37,6 +38,14 @@ pub fn lower_consts(
                crate::size_info::sizeof_type_mem(&generic_args[0].gtype, &program.enum_info, struct_size_info);
 
             expressions[ExpressionId::new(i)].expression = Expression::IntLiteral(i128::from(type_size));
+         }
+         Expression::FieldAccess(_, other_exp) => {
+            let length_of_array = match expressions[*other_exp].exp_type.as_ref().unwrap() {
+               ExpressionType::Value(ValueType::Array(_, len)) => *len,
+               _ => continue,
+            };
+
+            expressions[ExpressionId::new(i)].expression = Expression::IntLiteral(length_of_array);
          }
          _ => (),
       }

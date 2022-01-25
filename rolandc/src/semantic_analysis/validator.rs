@@ -2240,7 +2240,7 @@ fn get_type<W: Write>(
                      validation_context.error_count += 1;
                      writeln!(
                         err_stream,
-                        "Field `{}` is not a struct type and so doesn't have field `{}`",
+                        "Field `{}` is not a struct type and therefore doesn't have field `{}`",
                         interner.lookup(*field),
                         interner.lookup(*next_field),
                      )
@@ -2293,6 +2293,26 @@ fn get_type<W: Write>(
                   ExpressionType::Value(ValueType::CompileError)
                }
             }
+         } else if let Some(ExpressionType::Value(ValueType::Array(_, _))) = lhs.exp_type.as_ref() {
+            let desired_fields = [interner.intern("length")];
+            if fields.as_slice() != desired_fields.as_slice() {
+               validation_context.error_count += 1;
+               writeln!(
+                  err_stream,
+                  "Array does not have a field `{}`. Hint: Array types have a single field `length`",
+                  interner.lookup(*fields.first().unwrap()),
+               )
+               .unwrap();
+               writeln!(
+                  err_stream,
+                  "↳ line {}, column {}",
+                  expr_location.line, expr_location.col
+               )
+               .unwrap();
+               ExpressionType::Value(ValueType::CompileError)
+            } else {
+               ExpressionType::Value(USIZE_TYPE)
+            }
          } else if let Some(ExpressionType::Value(ValueType::CompileError)) = lhs.exp_type.as_ref() {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
@@ -2300,7 +2320,7 @@ fn get_type<W: Write>(
             validation_context.error_count += 1;
             writeln!(
                err_stream,
-               "Encountered field access on type {}; only structs have fields",
+               "Encountered field access on type {}; only structs and arrays have fields",
                lhs.exp_type.as_ref().unwrap().as_roland_type_info(interner)
             )
             .unwrap();

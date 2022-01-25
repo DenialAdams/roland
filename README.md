@@ -96,9 +96,10 @@ loop {
 The second is to loop over a range of values:
 
 ```roland
-let upper_bound: usize = 3;
-for x in 0..upper_bound {
+let my_array = [true, false, true];
+for x in 0..my_array.length {
    // x will be 0, then 1, then 2.
+   my_array[x] = !my_array[x];
 }
 ```
 

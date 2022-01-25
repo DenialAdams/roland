@@ -1,5 +1,5 @@
 mod add_virtual_variables;
-mod const_and_sizeof_lowering;
+mod various_expression_lowering;
 mod constant_folding;
 mod html_debug;
 mod interner;
@@ -222,7 +222,7 @@ fn compile_program<E: Write, A: Write>(
    }
 
    if err_count == 0 {
-      const_and_sizeof_lowering::lower_consts(&struct_size_info, &mut user_program, expressions, interner);
+      various_expression_lowering::lower_consts(&struct_size_info, &mut user_program, expressions, interner);
       user_program.static_info.retain(|_, v| !v.is_const);
 
       if do_constant_folding {
