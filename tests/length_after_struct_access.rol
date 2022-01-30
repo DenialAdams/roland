@@ -1,0 +1,12 @@
+struct Foo {
+   x: [u8; 1],
+}
+
+proc main() {
+   let y = Foo {
+      x: [1],
+   };
+
+   let len =  y.x.length;
+   print("ok");
+}

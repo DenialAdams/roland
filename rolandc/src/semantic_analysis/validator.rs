@@ -2226,40 +2226,25 @@ fn get_type<W: Write>(
          type_expression(err_stream, *lhs, validation_context, interner);
 
          let lhs = &validation_context.expressions[*lhs];
+         let mut lhs_type = lhs.exp_type.as_ref().unwrap().clone();
+         let mut remaining_fields = fields.as_slice();
 
-         if let Some(ExpressionType::Value(ValueType::Struct(base_struct_name))) = lhs.exp_type.as_ref() {
-            let mut current_struct = *base_struct_name;
-            let mut current_struct_info = &validation_context.struct_info.get(&current_struct).unwrap().field_types;
-            for (field, next_field) in fields.iter().take(fields.len() - 1).zip(fields.iter().skip(1)) {
-               match current_struct_info.get(field) {
-                  Some(ExpressionType::Value(ValueType::Struct(x))) => {
-                     current_struct = *x;
-                     current_struct_info = &validation_context.struct_info.get(&current_struct).unwrap().field_types;
-                  }
-                  Some(_) => {
-                     validation_context.error_count += 1;
-                     writeln!(
-                        err_stream,
-                        "Field `{}` is not a struct type and therefore doesn't have field `{}`",
-                        interner.lookup(*field),
-                        interner.lookup(*next_field),
-                     )
-                     .unwrap();
-                     writeln!(
-                        err_stream,
-                        "↳ line {}, column {}",
-                        expr_location.line, expr_location.col
-                     )
-                     .unwrap();
-                     return ExpressionType::Value(ValueType::CompileError);
-                  }
-                  None => {
+         let length_token = interner.intern("length");
+
+         while !remaining_fields.is_empty() {
+            let field = remaining_fields[0];
+            match lhs_type {
+               ExpressionType::Value(ValueType::Struct(struct_name)) => {
+                  let struct_fields = &validation_context.struct_info.get(&struct_name).unwrap().field_types;
+                  if let Some(new_t) = struct_fields.get(&field) {
+                     lhs_type = new_t.clone();
+                  } else {
                      validation_context.error_count += 1;
                      writeln!(
                         err_stream,
                         "Struct `{}` does not have a field `{}`",
-                        interner.lookup(current_struct),
-                        interner.lookup(*field),
+                        interner.lookup(struct_name),
+                        interner.lookup(field),
                      )
                      .unwrap();
                      writeln!(
@@ -2268,20 +2253,38 @@ fn get_type<W: Write>(
                         expr_location.line, expr_location.col
                      )
                      .unwrap();
-                     return ExpressionType::Value(ValueType::CompileError);
+                     lhs_type = ExpressionType::Value(ValueType::CompileError);
                   }
                }
-            }
-
-            match current_struct_info.get(fields.last().unwrap()) {
-               Some(e_type) => e_type.clone(),
-               None => {
+               ExpressionType::Value(ValueType::Array(_, _)) => {
+                  if field != length_token {
+                     validation_context.error_count += 1;
+                     writeln!(
+                        err_stream,
+                        "Array does not have a field `{}`. Hint: Array types have a single field `length`",
+                        interner.lookup(*fields.first().unwrap()),
+                     )
+                     .unwrap();
+                     writeln!(
+                        err_stream,
+                        "↳ line {}, column {}",
+                        expr_location.line, expr_location.col
+                     )
+                     .unwrap();
+                     lhs_type = ExpressionType::Value(ValueType::CompileError);
+                  } else {
+                     lhs_type = ExpressionType::Value(USIZE_TYPE);
+                  }
+               }
+               ExpressionType::Value(ValueType::CompileError) => {
+                  lhs_type = ExpressionType::Value(ValueType::CompileError);
+               }
+               other_type => {
                   validation_context.error_count += 1;
                   writeln!(
                      err_stream,
-                     "Struct `{}` does not have a field `{}`",
-                     interner.lookup(current_struct),
-                     interner.lookup(*fields.last().unwrap()),
+                     "Encountered field access on type {}; only structs and arrays have fields",
+                     other_type.as_roland_type_info(interner)
                   )
                   .unwrap();
                   writeln!(
@@ -2290,48 +2293,16 @@ fn get_type<W: Write>(
                      expr_location.line, expr_location.col
                   )
                   .unwrap();
-                  ExpressionType::Value(ValueType::CompileError)
+                  lhs_type = ExpressionType::Value(ValueType::CompileError);
                }
             }
-         } else if let Some(ExpressionType::Value(ValueType::Array(_, _))) = lhs.exp_type.as_ref() {
-            let desired_fields = [interner.intern("length")];
-            if fields.as_slice() != desired_fields.as_slice() {
-               validation_context.error_count += 1;
-               writeln!(
-                  err_stream,
-                  "Array does not have a field `{}`. Hint: Array types have a single field `length`",
-                  interner.lookup(*fields.first().unwrap()),
-               )
-               .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ line {}, column {}",
-                  expr_location.line, expr_location.col
-               )
-               .unwrap();
-               ExpressionType::Value(ValueType::CompileError)
+            remaining_fields = if !remaining_fields.is_empty() {
+               &remaining_fields[1..]
             } else {
-               ExpressionType::Value(USIZE_TYPE)
-            }
-         } else if let Some(ExpressionType::Value(ValueType::CompileError)) = lhs.exp_type.as_ref() {
-            // Avoid cascading errors
-            ExpressionType::Value(ValueType::CompileError)
-         } else {
-            validation_context.error_count += 1;
-            writeln!(
-               err_stream,
-               "Encountered field access on type {}; only structs and arrays have fields",
-               lhs.exp_type.as_ref().unwrap().as_roland_type_info(interner)
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               expr_location.line, expr_location.col
-            )
-            .unwrap();
-            ExpressionType::Value(ValueType::CompileError)
+               &[]
+            };
          }
+         lhs_type
       }
       Expression::ArrayLiteral(elems) => {
          for elem in elems.iter_mut() {

@@ -1,6 +1,6 @@
 Encountered field access on type bool; only structs and arrays have fields
 ↳ line 20, column 12
-Field `foo` is not a struct type and therefore doesn't have field `baz`
+Encountered field access on type u8; only structs and arrays have fields
 ↳ line 22, column 12
 Struct `X` does not have a field `baz`
 ↳ line 24, column 12

@@ -135,7 +135,7 @@ impl<'a> PrettyWasmWriter {
 
    fn emit_data(&mut self, mem_index: u32, offset: u32, literal: &str) {
       self.emit_spaces();
-      write!(&mut self.out, "(data {} (i32.const {}) \"", mem_index, offset).unwrap();
+      write!(self.out, "(data {} (i32.const {}) \"", mem_index, offset).unwrap();
       for byte in literal.as_bytes() {
          match byte {
             b'\\' => write!(self.out, "\\").unwrap(),
@@ -152,27 +152,27 @@ impl<'a> PrettyWasmWriter {
 
    fn emit_get_local(&mut self, local_index: u32) {
       self.emit_spaces();
-      writeln!(&mut self.out, "local.get {}", local_index).unwrap();
+      writeln!(self.out, "local.get {}", local_index).unwrap();
    }
 
    fn emit_set_global(&mut self, global_name: &str) {
       self.emit_spaces();
-      writeln!(&mut self.out, "global.set ${}", global_name).unwrap();
+      writeln!(self.out, "global.set ${}", global_name).unwrap();
    }
 
    fn emit_get_global(&mut self, global_name: &str) {
       self.emit_spaces();
-      writeln!(&mut self.out, "global.get ${}", global_name).unwrap();
+      writeln!(self.out, "global.get ${}", global_name).unwrap();
    }
 
    fn emit_call(&mut self, func_name: StrId, interner: &Interner) {
       self.emit_spaces();
-      writeln!(&mut self.out, "call ${}", interner.lookup(func_name)).unwrap();
+      writeln!(self.out, "call ${}", interner.lookup(func_name)).unwrap();
    }
 
    fn emit_const_i32(&mut self, value: u32) {
       self.emit_spaces();
-      writeln!(&mut self.out, "i32.const {}", value).unwrap();
+      writeln!(self.out, "i32.const {}", value).unwrap();
    }
 
    fn emit_const_add_i32(&mut self, value: u32) {
@@ -554,7 +554,7 @@ pub fn emit_wasm(
 
       generation_context.out.emit_spaces();
       write!(
-         &mut generation_context.out.out,
+         generation_context.out.out,
          "(data 0 (i32.const {}) \"",
          static_address
       )
