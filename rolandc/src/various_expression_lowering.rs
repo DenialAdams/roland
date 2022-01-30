@@ -1,7 +1,7 @@
 use crate::interner::{Interner, StrId};
 use crate::parse::{Expression, ExpressionId, ExpressionPool, Program};
 use crate::size_info::SizeInfo;
-use crate::type_data::{ValueType, ExpressionType, USIZE_TYPE};
+use crate::type_data::{ValueType, ExpressionType};
 use crate::typed_index_vec::Handle;
 use std::collections::HashMap;
 
