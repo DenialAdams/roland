@@ -4,7 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::interner::StrId;
 use crate::lex::SourceInfo;
-use crate::parse::{ExpressionPool, ExpressionId};
+use crate::parse::{ExpressionId, ExpressionPool};
 use crate::type_data::ExpressionType;
 use crate::Target;
 

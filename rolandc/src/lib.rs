@@ -1,5 +1,4 @@
 mod add_virtual_variables;
-mod various_expression_lowering;
 mod constant_folding;
 mod html_debug;
 mod interner;
@@ -9,6 +8,7 @@ mod semantic_analysis;
 mod size_info;
 mod type_data;
 mod typed_index_vec;
+mod various_expression_lowering;
 mod wasm;
 
 use interner::StrId;

@@ -112,7 +112,7 @@ fn main() -> Result<(), &'static str> {
                }
                TestFailureReason::FailedToRunExecutable => {
                   writeln!(
-                  out_handle,
+                     out_handle,
                      "Compilation seemingly succeeded, but the executable failed to run. Is wasmtime installed?"
                   )
                   .unwrap();

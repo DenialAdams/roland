@@ -553,12 +553,7 @@ pub fn emit_wasm(
          .unwrap();
 
       generation_context.out.emit_spaces();
-      write!(
-         generation_context.out.out,
-         "(data 0 (i32.const {}) \"",
-         static_address
-      )
-      .unwrap();
+      write!(generation_context.out.out, "(data 0 (i32.const {}) \"", static_address).unwrap();
       emit_literal_bytes(p_static.value.unwrap(), &mut generation_context, interner);
       writeln!(generation_context.out.out, "\")").unwrap();
    }
@@ -885,13 +880,9 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             do_emit_and_load_lval(*end, generation_context, interner);
             store(start_expr.exp_type.as_ref().unwrap(), generation_context, interner);
          }
-         generation_context
-            .out
-            .emit_block_start("b", 0);
+         generation_context.out.emit_block_start("b", 0);
          generation_context.out.emit_loop_start(0);
-         generation_context
-            .out
-            .emit_block_start("bi", 0);
+         generation_context.out.emit_block_start("bi", 0);
          // Check and break if needed
          {
             get_stack_address_of_local(var.identifier, generation_context);
@@ -909,12 +900,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             // then
             generation_context.out.emit_then_start();
             generation_context.out.emit_spaces();
-            writeln!(
-               generation_context.out.out,
-               "br $b_{}",
-               0,
-            )
-            .unwrap();
+            writeln!(generation_context.out.out, "br $b_{}", 0,).unwrap();
             generation_context.out.close();
             // finish if
             generation_context.out.close();
@@ -936,54 +922,30 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             store(start_expr.exp_type.as_ref().unwrap(), generation_context, interner);
          }
          generation_context.out.emit_spaces();
-         writeln!(
-            generation_context.out.out,
-            "br $l_{}",
-            0
-         )
-         .unwrap();
+         writeln!(generation_context.out.out, "br $l_{}", 0).unwrap();
          generation_context.out.emit_end();
          generation_context.out.emit_end();
       }
       Statement::Loop(bn) => {
-         generation_context
-            .out
-            .emit_block_start("b", 0);
+         generation_context.out.emit_block_start("b", 0);
          generation_context.out.emit_loop_start(0);
-         generation_context
-            .out
-            .emit_block_start("bi", 0);
+         generation_context.out.emit_block_start("bi", 0);
          for statement in &bn.statements {
             emit_statement(statement, generation_context, interner);
          }
          generation_context.out.emit_end(); // end block bi
          generation_context.out.emit_spaces();
-         writeln!(
-            generation_context.out.out,
-            "br $l_{}",
-            0
-         )
-         .unwrap();
+         writeln!(generation_context.out.out, "br $l_{}", 0).unwrap();
          generation_context.out.emit_end(); // end loop
          generation_context.out.emit_end(); // end block b
       }
       Statement::Break => {
          generation_context.out.emit_spaces();
-         writeln!(
-            generation_context.out.out,
-            "br $b_{}",
-            0
-         )
-         .unwrap();
+         writeln!(generation_context.out.out, "br $b_{}", 0).unwrap();
       }
       Statement::Continue => {
          generation_context.out.emit_spaces();
-         writeln!(
-            generation_context.out.out,
-            "br $bi_{}",
-            0
-         )
-         .unwrap();
+         writeln!(generation_context.out.out, "br $bi_{}", 0).unwrap();
       }
       Statement::Expression(en) => {
          do_emit(*en, generation_context, interner);
@@ -1385,7 +1347,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          let suffix = if source_is_signed { "s" } else { "u" };
 
          match target_type {
-            ExpressionType::Value(ValueType::Int(x)) if x.width == IntWidth::Eight && source_width.as_num_bytes() <= 4 => {
+            ExpressionType::Value(ValueType::Int(x))
+               if x.width == IntWidth::Eight && source_width.as_num_bytes() <= 4 =>
+            {
                generation_context.out.emit_spaces();
                writeln!(generation_context.out.out, "i64.extend_i32_{}", suffix).unwrap();
             }
@@ -1451,11 +1415,12 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                e.exp_type.as_ref().unwrap(),
                generation_context.enum_info,
                generation_context.struct_size_info,
-            ) > 4 && sizeof_type_wasm(
-               target_type,
-               generation_context.enum_info,
-               generation_context.struct_size_info,
-            ) <= 4
+            ) > 4
+               && sizeof_type_wasm(
+                  target_type,
+                  generation_context.enum_info,
+                  generation_context.struct_size_info,
+               ) <= 4
             {
                generation_context.out.emit_constant_instruction("i32.wrap_i64");
             }
