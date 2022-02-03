@@ -1376,16 +1376,16 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
 
          let e = &generation_context.expressions[*e];
 
-         let source_is_signed = match e.exp_type.as_ref().unwrap() {
-            ExpressionType::Value(ValueType::Int(x)) => x.signed,
-            ExpressionType::Value(ValueType::Bool) => false,
+         let (source_width, source_is_signed) = match e.exp_type.as_ref().unwrap() {
+            ExpressionType::Value(ValueType::Int(x)) => (x.width, x.signed),
+            ExpressionType::Value(ValueType::Bool) => (IntWidth::One, false),
             _ => unreachable!(),
          };
 
          let suffix = if source_is_signed { "s" } else { "u" };
 
          match target_type {
-            ExpressionType::Value(ValueType::Int(x)) if x.width == IntWidth::Eight => {
+            ExpressionType::Value(ValueType::Int(x)) if x.width == IntWidth::Eight && source_width.as_num_bytes() <= 4 => {
                generation_context.out.emit_spaces();
                writeln!(generation_context.out.out, "i64.extend_i32_{}", suffix).unwrap();
             }
@@ -1444,16 +1444,18 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Int(_)))
             && matches!(target_type, ExpressionType::Value(ValueType::Int(_)))
          {
-            // int -> smaller int
             // 8bytes -> (4, 2, 1) bytes is a wrap
             // anything else is a nop
 
-            // this is taking advantage of the fact that truncating is guaranteed to go downwards
             if sizeof_type_wasm(
                e.exp_type.as_ref().unwrap(),
                generation_context.enum_info,
                generation_context.struct_size_info,
-            ) > 4
+            ) > 4 && sizeof_type_wasm(
+               target_type,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            ) <= 4
             {
                generation_context.out.emit_constant_instruction("i32.wrap_i64");
             }

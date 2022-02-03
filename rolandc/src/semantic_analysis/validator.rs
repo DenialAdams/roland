@@ -1395,6 +1395,12 @@ fn get_type<W: Write>(
             ExpressionType::Value(ValueType::CompileError)
          } else {
             let valid_cast = match (e_type, &target_type) {
+               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) if x.width == IntWidth::Pointer => {
+                  IntWidth::Pointer.as_num_bytes() <= y.width.as_num_bytes()
+               },
+               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) if y.width == IntWidth::Pointer => {
+                  x.width.as_num_bytes() <= IntWidth::Pointer.as_num_bytes()
+               },
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
                   x.width.as_num_bytes() < y.width.as_num_bytes()
                }
@@ -1559,6 +1565,12 @@ fn get_type<W: Write>(
             ExpressionType::Value(ValueType::CompileError)
          } else {
             let valid_cast = match (e_type, &target_type) {
+               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) if x.width == IntWidth::Pointer => {
+                  IntWidth::Pointer.as_num_bytes() >= y.width.as_num_bytes()
+               },
+               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) if y.width == IntWidth::Pointer => {
+                  x.width.as_num_bytes() >= IntWidth::Pointer.as_num_bytes()
+               },
                (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
                   x.width.as_num_bytes() > y.width.as_num_bytes()
                }

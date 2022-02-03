@@ -1,0 +1,13 @@
+proc main() {
+   {
+      let x: usize = 123;
+      let y = x extend u32;
+      let z = x truncate u32;
+   }
+   {
+      let x: isize = 123;
+      let y = x extend i32;
+      let z = x truncate i32;
+   }
+   print("ok");
+}
