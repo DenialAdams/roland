@@ -540,6 +540,8 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
             if c.is_ascii_alphanumeric() {
                str_buf.push(c);
                let _ = chars.next().unwrap();
+            } else if c == '_' {
+               let _ = chars.next().unwrap();
             } else if c == '.' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'.') {
