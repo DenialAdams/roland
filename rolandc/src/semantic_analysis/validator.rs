@@ -2,7 +2,7 @@ use super::type_inference::try_set_inferred_type;
 use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
 use crate::constant_folding::{try_fold_and_replace_expr, FoldingContext};
 use crate::interner::{Interner, StrId};
-use crate::lex::SourceInfo;
+use crate::lex::{SourceInfo, emit_source_info_with_description, emit_source_info};
 use crate::parse::{
    BinOp, BlockNode, Expression, ExpressionId, ExpressionNode, ExpressionPool, IdentifierNode, Program, Statement,
    StatementNode, UnOp,
@@ -190,7 +190,7 @@ pub fn type_and_check_validity<W: Write>(
          named_parameters: HashMap::new(),
          type_parameters: 1,
          ret_type: ExpressionType::Value(USIZE_TYPE),
-         procedure_begin_location: SourceInfo { line: 0, col: 0 },
+         procedure_begin_location: SourceInfo { line: 0, col: 0, file: None, },
          is_external: true,
       },
    );
@@ -232,18 +232,8 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(a_enum.name)
          )
          .unwrap();
-         writeln!(
-            err_stream,
-            "↳ first enum defined @ line {}, column {}",
-            old_enum.enum_begin_location.line, old_enum.enum_begin_location.col
-         )
-         .unwrap();
-         writeln!(
-            err_stream,
-            "↳ second enum defined @ line {}, column {}",
-            a_enum.begin_location.line, a_enum.begin_location.col
-         )
-         .unwrap();
+         emit_source_info_with_description(err_stream, old_enum.enum_begin_location, "first enum defined", interner);
+         emit_source_info_with_description(err_stream, a_enum.begin_location, "second enum defined", interner);
       }
    }
 
@@ -259,12 +249,7 @@ pub fn type_and_check_validity<W: Write>(
                interner.lookup(field.0),
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ struct defined @ line {}, column {}",
-               a_struct.begin_location.line, a_struct.begin_location.col
-            )
-            .unwrap();
+            emit_source_info_with_description(err_stream, a_struct.begin_location, "struct defined", interner);
          }
       }
 
@@ -282,18 +267,8 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(a_struct.name)
          )
          .unwrap();
-         writeln!(
-            err_stream,
-            "↳ first struct defined @ line {}, column {}",
-            old_struct.struct_begin_location.line, old_struct.struct_begin_location.col
-         )
-         .unwrap();
-         writeln!(
-            err_stream,
-            "↳ second struct defined @ line {}, column {}",
-            a_struct.begin_location.line, a_struct.begin_location.col
-         )
-         .unwrap();
+         emit_source_info_with_description(err_stream, old_struct.struct_begin_location, "first struct defined", interner);
+         emit_source_info_with_description(err_stream, a_struct.begin_location, "second struct defined", interner);
       }
    }
 
@@ -309,18 +284,8 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(*struct_i.0)
          )
          .unwrap();
-         writeln!(
-            err_stream,
-            "↳ enum defined @ line {}, column {}",
-            enum_i.enum_begin_location.line, enum_i.enum_begin_location.col
-         )
-         .unwrap();
-         writeln!(
-            err_stream,
-            "↳ struct defined @ line {}, column {}",
-            struct_i.1.struct_begin_location.line, struct_i.1.struct_begin_location.col
-         )
-         .unwrap();
+         emit_source_info_with_description(err_stream, enum_i.enum_begin_location, "enum defined", interner);
+         emit_source_info_with_description(err_stream, struct_i.1.struct_begin_location, "struct defined", interner);
       }
 
       for (field, e_type) in struct_i.1.field_types.iter_mut() {
@@ -338,12 +303,7 @@ pub fn type_and_check_validity<W: Write>(
             etype_str,
          )
          .unwrap();
-         writeln!(
-            err_stream,
-            "↳ struct defined @ line {}, column {}",
-            struct_i.1.struct_begin_location.line, struct_i.1.struct_begin_location.col
-         )
-         .unwrap();
+         emit_source_info_with_description(err_stream, struct_i.1.struct_begin_location, "struct defined", interner);
       }
    }
 
@@ -361,12 +321,7 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(*struct_i.0),
          )
          .unwrap();
-         writeln!(
-            err_stream,
-            "↳ struct defined @ line {}, column {}",
-            struct_i.1.struct_begin_location.line, struct_i.1.struct_begin_location.col
-         )
-         .unwrap();
+         emit_source_info_with_description(err_stream, struct_i.1.struct_begin_location, "struct defined", interner);
       }
    }
 
@@ -384,7 +339,7 @@ pub fn type_and_check_validity<W: Write>(
             static_type_str,
          )
          .unwrap();
-         writeln!(err_stream, "↳ const defined @ line {}, column {}", si.line, si.col).unwrap();
+         emit_source_info_with_description(err_stream, *si, "const defined", interner);
       }
 
       if let Some(old_value) = static_info.insert(
@@ -402,18 +357,8 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(const_node.name.identifier),
          )
          .unwrap();
-         writeln!(
-            err_stream,
-            "↳ first static/const defined @ line {}, column {}",
-            old_value.begin_location.line, old_value.begin_location.col
-         )
-         .unwrap();
-         writeln!(
-            err_stream,
-            "↳ second static/const defined @ line {}, column {}",
-            const_node.begin_location.line, const_node.begin_location.col
-         )
-         .unwrap();
+         emit_source_info_with_description(err_stream, old_value.begin_location, "first static/const defined", interner);
+         emit_source_info_with_description(err_stream, const_node.begin_location, "second static/const defined", interner);
       }
    }
 
@@ -431,7 +376,7 @@ pub fn type_and_check_validity<W: Write>(
             static_type_str,
          )
          .unwrap();
-         writeln!(err_stream, "↳ static defined @ line {}, column {}", si.line, si.col).unwrap();
+         emit_source_info_with_description(err_stream, *si, "static defined", interner);
       }
 
       if let Some(old_value) = static_info.insert(
@@ -449,18 +394,8 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(static_node.name.identifier),
          )
          .unwrap();
-         writeln!(
-            err_stream,
-            "↳ first static/const defined @ line {}, column {}",
-            old_value.begin_location.line, old_value.begin_location.col
-         )
-         .unwrap();
-         writeln!(
-            err_stream,
-            "↳ second static/const defined @ line {}, column {}",
-            static_node.static_begin_location.line, static_node.static_begin_location.col
-         )
-         .unwrap();
+         emit_source_info_with_description(err_stream, old_value.begin_location, "first static/const defined", interner);
+         emit_source_info_with_description(err_stream, static_node.static_begin_location, "second static/const defined", interner);
       }
    }
 
@@ -490,12 +425,7 @@ pub fn type_and_check_validity<W: Write>(
                interner.lookup(param.name),
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ procedure declared @ line {}, column {}",
-               source_location.line, source_location.col
-            )
-            .unwrap();
+            emit_source_info_with_description(err_stream, source_location, "procedure declared", interner);
          }
 
          if param.named && first_named_param.is_none() {
@@ -510,12 +440,7 @@ pub fn type_and_check_validity<W: Write>(
                   interner.lookup(definition.name),
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ procedure declared @ line {}, column {}",
-                  source_location.line, source_location.col
-               )
-               .unwrap();
+               emit_source_info_with_description(err_stream, source_location, "procedure declared", interner);
             }
          }
 
@@ -528,12 +453,7 @@ pub fn type_and_check_validity<W: Write>(
                interner.lookup(definition.name),
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ procedure declared @ line {}, column {}",
-               source_location.line, source_location.col
-            )
-            .unwrap();
+            emit_source_info_with_description(err_stream, source_location, "procedure declared", interner);
          }
       }
 
@@ -557,12 +477,7 @@ pub fn type_and_check_validity<W: Write>(
                etype_str,
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ procedure declared @ line {}, column {}",
-               source_location.line, source_location.col,
-            )
-            .unwrap();
+            emit_source_info_with_description(err_stream, source_location, "procedure declared", interner);
          }
       }
 
@@ -576,12 +491,7 @@ pub fn type_and_check_validity<W: Write>(
             etype_str,
          )
          .unwrap();
-         writeln!(
-            err_stream,
-            "↳ procedure declared @ line {}, column {}",
-            source_location.line, source_location.col,
-         )
-         .unwrap();
+         emit_source_info_with_description(err_stream, source_location, "procedure declared", interner);
       }
 
       if let Some(old_procedure) = procedure_info.insert(
@@ -608,18 +518,8 @@ pub fn type_and_check_validity<W: Write>(
             procedure_name_str
          )
          .unwrap();
-         writeln!(
-            err_stream,
-            "↳ first procedure declared @ line {}, column {}",
-            old_procedure.procedure_begin_location.line, old_procedure.procedure_begin_location.col
-         )
-         .unwrap();
-         writeln!(
-            err_stream,
-            "↳ second procedure declared @ line {}, column {}",
-            source_location.line, source_location.col
-         )
-         .unwrap();
+         emit_source_info_with_description(err_stream, old_procedure.procedure_begin_location, "first procedure declared", interner);
+         emit_source_info_with_description(err_stream, source_location, "second procedure declared", interner);
       }
    }
 
@@ -670,21 +570,13 @@ pub fn type_and_check_validity<W: Write>(
             "`{}` is a special procedure for this target ({}) and is not allowed to return a value or take arguments",
             interner.lookup(special_proc_name),
             validation_context.target,
-         )
-         .unwrap();
+         ).unwrap();
          let si = validation_context
             .procedure_info
             .get(&special_proc_name)
             .unwrap()
             .procedure_begin_location;
-         writeln!(
-            err_stream,
-            "↳ {} defined @ line {}, column {}",
-            interner.lookup(special_proc_name),
-            si.line,
-            si.col
-         )
-         .unwrap();
+         emit_source_info_with_description(err_stream, si, "defined", interner);
       }
    }
 
@@ -722,18 +614,8 @@ pub fn type_and_check_validity<W: Write>(
                actual_type_str,
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ const @ line {}, column {}",
-               p_const.begin_location.line, p_const.begin_location.col
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ expression @ line {}, column {}",
-               p_const_expr.expression_begin_location.line, p_const_expr.expression_begin_location.col
-            )
-            .unwrap();
+            emit_source_info_with_description(err_stream, p_const.begin_location, "const", interner);
+            emit_source_info_with_description(err_stream, p_const_expr.expression_begin_location, "expression", interner);
          }
       }
 
@@ -744,6 +626,7 @@ pub fn type_and_check_validity<W: Write>(
             error_count: 0,
             expressions: validation_context.expressions,
          },
+         interner,
       );
       let p_const_expr = &validation_context.expressions[p_const.value];
 
@@ -755,18 +638,8 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(p_const.name.identifier),
          )
          .unwrap();
-         writeln!(
-            err_stream,
-            "↳ const @ line {}, column {}",
-            p_const.begin_location.line, p_const.begin_location.col
-         )
-         .unwrap();
-         writeln!(
-            err_stream,
-            "↳ expression @ line {}, column {}",
-            p_const_expr.expression_begin_location.line, p_const_expr.expression_begin_location.col
-         )
-         .unwrap();
+         emit_source_info_with_description(err_stream, p_const.begin_location, "const", interner);
+         emit_source_info_with_description(err_stream, p_const_expr.expression_begin_location, "expression", interner);
       }
    }
 
@@ -796,18 +669,8 @@ pub fn type_and_check_validity<W: Write>(
             actual_type_str,
          )
          .unwrap();
-         writeln!(
-            err_stream,
-            "↳ static @ line {}, column {}",
-            p_static.static_begin_location.line, p_static.static_begin_location.col
-         )
-         .unwrap();
-         writeln!(
-            err_stream,
-            "↳ expression @ line {}, column {}",
-            p_static_expr.expression_begin_location.line, p_static_expr.expression_begin_location.col
-         )
-         .unwrap();
+         emit_source_info_with_description(err_stream, p_static.static_begin_location, "static", interner);
+         emit_source_info_with_description(err_stream, p_static_expr.expression_begin_location, "expression", interner);
       }
 
       if let Some(v) = p_static.value.as_mut() {
@@ -818,6 +681,7 @@ pub fn type_and_check_validity<W: Write>(
                error_count: 0,
                expressions: validation_context.expressions,
             },
+            interner
          );
          let v = &validation_context.expressions[*v];
          if !crate::constant_folding::is_const(&v.expression, validation_context.expressions) {
@@ -828,18 +692,8 @@ pub fn type_and_check_validity<W: Write>(
                interner.lookup(p_static.name.identifier),
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ const @ line {}, column {}",
-               p_static.static_begin_location.line, p_static.static_begin_location.col
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ expression @ line {}, column {}",
-               v.expression_begin_location.line, v.expression_begin_location.col
-            )
-            .unwrap();
+            emit_source_info_with_description(err_stream, p_static.static_begin_location, "static", interner);
+            emit_source_info_with_description(err_stream, v.expression_begin_location, "expression", interner);
          }
       }
    }
@@ -885,19 +739,9 @@ pub fn type_and_check_validity<W: Write>(
                x_str,
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ procedure defined @ line {}, column {}",
-               procedure.procedure_begin_location.line, procedure.procedure_begin_location.col
-            )
-            .unwrap();
+            emit_source_info_with_description(err_stream, procedure.procedure_begin_location, "procedure defined", interner);
             if let Some(fs) = procedure.block.statements.last() {
-               writeln!(
-                  err_stream,
-                  "↳ actual final statement @ line {}, column {}",
-                  fs.statement_begin_location.line, fs.statement_begin_location.col
-               )
-               .unwrap();
+               emit_source_info_with_description(err_stream, fs.statement_begin_location, "actual final statement", interner);
             }
          }
       }
@@ -913,7 +757,7 @@ pub fn type_and_check_validity<W: Write>(
       .unwrap();
       for expr_id in validation_context.unknown_ints.iter() {
          let loc = validation_context.expressions[*expr_id].expression_begin_location;
-         writeln!(err_stream, "↳ line {}, column {}", loc.line, loc.col,).unwrap()
+         emit_source_info(err_stream, loc, interner);
       }
    }
 
@@ -927,7 +771,7 @@ pub fn type_and_check_validity<W: Write>(
       .unwrap();
       for expr_id in validation_context.unknown_ints.iter() {
          let loc = validation_context.expressions[*expr_id].expression_begin_location;
-         writeln!(err_stream, "↳ line {}, column {}", loc.line, loc.col,).unwrap()
+         emit_source_info(err_stream, loc, interner);
       }
    }
 
@@ -979,18 +823,8 @@ fn type_statement<W: Write>(
                rhs_type.as_roland_type_info(interner),
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ left hand side @ line {}, column {}",
-               len.expression_begin_location.line, len.expression_begin_location.col
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ right hand side @ line {}, column {}",
-               en.expression_begin_location.line, en.expression_begin_location.col
-            )
-            .unwrap();
+            emit_source_info_with_description(err_stream, len.expression_begin_location, "left hand side", interner);
+            emit_source_info_with_description(err_stream, en.expression_begin_location, "right hand side", interner);
          } else if !len
             .expression
             .is_lvalue(validation_context.expressions, validation_context.static_info)
@@ -1005,24 +839,14 @@ fn type_statement<W: Write>(
                   "Left hand side of assignment is a constant, which does not have a memory location and can't be reassigned"
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ line {}, column {}",
-                  len.expression_begin_location.line, len.expression_begin_location.col
-               )
-               .unwrap();
+               emit_source_info(err_stream, len.expression_begin_location, interner);
             } else {
                writeln!(
                   err_stream,
                   "Left hand side of assignment is not a valid memory location; i.e. a variable, field, or array index"
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ line {}, column {}",
-                  len.expression_begin_location.line, len.expression_begin_location.col
-               )
-               .unwrap();
+               emit_source_info(err_stream, len.expression_begin_location, interner);
             }
          }
       }
@@ -1033,24 +857,14 @@ fn type_statement<W: Write>(
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
             writeln!(err_stream, "Continue statement can only be used in a loop").unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               statement.statement_begin_location.line, statement.statement_begin_location.col
-            )
-            .unwrap();
+            emit_source_info(err_stream, statement.statement_begin_location, interner);
          }
       }
       Statement::Break => {
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
             writeln!(err_stream, "Break statement can only be used in a loop").unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               statement.statement_begin_location.line, statement.statement_begin_location.col
-            )
-            .unwrap();
+            emit_source_info(err_stream, statement.statement_begin_location, interner);
          }
       }
       Statement::For(var, start, end, bn, _) => {
@@ -1088,25 +902,13 @@ fn type_statement<W: Write>(
                validation_context.error_count += 1;
                writeln!(
                   err_stream,
-                  "Beginning and end of range must be integer types of the same kind"
+                  "Start and end of range must be integer types of the same kind; got types `{}` and `{}`",
+                  start_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
+                  end_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ Start of range expression @ line {}, column {} is of type `{}`",
-                  start_expr.expression_begin_location.line,
-                  start_expr.expression_begin_location.col,
-                  start_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner)
-               )
-               .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ End of range expression @ line {}, column {} is of type `{}`",
-                  end_expr.expression_begin_location.line,
-                  end_expr.expression_begin_location.col,
-                  end_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner)
-               )
-               .unwrap();
+               emit_source_info_with_description(err_stream, start_expr.expression_begin_location, "start of range", interner);
+               emit_source_info_with_description(err_stream, end_expr.expression_begin_location, "end of range", interner);
                ExpressionType::Value(ValueType::CompileError)
             }
          };
@@ -1148,16 +950,11 @@ fn type_statement<W: Write>(
             validation_context.error_count += 1;
             writeln!(
                err_stream,
-               "Value of if expression must be a bool; instead got {}",
+               "Value of if expression must be a bool; got {}",
                en.exp_type.as_ref().unwrap().as_roland_type_info(interner)
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               en.expression_begin_location.line, en.expression_begin_location.col
-            )
-            .unwrap();
+            emit_source_info(err_stream, en.expression_begin_location, interner);
          }
       }
       Statement::Return(en) => {
@@ -1186,12 +983,7 @@ fn type_statement<W: Write>(
                en.exp_type.as_ref().unwrap().as_roland_type_info(interner)
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               en.expression_begin_location.line, en.expression_begin_location.col
-            )
-            .unwrap();
+            emit_source_info(err_stream, en.expression_begin_location, interner);
          }
       }
       Statement::VariableDeclaration(id, en, dt) => {
@@ -1217,18 +1009,8 @@ fn type_statement<W: Write>(
                en.exp_type.as_ref().unwrap().as_roland_type_info(interner)
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ declaration @ line {}, column {}",
-               statement.statement_begin_location.line, statement.statement_begin_location.col
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ expression @ line {}, column {}",
-               en.expression_begin_location.line, en.expression_begin_location.col
-            )
-            .unwrap();
+            emit_source_info_with_description(err_stream, statement.statement_begin_location, "declaration", interner);
+            emit_source_info_with_description(err_stream, en.expression_begin_location, "expression", interner);
             ExpressionType::Value(ValueType::CompileError)
          } else if dt
             .as_ref()
@@ -1244,12 +1026,7 @@ fn type_statement<W: Write>(
                dt_str,
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ declaration @ line {}, column {}",
-               statement.statement_begin_location.line, statement.statement_begin_location.col
-            )
-            .unwrap();
+            emit_source_info_with_description(err_stream, statement.statement_begin_location, "declaration", interner);
             ExpressionType::Value(ValueType::CompileError)
          } else {
             en.exp_type.clone().unwrap()
@@ -1285,12 +1062,7 @@ fn declare_variable<W: Write>(
          interner.lookup(id.identifier)
       )
       .unwrap();
-      writeln!(
-         err_stream,
-         "↳ line {}, column {}",
-         id.begin_location.line, id.begin_location.col
-      )
-      .unwrap();
+      emit_source_info_with_description(err_stream, id.begin_location, "declaration", interner);
    } else {
       validation_context
          .variable_types
@@ -1374,12 +1146,7 @@ fn get_type<W: Write>(
                target_type.as_roland_type_info(interner),
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               expr_location.line, expr_location.col,
-            )
-            .unwrap();
+            emit_source_info(err_stream, expr_location, interner);
 
             ExpressionType::Value(ValueType::CompileError)
          } else if !e_type.is_concrete_type() {
@@ -1416,18 +1183,8 @@ fn get_type<W: Write>(
                   target_type.as_roland_type_info(interner),
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ extend @ line {}, column {}",
-                  expr_location.line, expr_location.col
-               )
-               .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ operand @ line {}, column {}",
-                  e.expression_begin_location.line, e.expression_begin_location.col
-               )
-               .unwrap();
+               emit_source_info_with_description(err_stream, expr_location, "extend", interner);
+               emit_source_info_with_description(err_stream, e.expression_begin_location, "operand", interner);
                ExpressionType::Value(ValueType::CompileError)
             }
          }
@@ -1462,12 +1219,7 @@ fn get_type<W: Write>(
                target_type.as_roland_type_info(interner),
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               expr_location.line, expr_location.col,
-            )
-            .unwrap();
+            emit_source_info(err_stream, expr_location, interner);
 
             ExpressionType::Value(ValueType::CompileError)
          } else if !e_type.is_concrete_type() {
@@ -1509,18 +1261,8 @@ fn get_type<W: Write>(
                   target_type.as_roland_type_info(interner),
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ transmute @ line {}, column {}",
-                  expr_location.line, expr_location.col
-               )
-               .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ operand @ line {}, column {}",
-                  e.expression_begin_location.line, e.expression_begin_location.col
-               )
-               .unwrap();
+               emit_source_info_with_description(err_stream, expr_location, "transmute", interner);
+               emit_source_info_with_description(err_stream, e.expression_begin_location, "operand", interner);
                ExpressionType::Value(ValueType::CompileError)
             }
          }
@@ -1545,12 +1287,7 @@ fn get_type<W: Write>(
                target_type.as_roland_type_info(interner),
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               expr_location.line, expr_location.col,
-            )
-            .unwrap();
+            emit_source_info(err_stream, expr_location, interner);
 
             ExpressionType::Value(ValueType::CompileError)
          } else if !e_type.is_concrete_type() {
@@ -1588,18 +1325,8 @@ fn get_type<W: Write>(
                   target_type.as_roland_type_info(interner),
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ truncate @ line {}, column {}",
-                  expr_location.line, expr_location.col
-               )
-               .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ operand @ line {}, column {}",
-                  e.expression_begin_location.line, e.expression_begin_location.col
-               )
-               .unwrap();
+               emit_source_info_with_description(err_stream, expr_location, "truncate", interner);
+               emit_source_info_with_description(err_stream, e.expression_begin_location, "operand", interner);
                ExpressionType::Value(ValueType::CompileError)
             }
          }
@@ -1664,12 +1391,7 @@ fn get_type<W: Write>(
                lhs_type.as_roland_type_info(interner)
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               lhs_expr.expression_begin_location.line, lhs_expr.expression_begin_location.col
-            )
-            .unwrap();
+            emit_source_info(err_stream, lhs_expr.expression_begin_location, interner);
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_arg_types, rhs_type) {
             validation_context.error_count += 1;
@@ -1681,12 +1403,7 @@ fn get_type<W: Write>(
                rhs_type.as_roland_type_info(interner)
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               rhs_expr.expression_begin_location.line, rhs_expr.expression_begin_location.col
-            )
-            .unwrap();
+            emit_source_info(err_stream, rhs_expr.expression_begin_location, interner);
             ExpressionType::Value(ValueType::CompileError)
          } else if lhs_type != rhs_type {
             validation_context.error_count += 1;
@@ -1698,18 +1415,8 @@ fn get_type<W: Write>(
                rhs_type.as_roland_type_info(interner)
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ left hand side @ line {}, column {}",
-               lhs_expr.expression_begin_location.line, lhs_expr.expression_begin_location.col
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ right hand side @ line {}, column {}",
-               rhs_expr.expression_begin_location.line, rhs_expr.expression_begin_location.col
-            )
-            .unwrap();
+            emit_source_info_with_description(err_stream, lhs_expr.expression_begin_location, "lef hand side", interner);
+            emit_source_info_with_description(err_stream, rhs_expr.expression_begin_location, "right hand side", interner);
             ExpressionType::Value(ValueType::CompileError)
          } else {
             match operator {
@@ -1774,12 +1481,7 @@ fn get_type<W: Write>(
                e.exp_type.as_ref().unwrap().as_roland_type_info(interner)
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               e.expression_begin_location.line, e.expression_begin_location.col
-            )
-            .unwrap();
+            emit_source_info(err_stream, e.expression_begin_location, interner);
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf
             && !e
@@ -1793,24 +1495,14 @@ fn get_type<W: Write>(
                   "Attempting to take a pointer to a const, which can't be done as they don't reside in memory"
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ line {}, column {}",
-                  expr_location.line, expr_location.col
-               )
-               .unwrap();
+               emit_source_info(err_stream, expr_location, interner);
             } else {
                writeln!(
                   err_stream,
                   "A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter"
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ line {}, column {}",
-                  expr_location.line, expr_location.col
-               )
-               .unwrap();
+               emit_source_info(err_stream, expr_location, interner);
             }
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf {
@@ -1828,12 +1520,7 @@ fn get_type<W: Write>(
                      interner.lookup(var),
                   )
                   .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ line {}, column {}",
-                     e.expression_begin_location.line, e.expression_begin_location.col
-                  )
-                  .unwrap();
+                  emit_source_info(err_stream, expr_location, interner);
                }
             }
             node_type
@@ -1853,12 +1540,7 @@ fn get_type<W: Write>(
             None => {
                validation_context.error_count += 1;
                writeln!(err_stream, "Encountered undefined variable `{}`", interner.lookup(*id)).unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ line {}, column {}",
-                  expr_location.line, expr_location.col
-               )
-               .unwrap();
+               emit_source_info(err_stream, expr_location, interner);
                ExpressionType::Value(ValueType::CompileError)
             }
          }
@@ -1889,12 +1571,7 @@ fn get_type<W: Write>(
                   interner.lookup(*proc_name),
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ call @ line {}, column {}",
-                  expr_location.line, expr_location.col
-               )
-               .unwrap();
+               emit_source_info_with_description(err_stream, expr_location, "call", interner);
             }
          }
 
@@ -1912,6 +1589,7 @@ fn get_type<W: Write>(
                expr_location.line, expr_location.col
             )
             .unwrap();
+            emit_source_info(err_stream, expr_location, interner);
          }
 
          match validation_context.procedure_info.get(proc_name) {
@@ -1935,12 +1613,7 @@ fn get_type<W: Write>(
                      interner.lookup(*proc_name),
                   )
                   .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ line {}, column {}",
-                     expr_location.line, expr_location.col
-                  )
-                  .unwrap();
+                  emit_source_info(err_stream, expr_location, interner);
                }
 
                if procedure_info.type_parameters != generic_args.len() {
@@ -1953,12 +1626,7 @@ fn get_type<W: Write>(
                      generic_args.len()
                   )
                   .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ line {}, column {}",
-                     expr_location.line, expr_location.col
-                  )
-                  .unwrap();
+                  emit_source_info(err_stream, expr_location, interner);
                }
 
                if args_in_order && procedure_info.parameters.len() != args.len() {
@@ -1971,12 +1639,7 @@ fn get_type<W: Write>(
                      args.len()
                   )
                   .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ line {}, column {}",
-                     expr_location.line, expr_location.col
-                  )
-                  .unwrap();
+                  emit_source_info(err_stream, expr_location, interner);
                   // We shortcircuit here, because there will likely be lots of mismatched types if an arg was forgotten
                } else if args_in_order {
                   let expected_types = procedure_info.parameters.iter();
@@ -2005,10 +1668,11 @@ fn get_type<W: Write>(
                         .unwrap();
                         writeln!(
                            err_stream,
-                           "↳ line {}, column {} (argument at position {})",
-                           expr_location.line, expr_location.col, i
+                           "↳ argument at position {}",
+                           i
                         )
                         .unwrap();
+                        emit_source_info(err_stream, expr_location, interner);
                      }
                   }
 
@@ -2024,12 +1688,7 @@ fn get_type<W: Write>(
                            interner.lookup(arg.name.unwrap()),
                         )
                         .unwrap();
-                        writeln!(
-                           err_stream,
-                           "↳ line {}, column {}",
-                           expr_location.line, expr_location.col
-                        )
-                        .unwrap();
+                        emit_source_info(err_stream, expr_location, interner);
                         continue;
                      }
 
@@ -2053,12 +1712,7 @@ fn get_type<W: Write>(
                            interner.lookup(arg.name.unwrap())
                         )
                         .unwrap();
-                        writeln!(
-                           err_stream,
-                           "↳ line {}, column {}",
-                           expr_location.line, expr_location.col
-                        )
-                        .unwrap();
+                        emit_source_info(err_stream, expr_location, interner);
                      }
                   }
                }
@@ -2073,12 +1727,7 @@ fn get_type<W: Write>(
                   interner.lookup(*proc_name),
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ line {}, column {}",
-                  expr_location.line, expr_location.col
-               )
-               .unwrap();
+               emit_source_info(err_stream, expr_location, interner);
                ExpressionType::Value(ValueType::CompileError)
             }
          }
@@ -2106,18 +1755,8 @@ fn get_type<W: Write>(
                            interner.lookup(*struct_name),
                         )
                         .unwrap();
-                        writeln!(
-                           err_stream,
-                           "↳ struct defined @ line {}, column {}",
-                           defined_struct.struct_begin_location.line, defined_struct.struct_begin_location.col
-                        )
-                        .unwrap();
-                        writeln!(
-                           err_stream,
-                           "↳ struct instantiated @ line {}, column {}",
-                           expr_location.line, expr_location.col
-                        )
-                        .unwrap();
+                        emit_source_info_with_description(err_stream, defined_struct.struct_begin_location, "struct defined", interner);
+                        emit_source_info_with_description(err_stream, expr_location, "struct instantiated", interner);
                         continue;
                      }
                   };
@@ -2132,18 +1771,8 @@ fn get_type<W: Write>(
                         interner.lookup(*struct_name),
                      )
                      .unwrap();
-                     writeln!(
-                        err_stream,
-                        "↳ struct defined @ line {}, column {}",
-                        defined_struct.struct_begin_location.line, defined_struct.struct_begin_location.col
-                     )
-                     .unwrap();
-                     writeln!(
-                        err_stream,
-                        "↳ struct instantiated @ line {}, column {}",
-                        expr_location.line, expr_location.col
-                     )
-                     .unwrap();
+                     emit_source_info_with_description(err_stream, defined_struct.struct_begin_location, "struct defined", interner);
+                     emit_source_info_with_description(err_stream, expr_location, "struct instantiated", interner);
                   }
 
                   try_set_inferred_type(defined_type, field.1, validation_context, err_stream, interner);
@@ -2165,24 +1794,9 @@ fn get_type<W: Write>(
                         defined_type_str,
                      )
                      .unwrap();
-                     writeln!(
-                        err_stream,
-                        "↳ struct defined @ line {}, column {}",
-                        defined_struct.struct_begin_location.line, defined_struct.struct_begin_location.col
-                     )
-                     .unwrap();
-                     writeln!(
-                        err_stream,
-                        "↳ struct instantiated @ line {}, column {}",
-                        expr_location.line, expr_location.col
-                     )
-                     .unwrap();
-                     writeln!(
-                        err_stream,
-                        "↳ field value @ line {}, column {}",
-                        field_expr.expression_begin_location.line, field_expr.expression_begin_location.col
-                     )
-                     .unwrap();
+                     emit_source_info_with_description(err_stream, defined_struct.struct_begin_location, "struct defined", interner);
+                     emit_source_info_with_description(err_stream, expr_location, "struct instantiated", interner);
+                     emit_source_info_with_description(err_stream, field_expr.expression_begin_location, "field_value", interner);
                   }
                }
 
@@ -2197,18 +1811,8 @@ fn get_type<W: Write>(
                      unmatched_fields_str.join(", "),
                   )
                   .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ struct defined @ line {}, column {}",
-                     defined_struct.struct_begin_location.line, defined_struct.struct_begin_location.col
-                  )
-                  .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ struct instantiated @ line {}, column {}",
-                     expr_location.line, expr_location.col
-                  )
-                  .unwrap();
+                  emit_source_info_with_description(err_stream, defined_struct.struct_begin_location, "struct defined", interner);
+                  emit_source_info_with_description(err_stream, expr_location, "struct instantiated", interner);
                }
 
                ExpressionType::Value(ValueType::Struct(*struct_name))
@@ -2221,12 +1825,7 @@ fn get_type<W: Write>(
                   interner.lookup(*struct_name)
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ line {}, column {}",
-                  expr_location.line, expr_location.col
-               )
-               .unwrap();
+               emit_source_info(err_stream, expr_location, interner);
                ExpressionType::Value(ValueType::CompileError)
             }
          }
@@ -2256,12 +1855,7 @@ fn get_type<W: Write>(
                         interner.lookup(field),
                      )
                      .unwrap();
-                     writeln!(
-                        err_stream,
-                        "↳ line {}, column {}",
-                        expr_location.line, expr_location.col
-                     )
-                     .unwrap();
+                     emit_source_info(err_stream, expr_location, interner);
                      lhs_type = ExpressionType::Value(ValueType::CompileError);
                   }
                }
@@ -2274,12 +1868,7 @@ fn get_type<W: Write>(
                         interner.lookup(*fields.first().unwrap()),
                      )
                      .unwrap();
-                     writeln!(
-                        err_stream,
-                        "↳ line {}, column {}",
-                        expr_location.line, expr_location.col
-                     )
-                     .unwrap();
+                     emit_source_info(err_stream, expr_location, interner);
                      lhs_type = ExpressionType::Value(ValueType::CompileError);
                   } else {
                      lhs_type = ExpressionType::Value(USIZE_TYPE);
@@ -2296,12 +1885,7 @@ fn get_type<W: Write>(
                      other_type.as_roland_type_info(interner)
                   )
                   .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ line {}, column {}",
-                     expr_location.line, expr_location.col
-                  )
-                  .unwrap();
+                  emit_source_info(err_stream, expr_location, interner);
                   lhs_type = ExpressionType::Value(ValueType::CompileError);
                }
             }
@@ -2332,8 +1916,8 @@ fn get_type<W: Write>(
             let last_elem_expr = &validation_context.expressions[elems[i - 1]];
             let this_elem_expr = &validation_context.expressions[elems[i]];
 
-            if !last_elem_expr.exp_type.as_ref().unwrap().is_concrete_type()
-               || this_elem_expr.exp_type.as_ref().unwrap().is_concrete_type()
+            if last_elem_expr.exp_type.as_ref().unwrap().is_error_type()
+               || this_elem_expr.exp_type.as_ref().unwrap().is_error_type()
             {
                // avoid cascading errors
                continue;
@@ -2345,30 +1929,16 @@ fn get_type<W: Write>(
                   i - 1,
                   last_elem_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
                   i,
-                  last_elem_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
+                  this_elem_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ array literal @ line {}, column {}",
-                  expr_location.line, expr_location.col
-               )
-               .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ element {} @ line {}, column {}",
-                  i - 1,
-                  last_elem_expr.expression_begin_location.line,
-                  last_elem_expr.expression_begin_location.col
-               )
-               .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ element {} @ line {}, column {}",
-                  i, this_elem_expr.expression_begin_location.line, this_elem_expr.expression_begin_location.col
-               )
-               .unwrap();
-
+               emit_source_info_with_description(err_stream, expr_location, "array literal", interner);
+               // @UnnecessaryAllocation
+               let description = format!("element {}", i - 1);
+               emit_source_info_with_description(err_stream, last_elem_expr.expression_begin_location, &description, interner);
+               // @UnnecessaryAllocation
+               let description = format!("element {}", i);
+               emit_source_info_with_description(err_stream, this_elem_expr.expression_begin_location, &description, interner);
                any_error = true;
             }
          }
@@ -2384,12 +1954,7 @@ fn get_type<W: Write>(
                std::u32::MAX,
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ array literal @ line {}, column {}",
-               expr_location.line, expr_location.col
-            )
-            .unwrap();
+            emit_source_info(err_stream, expr_location, interner);
          }
 
          if any_error {
@@ -2434,12 +1999,7 @@ fn get_type<W: Write>(
                   .as_roland_type_info(interner),
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ index @ line {}, column {}",
-               index_expression.expression_begin_location.line, index_expression.expression_begin_location.col
-            )
-            .unwrap();
+            emit_source_info_with_description(err_stream, index_expression.expression_begin_location, "index", interner);
          }
 
          match &array_expression.exp_type {
@@ -2453,18 +2013,8 @@ fn get_type<W: Write>(
                   x.as_roland_type_info(interner),
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ expression @ line {}, column {}",
-                  array_expression.expression_begin_location.line, array_expression.expression_begin_location.col
-               )
-               .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ index @ line {}, column {}",
-                  index_expression.expression_begin_location.line, index_expression.expression_begin_location.col
-               )
-               .unwrap();
+               emit_source_info_with_description(err_stream, array_expression.expression_begin_location, "expression", interner);
+               emit_source_info_with_description(err_stream, index_expression.expression_begin_location, "index", interner);
 
                ExpressionType::Value(ValueType::CompileError)
             }
@@ -2484,12 +2034,7 @@ fn get_type<W: Write>(
                   interner.lookup(*x),
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ enum literal @ line {}, column {}",
-                  expr_location.line, expr_location.col
-               )
-               .unwrap();
+               emit_source_info(err_stream, expr_location, interner);
 
                ExpressionType::Value(ValueType::CompileError)
             }
@@ -2501,12 +2046,7 @@ fn get_type<W: Write>(
                interner.lookup(*x),
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ enum literal @ line {}, column {}",
-               expr_location.line, expr_location.col
-            )
-            .unwrap();
+            emit_source_info(err_stream, expr_location, interner);
 
             ExpressionType::Value(ValueType::CompileError)
          }

@@ -1,3 +1,3 @@
 Encountered undefined variable `x`
-↳ line 2, column 15
+↳ line 2, column 15 [undefined_variable.rol]
 There were 1 semantic errors, bailing

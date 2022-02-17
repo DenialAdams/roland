@@ -14,9 +14,10 @@ mod wasm;
 use interner::StrId;
 use parse::{ExpressionPool, Program};
 use size_info::{calculate_struct_size_info, SizeInfo};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::io::Write;
+use std::path::PathBuf;
 use typed_index_vec::HandleMap;
 
 use crate::interner::Interner;
@@ -40,113 +41,13 @@ pub enum CompilationError {
    Lex,
    Parse,
    Semantic(u64),
-}
-
-#[cfg(fuzzing)]
-pub fn compile_for_fuzzer<E: Write, A: Write>(
-   user_program: &[u8],
-   err_stream: &mut E,
-   html_ast_out: Option<&mut A>,
-   do_constant_folding: bool,
-   target: Target,
-) -> Result<Vec<u8>, CompilationError> {
-   use lex::{SourceInfo, SourceToken};
-
-   let mut interner = Interner::with_capacity(1024);
-   let an_ident = interner.intern("");
-   let a_literal = interner.intern("");
-
-   let mut expressions = HandleMap::new();
-
-   let mut tokens = Vec::with_capacity(user_program.len());
-   for byte in user_program {
-      let byte_in_range = byte % 56;
-
-      let token = match byte_in_range {
-         0 => lex::Token::Arrow,
-         1 => lex::Token::KeywordElse,
-         2 => lex::Token::KeywordIf,
-         3 => lex::Token::KeywordProcedureDef,
-         4 => lex::Token::KeywordStructDef,
-         5 => lex::Token::KeywordEnumDef,
-         6 => lex::Token::KeywordLet,
-         7 => lex::Token::KeywordReturn,
-         8 => lex::Token::KeywordLoop,
-         9 => lex::Token::KeywordContinue,
-         10 => lex::Token::KeywordBreak,
-         11 => lex::Token::KeywordExtend,
-         12 => lex::Token::KeywordTruncate,
-         13 => lex::Token::KeywordTransmute,
-         14 => lex::Token::KeywordConst,
-         15 => lex::Token::KeywordStatic,
-         16 => lex::Token::KeywordNamed,
-         17 => lex::Token::KeywordAnd,
-         18 => lex::Token::KeywordOr,
-         19 => lex::Token::KeywordFor,
-         20 => lex::Token::KeywordIn,
-         21 => lex::Token::OpenBrace,
-         22 => lex::Token::CloseBrace,
-         23 => lex::Token::OpenParen,
-         24 => lex::Token::CloseParen,
-         25 => lex::Token::OpenSquareBracket,
-         26 => lex::Token::CloseSquareBracket,
-         27 => lex::Token::DoubleColon,
-         28 => lex::Token::Colon,
-         29 => lex::Token::Caret,
-         30 => lex::Token::Amp,
-         31 => lex::Token::Pipe,
-         32 => lex::Token::Semicolon,
-         33 => lex::Token::Identifier(an_ident),
-         34 => lex::Token::BoolLiteral(true),
-         35 => lex::Token::StringLiteral(a_literal),
-         36 => lex::Token::IntLiteral(0),
-         37 => lex::Token::FloatLiteral(0.0),
-         38 => lex::Token::Plus,
-         39 => lex::Token::Minus,
-         40 => lex::Token::MultiplyDeref,
-         41 => lex::Token::Divide,
-         42 => lex::Token::Remainder,
-         43 => lex::Token::Assignment,
-         44 => lex::Token::Equality,
-         45 => lex::Token::NotEquality,
-         46 => lex::Token::LessThan,
-         47 => lex::Token::LessThanOrEqualTo,
-         48 => lex::Token::GreaterThan,
-         49 => lex::Token::GreaterThanOrEqualTo,
-         50 => lex::Token::ShiftLeft,
-         51 => lex::Token::ShiftRight,
-         52 => lex::Token::Comma,
-         53 => lex::Token::Exclam,
-         54 => lex::Token::Period,
-         55 => lex::Token::DoublePeriod,
-         56 => lex::Token::KeywordExtern,
-         57 => lex::Token::Dollar,
-         _ => unreachable!(),
-      };
-
-      tokens.push(SourceToken {
-         token,
-         source_info: SourceInfo { line: 0, col: 0 },
-      });
-   }
-
-   let user_program = stacker::grow(67108864, || {
-      parse::astify(tokens, err_stream, &interner, &mut expressions).map_err(|()| CompilationError::Parse)
-   })?;
-
-   compile_program(
-      user_program,
-      err_stream,
-      html_ast_out,
-      do_constant_folding,
-      target,
-      &mut interner,
-      &mut expressions,
-   )
+   Io,
+   Internal,
 }
 
 pub fn compile<E: Write, A: Write>(
    user_program_s: &str,
+   user_program_path: Option<PathBuf>,
    err_stream: &mut E,
    html_ast_out: Option<&mut A>,
    do_constant_folding: bool,
@@ -156,56 +57,89 @@ pub fn compile<E: Write, A: Write>(
 
    let mut expressions = HandleMap::new();
 
-   let user_program = parse_user_program(user_program_s, err_stream, &mut interner, &mut expressions)?;
+   let mut imported_files = HashSet::new();
+   if let Some(x) = user_program_path.as_ref() {
+      let canonical_path = match std::fs::canonicalize(x) {
+         Ok(p) => p,
+         Err(e) => {
+            writeln!(err_stream, "Failed to canonicalize path '{}': {}", x.as_os_str().to_string_lossy(), e).unwrap();
+            return Err(CompilationError::Io);
+         }
+      };
+      imported_files.insert(canonical_path);
+   }
+   let root_source_location = user_program_path.as_ref().map(|x| interner.intern(&x.to_string_lossy()));
 
-   compile_program(
-      user_program,
-      err_stream,
-      html_ast_out,
-      do_constant_folding,
-      target,
-      &mut interner,
-      &mut expressions,
-   )
-}
+   let (files_to_include, mut user_program) = lex_and_parse(user_program_s, root_source_location, err_stream, &mut interner, &mut expressions)?;
 
-fn compile_program<E: Write, A: Write>(
-   mut user_program: Program,
-   err_stream: &mut E,
-   html_ast_out: Option<&mut A>,
-   do_constant_folding: bool,
-   target: Target,
-   interner: &mut Interner,
-   expressions: &mut ExpressionPool,
-) -> Result<Vec<u8>, CompilationError> {
-   let num_procedures_before_merge = user_program.procedures.len();
+   let base_path = user_program_path.unwrap_or_else(PathBuf::new);
+   let mut import_queue: Vec<PathBuf> = vec![];
 
-   let std_lib = match target {
+   for file in files_to_include {
+      let file_str = interner.lookup(file);
+      let mut new_path = base_path.clone();
+      new_path.push(file_str);
+      import_queue.push(new_path)
+   }
+
+   while let Some(base_path) = import_queue.pop() {
+      let canonical_path = match std::fs::canonicalize(&base_path) {
+         Ok(p) => p,
+         Err(e) => {
+            writeln!(err_stream, "Failed to canonicalize path '{}': {}", base_path.as_os_str().to_string_lossy(), e).unwrap();
+            return Err(CompilationError::Io);
+         }
+      };
+      if imported_files.contains(&canonical_path) {
+         continue;
+      }
+      let program_s = match std::fs::read_to_string(&base_path) {
+         Ok(s) => s,
+         Err(e) => {
+            writeln!(err_stream, "Failed to read included file '{}': {}", base_path.as_os_str().to_string_lossy(), e).unwrap();
+            return Err(CompilationError::Io);
+         }
+      };
+      let mut parsed = lex_and_parse(&program_s, Some(interner.intern(&base_path.as_os_str().to_string_lossy())), err_stream, &mut interner, &mut expressions)?;
+      merge_program(&mut user_program, &mut parsed.1);
+      for file in parsed.0.iter().copied() {
+         let file_str = interner.lookup(file);
+         let mut new_path = base_path.clone();
+         new_path.push(file_str);
+         import_queue.push(new_path)
+      }
+      imported_files.insert(canonical_path);
+   }
+
+   let num_procedures_before_std_merge = user_program.procedures.len();
+
+   let std_source_info = Some(interner.intern("<std>"));
+   let mut std_lib = match target {
       Target::Wasi => {
          let std_lib_s = include_str!("../../lib/print.rol");
-         lex_and_parse(std_lib_s, err_stream, interner, expressions)
+         lex_and_parse(std_lib_s, std_source_info, err_stream, &mut interner, &mut expressions)
       }
       Target::Wasm4 => {
          let std_lib_s = include_str!("../../lib/wasm4.rol");
-         lex_and_parse(std_lib_s, err_stream, interner, expressions)
+         lex_and_parse(std_lib_s, std_source_info, err_stream, &mut interner, &mut expressions)
       }
    }?;
 
-   merge_programs(&mut user_program, &mut [std_lib]);
+   merge_program(&mut user_program, &mut std_lib.1);
 
    let mut err_count = semantic_analysis::validator::type_and_check_validity(
       &mut user_program,
       err_stream,
-      interner,
-      expressions,
+      &mut interner,
+      &mut expressions,
       target,
    );
 
    if err_count > 0 {
       if let Some(w) = html_ast_out {
          let mut program_without_std = user_program.clone();
-         program_without_std.procedures.truncate(num_procedures_before_merge);
-         html_debug::print_ast_as_html(w, &program_without_std, interner, expressions);
+         program_without_std.procedures.truncate(num_procedures_before_std_merge);
+         html_debug::print_ast_as_html(w, &program_without_std, &mut interner, &expressions);
       }
       return Err(CompilationError::Semantic(err_count));
    }
@@ -222,32 +156,32 @@ fn compile_program<E: Write, A: Write>(
    }
 
    if err_count == 0 {
-      various_expression_lowering::lower_consts(&struct_size_info, &mut user_program, expressions, interner);
+      various_expression_lowering::lower_consts(&struct_size_info, &mut user_program, &mut expressions, &mut interner);
       user_program.static_info.retain(|_, v| !v.is_const);
 
       if do_constant_folding {
-         err_count = constant_folding::fold_constants(&mut user_program, err_stream, expressions);
+         err_count = constant_folding::fold_constants(&mut user_program, err_stream, &mut expressions, &interner);
       }
    }
 
    if let Some(w) = html_ast_out {
       let mut program_without_std = user_program.clone();
-      program_without_std.procedures.truncate(num_procedures_before_merge);
-      html_debug::print_ast_as_html(w, &program_without_std, interner, expressions);
+      program_without_std.procedures.truncate(num_procedures_before_std_merge);
+      html_debug::print_ast_as_html(w, &program_without_std, &mut interner, &expressions);
    }
 
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));
    }
 
-   add_virtual_variables::add_virtual_vars(&mut user_program, expressions);
+   add_virtual_variables::add_virtual_vars(&mut user_program, &expressions);
 
    match target {
       Target::Wasi => Ok(wasm::emit_wasm(
          &struct_size_info,
          &mut user_program,
-         interner,
-         expressions,
+         &mut interner,
+         &expressions,
          0,
          false,
       )),
@@ -255,64 +189,45 @@ fn compile_program<E: Write, A: Write>(
          let wat = wasm::emit_wasm(
             &struct_size_info,
             &mut user_program,
-            interner,
-            expressions,
+            &mut interner,
+            &expressions,
             0x19a0,
             true,
          );
-         Ok(wat::parse_bytes(&wat).unwrap().into_owned())
+         let wasm = match wat::parse_bytes(&wat) {
+            Ok(wasm_bytes) => wasm_bytes.into_owned(),
+            Err(_) => return Err(CompilationError::Internal),
+         };
+         Ok(wasm)
       }
    }
 }
 
-#[cfg(fuzzing)]
-fn parse_user_program<W: Write>(
-   user_program_s: &str,
-   err_stream: &mut W,
-   interner: &mut Interner,
-   expressions: &mut ExpressionPool,
-) -> Result<Program, CompilationError> {
-   stacker::grow(33554432, || {
-      lex_and_parse(user_program_s, err_stream, interner, expressions)
-   })
-}
-
-#[cfg(not(fuzzing))]
-fn parse_user_program<W: Write>(
-   user_program_s: &str,
-   err_stream: &mut W,
-   interner: &mut Interner,
-   expressions: &mut ExpressionPool,
-) -> Result<Program, CompilationError> {
-   lex_and_parse(user_program_s, err_stream, interner, expressions)
-}
-
-fn merge_programs(main_program: &mut Program, other_programs: &mut [Program]) {
-   for program in other_programs {
-      main_program.literals.extend(program.literals.drain(0..));
-      main_program
-         .external_procedures
-         .extend(program.external_procedures.drain(0..));
-      main_program.procedures.extend(program.procedures.drain(0..));
-      main_program.structs.extend(program.structs.drain(0..));
-      main_program.statics.extend(program.statics.drain(0..));
-      main_program.enums.extend(program.enums.drain(0..));
-      main_program.consts.extend(program.consts.drain(0..));
-   }
+fn merge_program(main_program: &mut Program, other_program: &mut Program) {
+   main_program.literals.extend(other_program.literals.drain(0..));
+   main_program
+      .external_procedures
+      .extend(other_program.external_procedures.drain(0..));
+   main_program.procedures.extend(other_program.procedures.drain(0..));
+   main_program.structs.extend(other_program.structs.drain(0..));
+   main_program.statics.extend(other_program.statics.drain(0..));
+   main_program.enums.extend(other_program.enums.drain(0..));
+   main_program.consts.extend(other_program.consts.drain(0..));
 }
 
 fn lex_and_parse<W: Write>(
    s: &str,
+   source_path: Option<StrId>,
    err_stream: &mut W,
    interner: &mut Interner,
    expressions: &mut ExpressionPool,
-) -> Result<Program, CompilationError> {
-   let tokens = match lex::lex(s, err_stream, interner) {
+) -> Result<(Vec<StrId>, Program), CompilationError> {
+   let tokens = match lex::lex(s, source_path, err_stream, interner) {
       Err(()) => return Err(CompilationError::Lex),
       Ok(v) => v,
    };
    match parse::astify(tokens, err_stream, interner, expressions) {
       Err(()) => Err(CompilationError::Parse),
-      Ok(v) => Ok(v),
+      Ok((includes, program)) => Ok((includes, program)),
    }
 }

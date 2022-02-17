@@ -1,5 +1,5 @@
 Call to `dual_custody_lock` has named argument(s) which come before non-named argument(s)
-↳ line 8, column 4
+↳ line 8, column 4 [named_args_wrong_place.rol]
 We weren't able to determine the types of 1 int literals
-↳ line 8, column 31
+↳ line 8, column 31 [named_args_wrong_place.rol]
 There were 2 semantic errors, bailing

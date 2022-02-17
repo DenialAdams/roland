@@ -1,3 +1,3 @@
 Array does not have a field `fooble`. Hint: Array types have a single field `length`
-↳ line 3, column 12
+↳ line 3, column 12 [bad_field_access_array.rol]
 There were 1 semantic errors, bailing

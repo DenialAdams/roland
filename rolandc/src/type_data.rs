@@ -149,6 +149,13 @@ impl ExpressionType {
       }
    }
 
+   pub fn is_error_type(&self) -> bool {
+      match self {
+         ExpressionType::Value(x) => x.is_error_type(),
+         ExpressionType::Pointer(_, x) => x.is_error_type(),
+      }
+   }
+
    pub fn is_any_known_int(&self) -> bool {
       matches!(self, ExpressionType::Value(ValueType::Int(_)))
    }
@@ -217,6 +224,14 @@ impl ValueType {
          | ValueType::Struct(_)
          | ValueType::Enum(_) => true,
          ValueType::Array(exp, _) => exp.is_concrete_type(),
+      }
+   }
+
+   fn is_error_type(&self) -> bool {
+      match self {
+         ValueType::CompileError => true,
+         ValueType::Array(exp, _) => exp.is_error_type(),
+         _ => false,
       }
    }
 

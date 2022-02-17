@@ -1,4 +1,5 @@
-use crate::interner::StrId;
+use crate::interner::{StrId, Interner};
+use crate::lex::emit_source_info_with_description;
 use crate::parse::{
    BinOp, BlockNode, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement, UnOp,
 };
@@ -15,56 +16,56 @@ pub struct FoldingContext<'a> {
    pub error_count: u64,
 }
 
-pub fn fold_constants<W: Write>(program: &mut Program, err_stream: &mut W, expressions: &mut ExpressionPool) -> u64 {
+pub fn fold_constants<W: Write>(program: &mut Program, err_stream: &mut W, expressions: &mut ExpressionPool, interner: &Interner) -> u64 {
    let mut folding_context = FoldingContext {
       error_count: 0,
       expressions,
    };
 
    for procedure in program.procedures.iter_mut() {
-      fold_block(&mut procedure.block, err_stream, &mut folding_context);
+      fold_block(&mut procedure.block, err_stream, &mut folding_context, interner);
    }
 
    folding_context.error_count
 }
 
-pub fn fold_block<W: Write>(block: &mut BlockNode, err_stream: &mut W, folding_context: &mut FoldingContext) {
+pub fn fold_block<W: Write>(block: &mut BlockNode, err_stream: &mut W, folding_context: &mut FoldingContext, interner: &Interner) {
    for statement in block.statements.iter_mut() {
-      fold_statement(&mut statement.statement, err_stream, folding_context);
+      fold_statement(&mut statement.statement, err_stream, folding_context, interner);
    }
 }
 
-pub fn fold_statement<W: Write>(statement: &mut Statement, err_stream: &mut W, folding_context: &mut FoldingContext) {
+pub fn fold_statement<W: Write>(statement: &mut Statement, err_stream: &mut W, folding_context: &mut FoldingContext, interner: &Interner) {
    match statement {
       Statement::Assignment(lhs_expr, rhs_expr) => {
-         try_fold_and_replace_expr(*lhs_expr, err_stream, folding_context);
-         try_fold_and_replace_expr(*rhs_expr, err_stream, folding_context);
+         try_fold_and_replace_expr(*lhs_expr, err_stream, folding_context, interner);
+         try_fold_and_replace_expr(*rhs_expr, err_stream, folding_context, interner);
       }
       Statement::Block(block) => {
-         fold_block(block, err_stream, folding_context);
+         fold_block(block, err_stream, folding_context, interner);
       }
       Statement::Break | Statement::Continue => (),
       Statement::IfElse(if_expr, if_block, else_statement) => {
-         try_fold_and_replace_expr(*if_expr, err_stream, folding_context);
-         fold_block(if_block, err_stream, folding_context);
-         fold_statement(&mut else_statement.statement, err_stream, folding_context);
+         try_fold_and_replace_expr(*if_expr, err_stream, folding_context, interner);
+         fold_block(if_block, err_stream, folding_context, interner);
+         fold_statement(&mut else_statement.statement, err_stream, folding_context, interner);
       }
       Statement::For(_var, start_expr, end_expr, block, _) => {
-         try_fold_and_replace_expr(*start_expr, err_stream, folding_context);
-         try_fold_and_replace_expr(*end_expr, err_stream, folding_context);
-         fold_block(block, err_stream, folding_context);
+         try_fold_and_replace_expr(*start_expr, err_stream, folding_context, interner);
+         try_fold_and_replace_expr(*end_expr, err_stream, folding_context, interner);
+         fold_block(block, err_stream, folding_context, interner);
       }
       Statement::Loop(block) => {
-         fold_block(block, err_stream, folding_context);
+         fold_block(block, err_stream, folding_context, interner);
       }
       Statement::Expression(expr) => {
-         try_fold_and_replace_expr(*expr, err_stream, folding_context);
+         try_fold_and_replace_expr(*expr, err_stream, folding_context, interner);
       }
       Statement::Return(expr) => {
-         try_fold_and_replace_expr(*expr, err_stream, folding_context);
+         try_fold_and_replace_expr(*expr, err_stream, folding_context, interner);
       }
       Statement::VariableDeclaration(_, expr, _) => {
-         try_fold_and_replace_expr(*expr, err_stream, folding_context);
+         try_fold_and_replace_expr(*expr, err_stream, folding_context, interner);
       }
    }
 }
@@ -73,8 +74,9 @@ pub fn try_fold_and_replace_expr<W: Write>(
    node: ExpressionId,
    err_stream: &mut W,
    folding_context: &mut FoldingContext,
+   interner: &Interner,
 ) {
-   if let Some(new_node) = fold_expr(node, err_stream, folding_context) {
+   if let Some(new_node) = fold_expr(node, err_stream, folding_context, interner) {
       folding_context.expressions[node] = new_node;
    }
 }
@@ -84,6 +86,7 @@ fn fold_expr<W: Write>(
    expr_index: ExpressionId,
    err_stream: &mut W,
    folding_context: &mut FoldingContext,
+   interner: &Interner,
 ) -> Option<ExpressionNode> {
    let expr_to_fold_location = folding_context.expressions[expr_index].expression_begin_location;
    let expr_to_fold_type = folding_context.expressions[expr_index].exp_type.clone();
@@ -94,8 +97,8 @@ fn fold_expr<W: Write>(
 
    match unsafe { &mut (*expr_to_fold).expression } {
       Expression::ArrayIndex { array, index } => {
-         try_fold_and_replace_expr(*array, err_stream, folding_context);
-         try_fold_and_replace_expr(*index, err_stream, folding_context);
+         try_fold_and_replace_expr(*array, err_stream, folding_context, interner);
+         try_fold_and_replace_expr(*index, err_stream, folding_context, interner);
 
          let array = &folding_context.expressions[*array];
          let index = &folding_context.expressions[*index];
@@ -117,18 +120,8 @@ fn fold_expr<W: Write>(
                   v, len,
                )
                .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ array @ line {}, column {}",
-                  array.expression_begin_location.line, array.expression_begin_location.col
-               )
-               .unwrap();
-               writeln!(
-                  err_stream,
-                  "↳ index @ line {}, column {}",
-                  index.expression_begin_location.line, index.expression_begin_location.col
-               )
-               .unwrap();
+               emit_source_info_with_description(err_stream, array.expression_begin_location, "array", interner);
+               emit_source_info_with_description(err_stream, index.expression_begin_location, "index", interner);
             } else if is_const(&array.expression, folding_context.expressions) {
                let array_elems = match &array.expression {
                   Expression::ArrayLiteral(exprs) => exprs,
@@ -154,14 +147,14 @@ fn fold_expr<W: Write>(
       Expression::Variable(_) => None,
       Expression::ProcedureCall { args, .. } => {
          for arg in args.iter().map(|x| x.expr) {
-            try_fold_and_replace_expr(arg, err_stream, folding_context);
+            try_fold_and_replace_expr(arg, err_stream, folding_context, interner);
          }
 
          None
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
-            try_fold_and_replace_expr(*expr, err_stream, folding_context);
+            try_fold_and_replace_expr(*expr, err_stream, folding_context, interner);
          }
 
          None
@@ -172,8 +165,8 @@ fn fold_expr<W: Write>(
       Expression::FloatLiteral(_) => None,
       Expression::UnitLiteral => None,
       Expression::BinaryOperator { operator, lhs, rhs } => {
-         try_fold_and_replace_expr(*lhs, err_stream, folding_context);
-         try_fold_and_replace_expr(*rhs, err_stream, folding_context);
+         try_fold_and_replace_expr(*lhs, err_stream, folding_context, interner);
+         try_fold_and_replace_expr(*rhs, err_stream, folding_context, interner);
 
          let lhs_expr = &folding_context.expressions[*lhs];
          let rhs_expr = &folding_context.expressions[*rhs];
@@ -194,24 +187,9 @@ fn fold_expr<W: Write>(
                (Some(x), BinOp::Divide) if x.is_int_zero() => {
                   folding_context.error_count += 1;
                   writeln!(err_stream, "During constant folding, got a divide by zero",).unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ division @ line {}, column {}",
-                     expr_to_fold_location.line, expr_to_fold_location.col
-                  )
-                  .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ LHS @ line {}, column {}",
-                     lhs_expr.expression_begin_location.line, lhs_expr.expression_begin_location.col
-                  )
-                  .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ RHS @ line {}, column {}",
-                     rhs_expr.expression_begin_location.line, rhs_expr.expression_begin_location.col
-                  )
-                  .unwrap();
+                  emit_source_info_with_description(err_stream, expr_to_fold_location, "divison", interner);
+                  emit_source_info_with_description(err_stream, lhs_expr.expression_begin_location, "LHS", interner);
+                  emit_source_info_with_description(err_stream, rhs_expr.expression_begin_location, "RHS", interner);
                   return None;
                }
                (Some(x), BinOp::Divide) if x.is_int_one() => {
@@ -309,24 +287,9 @@ fn fold_expr<W: Write>(
                } else {
                   folding_context.error_count += 1;
                   writeln!(err_stream, "During constant folding, got overflow while adding",).unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ addition @ line {}, column {}",
-                     expr_to_fold_location.line, expr_to_fold_location.col
-                  )
-                  .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ LHS @ line {}, column {}",
-                     lhs_expr.expression_begin_location.line, lhs_expr.expression_begin_location.col
-                  )
-                  .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ RHS @ line {}, column {}",
-                     rhs_expr.expression_begin_location.line, rhs_expr.expression_begin_location.col
-                  )
-                  .unwrap();
+                  emit_source_info_with_description(err_stream, expr_to_fold_location, "addition", interner);
+                  emit_source_info_with_description(err_stream, lhs_expr.expression_begin_location, "LHS", interner);
+                  emit_source_info_with_description(err_stream, rhs_expr.expression_begin_location, "RHS", interner);
                   None
                }
             }
@@ -340,24 +303,9 @@ fn fold_expr<W: Write>(
                } else {
                   folding_context.error_count += 1;
                   writeln!(err_stream, "During constant folding, got underflow while subtracting",).unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ subtraction @ line {}, column {}",
-                     expr_to_fold_location.line, expr_to_fold_location.col
-                  )
-                  .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ LHS @ line {}, column {}",
-                     lhs_expr.expression_begin_location.line, lhs_expr.expression_begin_location.col
-                  )
-                  .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ RHS @ line {}, column {}",
-                     rhs_expr.expression_begin_location.line, rhs_expr.expression_begin_location.col
-                  )
-                  .unwrap();
+                  emit_source_info_with_description(err_stream, expr_to_fold_location, "subtraction", interner);
+                  emit_source_info_with_description(err_stream, lhs_expr.expression_begin_location, "LHS", interner);
+                  emit_source_info_with_description(err_stream, rhs_expr.expression_begin_location, "RHS", interner);
                   None
                }
             }
@@ -371,24 +319,9 @@ fn fold_expr<W: Write>(
                } else {
                   folding_context.error_count += 1;
                   writeln!(err_stream, "During constant folding, got overflow while multiplying",).unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ multiplication @ line {}, column {}",
-                     expr_to_fold_location.line, expr_to_fold_location.col
-                  )
-                  .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ LHS @ line {}, column {}",
-                     lhs_expr.expression_begin_location.line, lhs_expr.expression_begin_location.col
-                  )
-                  .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ RHS @ line {}, column {}",
-                     rhs_expr.expression_begin_location.line, rhs_expr.expression_begin_location.col
-                  )
-                  .unwrap();
+                  emit_source_info_with_description(err_stream, expr_to_fold_location, "multiplication", interner);
+                  emit_source_info_with_description(err_stream, lhs_expr.expression_begin_location, "LHS", interner);
+                  emit_source_info_with_description(err_stream, rhs_expr.expression_begin_location, "RHS", interner);
                   None
                }
             }
@@ -414,24 +347,9 @@ fn fold_expr<W: Write>(
                } else {
                   folding_context.error_count += 1;
                   writeln!(err_stream, "During constant folding, got a divide by zero",).unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ remainder @ line {}, column {}",
-                     expr_to_fold_location.line, expr_to_fold_location.col
-                  )
-                  .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ LHS @ line {}, column {}",
-                     lhs_expr.expression_begin_location.line, lhs_expr.expression_begin_location.col
-                  )
-                  .unwrap();
-                  writeln!(
-                     err_stream,
-                     "↳ RHS @ line {}, column {}",
-                     rhs_expr.expression_begin_location.line, rhs_expr.expression_begin_location.col
-                  )
-                  .unwrap();
+                  emit_source_info_with_description(err_stream, expr_to_fold_location, "remainder", interner);
+                  emit_source_info_with_description(err_stream, lhs_expr.expression_begin_location, "LHS", interner);
+                  emit_source_info_with_description(err_stream, rhs_expr.expression_begin_location, "RHS", interner);
                   None
                }
             }
@@ -496,7 +414,7 @@ fn fold_expr<W: Write>(
          }
       }
       Expression::UnaryOperator(op, expr) => {
-         try_fold_and_replace_expr(*expr, err_stream, folding_context);
+         try_fold_and_replace_expr(*expr, err_stream, folding_context, interner);
 
          let expr = &folding_context.expressions[*expr];
 
@@ -523,13 +441,13 @@ fn fold_expr<W: Write>(
       }
       Expression::StructLiteral(_, field_exprs) => {
          for (_, expr) in field_exprs.iter() {
-            try_fold_and_replace_expr(*expr, err_stream, folding_context);
+            try_fold_and_replace_expr(*expr, err_stream, folding_context, interner);
          }
 
          None
       }
       Expression::FieldAccess(field_names, expr) => {
-         try_fold_and_replace_expr(*expr, err_stream, folding_context);
+         try_fold_and_replace_expr(*expr, err_stream, folding_context, interner);
 
          let expr = &folding_context.expressions[*expr];
 
@@ -565,17 +483,17 @@ fn fold_expr<W: Write>(
          }
       }
       Expression::Extend(_, expr) => {
-         try_fold_and_replace_expr(*expr, err_stream, folding_context);
+         try_fold_and_replace_expr(*expr, err_stream, folding_context, interner);
 
          None
       }
       Expression::Truncate(_, expr) => {
-         try_fold_and_replace_expr(*expr, err_stream, folding_context);
+         try_fold_and_replace_expr(*expr, err_stream, folding_context, interner);
 
          None
       }
       Expression::Transmute(_, expr) => {
-         try_fold_and_replace_expr(*expr, err_stream, folding_context);
+         try_fold_and_replace_expr(*expr, err_stream, folding_context, interner);
 
          let expr = &folding_context.expressions[*expr];
 

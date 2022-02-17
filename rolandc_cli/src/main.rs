@@ -94,6 +94,7 @@ fn main() {
 
    let compile_result = rolandc::compile(
       &user_program_s,
+      Some(opts.source_file.clone()),
       &mut err_stream_l,
       ast_out.as_mut(),
       !opts.skip_constant_folding,
@@ -109,6 +110,11 @@ fn main() {
       Err(CompilationError::Parse) => std::process::exit(1),
       Err(CompilationError::Semantic(err_count)) => {
          writeln!(err_stream_l, "There were {} semantic errors, bailing", err_count).unwrap();
+         std::process::exit(1);
+      }
+      Err(CompilationError::Io) => std::process::exit(1),
+      Err(CompilationError::Internal) => {
+         writeln!(err_stream_l, "rolandc has encountered an internal error. *This is a bug in the compiler*, please file an issue on github with the problematic input.").unwrap();
          std::process::exit(1);
       }
    };

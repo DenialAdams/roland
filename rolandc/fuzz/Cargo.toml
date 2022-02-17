@@ -19,13 +19,7 @@ path = ".."
 members = ["."]
 
 [[bin]]
-name = "fuzz_target_1"
-path = "fuzz_targets/fuzz_target_1.rs"
-test = false
-doc = false
-
-[[bin]]
-name = "tokens"
-path = "fuzz_targets/tokens.rs"
+name = "text"
+path = "fuzz_targets/text.rs"
 test = false
 doc = false

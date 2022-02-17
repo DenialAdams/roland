@@ -41,7 +41,7 @@ impl Lexer {
    }
 }
 
-fn expect<W: Write>(l: &mut Lexer, err_stream: &mut W, token: &Token) -> Result<SourceToken, ()> {
+fn expect<W: Write>(l: &mut Lexer, err_stream: &mut W, token: &Token, interner: &Interner) -> Result<SourceToken, ()> {
    let lex_token = l.next();
    if lex_token
       .as_ref()
@@ -57,7 +57,7 @@ fn expect<W: Write>(l: &mut Lexer, err_stream: &mut W, token: &Token) -> Result<
       )
       .unwrap();
       if let Some(l_token) = lex_token {
-         emit_source_info(err_stream, l_token.source_info);
+         emit_source_info(err_stream, l_token.source_info, interner);
       }
       return Err(());
    }
@@ -298,7 +298,7 @@ pub fn astify<W: Write>(
    err_stream: &mut W,
    interner: &Interner,
    expressions: &mut ExpressionPool,
-) -> Result<Program, ()> {
+) -> Result<(Vec<StrId>, Program), ()> {
    let mut lexer = Lexer::from_tokens(tokens);
 
    let mut external_procedures = vec![];
@@ -307,12 +307,13 @@ pub fn astify<W: Write>(
    let mut enums = vec![];
    let mut consts = vec![];
    let mut statics = vec![];
+   let mut includes = vec![];
 
    while let Some(peeked_token) = lexer.peek_token() {
       match peeked_token {
          Token::KeywordExtern => {
             let extern_kw = lexer.next().unwrap();
-            expect(&mut lexer, err_stream, &Token::KeywordProcedureDef)?;
+            expect(&mut lexer, err_stream, &Token::KeywordProcedureDef, interner)?;
             let p = parse_external_procedure(&mut lexer, err_stream, extern_kw.source_info, interner)?;
             external_procedures.push(p);
          }
@@ -320,6 +321,12 @@ pub fn astify<W: Write>(
             let def = lexer.next().unwrap();
             let p = parse_procedure(&mut lexer, err_stream, def.source_info, expressions, interner)?;
             procedures.push(p);
+         }
+         Token::KeywordImport => {
+            let _ = lexer.next().unwrap();
+            let path_to_include = extract_str_literal(expect(&mut lexer, err_stream, &Token::StringLiteral(DUMMY_STR_TOKEN), interner)?.token);
+            includes.push(path_to_include);
+            expect(&mut lexer, err_stream, &Token::Semicolon, interner)?;
          }
          Token::KeywordStructDef => {
             let def = lexer.next().unwrap();
@@ -333,12 +340,12 @@ pub fn astify<W: Write>(
          }
          Token::KeywordConst => {
             let a_static = lexer.next().unwrap();
-            let variable_name = expect(&mut lexer, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
-            expect(&mut lexer, err_stream, &Token::Colon)?;
+            let variable_name = expect(&mut lexer, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?;
+            expect(&mut lexer, err_stream, &Token::Colon, interner)?;
             let t_type = parse_type(&mut lexer, err_stream, interner)?;
-            expect(&mut lexer, err_stream, &Token::Assignment)?;
+            expect(&mut lexer, err_stream, &Token::Assignment, interner)?;
             let exp = parse_expression(&mut lexer, err_stream, false, expressions, interner)?;
-            expect(&mut lexer, err_stream, &Token::Semicolon)?;
+            expect(&mut lexer, err_stream, &Token::Semicolon, interner)?;
             consts.push(ConstNode {
                name: IdentifierNode {
                   identifier: extract_identifier(variable_name.token),
@@ -351,8 +358,8 @@ pub fn astify<W: Write>(
          }
          Token::KeywordStatic => {
             let a_static = lexer.next().unwrap();
-            let variable_name = expect(&mut lexer, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
-            expect(&mut lexer, err_stream, &Token::Colon)?;
+            let variable_name = expect(&mut lexer, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?;
+            expect(&mut lexer, err_stream, &Token::Colon, interner)?;
             let t_type = parse_type(&mut lexer, err_stream, interner)?;
             let exp = if lexer.peek_token() == Some(&Token::Assignment) {
                let _ = lexer.next();
@@ -360,7 +367,7 @@ pub fn astify<W: Write>(
             } else {
                None
             };
-            expect(&mut lexer, err_stream, &Token::Semicolon)?;
+            expect(&mut lexer, err_stream, &Token::Semicolon, interner)?;
             statics.push(StaticNode {
                name: IdentifierNode {
                   identifier: extract_identifier(variable_name.token),
@@ -377,13 +384,13 @@ pub fn astify<W: Write>(
                "While parsing top level - unexpected token '{}'; was expecting a procedure, const, static, enum, or struct declaration",
                x.for_parse_err()
             ).unwrap();
-            emit_source_info(err_stream, lexer.peek_source().unwrap());
+            emit_source_info(err_stream, lexer.peek_source().unwrap(), interner);
             return Err(());
          }
       }
    }
 
-   Ok(Program {
+   Ok((includes, Program {
       external_procedures,
       procedures,
       enums,
@@ -394,12 +401,19 @@ pub fn astify<W: Write>(
       struct_info: IndexMap::new(),
       static_info: IndexMap::new(),
       enum_info: IndexMap::new(),
-   })
+   }))
 }
 
 fn extract_identifier(t: Token) -> StrId {
    match t {
       Token::Identifier(v) => v,
+      _ => unreachable!(),
+   }
+}
+
+fn extract_str_literal(t: Token) -> StrId {
+   match t {
+      Token::StringLiteral(v) => v,
       _ => unreachable!(),
    }
 }
@@ -418,10 +432,10 @@ fn parse_procedure<W: Write>(
    expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<ProcedureNode, ()> {
-   let procedure_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
-   expect(l, err_stream, &Token::OpenParen)?;
+   let procedure_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?;
+   expect(l, err_stream, &Token::OpenParen, interner)?;
    let parameters = parse_parameters(l, err_stream, interner)?;
-   expect(l, err_stream, &Token::CloseParen)?;
+   expect(l, err_stream, &Token::CloseParen, interner)?;
    let ret_type = if let Some(&Token::Arrow) = l.peek_token() {
       let _ = l.next();
       parse_type(l, err_stream, interner)?
@@ -448,17 +462,17 @@ fn parse_external_procedure<W: Write>(
    source_info: SourceInfo,
    interner: &Interner,
 ) -> Result<ExternalProcedureNode, ()> {
-   let procedure_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
-   expect(l, err_stream, &Token::OpenParen)?;
+   let procedure_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?;
+   expect(l, err_stream, &Token::OpenParen, interner)?;
    let parameters = parse_parameters(l, err_stream, interner)?;
-   expect(l, err_stream, &Token::CloseParen)?;
+   expect(l, err_stream, &Token::CloseParen, interner)?;
    let ret_type = if let Some(&Token::Arrow) = l.peek_token() {
       let _ = l.next();
       parse_type(l, err_stream, interner)?
    } else {
       ExpressionType::Value(ValueType::Unit)
    };
-   expect(l, err_stream, &Token::Semicolon)?;
+   expect(l, err_stream, &Token::Semicolon, interner)?;
    Ok(ExternalProcedureNode {
       definition: ProcedureDefinition {
          name: extract_identifier(procedure_name.token),
@@ -475,16 +489,16 @@ fn parse_struct<W: Write>(
    source_info: SourceInfo,
    interner: &Interner,
 ) -> Result<StructNode, ()> {
-   let struct_name = extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
-   expect(l, err_stream, &Token::OpenBrace)?;
+   let struct_name = extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?.token);
+   expect(l, err_stream, &Token::OpenBrace, interner)?;
    let mut fields: Vec<(StrId, ExpressionType)> = vec![];
    loop {
       if let Some(&Token::CloseBrace) = l.peek_token() {
          let _ = l.next();
          break;
       }
-      let identifier = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
-      let _ = expect(l, err_stream, &Token::Colon)?;
+      let identifier = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?;
+      let _ = expect(l, err_stream, &Token::Colon, interner)?;
       let f_type = parse_type(l, err_stream, interner)?;
       fields.push((extract_identifier(identifier.token), f_type));
       if let Some(&Token::CloseBrace) = l.peek_token() {
@@ -492,10 +506,10 @@ fn parse_struct<W: Write>(
          break;
       } else if let Some(&Token::Identifier(x)) = l.peek_token().as_ref() {
          writeln!(err_stream, "While parsing definition of struct `{}`, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?", interner.lookup(struct_name), interner.lookup(*x)).unwrap();
-         emit_source_info(err_stream, l.peek_source().unwrap());
+         emit_source_info(err_stream, l.peek_source().unwrap(), interner);
          return Result::Err(());
       } else {
-         expect(l, err_stream, &Token::Comma)?;
+         expect(l, err_stream, &Token::Comma, interner)?;
       };
    }
    Ok(StructNode {
@@ -511,25 +525,25 @@ fn parse_enum<W: Write>(
    source_info: SourceInfo,
    interner: &Interner,
 ) -> Result<EnumNode, ()> {
-   let enum_name = extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
-   expect(l, err_stream, &Token::OpenBrace)?;
+   let enum_name = extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?.token);
+   expect(l, err_stream, &Token::OpenBrace, interner)?;
    let mut variants: Vec<StrId> = vec![];
    loop {
       if let Some(&Token::CloseBrace) = l.peek_token() {
          let _ = l.next();
          break;
       }
-      let identifier = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
+      let identifier = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?;
       variants.push(extract_identifier(identifier.token));
       if let Some(&Token::CloseBrace) = l.peek_token() {
          let _ = l.next();
          break;
       } else if let Some(&Token::Identifier(x)) = l.peek_token().as_ref() {
          writeln!(err_stream, "While parsing definition of enum `{}`, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?", interner.lookup(enum_name), interner.lookup(*x)).unwrap();
-         emit_source_info(err_stream, l.peek_source().unwrap());
+         emit_source_info(err_stream, l.peek_source().unwrap(), interner);
          return Result::Err(());
       } else {
-         expect(l, err_stream, &Token::Comma)?;
+         expect(l, err_stream, &Token::Comma, interner)?;
       };
    }
    Ok(EnumNode {
@@ -545,7 +559,7 @@ fn parse_block<W: Write>(
    expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<BlockNode, ()> {
-   expect(l, err_stream, &Token::OpenBrace)?;
+   expect(l, err_stream, &Token::OpenBrace, interner)?;
 
    let mut statements: Vec<StatementNode> = vec![];
 
@@ -569,7 +583,7 @@ fn parse_block<W: Write>(
                statement: Statement::Continue,
                statement_begin_location: continue_token.source_info,
             });
-            expect(l, err_stream, &Token::Semicolon)?;
+            expect(l, err_stream, &Token::Semicolon, interner)?;
          }
          Some(Token::KeywordBreak) => {
             let break_token = l.next().unwrap();
@@ -577,14 +591,14 @@ fn parse_block<W: Write>(
                statement: Statement::Break,
                statement_begin_location: break_token.source_info,
             });
-            expect(l, err_stream, &Token::Semicolon)?;
+            expect(l, err_stream, &Token::Semicolon, interner)?;
          }
          Some(Token::KeywordFor) => {
             let for_token = l.next().unwrap();
-            let variable_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
-            let _ = expect(l, err_stream, &Token::KeywordIn)?;
+            let variable_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?;
+            let _ = expect(l, err_stream, &Token::KeywordIn, interner)?;
             let start_en = parse_expression(l, err_stream, true, expressions, interner)?;
-            let _ = expect(l, err_stream, &Token::DoublePeriod)?;
+            let _ = expect(l, err_stream, &Token::DoublePeriod, interner)?;
             let inclusive = if l.peek_token() == Some(&Token::Assignment) {
                let _ = l.next();
                true
@@ -622,7 +636,7 @@ fn parse_block<W: Write>(
                wrap(Expression::UnitLiteral, return_token.source_info, expressions)
             } else {
                let e = parse_expression(l, err_stream, false, expressions, interner)?;
-               expect(l, err_stream, &Token::Semicolon)?;
+               expect(l, err_stream, &Token::Semicolon, interner)?;
                e
             };
             statements.push(StatementNode {
@@ -633,15 +647,15 @@ fn parse_block<W: Write>(
          Some(Token::KeywordLet) => {
             let mut declared_type = None;
             let let_token = l.next().unwrap();
-            let variable_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
+            let variable_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?;
             let next_discrim = l.peek_token().map(discriminant);
             if next_discrim == Some(discriminant(&Token::Colon)) {
                let _ = l.next();
                declared_type = Some(parse_type(l, err_stream, interner)?);
             }
-            expect(l, err_stream, &Token::Assignment)?;
+            expect(l, err_stream, &Token::Assignment, interner)?;
             let e = parse_expression(l, err_stream, false, expressions, interner)?;
-            expect(l, err_stream, &Token::Semicolon)?;
+            expect(l, err_stream, &Token::Semicolon, interner)?;
             statements.push(StatementNode {
                statement: Statement::VariableDeclaration(
                   IdentifierNode {
@@ -673,7 +687,7 @@ fn parse_block<W: Write>(
                Some(&Token::Assignment) => {
                   let _ = l.next();
                   let re = parse_expression(l, err_stream, false, expressions, interner)?;
-                  expect(l, err_stream, &Token::Semicolon)?;
+                  expect(l, err_stream, &Token::Semicolon, interner)?;
                   let statement_begin_location = expressions[e].expression_begin_location;
                   statements.push(StatementNode {
                      statement: Statement::Assignment(e, re),
@@ -694,7 +708,7 @@ fn parse_block<W: Write>(
                      "While parsing statement - unexpected token '{}'; was expecting a semicolon or assignment operator",
                      x.for_parse_err()
                   ).unwrap();
-                  emit_source_info(err_stream, l.peek_source().unwrap());
+                  emit_source_info(err_stream, l.peek_source().unwrap(), interner);
                   return Err(());
                }
                None => {
@@ -714,7 +728,7 @@ fn parse_block<W: Write>(
                x.for_parse_err()
             )
             .unwrap();
-            emit_source_info(err_stream, l.peek_source().unwrap());
+            emit_source_info(err_stream, l.peek_source().unwrap(), interner);
             return Err(());
          }
          None => {
@@ -778,8 +792,8 @@ fn parse_parameters<W: Write>(
             } else {
                false
             };
-            let id = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
-            expect(l, err_stream, &Token::Colon)?;
+            let id = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?;
+            expect(l, err_stream, &Token::Colon, interner)?;
             let e_type = parse_type(l, err_stream, interner)?;
             parameters.push(ParameterNode {
                name: extract_identifier(id.token),
@@ -789,7 +803,7 @@ fn parse_parameters<W: Write>(
             if l.peek_token() == Some(&Token::CloseParen) {
                break;
             }
-            expect(l, err_stream, &Token::Comma)?;
+            expect(l, err_stream, &Token::Comma, interner)?;
          }
          Some(Token::CloseParen) => {
             break;
@@ -801,7 +815,7 @@ fn parse_parameters<W: Write>(
                x.for_parse_err()
             )
             .unwrap();
-            emit_source_info(err_stream, l.peek_source().unwrap());
+            emit_source_info(err_stream, l.peek_source().unwrap(), interner);
             return Err(());
          }
          None => {
@@ -872,7 +886,7 @@ fn parse_arguments<W: Write>(
             if next_discrim == Some(discriminant(&Token::CloseParen)) {
                break;
             }
-            expect(l, err_stream, &Token::Comma)?;
+            expect(l, err_stream, &Token::Comma, interner)?;
          }
          Some(Token::CloseParen) => {
             break;
@@ -884,7 +898,7 @@ fn parse_arguments<W: Write>(
                x.for_parse_err()
             )
             .unwrap();
-            emit_source_info(err_stream, l.peek_source().unwrap());
+            emit_source_info(err_stream, l.peek_source().unwrap(), interner);
             return Err(());
          }
          None => {
@@ -924,18 +938,18 @@ fn parse_type<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner) 
       Some(Token::OpenSquareBracket) => {
          let _ = l.next();
          let a_inner_type = parse_type(l, err_stream, interner)?;
-         expect(l, err_stream, &Token::Semicolon)?;
-         let length = expect(l, err_stream, &Token::IntLiteral(0))?;
-         expect(l, err_stream, &Token::CloseSquareBracket)?;
+         expect(l, err_stream, &Token::Semicolon, interner)?;
+         let length = expect(l, err_stream, &Token::IntLiteral(0), interner)?;
+         expect(l, err_stream, &Token::CloseSquareBracket, interner)?;
          ValueType::Array(Box::new(a_inner_type), extract_int_literal(length.token))
       }
       Some(Token::OpenParen) => {
          let _ = l.next();
-         expect(l, err_stream, &Token::CloseParen)?;
+         expect(l, err_stream, &Token::CloseParen, interner)?;
          ValueType::Unit
       }
       _ => {
-         let type_token = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?;
+         let type_token = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?;
          let type_s = extract_identifier(type_token.token);
          match interner.lookup(type_s) {
             "bool" => ValueType::Bool,
@@ -981,9 +995,9 @@ fn pratt<W: Write>(
       Some(Token::Identifier(s)) => {
          if l.peek_token() == Some(&Token::Dollar) {
             let generic_args = parse_generic_arguments(l, err_stream, interner)?;
-            expect(l, err_stream, &Token::OpenParen)?;
+            expect(l, err_stream, &Token::OpenParen, interner)?;
             let args = parse_arguments(l, err_stream, expressions, interner)?;
-            expect(l, err_stream, &Token::CloseParen)?;
+            expect(l, err_stream, &Token::CloseParen, interner)?;
             Expression::ProcedureCall {
                proc_name: s,
                generic_args: generic_args.into_boxed_slice(),
@@ -992,7 +1006,7 @@ fn pratt<W: Write>(
          } else if l.peek_token() == Some(&Token::OpenParen) {
             let _ = l.next();
             let args = parse_arguments(l, err_stream, expressions, interner)?;
-            expect(l, err_stream, &Token::CloseParen)?;
+            expect(l, err_stream, &Token::CloseParen, interner)?;
             Expression::ProcedureCall {
                proc_name: s,
                generic_args: vec![].into_boxed_slice(),
@@ -1001,7 +1015,7 @@ fn pratt<W: Write>(
          } else if l.peek_token() == Some(&Token::DoubleColon) {
             let _ = l.next();
             let variant_identifier =
-               extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
+               extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?.token);
             Expression::EnumLiteral(s, variant_identifier)
          } else if !if_head && l.peek_token() == Some(&Token::OpenBrace) {
             let _ = l.next();
@@ -1011,8 +1025,8 @@ fn pratt<W: Write>(
                   let _ = l.next();
                   break;
                }
-               let identifier = extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
-               let _ = expect(l, err_stream, &Token::Colon)?;
+               let identifier = extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?.token);
+               let _ = expect(l, err_stream, &Token::Colon, interner)?;
                let val = parse_expression(l, err_stream, false, expressions, interner)?;
                fields.push((identifier, val));
                if let Some(&Token::CloseBrace) = l.peek_token() {
@@ -1022,10 +1036,10 @@ fn pratt<W: Write>(
                   let struct_str = interner.lookup(s);
                   let identifier_str = interner.lookup(*x);
                   writeln!(err_stream, "While parsing instantiation of struct `{}`, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?", struct_str, identifier_str).unwrap();
-                  emit_source_info(err_stream, l.peek_source().unwrap());
+                  emit_source_info(err_stream, l.peek_source().unwrap(), interner);
                   return Result::Err(());
                } else {
-                  expect(l, err_stream, &Token::Comma)?;
+                  expect(l, err_stream, &Token::Comma, interner)?;
                };
             }
             Expression::StructLiteral(s, fields)
@@ -1039,7 +1053,7 @@ fn pratt<W: Write>(
             Expression::UnitLiteral
          } else {
             let new_lhs = pratt(l, err_stream, 0, false, expressions, interner)?;
-            expect(l, err_stream, &Token::CloseParen)?;
+            expect(l, err_stream, &Token::CloseParen, interner)?;
             new_lhs
          }
       }
@@ -1054,7 +1068,7 @@ fn pratt<W: Write>(
             if let Some(Token::CloseSquareBracket) = l.peek_token() {
                break;
             } else {
-               expect(l, err_stream, &Token::Comma)?;
+               expect(l, err_stream, &Token::Comma, interner)?;
             }
          }
          let _ = l.next(); // ]
@@ -1093,7 +1107,7 @@ fn pratt<W: Write>(
          )
          .unwrap();
          if let Some(si) = lhs_source {
-            emit_source_info(err_stream, si);
+            emit_source_info(err_stream, si, interner);
          }
          return Err(());
       }
@@ -1128,7 +1142,7 @@ fn pratt<W: Write>(
             loop {
                let _ = l.next();
                fields.push(extract_identifier(
-                  expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN))?.token,
+                  expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?.token,
                ));
                if l.peek_token() != Some(&Token::Period) {
                   break;
@@ -1150,7 +1164,7 @@ fn pratt<W: Write>(
          lhs = match op {
             Token::OpenSquareBracket => {
                let inner = parse_expression(l, err_stream, false, expressions, interner)?;
-               expect(l, err_stream, &Token::CloseSquareBracket)?;
+               expect(l, err_stream, &Token::CloseSquareBracket, interner)?;
                Expression::ArrayIndex {
                   array: wrap(lhs, lhs_source.unwrap(), expressions),
                   index: inner,

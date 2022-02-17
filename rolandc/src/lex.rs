@@ -7,6 +7,7 @@ use crate::interner::{Interner, StrId};
 pub struct SourceInfo {
    pub line: usize,
    pub col: usize,
+   pub file: Option<StrId>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -39,6 +40,7 @@ pub enum Token {
    KeywordFor,
    KeywordIn,
    KeywordExtern,
+   KeywordImport,
    OpenBrace,
    CloseBrace,
    OpenParen,
@@ -100,6 +102,7 @@ impl Token {
          Token::KeywordOr => "keyword or",
          Token::KeywordEnumDef => "keyword enum",
          Token::KeywordExtern => "keyword extern",
+         Token::KeywordImport => "keyword include",
          Token::OpenBrace => "{",
          Token::CloseBrace => "}",
          Token::OpenParen => "(",
@@ -151,8 +154,22 @@ enum LexMode {
    Comment,
 }
 
-pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo) {
-   writeln!(err_stream, "↳ line {}, column {}", source_info.line, source_info.col).unwrap();
+pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo, interner: &Interner) {
+   if let Some(path) = source_info.file {
+      let path_str = interner.lookup(path);
+      writeln!(err_stream, "↳ line {}, column {} [{}]", source_info.line, source_info.col, path_str).unwrap();
+   } else {
+      writeln!(err_stream, "↳ line {}, column {}", source_info.line, source_info.col).unwrap();
+   }
+}
+
+pub fn emit_source_info_with_description<W: Write>(err_stream: &mut W, source_info: SourceInfo, description: &str, interner: &Interner) {
+   if let Some(path) = source_info.file {
+      let path_str = interner.lookup(path);
+      writeln!(err_stream, "↳ {} @ line {}, column {} [{}]", description, source_info.line, source_info.col, path_str).unwrap();
+   } else {
+      writeln!(err_stream, "↳ {} @ line {}, column {}", description, source_info.line, source_info.col).unwrap();
+   }
 }
 
 fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
@@ -180,15 +197,16 @@ fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
       "in" => Token::KeywordIn,
       "for" => Token::KeywordFor,
       "extern" => Token::KeywordExtern,
+      "import" => Token::KeywordImport,
       other => Token::Identifier(interner.intern(other)),
    }
 }
 
-pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -> Result<Vec<SourceToken>, ()> {
+pub fn lex<W: Write>(input: &str, source_path: Option<StrId>, err_stream: &mut W, interner: &mut Interner) -> Result<Vec<SourceToken>, ()> {
    let mut tokens: Vec<SourceToken> = Vec::new();
    let mut mode = LexMode::Normal;
 
-   let mut source_info = SourceInfo { line: 1, col: 1 };
+   let mut source_info = SourceInfo { line: 1, col: 1, file: source_path };
 
    // Temporary buffer we use in various parts of the lexer
    let mut str_buf = String::new();
@@ -466,7 +484,7 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
                mode = LexMode::Ident;
             } else {
                writeln!(err_stream, "Encountered unexpected character {}", c).unwrap();
-               emit_source_info(err_stream, source_info);
+               emit_source_info(err_stream, source_info, interner);
                return Err(());
             }
          }
@@ -527,7 +545,9 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
                   SourceInfo {
                      col: source_info.col - 1,
                      line: source_info.line,
+                     file: source_info.file,
                   },
+                  interner,
                );
                return Err(());
             }
@@ -547,7 +567,7 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
                if chars.peek() == Some(&'.') {
                   // This is pretty hacky, but oh well
 
-                  tokens.push(finish_numeric_literal(&str_buf, err_stream, source_info, is_float)?);
+                  tokens.push(finish_numeric_literal(&str_buf, err_stream, source_info, is_float, interner)?);
                   source_info.col += str_buf.len();
                   is_float = false;
                   str_buf.clear();
@@ -564,7 +584,7 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
                   str_buf.push(c);
                }
             } else {
-               tokens.push(finish_numeric_literal(&str_buf, err_stream, source_info, is_float)?);
+               tokens.push(finish_numeric_literal(&str_buf, err_stream, source_info, is_float, interner)?);
                source_info.col += str_buf.len();
                is_float = false;
                str_buf.clear();
@@ -598,7 +618,7 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
       }
       // Same for numbers
       LexMode::NumericLiteral => {
-         tokens.push(finish_numeric_literal(&str_buf, err_stream, source_info, is_float)?);
+         tokens.push(finish_numeric_literal(&str_buf, err_stream, source_info, is_float, interner)?);
          Ok(tokens)
       }
       LexMode::StringLiteral | LexMode::StringLiteralEscape => {
@@ -607,18 +627,8 @@ pub fn lex<W: Write>(input: &str, err_stream: &mut W, interner: &mut Interner) -
             "Encountered EOF while parsing string literal; Hint: Are you missing a closing \"?"
          )
          .unwrap();
-         writeln!(
-            err_stream,
-            "↳ string literal @ line {}, column {}",
-            str_begin.line, str_begin.col
-         )
-         .unwrap();
-         writeln!(
-            err_stream,
-            "↳ EOF @ line {}, column {}",
-            source_info.line, source_info.col
-         )
-         .unwrap();
+         emit_source_info_with_description(err_stream, str_begin, "string literal", interner);
+         emit_source_info_with_description(err_stream, source_info, "EOF", interner);
          Err(())
       }
    }
@@ -629,25 +639,26 @@ fn finish_numeric_literal<W: Write>(
    err_stream: &mut W,
    source_info: SourceInfo,
    is_float: bool,
+   interner: &Interner,
 ) -> Result<SourceToken, ()> {
    let resulting_token = if is_float {
       let float_value = match s.parse::<f64>() {
          Ok(v) => v,
          Err(_) => {
             writeln!(err_stream, "Encountered number that can't be parsed as a float").unwrap();
-            emit_source_info(err_stream, source_info);
+            emit_source_info(err_stream, source_info, interner);
             return Err(());
          }
       };
       Token::FloatLiteral(float_value)
    } else if let Some(rest_of_s) = s.strip_prefix("0x") {
-      parse_int(rest_of_s, 16, err_stream, source_info)?
+      parse_int(rest_of_s, 16, err_stream, source_info, interner)?
    } else if let Some(rest_of_s) = s.strip_prefix("0o") {
-      parse_int(rest_of_s, 8, err_stream, source_info)?
+      parse_int(rest_of_s, 8, err_stream, source_info, interner)?
    } else if let Some(rest_of_s) = s.strip_prefix("0b") {
-      parse_int(rest_of_s, 2, err_stream, source_info)?
+      parse_int(rest_of_s, 2, err_stream, source_info, interner)?
    } else {
-      parse_int(s, 10, err_stream, source_info)?
+      parse_int(s, 10, err_stream, source_info, interner)?
    };
    Ok(SourceToken {
       source_info,
@@ -655,17 +666,17 @@ fn finish_numeric_literal<W: Write>(
    })
 }
 
-fn parse_int<W: Write>(s: &str, radix: u32, err_stream: &mut W, source_info: SourceInfo) -> Result<Token, ()> {
+fn parse_int<W: Write>(s: &str, radix: u32, err_stream: &mut W, source_info: SourceInfo, interner: &Interner) -> Result<Token, ()> {
    match i128::from_str_radix(s, radix) {
       Ok(v) => Ok(Token::IntLiteral(v)),
       Err(pe) if *pe.kind() == IntErrorKind::InvalidDigit => {
          writeln!(err_stream, "Encountered invalid digit while parsing integer").unwrap();
-         emit_source_info(err_stream, source_info);
+         emit_source_info(err_stream, source_info, interner);
          Err(())
       }
       Err(pe) if *pe.kind() == IntErrorKind::PosOverflow => {
          writeln!(err_stream, "Encountered overly big integer").unwrap();
-         emit_source_info(err_stream, source_info);
+         emit_source_info(err_stream, source_info, interner);
          Err(())
       }
       Err(pe) if *pe.kind() == IntErrorKind::Empty => {
@@ -674,7 +685,7 @@ fn parse_int<W: Write>(s: &str, radix: u32, err_stream: &mut W, source_info: Sou
             "Encountered empty integer literal (prefix that is not followed by a number)"
          )
          .unwrap();
-         emit_source_info(err_stream, source_info);
+         emit_source_info(err_stream, source_info, interner);
          Err(())
       }
       Err(_) => unreachable!(),

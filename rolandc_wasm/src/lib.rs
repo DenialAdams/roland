@@ -27,6 +27,7 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
 
    let compile_result = rolandc::compile(
       source_code,
+      None,
       &mut err_out,
       Some(&mut ast_out),
       do_constant_folding.checked(),
@@ -35,7 +36,9 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
 
    if let Err(CompilationError::Semantic(err_count)) = compile_result.as_ref() {
       writeln!(err_out, "There were {} semantic errors, bailing", err_count).unwrap();
-   };
+   } else if let Err(CompilationError::Internal) = compile_result.as_ref() {
+      writeln!(err_out, "rolandc has encountered an internal error. *This is a bug in the compiler*, please file an issue on github with the problematic input.").unwrap();
+   }
 
    let ast_s = String::from_utf8(ast_out).unwrap();
    ast_frame.set_inner_html(&ast_s);

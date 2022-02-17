@@ -1,0 +1,5 @@
+Element at array index 0 has type of String, but element at array index 1 has mismatching type of bool
+↳ array literal @ line 2, column 12 [heterogenous_array_literal.rol]
+↳ element 0 @ line 2, column 13 [heterogenous_array_literal.rol]
+↳ element 1 @ line 2, column 20 [heterogenous_array_literal.rol]
+There were 1 semantic errors, bailing

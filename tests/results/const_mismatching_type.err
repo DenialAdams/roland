@@ -1,4 +1,4 @@
 Declared type i64 of const `X` does not match actual expression type bool
-↳ const @ line 1, column 1
-↳ expression @ line 1, column 16
+↳ const @ line 1, column 1 [const_mismatching_type.rol]
+↳ expression @ line 1, column 16 [const_mismatching_type.rol]
 There were 1 semantic errors, bailing

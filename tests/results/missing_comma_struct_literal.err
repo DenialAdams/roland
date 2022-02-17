@@ -1,2 +1,2 @@
 While parsing instantiation of struct `X`, encountered an unexpected identifier `bar`. Hint: Are you missing a comma?
-↳ line 9, column 7
+↳ line 9, column 7 [missing_comma_struct_literal.rol]

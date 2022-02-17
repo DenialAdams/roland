@@ -1,3 +1,3 @@
 Encountered EOF while parsing string literal; Hint: Are you missing a closing "?
-↳ string literal @ line 2, column 10
-↳ EOF @ line 4, column 1
+↳ string literal @ line 2, column 10 [incomple_str.rol]
+↳ EOF @ line 4, column 1 [incomple_str.rol]
