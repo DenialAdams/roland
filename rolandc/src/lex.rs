@@ -102,7 +102,7 @@ impl Token {
          Token::KeywordOr => "keyword or",
          Token::KeywordEnumDef => "keyword enum",
          Token::KeywordExtern => "keyword extern",
-         Token::KeywordImport => "keyword include",
+         Token::KeywordImport => "keyword import",
          Token::OpenBrace => "{",
          Token::CloseBrace => "}",
          Token::OpenParen => "(",

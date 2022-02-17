@@ -207,7 +207,7 @@ fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Res
 
    if tc_output.stderr.is_empty() {
       let mut prog_path = t_file_path.to_path_buf();
-      prog_path.set_extension("wast");
+      prog_path.set_extension("wat");
       let out_file = open_result_file(result_dir, t_file_path, "out");
       if let Ok(mut handle) = out_file {
          handle.read_to_string(&mut desired_result).unwrap();

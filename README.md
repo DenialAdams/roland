@@ -134,7 +134,7 @@ proc main() {
 Roland currently supports compiling to two different flavors of WebAssembly.
 
 ### WASI
-This is the default target. A `.wast` file is emitted that can be run directly with `wasmtime`.
+This is the default target. A `.wat` file is emitted that can be run directly with `wasmtime`.
 
 The only WASI API we support at the moment is printing text to stdout, through the function `print`.
 

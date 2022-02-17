@@ -307,7 +307,7 @@ pub fn astify<W: Write>(
    let mut enums = vec![];
    let mut consts = vec![];
    let mut statics = vec![];
-   let mut includes = vec![];
+   let mut imports = vec![];
 
    while let Some(peeked_token) = lexer.peek_token() {
       match peeked_token {
@@ -324,8 +324,8 @@ pub fn astify<W: Write>(
          }
          Token::KeywordImport => {
             let _ = lexer.next().unwrap();
-            let path_to_include = extract_str_literal(expect(&mut lexer, err_stream, &Token::StringLiteral(DUMMY_STR_TOKEN), interner)?.token);
-            includes.push(path_to_include);
+            let path_to_import = extract_str_literal(expect(&mut lexer, err_stream, &Token::StringLiteral(DUMMY_STR_TOKEN), interner)?.token);
+            imports.push(path_to_import);
             expect(&mut lexer, err_stream, &Token::Semicolon, interner)?;
          }
          Token::KeywordStructDef => {
@@ -390,7 +390,7 @@ pub fn astify<W: Write>(
       }
    }
 
-   Ok((includes, Program {
+   Ok((imports, Program {
       external_procedures,
       procedures,
       enums,

@@ -70,13 +70,13 @@ pub fn compile<E: Write, A: Write>(
    }
    let root_source_location = user_program_path.as_ref().map(|x| interner.intern(&x.to_string_lossy()));
 
-   let (files_to_include, mut user_program) = lex_and_parse(user_program_s, root_source_location, err_stream, &mut interner, &mut expressions)?;
+   let (files_to_import, mut user_program) = lex_and_parse(user_program_s, root_source_location, err_stream, &mut interner, &mut expressions)?;
 
    let mut base_path = user_program_path.unwrap_or_else(PathBuf::new);
    base_path.pop(); // /foo/bar/main.rol -> /foo/bar
    let mut import_queue: Vec<PathBuf> = vec![];
 
-   for file in files_to_include {
+   for file in files_to_import {
       let file_str = interner.lookup(file);
       let mut new_path = base_path.clone();
       new_path.push(file_str);
@@ -100,7 +100,7 @@ pub fn compile<E: Write, A: Write>(
       let program_s = match std::fs::read_to_string(&base_path) {
          Ok(s) => s,
          Err(e) => {
-            writeln!(err_stream, "Failed to read included file '{}': {}", base_path.as_os_str().to_string_lossy(), e).unwrap();
+            writeln!(err_stream, "Failed to read imported file '{}': {}", base_path.as_os_str().to_string_lossy(), e).unwrap();
             return Err(CompilationError::Io);
          }
       };
@@ -233,6 +233,6 @@ fn lex_and_parse<W: Write>(
    };
    match parse::astify(tokens, err_stream, interner, expressions) {
       Err(()) => Err(CompilationError::Parse),
-      Ok((includes, program)) => Ok((includes, program)),
+      Ok((imports, program)) => Ok((imports, program)),
    }
 }
