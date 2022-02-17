@@ -72,7 +72,8 @@ pub fn compile<E: Write, A: Write>(
 
    let (files_to_include, mut user_program) = lex_and_parse(user_program_s, root_source_location, err_stream, &mut interner, &mut expressions)?;
 
-   let base_path = user_program_path.unwrap_or_else(PathBuf::new);
+   let mut base_path = user_program_path.unwrap_or_else(PathBuf::new);
+   base_path.pop(); // /foo/bar/main.rol -> /foo/bar
    let mut import_queue: Vec<PathBuf> = vec![];
 
    for file in files_to_include {
@@ -82,7 +83,7 @@ pub fn compile<E: Write, A: Write>(
       import_queue.push(new_path)
    }
 
-   while let Some(base_path) = import_queue.pop() {
+   while let Some(mut base_path) = import_queue.pop() {
       let canonical_path = match std::fs::canonicalize(&base_path) {
          Ok(p) => p,
          Err(e) => {
@@ -93,6 +94,9 @@ pub fn compile<E: Write, A: Write>(
       if imported_files.contains(&canonical_path) {
          continue;
       }
+      imported_files.insert(canonical_path);
+
+
       let program_s = match std::fs::read_to_string(&base_path) {
          Ok(s) => s,
          Err(e) => {
@@ -102,13 +106,14 @@ pub fn compile<E: Write, A: Write>(
       };
       let mut parsed = lex_and_parse(&program_s, Some(interner.intern(&base_path.as_os_str().to_string_lossy())), err_stream, &mut interner, &mut expressions)?;
       merge_program(&mut user_program, &mut parsed.1);
+
+      base_path.pop(); // /foo/bar/main.rol -> /foo/bar
       for file in parsed.0.iter().copied() {
          let file_str = interner.lookup(file);
          let mut new_path = base_path.clone();
          new_path.push(file_str);
          import_queue.push(new_path)
       }
-      imported_files.insert(canonical_path);
    }
 
    let num_procedures_before_std_merge = user_program.procedures.len();

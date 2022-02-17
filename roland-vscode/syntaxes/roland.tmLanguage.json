@@ -274,7 +274,7 @@
             {
                "comment": "other keywords",
                "name": "keyword.other.roland",
-               "match": "\\b(in|extend|transmute|truncate|named|extern)\\b"
+               "match": "\\b(in|extend|transmute|truncate|named|extern|import)\\b"
             },
             {
                "comment": "fn",
