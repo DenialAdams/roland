@@ -602,7 +602,7 @@ pub fn type_and_check_validity<W: Write>(
          let p_const_expr = &validation_context.expressions[p_const.value];
 
          if p_const.const_type != *p_const_expr.exp_type.as_ref().unwrap()
-            && p_const_expr.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::CompileError)
+            && !p_const_expr.exp_type.as_ref().unwrap().is_error_type()
          {
             validation_context.error_count += 1;
             let actual_type_str = p_const_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
@@ -657,7 +657,7 @@ pub fn type_and_check_validity<W: Write>(
       let p_static_expr = &validation_context.expressions[p_static.value.unwrap()];
 
       if p_static.static_type != *p_static_expr.exp_type.as_ref().unwrap()
-         && p_static_expr.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::CompileError)
+         && !p_static_expr.exp_type.as_ref().unwrap().is_error_type()
       {
          validation_context.error_count += 1;
          let actual_type_str = p_static_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
@@ -810,11 +810,11 @@ fn type_statement<W: Write>(
          let lhs_type = len.exp_type.as_ref().unwrap();
          let rhs_type = en.exp_type.as_ref().unwrap();
 
-         if lhs_type == &ExpressionType::Value(ValueType::CompileError)
-            || rhs_type == &ExpressionType::Value(ValueType::CompileError)
+         if lhs_type.is_error_type()
+            || rhs_type.is_error_type()
          {
             // avoid cascading errors
-         } else if lhs_type != rhs_type && lhs_type.is_concrete_type() {
+         } else if lhs_type != rhs_type {
             validation_context.error_count += 1;
             writeln!(
                err_stream,
@@ -893,8 +893,8 @@ fn type_statement<W: Write>(
             start_expr.exp_type.as_ref().unwrap(),
             end_expr.exp_type.as_ref().unwrap(),
          ) {
-            (ExpressionType::Value(ValueType::CompileError), _) => ExpressionType::Value(ValueType::CompileError),
-            (_, ExpressionType::Value(ValueType::CompileError)) => ExpressionType::Value(ValueType::CompileError),
+            (lhs, _) if lhs.is_error_type() => ExpressionType::Value(ValueType::CompileError),
+            (_, rhs) if rhs.is_error_type() => ExpressionType::Value(ValueType::CompileError),
             (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) if x == y => {
                ExpressionType::Value(ValueType::Int(*x))
             }
@@ -945,7 +945,7 @@ fn type_statement<W: Write>(
          let en = &validation_context.expressions[*en];
          let if_exp_type = en.exp_type.as_ref().unwrap();
          if if_exp_type != &ExpressionType::Value(ValueType::Bool)
-            && if_exp_type != &ExpressionType::Value(ValueType::CompileError)
+            && !if_exp_type.is_error_type()
          {
             validation_context.error_count += 1;
             writeln!(
@@ -999,7 +999,7 @@ fn type_statement<W: Write>(
 
          let result_type = if dt.is_some()
             && *dt != en.exp_type
-            && en.exp_type.as_ref().unwrap() != &ExpressionType::Value(ValueType::CompileError)
+            && !en.exp_type.as_ref().unwrap().is_error_type()
          {
             validation_context.error_count += 1;
             writeln!(
@@ -1376,8 +1376,8 @@ fn get_type<W: Write>(
          let lhs_type = lhs_expr.exp_type.as_ref().unwrap();
          let rhs_type = rhs_expr.exp_type.as_ref().unwrap();
 
-         if lhs_type == &ExpressionType::Value(ValueType::CompileError)
-            || rhs_type == &ExpressionType::Value(ValueType::CompileError)
+         if lhs_type.is_error_type()
+            || rhs_type.is_error_type()
          {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
@@ -1468,7 +1468,7 @@ fn get_type<W: Write>(
             }
          };
 
-         if e.exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::CompileError) {
+         if e.exp_type.as_ref().unwrap().is_error_type() {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_type, e.exp_type.as_ref().unwrap()) {
@@ -1654,7 +1654,7 @@ fn get_type<W: Write>(
                      let actual_expr = &validation_context.expressions[actual.expr];
                      let actual_type = actual_expr.exp_type.as_ref().unwrap();
 
-                     if actual_type != expected && *actual_type != ExpressionType::Value(ValueType::CompileError) {
+                     if actual_type != expected && !actual_type.is_error_type() {
                         validation_context.error_count += 1;
                         let actual_type_str = actual_type.as_roland_type_info(interner);
                         let expected_type_str = expected.as_roland_type_info(interner);
@@ -1699,7 +1699,7 @@ fn get_type<W: Write>(
                      let arg_expr = &validation_context.expressions[arg.expr];
 
                      let actual_type = arg_expr.exp_type.as_ref().unwrap();
-                     if actual_type != expected && *actual_type != ExpressionType::Value(ValueType::CompileError) {
+                     if actual_type != expected && !actual_type.is_error_type() {
                         validation_context.error_count += 1;
                         let actual_type_str = actual_type.as_roland_type_info(interner);
                         let expected_type_str = expected.as_roland_type_info(interner);
