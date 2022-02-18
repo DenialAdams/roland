@@ -186,9 +186,9 @@ impl ExpressionType {
    pub fn increment_indirection_count(&mut self) {
       match self {
          ExpressionType::Value(v) => {
-            // UGH this clone is so un-necessary, i don't know how to fix safely
-            // TODO
-            *self = ExpressionType::Pointer(1, v.clone());
+            // bool is just a dummy type here
+            let inner_value = std::mem::replace(v, ValueType::Bool);
+            *self = ExpressionType::Pointer(1, inner_value);
          }
          ExpressionType::Pointer(i, _) => {
             *i += 1;
@@ -200,9 +200,9 @@ impl ExpressionType {
       match self {
          ExpressionType::Value(_) => Err(()),
          ExpressionType::Pointer(1, v) => {
-            // UGH this clone is so un-necessary, i don't know how to fix safely
-            // TODO
-            *self = ExpressionType::Value(v.clone());
+            // bool is just a dummy type here
+            let inner_value = std::mem::replace(v, ValueType::Bool);
+            *self = ExpressionType::Value(inner_value);
             Ok(())
          }
          ExpressionType::Pointer(i, _) => {
