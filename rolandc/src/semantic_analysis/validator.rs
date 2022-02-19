@@ -2003,7 +2003,7 @@ fn get_type<W: Write>(
          }
 
          match &array_expression.exp_type {
-            Some(ExpressionType::Value(ValueType::CompileError)) => ExpressionType::Value(ValueType::CompileError),
+            Some(x) if x.is_error_type() => ExpressionType::Value(ValueType::CompileError),
             Some(ExpressionType::Value(ValueType::Array(b, _))) => *b.clone(),
             Some(x) => {
                validation_context.error_count += 1;
