@@ -211,14 +211,18 @@ fn fold_expr<W: Write>(
                      expression_begin_location: expr_to_fold_location,
                   });
                }
-               BinOp::GreaterThan | BinOp::LessThan if !matches!(expr_to_fold_type, Some(ExpressionType::Value(ValueType::Float(_)))) => {
+               BinOp::GreaterThan | BinOp::LessThan
+                  if !matches!(expr_to_fold_type, Some(ExpressionType::Value(ValueType::Float(_)))) =>
+               {
                   return Some(ExpressionNode {
                      expression: Expression::BoolLiteral(false),
                      exp_type: expr_to_fold_type,
                      expression_begin_location: expr_to_fold_location,
                   });
                }
-               BinOp::Equality | BinOp::GreaterThanOrEqualTo | BinOp::LessThanOrEqualTo if !matches!(expr_to_fold_type, Some(ExpressionType::Value(ValueType::Float(_)))) => {
+               BinOp::Equality | BinOp::GreaterThanOrEqualTo | BinOp::LessThanOrEqualTo
+                  if !matches!(expr_to_fold_type, Some(ExpressionType::Value(ValueType::Float(_)))) =>
+               {
                   return Some(ExpressionNode {
                      expression: Expression::BoolLiteral(true),
                      exp_type: expr_to_fold_type,
