@@ -171,6 +171,32 @@ fn fold_expr<W: Write>(
          let lhs_expr = &folding_context.expressions[*lhs];
          let rhs_expr = &folding_context.expressions[*rhs];
 
+         // For some cases, we don't care if either operand is literal
+         if !expression_could_have_side_effects(&lhs_expr.expression) && !expression_could_have_side_effects(&rhs_expr.expression) && lhs_expr.expression == rhs_expr.expression {
+            match operator {
+               BinOp::BitwiseXor => {
+                  let expr = match expr_to_fold_type {
+                     Some(ExpressionType::Value(ValueType::Bool)) => Expression::BoolLiteral(false),
+                     Some(ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral(0),
+                     _ => unreachable!(),
+                  };
+                  return Some(ExpressionNode {
+                     expression: expr,
+                     exp_type: expr_to_fold_type,
+                     expression_begin_location: expr_to_fold_location,
+                  });
+               }
+               BinOp::Equality => {
+                  return Some(ExpressionNode {
+                     expression: Expression::BoolLiteral(true),
+                     exp_type: expr_to_fold_type,
+                     expression_begin_location: expr_to_fold_location,
+                  });
+               }
+               _ => (),
+            }
+         }
+
          debug_assert!(lhs_expr.exp_type == rhs_expr.exp_type);
 
          let lhs = extract_literal(lhs_expr);
@@ -211,11 +237,11 @@ fn fold_expr<W: Write>(
 
             if is_commutative_noop(one_literal, *operator) {
                let new_expr = non_literal_expr.clone();
-                  return Some(ExpressionNode {
-                     expression: new_expr,
-                     exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
-                  });
+               return Some(ExpressionNode {
+                  expression: new_expr,
+                  exp_type: expr_to_fold_type,
+                  expression_begin_location: expr_to_fold_location,
+               });
             } else if !expression_could_have_side_effects(non_literal_expr) {
                match (one_literal, *operator) {
                   (x, BinOp::BitwiseOr) if x.is_int_max() => {

@@ -175,7 +175,7 @@ impl Handle for ExpressionId {
    }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expression {
    ProcedureCall {
       proc_name: StrId,
@@ -209,13 +209,13 @@ pub enum Expression {
 
 // TODO: it would be cool if StrId was NonZero so that this struct (and others like it)
 // could be smaller
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ArgumentNode {
    pub name: Option<StrId>,
    pub expr: ExpressionId,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct GenericArgumentNode {
    pub gtype: ExpressionType,
 }
