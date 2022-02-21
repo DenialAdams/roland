@@ -1,4 +1,4 @@
-use crate::interner::{StrId, Interner};
+use crate::interner::{Interner, StrId};
 use crate::lex::emit_source_info_with_description;
 use crate::parse::{
    BinOp, BlockNode, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement, UnOp,
@@ -16,7 +16,12 @@ pub struct FoldingContext<'a> {
    pub error_count: u64,
 }
 
-pub fn fold_constants<W: Write>(program: &mut Program, err_stream: &mut W, expressions: &mut ExpressionPool, interner: &Interner) -> u64 {
+pub fn fold_constants<W: Write>(
+   program: &mut Program,
+   err_stream: &mut W,
+   expressions: &mut ExpressionPool,
+   interner: &Interner,
+) -> u64 {
    let mut folding_context = FoldingContext {
       error_count: 0,
       expressions,
@@ -29,13 +34,23 @@ pub fn fold_constants<W: Write>(program: &mut Program, err_stream: &mut W, expre
    folding_context.error_count
 }
 
-pub fn fold_block<W: Write>(block: &mut BlockNode, err_stream: &mut W, folding_context: &mut FoldingContext, interner: &Interner) {
+pub fn fold_block<W: Write>(
+   block: &mut BlockNode,
+   err_stream: &mut W,
+   folding_context: &mut FoldingContext,
+   interner: &Interner,
+) {
    for statement in block.statements.iter_mut() {
       fold_statement(&mut statement.statement, err_stream, folding_context, interner);
    }
 }
 
-pub fn fold_statement<W: Write>(statement: &mut Statement, err_stream: &mut W, folding_context: &mut FoldingContext, interner: &Interner) {
+pub fn fold_statement<W: Write>(
+   statement: &mut Statement,
+   err_stream: &mut W,
+   folding_context: &mut FoldingContext,
+   interner: &Interner,
+) {
    match statement {
       Statement::Assignment(lhs_expr, rhs_expr) => {
          try_fold_and_replace_expr(*lhs_expr, err_stream, folding_context, interner);
@@ -172,7 +187,10 @@ fn fold_expr<W: Write>(
          let rhs_expr = &folding_context.expressions[*rhs];
 
          // For some cases, we don't care if either operand is literal
-         if !expression_could_have_side_effects(&lhs_expr.expression) && !expression_could_have_side_effects(&rhs_expr.expression) && lhs_expr.expression == rhs_expr.expression {
+         if !expression_could_have_side_effects(&lhs_expr.expression)
+            && !expression_could_have_side_effects(&rhs_expr.expression)
+            && lhs_expr.expression == rhs_expr.expression
+         {
             match operator {
                BinOp::BitwiseXor => {
                   let expr = match expr_to_fold_type {
@@ -974,5 +992,12 @@ fn is_commutative_noop(literal: Literal, op: BinOp) -> bool {
 }
 
 fn expression_could_have_side_effects(expression: &Expression) -> bool {
-   matches!(expression, Expression::ProcedureCall { proc_name: _, generic_args: _, args: _ })
+   matches!(
+      expression,
+      Expression::ProcedureCall {
+         proc_name: _,
+         generic_args: _,
+         args: _
+      }
+   )
 }

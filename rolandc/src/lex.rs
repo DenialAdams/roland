@@ -157,18 +157,38 @@ enum LexMode {
 pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo, interner: &Interner) {
    if let Some(path) = source_info.file {
       let path_str = interner.lookup(path);
-      writeln!(err_stream, "↳ line {}, column {} [{}]", source_info.line, source_info.col, path_str).unwrap();
+      writeln!(
+         err_stream,
+         "↳ line {}, column {} [{}]",
+         source_info.line, source_info.col, path_str
+      )
+      .unwrap();
    } else {
       writeln!(err_stream, "↳ line {}, column {}", source_info.line, source_info.col).unwrap();
    }
 }
 
-pub fn emit_source_info_with_description<W: Write>(err_stream: &mut W, source_info: SourceInfo, description: &str, interner: &Interner) {
+pub fn emit_source_info_with_description<W: Write>(
+   err_stream: &mut W,
+   source_info: SourceInfo,
+   description: &str,
+   interner: &Interner,
+) {
    if let Some(path) = source_info.file {
       let path_str = interner.lookup(path);
-      writeln!(err_stream, "↳ {} @ line {}, column {} [{}]", description, source_info.line, source_info.col, path_str).unwrap();
+      writeln!(
+         err_stream,
+         "↳ {} @ line {}, column {} [{}]",
+         description, source_info.line, source_info.col, path_str
+      )
+      .unwrap();
    } else {
-      writeln!(err_stream, "↳ {} @ line {}, column {}", description, source_info.line, source_info.col).unwrap();
+      writeln!(
+         err_stream,
+         "↳ {} @ line {}, column {}",
+         description, source_info.line, source_info.col
+      )
+      .unwrap();
    }
 }
 
@@ -202,11 +222,20 @@ fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
    }
 }
 
-pub fn lex<W: Write>(input: &str, source_path: Option<StrId>, err_stream: &mut W, interner: &mut Interner) -> Result<Vec<SourceToken>, ()> {
+pub fn lex<W: Write>(
+   input: &str,
+   source_path: Option<StrId>,
+   err_stream: &mut W,
+   interner: &mut Interner,
+) -> Result<Vec<SourceToken>, ()> {
    let mut tokens: Vec<SourceToken> = Vec::new();
    let mut mode = LexMode::Normal;
 
-   let mut source_info = SourceInfo { line: 1, col: 1, file: source_path };
+   let mut source_info = SourceInfo {
+      line: 1,
+      col: 1,
+      file: source_path,
+   };
 
    // Temporary buffer we use in various parts of the lexer
    let mut str_buf = String::new();
@@ -567,7 +596,13 @@ pub fn lex<W: Write>(input: &str, source_path: Option<StrId>, err_stream: &mut W
                if chars.peek() == Some(&'.') {
                   // This is pretty hacky, but oh well
 
-                  tokens.push(finish_numeric_literal(&str_buf, err_stream, source_info, is_float, interner)?);
+                  tokens.push(finish_numeric_literal(
+                     &str_buf,
+                     err_stream,
+                     source_info,
+                     is_float,
+                     interner,
+                  )?);
                   source_info.col += str_buf.len();
                   is_float = false;
                   str_buf.clear();
@@ -584,7 +619,13 @@ pub fn lex<W: Write>(input: &str, source_path: Option<StrId>, err_stream: &mut W
                   str_buf.push(c);
                }
             } else {
-               tokens.push(finish_numeric_literal(&str_buf, err_stream, source_info, is_float, interner)?);
+               tokens.push(finish_numeric_literal(
+                  &str_buf,
+                  err_stream,
+                  source_info,
+                  is_float,
+                  interner,
+               )?);
                source_info.col += str_buf.len();
                is_float = false;
                str_buf.clear();
@@ -618,7 +659,13 @@ pub fn lex<W: Write>(input: &str, source_path: Option<StrId>, err_stream: &mut W
       }
       // Same for numbers
       LexMode::NumericLiteral => {
-         tokens.push(finish_numeric_literal(&str_buf, err_stream, source_info, is_float, interner)?);
+         tokens.push(finish_numeric_literal(
+            &str_buf,
+            err_stream,
+            source_info,
+            is_float,
+            interner,
+         )?);
          Ok(tokens)
       }
       LexMode::StringLiteral | LexMode::StringLiteralEscape => {
@@ -666,7 +713,13 @@ fn finish_numeric_literal<W: Write>(
    })
 }
 
-fn parse_int<W: Write>(s: &str, radix: u32, err_stream: &mut W, source_info: SourceInfo, interner: &Interner) -> Result<Token, ()> {
+fn parse_int<W: Write>(
+   s: &str,
+   radix: u32,
+   err_stream: &mut W,
+   source_info: SourceInfo,
+   interner: &Interner,
+) -> Result<Token, ()> {
    match i128::from_str_radix(s, radix) {
       Ok(v) => Ok(Token::IntLiteral(v)),
       Err(pe) if *pe.kind() == IntErrorKind::InvalidDigit => {

@@ -62,15 +62,29 @@ pub fn compile<E: Write, A: Write>(
       let canonical_path = match std::fs::canonicalize(x) {
          Ok(p) => p,
          Err(e) => {
-            writeln!(err_stream, "Failed to canonicalize path '{}': {}", x.as_os_str().to_string_lossy(), e).unwrap();
+            writeln!(
+               err_stream,
+               "Failed to canonicalize path '{}': {}",
+               x.as_os_str().to_string_lossy(),
+               e
+            )
+            .unwrap();
             return Err(CompilationError::Io);
          }
       };
       imported_files.insert(canonical_path);
    }
-   let root_source_location = user_program_path.as_ref().map(|x| interner.intern(&x.to_string_lossy()));
+   let root_source_location = user_program_path
+      .as_ref()
+      .map(|x| interner.intern(&x.to_string_lossy()));
 
-   let (files_to_import, mut user_program) = lex_and_parse(user_program_s, root_source_location, err_stream, &mut interner, &mut expressions)?;
+   let (files_to_import, mut user_program) = lex_and_parse(
+      user_program_s,
+      root_source_location,
+      err_stream,
+      &mut interner,
+      &mut expressions,
+   )?;
 
    let mut base_path = user_program_path.unwrap_or_else(PathBuf::new);
    base_path.pop(); // /foo/bar/main.rol -> /foo/bar
@@ -87,7 +101,13 @@ pub fn compile<E: Write, A: Write>(
       let canonical_path = match std::fs::canonicalize(&base_path) {
          Ok(p) => p,
          Err(e) => {
-            writeln!(err_stream, "Failed to canonicalize path '{}': {}", base_path.as_os_str().to_string_lossy(), e).unwrap();
+            writeln!(
+               err_stream,
+               "Failed to canonicalize path '{}': {}",
+               base_path.as_os_str().to_string_lossy(),
+               e
+            )
+            .unwrap();
             return Err(CompilationError::Io);
          }
       };
@@ -96,15 +116,26 @@ pub fn compile<E: Write, A: Write>(
       }
       imported_files.insert(canonical_path);
 
-
       let program_s = match std::fs::read_to_string(&base_path) {
          Ok(s) => s,
          Err(e) => {
-            writeln!(err_stream, "Failed to read imported file '{}': {}", base_path.as_os_str().to_string_lossy(), e).unwrap();
+            writeln!(
+               err_stream,
+               "Failed to read imported file '{}': {}",
+               base_path.as_os_str().to_string_lossy(),
+               e
+            )
+            .unwrap();
             return Err(CompilationError::Io);
          }
       };
-      let mut parsed = lex_and_parse(&program_s, Some(interner.intern(&base_path.as_os_str().to_string_lossy())), err_stream, &mut interner, &mut expressions)?;
+      let mut parsed = lex_and_parse(
+         &program_s,
+         Some(interner.intern(&base_path.as_os_str().to_string_lossy())),
+         err_stream,
+         &mut interner,
+         &mut expressions,
+      )?;
       merge_program(&mut user_program, &mut parsed.1);
 
       base_path.pop(); // /foo/bar/main.rol -> /foo/bar

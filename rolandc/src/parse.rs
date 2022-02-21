@@ -324,7 +324,9 @@ pub fn astify<W: Write>(
          }
          Token::KeywordImport => {
             let _ = lexer.next().unwrap();
-            let path_to_import = extract_str_literal(expect(&mut lexer, err_stream, &Token::StringLiteral(DUMMY_STR_TOKEN), interner)?.token);
+            let path_to_import = extract_str_literal(
+               expect(&mut lexer, err_stream, &Token::StringLiteral(DUMMY_STR_TOKEN), interner)?.token,
+            );
             imports.push(path_to_import);
             expect(&mut lexer, err_stream, &Token::Semicolon, interner)?;
          }
@@ -390,18 +392,21 @@ pub fn astify<W: Write>(
       }
    }
 
-   Ok((imports, Program {
-      external_procedures,
-      procedures,
-      enums,
-      structs,
-      consts,
-      statics,
-      literals: IndexSet::new(),
-      struct_info: IndexMap::new(),
-      static_info: IndexMap::new(),
-      enum_info: IndexMap::new(),
-   }))
+   Ok((
+      imports,
+      Program {
+         external_procedures,
+         procedures,
+         enums,
+         structs,
+         consts,
+         statics,
+         literals: IndexSet::new(),
+         struct_info: IndexMap::new(),
+         static_info: IndexMap::new(),
+         enum_info: IndexMap::new(),
+      },
+   ))
 }
 
 fn extract_identifier(t: Token) -> StrId {
@@ -1025,7 +1030,8 @@ fn pratt<W: Write>(
                   let _ = l.next();
                   break;
                }
-               let identifier = extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?.token);
+               let identifier =
+                  extract_identifier(expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?.token);
                let _ = expect(l, err_stream, &Token::Colon, interner)?;
                let val = parse_expression(l, err_stream, false, expressions, interner)?;
                fields.push((identifier, val));
