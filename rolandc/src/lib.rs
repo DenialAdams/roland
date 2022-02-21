@@ -160,13 +160,11 @@ pub fn compile<E: Write, A: Write>(
       );
    }
 
-   if err_count == 0 {
-      various_expression_lowering::lower_consts(&struct_size_info, &mut user_program, &mut expressions, &mut interner);
-      user_program.static_info.retain(|_, v| !v.is_const);
+   various_expression_lowering::lower_consts(&struct_size_info, &mut user_program, &mut expressions, &mut interner);
+   user_program.static_info.retain(|_, v| !v.is_const);
 
-      if do_constant_folding {
-         err_count = constant_folding::fold_constants(&mut user_program, err_stream, &mut expressions, &interner);
-      }
+   if do_constant_folding {
+      err_count = constant_folding::fold_constants(&mut user_program, err_stream, &mut expressions, &interner);
    }
 
    if let Some(w) = html_ast_out {
