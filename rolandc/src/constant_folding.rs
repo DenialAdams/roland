@@ -192,6 +192,13 @@ fn fold_expr<W: Write>(
             && lhs_expr.expression == rhs_expr.expression
          {
             match operator {
+               BinOp::Divide if !matches!(expr_to_fold_type, Some(ExpressionType::Value(ValueType::Float(_)))) => {
+                  return Some(ExpressionNode {
+                     expression: Expression::IntLiteral(1),
+                     exp_type: expr_to_fold_type,
+                     expression_begin_location: expr_to_fold_location,
+                  });
+               }
                BinOp::BitwiseXor => {
                   let expr = match expr_to_fold_type {
                      Some(ExpressionType::Value(ValueType::Bool)) => Expression::BoolLiteral(false),
@@ -204,9 +211,24 @@ fn fold_expr<W: Write>(
                      expression_begin_location: expr_to_fold_location,
                   });
                }
-               BinOp::Equality => {
+               BinOp::GreaterThan | BinOp::LessThan if !matches!(expr_to_fold_type, Some(ExpressionType::Value(ValueType::Float(_)))) => {
+                  return Some(ExpressionNode {
+                     expression: Expression::BoolLiteral(false),
+                     exp_type: expr_to_fold_type,
+                     expression_begin_location: expr_to_fold_location,
+                  });
+               }
+               BinOp::Equality | BinOp::GreaterThanOrEqualTo | BinOp::LessThanOrEqualTo if !matches!(expr_to_fold_type, Some(ExpressionType::Value(ValueType::Float(_)))) => {
                   return Some(ExpressionNode {
                      expression: Expression::BoolLiteral(true),
+                     exp_type: expr_to_fold_type,
+                     expression_begin_location: expr_to_fold_location,
+                  });
+               }
+               BinOp::LogicalAnd | BinOp::LogicalOr | BinOp::BitwiseAnd | BinOp::BitwiseOr => {
+                  let new_expr = lhs_expr.expression.clone();
+                  return Some(ExpressionNode {
+                     expression: new_expr,
                      exp_type: expr_to_fold_type,
                      expression_begin_location: expr_to_fold_location,
                   });
