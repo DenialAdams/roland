@@ -218,14 +218,6 @@ fn fold_expr<W: Write>(
                   });
             } else if !expression_could_have_side_effects(non_literal_expr) {
                match (one_literal, *operator) {
-                  (x, b_op) if is_commutative_noop(x, b_op) => {
-                     let new_expr = non_literal_expr.clone();
-                     return Some(ExpressionNode {
-                        expression: new_expr,
-                        exp_type: expr_to_fold_type,
-                        expression_begin_location: expr_to_fold_location,
-                     });
-                  }
                   (x, BinOp::BitwiseOr) if x.is_int_max() => {
                      return Some(ExpressionNode {
                         expression: Expression::IntLiteral(x.int_max_value()),
