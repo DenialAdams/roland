@@ -209,51 +209,74 @@ fn fold_expr<W: Write>(
                (lhs.unwrap(), &rhs_expr.expression)
             };
 
-            match (one_literal, *operator) {
-               (x, b_op) if is_commutative_noop(x, b_op) => {
-                  let new_expr = non_literal_expr.clone();
+            if is_commutative_noop(one_literal, *operator) {
+               let new_expr = non_literal_expr.clone();
                   return Some(ExpressionNode {
                      expression: new_expr,
                      exp_type: expr_to_fold_type,
                      expression_begin_location: expr_to_fold_location,
                   });
+            } else if !expression_could_have_side_effects(non_literal_expr) {
+               match (one_literal, *operator) {
+                  (x, b_op) if is_commutative_noop(x, b_op) => {
+                     let new_expr = non_literal_expr.clone();
+                     return Some(ExpressionNode {
+                        expression: new_expr,
+                        exp_type: expr_to_fold_type,
+                        expression_begin_location: expr_to_fold_location,
+                     });
+                  }
+                  (x, BinOp::BitwiseOr) if x.is_int_max() => {
+                     return Some(ExpressionNode {
+                        expression: Expression::IntLiteral(x.int_max_value()),
+                        exp_type: expr_to_fold_type,
+                        expression_begin_location: expr_to_fold_location,
+                     });
+                  }
+                  (x, BinOp::BitwiseAnd) if x.is_int_zero() => {
+                     return Some(ExpressionNode {
+                        expression: Expression::IntLiteral(0),
+                        exp_type: expr_to_fold_type,
+                        expression_begin_location: expr_to_fold_location,
+                     });
+                  }
+                  (Literal::Bool(true), BinOp::BitwiseOr) => {
+                     return Some(ExpressionNode {
+                        expression: Expression::BoolLiteral(true),
+                        exp_type: expr_to_fold_type,
+                        expression_begin_location: expr_to_fold_location,
+                     });
+                  }
+                  (Literal::Bool(false), BinOp::BitwiseAnd) => {
+                     return Some(ExpressionNode {
+                        expression: Expression::BoolLiteral(false),
+                        exp_type: expr_to_fold_type,
+                        expression_begin_location: expr_to_fold_location,
+                     });
+                  }
+                  (Literal::Bool(true), BinOp::LogicalOr) => {
+                     return Some(ExpressionNode {
+                        expression: Expression::BoolLiteral(true),
+                        exp_type: expr_to_fold_type,
+                        expression_begin_location: expr_to_fold_location,
+                     });
+                  }
+                  (Literal::Bool(false), BinOp::LogicalAnd) => {
+                     return Some(ExpressionNode {
+                        expression: Expression::BoolLiteral(false),
+                        exp_type: expr_to_fold_type,
+                        expression_begin_location: expr_to_fold_location,
+                     });
+                  }
+                  (x, BinOp::Multiply) if x.is_int_zero() => {
+                     return Some(ExpressionNode {
+                        expression: Expression::IntLiteral(0),
+                        exp_type: expr_to_fold_type,
+                        expression_begin_location: expr_to_fold_location,
+                     });
+                  }
+                  _ => (),
                }
-               (x, BinOp::BitwiseOr) if x.is_int_max() => {
-                  return Some(ExpressionNode {
-                     expression: Expression::IntLiteral(x.int_max_value()),
-                     exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
-                  });
-               }
-               (x, BinOp::BitwiseAnd) if x.is_int_zero() => {
-                  return Some(ExpressionNode {
-                     expression: Expression::IntLiteral(0),
-                     exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
-                  });
-               }
-               (Literal::Bool(true), BinOp::BitwiseOr) => {
-                  return Some(ExpressionNode {
-                     expression: Expression::BoolLiteral(true),
-                     exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
-                  });
-               }
-               (Literal::Bool(false), BinOp::BitwiseAnd) => {
-                  return Some(ExpressionNode {
-                     expression: Expression::BoolLiteral(false),
-                     exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
-                  });
-               }
-               (x, BinOp::Multiply) if x.is_int_zero() => {
-                  return Some(ExpressionNode {
-                     expression: Expression::IntLiteral(0),
-                     exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
-                  });
-               }
-               _ => (),
             }
          }
 
@@ -930,4 +953,8 @@ fn is_commutative_noop(literal: Literal, op: BinOp) -> bool {
       || ((literal == Literal::Bool(true)) & (op == BinOp::BitwiseAnd))
       || ((literal == Literal::Bool(false)) & (op == BinOp::LogicalOr))
       || ((literal == Literal::Bool(true)) & (op == BinOp::LogicalAnd))
+}
+
+fn expression_could_have_side_effects(expression: &Expression) -> bool {
+   matches!(expression, Expression::ProcedureCall { proc_name: _, generic_args: _, args: _ })
 }
