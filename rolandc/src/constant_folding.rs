@@ -925,7 +925,9 @@ fn is_commutative_noop(literal: Literal, op: BinOp) -> bool {
    (literal.is_int_one() & (op == BinOp::Multiply))
       || (literal.is_int_zero() & (op == BinOp::Add))
       || (literal.is_int_zero() & (op == BinOp::BitwiseOr))
+      || (literal.is_int_max() & (op == BinOp::BitwiseAnd))
       || ((literal == Literal::Bool(false)) & (op == BinOp::BitwiseOr))
       || ((literal == Literal::Bool(true)) & (op == BinOp::BitwiseAnd))
-      || (literal.is_int_max() & (op == BinOp::BitwiseAnd))
+      || ((literal == Literal::Bool(false)) & (op == BinOp::LogicalOr))
+      || ((literal == Literal::Bool(true)) & (op == BinOp::LogicalAnd))
 }
