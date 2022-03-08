@@ -152,7 +152,7 @@ pub fn compile<E: Write, A: Write>(
    let std_source_info = Some(interner.intern("<std>"));
    let mut std_lib = match target {
       Target::Wasi => {
-         let std_lib_s = include_str!("../../lib/print.rol");
+         let std_lib_s = include_str!("../../lib/wasi.rol");
          lex_and_parse(std_lib_s, std_source_info, err_stream, &mut interner, &mut expressions)
       }
       Target::Wasm4 => {
@@ -162,6 +162,10 @@ pub fn compile<E: Write, A: Write>(
    }?;
 
    merge_program(&mut user_program, &mut std_lib.1);
+
+   let std_lib_s = include_str!("../../lib/shared.rol");
+   let mut shared_std = lex_and_parse(std_lib_s, std_source_info, err_stream, &mut interner, &mut expressions)?;
+   merge_program(&mut user_program, &mut shared_std.1);
 
    let mut err_count = semantic_analysis::validator::type_and_check_validity(
       &mut user_program,

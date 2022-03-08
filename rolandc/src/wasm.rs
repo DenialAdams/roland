@@ -448,6 +448,7 @@ pub fn emit_wasm(
          || external_procedure.definition.name == interner.intern("wasm_memory_size")
          || external_procedure.definition.name == interner.intern("sqrt")
          || external_procedure.definition.name == interner.intern("sqrt_32")
+         || external_procedure.definition.name == interner.intern("unreachable")
       {
          continue;
       }
@@ -644,6 +645,17 @@ pub fn emit_wasm(
    );
    generation_context.out.emit_get_local(0);
    generation_context.out.emit_constant_instruction("f32.sqrt");
+   generation_context.out.close();
+
+   generation_context.out.emit_function_start_named_params(
+      interner.intern("unreachable"),
+      &[],
+      &ExpressionType::Value(ValueType::Unit),
+      &program.enum_info,
+      &program.struct_info,
+      interner,
+   );
+   generation_context.out.emit_constant_instruction("unreachable");
    generation_context.out.close();
 
    for s in program.struct_info.iter() {

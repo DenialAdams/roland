@@ -1,15 +1,9 @@
+import "shared.rol";
+
 extern proc wasm_memory_size() -> usize;
 extern proc wasm_memory_grow(pages: usize) -> usize;
-extern proc sqrt(x: f64) -> f64;
-// It's very sad that we have to name it like this, we need generics
-extern proc sqrt_32(x: f32) -> f32;
 
 extern proc fd_write(handle: usize, strings_to_write: &usize, strings_to_write_len: usize, written_ptr: &usize) -> isize;
-
-struct String {
-   pointer: &u8,
-   length: usize,
-}
 
 proc print(s: String) {
    let data: [usize; 4] = [s.pointer transmute usize, s.length, "\n".pointer transmute usize, "\n".length];
@@ -47,6 +41,7 @@ proc count_digits(value: u64) -> u8 {
       value = value / 10;
    }
 
+   // unreachable();
    return 0;
 }
 

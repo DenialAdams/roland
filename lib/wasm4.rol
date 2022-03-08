@@ -1,3 +1,5 @@
+import "shared.rol";
+
 // |-- WASM4
 // drawing
 extern proc blit(sprite_ptr: &u8, x: i32, y: i32, width: u32, height: u32, flags: u32);
@@ -58,15 +60,6 @@ const MOUSE_MIDDLE: u8 = 4;
 const SYSTEM_PRESERVE_FRAMEBUFFER: u8 = 1;
 const SYSTEM_HIDE_GAMEPAD_OVERLAY: u8 = 2;
 // --|
-
-extern proc sqrt(x: f64) -> f64;
-// It's very sad that we have to name it like this, we need generics
-extern proc sqrt_32(x: f32) -> f32;
-
-struct String {
-   pointer: &u8,
-   length: usize,
-}
 
 proc blit_sub(sprite_ptr: &u8, x: i32, y: i32, width: u32, height: u32, src_x: i32, src_y: i32, stride: u32, flags: u32) {
    blitSub(sprite_ptr, x, y, width, height, src_x, src_y, stride, flags);
