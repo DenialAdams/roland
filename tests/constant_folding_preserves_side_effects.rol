@@ -1,0 +1,8 @@
+proc fire_missiles() -> usize {
+    print("Missiles fired");
+    return 10;
+}
+
+proc main() {
+    let x = 0 * fire_missiles();
+}
