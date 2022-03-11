@@ -15,4 +15,6 @@ proc main() {
    print_bool(x ^ 255 == 132);
    let y: i8 = 2;
    print_bool(!y == -3);
+   let z: u8 = 2;
+   print_bool(!z == 253);
 }

@@ -25,6 +25,7 @@ impl Lexer {
    }
 
    fn peek_token(&self) -> Option<&Token> {
+      // TODO: We probably can just copy this instead of returning a reference now
       self.tokens.last().map(|x| &x.token)
    }
 
