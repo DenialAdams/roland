@@ -1,0 +1,6 @@
+import "other.rol";
+
+proc main() {
+   other();
+   print("Hello, world!");
+}

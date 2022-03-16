@@ -1,6 +1,5 @@
 use super::type_inference::try_set_inferred_type;
 use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
-use crate::constant_folding::{try_fold_and_replace_expr, FoldingContext};
 use crate::interner::{Interner, StrId};
 use crate::lex::{emit_source_info, emit_source_info_with_description, SourceInfo};
 use crate::parse::{
@@ -632,50 +631,19 @@ pub fn type_and_check_validity<W: Write>(
          interner,
       );
 
-      // In a seperate scope for borrowck
-      {
-         let p_const_expr = &validation_context.expressions[p_const.value];
-
-         if p_const.const_type != *p_const_expr.exp_type.as_ref().unwrap()
-            && !p_const_expr.exp_type.as_ref().unwrap().is_error_type()
-         {
-            validation_context.error_count += 1;
-            let actual_type_str = p_const_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
-            writeln!(
-               err_stream,
-               "Declared type {} of const `{}` does not match actual expression type {}",
-               p_const.const_type.as_roland_type_info(interner),
-               interner.lookup(p_const.name.identifier),
-               actual_type_str,
-            )
-            .unwrap();
-            emit_source_info_with_description(err_stream, p_const.begin_location, "const", interner);
-            emit_source_info_with_description(
-               err_stream,
-               p_const_expr.expression_begin_location,
-               "expression",
-               interner,
-            );
-         }
-      }
-
-      try_fold_and_replace_expr(
-         p_const.value,
-         err_stream,
-         &mut FoldingContext {
-            error_count: 0,
-            expressions: validation_context.expressions,
-         },
-         interner,
-      );
       let p_const_expr = &validation_context.expressions[p_const.value];
 
-      if !crate::constant_folding::is_const(&p_const_expr.expression, validation_context.expressions) {
+      if p_const.const_type != *p_const_expr.exp_type.as_ref().unwrap()
+         && !p_const_expr.exp_type.as_ref().unwrap().is_error_type()
+      {
          validation_context.error_count += 1;
+         let actual_type_str = p_const_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
          writeln!(
             err_stream,
-            "Value of const `{}` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static and initialize it on program start.",
+            "Declared type {} of const `{}` does not match actual expression type {}",
+            p_const.const_type.as_roland_type_info(interner),
             interner.lookup(p_const.name.identifier),
+            actual_type_str,
          )
          .unwrap();
          emit_source_info_with_description(err_stream, p_const.begin_location, "const", interner);
@@ -721,30 +689,6 @@ pub fn type_and_check_validity<W: Write>(
             "expression",
             interner,
          );
-      }
-
-      if let Some(v) = p_static.value.as_mut() {
-         try_fold_and_replace_expr(
-            *v,
-            err_stream,
-            &mut FoldingContext {
-               error_count: 0,
-               expressions: validation_context.expressions,
-            },
-            interner,
-         );
-         let v = &validation_context.expressions[*v];
-         if !crate::constant_folding::is_const(&v.expression, validation_context.expressions) {
-            validation_context.error_count += 1;
-            writeln!(
-               err_stream,
-               "Value of static `{}` can't be constant folded. Hint: Either simplify the expression, or initialize it yourself on program start.",
-               interner.lookup(p_static.name.identifier),
-            )
-            .unwrap();
-            emit_source_info_with_description(err_stream, p_static.static_begin_location, "static", interner);
-            emit_source_info_with_description(err_stream, v.expression_begin_location, "expression", interner);
-         }
       }
    }
 

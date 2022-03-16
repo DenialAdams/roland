@@ -1,0 +1,4 @@
+static X: u64 = Y;
+static Y: u64 = X;
+
+proc main() {}

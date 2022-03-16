@@ -1,0 +1,5 @@
+import "inside/again.rol";
+
+proc other() {
+   print("hello from other");
+}

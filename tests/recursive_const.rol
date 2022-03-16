@@ -1,4 +1,6 @@
 const X: u64 = Y;
 const Y: u64 = X;
 
+const Z: u64 = X;
+
 proc main() {}

@@ -555,7 +555,7 @@ pub fn emit_wasm(
 
       generation_context.out.emit_spaces();
       write!(generation_context.out.out, "(data 0 (i32.const {}) \"", static_address).unwrap();
-      emit_literal_bytes(p_static.value.unwrap(), &mut generation_context, interner);
+      emit_literal_bytes(p_static.value.unwrap(), &mut generation_context);
       writeln!(generation_context.out.out, "\")").unwrap();
    }
 
@@ -1013,7 +1013,7 @@ fn do_emit_and_load_lval(
    }
 }
 
-fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut GenerationContext, interner: &mut Interner) {
+fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut GenerationContext) {
    let expr_node = &generation_context.expressions[expr_index];
    match &expr_node.expression {
       Expression::UnitLiteral => (),
@@ -1100,12 +1100,12 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
          let si = generation_context.struct_info.get(s_name).unwrap();
          for field in si.field_types.iter() {
             let value_of_field = map.get(field.0).copied().unwrap();
-            emit_literal_bytes(value_of_field, generation_context, interner);
+            emit_literal_bytes(value_of_field, generation_context);
          }
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
-            emit_literal_bytes(*expr, generation_context, interner);
+            emit_literal_bytes(*expr, generation_context);
          }
       }
       _ => unreachable!(),

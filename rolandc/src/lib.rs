@@ -1,4 +1,5 @@
 mod add_virtual_variables;
+mod compile_globals;
 mod constant_folding;
 mod html_debug;
 mod interner;
@@ -195,8 +196,18 @@ pub fn compile<E: Write, A: Write>(
       );
    }
 
+   err_count = compile_globals::compile_globals(&user_program, &mut expressions, &mut interner, &struct_size_info, err_stream);
+   if err_count > 0 {
+      return Err(CompilationError::Semantic(err_count));
+   }
+
    various_expression_lowering::lower_consts(&struct_size_info, &mut user_program, &mut expressions, &mut interner);
    user_program.static_info.retain(|_, v| !v.is_const);
+
+   err_count = compile_globals::ensure_statics_const(&user_program, &mut expressions, &mut interner, err_stream);
+   if err_count > 0 {
+      return Err(CompilationError::Semantic(err_count));
+   }
 
    if do_constant_folding {
       err_count = constant_folding::fold_constants(&mut user_program, err_stream, &mut expressions, &interner);
