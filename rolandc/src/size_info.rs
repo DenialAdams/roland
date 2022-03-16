@@ -13,8 +13,7 @@ pub struct SizeInfo {
    strictest_alignment: u32,
 }
 
-// TODO: this is duplicated
-fn aligned_address(v: u32, a: u32) -> u32 {
+pub fn aligned_address(v: u32, a: u32) -> u32 {
    let rem = v % a;
    if rem != 0 {
       v + (a - rem)

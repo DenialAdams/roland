@@ -3,7 +3,7 @@ use crate::parse::{
    BinOp, Expression, ExpressionId, ExpressionPool, ParameterNode, Program, Statement, StatementNode, UnOp,
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
-use crate::size_info::{mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo};
+use crate::size_info::{mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo, aligned_address};
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE};
 use crate::typed_index_vec::Handle;
 use indexmap::{IndexMap, IndexSet};
@@ -372,15 +372,6 @@ fn int_to_wasm_runtime_and_suffix(x: &IntType) -> (&'static str, &'static str) {
    };
    let suffix = if x.signed { "_s" } else { "_u" };
    (wasm_type, suffix)
-}
-
-fn aligned_address(v: u32, a: u32) -> u32 {
-   let rem = v % a;
-   if rem != 0 {
-      v + (a - rem)
-   } else {
-      v
-   }
 }
 
 fn dynamic_move_locals_of_type_to_dest(
