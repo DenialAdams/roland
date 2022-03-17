@@ -1,0 +1,14 @@
+struct BadAlignment {
+  x: u8,
+  y: u64,
+}
+
+proc main() {
+   let a = BadAlignment {
+     x: 10,
+     y: 11,
+   };
+   let address = (&a.y) transmute usize;
+   let aligned = (address % 8) == 0;
+   print_bool(aligned);
+}
