@@ -47,7 +47,7 @@ pub fn calculate_struct_size_info(
       sum_mem = aligned_address(sum_mem, strictest_alignment);
    }
    struct_size_info.insert(
-      name.to_owned(),
+      name,
       SizeInfo {
          mem_size: sum_mem,
          wasm_size: sum_wasm,

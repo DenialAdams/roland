@@ -186,7 +186,8 @@ fn print_expression<W: Write>(
          writeln!(out, "<li><span>Field Access{}</span>", type_text).unwrap();
          writeln!(out, "<ul>").unwrap();
          print_expression(out, *lhs, expressions, interner);
-         writeln!(out, "<li><span>{:?}</span></li>", field).unwrap();
+         let fields_as_strings: Vec<_> = field.iter().map(|x| interner.lookup(*x)).collect();
+         writeln!(out, "<li><span>{:?}</span></li>", fields_as_strings).unwrap();
          writeln!(out, "</ul></li>").unwrap();
       }
       Expression::ArrayLiteral(exprs) => {
