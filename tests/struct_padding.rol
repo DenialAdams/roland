@@ -3,6 +3,8 @@ struct X {
   b: u8,
 }
 
+// RENAME THIS TEST, THIS IS NOT TESTING PADDING BETWEEN FIELDS (AKA PADDING), THIS IS TESTING THAT WE ALIGN THE SIZE OF THE STRUCT FOR LINEAR LAYOUT
+
 proc main() {
   let arr: [X; 2] = [X{a: 0, b: 0}, X{a:0, b:0}];
   let addr1 = (&arr[0]) transmute usize;

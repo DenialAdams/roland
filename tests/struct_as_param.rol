@@ -10,6 +10,12 @@ proc foo_baz(a: String, b: X) {
 }
 
 proc main() {
+   let test = X {
+      alligator: 1,
+      lizard: 20,
+      animal: "bee",
+   };
+   print(test.animal);
    foo_baz("all good", X {
       alligator: 1,
       lizard: 20,

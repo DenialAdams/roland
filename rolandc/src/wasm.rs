@@ -1587,41 +1587,22 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             .expression
             .is_lvalue_disregard_consts(generation_context.expressions)
          {
-            let mut si = match lhs.exp_type.as_ref() {
-               Some(ExpressionType::Value(ValueType::Struct(x))) => generation_context.struct_info.get(x).unwrap(),
+            let mut struct_name = match lhs.exp_type.as_ref() {
+               Some(ExpressionType::Value(ValueType::Struct(x))) => x,
                _ => unreachable!(),
             };
             let mut mem_offset = 0;
 
             for field_name in field_names.iter().take(field_names.len() - 1) {
-               for field in si.field_types.iter() {
-                  if field.0 == field_name {
-                     si = match field.1 {
-                        ExpressionType::Value(ValueType::Struct(x)) => generation_context.struct_info.get(x).unwrap(),
-                        _ => unreachable!(),
-                     };
-                     break;
-                  }
-
-                  mem_offset += sizeof_type_mem(
-                     field.1,
-                     generation_context.enum_info,
-                     generation_context.struct_size_info,
-                  );
-               }
+               mem_offset += generation_context.struct_size_info.get(struct_name).unwrap().field_offsets.get(field_name).unwrap();
+               struct_name = match generation_context.struct_info.get(struct_name).unwrap().field_types.get(field_name) {
+                  Some(ExpressionType::Value(ValueType::Struct(x))) => x,
+               _ => unreachable!(),
+               };
             }
 
-            for field in si.field_types.iter() {
-               if field.0 == field_names.last().unwrap() {
-                  break;
-               }
-
-               mem_offset += sizeof_type_mem(
-                  field.1,
-                  generation_context.enum_info,
-                  generation_context.struct_size_info,
-               );
-            }
+            let last_field_name = field_names.last().unwrap();
+            mem_offset += generation_context.struct_size_info.get(struct_name).unwrap().field_offsets.get(last_field_name).unwrap();
 
             generation_context.out.emit_const_add_i32(mem_offset);
          } else {
