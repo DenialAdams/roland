@@ -32,7 +32,13 @@ pub fn calculate_struct_size_info(
    let mut sum_values = 0;
    let mut strictest_alignment = 1;
    let mut field_offsets = HashMap::with_capacity(struct_info.get(&name).unwrap().field_types.len());
-   for ((field_name, field_t), next_field_t) in struct_info.get(&name).unwrap().field_types.iter().zip(struct_info.get(&name).unwrap().field_types.values().skip(1)) {
+   for ((field_name, field_t), next_field_t) in struct_info
+      .get(&name)
+      .unwrap()
+      .field_types
+      .iter()
+      .zip(struct_info.get(&name).unwrap().field_types.values().skip(1))
+   {
       if let ExpressionType::Value(ValueType::Struct(s)) = field_t {
          if !struct_size_info.contains_key(s) {
             calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
@@ -69,7 +75,10 @@ pub fn calculate_struct_size_info(
 
       sum_mem += sizeof_type_mem(last_field_t, enum_info, struct_size_info);
       sum_values += sizeof_type_values(last_field_t, struct_size_info);
-      strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(last_field_t, enum_info, struct_size_info));
+      strictest_alignment = std::cmp::max(
+         strictest_alignment,
+         mem_alignment(last_field_t, enum_info, struct_size_info),
+      );
    }
 
    struct_size_info.insert(

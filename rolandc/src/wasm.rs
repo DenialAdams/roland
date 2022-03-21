@@ -3,7 +3,9 @@ use crate::parse::{
    BinOp, Expression, ExpressionId, ExpressionPool, ParameterNode, Program, Statement, StatementNode, UnOp,
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
-use crate::size_info::{mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo, aligned_address};
+use crate::size_info::{
+   aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
+};
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE};
 use crate::typed_index_vec::Handle;
 use indexmap::{IndexMap, IndexSet};
@@ -384,24 +386,55 @@ fn dynamic_move_locals_of_type_to_dest(
    match field {
       ExpressionType::Value(ValueType::Unit) => (),
       ExpressionType::Value(ValueType::Struct(x)) => {
-         for (sub_field, next_sub_field) in generation_context.struct_info.get(x).unwrap().field_types.values().zip(generation_context.struct_info.get(x).unwrap().field_types.values().skip(1)) {
+         for (sub_field, next_sub_field) in generation_context.struct_info.get(x).unwrap().field_types.values().zip(
+            generation_context
+               .struct_info
+               .get(x)
+               .unwrap()
+               .field_types
+               .values()
+               .skip(1),
+         ) {
             dynamic_move_locals_of_type_to_dest(memory_lookup, offset, local_index, sub_field, generation_context);
-            let alignment_of_next = mem_alignment(next_sub_field, generation_context.enum_info, generation_context.struct_size_info);
-            let this_size = sizeof_type_mem(sub_field, generation_context.enum_info, generation_context.struct_size_info);
+            let alignment_of_next = mem_alignment(
+               next_sub_field,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            );
+            let this_size = sizeof_type_mem(
+               sub_field,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            );
             *offset += aligned_address(this_size, alignment_of_next);
          }
 
-         if let Some(last_sub_field) = generation_context.struct_info.get(x).unwrap().field_types.values().last() {
+         if let Some(last_sub_field) = generation_context
+            .struct_info
+            .get(x)
+            .unwrap()
+            .field_types
+            .values()
+            .last()
+         {
             dynamic_move_locals_of_type_to_dest(memory_lookup, offset, local_index, last_sub_field, generation_context);
             let alignment_of_next = generation_context.struct_size_info.get(x).unwrap().strictest_alignment;
-            let this_size = sizeof_type_mem(last_sub_field, generation_context.enum_info, generation_context.struct_size_info);
+            let this_size = sizeof_type_mem(
+               last_sub_field,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            );
             *offset += aligned_address(this_size, alignment_of_next);
          }
       }
       ExpressionType::Value(ValueType::Array(inner_type, a_len)) => {
          for _ in 0..*a_len {
             dynamic_move_locals_of_type_to_dest(memory_lookup, offset, local_index, inner_type, generation_context);
-            *offset += sizeof_type_mem(inner_type, generation_context.enum_info, generation_context.struct_size_info);
+            *offset += sizeof_type_mem(
+               inner_type,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            );
          }
       }
       _ => {
@@ -1105,7 +1138,13 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
             emit_literal_bytes(value_of_field, generation_context);
             let this_offset = ssi.field_offsets.get(field.0).unwrap();
             let next_offset = ssi.field_offsets.get(next_field).unwrap();
-            let padding_bytes = next_offset - this_offset - sizeof_type_mem(field.1, generation_context.enum_info, generation_context.struct_size_info);
+            let padding_bytes = next_offset
+               - this_offset
+               - sizeof_type_mem(
+                  field.1,
+                  generation_context.enum_info,
+                  generation_context.struct_size_info,
+               );
             for _ in 0..padding_bytes {
                write!(generation_context.out.out, "\\{:02x}", 0).unwrap();
             }
@@ -1115,7 +1154,13 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
             emit_literal_bytes(value_of_field, generation_context);
             let this_offset = ssi.field_offsets.get(last_field.0).unwrap();
             let next_offset = ssi.mem_size;
-            let padding_bytes = next_offset - this_offset - sizeof_type_mem(last_field.1, generation_context.enum_info, generation_context.struct_size_info);
+            let padding_bytes = next_offset
+               - this_offset
+               - sizeof_type_mem(
+                  last_field.1,
+                  generation_context.enum_info,
+                  generation_context.struct_size_info,
+               );
             for _ in 0..padding_bytes {
                write!(generation_context.out.out, "\\{:02x}", 0).unwrap();
             }
@@ -1621,15 +1666,33 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             let mut mem_offset = 0;
 
             for field_name in field_names.iter().take(field_names.len() - 1) {
-               mem_offset += generation_context.struct_size_info.get(struct_name).unwrap().field_offsets.get(field_name).unwrap();
-               struct_name = match generation_context.struct_info.get(struct_name).unwrap().field_types.get(field_name) {
+               mem_offset += generation_context
+                  .struct_size_info
+                  .get(struct_name)
+                  .unwrap()
+                  .field_offsets
+                  .get(field_name)
+                  .unwrap();
+               struct_name = match generation_context
+                  .struct_info
+                  .get(struct_name)
+                  .unwrap()
+                  .field_types
+                  .get(field_name)
+               {
                   Some(ExpressionType::Value(ValueType::Struct(x))) => x,
-               _ => unreachable!(),
+                  _ => unreachable!(),
                };
             }
 
             let last_field_name = field_names.last().unwrap();
-            mem_offset += generation_context.struct_size_info.get(struct_name).unwrap().field_offsets.get(last_field_name).unwrap();
+            mem_offset += generation_context
+               .struct_size_info
+               .get(struct_name)
+               .unwrap()
+               .field_offsets
+               .get(last_field_name)
+               .unwrap();
 
             generation_context.out.emit_const_add_i32(mem_offset);
          } else {
@@ -1772,7 +1835,13 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
    match val_type {
       ExpressionType::Value(ValueType::Struct(x)) => {
          for (field_name, field) in generation_context.struct_info.get(x).unwrap().field_types.iter() {
-            let field_offset = generation_context.struct_size_info.get(x).unwrap().field_offsets.get(field_name).unwrap();
+            let field_offset = generation_context
+               .struct_size_info
+               .get(x)
+               .unwrap()
+               .field_offsets
+               .get(field_name)
+               .unwrap();
             match sizeof_type_values(field, generation_context.struct_size_info).cmp(&1) {
                std::cmp::Ordering::Less => (),
                std::cmp::Ordering::Equal => {

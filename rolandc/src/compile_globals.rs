@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 
-use indexmap::{IndexMap};
+use indexmap::IndexMap;
 
 use crate::constant_folding::{self, FoldingContext};
 use crate::interner::{Interner, StrId};
-use crate::lex::{emit_source_info_with_description, SourceInfo, emit_source_info};
+use crate::lex::{emit_source_info, emit_source_info_with_description, SourceInfo};
 use crate::parse::{Expression, ExpressionId, ExpressionNode, ExpressionPool, Program};
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::SizeInfo;
@@ -25,10 +25,12 @@ struct CgContext<'a> {
    interner: &'a Interner,
 }
 
-pub fn ensure_statics_const<W: Write>(program: &Program,
+pub fn ensure_statics_const<W: Write>(
+   program: &Program,
    expressions: &mut ExpressionPool,
    interner: &mut Interner,
-   err_stream: &mut W) -> u64 {
+   err_stream: &mut W,
+) -> u64 {
    let mut static_err_count: u64 = 0;
    for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
       let p_static_expr = &expressions[p_static.value.unwrap()];
@@ -184,11 +186,7 @@ fn cg_expr<W: Write>(expr_index: ExpressionId, cg_context: &mut CgContext, err_s
             )
             .unwrap();
             let loc = cg_context.all_consts[x].0;
-            emit_source_info(
-               err_stream,
-               loc,
-               cg_context.interner,
-            );
+            emit_source_info(err_stream, loc, cg_context.interner);
          } else if cg_context.const_replacements.contains_key(x) {
             // We've already visited this constant, great, nothing to do
          } else if cg_context.all_consts.contains_key(x) {

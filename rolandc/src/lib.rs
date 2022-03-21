@@ -196,7 +196,13 @@ pub fn compile<E: Write, A: Write>(
       );
    }
 
-   err_count = compile_globals::compile_globals(&user_program, &mut expressions, &mut interner, &struct_size_info, err_stream);
+   err_count = compile_globals::compile_globals(
+      &user_program,
+      &mut expressions,
+      &mut interner,
+      &struct_size_info,
+      err_stream,
+   );
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));
    }
