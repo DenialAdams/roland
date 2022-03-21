@@ -8,8 +8,8 @@ use crate::type_data::{ExpressionType, FloatWidth, IntWidth, ValueType};
 
 pub struct SizeInfo {
    values_size: u32,
-   mem_size: u32,
-   strictest_alignment: u32,
+   pub mem_size: u32,
+   pub strictest_alignment: u32,
    pub field_offsets: HashMap<StrId, u32>,
 }
 
