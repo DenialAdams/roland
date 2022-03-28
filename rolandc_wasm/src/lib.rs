@@ -1,3 +1,7 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::single_match_else)] // Not always an improvement in my opinion
+#![allow(clippy::missing_panics_doc)] // We don't have any documentation
+
 use rolandc::{CompilationError, Target};
 use std::io::Write;
 use wasm_bindgen::prelude::*;
@@ -10,6 +14,7 @@ pub fn start() {
 }
 
 #[wasm_bindgen]
+#[must_use]
 pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
    let window = web_sys::window().unwrap();
    let document = window.document().unwrap();

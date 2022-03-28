@@ -1,3 +1,7 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::match_same_arms)] // Sometimes I find this more clear (when it's just calling something)
+#![allow(clippy::unnecessary_wraps)] // False positives
+
 use rolandc::{CompilationError, Target};
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -101,7 +105,7 @@ fn main() {
       target,
    );
    if let Some(x) = ast_out.as_mut() {
-      writeln!(x, "</body>\n</html>").unwrap()
+      writeln!(x, "</body>\n</html>").unwrap();
    }
 
    let out_bytes = match compile_result {

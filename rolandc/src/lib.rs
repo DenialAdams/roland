@@ -1,6 +1,4 @@
 #![warn(clippy::pedantic)]
-//
-// Clippy lints I don't like
 #![allow(clippy::explicit_iter_loop)] // I find explicit iter more readable
 #![allow(clippy::match_same_arms)] // Sometimes I find this more clear (when it's just calling something)
 #![allow(clippy::too_many_lines)] // A procedure should have however many lines as it needs. More procedures is not better.
@@ -13,9 +11,7 @@
 #![allow(clippy::single_match_else)] // Not always an improvement in my opinion
 #![allow(clippy::missing_errors_doc)] // Nothing is documented
 #![allow(clippy::module_name_repetitions)] // I don't really care that much
-//
-// Clippy lints that cause false positives
-#![allow(clippy::match_wildcard_for_single_variants)]
+#![allow(clippy::match_wildcard_for_single_variants)] // False positives
 
 mod add_virtual_variables;
 mod compile_globals;
