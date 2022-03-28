@@ -3,8 +3,7 @@ use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
 use crate::interner::{Interner, StrId};
 use crate::lex::{emit_source_info, emit_source_info_with_description, SourceInfo};
 use crate::parse::{
-   BinOp, BlockNode, Expression, ExpressionId, ExpressionNode, ExpressionPool, IdentifierNode, Program, Statement,
-   StatementNode, UnOp,
+   BinOp, BlockNode, Expression, ExpressionId, ExpressionPool, IdentifierNode, Program, Statement, StatementNode, UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE};
@@ -43,20 +42,20 @@ fn matches(type_validation: &TypeValidator, et: &ExpressionType) -> bool {
       (TypeValidator::Any, _)
          | (TypeValidator::AnyPointer, ExpressionType::Pointer(_, _))
          | (TypeValidator::Bool, ExpressionType::Value(ValueType::Bool))
-         | (TypeValidator::AnyInt, ExpressionType::Value(ValueType::Int(_)))
-         | (TypeValidator::AnyInt, ExpressionType::Value(ValueType::UnknownInt))
          | (
-            TypeValidator::AnySignedInt,
-            ExpressionType::Value(ValueType::Int(IntType { signed: true, .. }))
+            TypeValidator::AnyInt,
+            ExpressionType::Value(ValueType::Int(_) | ValueType::UnknownInt)
          )
          | (
             TypeValidator::AnySignedInt,
-            // It looks weird that we accept this,
+            // Accepting unknown int looks weird (could be unsigned),
             // but the trick is that we double validate this for the pertinent nodes after we've inferred types
-            ExpressionType::Value(ValueType::UnknownInt)
+            ExpressionType::Value(ValueType::Int(IntType { signed: true, .. }) | ValueType::UnknownInt)
          )
-         | (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::Float(_)))
-         | (TypeValidator::AnyFloat, ExpressionType::Value(ValueType::UnknownFloat))
+         | (
+            TypeValidator::AnyFloat,
+            ExpressionType::Value(ValueType::Float(_) | ValueType::UnknownFloat)
+         )
          | (TypeValidator::AnyEnum, ExpressionType::Value(ValueType::Enum(_)))
    )
 }
@@ -121,8 +120,9 @@ fn recursive_struct_check(
 
       is_recursive |= struct_info
          .get(&struct_field)
-         .map(|si| recursive_struct_check(base_name, seen_structs, &si.field_types, struct_info))
-         .unwrap_or(RecursiveStructCheckResult::NotRecursive);
+         .map_or(RecursiveStructCheckResult::NotRecursive, |si| {
+            recursive_struct_check(base_name, seen_structs, &si.field_types, struct_info)
+         });
    }
 
    is_recursive
@@ -1021,8 +1021,7 @@ fn type_statement<W: Write>(
             ExpressionType::Value(ValueType::CompileError)
          } else if dt
             .as_ref()
-            .map(|x| matches!(x, ExpressionType::Value(ValueType::Unresolved(_))))
-            .unwrap_or(false)
+            .map_or(false, |x| matches!(x, ExpressionType::Value(ValueType::Unresolved(_))))
          {
             validation_context.error_count += 1;
             let dt_str = dt.as_ref().unwrap().as_roland_type_info(interner);
@@ -1116,7 +1115,7 @@ fn get_type<W: Write>(
    // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
    // while this pointer is alive. We don't do this, because we update this expression in place and don't
    // add new expressions during validation.
-   let expr_node = &mut validation_context.expressions[expr_index] as *mut ExpressionNode;
+   let expr_node = std::ptr::addr_of_mut!(validation_context.expressions[expr_index]);
 
    match unsafe { &mut (*expr_node).expression } {
       Expression::UnitLiteral => ExpressionType::Value(ValueType::Unit),
@@ -1522,12 +1521,7 @@ fn get_type<W: Write>(
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf {
             if let Expression::Variable(var) = e.expression {
-               if validation_context
-                  .static_info
-                  .get(&var)
-                  .map(|x| x.is_const)
-                  .unwrap_or(false)
-               {
+               if validation_context.static_info.get(&var).map_or(false, |x| x.is_const) {
                   validation_context.error_count += 1;
                   writeln!(
                      err_stream,
@@ -1895,7 +1889,9 @@ fn get_type<W: Write>(
                   }
                }
                ExpressionType::Value(ValueType::Array(_, _)) => {
-                  if field != length_token {
+                  if field == length_token {
+                     lhs_type = ExpressionType::Value(USIZE_TYPE);
+                  } else {
                      validation_context.error_count += 1;
                      writeln!(
                         err_stream,
@@ -1905,8 +1901,6 @@ fn get_type<W: Write>(
                      .unwrap();
                      emit_source_info(err_stream, expr_location, interner);
                      lhs_type = ExpressionType::Value(ValueType::CompileError);
-                  } else {
-                     lhs_type = ExpressionType::Value(USIZE_TYPE);
                   }
                }
                ExpressionType::Value(ValueType::CompileError) => {
@@ -1924,10 +1918,10 @@ fn get_type<W: Write>(
                   lhs_type = ExpressionType::Value(ValueType::CompileError);
                }
             }
-            remaining_fields = if !remaining_fields.is_empty() {
-               &remaining_fields[1..]
-            } else {
+            remaining_fields = if remaining_fields.is_empty() {
                &[]
+            } else {
+               &remaining_fields[1..]
             };
          }
          lhs_type
@@ -1955,7 +1949,6 @@ fn get_type<W: Write>(
                || this_elem_expr.exp_type.as_ref().unwrap().is_error_type()
             {
                // avoid cascading errors
-               continue;
             } else if last_elem_expr.exp_type.as_ref().unwrap() != this_elem_expr.exp_type.as_ref().unwrap() {
                validation_context.error_count += 1;
                writeln!(

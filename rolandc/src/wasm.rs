@@ -367,7 +367,7 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumIn
    }
 }
 
-fn int_to_wasm_runtime_and_suffix(x: &IntType) -> (&'static str, &'static str) {
+fn int_to_wasm_runtime_and_suffix(x: IntType) -> (&'static str, &'static str) {
    let wasm_type = match x.width {
       IntWidth::Eight => "i64",
       _ => "i32",
@@ -904,7 +904,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          let start_expr = &generation_context.expressions[*start];
 
          let (wasm_type, suffix) = match start_expr.exp_type.as_ref().unwrap() {
-            ExpressionType::Value(ValueType::Int(x)) => int_to_wasm_runtime_and_suffix(x),
+            ExpressionType::Value(ValueType::Int(x)) => int_to_wasm_runtime_and_suffix(*x),
             _ => unreachable!(),
          };
 
@@ -1052,7 +1052,7 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
    match &expr_node.expression {
       Expression::UnitLiteral => (),
       Expression::BoolLiteral(x) => {
-         write!(generation_context.out.out, "\\{:02x}", *x as u8).unwrap();
+         write!(generation_context.out.out, "\\{:02x}", u8::from(*x)).unwrap();
       }
       Expression::EnumLiteral(name, variant) => {
          let width: u8 = match expr_node.exp_type.as_ref().unwrap() {
@@ -1080,7 +1080,7 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
          generation_context.out.emit_spaces();
          for w in 0..width {
             let val = (index >> (8 * w)) & 0xff;
-            write!(generation_context.out.out, "\\{:02x}", val).unwrap()
+            write!(generation_context.out.out, "\\{:02x}", val).unwrap();
          }
       }
       Expression::IntLiteral(x) => {
@@ -1092,7 +1092,7 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
          .as_num_bytes();
          for w in 0..width {
             let val = (x >> (8 * w)) & 0xff;
-            write!(generation_context.out.out, "\\{:02x}", val).unwrap()
+            write!(generation_context.out.out, "\\{:02x}", val).unwrap();
          }
       }
       Expression::FloatLiteral(x) => {
@@ -1105,14 +1105,14 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
                let bytes: u64 = x.to_bits();
                for w in 0..width.as_num_bytes() {
                   let val = (bytes >> (8 * w)) & 0xff;
-                  write!(generation_context.out.out, "\\{:02x}", val).unwrap()
+                  write!(generation_context.out.out, "\\{:02x}", val).unwrap();
                }
             }
             FloatWidth::Four => {
                let bytes = (*x as f32).to_bits();
                for w in 0..width.as_num_bytes() {
                   let val = (bytes >> (8 * w)) & 0xff;
-                  write!(generation_context.out.out, "\\{:02x}", val).unwrap()
+                  write!(generation_context.out.out, "\\{:02x}", val).unwrap();
                }
             }
          }
@@ -1121,11 +1121,11 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
          let (offset, len) = generation_context.literal_offsets.get(str).unwrap();
          for w in 0..4 {
             let val = (*offset >> (8 * w)) & 0xff;
-            write!(generation_context.out.out, "\\{:02x}", val).unwrap()
+            write!(generation_context.out.out, "\\{:02x}", val).unwrap();
          }
          for w in 0..4 {
             let val = (*len >> (8 * w)) & 0xff;
-            write!(generation_context.out.out, "\\{:02x}", val).unwrap()
+            write!(generation_context.out.out, "\\{:02x}", val).unwrap();
          }
       }
       Expression::StructLiteral(s_name, fields) => {
@@ -1180,7 +1180,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
    match &expr_node.expression {
       Expression::UnitLiteral => (),
       Expression::BoolLiteral(x) => {
-         generation_context.out.emit_const_i32(*x as u32);
+         generation_context.out.emit_const_i32(u32::from(*x));
       }
       Expression::EnumLiteral(name, variant) => {
          let wasm_type = match expr_node.exp_type.as_ref().unwrap() {
@@ -1282,7 +1282,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          do_emit_and_load_lval(*rhs, generation_context, interner);
 
          let (wasm_type, suffix) = match generation_context.expressions[*lhs].exp_type.as_ref().unwrap() {
-            ExpressionType::Value(ValueType::Int(x)) => int_to_wasm_runtime_and_suffix(x),
+            ExpressionType::Value(ValueType::Int(x)) => int_to_wasm_runtime_and_suffix(*x),
             ExpressionType::Value(ValueType::Enum(x)) => {
                let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
                (if num_variants > u32::MAX as usize { "i64" } else { "i32" }, "_u")
@@ -1393,7 +1393,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                do_emit_and_load_lval(*e_index, generation_context, interner);
 
                match expr_node.exp_type.as_ref().unwrap() {
-                  ExpressionType::Value(ValueType::Int(_)) | ExpressionType::Value(ValueType::Bool) => {
+                  ExpressionType::Value(ValueType::Int(_) | ValueType::Bool) => {
                      complement_val(e.exp_type.as_ref().unwrap(), wasm_type, generation_context);
                      generation_context.out.emit_spaces();
                      writeln!(generation_context.out.out, "{}.const 1", wasm_type).unwrap();
@@ -1448,10 +1448,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             // float -> int
             match target_type {
                ExpressionType::Value(ValueType::Int(x)) if x.width.as_num_bytes() == 4 => {
-                  generation_context.out.emit_constant_instruction("i32.reinterpret_f32")
+                  generation_context.out.emit_constant_instruction("i32.reinterpret_f32");
                }
                ExpressionType::Value(ValueType::Int(x)) if x.width.as_num_bytes() == 8 => {
-                  generation_context.out.emit_constant_instruction("i64.reinterpret_f64")
+                  generation_context.out.emit_constant_instruction("i64.reinterpret_f64");
                }
                _ => unreachable!(),
             }
@@ -1461,10 +1461,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             // int -> float
             match target_type {
                ExpressionType::Value(F32_TYPE) => {
-                  generation_context.out.emit_constant_instruction("f32.reinterpret_i32")
+                  generation_context.out.emit_constant_instruction("f32.reinterpret_i32");
                }
                ExpressionType::Value(F64_TYPE) => {
-                  generation_context.out.emit_constant_instruction("f64.reinterpret_i64")
+                  generation_context.out.emit_constant_instruction("f64.reinterpret_i64");
                }
                _ => unreachable!(),
             }
@@ -1795,17 +1795,17 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
 
 fn complement_val(t_type: &ExpressionType, wasm_type: &str, generation_context: &mut GenerationContext) {
    let magic_const: u64 = match t_type {
-      ExpressionType::Value(crate::type_data::U8_TYPE) => std::u8::MAX as u64,
-      ExpressionType::Value(crate::type_data::U16_TYPE) => std::u16::MAX as u64,
-      ExpressionType::Value(crate::type_data::U32_TYPE) => std::u32::MAX as u64,
+      ExpressionType::Value(crate::type_data::U8_TYPE) => u64::from(std::u8::MAX),
+      ExpressionType::Value(crate::type_data::U16_TYPE) => u64::from(std::u16::MAX),
+      ExpressionType::Value(crate::type_data::U32_TYPE) => u64::from(std::u32::MAX),
       // @FixedPointerWidth
-      ExpressionType::Value(crate::type_data::USIZE_TYPE) => std::u32::MAX as u64,
+      ExpressionType::Value(crate::type_data::USIZE_TYPE) => u64::from(std::u32::MAX),
       ExpressionType::Value(crate::type_data::U64_TYPE) => std::u64::MAX,
-      ExpressionType::Value(crate::type_data::I8_TYPE) => std::u32::MAX as u64,
-      ExpressionType::Value(crate::type_data::I16_TYPE) => std::u32::MAX as u64,
-      ExpressionType::Value(crate::type_data::I32_TYPE) => std::u32::MAX as u64,
+      ExpressionType::Value(crate::type_data::I8_TYPE) => u64::from(std::u32::MAX),
+      ExpressionType::Value(crate::type_data::I16_TYPE) => u64::from(std::u32::MAX),
+      ExpressionType::Value(crate::type_data::I32_TYPE) => u64::from(std::u32::MAX),
       // @FixedPointerWidth
-      ExpressionType::Value(crate::type_data::ISIZE_TYPE) => std::u32::MAX as u64,
+      ExpressionType::Value(crate::type_data::ISIZE_TYPE) => u64::from(std::u32::MAX),
       ExpressionType::Value(crate::type_data::I64_TYPE) => std::u64::MAX,
       _ => unreachable!(),
    };

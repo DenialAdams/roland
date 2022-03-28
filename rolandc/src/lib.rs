@@ -1,3 +1,22 @@
+#![warn(clippy::pedantic)]
+
+// Clippy lints I don't like
+#![allow(clippy::explicit_iter_loop)] // I find explicit iter more readable
+#![allow(clippy::match_same_arms)] // Sometimes I find this more clear (when it's just calling something)
+#![allow(clippy::too_many_lines)] // A procedure should have however many lines as it needs. More procedures is not better.
+#![allow(clippy::too_many_arguments)] // Similar to above, take the amount that you need
+#![allow(clippy::flat_map_option)] // Not sure how filter_map is any more clear than flat_map
+#![allow(clippy::cast_sign_loss)] // I am aware
+#![allow(clippy::cast_possible_wrap)] // I am aware
+#![allow(clippy::cast_possible_wrap)] // I am aware
+#![allow(clippy::cast_possible_truncation)] // I am aware
+#![allow(clippy::single_match_else)] // Not always an improvement in my opinion
+#![allow(clippy::missing_errors_doc)] // Nothing is documented
+#![allow(clippy::module_name_repetitions)] // I don't really care that much
+
+// Clippy lints that cause false positives
+#![allow(clippy::match_wildcard_for_single_variants)]
+
 mod add_virtual_variables;
 mod compile_globals;
 mod constant_folding;
@@ -95,7 +114,7 @@ pub fn compile<E: Write, A: Write>(
       let file_str = interner.lookup(file);
       let mut new_path = base_path.clone();
       new_path.push(file_str);
-      import_queue.push(new_path)
+      import_queue.push(new_path);
    }
 
    while let Some(mut base_path) = import_queue.pop() {
@@ -144,7 +163,7 @@ pub fn compile<E: Write, A: Write>(
          let file_str = interner.lookup(file);
          let mut new_path = base_path.clone();
          new_path.push(file_str);
-         import_queue.push(new_path)
+         import_queue.push(new_path);
       }
    }
 

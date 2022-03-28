@@ -6,7 +6,7 @@ use indexmap::IndexMap;
 use crate::constant_folding::{self, FoldingContext};
 use crate::interner::{Interner, StrId};
 use crate::lex::{emit_source_info, emit_source_info_with_description, SourceInfo};
-use crate::parse::{Expression, ExpressionId, ExpressionNode, ExpressionPool, Program};
+use crate::parse::{Expression, ExpressionId, ExpressionPool, Program};
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::SizeInfo;
 use crate::various_expression_lowering;
@@ -173,7 +173,7 @@ fn cg_const<W: Write>(c_name: StrId, cg_context: &mut CgContext, err_stream: &mu
 fn cg_expr<W: Write>(expr_index: ExpressionId, cg_context: &mut CgContext, err_stream: &mut W) {
    // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
    // while this pointer is alive. We don't do this, because we update this expression in place.
-   let expr_to_fold = &cg_context.expressions[expr_index] as *const ExpressionNode;
+   let expr_to_fold = std::ptr::addr_of!(cg_context.expressions[expr_index]);
 
    match unsafe { &(*expr_to_fold).expression } {
       Expression::Variable(x) => {
@@ -252,5 +252,5 @@ fn cg_expr<W: Write>(expr_index: ExpressionId, cg_context: &mut CgContext, err_s
       cg_context.struct_info,
       cg_context.struct_size_info,
       cg_context.enum_info,
-   )
+   );
 }

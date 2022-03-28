@@ -108,7 +108,7 @@ fn fold_expr<W: Write>(
 
    // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
    // while this pointer is alive. We don't do this, because we update this expression in place.
-   let expr_to_fold = &mut folding_context.expressions[expr_index] as *mut ExpressionNode;
+   let expr_to_fold = std::ptr::addr_of_mut!(folding_context.expressions[expr_index]);
 
    match unsafe { &mut (*expr_to_fold).expression } {
       Expression::ArrayIndex { array, index } => {
@@ -693,9 +693,11 @@ impl Literal {
       match (self, target_type) {
          // Transmute int to float
          (Literal::Int32(i), ExpressionType::Value(F32_TYPE)) => {
-            Expression::FloatLiteral(f32::from_bits(i as u32) as f64)
+            Expression::FloatLiteral(f64::from(f32::from_bits(i as u32)))
          }
-         (Literal::Uint32(i), ExpressionType::Value(F32_TYPE)) => Expression::FloatLiteral(f32::from_bits(i) as f64),
+         (Literal::Uint32(i), ExpressionType::Value(F32_TYPE)) => {
+            Expression::FloatLiteral(f64::from(f32::from_bits(i)))
+         }
          (Literal::Int64(i), ExpressionType::Value(F64_TYPE)) => Expression::FloatLiteral(f64::from_bits(i as u64)),
          (Literal::Uint64(i), ExpressionType::Value(F64_TYPE)) => Expression::FloatLiteral(f64::from_bits(i)),
 

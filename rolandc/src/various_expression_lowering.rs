@@ -59,10 +59,10 @@ pub fn lower_single_expression(
                }
                _ => unreachable!(),
             }
-            remaining_fields = if !remaining_fields.is_empty() {
-               &remaining_fields[1..]
-            } else {
+            remaining_fields = if remaining_fields.is_empty() {
                &[]
+            } else {
+               &remaining_fields[1..]
             };
          }
 

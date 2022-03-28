@@ -141,7 +141,7 @@ fn print_expression<W: Write>(
          for arg in args.iter() {
             print_expression(out, arg.expr, expressions, interner);
          }
-         writeln!(out, "</ul></li>").unwrap()
+         writeln!(out, "</ul></li>").unwrap();
       }
       Expression::BinaryOperator { operator, lhs, rhs } => {
          writeln!(out, "<li><span>{:?}{}</span>", operator, type_text).unwrap();
@@ -196,7 +196,7 @@ fn print_expression<W: Write>(
          for exp in exprs.iter() {
             print_expression(out, *exp, expressions, interner);
          }
-         writeln!(out, "</ul></li>").unwrap()
+         writeln!(out, "</ul></li>").unwrap();
       }
       Expression::ArrayIndex { array, index } => {
          writeln!(out, "<li><span>Array Index{}</span>", type_text).unwrap();

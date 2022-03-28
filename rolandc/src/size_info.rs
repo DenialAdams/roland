@@ -15,10 +15,10 @@ pub struct SizeInfo {
 
 pub fn aligned_address(v: u32, a: u32) -> u32 {
    let rem = v % a;
-   if rem != 0 {
-      v + (a - rem)
-   } else {
+   if rem == 0 {
       v
+   } else {
+      v + (a - rem)
    }
 }
 

@@ -37,7 +37,7 @@ pub fn try_set_inferred_type<W: Write>(
       return;
    }
 
-   set_inferred_type(e_type, expr_index, validation_context, err_stream, interner)
+   set_inferred_type(e_type, expr_index, validation_context, err_stream, interner);
 }
 
 fn set_inferred_type<W: Write>(

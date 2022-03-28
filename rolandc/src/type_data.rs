@@ -89,7 +89,7 @@ pub enum FloatWidth {
 }
 
 impl FloatWidth {
-   pub fn as_num_bytes(&self) -> u8 {
+   pub fn as_num_bytes(self) -> u8 {
       match self {
          FloatWidth::Eight => 8,
          FloatWidth::Four => 4,
@@ -119,7 +119,7 @@ pub enum IntWidth {
 }
 
 impl IntWidth {
-   pub fn as_num_bytes(&self) -> u8 {
+   pub fn as_num_bytes(self) -> u8 {
       match self {
          IntWidth::Eight => 8,
          // @FixedPointerWidth

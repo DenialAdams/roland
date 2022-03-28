@@ -46,10 +46,9 @@ fn expect<W: Write>(l: &mut Lexer, err_stream: &mut W, token: &Token, interner: 
    let lex_token = l.next();
    if lex_token
       .as_ref()
-      .map(|x| discriminant(&x.token) != discriminant(token))
-      .unwrap_or(true)
+      .map_or(true, |x| discriminant(&x.token) != discriminant(token))
    {
-      let lex_token_str = lex_token.map(|x| x.token.for_parse_err()).unwrap_or("EOF");
+      let lex_token_str = lex_token.map_or("EOF", |x| x.token.for_parse_err());
       writeln!(
          err_stream,
          "Encountered '{}' when expecting '{}'",
@@ -224,7 +223,7 @@ pub struct GenericArgumentNode {
 impl Expression {
    pub fn is_lvalue(&self, expressions: &ExpressionPool, static_info: &IndexMap<StrId, StaticInfo>) -> bool {
       match self {
-         Expression::Variable(x) => static_info.get(x).map(|x| !x.is_const).unwrap_or(true),
+         Expression::Variable(x) => static_info.get(x).map_or(true, |x| !x.is_const),
          Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue(expressions, static_info),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
          Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue(expressions, static_info),
@@ -514,9 +513,8 @@ fn parse_struct<W: Write>(
          writeln!(err_stream, "While parsing definition of struct `{}`, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?", interner.lookup(struct_name), interner.lookup(*x)).unwrap();
          emit_source_info(err_stream, l.peek_source().unwrap(), interner);
          return Result::Err(());
-      } else {
-         expect(l, err_stream, &Token::Comma, interner)?;
-      };
+      }
+      expect(l, err_stream, &Token::Comma, interner)?;
    }
    Ok(StructNode {
       name: struct_name,
@@ -548,9 +546,9 @@ fn parse_enum<W: Write>(
          writeln!(err_stream, "While parsing definition of enum `{}`, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?", interner.lookup(enum_name), interner.lookup(*x)).unwrap();
          emit_source_info(err_stream, l.peek_source().unwrap(), interner);
          return Result::Err(());
-      } else {
-         expect(l, err_stream, &Token::Comma, interner)?;
-      };
+      }
+
+      expect(l, err_stream, &Token::Comma, interner)?;
    }
    Ok(EnumNode {
       name: enum_name,
@@ -678,16 +676,18 @@ fn parse_block<W: Write>(
             let s = parse_if_else_statement(l, err_stream, expressions, interner)?;
             statements.push(s);
          }
-         Some(Token::BoolLiteral(_))
-         | Some(Token::StringLiteral(_))
-         | Some(Token::IntLiteral(_))
-         | Some(Token::FloatLiteral(_))
-         | Some(Token::OpenParen)
-         | Some(Token::Exclam)
-         | Some(Token::Amp)
-         | Some(Token::MultiplyDeref)
-         | Some(Token::Identifier(_))
-         | Some(Token::Minus) => {
+         Some(
+            Token::BoolLiteral(_)
+            | Token::StringLiteral(_)
+            | Token::IntLiteral(_)
+            | Token::FloatLiteral(_)
+            | Token::OpenParen
+            | Token::Exclam
+            | Token::Amp
+            | Token::MultiplyDeref
+            | Token::Identifier(_)
+            | Token::Minus,
+         ) => {
             let e = parse_expression(l, err_stream, false, expressions, interner)?;
             match l.peek_token() {
                Some(&Token::Assignment) => {
@@ -791,7 +791,7 @@ fn parse_parameters<W: Write>(
 
    loop {
       match l.peek_token() {
-         Some(Token::Identifier(_)) | Some(Token::KeywordNamed) => {
+         Some(Token::Identifier(_) | Token::KeywordNamed) => {
             let named = if l.peek_token() == Some(&Token::KeywordNamed) {
                let _ = l.next();
                true
@@ -864,17 +864,19 @@ fn parse_arguments<W: Write>(
 
    loop {
       match l.peek_token() {
-         Some(Token::Identifier(_))
-         | Some(Token::BoolLiteral(_))
-         | Some(Token::StringLiteral(_))
-         | Some(Token::IntLiteral(_))
-         | Some(Token::FloatLiteral(_))
-         | Some(Token::OpenParen)
-         | Some(Token::OpenSquareBracket)
-         | Some(Token::Amp)
-         | Some(Token::Exclam)
-         | Some(Token::MultiplyDeref)
-         | Some(Token::Minus) => {
+         Some(
+            Token::Identifier(_)
+            | Token::BoolLiteral(_)
+            | Token::StringLiteral(_)
+            | Token::IntLiteral(_)
+            | Token::FloatLiteral(_)
+            | Token::OpenParen
+            | Token::OpenSquareBracket
+            | Token::Amp
+            | Token::Exclam
+            | Token::MultiplyDeref
+            | Token::Minus,
+         ) => {
             let name: Option<StrId> = if let Some(Token::Identifier(x)) = l.peek_token().copied() {
                if l.double_peek_token() == Some(&Token::Colon) {
                   let _ = l.next();
@@ -1045,9 +1047,8 @@ fn pratt<W: Write>(
                   writeln!(err_stream, "While parsing instantiation of struct `{}`, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?", struct_str, identifier_str).unwrap();
                   emit_source_info(err_stream, l.peek_source().unwrap(), interner);
                   return Result::Err(());
-               } else {
-                  expect(l, err_stream, &Token::Comma, interner)?;
                };
+               expect(l, err_stream, &Token::Comma, interner)?;
             }
             Expression::StructLiteral(s, fields)
          } else {
@@ -1074,9 +1075,8 @@ fn pratt<W: Write>(
             es.push(parse_expression(l, err_stream, false, expressions, interner)?);
             if let Some(Token::CloseSquareBracket) = l.peek_token() {
                break;
-            } else {
-               expect(l, err_stream, &Token::Comma, interner)?;
             }
+            expect(l, err_stream, &Token::Comma, interner)?;
          }
          let _ = l.next(); // ]
          Expression::ArrayLiteral(es.into_boxed_slice())
@@ -1106,7 +1106,7 @@ fn pratt<W: Write>(
          Expression::UnaryOperator(UnOp::Dereference, wrap(rhs, begin_location.unwrap(), expressions))
       }
       x => {
-         let s = x.map(|x| x.for_parse_err()).unwrap_or("EOF");
+         let s = x.map_or("EOF", |x| x.for_parse_err());
          writeln!(
             err_stream,
             "While parsing expression - unexpected token '{}'; was expecting a literal, call, variable, or prefix operator",
@@ -1122,28 +1122,30 @@ fn pratt<W: Write>(
 
    loop {
       let op: &Token = match l.peek_token() {
-         Some(x @ &Token::Plus)
-         | Some(x @ &Token::Minus)
-         | Some(x @ &Token::MultiplyDeref)
-         | Some(x @ &Token::Divide)
-         | Some(x @ &Token::Remainder)
-         | Some(x @ &Token::LessThan)
-         | Some(x @ &Token::LessThanOrEqualTo)
-         | Some(x @ &Token::GreaterThan)
-         | Some(x @ &Token::GreaterThanOrEqualTo)
-         | Some(x @ &Token::Equality)
-         | Some(x @ &Token::Pipe)
-         | Some(x @ &Token::Amp)
-         | Some(x @ &Token::KeywordAnd)
-         | Some(x @ &Token::KeywordOr)
-         | Some(x @ &Token::Caret)
-         | Some(x @ &Token::NotEquality)
-         | Some(x @ &Token::KeywordExtend)
-         | Some(x @ &Token::KeywordTruncate)
-         | Some(x @ &Token::KeywordTransmute)
-         | Some(x @ &Token::OpenSquareBracket)
-         | Some(x @ &Token::ShiftLeft)
-         | Some(x @ &Token::ShiftRight) => x,
+         Some(
+            x @ &(Token::Plus
+            | Token::Minus
+            | Token::MultiplyDeref
+            | Token::Divide
+            | Token::Remainder
+            | Token::LessThan
+            | Token::LessThanOrEqualTo
+            | Token::GreaterThan
+            | Token::GreaterThanOrEqualTo
+            | Token::Equality
+            | Token::Amp
+            | Token::KeywordAnd
+            | Token::KeywordOr
+            | Token::Pipe
+            | Token::Caret
+            | Token::NotEquality
+            | Token::KeywordExtend
+            | Token::KeywordTruncate
+            | Token::KeywordTransmute
+            | Token::OpenSquareBracket
+            | Token::ShiftLeft
+            | Token::ShiftRight),
+         ) => x,
          Some(&Token::Period) => {
             let mut fields = vec![];
             loop {
