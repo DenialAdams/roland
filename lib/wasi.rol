@@ -1,7 +1,7 @@
 import "shared.rol";
 
-extern proc wasm_memory_size() -> usize;
-extern proc wasm_memory_grow(pages: usize) -> usize;
+builtin proc wasm_memory_size() -> usize;
+builtin proc wasm_memory_grow(pages: usize) -> usize;
 
 extern proc fd_write(handle: usize, strings_to_write: &usize, strings_to_write_len: usize, written_ptr: &usize) -> isize;
 

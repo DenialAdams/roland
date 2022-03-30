@@ -1,8 +1,8 @@
-extern proc sqrt(x: f64) -> f64;
+builtin proc sqrt(x: f64) -> f64;
 // It's very sad that we have to name it like this, we need generics
-extern proc sqrt_32(x: f32) -> f32;
+builtin proc sqrt_32(x: f32) -> f32;
 
-extern proc unreachable(); // -> !;
+builtin proc unreachable(); // -> !;
 
 struct String {
    pointer: &u8,

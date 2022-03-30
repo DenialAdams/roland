@@ -75,7 +75,7 @@ pub struct ProcedureDefinition {
 pub struct ProcedureNode {
    pub definition: ProcedureDefinition,
    pub block: BlockNode,
-   pub procedure_begin_location: SourceInfo,
+   pub begin_location: SourceInfo,
 
    // TODO: if we use id-s for types (ala strings), we could use tinyset?
    pub locals: IndexMap<StrId, HashSet<ExpressionType>>,
@@ -83,9 +83,16 @@ pub struct ProcedureNode {
 }
 
 #[derive(Clone)]
+pub enum ProcImplSource {
+   Builtin,
+   External,
+}
+
+#[derive(Clone)]
 pub struct ExternalProcedureNode {
    pub definition: ProcedureDefinition,
-   pub procedure_begin_location: SourceInfo,
+   pub begin_location: SourceInfo,
+   pub impl_source: ProcImplSource,
 }
 
 #[derive(Clone)]
@@ -314,7 +321,13 @@ pub fn astify<W: Write>(
          Token::KeywordExtern => {
             let extern_kw = lexer.next().unwrap();
             expect(&mut lexer, err_stream, &Token::KeywordProcedureDef, interner)?;
-            let p = parse_external_procedure(&mut lexer, err_stream, extern_kw.source_info, interner)?;
+            let p = parse_external_procedure(&mut lexer, err_stream, extern_kw.source_info, interner, ProcImplSource::External)?;
+            external_procedures.push(p);
+         }
+         Token::KeywordBuiltin => {
+            let builtin_kw = lexer.next().unwrap();
+            expect(&mut lexer, err_stream, &Token::KeywordProcedureDef, interner)?;
+            let p = parse_external_procedure(&mut lexer, err_stream, builtin_kw.source_info, interner, ProcImplSource::Builtin)?;
             external_procedures.push(p);
          }
          Token::KeywordProcedureDef => {
@@ -457,7 +470,7 @@ fn parse_procedure<W: Write>(
       locals: IndexMap::new(),
       virtual_locals: IndexSet::new(),
       block,
-      procedure_begin_location: source_info,
+      begin_location: source_info,
    })
 }
 
@@ -466,6 +479,7 @@ fn parse_external_procedure<W: Write>(
    err_stream: &mut W,
    source_info: SourceInfo,
    interner: &Interner,
+   proc_impl_source: ProcImplSource,
 ) -> Result<ExternalProcedureNode, ()> {
    let procedure_name = expect(l, err_stream, &Token::Identifier(DUMMY_STR_TOKEN), interner)?;
    expect(l, err_stream, &Token::OpenParen, interner)?;
@@ -484,7 +498,8 @@ fn parse_external_procedure<W: Write>(
          parameters,
          ret_type,
       },
-      procedure_begin_location: source_info,
+      begin_location: source_info,
+      impl_source: proc_impl_source,
    })
 }
 

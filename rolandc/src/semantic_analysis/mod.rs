@@ -17,20 +17,19 @@ pub struct ProcedureInfo {
    pub named_parameters: HashMap<StrId, ExpressionType>,
    pub type_parameters: usize,
    pub ret_type: ExpressionType,
-   pub procedure_begin_location: SourceInfo,
-   pub is_external: bool,
+   pub begin_location: SourceInfo,
 }
 
 #[derive(Clone)]
 pub struct EnumInfo {
    pub variants: IndexSet<StrId>,
-   pub enum_begin_location: SourceInfo,
+   pub begin_location: SourceInfo,
 }
 
 #[derive(Clone)]
 pub struct StructInfo {
    pub field_types: IndexMap<StrId, ExpressionType>,
-   pub struct_begin_location: SourceInfo,
+   pub begin_location: SourceInfo,
 }
 
 #[derive(Clone, Debug)]

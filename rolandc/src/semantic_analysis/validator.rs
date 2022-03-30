@@ -3,7 +3,7 @@ use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
 use crate::interner::{Interner, StrId};
 use crate::lex::{emit_source_info, emit_source_info_with_description, SourceInfo};
 use crate::parse::{
-   BinOp, BlockNode, Expression, ExpressionId, ExpressionPool, IdentifierNode, Program, Statement, StatementNode, UnOp,
+   BinOp, BlockNode, Expression, ExpressionId, ExpressionPool, IdentifierNode, Program, Statement, StatementNode, UnOp, ProcImplSource,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE};
@@ -189,12 +189,11 @@ pub fn type_and_check_validity<W: Write>(
          named_parameters: HashMap::new(),
          type_parameters: 1,
          ret_type: ExpressionType::Value(USIZE_TYPE),
-         procedure_begin_location: SourceInfo {
+         begin_location: SourceInfo {
             line: 0,
             col: 0,
             file: None,
          },
-         is_external: true,
       },
    );
 
@@ -225,7 +224,7 @@ pub fn type_and_check_validity<W: Write>(
          a_enum.name,
          EnumInfo {
             variants: a_enum.variants.iter().copied().collect(),
-            enum_begin_location: a_enum.begin_location,
+            begin_location: a_enum.begin_location,
          },
       ) {
          error_count += 1;
@@ -235,7 +234,7 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(a_enum.name)
          )
          .unwrap();
-         emit_source_info_with_description(err_stream, old_enum.enum_begin_location, "first enum defined", interner);
+         emit_source_info_with_description(err_stream, old_enum.begin_location, "first enum defined", interner);
          emit_source_info_with_description(err_stream, a_enum.begin_location, "second enum defined", interner);
       }
    }
@@ -260,7 +259,7 @@ pub fn type_and_check_validity<W: Write>(
          a_struct.name,
          StructInfo {
             field_types: field_map,
-            struct_begin_location: a_struct.begin_location,
+            begin_location: a_struct.begin_location,
          },
       ) {
          error_count += 1;
@@ -272,7 +271,7 @@ pub fn type_and_check_validity<W: Write>(
          .unwrap();
          emit_source_info_with_description(
             err_stream,
-            old_struct.struct_begin_location,
+            old_struct.begin_location,
             "first struct defined",
             interner,
          );
@@ -292,8 +291,8 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(*struct_i.0)
          )
          .unwrap();
-         emit_source_info_with_description(err_stream, enum_i.enum_begin_location, "enum defined", interner);
-         emit_source_info_with_description(err_stream, struct_i.1.struct_begin_location, "struct defined", interner);
+         emit_source_info_with_description(err_stream, enum_i.begin_location, "enum defined", interner);
+         emit_source_info_with_description(err_stream, struct_i.1.begin_location, "struct defined", interner);
       }
 
       for (field, e_type) in struct_i.1.field_types.iter_mut() {
@@ -311,7 +310,7 @@ pub fn type_and_check_validity<W: Write>(
             etype_str,
          )
          .unwrap();
-         emit_source_info_with_description(err_stream, struct_i.1.struct_begin_location, "struct defined", interner);
+         emit_source_info_with_description(err_stream, struct_i.1.begin_location, "struct defined", interner);
       }
    }
 
@@ -329,7 +328,7 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(*struct_i.0),
          )
          .unwrap();
-         emit_source_info_with_description(err_stream, struct_i.1.struct_begin_location, "struct defined", interner);
+         emit_source_info_with_description(err_stream, struct_i.1.begin_location, "struct defined", interner);
       }
    }
 
@@ -427,15 +426,15 @@ pub fn type_and_check_validity<W: Write>(
       }
    }
 
-   for (definition, source_location, is_external) in program
+   for (definition, source_location, extern_impl_source) in program
       .external_procedures
       .iter_mut()
-      .map(|x| (&mut x.definition, x.procedure_begin_location, true))
+      .map(|x| (&mut x.definition, x.begin_location, Some(std::mem::discriminant(&x.impl_source))))
       .chain(
          program
             .procedures
             .iter_mut()
-            .map(|x| (&mut x.definition, x.procedure_begin_location, false)),
+            .map(|x| (&mut x.definition, x.begin_location, None)),
       )
    {
       dupe_check.clear();
@@ -459,12 +458,12 @@ pub fn type_and_check_validity<W: Write>(
          if param.named && first_named_param.is_none() {
             first_named_param = Some(i);
 
-            if is_external {
+            if extern_impl_source == Some(std::mem::discriminant(&ProcImplSource::External)) {
                reported_named_error = true;
                error_count += 1;
                writeln!(
                   err_stream,
-                  "External procedure `{}` has named parameters, which isn't supported",
+                  "External procedure `{}` has named parameter(s), which isn't supported",
                   interner.lookup(definition.name),
                )
                .unwrap();
@@ -534,8 +533,7 @@ pub fn type_and_check_validity<W: Write>(
                .map(|x| (x.name, x.p_type.clone()))
                .collect(),
             ret_type: definition.ret_type.clone(),
-            procedure_begin_location: source_location,
-            is_external,
+            begin_location: source_location,
          },
       ) {
          error_count += 1;
@@ -548,7 +546,7 @@ pub fn type_and_check_validity<W: Write>(
          .unwrap();
          emit_source_info_with_description(
             err_stream,
-            old_procedure.procedure_begin_location,
+            old_procedure.begin_location,
             "first procedure declared",
             interner,
          );
@@ -609,7 +607,7 @@ pub fn type_and_check_validity<W: Write>(
             .procedure_info
             .get(&special_proc_name)
             .unwrap()
-            .procedure_begin_location;
+            .begin_location;
          emit_source_info_with_description(err_stream, si, "defined", interner);
       }
    }
@@ -735,7 +733,7 @@ pub fn type_and_check_validity<W: Write>(
             .unwrap();
             emit_source_info_with_description(
                err_stream,
-               procedure.procedure_begin_location,
+               procedure.begin_location,
                "procedure defined",
                interner,
             );
@@ -1761,7 +1759,7 @@ fn get_type<W: Write>(
                         .unwrap();
                         emit_source_info_with_description(
                            err_stream,
-                           defined_struct.struct_begin_location,
+                           defined_struct.begin_location,
                            "struct defined",
                            interner,
                         );
@@ -1782,7 +1780,7 @@ fn get_type<W: Write>(
                      .unwrap();
                      emit_source_info_with_description(
                         err_stream,
-                        defined_struct.struct_begin_location,
+                        defined_struct.begin_location,
                         "struct defined",
                         interner,
                      );
@@ -1810,7 +1808,7 @@ fn get_type<W: Write>(
                      .unwrap();
                      emit_source_info_with_description(
                         err_stream,
-                        defined_struct.struct_begin_location,
+                        defined_struct.begin_location,
                         "struct defined",
                         interner,
                      );
@@ -1837,7 +1835,7 @@ fn get_type<W: Write>(
                   .unwrap();
                   emit_source_info_with_description(
                      err_stream,
-                     defined_struct.struct_begin_location,
+                     defined_struct.begin_location,
                      "struct defined",
                      interner,
                   );

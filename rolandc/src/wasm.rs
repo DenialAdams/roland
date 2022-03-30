@@ -1,6 +1,6 @@
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   BinOp, Expression, ExpressionId, ExpressionPool, ParameterNode, Program, Statement, StatementNode, UnOp,
+   BinOp, Expression, ExpressionId, ExpressionPool, ParameterNode, Program, Statement, StatementNode, UnOp, ProcImplSource,
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{
@@ -476,17 +476,7 @@ pub fn emit_wasm(
       expressions,
    };
 
-   for external_procedure in program.external_procedures.iter() {
-      // These are roland builtins and not WASI; a way to distinguish this at the roland level might be good
-      if external_procedure.definition.name == interner.intern("wasm_memory_grow")
-         || external_procedure.definition.name == interner.intern("wasm_memory_size")
-         || external_procedure.definition.name == interner.intern("sqrt")
-         || external_procedure.definition.name == interner.intern("sqrt_32")
-         || external_procedure.definition.name == interner.intern("unreachable")
-      {
-         continue;
-      }
-
+   for external_procedure in program.external_procedures.iter().filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ProcImplSource::External)) {
       if wasm4 {
          writeln!(
             generation_context.out.out,
