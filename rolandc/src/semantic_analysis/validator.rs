@@ -440,6 +440,17 @@ pub fn type_and_check_validity<W: Write>(
       dupe_check.clear();
       dupe_check.reserve(definition.parameters.len());
 
+      if extern_impl_source == Some(std::mem::discriminant(&ProcImplSource::Builtin)) && source_location.file != SourcePath::Std {
+         error_count += 1;
+         writeln!(
+            err_stream,
+            "Procedure `{}` is declared to be builtin, but only the compiler can declare builtin procedures",
+            interner.lookup(definition.name),
+         )
+         .unwrap();
+         emit_source_info_with_description(err_stream, source_location, "procedure declared", interner);
+      }
+
       let mut first_named_param = None;
       let mut reported_named_error = false;
       for (i, param) in definition.parameters.iter().enumerate() {

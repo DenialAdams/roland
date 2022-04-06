@@ -1,0 +1,6 @@
+builtin proc alacadabra();
+
+proc main() {
+   alacadabra();
+   print("Everything is ok");
+}
