@@ -1,7 +1,7 @@
 use super::type_inference::try_set_inferred_type;
 use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
 use crate::interner::{Interner, StrId};
-use crate::lex::{emit_source_info, emit_source_info_with_description, SourceInfo};
+use crate::lex::{emit_source_info, emit_source_info_with_description, SourceInfo, SourcePath};
 use crate::parse::{
    BinOp, BlockNode, Expression, ExpressionId, ExpressionPool, IdentifierNode, Program, Statement, StatementNode, UnOp, ProcImplSource,
 };
@@ -192,7 +192,7 @@ pub fn type_and_check_validity<W: Write>(
          begin_location: SourceInfo {
             line: 0,
             col: 0,
-            file: None,
+            file: SourcePath::Std,
          },
       },
    );

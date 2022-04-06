@@ -28,6 +28,7 @@ mod various_expression_lowering;
 mod wasm;
 
 use interner::StrId;
+use lex::SourcePath;
 use parse::{ExpressionPool, Program};
 use size_info::{calculate_struct_size_info, SizeInfo};
 use std::collections::{HashMap, HashSet};
@@ -92,7 +93,7 @@ pub fn compile<E: Write, A: Write>(
    }
    let root_source_location = user_program_path
       .as_ref()
-      .map(|x| interner.intern(&x.to_string_lossy()));
+      .map_or(SourcePath::Sandbox, |x| SourcePath::File(interner.intern(&x.to_string_lossy())));
 
    let (files_to_import, mut user_program) = lex_and_parse(
       user_program_s,
@@ -147,7 +148,7 @@ pub fn compile<E: Write, A: Write>(
       };
       let mut parsed = lex_and_parse(
          &program_s,
-         Some(interner.intern(&base_path.as_os_str().to_string_lossy())),
+         SourcePath::File(interner.intern(&base_path.as_os_str().to_string_lossy())),
          err_stream,
          &mut interner,
          &mut expressions,
@@ -165,22 +166,21 @@ pub fn compile<E: Write, A: Write>(
 
    let num_procedures_before_std_merge = user_program.procedures.len();
 
-   let std_source_info = Some(interner.intern("<std>"));
    let mut std_lib = match target {
       Target::Wasi => {
          let std_lib_s = include_str!("../../lib/wasi.rol");
-         lex_and_parse(std_lib_s, std_source_info, err_stream, &mut interner, &mut expressions)
+         lex_and_parse(std_lib_s, SourcePath::Std, err_stream, &mut interner, &mut expressions)
       }
       Target::Wasm4 => {
          let std_lib_s = include_str!("../../lib/wasm4.rol");
-         lex_and_parse(std_lib_s, std_source_info, err_stream, &mut interner, &mut expressions)
+         lex_and_parse(std_lib_s, SourcePath::Std, err_stream, &mut interner, &mut expressions)
       }
    }?;
 
    merge_program(&mut user_program, &mut std_lib.1);
 
    let std_lib_s = include_str!("../../lib/shared.rol");
-   let mut shared_std = lex_and_parse(std_lib_s, std_source_info, err_stream, &mut interner, &mut expressions)?;
+   let mut shared_std = lex_and_parse(std_lib_s, SourcePath::Std, err_stream, &mut interner, &mut expressions)?;
    merge_program(&mut user_program, &mut shared_std.1);
 
    let mut err_count = semantic_analysis::validator::type_and_check_validity(
@@ -287,7 +287,7 @@ fn merge_program(main_program: &mut Program, other_program: &mut Program) {
 
 fn lex_and_parse<W: Write>(
    s: &str,
-   source_path: Option<StrId>,
+   source_path: SourcePath,
    err_stream: &mut W,
    interner: &mut Interner,
    expressions: &mut ExpressionPool,

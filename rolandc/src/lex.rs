@@ -7,7 +7,7 @@ use crate::interner::{Interner, StrId};
 pub struct SourceInfo {
    pub line: usize,
    pub col: usize,
-   pub file: Option<StrId>,
+   pub file: SourcePath,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -157,16 +157,19 @@ enum LexMode {
 }
 
 pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo, interner: &Interner) {
-   if let Some(path) = source_info.file {
-      let path_str = interner.lookup(path);
-      writeln!(
-         err_stream,
-         "↳ line {}, column {} [{}]",
-         source_info.line, source_info.col, path_str
-      )
-      .unwrap();
-   } else {
-      writeln!(err_stream, "↳ line {}, column {}", source_info.line, source_info.col).unwrap();
+   match source_info.file {
+      SourcePath::File(x) => {
+         let path_str = interner.lookup(x);
+         writeln!(
+            err_stream,
+            "↳ line {}, column {} [{}]",
+            source_info.line, source_info.col, path_str
+         )
+         .unwrap();
+      }
+      SourcePath::Sandbox | SourcePath::Std => {
+         writeln!(err_stream, "↳ line {}, column {}", source_info.line, source_info.col).unwrap();
+      }
    }
 }
 
@@ -176,21 +179,19 @@ pub fn emit_source_info_with_description<W: Write>(
    description: &str,
    interner: &Interner,
 ) {
-   if let Some(path) = source_info.file {
-      let path_str = interner.lookup(path);
-      writeln!(
-         err_stream,
-         "↳ {} @ line {}, column {} [{}]",
-         description, source_info.line, source_info.col, path_str
-      )
-      .unwrap();
-   } else {
-      writeln!(
-         err_stream,
-         "↳ {} @ line {}, column {}",
-         description, source_info.line, source_info.col
-      )
-      .unwrap();
+   match source_info.file {
+      SourcePath::File(x) => {
+         let path_str = interner.lookup(x);
+         writeln!(
+            err_stream,
+            "↳ {} @ line {}, column {} [{}]",
+            description, source_info.line, source_info.col, path_str
+         )
+         .unwrap();
+      }
+      SourcePath::Sandbox | SourcePath::Std => {
+         writeln!(err_stream, "↳ {} @ line {}, column {}", description, source_info.line, source_info.col).unwrap();
+      }
    }
 }
 
@@ -225,9 +226,16 @@ fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
    }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SourcePath {
+   Sandbox,
+   Std,
+   File(StrId),
+}
+
 pub fn lex<W: Write>(
    input: &str,
-   source_path: Option<StrId>,
+   source_path: SourcePath,
    err_stream: &mut W,
    interner: &mut Interner,
 ) -> Result<Vec<SourceToken>, ()> {
