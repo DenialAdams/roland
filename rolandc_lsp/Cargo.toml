@@ -1,0 +1,10 @@
+[package]
+name = "rolandc_lsp"
+version = "0.1.0"
+authors = ["Richard McCormack <brick@brick.codes>"]
+edition = "2021"
+
+[dependencies]
+tower-lsp = "0.16"
+tokio = { version = "1", features = ["io-std", "rt", "rt-multi-thread", "macros"] }
+rolandc = { path = "../rolandc" }
