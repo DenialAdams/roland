@@ -28,8 +28,8 @@ mod various_expression_lowering;
 mod wasm;
 
 use interner::StrId;
-use lex::{SourcePath, emit_source_info};
-use parse::{ExpressionPool, Program, ImportNode};
+use lex::{emit_source_info, SourcePath};
+use parse::{ExpressionPool, ImportNode, Program};
 use size_info::{calculate_struct_size_info, SizeInfo};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
@@ -133,26 +133,22 @@ pub fn compile<E: Write, A: Write>(
             }
          }
          user_program
-      },
+      }
       CompilationEntryPoint::Buffer(contents) => {
          let (files_to_import, user_program) = lex_and_parse(
-               contents,
-               SourcePath::Sandbox,
-               err_stream,
-               &mut interner,
-              &mut expressions,
-            )?;
-            if !files_to_import.is_empty() {
-               writeln!(
-                  err_stream,
-                  "Can't import files in the Roland playground",
-               )
-               .unwrap();
-               emit_source_info(err_stream, files_to_import[0].location, &interner);
-               return Err(CompilationError::Io);
-            }
-            user_program
-      },
+            contents,
+            SourcePath::Sandbox,
+            err_stream,
+            &mut interner,
+            &mut expressions,
+         )?;
+         if !files_to_import.is_empty() {
+            writeln!(err_stream, "Can't import files in the Roland playground",).unwrap();
+            emit_source_info(err_stream, files_to_import[0].location, &interner);
+            return Err(CompilationError::Io);
+         }
+         user_program
+      }
    };
 
    let num_procedures_before_std_merge = user_program.procedures.len();

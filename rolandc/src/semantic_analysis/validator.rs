@@ -3,7 +3,8 @@ use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
 use crate::interner::{Interner, StrId};
 use crate::lex::{emit_source_info, emit_source_info_with_description, SourceInfo, SourcePath, SourcePosition};
 use crate::parse::{
-   BinOp, BlockNode, Expression, ExpressionId, ExpressionPool, IdentifierNode, Program, Statement, StatementNode, UnOp, ProcImplSource,
+   BinOp, BlockNode, Expression, ExpressionId, ExpressionPool, IdentifierNode, ProcImplSource, Program, Statement,
+   StatementNode, UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE};
@@ -190,14 +191,8 @@ pub fn type_and_check_validity<W: Write>(
          type_parameters: 1,
          ret_type: ExpressionType::Value(USIZE_TYPE),
          location: SourceInfo {
-            begin: SourcePosition {
-               line: 0,
-               col: 0,
-            },
-            end: SourcePosition {
-               line: 0,
-               col: 0,
-            },
+            begin: SourcePosition { line: 0, col: 0 },
+            end: SourcePosition { line: 0, col: 0 },
             file: SourcePath::Std,
          },
       },
@@ -270,12 +265,7 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(a_struct.name)
          )
          .unwrap();
-         emit_source_info_with_description(
-            err_stream,
-            old_struct.location,
-            "first struct defined",
-            interner,
-         );
+         emit_source_info_with_description(err_stream, old_struct.location, "first struct defined", interner);
          emit_source_info_with_description(err_stream, a_struct.location, "second struct defined", interner);
       }
    }
@@ -365,18 +355,8 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(const_node.name.identifier),
          )
          .unwrap();
-         emit_source_info_with_description(
-            err_stream,
-            old_value.location,
-            "first static/const defined",
-            interner,
-         );
-         emit_source_info_with_description(
-            err_stream,
-            const_node.location,
-            "second static/const defined",
-            interner,
-         );
+         emit_source_info_with_description(err_stream, old_value.location, "first static/const defined", interner);
+         emit_source_info_with_description(err_stream, const_node.location, "second static/const defined", interner);
       }
    }
 
@@ -412,12 +392,7 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(static_node.name.identifier),
          )
          .unwrap();
-         emit_source_info_with_description(
-            err_stream,
-            old_value.location,
-            "first static/const defined",
-            interner,
-         );
+         emit_source_info_with_description(err_stream, old_value.location, "first static/const defined", interner);
          emit_source_info_with_description(
             err_stream,
             static_node.location,
@@ -430,7 +405,13 @@ pub fn type_and_check_validity<W: Write>(
    for (definition, source_location, extern_impl_source) in program
       .external_procedures
       .iter_mut()
-      .map(|x| (&mut x.definition, x.location, Some(std::mem::discriminant(&x.impl_source))))
+      .map(|x| {
+         (
+            &mut x.definition,
+            x.location,
+            Some(std::mem::discriminant(&x.impl_source)),
+         )
+      })
       .chain(
          program
             .procedures
@@ -441,7 +422,9 @@ pub fn type_and_check_validity<W: Write>(
       dupe_check.clear();
       dupe_check.reserve(definition.parameters.len());
 
-      if extern_impl_source == Some(std::mem::discriminant(&ProcImplSource::Builtin)) && source_location.file != SourcePath::Std {
+      if extern_impl_source == Some(std::mem::discriminant(&ProcImplSource::Builtin))
+         && source_location.file != SourcePath::Std
+      {
          error_count += 1;
          writeln!(
             err_stream,
@@ -556,12 +539,7 @@ pub fn type_and_check_validity<W: Write>(
             procedure_name_str
          )
          .unwrap();
-         emit_source_info_with_description(
-            err_stream,
-            old_procedure.location,
-            "first procedure declared",
-            interner,
-         );
+         emit_source_info_with_description(err_stream, old_procedure.location, "first procedure declared", interner);
          emit_source_info_with_description(err_stream, source_location, "second procedure declared", interner);
       }
    }
@@ -657,12 +635,7 @@ pub fn type_and_check_validity<W: Write>(
          )
          .unwrap();
          emit_source_info_with_description(err_stream, p_const.location, "const", interner);
-         emit_source_info_with_description(
-            err_stream,
-            p_const_expr.location,
-            "expression",
-            interner,
-         );
+         emit_source_info_with_description(err_stream, p_const_expr.location, "expression", interner);
       }
    }
 
@@ -693,12 +666,7 @@ pub fn type_and_check_validity<W: Write>(
          )
          .unwrap();
          emit_source_info_with_description(err_stream, p_static.location, "static", interner);
-         emit_source_info_with_description(
-            err_stream,
-            p_static_expr.location,
-            "expression",
-            interner,
-         );
+         emit_source_info_with_description(err_stream, p_static_expr.location, "expression", interner);
       }
    }
 
@@ -743,19 +711,9 @@ pub fn type_and_check_validity<W: Write>(
                x_str,
             )
             .unwrap();
-            emit_source_info_with_description(
-               err_stream,
-               procedure.location,
-               "procedure defined",
-               interner,
-            );
+            emit_source_info_with_description(err_stream, procedure.location, "procedure defined", interner);
             if let Some(fs) = procedure.block.statements.last() {
-               emit_source_info_with_description(
-                  err_stream,
-                  fs.location,
-                  "actual final statement",
-                  interner,
-               );
+               emit_source_info_with_description(err_stream, fs.location, "actual final statement", interner);
             }
          }
       }
@@ -919,18 +877,8 @@ fn type_statement<W: Write>(
                   end_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
                )
                .unwrap();
-               emit_source_info_with_description(
-                  err_stream,
-                  start_expr.location,
-                  "start of range",
-                  interner,
-               );
-               emit_source_info_with_description(
-                  err_stream,
-                  end_expr.location,
-                  "end of range",
-                  interner,
-               );
+               emit_source_info_with_description(err_stream, start_expr.location, "start of range", interner);
+               emit_source_info_with_description(err_stream, end_expr.location, "end of range", interner);
                ExpressionType::Value(ValueType::CompileError)
             }
          };
@@ -1429,18 +1377,8 @@ fn get_type<W: Write>(
                rhs_type.as_roland_type_info(interner)
             )
             .unwrap();
-            emit_source_info_with_description(
-               err_stream,
-               lhs_expr.location,
-               "lef hand side",
-               interner,
-            );
-            emit_source_info_with_description(
-               err_stream,
-               rhs_expr.location,
-               "right hand side",
-               interner,
-            );
+            emit_source_info_with_description(err_stream, lhs_expr.location, "lef hand side", interner);
+            emit_source_info_with_description(err_stream, rhs_expr.location, "right hand side", interner);
             ExpressionType::Value(ValueType::CompileError)
          } else {
             match operator {
@@ -1784,12 +1722,7 @@ fn get_type<W: Write>(
                         interner.lookup(*struct_name),
                      )
                      .unwrap();
-                     emit_source_info_with_description(
-                        err_stream,
-                        defined_struct.location,
-                        "struct defined",
-                        interner,
-                     );
+                     emit_source_info_with_description(err_stream, defined_struct.location, "struct defined", interner);
                      emit_source_info_with_description(err_stream, expr_location, "struct instantiated", interner);
                   }
 
@@ -1812,19 +1745,9 @@ fn get_type<W: Write>(
                         defined_type_str,
                      )
                      .unwrap();
-                     emit_source_info_with_description(
-                        err_stream,
-                        defined_struct.location,
-                        "struct defined",
-                        interner,
-                     );
+                     emit_source_info_with_description(err_stream, defined_struct.location, "struct defined", interner);
                      emit_source_info_with_description(err_stream, expr_location, "struct instantiated", interner);
-                     emit_source_info_with_description(
-                        err_stream,
-                        field_expr.location,
-                        "field_value",
-                        interner,
-                     );
+                     emit_source_info_with_description(err_stream, field_expr.location, "field_value", interner);
                   }
                }
 
@@ -1839,12 +1762,7 @@ fn get_type<W: Write>(
                      unmatched_fields_str.join(", "),
                   )
                   .unwrap();
-                  emit_source_info_with_description(
-                     err_stream,
-                     defined_struct.location,
-                     "struct defined",
-                     interner,
-                  );
+                  emit_source_info_with_description(err_stream, defined_struct.location, "struct defined", interner);
                   emit_source_info_with_description(err_stream, expr_location, "struct instantiated", interner);
                }
 
@@ -1967,20 +1885,10 @@ fn get_type<W: Write>(
                emit_source_info_with_description(err_stream, expr_location, "array literal", interner);
                // @UnnecessaryAllocation
                let description = format!("element {}", i - 1);
-               emit_source_info_with_description(
-                  err_stream,
-                  last_elem_expr.location,
-                  &description,
-                  interner,
-               );
+               emit_source_info_with_description(err_stream, last_elem_expr.location, &description, interner);
                // @UnnecessaryAllocation
                let description = format!("element {}", i);
-               emit_source_info_with_description(
-                  err_stream,
-                  this_elem_expr.location,
-                  &description,
-                  interner,
-               );
+               emit_source_info_with_description(err_stream, this_elem_expr.location, &description, interner);
                any_error = true;
             }
          }
@@ -2041,12 +1949,7 @@ fn get_type<W: Write>(
                   .as_roland_type_info(interner),
             )
             .unwrap();
-            emit_source_info_with_description(
-               err_stream,
-               index_expression.location,
-               "index",
-               interner,
-            );
+            emit_source_info_with_description(err_stream, index_expression.location, "index", interner);
          }
 
          match &array_expression.exp_type {
@@ -2060,18 +1963,8 @@ fn get_type<W: Write>(
                   x.as_roland_type_info(interner),
                )
                .unwrap();
-               emit_source_info_with_description(
-                  err_stream,
-                  array_expression.location,
-                  "expression",
-                  interner,
-               );
-               emit_source_info_with_description(
-                  err_stream,
-                  index_expression.location,
-                  "index",
-                  interner,
-               );
+               emit_source_info_with_description(err_stream, array_expression.location, "expression", interner);
+               emit_source_info_with_description(err_stream, index_expression.location, "index", interner);
 
                ExpressionType::Value(ValueType::CompileError)
             }

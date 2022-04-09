@@ -190,7 +190,12 @@ pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo, i
          .unwrap();
       }
       SourcePath::Sandbox | SourcePath::Std => {
-         writeln!(err_stream, "↳ line {}, column {}", source_info.begin.line, source_info.begin.col).unwrap();
+         writeln!(
+            err_stream,
+            "↳ line {}, column {}",
+            source_info.begin.line, source_info.begin.col
+         )
+         .unwrap();
       }
    }
 }
@@ -212,7 +217,12 @@ pub fn emit_source_info_with_description<W: Write>(
          .unwrap();
       }
       SourcePath::Sandbox | SourcePath::Std => {
-         writeln!(err_stream, "↳ {} @ line {}, column {}", description, source_info.begin.line, source_info.begin.col).unwrap();
+         writeln!(
+            err_stream,
+            "↳ {} @ line {}, column {}",
+            description, source_info.begin.line, source_info.begin.col
+         )
+         .unwrap();
       }
    }
 }
@@ -283,10 +293,7 @@ pub fn lex<W: Write>(
    let mut tokens: Vec<SourceToken> = Vec::new();
    let mut mode = LexMode::Normal;
 
-   let mut cur_position = SourcePosition {
-      line: 1,
-      col: 1,
-   };
+   let mut cur_position = SourcePosition { line: 1, col: 1 };
 
    // Temporary buffer we use in various parts of the lexer
    let mut str_buf = CharCountingBuffer {
@@ -376,12 +383,12 @@ pub fn lex<W: Write>(
                   let _ = chars.next().unwrap();
                } else {
                   tokens.push(SourceToken {
-                  source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_col(),
-                     file: source_path,
-                  },
-                  token: Token::Colon
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.next_col(),
+                        file: source_path,
+                     },
+                     token: Token::Colon,
                   });
                   cur_position.col += 1;
                }
@@ -695,11 +702,15 @@ pub fn lex<W: Write>(
                mode = LexMode::Ident;
             } else {
                writeln!(err_stream, "Encountered unexpected character {}", c).unwrap();
-               emit_source_info(err_stream, SourceInfo {
-                  begin: cur_position,
-                  end: cur_position.next_col(),
-                  file: source_path,
-               }, interner);
+               emit_source_info(
+                  err_stream,
+                  SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
+                  interner,
+               );
                return Err(());
             }
          }
@@ -795,7 +806,11 @@ pub fn lex<W: Write>(
                   tokens.push(finish_numeric_literal(
                      &str_buf.buf,
                      err_stream,
-                     SourceInfo { begin: cur_position, end: cur_position.col_plus(str_buf.length_in_chars), file: source_path },
+                     SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.col_plus(str_buf.length_in_chars),
+                        file: source_path,
+                     },
                      is_float,
                      interner,
                   )?);
@@ -806,7 +821,11 @@ pub fn lex<W: Write>(
 
                   let _ = chars.next().unwrap();
                   tokens.push(SourceToken {
-                     source_info: SourceInfo { begin: cur_position, end: cur_position.col_plus(2), file: source_path },
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.col_plus(2),
+                        file: source_path,
+                     },
                      token: Token::DoublePeriod,
                   });
                   cur_position.col += 2;
@@ -818,7 +837,11 @@ pub fn lex<W: Write>(
                tokens.push(finish_numeric_literal(
                   &str_buf.buf,
                   err_stream,
-                  SourceInfo { begin: cur_position, end: cur_position.col_plus(str_buf.length_in_chars), file: source_path },
+                  SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.col_plus(str_buf.length_in_chars),
+                     file: source_path,
+                  },
                   is_float,
                   interner,
                )?);
@@ -862,7 +885,11 @@ pub fn lex<W: Write>(
          tokens.push(finish_numeric_literal(
             &str_buf.buf,
             err_stream,
-            SourceInfo { begin: cur_position, end: cur_position.col_plus(str_buf.length_in_chars), file: source_path },
+            SourceInfo {
+               begin: cur_position,
+               end: cur_position.col_plus(str_buf.length_in_chars),
+               file: source_path,
+            },
             is_float,
             interner,
          )?);
@@ -875,8 +902,26 @@ pub fn lex<W: Write>(
             "Encountered EOF while parsing string literal. Hint: Are you missing a closing \"?"
          )
          .unwrap();
-         emit_source_info_with_description(err_stream, SourceInfo { begin: str_begin, end: cur_position, file: source_path }, "string literal", interner);
-         emit_source_info_with_description(err_stream, SourceInfo { begin: cur_position, end: cur_position, file: source_path }, "EOF", interner);
+         emit_source_info_with_description(
+            err_stream,
+            SourceInfo {
+               begin: str_begin,
+               end: cur_position,
+               file: source_path,
+            },
+            "string literal",
+            interner,
+         );
+         emit_source_info_with_description(
+            err_stream,
+            SourceInfo {
+               begin: cur_position,
+               end: cur_position,
+               file: source_path,
+            },
+            "EOF",
+            interner,
+         );
          Err(())
       }
    }

@@ -1,6 +1,7 @@
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   BinOp, Expression, ExpressionId, ExpressionPool, ParameterNode, Program, Statement, StatementNode, UnOp, ProcImplSource,
+   BinOp, Expression, ExpressionId, ExpressionPool, ParameterNode, ProcImplSource, Program, Statement, StatementNode,
+   UnOp,
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{
@@ -476,7 +477,11 @@ pub fn emit_wasm(
       expressions,
    };
 
-   for external_procedure in program.external_procedures.iter().filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ProcImplSource::External)) {
+   for external_procedure in program
+      .external_procedures
+      .iter()
+      .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ProcImplSource::External))
+   {
       if wasm4 {
          writeln!(
             generation_context.out.out,

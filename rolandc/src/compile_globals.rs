@@ -49,12 +49,7 @@ pub fn ensure_statics_const<W: Write>(
          )
          .unwrap();
          emit_source_info_with_description(err_stream, p_static.location, "static", interner);
-         emit_source_info_with_description(
-            err_stream,
-            p_static_expr.location,
-            "expression",
-            interner,
-         );
+         emit_source_info_with_description(err_stream, p_static_expr.location, "expression", interner);
       }
 
       if let Some(v) = p_static.value.as_ref() {
@@ -158,12 +153,7 @@ fn cg_const<W: Write>(c_name: StrId, cg_context: &mut CgContext, err_stream: &mu
       )
       .unwrap();
       emit_source_info_with_description(err_stream, c.0, "const", cg_context.interner);
-      emit_source_info_with_description(
-         err_stream,
-         p_const_expr.location,
-         "expression",
-         cg_context.interner,
-      );
+      emit_source_info_with_description(err_stream, p_const_expr.location, "expression", cg_context.interner);
    }
 
    cg_context.consts_being_processed.remove(&c_name);

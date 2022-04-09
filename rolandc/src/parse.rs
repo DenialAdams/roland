@@ -308,7 +308,18 @@ pub struct Program {
 
 impl Program {
    pub fn new() -> Program {
-      Program { enums: Vec::new(), external_procedures: Vec::new(), procedures: Vec::new(), structs: Vec::new(), consts: Vec::new(), statics: Vec::new(), literals: IndexSet::new(), enum_info: IndexMap::new(), struct_info: IndexMap::new(), static_info: IndexMap::new(), }
+      Program {
+         enums: Vec::new(),
+         external_procedures: Vec::new(),
+         procedures: Vec::new(),
+         structs: Vec::new(),
+         consts: Vec::new(),
+         statics: Vec::new(),
+         literals: IndexSet::new(),
+         enum_info: IndexMap::new(),
+         struct_info: IndexMap::new(),
+         static_info: IndexMap::new(),
+      }
    }
 }
 
@@ -333,13 +344,25 @@ pub fn astify<W: Write>(
          Token::KeywordExtern => {
             let extern_kw = lexer.next().unwrap();
             expect(&mut lexer, err_stream, &Token::KeywordProcedureDef, interner)?;
-            let p = parse_external_procedure(&mut lexer, err_stream, extern_kw.source_info, interner, ProcImplSource::External)?;
+            let p = parse_external_procedure(
+               &mut lexer,
+               err_stream,
+               extern_kw.source_info,
+               interner,
+               ProcImplSource::External,
+            )?;
             external_procedures.push(p);
          }
          Token::KeywordBuiltin => {
             let builtin_kw = lexer.next().unwrap();
             expect(&mut lexer, err_stream, &Token::KeywordProcedureDef, interner)?;
-            let p = parse_external_procedure(&mut lexer, err_stream, builtin_kw.source_info, interner, ProcImplSource::Builtin)?;
+            let p = parse_external_procedure(
+               &mut lexer,
+               err_stream,
+               builtin_kw.source_info,
+               interner,
+               ProcImplSource::Builtin,
+            )?;
             external_procedures.push(p);
          }
          Token::KeywordProcedureDef => {
@@ -352,7 +375,10 @@ pub fn astify<W: Write>(
             let import_path = extract_str_literal(
                expect(&mut lexer, err_stream, &Token::StringLiteral(DUMMY_STR_TOKEN), interner)?.token,
             );
-            imports.push(ImportNode { import_path, location: kw.source_info });
+            imports.push(ImportNode {
+               import_path,
+               location: kw.source_info,
+            });
             expect(&mut lexer, err_stream, &Token::Semicolon, interner)?;
          }
          Token::KeywordStructDef => {
