@@ -1,7 +1,7 @@
 use super::type_inference::try_set_inferred_type;
 use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
 use crate::interner::{Interner, StrId};
-use crate::lex::{emit_source_info, emit_source_info_with_description, SourceInfo, SourcePath};
+use crate::lex::{emit_source_info, emit_source_info_with_description, SourceInfo, SourcePath, SourcePosition};
 use crate::parse::{
    BinOp, BlockNode, Expression, ExpressionId, ExpressionPool, IdentifierNode, Program, Statement, StatementNode, UnOp, ProcImplSource,
 };
@@ -189,9 +189,15 @@ pub fn type_and_check_validity<W: Write>(
          named_parameters: HashMap::new(),
          type_parameters: 1,
          ret_type: ExpressionType::Value(USIZE_TYPE),
-         begin_location: SourceInfo {
-            line: 0,
-            col: 0,
+         location: SourceInfo {
+            begin: SourcePosition {
+               line: 0,
+               col: 0,
+            },
+            end: SourcePosition {
+               line: 0,
+               col: 0,
+            },
             file: SourcePath::Std,
          },
       },
@@ -211,7 +217,7 @@ pub fn type_and_check_validity<W: Write>(
                interner.lookup(variant),
             )
             .unwrap();
-            emit_source_info_with_description(err_stream, a_enum.begin_location, "enum defined", interner);
+            emit_source_info_with_description(err_stream, a_enum.location, "enum defined", interner);
          }
       }
 
@@ -219,7 +225,7 @@ pub fn type_and_check_validity<W: Write>(
          a_enum.name,
          EnumInfo {
             variants: a_enum.variants.iter().copied().collect(),
-            begin_location: a_enum.begin_location,
+            location: a_enum.location,
          },
       ) {
          error_count += 1;
@@ -229,8 +235,8 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(a_enum.name)
          )
          .unwrap();
-         emit_source_info_with_description(err_stream, old_enum.begin_location, "first enum defined", interner);
-         emit_source_info_with_description(err_stream, a_enum.begin_location, "second enum defined", interner);
+         emit_source_info_with_description(err_stream, old_enum.location, "first enum defined", interner);
+         emit_source_info_with_description(err_stream, a_enum.location, "second enum defined", interner);
       }
    }
 
@@ -246,7 +252,7 @@ pub fn type_and_check_validity<W: Write>(
                interner.lookup(field.0),
             )
             .unwrap();
-            emit_source_info_with_description(err_stream, a_struct.begin_location, "struct defined", interner);
+            emit_source_info_with_description(err_stream, a_struct.location, "struct defined", interner);
          }
       }
 
@@ -254,7 +260,7 @@ pub fn type_and_check_validity<W: Write>(
          a_struct.name,
          StructInfo {
             field_types: field_map,
-            begin_location: a_struct.begin_location,
+            location: a_struct.location,
          },
       ) {
          error_count += 1;
@@ -266,11 +272,11 @@ pub fn type_and_check_validity<W: Write>(
          .unwrap();
          emit_source_info_with_description(
             err_stream,
-            old_struct.begin_location,
+            old_struct.location,
             "first struct defined",
             interner,
          );
-         emit_source_info_with_description(err_stream, a_struct.begin_location, "second struct defined", interner);
+         emit_source_info_with_description(err_stream, a_struct.location, "second struct defined", interner);
       }
    }
 
@@ -286,8 +292,8 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(*struct_i.0)
          )
          .unwrap();
-         emit_source_info_with_description(err_stream, enum_i.begin_location, "enum defined", interner);
-         emit_source_info_with_description(err_stream, struct_i.1.begin_location, "struct defined", interner);
+         emit_source_info_with_description(err_stream, enum_i.location, "enum defined", interner);
+         emit_source_info_with_description(err_stream, struct_i.1.location, "struct defined", interner);
       }
 
       for (field, e_type) in struct_i.1.field_types.iter_mut() {
@@ -305,7 +311,7 @@ pub fn type_and_check_validity<W: Write>(
             etype_str,
          )
          .unwrap();
-         emit_source_info_with_description(err_stream, struct_i.1.begin_location, "struct defined", interner);
+         emit_source_info_with_description(err_stream, struct_i.1.location, "struct defined", interner);
       }
    }
 
@@ -323,13 +329,13 @@ pub fn type_and_check_validity<W: Write>(
             interner.lookup(*struct_i.0),
          )
          .unwrap();
-         emit_source_info_with_description(err_stream, struct_i.1.begin_location, "struct defined", interner);
+         emit_source_info_with_description(err_stream, struct_i.1.location, "struct defined", interner);
       }
    }
 
    for const_node in program.consts.iter_mut() {
       let const_type = &mut const_node.const_type;
-      let si = &const_node.begin_location;
+      let si = &const_node.location;
 
       if resolve_type(const_type, &enum_info, &struct_info).is_err() {
          error_count += 1;
@@ -348,7 +354,7 @@ pub fn type_and_check_validity<W: Write>(
          const_node.name.identifier,
          StaticInfo {
             static_type: const_node.const_type.clone(),
-            begin_location: const_node.begin_location,
+            location: const_node.location,
             is_const: true,
          },
       ) {
@@ -361,13 +367,13 @@ pub fn type_and_check_validity<W: Write>(
          .unwrap();
          emit_source_info_with_description(
             err_stream,
-            old_value.begin_location,
+            old_value.location,
             "first static/const defined",
             interner,
          );
          emit_source_info_with_description(
             err_stream,
-            const_node.begin_location,
+            const_node.location,
             "second static/const defined",
             interner,
          );
@@ -376,7 +382,7 @@ pub fn type_and_check_validity<W: Write>(
 
    for static_node in program.statics.iter_mut() {
       let static_type = &mut static_node.static_type;
-      let si = &static_node.static_begin_location;
+      let si = &static_node.location;
 
       if resolve_type(static_type, &enum_info, &struct_info).is_err() {
          error_count += 1;
@@ -395,7 +401,7 @@ pub fn type_and_check_validity<W: Write>(
          static_node.name.identifier,
          StaticInfo {
             static_type: static_node.static_type.clone(),
-            begin_location: static_node.static_begin_location,
+            location: static_node.location,
             is_const: false,
          },
       ) {
@@ -408,13 +414,13 @@ pub fn type_and_check_validity<W: Write>(
          .unwrap();
          emit_source_info_with_description(
             err_stream,
-            old_value.begin_location,
+            old_value.location,
             "first static/const defined",
             interner,
          );
          emit_source_info_with_description(
             err_stream,
-            static_node.static_begin_location,
+            static_node.location,
             "second static/const defined",
             interner,
          );
@@ -424,12 +430,12 @@ pub fn type_and_check_validity<W: Write>(
    for (definition, source_location, extern_impl_source) in program
       .external_procedures
       .iter_mut()
-      .map(|x| (&mut x.definition, x.begin_location, Some(std::mem::discriminant(&x.impl_source))))
+      .map(|x| (&mut x.definition, x.location, Some(std::mem::discriminant(&x.impl_source))))
       .chain(
          program
             .procedures
             .iter_mut()
-            .map(|x| (&mut x.definition, x.begin_location, None)),
+            .map(|x| (&mut x.definition, x.location, None)),
       )
    {
       dupe_check.clear();
@@ -539,7 +545,7 @@ pub fn type_and_check_validity<W: Write>(
                .map(|x| (x.name, x.p_type.clone()))
                .collect(),
             ret_type: definition.ret_type.clone(),
-            begin_location: source_location,
+            location: source_location,
          },
       ) {
          error_count += 1;
@@ -552,7 +558,7 @@ pub fn type_and_check_validity<W: Write>(
          .unwrap();
          emit_source_info_with_description(
             err_stream,
-            old_procedure.begin_location,
+            old_procedure.location,
             "first procedure declared",
             interner,
          );
@@ -613,7 +619,7 @@ pub fn type_and_check_validity<W: Write>(
             .procedure_info
             .get(&special_proc_name)
             .unwrap()
-            .begin_location;
+            .location;
          emit_source_info_with_description(err_stream, si, "defined", interner);
       }
    }
@@ -650,10 +656,10 @@ pub fn type_and_check_validity<W: Write>(
             actual_type_str,
          )
          .unwrap();
-         emit_source_info_with_description(err_stream, p_const.begin_location, "const", interner);
+         emit_source_info_with_description(err_stream, p_const.location, "const", interner);
          emit_source_info_with_description(
             err_stream,
-            p_const_expr.expression_begin_location,
+            p_const_expr.location,
             "expression",
             interner,
          );
@@ -686,10 +692,10 @@ pub fn type_and_check_validity<W: Write>(
             actual_type_str,
          )
          .unwrap();
-         emit_source_info_with_description(err_stream, p_static.static_begin_location, "static", interner);
+         emit_source_info_with_description(err_stream, p_static.location, "static", interner);
          emit_source_info_with_description(
             err_stream,
-            p_static_expr.expression_begin_location,
+            p_static_expr.location,
             "expression",
             interner,
          );
@@ -739,14 +745,14 @@ pub fn type_and_check_validity<W: Write>(
             .unwrap();
             emit_source_info_with_description(
                err_stream,
-               procedure.begin_location,
+               procedure.location,
                "procedure defined",
                interner,
             );
             if let Some(fs) = procedure.block.statements.last() {
                emit_source_info_with_description(
                   err_stream,
-                  fs.statement_begin_location,
+                  fs.location,
                   "actual final statement",
                   interner,
                );
@@ -764,7 +770,7 @@ pub fn type_and_check_validity<W: Write>(
       )
       .unwrap();
       for expr_id in validation_context.unknown_ints.iter() {
-         let loc = validation_context.expressions[*expr_id].expression_begin_location;
+         let loc = validation_context.expressions[*expr_id].location;
          emit_source_info(err_stream, loc, interner);
       }
    }
@@ -778,7 +784,7 @@ pub fn type_and_check_validity<W: Write>(
       )
       .unwrap();
       for expr_id in validation_context.unknown_ints.iter() {
-         let loc = validation_context.expressions[*expr_id].expression_begin_location;
+         let loc = validation_context.expressions[*expr_id].location;
          emit_source_info(err_stream, loc, interner);
       }
    }
@@ -829,8 +835,8 @@ fn type_statement<W: Write>(
                rhs_type.as_roland_type_info(interner),
             )
             .unwrap();
-            emit_source_info_with_description(err_stream, len.expression_begin_location, "left hand side", interner);
-            emit_source_info_with_description(err_stream, en.expression_begin_location, "right hand side", interner);
+            emit_source_info_with_description(err_stream, len.location, "left hand side", interner);
+            emit_source_info_with_description(err_stream, en.location, "right hand side", interner);
          } else if !len
             .expression
             .is_lvalue(validation_context.expressions, validation_context.static_info)
@@ -845,14 +851,14 @@ fn type_statement<W: Write>(
                   "Left hand side of assignment is a constant, which does not have a memory location and can't be reassigned"
                )
                .unwrap();
-               emit_source_info(err_stream, len.expression_begin_location, interner);
+               emit_source_info(err_stream, len.location, interner);
             } else {
                writeln!(
                   err_stream,
                   "Left hand side of assignment is not a valid memory location; i.e. a variable, field, or array index"
                )
                .unwrap();
-               emit_source_info(err_stream, len.expression_begin_location, interner);
+               emit_source_info(err_stream, len.location, interner);
             }
          }
       }
@@ -863,14 +869,14 @@ fn type_statement<W: Write>(
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
             writeln!(err_stream, "Continue statement can only be used in a loop").unwrap();
-            emit_source_info(err_stream, statement.statement_begin_location, interner);
+            emit_source_info(err_stream, statement.location, interner);
          }
       }
       Statement::Break => {
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
             writeln!(err_stream, "Break statement can only be used in a loop").unwrap();
-            emit_source_info(err_stream, statement.statement_begin_location, interner);
+            emit_source_info(err_stream, statement.location, interner);
          }
       }
       Statement::For(var, start, end, bn, _) => {
@@ -915,13 +921,13 @@ fn type_statement<W: Write>(
                .unwrap();
                emit_source_info_with_description(
                   err_stream,
-                  start_expr.expression_begin_location,
+                  start_expr.location,
                   "start of range",
                   interner,
                );
                emit_source_info_with_description(
                   err_stream,
-                  end_expr.expression_begin_location,
+                  end_expr.location,
                   "end of range",
                   interner,
                );
@@ -968,7 +974,7 @@ fn type_statement<W: Write>(
                en.exp_type.as_ref().unwrap().as_roland_type_info(interner)
             )
             .unwrap();
-            emit_source_info(err_stream, en.expression_begin_location, interner);
+            emit_source_info(err_stream, en.location, interner);
          }
       }
       Statement::Return(en) => {
@@ -997,7 +1003,7 @@ fn type_statement<W: Write>(
                en.exp_type.as_ref().unwrap().as_roland_type_info(interner)
             )
             .unwrap();
-            emit_source_info(err_stream, en.expression_begin_location, interner);
+            emit_source_info(err_stream, en.location, interner);
          }
       }
       Statement::VariableDeclaration(id, en, dt) => {
@@ -1020,8 +1026,8 @@ fn type_statement<W: Write>(
                en.exp_type.as_ref().unwrap().as_roland_type_info(interner)
             )
             .unwrap();
-            emit_source_info_with_description(err_stream, statement.statement_begin_location, "declaration", interner);
-            emit_source_info_with_description(err_stream, en.expression_begin_location, "expression", interner);
+            emit_source_info_with_description(err_stream, statement.location, "declaration", interner);
+            emit_source_info_with_description(err_stream, en.location, "expression", interner);
             ExpressionType::Value(ValueType::CompileError)
          } else if dt
             .as_ref()
@@ -1036,7 +1042,7 @@ fn type_statement<W: Write>(
                dt_str,
             )
             .unwrap();
-            emit_source_info_with_description(err_stream, statement.statement_begin_location, "declaration", interner);
+            emit_source_info_with_description(err_stream, statement.location, "declaration", interner);
             ExpressionType::Value(ValueType::CompileError)
          } else {
             en.exp_type.clone().unwrap()
@@ -1072,7 +1078,7 @@ fn declare_variable<W: Write>(
          interner.lookup(id.identifier)
       )
       .unwrap();
-      emit_source_info_with_description(err_stream, id.begin_location, "declaration", interner);
+      emit_source_info_with_description(err_stream, id.location, "declaration", interner);
    } else {
       validation_context
          .variable_types
@@ -1114,7 +1120,7 @@ fn get_type<W: Write>(
    validation_context: &mut ValidationContext,
    interner: &mut Interner,
 ) -> ExpressionType {
-   let expr_location = validation_context.expressions[expr_index].expression_begin_location;
+   let expr_location = validation_context.expressions[expr_index].location;
 
    // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
    // while this pointer is alive. We don't do this, because we update this expression in place and don't
@@ -1194,7 +1200,7 @@ fn get_type<W: Write>(
                )
                .unwrap();
                emit_source_info_with_description(err_stream, expr_location, "extend", interner);
-               emit_source_info_with_description(err_stream, e.expression_begin_location, "operand", interner);
+               emit_source_info_with_description(err_stream, e.location, "operand", interner);
                ExpressionType::Value(ValueType::CompileError)
             }
          }
@@ -1272,7 +1278,7 @@ fn get_type<W: Write>(
                )
                .unwrap();
                emit_source_info_with_description(err_stream, expr_location, "transmute", interner);
-               emit_source_info_with_description(err_stream, e.expression_begin_location, "operand", interner);
+               emit_source_info_with_description(err_stream, e.location, "operand", interner);
                ExpressionType::Value(ValueType::CompileError)
             }
          }
@@ -1336,7 +1342,7 @@ fn get_type<W: Write>(
                )
                .unwrap();
                emit_source_info_with_description(err_stream, expr_location, "truncate", interner);
-               emit_source_info_with_description(err_stream, e.expression_begin_location, "operand", interner);
+               emit_source_info_with_description(err_stream, e.location, "operand", interner);
                ExpressionType::Value(ValueType::CompileError)
             }
          }
@@ -1399,7 +1405,7 @@ fn get_type<W: Write>(
                lhs_type.as_roland_type_info(interner)
             )
             .unwrap();
-            emit_source_info(err_stream, lhs_expr.expression_begin_location, interner);
+            emit_source_info(err_stream, lhs_expr.location, interner);
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_arg_types, rhs_type) {
             validation_context.error_count += 1;
@@ -1411,7 +1417,7 @@ fn get_type<W: Write>(
                rhs_type.as_roland_type_info(interner)
             )
             .unwrap();
-            emit_source_info(err_stream, rhs_expr.expression_begin_location, interner);
+            emit_source_info(err_stream, rhs_expr.location, interner);
             ExpressionType::Value(ValueType::CompileError)
          } else if lhs_type != rhs_type {
             validation_context.error_count += 1;
@@ -1425,13 +1431,13 @@ fn get_type<W: Write>(
             .unwrap();
             emit_source_info_with_description(
                err_stream,
-               lhs_expr.expression_begin_location,
+               lhs_expr.location,
                "lef hand side",
                interner,
             );
             emit_source_info_with_description(
                err_stream,
-               rhs_expr.expression_begin_location,
+               rhs_expr.location,
                "right hand side",
                interner,
             );
@@ -1499,7 +1505,7 @@ fn get_type<W: Write>(
                e.exp_type.as_ref().unwrap().as_roland_type_info(interner)
             )
             .unwrap();
-            emit_source_info(err_stream, e.expression_begin_location, interner);
+            emit_source_info(err_stream, e.location, interner);
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf
             && !e
@@ -1759,7 +1765,7 @@ fn get_type<W: Write>(
                         .unwrap();
                         emit_source_info_with_description(
                            err_stream,
-                           defined_struct.begin_location,
+                           defined_struct.location,
                            "struct defined",
                            interner,
                         );
@@ -1780,7 +1786,7 @@ fn get_type<W: Write>(
                      .unwrap();
                      emit_source_info_with_description(
                         err_stream,
-                        defined_struct.begin_location,
+                        defined_struct.location,
                         "struct defined",
                         interner,
                      );
@@ -1808,14 +1814,14 @@ fn get_type<W: Write>(
                      .unwrap();
                      emit_source_info_with_description(
                         err_stream,
-                        defined_struct.begin_location,
+                        defined_struct.location,
                         "struct defined",
                         interner,
                      );
                      emit_source_info_with_description(err_stream, expr_location, "struct instantiated", interner);
                      emit_source_info_with_description(
                         err_stream,
-                        field_expr.expression_begin_location,
+                        field_expr.location,
                         "field_value",
                         interner,
                      );
@@ -1835,7 +1841,7 @@ fn get_type<W: Write>(
                   .unwrap();
                   emit_source_info_with_description(
                      err_stream,
-                     defined_struct.begin_location,
+                     defined_struct.location,
                      "struct defined",
                      interner,
                   );
@@ -1963,7 +1969,7 @@ fn get_type<W: Write>(
                let description = format!("element {}", i - 1);
                emit_source_info_with_description(
                   err_stream,
-                  last_elem_expr.expression_begin_location,
+                  last_elem_expr.location,
                   &description,
                   interner,
                );
@@ -1971,7 +1977,7 @@ fn get_type<W: Write>(
                let description = format!("element {}", i);
                emit_source_info_with_description(
                   err_stream,
-                  this_elem_expr.expression_begin_location,
+                  this_elem_expr.location,
                   &description,
                   interner,
                );
@@ -2037,7 +2043,7 @@ fn get_type<W: Write>(
             .unwrap();
             emit_source_info_with_description(
                err_stream,
-               index_expression.expression_begin_location,
+               index_expression.location,
                "index",
                interner,
             );
@@ -2056,13 +2062,13 @@ fn get_type<W: Write>(
                .unwrap();
                emit_source_info_with_description(
                   err_stream,
-                  array_expression.expression_begin_location,
+                  array_expression.location,
                   "expression",
                   interner,
                );
                emit_source_info_with_description(
                   err_stream,
-                  index_expression.expression_begin_location,
+                  index_expression.location,
                   "index",
                   interner,
                );

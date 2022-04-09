@@ -75,7 +75,7 @@ pub struct ProcedureDefinition {
 pub struct ProcedureNode {
    pub definition: ProcedureDefinition,
    pub block: BlockNode,
-   pub begin_location: SourceInfo,
+   pub location: SourceInfo,
 
    // TODO: if we use id-s for types (ala strings), we could use tinyset?
    pub locals: IndexMap<StrId, HashSet<ExpressionType>>,
@@ -91,7 +91,7 @@ pub enum ProcImplSource {
 #[derive(Clone)]
 pub struct ExternalProcedureNode {
    pub definition: ProcedureDefinition,
-   pub begin_location: SourceInfo,
+   pub location: SourceInfo,
    pub impl_source: ProcImplSource,
 }
 
@@ -106,14 +106,14 @@ pub struct ParameterNode {
 pub struct StructNode {
    pub name: StrId,
    pub fields: Vec<(StrId, ExpressionType)>,
-   pub begin_location: SourceInfo,
+   pub location: SourceInfo,
 }
 
 #[derive(Clone)]
 pub struct EnumNode {
    pub name: StrId,
    pub variants: Vec<StrId>,
-   pub begin_location: SourceInfo,
+   pub location: SourceInfo,
 }
 
 #[derive(Clone, Debug)]
@@ -121,7 +121,7 @@ pub struct ConstNode {
    pub name: IdentifierNode,
    pub const_type: ExpressionType,
    pub value: ExpressionId,
-   pub begin_location: SourceInfo,
+   pub location: SourceInfo,
 }
 
 #[derive(Clone, Debug)]
@@ -129,7 +129,7 @@ pub struct StaticNode {
    pub name: IdentifierNode,
    pub static_type: ExpressionType,
    pub value: Option<ExpressionId>,
-   pub static_begin_location: SourceInfo,
+   pub location: SourceInfo,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -166,7 +166,7 @@ pub enum UnOp {
 pub struct ExpressionNode {
    pub expression: Expression,
    pub exp_type: Option<ExpressionType>,
-   pub expression_begin_location: SourceInfo,
+   pub location: SourceInfo,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -253,7 +253,7 @@ impl Expression {
 #[derive(Clone)]
 pub struct StatementNode {
    pub statement: Statement,
-   pub statement_begin_location: SourceInfo,
+   pub location: SourceInfo,
 }
 
 #[derive(Clone)]
@@ -275,7 +275,7 @@ pub enum Statement {
 #[derive(Clone, Debug)]
 pub struct IdentifierNode {
    pub identifier: StrId,
-   pub begin_location: SourceInfo,
+   pub location: SourceInfo,
 }
 
 #[derive(Clone)]
@@ -364,10 +364,10 @@ pub fn astify<W: Write>(
             consts.push(ConstNode {
                name: IdentifierNode {
                   identifier: extract_identifier(variable_name.token),
-                  begin_location: variable_name.source_info,
+                  location: variable_name.source_info,
                },
                const_type: t_type,
-               begin_location: a_static.source_info,
+               location: a_static.source_info,
                value: exp,
             });
          }
@@ -386,10 +386,10 @@ pub fn astify<W: Write>(
             statics.push(StaticNode {
                name: IdentifierNode {
                   identifier: extract_identifier(variable_name.token),
-                  begin_location: variable_name.source_info,
+                  location: variable_name.source_info,
                },
                static_type: t_type,
-               static_begin_location: a_static.source_info,
+               location: a_static.source_info,
                value: exp,
             });
          }
@@ -470,7 +470,7 @@ fn parse_procedure<W: Write>(
       locals: IndexMap::new(),
       virtual_locals: IndexSet::new(),
       block,
-      begin_location: source_info,
+      location: source_info,
    })
 }
 
@@ -498,7 +498,7 @@ fn parse_external_procedure<W: Write>(
          parameters,
          ret_type,
       },
-      begin_location: source_info,
+      location: source_info,
       impl_source: proc_impl_source,
    })
 }
@@ -534,7 +534,7 @@ fn parse_struct<W: Write>(
    Ok(StructNode {
       name: struct_name,
       fields,
-      begin_location: source_info,
+      location: source_info,
    })
 }
 
@@ -568,7 +568,7 @@ fn parse_enum<W: Write>(
    Ok(EnumNode {
       name: enum_name,
       variants,
-      begin_location: source_info,
+      location: source_info,
    })
 }
 
@@ -589,7 +589,7 @@ fn parse_block<W: Write>(
             let new_block = parse_block(l, err_stream, expressions, interner)?;
             statements.push(StatementNode {
                statement: Statement::Block(new_block),
-               statement_begin_location: source,
+               location: source,
             });
          }
          Some(Token::CloseBrace) => {
@@ -600,7 +600,7 @@ fn parse_block<W: Write>(
             let continue_token = l.next().unwrap();
             statements.push(StatementNode {
                statement: Statement::Continue,
-               statement_begin_location: continue_token.source_info,
+               location: continue_token.source_info,
             });
             expect(l, err_stream, &Token::Semicolon, interner)?;
          }
@@ -608,7 +608,7 @@ fn parse_block<W: Write>(
             let break_token = l.next().unwrap();
             statements.push(StatementNode {
                statement: Statement::Break,
-               statement_begin_location: break_token.source_info,
+               location: break_token.source_info,
             });
             expect(l, err_stream, &Token::Semicolon, interner)?;
          }
@@ -629,7 +629,7 @@ fn parse_block<W: Write>(
             statements.push(StatementNode {
                statement: Statement::For(
                   IdentifierNode {
-                     begin_location: variable_name.source_info,
+                     location: variable_name.source_info,
                      identifier: extract_identifier(variable_name.token),
                   },
                   start_en,
@@ -637,7 +637,7 @@ fn parse_block<W: Write>(
                   new_block,
                   inclusive,
                ),
-               statement_begin_location: for_token.source_info,
+               location: for_token.source_info,
             });
          }
          Some(Token::KeywordLoop) => {
@@ -645,7 +645,7 @@ fn parse_block<W: Write>(
             let new_block = parse_block(l, err_stream, expressions, interner)?;
             statements.push(StatementNode {
                statement: Statement::Loop(new_block),
-               statement_begin_location: loop_token.source_info,
+               location: loop_token.source_info,
             });
          }
          Some(Token::KeywordReturn) => {
@@ -660,7 +660,7 @@ fn parse_block<W: Write>(
             };
             statements.push(StatementNode {
                statement: Statement::Return(e),
-               statement_begin_location: return_token.source_info,
+               location: return_token.source_info,
             });
          }
          Some(Token::KeywordLet) => {
@@ -679,12 +679,12 @@ fn parse_block<W: Write>(
                statement: Statement::VariableDeclaration(
                   IdentifierNode {
                      identifier: extract_identifier(variable_name.token),
-                     begin_location: variable_name.source_info,
+                     location: variable_name.source_info,
                   },
                   e,
                   declared_type,
                ),
-               statement_begin_location: let_token.source_info,
+               location: let_token.source_info,
             });
          }
          Some(Token::KeywordIf) => {
@@ -709,18 +709,18 @@ fn parse_block<W: Write>(
                   let _ = l.next();
                   let re = parse_expression(l, err_stream, false, expressions, interner)?;
                   expect(l, err_stream, &Token::Semicolon, interner)?;
-                  let statement_begin_location = expressions[e].expression_begin_location;
+                  let statement_location = expressions[e].location;
                   statements.push(StatementNode {
                      statement: Statement::Assignment(e, re),
-                     statement_begin_location,
+                     location: statement_location,
                   });
                }
                Some(&Token::Semicolon) => {
                   let _ = l.next();
-                  let statement_begin_location = expressions[e].expression_begin_location;
+                  let statement_location = expressions[e].location;
                   statements.push(StatementNode {
                      statement: Statement::Expression(e),
-                     statement_begin_location,
+                     location: statement_location,
                   });
                }
                Some(x) => {
@@ -783,17 +783,17 @@ fn parse_if_else_statement<W: Write>(
          let else_token = l.next().unwrap();
          StatementNode {
             statement: Statement::Block(parse_block(l, err_stream, expressions, interner)?),
-            statement_begin_location: else_token.source_info,
+            location: else_token.source_info,
          }
       }
       _ => StatementNode {
          statement: Statement::Block(BlockNode { statements: vec![] }),
-         statement_begin_location: if_token.source_info,
+         location: if_token.source_info,
       },
    };
    Ok(StatementNode {
       statement: Statement::IfElse(e, if_block, Box::new(else_statement)),
-      statement_begin_location: if_token.source_info,
+      location: if_token.source_info,
    })
 }
 
@@ -945,9 +945,9 @@ fn parse_expression<W: Write>(
    expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<ExpressionId, ()> {
-   let begin_info = l.peek_source();
+   let e_source_info = l.peek_source();
    let exp = pratt(l, err_stream, 0, if_head, expressions, interner)?;
-   Ok(wrap(exp, begin_info.unwrap(), expressions))
+   Ok(wrap(exp, e_source_info.unwrap(), expressions))
 }
 
 fn parse_type<W: Write>(l: &mut Lexer, err_stream: &mut W, interner: &Interner) -> Result<ExpressionType, ()> {
@@ -1297,6 +1297,6 @@ fn wrap(expression: Expression, source_info: SourceInfo, expressions: &mut Expre
    expressions.push(ExpressionNode {
       expression,
       exp_type: None,
-      expression_begin_location: source_info,
+      location: source_info,
    })
 }

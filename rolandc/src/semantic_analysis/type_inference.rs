@@ -2,6 +2,7 @@ use std::io::Write;
 
 use super::ValidationContext;
 use crate::interner::Interner;
+use crate::lex::emit_source_info;
 use crate::parse::{Expression, ExpressionId, UnOp};
 use crate::type_data::{
    ExpressionType, IntType, ValueType, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
@@ -80,15 +81,8 @@ fn set_inferred_type<W: Write>(
                val
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               validation_context.expressions[expr_index]
-                  .expression_begin_location
-                  .line,
-               validation_context.expressions[expr_index].expression_begin_location.col
-            )
-            .unwrap();
+            emit_source_info(err_stream, validation_context.expressions[expr_index]
+               .location, interner);
          }
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }
@@ -118,15 +112,8 @@ fn set_inferred_type<W: Write>(
                e_type.as_roland_type_info(interner),
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               validation_context.expressions[expr_index]
-                  .expression_begin_location
-                  .line,
-               validation_context.expressions[expr_index].expression_begin_location.col
-            )
-            .unwrap();
+            emit_source_info(err_stream, validation_context.expressions[expr_index]
+               .location, interner);
          }
 
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());

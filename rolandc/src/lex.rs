@@ -4,9 +4,31 @@ use std::num::IntErrorKind;
 use crate::interner::{Interner, StrId};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SourceInfo {
+pub struct SourcePosition {
    pub line: usize,
    pub col: usize,
+}
+
+impl SourcePosition {
+   fn next_col(&self) -> SourcePosition {
+      SourcePosition {
+         line: self.line,
+         col: self.col + 1,
+      }
+   }
+
+   fn col_plus(&self, n: usize) -> SourcePosition {
+      SourcePosition {
+         line: self.line,
+         col: self.col + n,
+      }
+   }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SourceInfo {
+   pub begin: SourcePosition,
+   pub end: SourcePosition,
    pub file: SourcePath,
 }
 
@@ -163,12 +185,12 @@ pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo, i
          writeln!(
             err_stream,
             "↳ line {}, column {} [{}]",
-            source_info.line, source_info.col, path_str
+            source_info.begin.line, source_info.begin.col, path_str
          )
          .unwrap();
       }
       SourcePath::Sandbox | SourcePath::Std => {
-         writeln!(err_stream, "↳ line {}, column {}", source_info.line, source_info.col).unwrap();
+         writeln!(err_stream, "↳ line {}, column {}", source_info.begin.line, source_info.begin.col).unwrap();
       }
    }
 }
@@ -185,12 +207,12 @@ pub fn emit_source_info_with_description<W: Write>(
          writeln!(
             err_stream,
             "↳ {} @ line {}, column {} [{}]",
-            description, source_info.line, source_info.col, path_str
+            description, source_info.begin.line, source_info.begin.col, path_str
          )
          .unwrap();
       }
       SourcePath::Sandbox | SourcePath::Std => {
-         writeln!(err_stream, "↳ {} @ line {}, column {}", description, source_info.line, source_info.col).unwrap();
+         writeln!(err_stream, "↳ {} @ line {}, column {}", description, source_info.begin.line, source_info.begin.col).unwrap();
       }
    }
 }
@@ -233,6 +255,25 @@ pub enum SourcePath {
    File(StrId),
 }
 
+struct CharCountingBuffer {
+   length_in_chars: usize,
+   buf: String,
+}
+
+impl CharCountingBuffer {
+   fn push(&mut self, c: char) {
+      self.buf.push(c);
+      self.length_in_chars += 1;
+   }
+
+   fn clear(&mut self) -> usize {
+      self.buf.clear();
+      let len_before_reset = self.length_in_chars;
+      self.length_in_chars = 0;
+      len_before_reset
+   }
+}
+
 pub fn lex<W: Write>(
    input: &str,
    source_path: SourcePath,
@@ -242,17 +283,19 @@ pub fn lex<W: Write>(
    let mut tokens: Vec<SourceToken> = Vec::new();
    let mut mode = LexMode::Normal;
 
-   let mut source_info = SourceInfo {
+   let mut cur_position = SourcePosition {
       line: 1,
       col: 1,
-      file: source_path,
    };
 
    // Temporary buffer we use in various parts of the lexer
-   let mut str_buf = String::new();
+   let mut str_buf = CharCountingBuffer {
+      length_in_chars: 0,
+      buf: String::new(),
+   };
 
    // identifiers and string literal
-   let mut str_begin = source_info;
+   let mut str_begin = cur_position;
 
    // numeric literals
    let mut is_float = false;
@@ -263,260 +306,388 @@ pub fn lex<W: Write>(
       match mode {
          LexMode::Normal => {
             if c == '\n' {
-               source_info.line += 1;
-               source_info.col = 1;
+               cur_position.line += 1;
+               cur_position.col = 1;
                let _ = chars.next().unwrap();
             } else if c.is_whitespace() {
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '"' {
                mode = LexMode::StringLiteral;
-               str_begin = source_info;
-               source_info.col += 1;
+               str_begin = cur_position;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '{' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::OpenBrace,
                });
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '}' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::CloseBrace,
                });
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '(' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::OpenParen,
                });
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == ')' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::CloseParen,
                });
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == ':' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&':') {
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.col_plus(2),
+                        file: source_path,
+                     },
                      token: Token::DoubleColon,
                   });
-                  source_info.col += 2;
+                  cur_position.col += 2;
                   let _ = chars.next().unwrap();
                } else {
                   tokens.push(SourceToken {
-                     source_info,
-                     token: Token::Colon,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
+                  token: Token::Colon
                   });
-                  source_info.col += 1;
+                  cur_position.col += 1;
                }
             } else if c == ';' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::Semicolon,
                });
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '+' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::Plus,
                });
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '-' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'>') {
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.col_plus(2),
+                        file: source_path,
+                     },
                      token: Token::Arrow,
                   });
-                  source_info.col += 2;
+                  cur_position.col += 2;
                   let _ = chars.next().unwrap();
                } else {
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.next_col(),
+                        file: source_path,
+                     },
                      token: Token::Minus,
                   });
-                  source_info.col += 1;
+                  cur_position.col += 1;
                }
             } else if c == '*' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::MultiplyDeref,
                });
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '/' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'/') {
                   let _ = chars.next().unwrap();
                   mode = LexMode::Comment;
-                  source_info.col += 2;
+                  cur_position.col += 2;
                } else {
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.next_col(),
+                        file: source_path,
+                     },
                      token: Token::Divide,
                   });
-                  source_info.col += 1;
+                  cur_position.col += 1;
                }
             } else if c == '%' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::Remainder,
                });
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '$' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::Dollar,
                });
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == ',' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::Comma,
                });
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '&' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::Amp,
                });
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '^' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::Caret,
                });
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '|' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::Pipe,
                });
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == '=' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'=') {
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.col_plus(2),
+                        file: source_path,
+                     },
                      token: Token::Equality,
                   });
-                  source_info.col += 2;
+                  cur_position.col += 2;
                   let _ = chars.next().unwrap();
                } else {
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.next_col(),
+                        file: source_path,
+                     },
                      token: Token::Assignment,
                   });
-                  source_info.col += 1;
+                  cur_position.col += 1;
                }
             } else if c == '>' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'=') {
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.col_plus(2),
+                        file: source_path,
+                     },
                      token: Token::GreaterThanOrEqualTo,
                   });
-                  source_info.col += 2;
+                  cur_position.col += 2;
                   let _ = chars.next().unwrap();
                } else if chars.peek() == Some(&'>') {
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.col_plus(2),
+                        file: source_path,
+                     },
                      token: Token::ShiftRight,
                   });
-                  source_info.col += 2;
+                  cur_position.col += 2;
                   let _ = chars.next().unwrap();
                } else {
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.next_col(),
+                        file: source_path,
+                     },
                      token: Token::GreaterThan,
                   });
-                  source_info.col += 1;
+                  cur_position.col += 1;
                }
             } else if c == '<' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'=') {
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.col_plus(2),
+                        file: source_path,
+                     },
                      token: Token::LessThanOrEqualTo,
                   });
-                  source_info.col += 2;
+                  cur_position.col += 2;
                   let _ = chars.next().unwrap();
                } else if chars.peek() == Some(&'<') {
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.col_plus(2),
+                        file: source_path,
+                     },
                      token: Token::ShiftLeft,
                   });
-                  source_info.col += 2;
+                  cur_position.col += 2;
                   let _ = chars.next().unwrap();
                } else {
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.next_col(),
+                        file: source_path,
+                     },
                      token: Token::LessThan,
                   });
-                  source_info.col += 1;
+                  cur_position.col += 1;
                }
             } else if c == '!' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'=') {
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.col_plus(2),
+                        file: source_path,
+                     },
                      token: Token::NotEquality,
                   });
-                  source_info.col += 2;
+                  cur_position.col += 2;
                   let _ = chars.next().unwrap();
                } else {
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.next_col(),
+                        file: source_path,
+                     },
                      token: Token::Exclam,
                   });
-                  source_info.col += 1;
+                  cur_position.col += 1;
                }
             } else if c == '.' {
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'.') {
                   let _ = chars.next().unwrap();
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.col_plus(2),
+                        file: source_path,
+                     },
                      token: Token::DoublePeriod,
                   });
-                  source_info.col += 2;
+                  cur_position.col += 2;
                } else {
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.next_col(),
+                        file: source_path,
+                     },
                      token: Token::Period,
                   });
-                  source_info.col += 1;
+                  cur_position.col += 1;
                }
             } else if c == '[' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::OpenSquareBracket,
                });
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c == ']' {
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::CloseSquareBracket,
                });
-               source_info.col += 1;
+               cur_position.col += 1;
                let _ = chars.next().unwrap();
             } else if c.is_ascii_digit() {
                mode = LexMode::NumericLiteral;
@@ -524,19 +695,26 @@ pub fn lex<W: Write>(
                mode = LexMode::Ident;
             } else {
                writeln!(err_stream, "Encountered unexpected character {}", c).unwrap();
-               emit_source_info(err_stream, source_info, interner);
+               emit_source_info(err_stream, SourceInfo {
+                  begin: cur_position,
+                  end: cur_position.next_col(),
+                  file: source_path,
+               }, interner);
                return Err(());
             }
          }
          LexMode::Ident => {
             if !c.is_alphanumeric() && c != '_' {
-               let resulting_token = extract_keyword_or_ident(&str_buf, interner);
+               let resulting_token = extract_keyword_or_ident(&str_buf.buf, interner);
                tokens.push(SourceToken {
-                  source_info,
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.col_plus(str_buf.length_in_chars),
+                     file: source_path,
+                  },
                   token: resulting_token,
                });
-               source_info.col += str_buf.len();
-               str_buf.clear();
+               cur_position.col += str_buf.clear();
                mode = LexMode::Normal;
             } else {
                str_buf.push(c);
@@ -545,9 +723,13 @@ pub fn lex<W: Write>(
          }
          LexMode::StringLiteral => {
             if c == '"' {
-               let final_str = interner.intern(&str_buf);
+               let final_str = interner.intern(&str_buf.buf);
                tokens.push(SourceToken {
-                  source_info: str_begin,
+                  source_info: SourceInfo {
+                     begin: str_begin,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
                   token: Token::StringLiteral(final_str),
                });
                str_buf.clear();
@@ -558,10 +740,10 @@ pub fn lex<W: Write>(
                str_buf.push(c);
             }
             if c == '\n' {
-               source_info.line += 1;
-               source_info.col = 1;
+               cur_position.line += 1;
+               cur_position.col = 1;
             } else {
-               source_info.col += 1;
+               cur_position.col += 1;
             }
             let _ = chars.next().unwrap();
          }
@@ -580,18 +762,22 @@ pub fn lex<W: Write>(
                str_buf.push('"');
             } else {
                writeln!(err_stream, "Encountered unknown escape sequence `\\{}`", c).unwrap();
+               let escape_begin = SourcePosition {
+                  col: cur_position.col - 1,
+                  line: cur_position.line,
+               };
+               cur_position.col += 1;
                emit_source_info(
                   err_stream,
                   SourceInfo {
-                     col: source_info.col - 1,
-                     line: source_info.line,
-                     file: source_info.file,
+                     begin: escape_begin,
+                     end: cur_position,
+                     file: source_path,
                   },
                   interner,
                );
                return Err(());
             }
-            source_info.col += 1;
             let _ = chars.next().unwrap();
             mode = LexMode::StringLiteral;
          }
@@ -606,38 +792,37 @@ pub fn lex<W: Write>(
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'.') {
                   // This is pretty hacky, but oh well
-
                   tokens.push(finish_numeric_literal(
-                     &str_buf,
+                     &str_buf.buf,
                      err_stream,
-                     source_info,
+                     SourceInfo { begin: cur_position, end: cur_position.col_plus(str_buf.length_in_chars), file: source_path },
                      is_float,
                      interner,
                   )?);
-                  source_info.col += str_buf.len();
+                  cur_position.col += str_buf.clear();
                   is_float = false;
                   str_buf.clear();
                   mode = LexMode::Normal;
 
                   let _ = chars.next().unwrap();
                   tokens.push(SourceToken {
-                     source_info,
+                     source_info: SourceInfo { begin: cur_position, end: cur_position.col_plus(2), file: source_path },
                      token: Token::DoublePeriod,
                   });
-                  source_info.col += 2;
+                  cur_position.col += 2;
                } else {
                   is_float = true;
                   str_buf.push(c);
                }
             } else {
                tokens.push(finish_numeric_literal(
-                  &str_buf,
+                  &str_buf.buf,
                   err_stream,
-                  source_info,
+                  SourceInfo { begin: cur_position, end: cur_position.col_plus(str_buf.length_in_chars), file: source_path },
                   is_float,
                   interner,
                )?);
-               source_info.col += str_buf.len();
+               cur_position.col += str_buf.clear();
                is_float = false;
                str_buf.clear();
                mode = LexMode::Normal;
@@ -645,11 +830,11 @@ pub fn lex<W: Write>(
          }
          LexMode::Comment => {
             if c == '\n' {
-               source_info.col = 0;
-               source_info.line += 1;
+               cur_position.col = 0;
+               cur_position.line += 1;
                mode = LexMode::Normal;
             } else {
-               source_info.col += 1;
+               cur_position.col += 1;
             }
             let _ = chars.next().unwrap();
          }
@@ -660,33 +845,38 @@ pub fn lex<W: Write>(
       LexMode::Normal | LexMode::Comment => Ok(tokens),
       // Probably no valid program ends with a keyword or identifier, but we'll let the parser determine that
       LexMode::Ident => {
-         let resulting_token = extract_keyword_or_ident(&str_buf, interner);
+         let resulting_token = extract_keyword_or_ident(&str_buf.buf, interner);
          tokens.push(SourceToken {
-            source_info,
+            source_info: SourceInfo {
+               begin: cur_position,
+               end: cur_position.col_plus(str_buf.length_in_chars),
+               file: source_path,
+            },
             token: resulting_token,
          });
-         source_info.col += str_buf.len();
+         cur_position.col += str_buf.clear();
          Ok(tokens)
       }
       // Same for numbers
       LexMode::NumericLiteral => {
          tokens.push(finish_numeric_literal(
-            &str_buf,
+            &str_buf.buf,
             err_stream,
-            source_info,
+            SourceInfo { begin: cur_position, end: cur_position.col_plus(str_buf.length_in_chars), file: source_path },
             is_float,
             interner,
          )?);
+         cur_position.col += str_buf.clear();
          Ok(tokens)
       }
       LexMode::StringLiteral | LexMode::StringLiteralEscape => {
          writeln!(
             err_stream,
-            "Encountered EOF while parsing string literal; Hint: Are you missing a closing \"?"
+            "Encountered EOF while parsing string literal. Hint: Are you missing a closing \"?"
          )
          .unwrap();
-         emit_source_info_with_description(err_stream, str_begin, "string literal", interner);
-         emit_source_info_with_description(err_stream, source_info, "EOF", interner);
+         emit_source_info_with_description(err_stream, SourceInfo { begin: str_begin, end: cur_position, file: source_path }, "string literal", interner);
+         emit_source_info_with_description(err_stream, SourceInfo { begin: cur_position, end: cur_position, file: source_path }, "EOF", interner);
          Err(())
       }
    }

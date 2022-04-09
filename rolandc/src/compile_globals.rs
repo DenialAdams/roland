@@ -48,10 +48,10 @@ pub fn ensure_statics_const<W: Write>(
             actual_type_str,
          )
          .unwrap();
-         emit_source_info_with_description(err_stream, p_static.static_begin_location, "static", interner);
+         emit_source_info_with_description(err_stream, p_static.location, "static", interner);
          emit_source_info_with_description(
             err_stream,
-            p_static_expr.expression_begin_location,
+            p_static_expr.location,
             "expression",
             interner,
          );
@@ -76,8 +76,8 @@ pub fn ensure_statics_const<W: Write>(
                interner.lookup(p_static.name.identifier),
             )
             .unwrap();
-            emit_source_info_with_description(err_stream, p_static.static_begin_location, "static", interner);
-            emit_source_info_with_description(err_stream, v.expression_begin_location, "expression", interner);
+            emit_source_info_with_description(err_stream, p_static.location, "static", interner);
+            emit_source_info_with_description(err_stream, v.location, "expression", interner);
          }
       }
    }
@@ -101,7 +101,7 @@ pub fn compile_globals<W: Write>(
    let all_consts: HashMap<StrId, (SourceInfo, ExpressionId)> = program
       .consts
       .iter()
-      .map(|x| (x.name.identifier, (x.begin_location, x.value)))
+      .map(|x| (x.name.identifier, (x.location, x.value)))
       .collect();
    let mut consts_being_processed: HashSet<StrId> = HashSet::new();
    let mut const_replacements: HashMap<StrId, ExpressionId> = HashMap::new();
@@ -160,7 +160,7 @@ fn cg_const<W: Write>(c_name: StrId, cg_context: &mut CgContext, err_stream: &mu
       emit_source_info_with_description(err_stream, c.0, "const", cg_context.interner);
       emit_source_info_with_description(
          err_stream,
-         p_const_expr.expression_begin_location,
+         p_const_expr.location,
          "expression",
          cg_context.interner,
       );

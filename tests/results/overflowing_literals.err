@@ -1,3 +1,3 @@
 Literal of type u8 has value `256` which would immediately over/underflow
-↳ line 2, column 16
+↳ line 2, column 16 [overflowing_literals.rol]
 There were 1 semantic errors, bailing

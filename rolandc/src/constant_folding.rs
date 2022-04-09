@@ -103,7 +103,7 @@ fn fold_expr<W: Write>(
    folding_context: &mut FoldingContext,
    interner: &Interner,
 ) -> Option<ExpressionNode> {
-   let expr_to_fold_location = folding_context.expressions[expr_index].expression_begin_location;
+   let expr_to_fold_location = folding_context.expressions[expr_index].location;
    let expr_to_fold_type = folding_context.expressions[expr_index].exp_type.clone();
 
    // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
@@ -135,8 +135,8 @@ fn fold_expr<W: Write>(
                   v, len,
                )
                .unwrap();
-               emit_source_info_with_description(err_stream, array.expression_begin_location, "array", interner);
-               emit_source_info_with_description(err_stream, index.expression_begin_location, "index", interner);
+               emit_source_info_with_description(err_stream, array.location, "array", interner);
+               emit_source_info_with_description(err_stream, index.location, "index", interner);
             } else if is_const(&array.expression, folding_context.expressions) {
                let array_elems = match &array.expression {
                   Expression::ArrayLiteral(exprs) => exprs,
@@ -152,7 +152,7 @@ fn fold_expr<W: Write>(
                return Some(ExpressionNode {
                   expression: chosen_elem.expression,
                   exp_type: chosen_elem.exp_type,
-                  expression_begin_location: expr_to_fold_location,
+                  location: expr_to_fold_location,
                });
             }
          }
@@ -196,7 +196,7 @@ fn fold_expr<W: Write>(
                   return Some(ExpressionNode {
                      expression: Expression::IntLiteral(1),
                      exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
+                     location: expr_to_fold_location,
                   });
                }
                BinOp::BitwiseXor => {
@@ -208,7 +208,7 @@ fn fold_expr<W: Write>(
                   return Some(ExpressionNode {
                      expression: expr,
                      exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
+                     location: expr_to_fold_location,
                   });
                }
                BinOp::GreaterThan | BinOp::LessThan
@@ -217,7 +217,7 @@ fn fold_expr<W: Write>(
                   return Some(ExpressionNode {
                      expression: Expression::BoolLiteral(false),
                      exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
+                     location: expr_to_fold_location,
                   });
                }
                BinOp::Equality | BinOp::GreaterThanOrEqualTo | BinOp::LessThanOrEqualTo
@@ -226,7 +226,7 @@ fn fold_expr<W: Write>(
                   return Some(ExpressionNode {
                      expression: Expression::BoolLiteral(true),
                      exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
+                     location: expr_to_fold_location,
                   });
                }
                BinOp::LogicalAnd | BinOp::LogicalOr | BinOp::BitwiseAnd | BinOp::BitwiseOr => {
@@ -234,7 +234,7 @@ fn fold_expr<W: Write>(
                   return Some(ExpressionNode {
                      expression: new_expr,
                      exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
+                     location: expr_to_fold_location,
                   });
                }
                _ => (),
@@ -258,8 +258,8 @@ fn fold_expr<W: Write>(
                   folding_context.error_count += 1;
                   writeln!(err_stream, "During constant folding, got a divide by zero",).unwrap();
                   emit_source_info_with_description(err_stream, expr_to_fold_location, "divison", interner);
-                  emit_source_info_with_description(err_stream, lhs_expr.expression_begin_location, "LHS", interner);
-                  emit_source_info_with_description(err_stream, rhs_expr.expression_begin_location, "RHS", interner);
+                  emit_source_info_with_description(err_stream, lhs_expr.location, "LHS", interner);
+                  emit_source_info_with_description(err_stream, rhs_expr.location, "RHS", interner);
                   return None;
                }
                (Some(x), BinOp::Divide) if x.is_int_one() => {
@@ -267,7 +267,7 @@ fn fold_expr<W: Write>(
                   return Some(ExpressionNode {
                      expression: new_expr,
                      exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
+                     location: expr_to_fold_location,
                   });
                }
                _ => (),
@@ -284,7 +284,7 @@ fn fold_expr<W: Write>(
                return Some(ExpressionNode {
                   expression: new_expr,
                   exp_type: expr_to_fold_type,
-                  expression_begin_location: expr_to_fold_location,
+                  location: expr_to_fold_location,
                });
             } else if !expression_could_have_side_effects(non_literal_expr) {
                match (one_literal, *operator) {
@@ -292,49 +292,49 @@ fn fold_expr<W: Write>(
                      return Some(ExpressionNode {
                         expression: Expression::IntLiteral(x.int_max_value()),
                         exp_type: expr_to_fold_type,
-                        expression_begin_location: expr_to_fold_location,
+                        location: expr_to_fold_location,
                      });
                   }
                   (x, BinOp::BitwiseAnd) if x.is_int_zero() => {
                      return Some(ExpressionNode {
                         expression: Expression::IntLiteral(0),
                         exp_type: expr_to_fold_type,
-                        expression_begin_location: expr_to_fold_location,
+                        location: expr_to_fold_location,
                      });
                   }
                   (Literal::Bool(true), BinOp::BitwiseOr) => {
                      return Some(ExpressionNode {
                         expression: Expression::BoolLiteral(true),
                         exp_type: expr_to_fold_type,
-                        expression_begin_location: expr_to_fold_location,
+                        location: expr_to_fold_location,
                      });
                   }
                   (Literal::Bool(false), BinOp::BitwiseAnd) => {
                      return Some(ExpressionNode {
                         expression: Expression::BoolLiteral(false),
                         exp_type: expr_to_fold_type,
-                        expression_begin_location: expr_to_fold_location,
+                        location: expr_to_fold_location,
                      });
                   }
                   (Literal::Bool(true), BinOp::LogicalOr) => {
                      return Some(ExpressionNode {
                         expression: Expression::BoolLiteral(true),
                         exp_type: expr_to_fold_type,
-                        expression_begin_location: expr_to_fold_location,
+                        location: expr_to_fold_location,
                      });
                   }
                   (Literal::Bool(false), BinOp::LogicalAnd) => {
                      return Some(ExpressionNode {
                         expression: Expression::BoolLiteral(false),
                         exp_type: expr_to_fold_type,
-                        expression_begin_location: expr_to_fold_location,
+                        location: expr_to_fold_location,
                      });
                   }
                   (x, BinOp::Multiply) if x.is_int_zero() => {
                      return Some(ExpressionNode {
                         expression: Expression::IntLiteral(0),
                         exp_type: expr_to_fold_type,
-                        expression_begin_location: expr_to_fold_location,
+                        location: expr_to_fold_location,
                      });
                   }
                   _ => (),
@@ -354,12 +354,12 @@ fn fold_expr<W: Write>(
             BinOp::Equality => Some(ExpressionNode {
                expression: Expression::BoolLiteral(lhs == rhs),
                exp_type: expr_to_fold_type,
-               expression_begin_location: expr_to_fold_location,
+               location: expr_to_fold_location,
             }),
             BinOp::NotEquality => Some(ExpressionNode {
                expression: Expression::BoolLiteral(lhs != rhs),
                exp_type: expr_to_fold_type,
-               expression_begin_location: expr_to_fold_location,
+               location: expr_to_fold_location,
             }),
             // int and float
             BinOp::Add => {
@@ -367,14 +367,14 @@ fn fold_expr<W: Write>(
                   Some(ExpressionNode {
                      expression: v,
                      exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
+                     location: expr_to_fold_location,
                   })
                } else {
                   folding_context.error_count += 1;
                   writeln!(err_stream, "During constant folding, got overflow while adding",).unwrap();
                   emit_source_info_with_description(err_stream, expr_to_fold_location, "addition", interner);
-                  emit_source_info_with_description(err_stream, lhs_expr.expression_begin_location, "LHS", interner);
-                  emit_source_info_with_description(err_stream, rhs_expr.expression_begin_location, "RHS", interner);
+                  emit_source_info_with_description(err_stream, lhs_expr.location, "LHS", interner);
+                  emit_source_info_with_description(err_stream, rhs_expr.location, "RHS", interner);
                   None
                }
             }
@@ -383,14 +383,14 @@ fn fold_expr<W: Write>(
                   Some(ExpressionNode {
                      expression: v,
                      exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
+                     location: expr_to_fold_location,
                   })
                } else {
                   folding_context.error_count += 1;
                   writeln!(err_stream, "During constant folding, got underflow while subtracting",).unwrap();
                   emit_source_info_with_description(err_stream, expr_to_fold_location, "subtraction", interner);
-                  emit_source_info_with_description(err_stream, lhs_expr.expression_begin_location, "LHS", interner);
-                  emit_source_info_with_description(err_stream, rhs_expr.expression_begin_location, "RHS", interner);
+                  emit_source_info_with_description(err_stream, lhs_expr.location, "LHS", interner);
+                  emit_source_info_with_description(err_stream, rhs_expr.location, "RHS", interner);
                   None
                }
             }
@@ -399,14 +399,14 @@ fn fold_expr<W: Write>(
                   Some(ExpressionNode {
                      expression: v,
                      exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
+                     location: expr_to_fold_location,
                   })
                } else {
                   folding_context.error_count += 1;
                   writeln!(err_stream, "During constant folding, got overflow while multiplying",).unwrap();
                   emit_source_info_with_description(err_stream, expr_to_fold_location, "multiplication", interner);
-                  emit_source_info_with_description(err_stream, lhs_expr.expression_begin_location, "LHS", interner);
-                  emit_source_info_with_description(err_stream, rhs_expr.expression_begin_location, "RHS", interner);
+                  emit_source_info_with_description(err_stream, lhs_expr.location, "LHS", interner);
+                  emit_source_info_with_description(err_stream, rhs_expr.location, "RHS", interner);
                   None
                }
             }
@@ -415,7 +415,7 @@ fn fold_expr<W: Write>(
                   Some(ExpressionNode {
                      expression: v,
                      exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
+                     location: expr_to_fold_location,
                   })
                } else {
                   // Divide by 0 handled above
@@ -427,74 +427,74 @@ fn fold_expr<W: Write>(
                   Some(ExpressionNode {
                      expression: v,
                      exp_type: expr_to_fold_type,
-                     expression_begin_location: expr_to_fold_location,
+                     location: expr_to_fold_location,
                   })
                } else {
                   folding_context.error_count += 1;
                   writeln!(err_stream, "During constant folding, got a divide by zero",).unwrap();
                   emit_source_info_with_description(err_stream, expr_to_fold_location, "remainder", interner);
-                  emit_source_info_with_description(err_stream, lhs_expr.expression_begin_location, "LHS", interner);
-                  emit_source_info_with_description(err_stream, rhs_expr.expression_begin_location, "RHS", interner);
+                  emit_source_info_with_description(err_stream, lhs_expr.location, "LHS", interner);
+                  emit_source_info_with_description(err_stream, rhs_expr.location, "RHS", interner);
                   None
                }
             }
             BinOp::GreaterThan => Some(ExpressionNode {
                expression: Expression::BoolLiteral(lhs > rhs),
                exp_type: expr_to_fold_type,
-               expression_begin_location: expr_to_fold_location,
+               location: expr_to_fold_location,
             }),
             BinOp::LessThan => Some(ExpressionNode {
                expression: Expression::BoolLiteral(lhs < rhs),
                exp_type: expr_to_fold_type,
-               expression_begin_location: expr_to_fold_location,
+               location: expr_to_fold_location,
             }),
             BinOp::GreaterThanOrEqualTo => Some(ExpressionNode {
                expression: Expression::BoolLiteral(lhs >= rhs),
                exp_type: expr_to_fold_type,
-               expression_begin_location: expr_to_fold_location,
+               location: expr_to_fold_location,
             }),
             BinOp::LessThanOrEqualTo => Some(ExpressionNode {
                expression: Expression::BoolLiteral(lhs <= rhs),
                exp_type: expr_to_fold_type,
-               expression_begin_location: expr_to_fold_location,
+               location: expr_to_fold_location,
             }),
             // int and bool
             BinOp::BitwiseAnd => Some(ExpressionNode {
                expression: lhs & rhs,
                exp_type: expr_to_fold_type,
-               expression_begin_location: expr_to_fold_location,
+               location: expr_to_fold_location,
             }),
             BinOp::BitwiseOr => Some(ExpressionNode {
                expression: lhs | rhs,
                exp_type: expr_to_fold_type,
-               expression_begin_location: expr_to_fold_location,
+               location: expr_to_fold_location,
             }),
             BinOp::BitwiseXor => Some(ExpressionNode {
                expression: lhs ^ rhs,
                exp_type: expr_to_fold_type,
-               expression_begin_location: expr_to_fold_location,
+               location: expr_to_fold_location,
             }),
             // int
             BinOp::BitwiseLeftShift => Some(ExpressionNode {
                expression: lhs << rhs,
                exp_type: expr_to_fold_type,
-               expression_begin_location: expr_to_fold_location,
+               location: expr_to_fold_location,
             }),
             BinOp::BitwiseRightShift => Some(ExpressionNode {
                expression: lhs >> rhs,
                exp_type: expr_to_fold_type,
-               expression_begin_location: expr_to_fold_location,
+               location: expr_to_fold_location,
             }),
             // bool
             BinOp::LogicalAnd => Some(ExpressionNode {
                expression: lhs & rhs,
                exp_type: expr_to_fold_type,
-               expression_begin_location: expr_to_fold_location,
+               location: expr_to_fold_location,
             }),
             BinOp::LogicalOr => Some(ExpressionNode {
                expression: lhs | rhs,
                exp_type: expr_to_fold_type,
-               expression_begin_location: expr_to_fold_location,
+               location: expr_to_fold_location,
             }),
          }
       }
@@ -509,13 +509,13 @@ fn fold_expr<W: Write>(
                UnOp::Negate => Some(ExpressionNode {
                   expression: literal.negate(),
                   exp_type: expr_to_fold_type,
-                  expression_begin_location: expr_to_fold_location,
+                  location: expr_to_fold_location,
                }),
                // int and bool
                UnOp::Complement => Some(ExpressionNode {
                   expression: literal.complement(),
                   exp_type: expr_to_fold_type,
-                  expression_begin_location: expr_to_fold_location,
+                  location: expr_to_fold_location,
                }),
                // nothing to do
                UnOp::AddressOf | UnOp::Dereference => None,
@@ -558,7 +558,7 @@ fn fold_expr<W: Write>(
                   Some(ExpressionNode {
                      expression: inner_node.expression,
                      exp_type: inner_node.exp_type,
-                     expression_begin_location: expr_to_fold_location,
+                     location: expr_to_fold_location,
                   })
                }
                _ => unreachable!(),
@@ -587,7 +587,7 @@ fn fold_expr<W: Write>(
             Some(ExpressionNode {
                expression: transmuted,
                exp_type: expr_to_fold_type,
-               expression_begin_location: expr_to_fold_location,
+               location: expr_to_fold_location,
             })
          } else {
             None

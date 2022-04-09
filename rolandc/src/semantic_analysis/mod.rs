@@ -17,25 +17,25 @@ pub struct ProcedureInfo {
    pub named_parameters: HashMap<StrId, ExpressionType>,
    pub type_parameters: usize,
    pub ret_type: ExpressionType,
-   pub begin_location: SourceInfo,
+   pub location: SourceInfo,
 }
 
 #[derive(Clone)]
 pub struct EnumInfo {
    pub variants: IndexSet<StrId>,
-   pub begin_location: SourceInfo,
+   pub location: SourceInfo,
 }
 
 #[derive(Clone)]
 pub struct StructInfo {
    pub field_types: IndexMap<StrId, ExpressionType>,
-   pub begin_location: SourceInfo,
+   pub location: SourceInfo,
 }
 
 #[derive(Clone, Debug)]
 pub struct StaticInfo {
    pub static_type: ExpressionType,
-   pub begin_location: SourceInfo,
+   pub location: SourceInfo,
    pub is_const: bool,
 }
 
