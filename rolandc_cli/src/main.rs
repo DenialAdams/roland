@@ -75,18 +75,6 @@ fn main() {
 
    let target = if opts.wasm4 { Target::Wasm4 } else { Target::Wasi };
 
-   let user_program_s = if let Ok(s) = std::fs::read_to_string(&opts.source_file) {
-      s
-   } else {
-      writeln!(
-         err_stream_l,
-         "Failed to open the file '{}'",
-         opts.source_file.to_string_lossy()
-      )
-      .unwrap();
-      std::process::exit(1);
-   };
-
    let mut ast_out: Option<BufWriter<File>> = if opts.output_html_ast {
       let out_f = File::create("ast.html").unwrap();
       let mut writer = BufWriter::new(out_f);
@@ -97,8 +85,7 @@ fn main() {
    };
 
    let compile_result = rolandc::compile(
-      &user_program_s,
-      Some(opts.source_file.clone()),
+      rolandc::CompilationEntryPoint::Path(opts.source_file.clone()),
       &mut err_stream_l,
       ast_out.as_mut(),
       !opts.skip_constant_folding,

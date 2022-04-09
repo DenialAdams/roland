@@ -28,8 +28,8 @@ mod various_expression_lowering;
 mod wasm;
 
 use interner::StrId;
-use lex::SourcePath;
-use parse::{ExpressionPool, Program};
+use lex::{SourcePath, emit_source_info};
+use parse::{ExpressionPool, Program, ImportNode};
 use size_info::{calculate_struct_size_info, SizeInfo};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
@@ -62,9 +62,13 @@ pub enum CompilationError {
    Internal,
 }
 
+pub enum CompilationEntryPoint<'a> {
+   Path(PathBuf),
+   Buffer(&'a str),
+}
+
 pub fn compile<E: Write, A: Write>(
-   user_program_s: &str,
-   user_program_path: Option<PathBuf>,
+   user_program_ep: CompilationEntryPoint,
    err_stream: &mut E,
    html_ast_out: Option<&mut A>,
    do_constant_folding: bool,
@@ -74,95 +78,82 @@ pub fn compile<E: Write, A: Write>(
 
    let mut expressions = HandleMap::new();
 
-   let mut imported_files = HashSet::new();
-   if let Some(x) = user_program_path.as_ref() {
-      let canonical_path = match std::fs::canonicalize(x) {
-         Ok(p) => p,
-         Err(e) => {
-            writeln!(
+   let mut user_program = match user_program_ep {
+      CompilationEntryPoint::Path(x) => {
+         let mut user_program = Program::new();
+         let mut import_queue: Vec<PathBuf> = vec![x];
+         let mut imported_files = HashSet::new();
+         while let Some(mut base_path) = import_queue.pop() {
+            let canonical_path = match std::fs::canonicalize(&base_path) {
+               Ok(p) => p,
+               Err(e) => {
+                  writeln!(
+                     err_stream,
+                     "Failed to canonicalize path '{}': {}",
+                     base_path.as_os_str().to_string_lossy(),
+                     e
+                  )
+                  .unwrap();
+                  return Err(CompilationError::Io);
+               }
+            };
+            if imported_files.contains(&canonical_path) {
+               continue;
+            }
+            imported_files.insert(canonical_path);
+
+            let program_s = match std::fs::read_to_string(&base_path) {
+               Ok(s) => s,
+               Err(e) => {
+                  writeln!(
+                     err_stream,
+                     "Failed to read imported file '{}': {}",
+                     base_path.as_os_str().to_string_lossy(),
+                     e
+                  )
+                  .unwrap();
+                  return Err(CompilationError::Io);
+               }
+            };
+            let mut parsed = lex_and_parse(
+               &program_s,
+               SourcePath::File(interner.intern(&base_path.as_os_str().to_string_lossy())),
                err_stream,
-               "Failed to canonicalize path '{}': {}",
-               x.as_os_str().to_string_lossy(),
-               e
-            )
-            .unwrap();
-            return Err(CompilationError::Io);
+               &mut interner,
+               &mut expressions,
+            )?;
+            merge_program(&mut user_program, &mut parsed.1);
+
+            base_path.pop(); // /foo/bar/main.rol -> /foo/bar
+            for file in parsed.0.iter().map(|x| x.import_path) {
+               let file_str = interner.lookup(file);
+               let mut new_path = base_path.clone();
+               new_path.push(file_str);
+               import_queue.push(new_path);
+            }
          }
-      };
-      imported_files.insert(canonical_path);
-   }
-   let root_source_location = user_program_path
-      .as_ref()
-      .map_or(SourcePath::Sandbox, |x| SourcePath::File(interner.intern(&x.to_string_lossy())));
-
-   let (files_to_import, mut user_program) = lex_and_parse(
-      user_program_s,
-      root_source_location,
-      err_stream,
-      &mut interner,
-      &mut expressions,
-   )?;
-
-   let mut base_path = user_program_path.unwrap_or_else(PathBuf::new);
-   base_path.pop(); // /foo/bar/main.rol -> /foo/bar
-   let mut import_queue: Vec<PathBuf> = vec![];
-
-   for file in files_to_import {
-      let file_str = interner.lookup(file);
-      let mut new_path = base_path.clone();
-      new_path.push(file_str);
-      import_queue.push(new_path);
-   }
-
-   while let Some(mut base_path) = import_queue.pop() {
-      let canonical_path = match std::fs::canonicalize(&base_path) {
-         Ok(p) => p,
-         Err(e) => {
-            writeln!(
+         user_program
+      },
+      CompilationEntryPoint::Buffer(contents) => {
+         let (files_to_import, user_program) = lex_and_parse(
+               contents,
+               SourcePath::Sandbox,
                err_stream,
-               "Failed to canonicalize path '{}': {}",
-               base_path.as_os_str().to_string_lossy(),
-               e
-            )
-            .unwrap();
-            return Err(CompilationError::Io);
-         }
-      };
-      if imported_files.contains(&canonical_path) {
-         continue;
-      }
-      imported_files.insert(canonical_path);
-
-      let program_s = match std::fs::read_to_string(&base_path) {
-         Ok(s) => s,
-         Err(e) => {
-            writeln!(
-               err_stream,
-               "Failed to read imported file '{}': {}",
-               base_path.as_os_str().to_string_lossy(),
-               e
-            )
-            .unwrap();
-            return Err(CompilationError::Io);
-         }
-      };
-      let mut parsed = lex_and_parse(
-         &program_s,
-         SourcePath::File(interner.intern(&base_path.as_os_str().to_string_lossy())),
-         err_stream,
-         &mut interner,
-         &mut expressions,
-      )?;
-      merge_program(&mut user_program, &mut parsed.1);
-
-      base_path.pop(); // /foo/bar/main.rol -> /foo/bar
-      for file in parsed.0.iter().copied() {
-         let file_str = interner.lookup(file);
-         let mut new_path = base_path.clone();
-         new_path.push(file_str);
-         import_queue.push(new_path);
-      }
-   }
+               &mut interner,
+              &mut expressions,
+            )?;
+            if !files_to_import.is_empty() {
+               writeln!(
+                  err_stream,
+                  "Can't import files in the Roland playground",
+               )
+               .unwrap();
+               emit_source_info(err_stream, files_to_import[0].location, &interner);
+               return Err(CompilationError::Io);
+            }
+            user_program
+      },
+   };
 
    let num_procedures_before_std_merge = user_program.procedures.len();
 
@@ -291,7 +282,7 @@ fn lex_and_parse<W: Write>(
    err_stream: &mut W,
    interner: &mut Interner,
    expressions: &mut ExpressionPool,
-) -> Result<(Vec<StrId>, Program), CompilationError> {
+) -> Result<(Vec<ImportNode>, Program), CompilationError> {
    let tokens = match lex::lex(s, source_path, err_stream, interner) {
       Err(()) => return Err(CompilationError::Lex),
       Ok(v) => v,

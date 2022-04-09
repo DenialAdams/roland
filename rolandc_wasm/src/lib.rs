@@ -31,8 +31,7 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
    let mut err_out = Vec::new();
 
    let compile_result = rolandc::compile(
-      source_code,
-      None,
+      rolandc::CompilationEntryPoint::Buffer(source_code),
       &mut err_out,
       Some(&mut ast_out),
       do_constant_folding.checked(),

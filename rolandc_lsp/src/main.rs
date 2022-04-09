@@ -47,7 +47,7 @@ impl LanguageServer for Backend {
         let doc_version = params.text_document.version;
         let content = params.content_changes[0].text.as_str();
         let hao: Option<&mut NulWriter> = None;
-        let result = rolandc::compile(content, None, &mut NulWriter{}, hao, true, Target::Wasi);
+        let result = rolandc::compile(CompilationEntryPoint::Buffer(content), &mut NulWriter{}, hao, true, Target::Wasi);
         if result.is_err() {
             self.client
                 .log_message(MessageType::INFO, "failed to compile changes")

@@ -278,6 +278,12 @@ pub struct IdentifierNode {
    pub location: SourceInfo,
 }
 
+#[derive(Clone, Debug)]
+pub struct ImportNode {
+   pub import_path: StrId,
+   pub location: SourceInfo,
+}
+
 #[derive(Clone)]
 pub struct BlockNode {
    pub statements: Vec<StatementNode>,
@@ -300,12 +306,18 @@ pub struct Program {
    pub static_info: IndexMap<StrId, StaticInfo>,
 }
 
+impl Program {
+   pub fn new() -> Program {
+      Program { enums: Vec::new(), external_procedures: Vec::new(), procedures: Vec::new(), structs: Vec::new(), consts: Vec::new(), statics: Vec::new(), literals: IndexSet::new(), enum_info: IndexMap::new(), struct_info: IndexMap::new(), static_info: IndexMap::new(), }
+   }
+}
+
 pub fn astify<W: Write>(
    tokens: Vec<SourceToken>,
    err_stream: &mut W,
    interner: &Interner,
    expressions: &mut ExpressionPool,
-) -> Result<(Vec<StrId>, Program), ()> {
+) -> Result<(Vec<ImportNode>, Program), ()> {
    let mut lexer = Lexer::from_tokens(tokens);
 
    let mut external_procedures = vec![];
@@ -336,11 +348,11 @@ pub fn astify<W: Write>(
             procedures.push(p);
          }
          Token::KeywordImport => {
-            let _ = lexer.next().unwrap();
-            let path_to_import = extract_str_literal(
+            let kw = lexer.next().unwrap();
+            let import_path = extract_str_literal(
                expect(&mut lexer, err_stream, &Token::StringLiteral(DUMMY_STR_TOKEN), interner)?.token,
             );
-            imports.push(path_to_import);
+            imports.push(ImportNode { import_path, location: kw.source_info });
             expect(&mut lexer, err_stream, &Token::Semicolon, interner)?;
          }
          Token::KeywordStructDef => {
