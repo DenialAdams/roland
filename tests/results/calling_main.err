@@ -1,4 +1,3 @@
 `main` is a special procedure and is not allowed to be called
-↳ line 2, column 4
 ↳ line 2, column 4 [calling_main.rol]
 There were 1 semantic errors, bailing

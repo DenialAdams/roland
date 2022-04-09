@@ -211,12 +211,7 @@ pub fn type_and_check_validity<W: Write>(
                interner.lookup(variant),
             )
             .unwrap();
-            writeln!(
-               err_stream,
-               "↳ enum defined @ line {}, column {}",
-               a_enum.begin_location.line, a_enum.begin_location.col
-            )
-            .unwrap();
+            emit_source_info_with_description(err_stream, a_enum.begin_location, "enum defined", interner);
          }
       }
 
@@ -1599,12 +1594,6 @@ fn get_type<W: Write>(
                err_stream,
                "`{}` is a special procedure and is not allowed to be called",
                interner.lookup(*proc_name),
-            )
-            .unwrap();
-            writeln!(
-               err_stream,
-               "↳ line {}, column {}",
-               expr_location.line, expr_location.col
             )
             .unwrap();
             emit_source_info(err_stream, expr_location, interner);
