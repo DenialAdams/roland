@@ -63,6 +63,10 @@ where
       Self::default()
    }
 
+   pub fn clear(&mut self) {
+      self.values.clear();
+   }
+
    pub fn len(&self) -> usize {
       self.values.len()
    }

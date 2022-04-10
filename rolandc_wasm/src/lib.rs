@@ -2,20 +2,26 @@
 #![allow(clippy::single_match_else)] // Not always an improvement in my opinion
 #![allow(clippy::missing_panics_doc)] // We don't have any documentation
 
-use rolandc::{CompilationError, Target};
+use rolandc::{CompilationContext, CompilationError, Target};
 use std::io::Write;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlInputElement;
 
+static mut COMPILATION_CTX: Option<CompilationContext> = None;
+
 #[wasm_bindgen(start)]
 pub fn start() {
    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+   unsafe {
+      COMPILATION_CTX = Some(CompilationContext::new());
+   }
 }
 
 #[wasm_bindgen]
 #[must_use]
 pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
+   let ctx = unsafe { COMPILATION_CTX.as_mut().unwrap() };
    let window = web_sys::window().unwrap();
    let document = window.document().unwrap();
    let output_frame = document.get_element_by_id("out_frame").unwrap();
@@ -31,6 +37,7 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
    let mut err_out = Vec::new();
 
    let compile_result = rolandc::compile(
+      ctx,
       rolandc::CompilationEntryPoint::Buffer(source_code),
       &mut err_out,
       Some(&mut ast_out),

@@ -1,5 +1,7 @@
 use std::io::Write;
 
+use parking_lot::Mutex;
+use rolandc::error_handling::ErrorLocation;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
@@ -18,9 +20,9 @@ impl Write for NulWriter {
    }
 }
 
-#[derive(Debug)]
 struct Backend {
    client: Client,
+   ctx: Mutex<CompilationContext>,
 }
 
 #[tower_lsp::async_trait]
@@ -44,24 +46,90 @@ impl LanguageServer for Backend {
       let doc_version = params.text_document.version;
       let content = params.content_changes[0].text.as_str();
       let hao: Option<&mut NulWriter> = None;
-      let result = rolandc::compile(
-         CompilationEntryPoint::Buffer(content),
-         &mut NulWriter {},
-         hao,
-         true,
-         Target::Wasi,
-      );
-      if result.is_err() {
-         self
-            .client
-            .log_message(MessageType::INFO, "failed to compile changes")
-            .await;
-      } else {
-         self
-            .client
-            .log_message(MessageType::INFO, "compiled changes successfully")
-            .await;
-      }
+      let diagnostics = {
+         let mut ctx_ref = self.ctx.lock();
+         let _ = rolandc::compile(
+            &mut *ctx_ref,
+            CompilationEntryPoint::Buffer(content),
+            &mut NulWriter {},
+            hao,
+            true,
+            Target::Wasi,
+         );
+         ctx_ref
+            .err_manager
+            .errors
+            .drain(..)
+            .map(|x| {
+               let (range, related_info) = match x.location {
+                  ErrorLocation::Simple(x) => (
+                     Range {
+                        start: Position {
+                           line: x.begin.line as u32,
+                           character: x.begin.col as u32,
+                        },
+                        end: Position {
+                           line: x.end.line as u32,
+                           character: x.end.col as u32,
+                        },
+                     },
+                     None,
+                  ),
+                  ErrorLocation::WithDetails(x) => (
+                     Range {
+                        start: Position {
+                           line: x[0].0.begin.line as u32,
+                           character: x[0].0.begin.col as u32,
+                        },
+                        end: Position {
+                           line: x[0].0.end.line as u32,
+                           character: x[0].0.end.col as u32,
+                        },
+                     },
+                     Some(
+                        x.into_iter()
+                           .map(|y| DiagnosticRelatedInformation {
+                              location: Location {
+                                 uri: doc_uri.clone(),
+                                 range: Range {
+                                    start: Position {
+                                       line: y.0.begin.line as u32,
+                                       character: y.0.begin.col as u32,
+                                    },
+                                    end: Position {
+                                       line: y.0.end.line as u32,
+                                       character: y.0.end.col as u32,
+                                    },
+                                 },
+                              },
+                              message: y.1.into(),
+                           })
+                           .collect(),
+                     ),
+                  ),
+                  ErrorLocation::NoLocation => (
+                     Range {
+                        start: Position { line: 0, character: 0 },
+                        end: Position { line: 0, character: 0 },
+                     },
+                     None,
+                  ),
+               };
+
+               Diagnostic {
+                  range,
+                  severity: Some(DiagnosticSeverity::ERROR),
+                  message: x.message,
+                  related_information: related_info,
+                  ..Default::default()
+               }
+            })
+            .collect()
+      };
+      self
+         .client
+         .publish_diagnostics(doc_uri, diagnostics, Some(doc_version))
+         .await;
    }
 
    async fn shutdown(&self) -> Result<()> {
@@ -72,6 +140,9 @@ impl LanguageServer for Backend {
 #[tokio::main]
 async fn main() {
    let (stdin, stdout) = (tokio::io::stdin(), tokio::io::stdout());
-   let (service, socket) = LspService::new(|client| Backend { client });
+   let (service, socket) = LspService::new(|client| Backend {
+      client,
+      ctx: Mutex::new(CompilationContext::new()),
+   });
    Server::new(stdin, stdout, socket).serve(service).await;
 }

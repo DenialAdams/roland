@@ -543,6 +543,7 @@ dependencies = [
 name = "rolandc_lsp"
 version = "0.1.0"
 dependencies = [
+ "parking_lot",
  "rolandc",
  "tokio",
  "tower-lsp",

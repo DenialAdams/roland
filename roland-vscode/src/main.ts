@@ -32,7 +32,6 @@ export async function deactivate(): Promise<void> {
   return client.stop();
 }
 
-
 const log = new class {
   private readonly output = vscode.window.createOutputChannel("Roland Client");
 

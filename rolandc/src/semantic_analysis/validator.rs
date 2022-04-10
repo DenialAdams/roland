@@ -1,7 +1,8 @@
 use super::type_inference::try_set_inferred_type;
 use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
+use crate::error_handling::{emit_source_info, emit_source_info_with_description};
 use crate::interner::{Interner, StrId};
-use crate::lex::{emit_source_info, emit_source_info_with_description, SourceInfo, SourcePath, SourcePosition};
+use crate::lex::{SourceInfo, SourcePath, SourcePosition};
 use crate::parse::{
    BinOp, BlockNode, Expression, ExpressionId, ExpressionPool, IdentifierNode, ProcImplSource, Program, Statement,
    StatementNode, UnOp,

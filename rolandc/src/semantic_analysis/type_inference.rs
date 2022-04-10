@@ -1,8 +1,8 @@
 use std::io::Write;
 
 use super::ValidationContext;
+use crate::error_handling::emit_source_info;
 use crate::interner::Interner;
-use crate::lex::emit_source_info;
 use crate::parse::{Expression, ExpressionId, UnOp};
 use crate::type_data::{
    ExpressionType, IntType, ValueType, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,

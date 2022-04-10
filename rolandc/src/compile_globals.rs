@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
-use std::io::Write;
 
 use indexmap::IndexMap;
 
 use crate::constant_folding::{self, FoldingContext};
+use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
+use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::lex::{emit_source_info, emit_source_info_with_description, SourceInfo};
+use crate::lex::SourceInfo;
 use crate::parse::{Expression, ExpressionId, ExpressionPool, Program};
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::SizeInfo;
@@ -25,11 +26,11 @@ struct CgContext<'a> {
    interner: &'a Interner,
 }
 
-pub fn ensure_statics_const<W: Write>(
+pub fn ensure_statics_const(
    program: &Program,
    expressions: &mut ExpressionPool,
    interner: &mut Interner,
-   err_stream: &mut W,
+   err_manager: &mut ErrorManager,
 ) -> u64 {
    let mut static_err_count: u64 = 0;
    for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
@@ -40,22 +41,20 @@ pub fn ensure_statics_const<W: Write>(
       {
          static_err_count += 1;
          let actual_type_str = p_static_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
-         writeln!(
-            err_stream,
+         rolandc_error_w_details!(
+            err_manager,
+            &[(p_static.location, "static"), (p_static_expr.location, "expression")],
             "Declared type {} of static `{}` does not match actual expression type {}",
             p_static.static_type.as_roland_type_info(interner),
             interner.lookup(p_static.name.identifier),
-            actual_type_str,
-         )
-         .unwrap();
-         emit_source_info_with_description(err_stream, p_static.location, "static", interner);
-         emit_source_info_with_description(err_stream, p_static_expr.location, "expression", interner);
+            actual_type_str
+         );
       }
 
       if let Some(v) = p_static.value.as_ref() {
          constant_folding::try_fold_and_replace_expr(
             *v,
-            err_stream,
+            err_manager,
             &mut FoldingContext {
                error_count: 0,
                expressions,
@@ -65,14 +64,12 @@ pub fn ensure_statics_const<W: Write>(
          let v = &expressions[*v];
          if !crate::constant_folding::is_const(&v.expression, expressions) {
             static_err_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error_w_details!(
+               err_manager,
+               &[(p_static.location, "static"), (v.location, "expression")],
                "Value of static `{}` can't be constant folded. Hint: Either simplify the expression, or initialize it yourself on program start.",
                interner.lookup(p_static.name.identifier),
-            )
-            .unwrap();
-            emit_source_info_with_description(err_stream, p_static.location, "static", interner);
-            emit_source_info_with_description(err_stream, v.location, "expression", interner);
+            );
          }
       }
    }
@@ -80,12 +77,12 @@ pub fn ensure_statics_const<W: Write>(
    static_err_count
 }
 
-pub fn compile_globals<W: Write>(
+pub fn compile_globals(
    program: &Program,
    expressions: &mut ExpressionPool,
    interner: &mut Interner,
    struct_size_info: &HashMap<StrId, SizeInfo>,
-   err_stream: &mut W,
+   err_manager: &mut ErrorManager,
 ) -> u64 {
    // There is an effective second compilation pipeline for constants. This is because:
    // 1) Lowering constants is something we need to do for compilation
@@ -116,13 +113,13 @@ pub fn compile_globals<W: Write>(
    };
 
    for c in program.consts.iter() {
-      cg_const(c.name.identifier, &mut cg_ctx, err_stream);
+      cg_const(c.name.identifier, &mut cg_ctx, err_manager);
    }
 
    cg_ctx.error_count
 }
 
-fn cg_const<W: Write>(c_name: StrId, cg_context: &mut CgContext, err_stream: &mut W) {
+fn cg_const(c_name: StrId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
    if cg_context.const_replacements.contains_key(&c_name) {
       return;
    }
@@ -130,11 +127,11 @@ fn cg_const<W: Write>(c_name: StrId, cg_context: &mut CgContext, err_stream: &mu
    cg_context.consts_being_processed.insert(c_name);
 
    let c = cg_context.all_consts[&c_name];
-   cg_expr(c.1, cg_context, err_stream);
+   cg_expr(c.1, cg_context, err_manager);
 
    constant_folding::try_fold_and_replace_expr(
       c.1,
-      err_stream,
+      err_manager,
       &mut FoldingContext {
          error_count: 0,
          expressions: cg_context.expressions,
@@ -146,21 +143,19 @@ fn cg_const<W: Write>(c_name: StrId, cg_context: &mut CgContext, err_stream: &mu
 
    if !crate::constant_folding::is_const(&p_const_expr.expression, cg_context.expressions) {
       cg_context.error_count += 1;
-      writeln!(
-         err_stream,
+      rolandc_error_w_details!(
+         err_manager,
+         &[(c.0, "const"), (p_const_expr.location, "expression")],
          "Value of const `{}` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static and initialize it on program start.",
-         cg_context.interner.lookup(c_name),
-      )
-      .unwrap();
-      emit_source_info_with_description(err_stream, c.0, "const", cg_context.interner);
-      emit_source_info_with_description(err_stream, p_const_expr.location, "expression", cg_context.interner);
+         cg_context.interner.lookup(c_name)
+      );
    }
 
    cg_context.consts_being_processed.remove(&c_name);
    cg_context.const_replacements.insert(c_name, c.1);
 }
 
-fn cg_expr<W: Write>(expr_index: ExpressionId, cg_context: &mut CgContext, err_stream: &mut W) {
+fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
    // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
    // while this pointer is alive. We don't do this, because we update this expression in place.
    let expr_to_fold = std::ptr::addr_of!(cg_context.expressions[expr_index]);
@@ -169,27 +164,26 @@ fn cg_expr<W: Write>(expr_index: ExpressionId, cg_context: &mut CgContext, err_s
       Expression::Variable(x) => {
          if cg_context.consts_being_processed.contains(x) {
             cg_context.error_count += 1;
-            writeln!(
-               err_stream,
+            let loc = cg_context.all_consts[x].0;
+            rolandc_error!(
+               err_manager,
+               loc,
                "const `{}` has a cyclic dependency",
                cg_context.interner.lookup(*x),
-            )
-            .unwrap();
-            let loc = cg_context.all_consts[x].0;
-            emit_source_info(err_stream, loc, cg_context.interner);
+            );
          } else if cg_context.const_replacements.contains_key(x) {
             // We've already visited this constant, great, nothing to do
          } else if cg_context.all_consts.contains_key(x) {
-            cg_const(*x, cg_context, err_stream);
+            cg_const(*x, cg_context, err_manager);
          }
       }
       Expression::ArrayIndex { array, index } => {
-         cg_expr(*array, cg_context, err_stream);
-         cg_expr(*index, cg_context, err_stream);
+         cg_expr(*array, cg_context, err_manager);
+         cg_expr(*index, cg_context, err_manager);
       }
       Expression::ProcedureCall { args, .. } => {
          for arg in args.iter() {
-            cg_expr(arg.expr, cg_context, err_stream);
+            cg_expr(arg.expr, cg_context, err_manager);
          }
       }
       Expression::BinaryOperator {
@@ -197,32 +191,32 @@ fn cg_expr<W: Write>(expr_index: ExpressionId, cg_context: &mut CgContext, err_s
          lhs,
          rhs,
       } => {
-         cg_expr(*lhs, cg_context, err_stream);
-         cg_expr(*rhs, cg_context, err_stream);
+         cg_expr(*lhs, cg_context, err_manager);
+         cg_expr(*rhs, cg_context, err_manager);
       }
       Expression::UnaryOperator(_op, expr) => {
-         cg_expr(*expr, cg_context, err_stream);
+         cg_expr(*expr, cg_context, err_manager);
       }
       Expression::StructLiteral(_, field_exprs) => {
          for (_, expr) in field_exprs.iter() {
-            cg_expr(*expr, cg_context, err_stream);
+            cg_expr(*expr, cg_context, err_manager);
          }
       }
       Expression::FieldAccess(_field_names, expr) => {
-         cg_expr(*expr, cg_context, err_stream);
+         cg_expr(*expr, cg_context, err_manager);
       }
       Expression::Extend(_, expr) => {
-         cg_expr(*expr, cg_context, err_stream);
+         cg_expr(*expr, cg_context, err_manager);
       }
       Expression::Truncate(_, expr) => {
-         cg_expr(*expr, cg_context, err_stream);
+         cg_expr(*expr, cg_context, err_manager);
       }
       Expression::Transmute(_, expr) => {
-         cg_expr(*expr, cg_context, err_stream);
+         cg_expr(*expr, cg_context, err_manager);
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
-            cg_expr(*expr, cg_context, err_stream);
+            cg_expr(*expr, cg_context, err_manager);
          }
       }
       Expression::EnumLiteral(_, _) => (),

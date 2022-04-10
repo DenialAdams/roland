@@ -2,7 +2,7 @@
 #![allow(clippy::match_same_arms)] // Sometimes I find this more clear (when it's just calling something)
 #![allow(clippy::unnecessary_wraps)] // False positives
 
-use rolandc::{CompilationError, Target};
+use rolandc::{CompilationContext, CompilationEntryPoint, CompilationError, Target};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
@@ -84,8 +84,10 @@ fn main() {
       None
    };
 
+   let mut ctx = CompilationContext::new();
    let compile_result = rolandc::compile(
-      rolandc::CompilationEntryPoint::Path(opts.source_file.clone()),
+      &mut ctx,
+      CompilationEntryPoint::Path(opts.source_file.clone()),
       &mut err_stream_l,
       ast_out.as_mut(),
       !opts.skip_constant_folding,
@@ -94,6 +96,8 @@ fn main() {
    if let Some(x) = ast_out.as_mut() {
       writeln!(x, "</body>\n</html>").unwrap();
    }
+
+   ctx.err_manager.write_out_errors(&mut err_stream_l, &ctx.interner);
 
    let out_bytes = match compile_result {
       Ok(v) => v,

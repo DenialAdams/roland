@@ -12,10 +12,12 @@
 #![allow(clippy::missing_errors_doc)] // Nothing is documented
 #![allow(clippy::module_name_repetitions)] // I don't really care that much
 #![allow(clippy::match_wildcard_for_single_variants)] // False positives
+#![allow(clippy::new_without_default)] // I don't want dead code
 
 mod add_virtual_variables;
 mod compile_globals;
 mod constant_folding;
+pub mod error_handling;
 mod html_debug;
 mod interner;
 mod lex;
@@ -27,9 +29,11 @@ mod typed_index_vec;
 mod various_expression_lowering;
 mod wasm;
 
+use error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
+use error_handling::ErrorManager;
 use interner::StrId;
-use lex::{emit_source_info, SourcePath};
-use parse::{ExpressionPool, ImportNode, Program};
+use lex::SourcePath;
+use parse::{ExpressionId, ExpressionNode, ExpressionPool, ImportNode, Program};
 use size_info::{calculate_struct_size_info, SizeInfo};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
@@ -67,16 +71,35 @@ pub enum CompilationEntryPoint<'a> {
    Buffer(&'a str),
 }
 
+// Repeated compilations can be sped up by reusing the context
+pub struct CompilationContext {
+   expressions: HandleMap<ExpressionId, ExpressionNode>,
+   pub interner: Interner,
+   pub err_manager: ErrorManager,
+}
+
+impl CompilationContext {
+   #[must_use]
+   pub fn new() -> CompilationContext {
+      CompilationContext {
+         expressions: HandleMap::new(),
+         interner: Interner::with_capacity(1024),
+         err_manager: ErrorManager::new(),
+      }
+   }
+}
+
 pub fn compile<E: Write, A: Write>(
+   ctx: &mut CompilationContext,
    user_program_ep: CompilationEntryPoint,
    err_stream: &mut E,
    html_ast_out: Option<&mut A>,
    do_constant_folding: bool,
    target: Target,
 ) -> Result<Vec<u8>, CompilationError> {
-   let mut interner = Interner::with_capacity(1024);
-
-   let mut expressions = HandleMap::new();
+   ctx.expressions.clear();
+   ctx.err_manager.clear();
+   // We don't have to clear the interner - assumption is that the context is coming a recent version of the same source, so symbols should be relevant
 
    let mut user_program = match user_program_ep {
       CompilationEntryPoint::Path(x) => {
@@ -87,13 +110,12 @@ pub fn compile<E: Write, A: Write>(
             let canonical_path = match std::fs::canonicalize(&base_path) {
                Ok(p) => p,
                Err(e) => {
-                  writeln!(
-                     err_stream,
+                  rolandc_error_no_loc!(
+                     ctx.err_manager,
                      "Failed to canonicalize path '{}': {}",
                      base_path.as_os_str().to_string_lossy(),
                      e
-                  )
-                  .unwrap();
+                  );
                   return Err(CompilationError::Io);
                }
             };
@@ -105,28 +127,27 @@ pub fn compile<E: Write, A: Write>(
             let program_s = match std::fs::read_to_string(&base_path) {
                Ok(s) => s,
                Err(e) => {
-                  writeln!(
-                     err_stream,
+                  rolandc_error_no_loc!(
+                     ctx.err_manager,
                      "Failed to read imported file '{}': {}",
                      base_path.as_os_str().to_string_lossy(),
                      e
-                  )
-                  .unwrap();
+                  );
                   return Err(CompilationError::Io);
                }
             };
             let mut parsed = lex_and_parse(
                &program_s,
-               SourcePath::File(interner.intern(&base_path.as_os_str().to_string_lossy())),
-               err_stream,
-               &mut interner,
-               &mut expressions,
+               SourcePath::File(ctx.interner.intern(&base_path.as_os_str().to_string_lossy())),
+               &mut ctx.err_manager,
+               &mut ctx.interner,
+               &mut ctx.expressions,
             )?;
             merge_program(&mut user_program, &mut parsed.1);
 
             base_path.pop(); // /foo/bar/main.rol -> /foo/bar
             for file in parsed.0.iter().map(|x| x.import_path) {
-               let file_str = interner.lookup(file);
+               let file_str = ctx.interner.lookup(file);
                let mut new_path = base_path.clone();
                new_path.push(file_str);
                import_queue.push(new_path);
@@ -138,13 +159,16 @@ pub fn compile<E: Write, A: Write>(
          let (files_to_import, user_program) = lex_and_parse(
             contents,
             SourcePath::Sandbox,
-            err_stream,
-            &mut interner,
-            &mut expressions,
+            &mut ctx.err_manager,
+            &mut ctx.interner,
+            &mut ctx.expressions,
          )?;
          if !files_to_import.is_empty() {
-            writeln!(err_stream, "Can't import files in the Roland playground",).unwrap();
-            emit_source_info(err_stream, files_to_import[0].location, &interner);
+            rolandc_error!(
+               ctx.err_manager,
+               files_to_import[0].location,
+               "Can't import files in the Roland playground",
+            );
             return Err(CompilationError::Io);
          }
          user_program
@@ -156,25 +180,43 @@ pub fn compile<E: Write, A: Write>(
    let mut std_lib = match target {
       Target::Wasi => {
          let std_lib_s = include_str!("../../lib/wasi.rol");
-         lex_and_parse(std_lib_s, SourcePath::Std, err_stream, &mut interner, &mut expressions)
+         lex_and_parse(
+            std_lib_s,
+            SourcePath::Std,
+            &mut ctx.err_manager,
+            &mut ctx.interner,
+            &mut ctx.expressions,
+         )
       }
       Target::Wasm4 => {
          let std_lib_s = include_str!("../../lib/wasm4.rol");
-         lex_and_parse(std_lib_s, SourcePath::Std, err_stream, &mut interner, &mut expressions)
+         lex_and_parse(
+            std_lib_s,
+            SourcePath::Std,
+            &mut ctx.err_manager,
+            &mut ctx.interner,
+            &mut ctx.expressions,
+         )
       }
    }?;
 
    merge_program(&mut user_program, &mut std_lib.1);
 
    let std_lib_s = include_str!("../../lib/shared.rol");
-   let mut shared_std = lex_and_parse(std_lib_s, SourcePath::Std, err_stream, &mut interner, &mut expressions)?;
+   let mut shared_std = lex_and_parse(
+      std_lib_s,
+      SourcePath::Std,
+      &mut ctx.err_manager,
+      &mut ctx.interner,
+      &mut ctx.expressions,
+   )?;
    merge_program(&mut user_program, &mut shared_std.1);
 
    let mut err_count = semantic_analysis::validator::type_and_check_validity(
       &mut user_program,
       err_stream,
-      &mut interner,
-      &mut expressions,
+      &mut ctx.interner,
+      &mut ctx.expressions,
       target,
    );
 
@@ -182,7 +224,7 @@ pub fn compile<E: Write, A: Write>(
       if let Some(w) = html_ast_out {
          let mut program_without_std = user_program.clone();
          program_without_std.procedures.truncate(num_procedures_before_std_merge);
-         html_debug::print_ast_as_html(w, &program_without_std, &mut interner, &expressions);
+         html_debug::print_ast_as_html(w, &program_without_std, &mut ctx.interner, &ctx.expressions);
       }
       return Err(CompilationError::Semantic(err_count));
    }
@@ -200,45 +242,60 @@ pub fn compile<E: Write, A: Write>(
 
    err_count = compile_globals::compile_globals(
       &user_program,
-      &mut expressions,
-      &mut interner,
+      &mut ctx.expressions,
+      &mut ctx.interner,
       &struct_size_info,
-      err_stream,
+      &mut ctx.err_manager,
    );
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));
    }
 
-   various_expression_lowering::lower_consts(&struct_size_info, &mut user_program, &mut expressions, &mut interner);
+   various_expression_lowering::lower_consts(
+      &struct_size_info,
+      &mut user_program,
+      &mut ctx.expressions,
+      &mut ctx.interner,
+   );
    user_program.static_info.retain(|_, v| !v.is_const);
 
-   err_count = compile_globals::ensure_statics_const(&user_program, &mut expressions, &mut interner, err_stream);
+   err_count = compile_globals::ensure_statics_const(
+      &user_program,
+      &mut ctx.expressions,
+      &mut ctx.interner,
+      &mut ctx.err_manager,
+   );
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));
    }
 
    if do_constant_folding {
-      err_count = constant_folding::fold_constants(&mut user_program, err_stream, &mut expressions, &interner);
+      err_count = constant_folding::fold_constants(
+         &mut user_program,
+         &mut ctx.err_manager,
+         &mut ctx.expressions,
+         &ctx.interner,
+      );
    }
 
    if let Some(w) = html_ast_out {
       let mut program_without_std = user_program.clone();
       program_without_std.procedures.truncate(num_procedures_before_std_merge);
-      html_debug::print_ast_as_html(w, &program_without_std, &mut interner, &expressions);
+      html_debug::print_ast_as_html(w, &program_without_std, &mut ctx.interner, &ctx.expressions);
    }
 
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));
    }
 
-   add_virtual_variables::add_virtual_vars(&mut user_program, &expressions);
+   add_virtual_variables::add_virtual_vars(&mut user_program, &ctx.expressions);
 
    match target {
       Target::Wasi => Ok(wasm::emit_wasm(
          &struct_size_info,
          &mut user_program,
-         &mut interner,
-         &expressions,
+         &mut ctx.interner,
+         &ctx.expressions,
          0,
          false,
       )),
@@ -246,8 +303,8 @@ pub fn compile<E: Write, A: Write>(
          let wat = wasm::emit_wasm(
             &struct_size_info,
             &mut user_program,
-            &mut interner,
-            &expressions,
+            &mut ctx.interner,
+            &ctx.expressions,
             0x19a0,
             true,
          );
@@ -272,18 +329,18 @@ fn merge_program(main_program: &mut Program, other_program: &mut Program) {
    main_program.consts.extend(other_program.consts.drain(0..));
 }
 
-fn lex_and_parse<W: Write>(
+fn lex_and_parse(
    s: &str,
    source_path: SourcePath,
-   err_stream: &mut W,
+   err_manager: &mut ErrorManager,
    interner: &mut Interner,
    expressions: &mut ExpressionPool,
 ) -> Result<(Vec<ImportNode>, Program), CompilationError> {
-   let tokens = match lex::lex(s, source_path, err_stream, interner) {
+   let tokens = match lex::lex(s, source_path, err_manager, interner) {
       Err(()) => return Err(CompilationError::Lex),
       Ok(v) => v,
    };
-   match parse::astify(tokens, err_stream, interner, expressions) {
+   match parse::astify(tokens, err_manager, interner, expressions) {
       Err(()) => Err(CompilationError::Parse),
       Ok((imports, program)) => Ok((imports, program)),
    }

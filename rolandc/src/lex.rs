@@ -1,6 +1,7 @@
-use std::io::Write;
 use std::num::IntErrorKind;
 
+use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
+use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -178,55 +179,6 @@ enum LexMode {
    Comment,
 }
 
-pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo, interner: &Interner) {
-   match source_info.file {
-      SourcePath::File(x) => {
-         let path_str = interner.lookup(x);
-         writeln!(
-            err_stream,
-            "↳ line {}, column {} [{}]",
-            source_info.begin.line, source_info.begin.col, path_str
-         )
-         .unwrap();
-      }
-      SourcePath::Sandbox | SourcePath::Std => {
-         writeln!(
-            err_stream,
-            "↳ line {}, column {}",
-            source_info.begin.line, source_info.begin.col
-         )
-         .unwrap();
-      }
-   }
-}
-
-pub fn emit_source_info_with_description<W: Write>(
-   err_stream: &mut W,
-   source_info: SourceInfo,
-   description: &str,
-   interner: &Interner,
-) {
-   match source_info.file {
-      SourcePath::File(x) => {
-         let path_str = interner.lookup(x);
-         writeln!(
-            err_stream,
-            "↳ {} @ line {}, column {} [{}]",
-            description, source_info.begin.line, source_info.begin.col, path_str
-         )
-         .unwrap();
-      }
-      SourcePath::Sandbox | SourcePath::Std => {
-         writeln!(
-            err_stream,
-            "↳ {} @ line {}, column {}",
-            description, source_info.begin.line, source_info.begin.col
-         )
-         .unwrap();
-      }
-   }
-}
-
 fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
    match s {
       "true" => Token::BoolLiteral(true),
@@ -284,16 +236,16 @@ impl CharCountingBuffer {
    }
 }
 
-pub fn lex<W: Write>(
+pub fn lex(
    input: &str,
    source_path: SourcePath,
-   err_stream: &mut W,
+   err_manager: &mut ErrorManager,
    interner: &mut Interner,
 ) -> Result<Vec<SourceToken>, ()> {
    let mut tokens: Vec<SourceToken> = Vec::new();
    let mut mode = LexMode::Normal;
 
-   let mut cur_position = SourcePosition { line: 1, col: 1 };
+   let mut cur_position = SourcePosition { line: 0, col: 0 };
 
    // Temporary buffer we use in various parts of the lexer
    let mut str_buf = CharCountingBuffer {
@@ -314,7 +266,7 @@ pub fn lex<W: Write>(
          LexMode::Normal => {
             if c == '\n' {
                cur_position.line += 1;
-               cur_position.col = 1;
+               cur_position.col = 0;
                let _ = chars.next().unwrap();
             } else if c.is_whitespace() {
                cur_position.col += 1;
@@ -701,15 +653,15 @@ pub fn lex<W: Write>(
             } else if c.is_alphabetic() || c == '_' {
                mode = LexMode::Ident;
             } else {
-               writeln!(err_stream, "Encountered unexpected character {}", c).unwrap();
-               emit_source_info(
-                  err_stream,
+               rolandc_error!(
+                  err_manager,
                   SourceInfo {
                      begin: cur_position,
                      end: cur_position.next_col(),
                      file: source_path,
                   },
-                  interner,
+                  "Encountered unexpected character {}",
+                  c,
                );
                return Err(());
             }
@@ -752,7 +704,7 @@ pub fn lex<W: Write>(
             }
             if c == '\n' {
                cur_position.line += 1;
-               cur_position.col = 1;
+               cur_position.col = 0;
             } else {
                cur_position.col += 1;
             }
@@ -772,20 +724,20 @@ pub fn lex<W: Write>(
             } else if c == '"' {
                str_buf.push('"');
             } else {
-               writeln!(err_stream, "Encountered unknown escape sequence `\\{}`", c).unwrap();
                let escape_begin = SourcePosition {
                   col: cur_position.col - 1,
                   line: cur_position.line,
                };
                cur_position.col += 1;
-               emit_source_info(
-                  err_stream,
+               rolandc_error!(
+                  err_manager,
                   SourceInfo {
                      begin: escape_begin,
                      end: cur_position,
                      file: source_path,
                   },
-                  interner,
+                  "Encountered unknown escape sequence `\\{}`",
+                  c
                );
                return Err(());
             }
@@ -805,14 +757,13 @@ pub fn lex<W: Write>(
                   // This is pretty hacky, but oh well
                   tokens.push(finish_numeric_literal(
                      &str_buf.buf,
-                     err_stream,
+                     err_manager,
                      SourceInfo {
                         begin: cur_position,
                         end: cur_position.col_plus(str_buf.length_in_chars),
                         file: source_path,
                      },
                      is_float,
-                     interner,
                   )?);
                   cur_position.col += str_buf.clear();
                   is_float = false;
@@ -836,14 +787,13 @@ pub fn lex<W: Write>(
             } else {
                tokens.push(finish_numeric_literal(
                   &str_buf.buf,
-                  err_stream,
+                  err_manager,
                   SourceInfo {
                      begin: cur_position,
                      end: cur_position.col_plus(str_buf.length_in_chars),
                      file: source_path,
                   },
                   is_float,
-                  interner,
                )?);
                cur_position.col += str_buf.clear();
                is_float = false;
@@ -884,74 +834,65 @@ pub fn lex<W: Write>(
       LexMode::NumericLiteral => {
          tokens.push(finish_numeric_literal(
             &str_buf.buf,
-            err_stream,
+            err_manager,
             SourceInfo {
                begin: cur_position,
                end: cur_position.col_plus(str_buf.length_in_chars),
                file: source_path,
             },
             is_float,
-            interner,
          )?);
          cur_position.col += str_buf.clear();
          Ok(tokens)
       }
       LexMode::StringLiteral | LexMode::StringLiteralEscape => {
-         writeln!(
-            err_stream,
+         let str_lit_loc = SourceInfo {
+            begin: str_begin,
+            end: cur_position,
+            file: source_path,
+         };
+         let eof_loc = SourceInfo {
+            begin: cur_position,
+            end: cur_position,
+            file: source_path,
+         };
+         rolandc_error_w_details!(
+            err_manager,
+            &[(str_lit_loc, "string literal"), (eof_loc, "EOF")],
             "Encountered EOF while parsing string literal. Hint: Are you missing a closing \"?"
-         )
-         .unwrap();
-         emit_source_info_with_description(
-            err_stream,
-            SourceInfo {
-               begin: str_begin,
-               end: cur_position,
-               file: source_path,
-            },
-            "string literal",
-            interner,
-         );
-         emit_source_info_with_description(
-            err_stream,
-            SourceInfo {
-               begin: cur_position,
-               end: cur_position,
-               file: source_path,
-            },
-            "EOF",
-            interner,
          );
          Err(())
       }
    }
 }
 
-fn finish_numeric_literal<W: Write>(
+fn finish_numeric_literal(
    s: &str,
-   err_stream: &mut W,
+   err_manager: &mut ErrorManager,
    source_info: SourceInfo,
    is_float: bool,
-   interner: &Interner,
 ) -> Result<SourceToken, ()> {
    let resulting_token = if is_float {
       let float_value = match s.parse::<f64>() {
          Ok(v) => v,
          Err(_) => {
-            writeln!(err_stream, "Encountered number that can't be parsed as a float").unwrap();
-            emit_source_info(err_stream, source_info, interner);
+            rolandc_error!(
+               err_manager,
+               source_info,
+               "Encountered number that can't be parsed as a float"
+            );
             return Err(());
          }
       };
       Token::FloatLiteral(float_value)
    } else if let Some(rest_of_s) = s.strip_prefix("0x") {
-      parse_int(rest_of_s, 16, err_stream, source_info, interner)?
+      parse_int(rest_of_s, 16, err_manager, source_info)?
    } else if let Some(rest_of_s) = s.strip_prefix("0o") {
-      parse_int(rest_of_s, 8, err_stream, source_info, interner)?
+      parse_int(rest_of_s, 8, err_manager, source_info)?
    } else if let Some(rest_of_s) = s.strip_prefix("0b") {
-      parse_int(rest_of_s, 2, err_stream, source_info, interner)?
+      parse_int(rest_of_s, 2, err_manager, source_info)?
    } else {
-      parse_int(s, 10, err_stream, source_info, interner)?
+      parse_int(s, 10, err_manager, source_info)?
    };
    Ok(SourceToken {
       source_info,
@@ -959,32 +900,27 @@ fn finish_numeric_literal<W: Write>(
    })
 }
 
-fn parse_int<W: Write>(
-   s: &str,
-   radix: u32,
-   err_stream: &mut W,
-   source_info: SourceInfo,
-   interner: &Interner,
-) -> Result<Token, ()> {
+fn parse_int(s: &str, radix: u32, err_manager: &mut ErrorManager, source_info: SourceInfo) -> Result<Token, ()> {
    match i128::from_str_radix(s, radix) {
       Ok(v) => Ok(Token::IntLiteral(v)),
       Err(pe) if *pe.kind() == IntErrorKind::InvalidDigit => {
-         writeln!(err_stream, "Encountered invalid digit while parsing integer").unwrap();
-         emit_source_info(err_stream, source_info, interner);
+         rolandc_error!(
+            err_manager,
+            source_info,
+            "Encountered invalid digit while parsing integer"
+         );
          Err(())
       }
       Err(pe) if *pe.kind() == IntErrorKind::PosOverflow => {
-         writeln!(err_stream, "Encountered overly big integer").unwrap();
-         emit_source_info(err_stream, source_info, interner);
+         rolandc_error!(err_manager, source_info, "Encountered overly big integer");
          Err(())
       }
       Err(pe) if *pe.kind() == IntErrorKind::Empty => {
-         writeln!(
-            err_stream,
+         rolandc_error!(
+            err_manager,
+            source_info,
             "Encountered empty integer literal (prefix that is not followed by a number)"
-         )
-         .unwrap();
-         emit_source_info(err_stream, source_info, interner);
+         );
          Err(())
       }
       Err(_) => unreachable!(),
