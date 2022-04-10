@@ -45,6 +45,8 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
       Target::Wasi,
    );
 
+   ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner);
+
    if let Err(CompilationError::Semantic(err_count)) = compile_result.as_ref() {
       writeln!(err_out, "There were {} semantic errors, bailing", err_count).unwrap();
    } else if let Err(CompilationError::Internal) = compile_result.as_ref() {
