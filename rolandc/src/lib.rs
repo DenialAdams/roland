@@ -18,7 +18,6 @@ mod add_virtual_variables;
 mod compile_globals;
 mod constant_folding;
 pub mod error_handling;
-mod html_debug;
 mod interner;
 mod lex;
 mod parse;
@@ -89,12 +88,10 @@ impl CompilationContext {
    }
 }
 
-pub fn compile<E: Write, A: Write>(
+pub fn compile<E: Write>(
    ctx: &mut CompilationContext,
    user_program_ep: CompilationEntryPoint,
    err_stream: &mut E,
-   html_ast_out: Option<&mut A>,
-   do_constant_folding: bool,
    target: Target,
 ) -> Result<Vec<u8>, CompilationError> {
    ctx.expressions.clear();
@@ -175,8 +172,6 @@ pub fn compile<E: Write, A: Write>(
       }
    };
 
-   let num_procedures_before_std_merge = user_program.procedures.len();
-
    let mut std_lib = match target {
       Target::Wasi => {
          let std_lib_s = include_str!("../../lib/wasi.rol");
@@ -221,11 +216,6 @@ pub fn compile<E: Write, A: Write>(
    );
 
    if err_count > 0 {
-      if let Some(w) = html_ast_out {
-         let mut program_without_std = user_program.clone();
-         program_without_std.procedures.truncate(num_procedures_before_std_merge);
-         html_debug::print_ast_as_html(w, &program_without_std, &mut ctx.interner, &ctx.expressions);
-      }
       return Err(CompilationError::Semantic(err_count));
    }
 
@@ -265,24 +255,17 @@ pub fn compile<E: Write, A: Write>(
       &mut ctx.interner,
       &mut ctx.err_manager,
    );
+
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));
    }
 
-   if do_constant_folding {
-      err_count = constant_folding::fold_constants(
-         &mut user_program,
-         &mut ctx.err_manager,
-         &mut ctx.expressions,
-         &ctx.interner,
-      );
-   }
-
-   if let Some(w) = html_ast_out {
-      let mut program_without_std = user_program.clone();
-      program_without_std.procedures.truncate(num_procedures_before_std_merge);
-      html_debug::print_ast_as_html(w, &program_without_std, &mut ctx.interner, &ctx.expressions);
-   }
+   err_count = constant_folding::fold_constants(
+      &mut user_program,
+      &mut ctx.err_manager,
+      &mut ctx.expressions,
+      &ctx.interner,
+   );
 
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));

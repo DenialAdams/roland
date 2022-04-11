@@ -45,15 +45,12 @@ impl LanguageServer for Backend {
       let doc_uri = params.text_document.uri;
       let doc_version = params.text_document.version;
       let content = params.content_changes[0].text.as_str();
-      let hao: Option<&mut NulWriter> = None;
       let diagnostics = {
          let mut ctx_ref = self.ctx.lock();
          let _ = rolandc::compile(
             &mut *ctx_ref,
             CompilationEntryPoint::Buffer(content),
             &mut NulWriter {},
-            hao,
-            true,
             Target::Wasi,
          );
          ctx_ref
