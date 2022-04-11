@@ -17,6 +17,9 @@ impl Write for NulWriter {
 
 fuzz_target!(|data: &[u8]| {
    if let Ok(s) = std::str::from_utf8(data) {
-      let _ = rolandc::compile::<NulWriter, NulWriter>(s, &mut NulWriter {}, None, true, rolandc::Target::Wasm4);
+      // By using the wasm4 target, we compile the emitted WAT to bytes
+      // (although this fuzzer doesn't produce programs that make it that far)
+      let mut ctx = rolandc::CompilationContext::new();
+      let _ = rolandc::compile::<NulWriter>(&mut ctx, rolandc::CompilationEntryPoint::Buffer(s), &mut NulWriter {}, rolandc::Target::Wasm4);
    }
 });
