@@ -6,8 +6,12 @@ import { inspect } from "util";
 let client: lc.LanguageClient;
 
 export async function activate(context: vscode.ExtensionContext) {
+  let command = os.homedir() + "/roland/target/release/rolandc_lsp";
+  if (process.platform == "win32") {
+    command += ".exe";
+  }
   const run: lc.Executable = {
-    command: os.homedir() + "/roland/target/debug/rolandc_lsp",
+    command: command,
     transport: lc.TransportKind.stdio,
   };
   const serverOptions: lc.ServerOptions = {
