@@ -29,7 +29,6 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
    let compile_result = rolandc::compile(
       ctx,
       rolandc::CompilationEntryPoint::Buffer(source_code),
-      &mut err_out,
       Target::Wasi,
    );
 

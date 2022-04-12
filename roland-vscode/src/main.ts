@@ -5,7 +5,7 @@ import { inspect } from "util";
 
 let client: lc.LanguageClient;
 
-export async function activate(context: vscode.ExtensionContext) {
+export async function activate(_context: vscode.ExtensionContext) {
   let command = os.homedir() + "/roland/target/release/rolandc_lsp";
   if (process.platform == "win32") {
     command += ".exe";

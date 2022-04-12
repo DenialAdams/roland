@@ -36,7 +36,6 @@ use parse::{ExpressionId, ExpressionNode, ExpressionPool, ImportNode, Program};
 use size_info::{calculate_struct_size_info, SizeInfo};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
-use std::io::Write;
 use std::path::PathBuf;
 use typed_index_vec::HandleMap;
 
@@ -90,10 +89,9 @@ impl CompilationContext {
    }
 }
 
-pub fn compile_for_errors<E: Write>(
+pub fn compile_for_errors(
    ctx: &mut CompilationContext,
    user_program_ep: CompilationEntryPoint,
-   err_stream: &mut E,
    target: Target,
 ) -> Result<Program, CompilationError> {
    ctx.expressions.clear();
@@ -212,7 +210,7 @@ pub fn compile_for_errors<E: Write>(
 
    let mut err_count = semantic_analysis::validator::type_and_check_validity(
       &mut user_program,
-      err_stream,
+      &mut ctx.err_manager,
       &mut ctx.interner,
       &mut ctx.expressions,
       target,
@@ -277,13 +275,12 @@ pub fn compile_for_errors<E: Write>(
    Ok(user_program)
 }
 
-pub fn compile<E: Write>(
+pub fn compile(
    ctx: &mut CompilationContext,
    user_program_ep: CompilationEntryPoint,
-   err_stream: &mut E,
    target: Target,
 ) -> Result<Vec<u8>, CompilationError> {
-   let mut user_program = compile_for_errors(ctx, user_program_ep, err_stream, target)?;
+   let mut user_program = compile_for_errors(ctx, user_program_ep, target)?;
 
    add_virtual_variables::add_virtual_vars(&mut user_program, &ctx.expressions);
 

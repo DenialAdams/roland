@@ -64,7 +64,6 @@ fn main() {
    let compile_result = rolandc::compile(
       &mut ctx,
       CompilationEntryPoint::Path(opts.source_file.clone()),
-      &mut err_stream_l,
       target,
    );
 

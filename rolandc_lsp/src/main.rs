@@ -25,32 +25,12 @@ struct Backend {
    ctx: Mutex<CompilationContext>,
 }
 
-#[tower_lsp::async_trait]
-impl LanguageServer for Backend {
-   async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
-      Ok(InitializeResult {
-         capabilities: ServerCapabilities {
-            text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
-            ..Default::default()
-         },
-         ..Default::default()
-      })
-   }
-
-   async fn initialized(&self, _: InitializedParams) {
-      self.client.log_message(MessageType::INFO, "server initialized!").await;
-   }
-
-   async fn did_change(&self, params: DidChangeTextDocumentParams) {
-      let doc_uri = params.text_document.uri;
-      let doc_version = params.text_document.version;
-      let content = params.content_changes[0].text.as_str();
-      let diagnostics = {
-         let mut ctx_ref = self.ctx.lock();
+impl Backend {
+   fn get_diagnostics(&self, doc_uri: &Url, content: &str) -> Vec<Diagnostic> {
+      let mut ctx_ref = self.ctx.lock();
          let _ = rolandc::compile_for_errors(
             &mut *ctx_ref,
             CompilationEntryPoint::Buffer(content),
-            &mut NulWriter {},
             Target::Wasi,
          );
          ctx_ref
@@ -99,7 +79,7 @@ impl LanguageServer for Backend {
                                     },
                                  },
                               },
-                              message: y.1.into(),
+                              message: y.1,
                            })
                            .collect(),
                      ),
@@ -122,7 +102,41 @@ impl LanguageServer for Backend {
                }
             })
             .collect()
-      };
+   }
+}
+
+#[tower_lsp::async_trait]
+impl LanguageServer for Backend {
+   async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+      Ok(InitializeResult {
+         capabilities: ServerCapabilities {
+            text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+            ..Default::default()
+         },
+         ..Default::default()
+      })
+   }
+
+   async fn initialized(&self, _: InitializedParams) {
+      self.client.log_message(MessageType::INFO, "server initialized!").await;
+   }
+
+   async fn did_open(&self, params: DidOpenTextDocumentParams) {
+      let doc_uri = params.text_document.uri;
+      let doc_version = params.text_document.version;
+      let content = params.text_document.text;
+      let diagnostics = self.get_diagnostics(&doc_uri, &content);
+      self
+         .client
+         .publish_diagnostics(doc_uri, diagnostics, Some(doc_version))
+         .await;
+   }
+
+   async fn did_change(&self, params: DidChangeTextDocumentParams) {
+      let doc_uri = params.text_document.uri;
+      let doc_version = params.text_document.version;
+      let content = params.content_changes[0].text.as_str();
+      let diagnostics = self.get_diagnostics(&doc_uri, content);
       self
          .client
          .publish_diagnostics(doc_uri, diagnostics, Some(doc_version))

@@ -21,7 +21,7 @@ pub(crate) mod error_handling_macros {
 
 pub enum ErrorLocation {
    Simple(SourceInfo),
-   WithDetails(Vec<(SourceInfo, &'static str)>),
+   WithDetails(Vec<(SourceInfo, String)>),
    NoLocation,
 }
 
@@ -54,7 +54,7 @@ impl ErrorManager {
             }
             ErrorLocation::WithDetails(locs) => {
                for loc in locs {
-                  emit_source_info_with_description(err_stream, loc.0, loc.1, interner);
+                  emit_source_info_with_description(err_stream, loc.0, &loc.1, interner);
                }
             }
          }
@@ -68,10 +68,11 @@ impl ErrorManager {
       });
    }
 
-   pub fn emit_error_with_details(&mut self, location: &[(SourceInfo, &'static str)], message: String) {
+   pub fn emit_error_with_details<I: ToString>(&mut self, location: &[(SourceInfo, I)], message: String) {
+      let location_vec = location.iter().map(|x| (x.0, x.1.to_string())).collect();
       self.errors.push(ErrorInfo {
          message,
-         location: ErrorLocation::WithDetails(location.to_vec()),
+         location: ErrorLocation::WithDetails(location_vec),
       });
    }
 

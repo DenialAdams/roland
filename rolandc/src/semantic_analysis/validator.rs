@@ -1,6 +1,7 @@
 use super::type_inference::try_set_inferred_type;
 use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
-use crate::error_handling::{emit_source_info, emit_source_info_with_description};
+use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details, rolandc_error_no_loc};
+use crate::error_handling::{ErrorManager};
 use crate::interner::{Interner, StrId};
 use crate::lex::{SourceInfo, SourcePath, SourcePosition};
 use crate::parse::{
@@ -13,7 +14,6 @@ use crate::Target;
 use arrayvec::ArrayVec;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::{HashMap, HashSet};
-use std::io::Write;
 use std::ops::BitOrAssign;
 
 fn is_special_procedure(target: Target, name: StrId, interner: &mut Interner) -> bool {
@@ -171,9 +171,9 @@ fn resolve_value_type(
    }
 }
 
-pub fn type_and_check_validity<W: Write>(
+pub fn type_and_check_validity(
    program: &mut Program,
-   err_stream: &mut W,
+   err_manager: &mut ErrorManager,
    interner: &mut Interner,
    expressions: &mut ExpressionPool,
    target: Target,
@@ -206,14 +206,13 @@ pub fn type_and_check_validity<W: Write>(
       for variant in a_enum.variants.iter().copied() {
          if !dupe_check.insert(variant) {
             error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error_w_details!(
+               err_manager,
+               &[(a_enum.location, "enum defined")],
                "Enum `{}` has a duplicate variant `{}`",
                interner.lookup(a_enum.name),
                interner.lookup(variant),
-            )
-            .unwrap();
-            emit_source_info_with_description(err_stream, a_enum.location, "enum defined", interner);
+            );
          }
       }
 
@@ -225,14 +224,12 @@ pub fn type_and_check_validity<W: Write>(
          },
       ) {
          error_count += 1;
-         writeln!(
-            err_stream,
+         rolandc_error_w_details!(
+            err_manager,
+            &[(old_enum.location, "first enum defined"), (a_enum.location, "first enum defined")],
             "Encountered duplicate enums with the same name `{}`",
             interner.lookup(a_enum.name)
-         )
-         .unwrap();
-         emit_source_info_with_description(err_stream, old_enum.location, "first enum defined", interner);
-         emit_source_info_with_description(err_stream, a_enum.location, "second enum defined", interner);
+         );
       }
    }
 
@@ -241,14 +238,13 @@ pub fn type_and_check_validity<W: Write>(
       for field in a_struct.fields.iter() {
          if field_map.insert(field.0, field.1.clone()).is_some() {
             error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error_w_details!(
+               err_manager,
+               &[(a_struct.location, "struct defined")],
                "Struct `{}` has a duplicate field `{}`",
                interner.lookup(a_struct.name),
                interner.lookup(field.0),
-            )
-            .unwrap();
-            emit_source_info_with_description(err_stream, a_struct.location, "struct defined", interner);
+            );
          }
       }
 
@@ -260,14 +256,12 @@ pub fn type_and_check_validity<W: Write>(
          },
       ) {
          error_count += 1;
-         writeln!(
-            err_stream,
+         rolandc_error_w_details!(
+            err_manager,
+            &[(old_struct.location, "first struct defined"), (old_struct.location, "first struct defined")],
             "Encountered duplicate structs with the same name `{}`",
             interner.lookup(a_struct.name)
-         )
-         .unwrap();
-         emit_source_info_with_description(err_stream, old_struct.location, "first struct defined", interner);
-         emit_source_info_with_description(err_stream, a_struct.location, "second struct defined", interner);
+         );
       }
    }
 
@@ -277,14 +271,12 @@ pub fn type_and_check_validity<W: Write>(
    for struct_i in struct_info.iter_mut() {
       if let Some(enum_i) = enum_info.get(struct_i.0) {
          error_count += 1;
-         writeln!(
-            err_stream,
+         rolandc_error_w_details!(
+            err_manager,
+            &[(enum_i.location, "enum defined"), (struct_i.1.location, "struct defined")],
             "Enum and struct share the same name `{}`",
             interner.lookup(*struct_i.0)
-         )
-         .unwrap();
-         emit_source_info_with_description(err_stream, enum_i.location, "enum defined", interner);
-         emit_source_info_with_description(err_stream, struct_i.1.location, "struct defined", interner);
+         );
       }
 
       for (field, e_type) in struct_i.1.field_types.iter_mut() {
@@ -294,15 +286,14 @@ pub fn type_and_check_validity<W: Write>(
 
          error_count += 1;
          let etype_str = e_type.as_roland_type_info(interner);
-         writeln!(
-            err_stream,
+         rolandc_error_w_details!(
+            err_manager,
+            &[(struct_i.1.location, "struct defined")],
             "Field `{}` of struct `{}` is of undeclared type `{}`",
             interner.lookup(*field),
             interner.lookup(*struct_i.0),
             etype_str,
-         )
-         .unwrap();
-         emit_source_info_with_description(err_stream, struct_i.1.location, "struct defined", interner);
+         );
       }
    }
 
@@ -314,13 +305,12 @@ pub fn type_and_check_validity<W: Write>(
          == RecursiveStructCheckResult::ContainsSelf
       {
          error_count += 1;
-         writeln!(
-            err_stream,
+         rolandc_error_w_details!(
+            err_manager,
+            &[(struct_i.1.location, "struct defined")],
             "Struct `{}` contains itself, which isn't allowed as it would result in an infinitely large struct",
             interner.lookup(*struct_i.0),
-         )
-         .unwrap();
-         emit_source_info_with_description(err_stream, struct_i.1.location, "struct defined", interner);
+         );
       }
    }
 
@@ -331,14 +321,13 @@ pub fn type_and_check_validity<W: Write>(
       if resolve_type(const_type, &enum_info, &struct_info).is_err() {
          error_count += 1;
          let static_type_str = const_type.as_roland_type_info(interner);
-         writeln!(
-            err_stream,
+         rolandc_error_w_details!(
+            err_manager,
+            &[(*si, "const defined")],
             "Const `{}` is of undeclared type `{}`",
             interner.lookup(const_node.name.identifier),
             static_type_str,
-         )
-         .unwrap();
-         emit_source_info_with_description(err_stream, *si, "const defined", interner);
+         );
       }
 
       if let Some(old_value) = static_info.insert(
@@ -350,14 +339,12 @@ pub fn type_and_check_validity<W: Write>(
          },
       ) {
          error_count += 1;
-         writeln!(
-            err_stream,
+         rolandc_error_w_details!(
+            err_manager,
+            &[(old_value.location, "first static/const defined"), (*si, "second static/const defined"),],
             "Encountered duplicate static/const with the same name `{}`",
             interner.lookup(const_node.name.identifier),
-         )
-         .unwrap();
-         emit_source_info_with_description(err_stream, old_value.location, "first static/const defined", interner);
-         emit_source_info_with_description(err_stream, const_node.location, "second static/const defined", interner);
+         );
       }
    }
 
@@ -368,14 +355,13 @@ pub fn type_and_check_validity<W: Write>(
       if resolve_type(static_type, &enum_info, &struct_info).is_err() {
          error_count += 1;
          let static_type_str = static_type.as_roland_type_info(interner);
-         writeln!(
-            err_stream,
+         rolandc_error_w_details!(
+            err_manager,
+            &[(*si, "static defined")],
             "Static `{}` is of undeclared type `{}`",
             interner.lookup(static_node.name.identifier),
             static_type_str,
-         )
-         .unwrap();
-         emit_source_info_with_description(err_stream, *si, "static defined", interner);
+         );
       }
 
       if let Some(old_value) = static_info.insert(
@@ -387,18 +373,11 @@ pub fn type_and_check_validity<W: Write>(
          },
       ) {
          error_count += 1;
-         writeln!(
-            err_stream,
+         rolandc_error_w_details!(
+            err_manager,
+            &[(old_value.location, "first static/const defined"), (static_node.location, "second static/const defined")],
             "Encountered duplicate static/const with the same name `{}`",
             interner.lookup(static_node.name.identifier),
-         )
-         .unwrap();
-         emit_source_info_with_description(err_stream, old_value.location, "first static/const defined", interner);
-         emit_source_info_with_description(
-            err_stream,
-            static_node.location,
-            "second static/const defined",
-            interner,
          );
       }
    }
@@ -427,13 +406,12 @@ pub fn type_and_check_validity<W: Write>(
          && source_location.file != SourcePath::Std
       {
          error_count += 1;
-         writeln!(
-            err_stream,
+         rolandc_error_w_details!(
+            err_manager,
+            &[(source_location, "procedure declared")],
             "Procedure `{}` is declared to be builtin, but only the compiler can declare builtin procedures",
             interner.lookup(definition.name),
-         )
-         .unwrap();
-         emit_source_info_with_description(err_stream, source_location, "procedure declared", interner);
+         );
       }
 
       let mut first_named_param = None;
@@ -441,14 +419,13 @@ pub fn type_and_check_validity<W: Write>(
       for (i, param) in definition.parameters.iter().enumerate() {
          if !dupe_check.insert(param.name) {
             error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error_w_details!(
+               err_manager,
+               &[(source_location, "procedure declared")],
                "Procedure `{}` has a duplicate parameter `{}`",
                interner.lookup(definition.name),
                interner.lookup(param.name),
-            )
-            .unwrap();
-            emit_source_info_with_description(err_stream, source_location, "procedure declared", interner);
+            );
          }
 
          if param.named && first_named_param.is_none() {
@@ -457,26 +434,24 @@ pub fn type_and_check_validity<W: Write>(
             if extern_impl_source == Some(std::mem::discriminant(&ProcImplSource::External)) {
                reported_named_error = true;
                error_count += 1;
-               writeln!(
-                  err_stream,
+               rolandc_error_w_details!(
+                  err_manager,
+                  &[(source_location, "procedure declared")],
                   "External procedure `{}` has named parameter(s), which isn't supported",
                   interner.lookup(definition.name),
-               )
-               .unwrap();
-               emit_source_info_with_description(err_stream, source_location, "procedure declared", interner);
+               );
             }
          }
 
          if !param.named && first_named_param.is_some() && !reported_named_error {
             reported_named_error = true;
             error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error_w_details!(
+               err_manager,
+               &[(source_location, "procedure declared")],
                "Procedure `{}` has named parameter(s) which come before non-named parameter(s)",
                interner.lookup(definition.name),
-            )
-            .unwrap();
-            emit_source_info_with_description(err_stream, source_location, "procedure declared", interner);
+            );
          }
       }
 
@@ -492,29 +467,27 @@ pub fn type_and_check_validity<W: Write>(
          if resolve_type(&mut parameter.p_type, &enum_info, &struct_info).is_err() {
             error_count += 1;
             let etype_str = parameter.p_type.as_roland_type_info(interner);
-            writeln!(
-               err_stream,
+            rolandc_error_w_details!(
+               err_manager,
+               &[(source_location, "procedure declared")],
                "Parameter `{}` of procedure `{}` is of undeclared type `{}`",
                interner.lookup(parameter.name),
                interner.lookup(definition.name),
                etype_str,
-            )
-            .unwrap();
-            emit_source_info_with_description(err_stream, source_location, "procedure declared", interner);
+            );
          }
       }
 
       if resolve_type(&mut definition.ret_type, &enum_info, &struct_info).is_err() {
          error_count += 1;
          let etype_str = definition.ret_type.as_roland_type_info(interner);
-         writeln!(
-            err_stream,
+         rolandc_error_w_details!(
+            err_manager,
+            &[(source_location, "procedure declared")],
             "Return type of procedure `{}` is of undeclared type `{}`",
             interner.lookup(definition.name),
             etype_str,
-         )
-         .unwrap();
-         emit_source_info_with_description(err_stream, source_location, "procedure declared", interner);
+         );
       }
 
       if let Some(old_procedure) = procedure_info.insert(
@@ -534,14 +507,12 @@ pub fn type_and_check_validity<W: Write>(
       ) {
          error_count += 1;
          let procedure_name_str = interner.lookup(definition.name);
-         writeln!(
-            err_stream,
+         rolandc_error_w_details!(
+            err_manager,
+            &[(old_procedure.location, "first procedure declared"), (source_location, "second procedure declared")],
             "Encountered duplicate procedures with the same name `{}`",
             procedure_name_str
-         )
-         .unwrap();
-         emit_source_info_with_description(err_stream, old_procedure.location, "first procedure declared", interner);
-         emit_source_info_with_description(err_stream, source_location, "second procedure declared", interner);
+         );
       }
    }
 
@@ -566,13 +537,12 @@ pub fn type_and_check_validity<W: Write>(
    for special_proc_name in special_procs.iter().copied() {
       if !validation_context.procedure_info.contains_key(&special_proc_name) {
          validation_context.error_count += 1;
-         writeln!(
-            err_stream,
+         rolandc_error_no_loc!(
+            err_manager,
             "A procedure with the name `{}` must be present for this target ({})",
             interner.lookup(special_proc_name),
             validation_context.target,
-         )
-         .unwrap();
+         );
       } else if validation_context
          .procedure_info
          .get(&special_proc_name)
@@ -587,19 +557,18 @@ pub fn type_and_check_validity<W: Write>(
             .is_empty()
       {
          validation_context.error_count += 1;
-         writeln!(
-            err_stream,
-            "`{}` is a special procedure for this target ({}) and is not allowed to return a value or take arguments",
-            interner.lookup(special_proc_name),
-            validation_context.target,
-         )
-         .unwrap();
          let si = validation_context
             .procedure_info
             .get(&special_proc_name)
             .unwrap()
             .location;
-         emit_source_info_with_description(err_stream, si, "defined", interner);
+         rolandc_error_w_details!(
+            err_manager,
+            &[(si, "defined")],
+            "`{}` is a special procedure for this target ({}) and is not allowed to return a value or take arguments",
+            interner.lookup(special_proc_name),
+            validation_context.target,
+         );
       }
    }
 
@@ -611,12 +580,12 @@ pub fn type_and_check_validity<W: Write>(
 
    for p_const in program.consts.iter_mut() {
       // p_const.const_type is guaranteed to be resolved at this point
-      type_expression(err_stream, p_const.value, &mut validation_context, interner);
+      type_expression(err_manager, p_const.value, &mut validation_context, interner);
       try_set_inferred_type(
          &p_const.const_type,
          p_const.value,
          &mut validation_context,
-         err_stream,
+         err_manager,
          interner,
       );
 
@@ -627,27 +596,25 @@ pub fn type_and_check_validity<W: Write>(
       {
          validation_context.error_count += 1;
          let actual_type_str = p_const_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
-         writeln!(
-            err_stream,
+         rolandc_error_w_details!(
+            err_manager,
+            &[(p_const.location, "const"), (p_const_expr.location, "expression")],
             "Declared type {} of const `{}` does not match actual expression type {}",
             p_const.const_type.as_roland_type_info(interner),
             interner.lookup(p_const.name.identifier),
             actual_type_str,
-         )
-         .unwrap();
-         emit_source_info_with_description(err_stream, p_const.location, "const", interner);
-         emit_source_info_with_description(err_stream, p_const_expr.location, "expression", interner);
+         );
       }
    }
 
    for p_static in program.statics.iter_mut().filter(|x| x.value.is_some()) {
       // p_static.static_type is guaranteed to be resolved at this point
-      type_expression(err_stream, p_static.value.unwrap(), &mut validation_context, interner);
+      type_expression(err_manager, p_static.value.unwrap(), &mut validation_context, interner);
       try_set_inferred_type(
          &p_static.static_type,
          p_static.value.unwrap(),
          &mut validation_context,
-         err_stream,
+         err_manager,
          interner,
       );
 
@@ -658,16 +625,14 @@ pub fn type_and_check_validity<W: Write>(
       {
          validation_context.error_count += 1;
          let actual_type_str = p_static_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
-         writeln!(
-            err_stream,
+         rolandc_error_w_details!(
+            err_manager,
+            &[(p_static.location, "static"), (p_static_expr.location, "expression")],
             "Declared type {} of static `{}` does not match actual expression type {}",
             p_static.static_type.as_roland_type_info(interner),
             interner.lookup(p_static.name.identifier),
             actual_type_str,
-         )
-         .unwrap();
-         emit_source_info_with_description(err_stream, p_static.location, "static", interner);
-         emit_source_info_with_description(err_stream, p_static_expr.location, "expression", interner);
+         );
       }
    }
 
@@ -687,7 +652,7 @@ pub fn type_and_check_validity<W: Write>(
       }
 
       type_block(
-         err_stream,
+         err_manager,
          &mut procedure.block,
          &mut validation_context,
          &mut procedure.locals,
@@ -705,47 +670,48 @@ pub fn type_and_check_validity<W: Write>(
          (x, _) => {
             validation_context.error_count += 1;
             let x_str = x.as_roland_type_info(interner);
-            writeln!(
-               err_stream,
+            let mut err_details = vec![(procedure.location, "procedure defined")];
+            if let Some(fs) = procedure.block.statements.last() {
+               err_details.push((fs.location, "actual final statement"));
+            }
+            rolandc_error_w_details!(
+               err_manager,
+               &err_details,
                "Procedure `{}` is declared to return type {} but is missing a final return statement",
                interner.lookup(procedure.definition.name),
                x_str,
-            )
-            .unwrap();
-            emit_source_info_with_description(err_stream, procedure.location, "procedure defined", interner);
-            if let Some(fs) = procedure.block.statements.last() {
-               emit_source_info_with_description(err_stream, fs.location, "actual final statement", interner);
-            }
+            );
+
          }
       }
    }
 
    if !validation_context.unknown_ints.is_empty() {
       validation_context.error_count += 1;
-      writeln!(
-         err_stream,
+      let err_details: Vec<_> = validation_context.unknown_ints.iter().map(|x| {
+         let loc = validation_context.expressions[*x].location;
+         (loc, "int literal")
+      }).collect();
+      rolandc_error_w_details!(
+         err_manager,
+         &err_details,
          "We weren't able to determine the types of {} int literals",
          validation_context.unknown_ints.len()
-      )
-      .unwrap();
-      for expr_id in validation_context.unknown_ints.iter() {
-         let loc = validation_context.expressions[*expr_id].location;
-         emit_source_info(err_stream, loc, interner);
-      }
+      );
    }
 
    if !validation_context.unknown_floats.is_empty() {
       validation_context.error_count += 1;
-      writeln!(
-         err_stream,
+      let err_details: Vec<_> = validation_context.unknown_floats.iter().map(|x| {
+         let loc = validation_context.expressions[*x].location;
+         (loc, "float literal")
+      }).collect();
+      rolandc_error_w_details!(
+         err_manager,
+         &err_details,
          "We weren't able to determine the types of {} float literals",
          validation_context.unknown_floats.len()
-      )
-      .unwrap();
-      for expr_id in validation_context.unknown_ints.iter() {
-         let loc = validation_context.expressions[*expr_id].location;
-         emit_source_info(err_stream, loc, interner);
-      }
+      );
    }
 
    let err_count = validation_context.error_count;
@@ -757,8 +723,8 @@ pub fn type_and_check_validity<W: Write>(
    err_count
 }
 
-fn type_statement<W: Write>(
-   err_stream: &mut W,
+fn type_statement(
+   err_manager: &mut ErrorManager,
    statement: &mut StatementNode,
    validation_context: &mut ValidationContext,
    cur_procedure_locals: &mut IndexMap<StrId, HashSet<ExpressionType>>,
@@ -766,14 +732,14 @@ fn type_statement<W: Write>(
 ) {
    match &mut statement.statement {
       Statement::Assignment(lhs, rhs) => {
-         type_expression(err_stream, *lhs, validation_context, interner);
-         type_expression(err_stream, *rhs, validation_context, interner);
+         type_expression(err_manager, *lhs, validation_context, interner);
+         type_expression(err_manager, *rhs, validation_context, interner);
 
          try_set_inferred_type(
             &validation_context.expressions[*lhs].exp_type.clone().unwrap(),
             *rhs,
             validation_context,
-            err_stream,
+            err_manager,
             interner,
          );
 
@@ -787,15 +753,13 @@ fn type_statement<W: Write>(
             // avoid cascading errors
          } else if lhs_type != rhs_type {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error_w_details!(
+               err_manager,
+               &[(len.location, "left hand side"), (en.location, "right hand side")],
                "Left hand side of assignment has type {} which does not match the type of the right hand side {}",
                lhs_type.as_roland_type_info(interner),
                rhs_type.as_roland_type_info(interner),
-            )
-            .unwrap();
-            emit_source_info_with_description(err_stream, len.location, "left hand side", interner);
-            emit_source_info_with_description(err_stream, en.location, "right hand side", interner);
+            );
          } else if !len
             .expression
             .is_lvalue(validation_context.expressions, validation_context.static_info)
@@ -805,55 +769,51 @@ fn type_statement<W: Write>(
                .expression
                .is_lvalue_disregard_consts(validation_context.expressions)
             {
-               writeln!(
-                  err_stream,
+               rolandc_error!(
+                  err_manager,
+                  len.location,
                   "Left hand side of assignment is a constant, which does not have a memory location and can't be reassigned"
-               )
-               .unwrap();
-               emit_source_info(err_stream, len.location, interner);
+               );
             } else {
-               writeln!(
-                  err_stream,
+               rolandc_error!(
+                  err_manager,
+                  len.location,
                   "Left hand side of assignment is not a valid memory location; i.e. a variable, field, or array index"
-               )
-               .unwrap();
-               emit_source_info(err_stream, len.location, interner);
+               );
             }
          }
       }
       Statement::Block(bn) => {
-         type_block(err_stream, bn, validation_context, cur_procedure_locals, interner);
+         type_block(err_manager, bn, validation_context, cur_procedure_locals, interner);
       }
       Statement::Continue => {
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
-            writeln!(err_stream, "Continue statement can only be used in a loop").unwrap();
-            emit_source_info(err_stream, statement.location, interner);
+            rolandc_error!(err_manager, statement.location, "Continue statement can only be used in a loop");
          }
       }
       Statement::Break => {
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
-            writeln!(err_stream, "Break statement can only be used in a loop").unwrap();
-            emit_source_info(err_stream, statement.location, interner);
+            rolandc_error!(err_manager, statement.location, "Break statement can only be used in a loop");
          }
       }
       Statement::For(var, start, end, bn, _) => {
-         type_expression(err_stream, *start, validation_context, interner);
-         type_expression(err_stream, *end, validation_context, interner);
+         type_expression(err_manager, *start, validation_context, interner);
+         type_expression(err_manager, *end, validation_context, interner);
 
          try_set_inferred_type(
             &validation_context.expressions[*start].exp_type.clone().unwrap(),
             *end,
             validation_context,
-            err_stream,
+            err_manager,
             interner,
          );
          try_set_inferred_type(
             &validation_context.expressions[*end].exp_type.clone().unwrap(),
             *start,
             validation_context,
-            err_stream,
+            err_manager,
             interner,
          );
 
@@ -871,15 +831,13 @@ fn type_statement<W: Write>(
             }
             _ => {
                validation_context.error_count += 1;
-               writeln!(
-                  err_stream,
+               rolandc_error_w_details!(
+                  err_manager,
+                  &[(start_expr.location, "start of range"), (end_expr.location, "end of range")],
                   "Start and end of range must be integer types of the same kind; got types `{}` and `{}`",
                   start_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
                   end_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
-               )
-               .unwrap();
-               emit_source_info_with_description(err_stream, start_expr.location, "start of range", interner);
-               emit_source_info_with_description(err_stream, end_expr.location, "end of range", interner);
+               );
                ExpressionType::Value(ValueType::CompileError)
             }
          };
@@ -887,7 +845,7 @@ fn type_statement<W: Write>(
          // This way the variable is declared at the depth that we'll be typing in
          validation_context.block_depth += 1;
          declare_variable(
-            err_stream,
+            err_manager,
             var,
             result_type,
             validation_context,
@@ -897,37 +855,36 @@ fn type_statement<W: Write>(
          validation_context.block_depth -= 1;
 
          validation_context.loop_depth += 1;
-         type_block(err_stream, bn, validation_context, cur_procedure_locals, interner);
+         type_block(err_manager, bn, validation_context, cur_procedure_locals, interner);
          validation_context.loop_depth -= 1;
       }
       Statement::Loop(bn) => {
          validation_context.loop_depth += 1;
-         type_block(err_stream, bn, validation_context, cur_procedure_locals, interner);
+         type_block(err_manager, bn, validation_context, cur_procedure_locals, interner);
          validation_context.loop_depth -= 1;
       }
       Statement::Expression(en) => {
-         type_expression(err_stream, *en, validation_context, interner);
+         type_expression(err_manager, *en, validation_context, interner);
       }
       Statement::IfElse(en, block_1, block_2) => {
-         type_block(err_stream, block_1, validation_context, cur_procedure_locals, interner);
-         type_statement(err_stream, block_2, validation_context, cur_procedure_locals, interner);
-         type_expression(err_stream, *en, validation_context, interner);
+         type_block(err_manager, block_1, validation_context, cur_procedure_locals, interner);
+         type_statement(err_manager, block_2, validation_context, cur_procedure_locals, interner);
+         type_expression(err_manager, *en, validation_context, interner);
 
          let en = &validation_context.expressions[*en];
          let if_exp_type = en.exp_type.as_ref().unwrap();
          if if_exp_type != &ExpressionType::Value(ValueType::Bool) && !if_exp_type.is_error_type() {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error!(
+               err_manager,
+               en.location,
                "Value of if expression must be a bool; got {}",
                en.exp_type.as_ref().unwrap().as_roland_type_info(interner)
-            )
-            .unwrap();
-            emit_source_info(err_stream, en.location, interner);
+            );
          }
       }
       Statement::Return(en) => {
-         type_expression(err_stream, *en, validation_context, interner);
+         type_expression(err_manager, *en, validation_context, interner);
          let cur_procedure_info = validation_context.cur_procedure_info.unwrap();
 
          // Type Inference
@@ -935,7 +892,7 @@ fn type_statement<W: Write>(
             &cur_procedure_info.ret_type,
             *en,
             validation_context,
-            err_stream,
+            err_manager,
             interner,
          );
 
@@ -945,38 +902,35 @@ fn type_statement<W: Write>(
             && en.exp_type.as_ref().unwrap() != &cur_procedure_info.ret_type
          {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error!(
+               err_manager,
+               en.location,
                "Value of return statement must match declared return type {}; got {}",
                cur_procedure_info.ret_type.as_roland_type_info(interner),
                en.exp_type.as_ref().unwrap().as_roland_type_info(interner)
-            )
-            .unwrap();
-            emit_source_info(err_stream, en.location, interner);
+            );
          }
       }
       Statement::VariableDeclaration(id, en, dt) => {
-         type_expression(err_stream, *en, validation_context, interner);
+         type_expression(err_manager, *en, validation_context, interner);
 
          if let Some(v) = dt.as_mut() {
             // Failure to resolve is handled below
             let _ = resolve_type(v, validation_context.enum_info, validation_context.struct_info);
-            try_set_inferred_type(v, *en, validation_context, err_stream, interner);
+            try_set_inferred_type(v, *en, validation_context, err_manager, interner);
          }
 
          let en = &validation_context.expressions[*en];
 
          let result_type = if dt.is_some() && *dt != en.exp_type && !en.exp_type.as_ref().unwrap().is_error_type() {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error_w_details!(
+               err_manager,
+               &[(statement.location, "declaration"), (en.location, "expression")],
                "Declared type {} does not match actual expression type {}",
                dt.as_ref().unwrap().as_roland_type_info(interner),
                en.exp_type.as_ref().unwrap().as_roland_type_info(interner)
-            )
-            .unwrap();
-            emit_source_info_with_description(err_stream, statement.location, "declaration", interner);
-            emit_source_info_with_description(err_stream, en.location, "expression", interner);
+            );
             ExpressionType::Value(ValueType::CompileError)
          } else if dt
             .as_ref()
@@ -984,21 +938,20 @@ fn type_statement<W: Write>(
          {
             validation_context.error_count += 1;
             let dt_str = dt.as_ref().unwrap().as_roland_type_info(interner);
-            writeln!(
-               err_stream,
+            rolandc_error_w_details!(
+               err_manager,
+               &[(statement.location, "declaration")],
                "Variable `{}` is declared with undefined type `{}`",
                interner.lookup(id.identifier),
                dt_str,
-            )
-            .unwrap();
-            emit_source_info_with_description(err_stream, statement.location, "declaration", interner);
+            );
             ExpressionType::Value(ValueType::CompileError)
          } else {
             en.exp_type.clone().unwrap()
          };
 
          declare_variable(
-            err_stream,
+            err_manager,
             id,
             result_type,
             validation_context,
@@ -1009,8 +962,8 @@ fn type_statement<W: Write>(
    }
 }
 
-fn declare_variable<W: Write>(
-   err_stream: &mut W,
+fn declare_variable(
+   err_manager: &mut ErrorManager,
    id: &IdentifierNode,
    var_type: ExpressionType,
    validation_context: &mut ValidationContext,
@@ -1021,13 +974,12 @@ fn declare_variable<W: Write>(
       || validation_context.variable_types.contains_key(&id.identifier)
    {
       validation_context.error_count += 1;
-      writeln!(
-         err_stream,
+      rolandc_error_w_details!(
+         err_manager,
+         &[(id.location, "declaration")],
          "Variable shadowing is not supported at this time (`{}`)",
          interner.lookup(id.identifier)
-      )
-      .unwrap();
-      emit_source_info_with_description(err_stream, id.location, "declaration", interner);
+      );
    } else {
       validation_context
          .variable_types
@@ -1039,8 +991,8 @@ fn declare_variable<W: Write>(
    }
 }
 
-fn type_block<W: Write>(
-   err_stream: &mut W,
+fn type_block(
+   err_manager: &mut ErrorManager,
    bn: &mut BlockNode,
    validation_context: &mut ValidationContext,
    cur_procedure_locals: &mut IndexMap<StrId, HashSet<ExpressionType>>,
@@ -1050,7 +1002,7 @@ fn type_block<W: Write>(
 
    for statement in bn.statements.iter_mut() {
       type_statement(
-         err_stream,
+         err_manager,
          statement,
          validation_context,
          cur_procedure_locals,
@@ -1063,8 +1015,8 @@ fn type_block<W: Write>(
    validation_context.variable_types.retain(|_, v| v.1 <= cur_block_depth);
 }
 
-fn get_type<W: Write>(
-   err_stream: &mut W,
+fn get_type(
+   err_manager: &mut ErrorManager,
    expr_index: ExpressionId,
    validation_context: &mut ValidationContext,
    interner: &mut Interner,
@@ -1092,7 +1044,7 @@ fn get_type<W: Write>(
          ExpressionType::Value(ValueType::Struct(interner.intern("String")))
       }
       Expression::Extend(target_type, e) => {
-         type_expression(err_stream, *e, validation_context, interner);
+         type_expression(err_manager, *e, validation_context, interner);
 
          let e = &validation_context.expressions[*e];
          let e_type = e.exp_type.as_ref().unwrap();
@@ -1105,13 +1057,12 @@ fn get_type<W: Write>(
          .is_err()
          {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error!(
+               err_manager,
+               expr_location,
                "Undeclared type `{}`",
                target_type.as_roland_type_info(interner),
-            )
-            .unwrap();
-            emit_source_info(err_stream, expr_location, interner);
+            );
 
             ExpressionType::Value(ValueType::CompileError)
          } else if !e_type.is_concrete_type() {
@@ -1141,28 +1092,26 @@ fn get_type<W: Write>(
                target_type.clone()
             } else {
                validation_context.error_count += 1;
-               writeln!(
-                  err_stream,
+               rolandc_error_w_details!(
+                  err_manager,
+                  &[(expr_location, "extend"), (e.location, "operand")],
                   "Extend encountered an operand of type {} which can not be extended to type {}",
                   e_type.as_roland_type_info(interner),
                   target_type.as_roland_type_info(interner),
-               )
-               .unwrap();
-               emit_source_info_with_description(err_stream, expr_location, "extend", interner);
-               emit_source_info_with_description(err_stream, e.location, "operand", interner);
+               );
                ExpressionType::Value(ValueType::CompileError)
             }
          }
       }
       Expression::Transmute(target_type, e) => {
-         type_expression(err_stream, *e, validation_context, interner);
+         type_expression(err_manager, *e, validation_context, interner);
 
          if target_type.is_pointer() {
             try_set_inferred_type(
                &ExpressionType::Value(USIZE_TYPE),
                *e,
                validation_context,
-               err_stream,
+               err_manager,
                interner,
             );
          }
@@ -1178,13 +1127,12 @@ fn get_type<W: Write>(
          .is_err()
          {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error!(
+               err_manager,
+               expr_location,
                "Undeclared type `{}`",
                target_type.as_roland_type_info(interner),
-            )
-            .unwrap();
-            emit_source_info(err_stream, expr_location, interner);
+            );
 
             ExpressionType::Value(ValueType::CompileError)
          } else if !e_type.is_concrete_type() {
@@ -1219,21 +1167,19 @@ fn get_type<W: Write>(
                target_type.clone()
             } else {
                validation_context.error_count += 1;
-               writeln!(
-                  err_stream,
+               rolandc_error_w_details!(
+                  err_manager,
+                  &[(expr_location, "transmute"), (e.location, "operand")],
                   "Transmute encountered an operand of type {} which can not be transmuted to type {}",
                   e_type.as_roland_type_info(interner),
                   target_type.as_roland_type_info(interner),
-               )
-               .unwrap();
-               emit_source_info_with_description(err_stream, expr_location, "transmute", interner);
-               emit_source_info_with_description(err_stream, e.location, "operand", interner);
+               );
                ExpressionType::Value(ValueType::CompileError)
             }
          }
       }
       Expression::Truncate(target_type, e) => {
-         type_expression(err_stream, *e, validation_context, interner);
+         type_expression(err_manager, *e, validation_context, interner);
 
          let e = &validation_context.expressions[*e];
          let e_type = e.exp_type.as_ref().unwrap();
@@ -1246,13 +1192,12 @@ fn get_type<W: Write>(
          .is_err()
          {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error!(
+               err_manager,
+               expr_location,
                "Undeclared type `{}`",
                target_type.as_roland_type_info(interner),
-            )
-            .unwrap();
-            emit_source_info(err_stream, expr_location, interner);
+            );
 
             ExpressionType::Value(ValueType::CompileError)
          } else if !e_type.is_concrete_type() {
@@ -1283,22 +1228,20 @@ fn get_type<W: Write>(
                target_type.clone()
             } else {
                validation_context.error_count += 1;
-               writeln!(
-                  err_stream,
+               rolandc_error_w_details!(
+                  err_manager,
+                  &[(expr_location, "truncate"), (e.location, "operand")],
                   "Truncate encountered an operand of type {} which can not be truncated to type {}",
                   e_type.as_roland_type_info(interner),
                   target_type.as_roland_type_info(interner),
-               )
-               .unwrap();
-               emit_source_info_with_description(err_stream, expr_location, "truncate", interner);
-               emit_source_info_with_description(err_stream, e.location, "operand", interner);
+               );
                ExpressionType::Value(ValueType::CompileError)
             }
          }
       }
       Expression::BinaryOperator { operator, lhs, rhs } => {
-         type_expression(err_stream, *lhs, validation_context, interner);
-         type_expression(err_stream, *rhs, validation_context, interner);
+         type_expression(err_manager, *lhs, validation_context, interner);
+         type_expression(err_manager, *rhs, validation_context, interner);
 
          let correct_arg_types: &[TypeValidator] = match operator {
             BinOp::Add
@@ -1324,14 +1267,14 @@ fn get_type<W: Write>(
             &validation_context.expressions[*lhs].exp_type.clone().unwrap(),
             *rhs,
             validation_context,
-            err_stream,
+            err_manager,
             interner,
          );
          try_set_inferred_type(
             &validation_context.expressions[*rhs].exp_type.clone().unwrap(),
             *lhs,
             validation_context,
-            err_stream,
+            err_manager,
             interner,
          );
 
@@ -1346,40 +1289,36 @@ fn get_type<W: Write>(
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_arg_types, lhs_type) {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error!(
+               err_manager,
+               lhs_expr.location,
                "Binary operator {:?} requires LHS to have type matching {:?}; instead got {}",
                operator,
                correct_arg_types,
                lhs_type.as_roland_type_info(interner)
-            )
-            .unwrap();
-            emit_source_info(err_stream, lhs_expr.location, interner);
+            );
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_arg_types, rhs_type) {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error!(
+               err_manager,
+               rhs_expr.location,
                "Binary operator {:?} requires RHS to have type matching {:?}; instead got {}",
                operator,
                correct_arg_types,
                rhs_type.as_roland_type_info(interner)
-            )
-            .unwrap();
-            emit_source_info(err_stream, rhs_expr.location, interner);
+            );
             ExpressionType::Value(ValueType::CompileError)
          } else if lhs_type != rhs_type {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error_w_details!(
+               err_manager,
+               &[(lhs_expr.location, "left hand side"), (rhs_expr.location, "right hand side")],
                "Binary operator {:?} requires LHS and RHS to have identical type; instead got {} and {}",
                operator,
                lhs_type.as_roland_type_info(interner),
                rhs_type.as_roland_type_info(interner)
-            )
-            .unwrap();
-            emit_source_info_with_description(err_stream, lhs_expr.location, "lef hand side", interner);
-            emit_source_info_with_description(err_stream, rhs_expr.location, "right hand side", interner);
+            );
             ExpressionType::Value(ValueType::CompileError)
          } else {
             match operator {
@@ -1405,7 +1344,7 @@ fn get_type<W: Write>(
          }
       }
       Expression::UnaryOperator(un_op, e) => {
-         type_expression(err_stream, *e, validation_context, interner);
+         type_expression(err_manager, *e, validation_context, interner);
 
          let e = &validation_context.expressions[*e];
 
@@ -1436,15 +1375,14 @@ fn get_type<W: Write>(
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_type, e.exp_type.as_ref().unwrap()) {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error!(
+               err_manager,
+               e.location,
                "Expected type {:?} for expression {:?}; instead got {}",
                correct_type,
                un_op,
                e.exp_type.as_ref().unwrap().as_roland_type_info(interner)
-            )
-            .unwrap();
-            emit_source_info(err_stream, e.location, interner);
+            );
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf
             && !e
@@ -1453,32 +1391,29 @@ fn get_type<W: Write>(
          {
             validation_context.error_count += 1;
             if e.expression.is_lvalue_disregard_consts(validation_context.expressions) {
-               writeln!(
-                  err_stream,
+               rolandc_error!(
+                  err_manager,
+                  expr_location,
                   "Attempting to take a pointer to a const, which can't be done as they don't reside in memory"
-               )
-               .unwrap();
-               emit_source_info(err_stream, expr_location, interner);
+               );
             } else {
-               writeln!(
-                  err_stream,
+               rolandc_error!(
+                  err_manager,
+                  expr_location,
                   "A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter"
-               )
-               .unwrap();
-               emit_source_info(err_stream, expr_location, interner);
+               );
             }
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf {
             if let Expression::Variable(var) = e.expression {
                if validation_context.static_info.get(&var).map_or(false, |x| x.is_const) {
                   validation_context.error_count += 1;
-                  writeln!(
-                     err_stream,
+                  rolandc_error!(
+                     err_manager,
+                     expr_location,
                      "Attempting to take a pointer to a const, which does not have a memory location. Hint: Should `{}` be a static?",
                      interner.lookup(var),
-                  )
-                  .unwrap();
-                  emit_source_info(err_stream, expr_location, interner);
+                  );
                }
             }
             node_type
@@ -1497,8 +1432,7 @@ fn get_type<W: Write>(
             Some(t) => t.clone(),
             None => {
                validation_context.error_count += 1;
-               writeln!(err_stream, "Encountered undefined variable `{}`", interner.lookup(*id)).unwrap();
-               emit_source_info(err_stream, expr_location, interner);
+               rolandc_error!(err_manager, expr_location, "Encountered undefined variable `{}`", interner.lookup(*id));
                ExpressionType::Value(ValueType::CompileError)
             }
          }
@@ -1509,7 +1443,7 @@ fn get_type<W: Write>(
          generic_args,
       } => {
          for arg in args.iter_mut() {
-            type_expression(err_stream, arg.expr, validation_context, interner);
+            type_expression(err_manager, arg.expr, validation_context, interner);
          }
 
          for g_arg in generic_args.iter_mut() {
@@ -1522,26 +1456,24 @@ fn get_type<W: Write>(
             {
                validation_context.error_count += 1;
                let etype_str = g_arg.gtype.as_roland_type_info(interner);
-               writeln!(
-                  err_stream,
+               rolandc_error_w_details!(
+                  err_manager,
+                  &[(expr_location, "call")],
                   "Undeclared type `{}` given as a type argument to `{}`",
                   etype_str,
                   interner.lookup(*proc_name),
-               )
-               .unwrap();
-               emit_source_info_with_description(err_stream, expr_location, "call", interner);
+               );
             }
          }
 
          if is_special_procedure(validation_context.target, *proc_name, interner) {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error!(
+               err_manager,
+               expr_location,
                "`{}` is a special procedure and is not allowed to be called",
                interner.lookup(*proc_name),
-            )
-            .unwrap();
-            emit_source_info(err_stream, expr_location, interner);
+            );
          }
 
          match validation_context.procedure_info.get(proc_name) {
@@ -1559,39 +1491,36 @@ fn get_type<W: Write>(
 
                if !args_in_order {
                   validation_context.error_count += 1;
-                  writeln!(
-                     err_stream,
+                  rolandc_error!(
+                     err_manager,
+                     expr_location,
                      "Call to `{}` has named argument(s) which come before non-named argument(s)",
                      interner.lookup(*proc_name),
-                  )
-                  .unwrap();
-                  emit_source_info(err_stream, expr_location, interner);
+                  );
                }
 
                if procedure_info.type_parameters != generic_args.len() {
                   validation_context.error_count += 1;
-                  writeln!(
-                     err_stream,
+                  rolandc_error!(
+                     err_manager,
+                     expr_location,
                      "In call to `{}`, mismatched arity. Expected {} type arguments but got {}",
                      interner.lookup(*proc_name),
                      procedure_info.type_parameters,
                      generic_args.len()
-                  )
-                  .unwrap();
-                  emit_source_info(err_stream, expr_location, interner);
+                  );
                }
 
                if args_in_order && procedure_info.parameters.len() != args.len() {
                   validation_context.error_count += 1;
-                  writeln!(
-                     err_stream,
+                  rolandc_error!(
+                     err_manager,
+                     expr_location,
                      "In call to `{}`, mismatched arity. Expected {} arguments but got {}",
                      interner.lookup(*proc_name),
                      procedure_info.parameters.len(),
                      args.len()
-                  )
-                  .unwrap();
-                  emit_source_info(err_stream, expr_location, interner);
+                  );
                   // We shortcircuit here, because there will likely be lots of mismatched types if an arg was forgotten
                } else if args_in_order {
                   let expected_types = procedure_info.parameters.iter();
@@ -1601,7 +1530,7 @@ fn get_type<W: Write>(
                         break;
                      }
 
-                     try_set_inferred_type(expected, actual.expr, validation_context, err_stream, interner);
+                     try_set_inferred_type(expected, actual.expr, validation_context, err_manager, interner);
 
                      let actual_expr = &validation_context.expressions[actual.expr];
                      let actual_type = actual_expr.exp_type.as_ref().unwrap();
@@ -1610,16 +1539,15 @@ fn get_type<W: Write>(
                         validation_context.error_count += 1;
                         let actual_type_str = actual_type.as_roland_type_info(interner);
                         let expected_type_str = expected.as_roland_type_info(interner);
-                        writeln!(
-                           err_stream,
-                           "In call to `{}`, encountered argument of type {} when we expected {}",
+                        rolandc_error_w_details!(
+                           err_manager,
+                           &[(expr_location, "call"), (actual_expr.location, "argument")],
+                           "In call to `{}`, argument at position {} is of type {} when we expected {}",
                            interner.lookup(*proc_name),
+                           i,
                            actual_type_str,
                            expected_type_str,
-                        )
-                        .unwrap();
-                        writeln!(err_stream, "↳ argument at position {}", i).unwrap();
-                        emit_source_info(err_stream, expr_location, interner);
+                        );
                      }
                   }
 
@@ -1628,20 +1556,19 @@ fn get_type<W: Write>(
 
                      if expected.is_none() {
                         validation_context.error_count += 1;
-                        writeln!(
-                           err_stream,
+                        rolandc_error!(
+                           err_manager,
+                           expr_location,
                            "In call to `{}`, encountered named argument `{}` that does not correspond to any named parameter",
                            interner.lookup(*proc_name),
                            interner.lookup(arg.name.unwrap()),
-                        )
-                        .unwrap();
-                        emit_source_info(err_stream, expr_location, interner);
+                        );
                         continue;
                      }
 
                      let expected = expected.unwrap();
 
-                     try_set_inferred_type(expected, arg.expr, validation_context, err_stream, interner);
+                     try_set_inferred_type(expected, arg.expr, validation_context, err_manager, interner);
 
                      let arg_expr = &validation_context.expressions[arg.expr];
 
@@ -1650,16 +1577,15 @@ fn get_type<W: Write>(
                         validation_context.error_count += 1;
                         let actual_type_str = actual_type.as_roland_type_info(interner);
                         let expected_type_str = expected.as_roland_type_info(interner);
-                        writeln!(
-                           err_stream,
+                        rolandc_error!(
+                           err_manager,
+                           expr_location,
                            "In call to `{}`, encountered argument of type {} when we expected {} for named parameter {}",
                            interner.lookup(*proc_name),
                            actual_type_str,
                            expected_type_str,
                            interner.lookup(arg.name.unwrap())
-                        )
-                        .unwrap();
-                        emit_source_info(err_stream, expr_location, interner);
+                        );
                      }
                   }
                }
@@ -1668,20 +1594,19 @@ fn get_type<W: Write>(
             }
             None => {
                validation_context.error_count += 1;
-               writeln!(
-                  err_stream,
+               rolandc_error!(
+                  err_manager,
+                  expr_location,
                   "Encountered call to undefined procedure `{}`",
                   interner.lookup(*proc_name),
-               )
-               .unwrap();
-               emit_source_info(err_stream, expr_location, interner);
+               );
                ExpressionType::Value(ValueType::CompileError)
             }
          }
       }
       Expression::StructLiteral(struct_name, fields) => {
          for field in fields.iter_mut() {
-            type_expression(err_stream, field.1, validation_context, interner);
+            type_expression(err_manager, field.1, validation_context, interner);
          }
 
          match validation_context.struct_info.get(struct_name) {
@@ -1695,20 +1620,13 @@ fn get_type<W: Write>(
                      Some(x) => x,
                      None => {
                         validation_context.error_count += 1;
-                        writeln!(
-                           err_stream,
+                        rolandc_error_w_details!(
+                           err_manager,
+                           &[(defined_struct.location, "struct defined"), (expr_location, "struct instantiated")],
                            "`{}` is not a known field of struct `{}`",
                            interner.lookup(field.0),
                            interner.lookup(*struct_name),
-                        )
-                        .unwrap();
-                        emit_source_info_with_description(
-                           err_stream,
-                           defined_struct.location,
-                           "struct defined",
-                           interner,
                         );
-                        emit_source_info_with_description(err_stream, expr_location, "struct instantiated", interner);
                         continue;
                      }
                   };
@@ -1716,18 +1634,16 @@ fn get_type<W: Write>(
                   // Duplicate field check
                   if !unmatched_fields.remove(&field.0) {
                      validation_context.error_count += 1;
-                     writeln!(
-                        err_stream,
+                     rolandc_error_w_details!(
+                        err_manager,
+                        &[(defined_struct.location, "struct defined"), (expr_location, "struct instantiated")],
                         "`{}` is a valid field of struct `{}`, but is duplicated",
                         interner.lookup(field.0),
                         interner.lookup(*struct_name),
-                     )
-                     .unwrap();
-                     emit_source_info_with_description(err_stream, defined_struct.location, "struct defined", interner);
-                     emit_source_info_with_description(err_stream, expr_location, "struct instantiated", interner);
+                     );
                   }
 
-                  try_set_inferred_type(defined_type, field.1, validation_context, err_stream, interner);
+                  try_set_inferred_type(defined_type, field.1, validation_context, err_manager, interner);
 
                   let field_expr = &validation_context.expressions[field.1];
 
@@ -1737,18 +1653,15 @@ fn get_type<W: Write>(
                      validation_context.error_count += 1;
                      let field_1_type_str = field_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
                      let defined_type_str = defined_type.as_roland_type_info(interner);
-                     writeln!(
-                        err_stream,
+                     rolandc_error_w_details!(
+                        err_manager,
+                        &[(defined_struct.location, "struct defined"), (expr_location, "struct instantiated"), (field_expr.location, "field value")],
                         "For field `{}` of struct `{}`, encountered value of type {} when we expected {}",
                         interner.lookup(field.0),
                         interner.lookup(*struct_name),
                         field_1_type_str,
                         defined_type_str,
-                     )
-                     .unwrap();
-                     emit_source_info_with_description(err_stream, defined_struct.location, "struct defined", interner);
-                     emit_source_info_with_description(err_stream, expr_location, "struct instantiated", interner);
-                     emit_source_info_with_description(err_stream, field_expr.location, "field_value", interner);
+                     );
                   }
                }
 
@@ -1756,34 +1669,31 @@ fn get_type<W: Write>(
                if !unmatched_fields.is_empty() {
                   validation_context.error_count += 1;
                   let unmatched_fields_str: Vec<&str> = unmatched_fields.iter().map(|x| interner.lookup(*x)).collect();
-                  writeln!(
-                     err_stream,
+                  rolandc_error_w_details!(
+                     err_manager,
+                     &[(defined_struct.location, "struct defined"), (expr_location, "struct instantiated")],
                      "Literal of struct `{}` is missing fields [{}]",
                      interner.lookup(*struct_name),
                      unmatched_fields_str.join(", "),
-                  )
-                  .unwrap();
-                  emit_source_info_with_description(err_stream, defined_struct.location, "struct defined", interner);
-                  emit_source_info_with_description(err_stream, expr_location, "struct instantiated", interner);
+                  );
                }
 
                ExpressionType::Value(ValueType::Struct(*struct_name))
             }
             None => {
                validation_context.error_count += 1;
-               writeln!(
-                  err_stream,
+               rolandc_error!(
+                  err_manager,
+                  expr_location,
                   "Encountered construction of undefined struct `{}`",
                   interner.lookup(*struct_name)
-               )
-               .unwrap();
-               emit_source_info(err_stream, expr_location, interner);
+               );
                ExpressionType::Value(ValueType::CompileError)
             }
          }
       }
       Expression::FieldAccess(fields, lhs) => {
-         type_expression(err_stream, *lhs, validation_context, interner);
+         type_expression(err_manager, *lhs, validation_context, interner);
 
          let lhs = &validation_context.expressions[*lhs];
          let mut lhs_type = lhs.exp_type.as_ref().unwrap().clone();
@@ -1800,14 +1710,13 @@ fn get_type<W: Write>(
                      lhs_type = new_t.clone();
                   } else {
                      validation_context.error_count += 1;
-                     writeln!(
-                        err_stream,
+                     rolandc_error!(
+                        err_manager,
+                        expr_location,
                         "Struct `{}` does not have a field `{}`",
                         interner.lookup(struct_name),
                         interner.lookup(field),
-                     )
-                     .unwrap();
-                     emit_source_info(err_stream, expr_location, interner);
+                     );
                      lhs_type = ExpressionType::Value(ValueType::CompileError);
                   }
                }
@@ -1816,13 +1725,12 @@ fn get_type<W: Write>(
                      lhs_type = ExpressionType::Value(USIZE_TYPE);
                   } else {
                      validation_context.error_count += 1;
-                     writeln!(
-                        err_stream,
+                     rolandc_error!(
+                        err_manager,
+                        expr_location,
                         "Array does not have a field `{}`. Hint: Array types have a single field `length`",
                         interner.lookup(*fields.first().unwrap()),
-                     )
-                     .unwrap();
-                     emit_source_info(err_stream, expr_location, interner);
+                     );
                      lhs_type = ExpressionType::Value(ValueType::CompileError);
                   }
                }
@@ -1831,13 +1739,12 @@ fn get_type<W: Write>(
                }
                other_type => {
                   validation_context.error_count += 1;
-                  writeln!(
-                     err_stream,
+                  rolandc_error!(
+                     err_manager,
+                     expr_location,
                      "Encountered field access on type {}; only structs and arrays have fields",
                      other_type.as_roland_type_info(interner)
-                  )
-                  .unwrap();
-                  emit_source_info(err_stream, expr_location, interner);
+                  );
                   lhs_type = ExpressionType::Value(ValueType::CompileError);
                }
             }
@@ -1851,7 +1758,7 @@ fn get_type<W: Write>(
       }
       Expression::ArrayLiteral(elems) => {
          for elem in elems.iter_mut() {
-            type_expression(err_stream, *elem, validation_context, interner);
+            type_expression(err_manager, *elem, validation_context, interner);
          }
 
          let mut any_error = false;
@@ -1861,7 +1768,7 @@ fn get_type<W: Write>(
                &validation_context.expressions[elems[i - 1]].exp_type.clone().unwrap(),
                elems[i],
                validation_context,
-               err_stream,
+               err_manager,
                interner,
             );
 
@@ -1874,22 +1781,15 @@ fn get_type<W: Write>(
                // avoid cascading errors
             } else if last_elem_expr.exp_type.as_ref().unwrap() != this_elem_expr.exp_type.as_ref().unwrap() {
                validation_context.error_count += 1;
-               writeln!(
-                  err_stream,
+               rolandc_error_w_details!(
+                  err_manager,
+                  &[(expr_location, "array literal".into()), (last_elem_expr.location, format!("element {}", i - 1)), (this_elem_expr.location, format!("element {}", i))],
                   "Element at array index {} has type of {}, but element at array index {} has mismatching type of {}",
                   i - 1,
                   last_elem_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
                   i,
                   this_elem_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
-               )
-               .unwrap();
-               emit_source_info_with_description(err_stream, expr_location, "array literal", interner);
-               // @UnnecessaryAllocation
-               let description = format!("element {}", i - 1);
-               emit_source_info_with_description(err_stream, last_elem_expr.location, &description, interner);
-               // @UnnecessaryAllocation
-               let description = format!("element {}", i);
-               emit_source_info_with_description(err_stream, this_elem_expr.location, &description, interner);
+               );
                any_error = true;
             }
          }
@@ -1897,15 +1797,14 @@ fn get_type<W: Write>(
          // @FixedPointerWidth
          if elems.len() > std::u32::MAX as usize {
             any_error = true;
-            writeln!(
-               err_stream,
+            rolandc_error!(
+               err_manager,
+               expr_location,
                "Array literal has {} elements, which is more than the maximum {} elements",
                elems.len(),
                // FixedPointerWidth
                std::u32::MAX,
-            )
-            .unwrap();
-            emit_source_info(err_stream, expr_location, interner);
+            );
          }
 
          if any_error {
@@ -1922,14 +1821,14 @@ fn get_type<W: Write>(
          }
       }
       Expression::ArrayIndex { array, index } => {
-         type_expression(err_stream, *array, validation_context, interner);
-         type_expression(err_stream, *index, validation_context, interner);
+         type_expression(err_manager, *array, validation_context, interner);
+         type_expression(err_manager, *index, validation_context, interner);
 
          try_set_inferred_type(
             &ExpressionType::Value(USIZE_TYPE),
             *index,
             validation_context,
-            err_stream,
+            err_manager,
             interner,
          );
 
@@ -1940,17 +1839,16 @@ fn get_type<W: Write>(
             // avoid cascading errors
          } else if index_expression.exp_type.as_ref().unwrap() != &ExpressionType::Value(USIZE_TYPE) {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error_w_details!(
+               err_manager,
+               &[(index_expression.location, "index")],
                "Attempted to index an array with a value of type {}, which is not usize",
                index_expression
                   .exp_type
                   .as_ref()
                   .unwrap()
                   .as_roland_type_info(interner),
-            )
-            .unwrap();
-            emit_source_info_with_description(err_stream, index_expression.location, "index", interner);
+            );
          }
 
          match &array_expression.exp_type {
@@ -1958,14 +1856,12 @@ fn get_type<W: Write>(
             Some(ExpressionType::Value(ValueType::Array(b, _))) => *b.clone(),
             Some(x) => {
                validation_context.error_count += 1;
-               writeln!(
-                  err_stream,
+               rolandc_error_w_details!(
+                  err_manager,
+                  &[(array_expression.location, "expression"),(index_expression.location, "index")],
                   "Attempted to index expression of type {}, which is not an array type",
                   x.as_roland_type_info(interner),
-               )
-               .unwrap();
-               emit_source_info_with_description(err_stream, array_expression.location, "expression", interner);
-               emit_source_info_with_description(err_stream, index_expression.location, "index", interner);
+               );
 
                ExpressionType::Value(ValueType::CompileError)
             }
@@ -1978,26 +1874,24 @@ fn get_type<W: Write>(
                ExpressionType::Value(ValueType::Enum(*x))
             } else {
                validation_context.error_count += 1;
-               writeln!(
-                  err_stream,
+               rolandc_error!(
+                  err_manager,
+                  expr_location,
                   "Attempted to instantiate enum variant `{}` of enum `{}`, which is not a valid variant",
                   interner.lookup(*v),
                   interner.lookup(*x),
-               )
-               .unwrap();
-               emit_source_info(err_stream, expr_location, interner);
+               );
 
                ExpressionType::Value(ValueType::CompileError)
             }
          } else {
             validation_context.error_count += 1;
-            writeln!(
-               err_stream,
+            rolandc_error!(
+               err_manager,
+               expr_location,
                "Attempted to instantiate enum `{}`, which does not exist",
                interner.lookup(*x),
-            )
-            .unwrap();
-            emit_source_info(err_stream, expr_location, interner);
+            );
 
             ExpressionType::Value(ValueType::CompileError)
          }
@@ -2005,12 +1899,12 @@ fn get_type<W: Write>(
    }
 }
 
-fn type_expression<W: Write>(
-   err_stream: &mut W,
+fn type_expression(
+   err_manager: &mut ErrorManager,
    expr_index: ExpressionId,
    validation_context: &mut ValidationContext,
    interner: &mut Interner,
 ) {
    validation_context.expressions[expr_index].exp_type =
-      Some(get_type(err_stream, expr_index, validation_context, interner));
+      Some(get_type(err_manager, expr_index, validation_context, interner));
 }
