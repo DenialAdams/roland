@@ -72,6 +72,7 @@ pub enum CompilationEntryPoint<'a> {
 
 // Repeated compilations can be sped up by reusing the context
 pub struct CompilationContext {
+   struct_size_info: HashMap<StrId, SizeInfo>,
    expressions: HandleMap<ExpressionId, ExpressionNode>,
    pub interner: Interner,
    pub err_manager: ErrorManager,
@@ -84,18 +85,20 @@ impl CompilationContext {
          expressions: HandleMap::new(),
          interner: Interner::with_capacity(1024),
          err_manager: ErrorManager::new(),
+         struct_size_info: HashMap::new(),
       }
    }
 }
 
-pub fn compile<E: Write>(
+pub fn compile_for_errors<E: Write>(
    ctx: &mut CompilationContext,
    user_program_ep: CompilationEntryPoint,
    err_stream: &mut E,
    target: Target,
-) -> Result<Vec<u8>, CompilationError> {
+) -> Result<Program, CompilationError> {
    ctx.expressions.clear();
    ctx.err_manager.clear();
+   ctx.struct_size_info.clear();
    // We don't have to clear the interner - assumption is that the context is coming a recent version of the same source, so symbols should be relevant
 
    let mut user_program = match user_program_ep {
@@ -220,13 +223,13 @@ pub fn compile<E: Write>(
    }
 
    // We calculate this earlier than you might expect, because we need it for sizeof lowering
-   let mut struct_size_info: HashMap<StrId, SizeInfo> = HashMap::with_capacity(user_program.struct_info.len());
+   ctx.struct_size_info.reserve(user_program.struct_info.len());
    for s in user_program.struct_info.iter() {
       calculate_struct_size_info(
          *s.0,
          &user_program.enum_info,
          &user_program.struct_info,
-         &mut struct_size_info,
+         &mut ctx.struct_size_info,
       );
    }
 
@@ -234,7 +237,7 @@ pub fn compile<E: Write>(
       &user_program,
       &mut ctx.expressions,
       &mut ctx.interner,
-      &struct_size_info,
+      &ctx.struct_size_info,
       &mut ctx.err_manager,
    );
    if err_count > 0 {
@@ -242,7 +245,7 @@ pub fn compile<E: Write>(
    }
 
    various_expression_lowering::lower_consts(
-      &struct_size_info,
+      &ctx.struct_size_info,
       &mut user_program,
       &mut ctx.expressions,
       &mut ctx.interner,
@@ -271,11 +274,22 @@ pub fn compile<E: Write>(
       return Err(CompilationError::Semantic(err_count));
    }
 
+   Ok(user_program)
+}
+
+pub fn compile<E: Write>(
+   ctx: &mut CompilationContext,
+   user_program_ep: CompilationEntryPoint,
+   err_stream: &mut E,
+   target: Target,
+) -> Result<Vec<u8>, CompilationError> {
+   let mut user_program = compile_for_errors(ctx, user_program_ep, err_stream, target)?;
+
    add_virtual_variables::add_virtual_vars(&mut user_program, &ctx.expressions);
 
    match target {
       Target::Wasi => Ok(wasm::emit_wasm(
-         &struct_size_info,
+         &ctx.struct_size_info,
          &mut user_program,
          &mut ctx.interner,
          &ctx.expressions,
@@ -284,7 +298,7 @@ pub fn compile<E: Write>(
       )),
       Target::Wasm4 => {
          let wat = wasm::emit_wasm(
-            &struct_size_info,
+            &ctx.struct_size_info,
             &mut user_program,
             &mut ctx.interner,
             &ctx.expressions,

@@ -47,7 +47,7 @@ impl LanguageServer for Backend {
       let content = params.content_changes[0].text.as_str();
       let diagnostics = {
          let mut ctx_ref = self.ctx.lock();
-         let _ = rolandc::compile(
+         let _ = rolandc::compile_for_errors(
             &mut *ctx_ref,
             CompilationEntryPoint::Buffer(content),
             &mut NulWriter {},
