@@ -4,6 +4,6 @@ Left hand side of assignment has type String which does not match the type of th
 ↳ left hand side @ line 5, column 4 [bad_assignments.rol]
 ↳ right hand side @ line 5, column 8 [bad_assignments.rol]
 We weren't able to determine the types of 2 int literals
-↳ line 2, column 4 [bad_assignments.rol]
-↳ line 2, column 10 [bad_assignments.rol]
+↳ int literal @ line 2, column 4 [bad_assignments.rol]
+↳ int literal @ line 2, column 10 [bad_assignments.rol]
 There were 3 semantic errors, bailing

@@ -10,5 +10,5 @@ Literal of struct `X` is missing fields [bar]
 For field `foo` of struct `X`, encountered value of type bool when we expected u8
 ↳ struct defined @ line 1, column 1 [bad_struct_literals.rol]
 ↳ struct instantiated @ line 23, column 12 [bad_struct_literals.rol]
-↳ field_value @ line 24, column 12 [bad_struct_literals.rol]
+↳ field value @ line 24, column 12 [bad_struct_literals.rol]
 There were 4 semantic errors, bailing

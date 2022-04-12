@@ -1,4 +1,4 @@
-In call to `print`, encountered argument of type bool when we expected String
-↳ argument at position 0
-↳ line 2, column 4 [calling_proc_wrong_type.rol]
+In call to `print`, argument at position 0 is of type bool when we expected String
+↳ call @ line 2, column 4 [calling_proc_wrong_type.rol]
+↳ argument @ line 2, column 10 [calling_proc_wrong_type.rol]
 There were 1 semantic errors, bailing
