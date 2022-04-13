@@ -1,6 +1,5 @@
 /target
 rolandc/target
-ast.html
 /tests/*.wat
 roland-vscode/node_modules
 roland-vscode/out
