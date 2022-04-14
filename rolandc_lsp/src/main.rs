@@ -143,6 +143,14 @@ impl LanguageServer for Backend {
          .await;
    }
 
+   async fn did_close(&self, params: DidCloseTextDocumentParams) {
+      let doc_uri = params.text_document.uri;
+      self
+         .client
+         .publish_diagnostics(doc_uri, vec![], None)
+         .await;
+   }
+
    async fn shutdown(&self) -> Result<()> {
       Ok(())
    }
