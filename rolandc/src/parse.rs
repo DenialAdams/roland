@@ -11,6 +11,10 @@ use std::mem::discriminant;
 
 pub type ExpressionPool = HandleMap<ExpressionId, ExpressionNode>;
 
+fn merge_locations(begin: SourceInfo, end: SourceInfo) -> SourceInfo {
+   SourceInfo { begin: begin.begin, end: end.end, file: begin.file }
+}
+
 struct Lexer {
    tokens: Vec<SourceToken>,
 }
@@ -134,6 +138,12 @@ pub struct StaticNode {
    pub name: IdentifierNode,
    pub static_type: ExpressionType,
    pub value: Option<ExpressionId>,
+   pub location: SourceInfo,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExpressionTypeNode {
+   pub e_type: ExpressionType,
    pub location: SourceInfo,
 }
 
@@ -408,7 +418,7 @@ pub fn astify(
                   identifier: extract_identifier(variable_name.token),
                   location: variable_name.source_info,
                },
-               const_type: t_type,
+               const_type: t_type.e_type,
                location: a_static.source_info,
                value: exp,
             });
@@ -430,7 +440,7 @@ pub fn astify(
                   identifier: extract_identifier(variable_name.token),
                   location: variable_name.source_info,
                },
-               static_type: t_type,
+               static_type: t_type.e_type,
                location: a_static.source_info,
                value: exp,
             });
@@ -498,7 +508,7 @@ fn parse_procedure(
    expect(l, err_manager, &Token::CloseParen)?;
    let ret_type = if let Some(&Token::Arrow) = l.peek_token() {
       let _ = l.next();
-      parse_type(l, err_manager, interner)?
+      parse_type(l, err_manager, interner)?.e_type
    } else {
       ExpressionType::Value(ValueType::Unit)
    };
@@ -529,7 +539,7 @@ fn parse_external_procedure(
    expect(l, err_manager, &Token::CloseParen)?;
    let ret_type = if let Some(&Token::Arrow) = l.peek_token() {
       let _ = l.next();
-      parse_type(l, err_manager, interner)?
+      parse_type(l, err_manager, interner)?.e_type
    } else {
       ExpressionType::Value(ValueType::Unit)
    };
@@ -561,7 +571,7 @@ fn parse_struct(
       }
       let identifier = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
       let _ = expect(l, err_manager, &Token::Colon)?;
-      let f_type = parse_type(l, err_manager, interner)?;
+      let f_type = parse_type(l, err_manager, interner)?.e_type;
       fields.push((extract_identifier(identifier.token), f_type));
       if let Some(&Token::CloseBrace) = l.peek_token() {
          let _ = l.next();
@@ -734,7 +744,7 @@ fn parse_block(
                      location: variable_name.source_info,
                   },
                   e,
-                  declared_type,
+                  declared_type.map(|x| x.e_type),
                ),
                location: let_token.source_info,
             });
@@ -864,7 +874,7 @@ fn parse_parameters(
             };
             let id = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
             expect(l, err_manager, &Token::Colon)?;
-            let e_type = parse_type(l, err_manager, interner)?;
+            let e_type = parse_type(l, err_manager, interner)?.e_type;
             parameters.push(ParameterNode {
                name: extract_identifier(id.token),
                p_type: e_type,
@@ -909,7 +919,7 @@ fn parse_generic_arguments(
 
    while let Some(Token::Dollar) = l.peek_token() {
       let _ = l.next();
-      let gtype = parse_type(l, err_manager, interner)?;
+      let gtype = parse_type(l, err_manager, interner)?.e_type;
       generic_arguments.push(GenericArgumentNode { gtype });
    }
 
@@ -990,36 +1000,36 @@ fn parse_expression(
    expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<ExpressionId, ()> {
-   let e_source_info = l.peek_source();
    let exp = pratt(l, err_manager, 0, if_head, expressions, interner)?;
-   Ok(wrap(exp, e_source_info.unwrap(), expressions))
+   Ok(exp)
 }
 
-fn parse_type(l: &mut Lexer, err_manager: &mut ErrorManager, interner: &Interner) -> Result<ExpressionType, ()> {
+fn parse_type(l: &mut Lexer, err_manager: &mut ErrorManager, interner: &Interner) -> Result<ExpressionTypeNode, ()> {
    let mut ptr_count: usize = 0;
+   let loc_start = l.peek_source();
    while let Some(&Token::Amp) = l.peek_token() {
       ptr_count += 1;
       let _ = l.next();
    }
 
-   let value_type = match l.peek_token() {
+   let (loc_end, value_type) = match l.peek_token() {
       Some(Token::OpenSquareBracket) => {
          let _ = l.next();
          let a_inner_type = parse_type(l, err_manager, interner)?;
          expect(l, err_manager, &Token::Semicolon)?;
          let length = expect(l, err_manager, &Token::IntLiteral(0))?;
-         expect(l, err_manager, &Token::CloseSquareBracket)?;
-         ValueType::Array(Box::new(a_inner_type), extract_int_literal(length.token))
+         let t_close_token = expect(l, err_manager, &Token::CloseSquareBracket)?;
+         (t_close_token.source_info, ValueType::Array(Box::new(a_inner_type.e_type), extract_int_literal(length.token)))
       }
       Some(Token::OpenParen) => {
          let _ = l.next();
-         expect(l, err_manager, &Token::CloseParen)?;
-         ValueType::Unit
+         let close_token = expect(l, err_manager, &Token::CloseParen)?;
+         (close_token.source_info, ValueType::Unit)
       }
       _ => {
          let type_token = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
          let type_s = extract_identifier(type_token.token);
-         match interner.lookup(type_s) {
+         (type_token.source_info, match interner.lookup(type_s) {
             "bool" => ValueType::Bool,
             "isize" => crate::type_data::ISIZE_TYPE,
             "i64" => crate::type_data::I64_TYPE,
@@ -1034,14 +1044,20 @@ fn parse_type(l: &mut Lexer, err_manager: &mut ErrorManager, interner: &Interner
             "f32" => crate::type_data::F32_TYPE,
             "f64" => crate::type_data::F64_TYPE,
             _ => ValueType::Unresolved(type_s),
-         }
+         })
       }
    };
 
    if ptr_count > 0 {
-      Ok(ExpressionType::Pointer(ptr_count, value_type))
+      Ok(ExpressionTypeNode {
+         e_type: ExpressionType::Pointer(ptr_count, value_type),
+         location: merge_locations(loc_start.unwrap(), loc_end),
+      })
    } else {
-      Ok(ExpressionType::Value(value_type))
+      Ok(ExpressionTypeNode {
+         e_type: ExpressionType::Value(value_type),
+         location: merge_locations(loc_start.unwrap(), loc_end),
+      })
    }
 }
 
@@ -1052,45 +1068,48 @@ fn pratt(
    if_head: bool,
    expressions: &mut ExpressionPool,
    interner: &Interner,
-) -> Result<Expression, ()> {
-   let lhs_token = l.next();
-   let lhs_source = lhs_token.as_ref().map(|x| x.source_info);
-   let mut lhs = match lhs_token.map(|x| x.token) {
-      Some(Token::BoolLiteral(x)) => Expression::BoolLiteral(x),
-      Some(Token::IntLiteral(x)) => Expression::IntLiteral(x),
-      Some(Token::FloatLiteral(x)) => Expression::FloatLiteral(x),
-      Some(Token::StringLiteral(x)) => Expression::StringLiteral(x),
+) -> Result<ExpressionId, ()> {
+   let expr_begin_token = l.next();
+   let expr_begin_source = expr_begin_token.as_ref().map(|x| x.source_info);
+   let mut lhs = match expr_begin_token.map(|x| x.token) {
+      Some(Token::BoolLiteral(x)) => wrap(Expression::BoolLiteral(x), expr_begin_source.unwrap(), expressions),
+      Some(Token::IntLiteral(x)) => wrap(Expression::IntLiteral(x), expr_begin_source.unwrap(), expressions),
+      Some(Token::FloatLiteral(x)) => wrap(Expression::FloatLiteral(x), expr_begin_source.unwrap(), expressions),
+      Some(Token::StringLiteral(x)) => wrap(Expression::StringLiteral(x), expr_begin_source.unwrap(), expressions),
       Some(Token::Identifier(s)) => {
          if l.peek_token() == Some(&Token::Dollar) {
             let generic_args = parse_generic_arguments(l, err_manager, interner)?;
             expect(l, err_manager, &Token::OpenParen)?;
             let args = parse_arguments(l, err_manager, expressions, interner)?;
-            expect(l, err_manager, &Token::CloseParen)?;
-            Expression::ProcedureCall {
+            let close_token = expect(l, err_manager, &Token::CloseParen)?;
+            let combined_location = merge_locations(expr_begin_source.unwrap(), close_token.source_info);
+            wrap(Expression::ProcedureCall {
                proc_name: s,
                generic_args: generic_args.into_boxed_slice(),
                args: args.into_boxed_slice(),
-            }
+            }, combined_location, expressions)
          } else if l.peek_token() == Some(&Token::OpenParen) {
             let _ = l.next();
             let args = parse_arguments(l, err_manager, expressions, interner)?;
-            expect(l, err_manager, &Token::CloseParen)?;
-            Expression::ProcedureCall {
+            let close_token = expect(l, err_manager, &Token::CloseParen)?;
+            let combined_location = merge_locations(expr_begin_source.unwrap(), close_token.source_info);
+            wrap(Expression::ProcedureCall {
                proc_name: s,
                generic_args: vec![].into_boxed_slice(),
                args: args.into_boxed_slice(),
-            }
+            }, combined_location, expressions)
          } else if l.peek_token() == Some(&Token::DoubleColon) {
             let _ = l.next();
+            let variant = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
             let variant_identifier =
-               extract_identifier(expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
-            Expression::EnumLiteral(s, variant_identifier)
+               extract_identifier(variant.token);
+            let combined_location = merge_locations(expr_begin_source.unwrap(), variant.source_info);
+            wrap(Expression::EnumLiteral(s, variant_identifier), combined_location, expressions)
          } else if !if_head && l.peek_token() == Some(&Token::OpenBrace) {
             let _ = l.next();
             let mut fields = vec![];
             loop {
                if let Some(&Token::CloseBrace) = l.peek_token() {
-                  let _ = l.next();
                   break;
                }
                let identifier = extract_identifier(expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
@@ -1098,7 +1117,6 @@ fn pratt(
                let val = parse_expression(l, err_manager, false, expressions, interner)?;
                fields.push((identifier, val));
                if let Some(&Token::CloseBrace) = l.peek_token() {
-                  let _ = l.next();
                   break;
                } else if let Some(&Token::Identifier(x)) = l.peek_token().as_ref() {
                   let struct_str = interner.lookup(s);
@@ -1114,15 +1132,18 @@ fn pratt(
                };
                expect(l, err_manager, &Token::Comma)?;
             }
-            Expression::StructLiteral(s, fields)
+            let closing_brace = l.next().unwrap();
+            let combined_location = merge_locations(expr_begin_source.unwrap(), closing_brace.source_info);
+            wrap(Expression::StructLiteral(s, fields), combined_location, expressions)
          } else {
-            Expression::Variable(s)
+            wrap(Expression::Variable(s), expr_begin_source.unwrap(), expressions)
          }
       }
       Some(Token::OpenParen) => {
          if let Some(&Token::CloseParen) = l.peek_token() {
-            let _ = l.next();
-            Expression::UnitLiteral
+            let end_token = l.next().unwrap();
+            let combined_location = merge_locations(expr_begin_source.unwrap(), end_token.source_info);
+            wrap(Expression::UnitLiteral, combined_location, expressions)
          } else {
             let new_lhs = pratt(l, err_manager, 0, false, expressions, interner)?;
             expect(l, err_manager, &Token::CloseParen)?;
@@ -1142,35 +1163,40 @@ fn pratt(
             }
             expect(l, err_manager, &Token::Comma)?;
          }
-         let _ = l.next(); // ]
-         Expression::ArrayLiteral(es.into_boxed_slice())
+         let closing_token = l.next().unwrap(); // ]
+         let combined_location = merge_locations(expr_begin_source.unwrap(), closing_token.source_info);
+         wrap(Expression::ArrayLiteral(es.into_boxed_slice()), combined_location, expressions)
       }
       Some(x @ Token::Minus) => {
          let ((), r_bp) = prefix_binding_power(&x);
          let begin_location = l.peek_source();
          let rhs = pratt(l, err_manager, r_bp, if_head, expressions, interner)?;
-         Expression::UnaryOperator(UnOp::Negate, wrap(rhs, begin_location.unwrap(), expressions))
+         let combined_location = merge_locations(expr_begin_source.unwrap(), begin_location.unwrap());
+         wrap(Expression::UnaryOperator(UnOp::Negate, rhs), combined_location, expressions)
       }
       Some(x @ Token::Exclam) => {
          let ((), r_bp) = prefix_binding_power(&x);
          let begin_location = l.peek_source();
          let rhs = pratt(l, err_manager, r_bp, if_head, expressions, interner)?;
-         Expression::UnaryOperator(UnOp::Complement, wrap(rhs, begin_location.unwrap(), expressions))
+         let combined_location = merge_locations(expr_begin_source.unwrap(), begin_location.unwrap());
+         wrap(Expression::UnaryOperator(UnOp::Complement, rhs), combined_location, expressions)
       }
       Some(x @ Token::Amp) => {
          let ((), r_bp) = prefix_binding_power(&x);
          let begin_location = l.peek_source();
          let rhs = pratt(l, err_manager, r_bp, if_head, expressions, interner)?;
-         Expression::UnaryOperator(UnOp::AddressOf, wrap(rhs, begin_location.unwrap(), expressions))
+         let combined_location = merge_locations(expr_begin_source.unwrap(), begin_location.unwrap());
+         wrap(Expression::UnaryOperator(UnOp::AddressOf, rhs), combined_location, expressions)
       }
       Some(x @ Token::MultiplyDeref) => {
          let ((), r_bp) = prefix_binding_power(&x);
          let begin_location = l.peek_source();
          let rhs = pratt(l, err_manager, r_bp, if_head, expressions, interner)?;
-         Expression::UnaryOperator(UnOp::Dereference, wrap(rhs, begin_location.unwrap(), expressions))
+         let combined_location = merge_locations(expr_begin_source.unwrap(), begin_location.unwrap());
+         wrap(Expression::UnaryOperator(UnOp::Dereference, rhs), combined_location, expressions)
       }
       x => {
-         if let Some(si) = lhs_source {
+         if let Some(si) = expr_begin_source {
             rolandc_error!(
                err_manager,
                si,
@@ -1215,16 +1241,20 @@ fn pratt(
          ) => x,
          Some(&Token::Period) => {
             let mut fields = vec![];
+            let mut last_location;
             loop {
                let _ = l.next();
+               let ident_token = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
+               last_location = ident_token.source_info;
                fields.push(extract_identifier(
-                  expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?.token,
+                  ident_token.token,
                ));
                if l.peek_token() != Some(&Token::Period) {
                   break;
                }
             }
-            lhs = Expression::FieldAccess(fields, wrap(lhs, lhs_source.unwrap(), expressions));
+            let combined_location = merge_locations(expr_begin_source.unwrap(), last_location);
+            lhs = wrap(Expression::FieldAccess(fields, lhs), combined_location, expressions);
             continue;
          }
          _ => break,
@@ -1240,23 +1270,27 @@ fn pratt(
          lhs = match op {
             Token::OpenSquareBracket => {
                let inner = parse_expression(l, err_manager, false, expressions, interner)?;
-               expect(l, err_manager, &Token::CloseSquareBracket)?;
-               Expression::ArrayIndex {
-                  array: wrap(lhs, lhs_source.unwrap(), expressions),
+               let close_token = expect(l, err_manager, &Token::CloseSquareBracket)?;
+               let combined_location = merge_locations(expr_begin_source.unwrap(), close_token.source_info);
+               wrap(Expression::ArrayIndex {
+                  array: lhs,
                   index: inner,
-               }
+               }, combined_location, expressions)
             }
             Token::KeywordExtend => {
                let a_type = parse_type(l, err_manager, interner)?;
-               Expression::Extend(a_type, wrap(lhs, lhs_source.unwrap(), expressions))
+               let combined_location = merge_locations(expr_begin_source.unwrap(), a_type.location);
+               wrap(Expression::Extend(a_type.e_type, lhs), combined_location, expressions)
             }
             Token::KeywordTruncate => {
                let a_type = parse_type(l, err_manager, interner)?;
-               Expression::Truncate(a_type, wrap(lhs, lhs_source.unwrap(), expressions))
+               let combined_location = merge_locations(expr_begin_source.unwrap(), a_type.location);
+               wrap(Expression::Truncate(a_type.e_type, lhs), combined_location, expressions)
             }
             Token::KeywordTransmute => {
                let a_type = parse_type(l, err_manager, interner)?;
-               Expression::Transmute(a_type, wrap(lhs, lhs_source.unwrap(), expressions))
+               let combined_location = merge_locations(expr_begin_source.unwrap(), a_type.location);
+               wrap(Expression::Transmute(a_type.e_type, lhs), combined_location, expressions)
             }
             _ => unreachable!(),
          };
@@ -1295,11 +1329,12 @@ fn pratt(
          _ => unreachable!(),
       };
 
-      lhs = Expression::BinaryOperator {
+      let combined_location = merge_locations(expressions[lhs].location, expressions[rhs].location);
+      lhs = wrap(Expression::BinaryOperator {
          operator: bin_op,
-         lhs: wrap(lhs, lhs_source.unwrap(), expressions),
-         rhs: wrap(rhs, next_token.source_info, expressions),
-      };
+         lhs,
+         rhs,
+      }, combined_location, expressions);
    }
 
    Ok(lhs)
