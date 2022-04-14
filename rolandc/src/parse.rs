@@ -302,6 +302,7 @@ pub struct ImportNode {
 #[derive(Clone)]
 pub struct BlockNode {
    pub statements: Vec<StatementNode>,
+   pub location: SourceInfo,
 }
 
 #[derive(Clone)]
@@ -513,6 +514,7 @@ fn parse_procedure(
       ExpressionType::Value(ValueType::Unit)
    };
    let block = parse_block(l, err_manager, expressions, interner)?;
+   let combined_location = merge_locations(source_info, block.location);
    Ok(ProcedureNode {
       definition: ProcedureDefinition {
          name: extract_identifier(procedure_name.token),
@@ -522,7 +524,7 @@ fn parse_procedure(
       locals: IndexMap::new(),
       virtual_locals: IndexSet::new(),
       block,
-      location: source_info,
+      location: combined_location,
    })
 }
 
@@ -543,14 +545,14 @@ fn parse_external_procedure(
    } else {
       ExpressionType::Value(ValueType::Unit)
    };
-   expect(l, err_manager, &Token::Semicolon)?;
+   let end_token = expect(l, err_manager, &Token::Semicolon)?;
    Ok(ExternalProcedureNode {
       definition: ProcedureDefinition {
          name: extract_identifier(procedure_name.token),
          parameters,
          ret_type,
       },
-      location: source_info,
+      location: merge_locations(source_info, end_token.source_info),
       impl_source: proc_impl_source,
    })
 }
@@ -566,7 +568,6 @@ fn parse_struct(
    let mut fields: Vec<(StrId, ExpressionType)> = vec![];
    loop {
       if let Some(&Token::CloseBrace) = l.peek_token() {
-         let _ = l.next();
          break;
       }
       let identifier = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
@@ -574,7 +575,6 @@ fn parse_struct(
       let f_type = parse_type(l, err_manager, interner)?.e_type;
       fields.push((extract_identifier(identifier.token), f_type));
       if let Some(&Token::CloseBrace) = l.peek_token() {
-         let _ = l.next();
          break;
       } else if let Some(&Token::Identifier(x)) = l.peek_token().as_ref() {
          rolandc_error!(
@@ -588,10 +588,11 @@ fn parse_struct(
       }
       expect(l, err_manager, &Token::Comma)?;
    }
+   let close_brace = l.next().unwrap();
    Ok(StructNode {
       name: struct_name,
       fields,
-      location: source_info,
+      location: merge_locations(source_info, close_brace.source_info),
    })
 }
 
@@ -606,13 +607,11 @@ fn parse_enum(
    let mut variants: Vec<StrId> = vec![];
    loop {
       if let Some(&Token::CloseBrace) = l.peek_token() {
-         let _ = l.next();
          break;
       }
       let identifier = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
       variants.push(extract_identifier(identifier.token));
       if let Some(&Token::CloseBrace) = l.peek_token() {
-         let _ = l.next();
          break;
       } else if let Some(&Token::Identifier(x)) = l.peek_token().as_ref() {
          rolandc_error!(
@@ -627,10 +626,11 @@ fn parse_enum(
 
       expect(l, err_manager, &Token::Comma)?;
    }
+   let close_brace = l.next().unwrap();
    Ok(EnumNode {
       name: enum_name,
       variants,
-      location: source_info,
+      location: merge_locations(source_info, close_brace.source_info),
    })
 }
 
@@ -640,7 +640,7 @@ fn parse_block(
    expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<BlockNode, ()> {
-   expect(l, err_manager, &Token::OpenBrace)?;
+   let open_brace = expect(l, err_manager, &Token::OpenBrace)?;
 
    let mut statements: Vec<StatementNode> = vec![];
 
@@ -655,7 +655,6 @@ fn parse_block(
             });
          }
          Some(Token::CloseBrace) => {
-            let _ = l.next();
             break;
          }
          Some(Token::KeywordContinue) => {
@@ -820,7 +819,8 @@ fn parse_block(
          }
       }
    }
-   Ok(BlockNode { statements })
+   let close_brace = l.next().unwrap();
+   Ok(BlockNode { statements, location: merge_locations(open_brace.source_info, close_brace.source_info) })
 }
 
 fn parse_if_else_statement(
@@ -845,13 +845,14 @@ fn parse_if_else_statement(
          }
       }
       _ => StatementNode {
-         statement: Statement::Block(BlockNode { statements: vec![] }),
+         statement: Statement::Block(BlockNode { statements: vec![], location: if_block.location }),
          location: if_token.source_info,
       },
    };
+   let combined_location = merge_locations(if_token.source_info, else_statement.location);
    Ok(StatementNode {
       statement: Statement::IfElse(e, if_block, Box::new(else_statement)),
-      location: if_token.source_info,
+      location: combined_location,
    })
 }
 

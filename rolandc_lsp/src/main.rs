@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use parking_lot::Mutex;
 use rolandc::error_handling::ErrorLocation;
 use tower_lsp::jsonrpc::Result;
@@ -7,18 +5,6 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 use rolandc::*;
-
-struct NulWriter {}
-
-impl Write for NulWriter {
-   fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-      Ok(buf.len())
-   }
-
-   fn flush(&mut self) -> std::io::Result<()> {
-      Ok(())
-   }
-}
 
 struct Backend {
    client: Client,
