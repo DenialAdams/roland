@@ -660,19 +660,19 @@ fn parse_block(
          }
          Some(Token::KeywordContinue) => {
             let continue_token = l.next().unwrap();
+            let sc = expect(l, err_manager, &Token::Semicolon)?;
             statements.push(StatementNode {
                statement: Statement::Continue,
-               location: continue_token.source_info,
+               location: merge_locations(continue_token.source_info, sc.source_info),
             });
-            expect(l, err_manager, &Token::Semicolon)?;
          }
          Some(Token::KeywordBreak) => {
             let break_token = l.next().unwrap();
+            let sc = expect(l, err_manager, &Token::Semicolon)?;
             statements.push(StatementNode {
                statement: Statement::Break,
-               location: break_token.source_info,
+               location: merge_locations(break_token.source_info, sc.source_info),
             });
-            expect(l, err_manager, &Token::Semicolon)?;
          }
          Some(Token::KeywordFor) => {
             let for_token = l.next().unwrap();
@@ -713,16 +713,14 @@ fn parse_block(
          Some(Token::KeywordReturn) => {
             let return_token = l.next().unwrap();
             let e = if let Some(Token::Semicolon) = l.peek_token() {
-               let _ = l.next().unwrap();
                wrap(Expression::UnitLiteral, return_token.source_info, expressions)
             } else {
-               let e = parse_expression(l, err_manager, false, expressions, interner)?;
-               expect(l, err_manager, &Token::Semicolon)?;
-               e
+               parse_expression(l, err_manager, false, expressions, interner)?
             };
+            let sc = expect(l, err_manager, &Token::Semicolon)?;
             statements.push(StatementNode {
                statement: Statement::Return(e),
-               location: return_token.source_info,
+               location: merge_locations(return_token.source_info, sc.source_info),
             });
          }
          Some(Token::KeywordLet) => {
@@ -736,7 +734,8 @@ fn parse_block(
             }
             expect(l, err_manager, &Token::Assignment)?;
             let e = parse_expression(l, err_manager, false, expressions, interner)?;
-            expect(l, err_manager, &Token::Semicolon)?;
+            let sc = expect(l, err_manager, &Token::Semicolon)?;
+            let statement_location = merge_locations(let_token.source_info, sc.source_info);
             statements.push(StatementNode {
                statement: Statement::VariableDeclaration(
                   IdentifierNode {
@@ -746,7 +745,7 @@ fn parse_block(
                   e,
                   declared_type.map(|x| x.e_type),
                ),
-               location: let_token.source_info,
+               location: statement_location,
             });
          }
          Some(Token::KeywordIf) => {
@@ -770,16 +769,16 @@ fn parse_block(
                Some(&Token::Assignment) => {
                   let _ = l.next();
                   let re = parse_expression(l, err_manager, false, expressions, interner)?;
-                  expect(l, err_manager, &Token::Semicolon)?;
-                  let statement_location = expressions[e].location;
+                  let sc = expect(l, err_manager, &Token::Semicolon)?;
+                  let statement_location = merge_locations(expressions[e].location, sc.source_info);
                   statements.push(StatementNode {
                      statement: Statement::Assignment(e, re),
                      location: statement_location,
                   });
                }
                Some(&Token::Semicolon) => {
-                  let _ = l.next();
-                  let statement_location = expressions[e].location;
+                  let sc = l.next().unwrap();
+                  let statement_location = merge_locations(expressions[e].location, sc.source_info);
                   statements.push(StatementNode {
                      statement: Statement::Expression(e),
                      location: statement_location,
