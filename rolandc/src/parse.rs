@@ -407,20 +407,20 @@ pub fn astify(
             enums.push(s);
          }
          Token::KeywordConst => {
-            let a_static = lexer.next().unwrap();
+            let a_const = lexer.next().unwrap();
             let variable_name = expect(&mut lexer, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
             expect(&mut lexer, err_manager, &Token::Colon)?;
             let t_type = parse_type(&mut lexer, err_manager, interner)?;
             expect(&mut lexer, err_manager, &Token::Assignment)?;
             let exp = parse_expression(&mut lexer, err_manager, false, expressions, interner)?;
-            expect(&mut lexer, err_manager, &Token::Semicolon)?;
+            let end_token = expect(&mut lexer, err_manager, &Token::Semicolon)?;
             consts.push(ConstNode {
                name: IdentifierNode {
                   identifier: extract_identifier(variable_name.token),
                   location: variable_name.source_info,
                },
                const_type: t_type.e_type,
-               location: a_static.source_info,
+               location: merge_locations(a_const.source_info, end_token.source_info),
                value: exp,
             });
          }
@@ -435,14 +435,14 @@ pub fn astify(
             } else {
                None
             };
-            expect(&mut lexer, err_manager, &Token::Semicolon)?;
+            let end_token = expect(&mut lexer, err_manager, &Token::Semicolon)?;
             statics.push(StaticNode {
                name: IdentifierNode {
                   identifier: extract_identifier(variable_name.token),
                   location: variable_name.source_info,
                },
                static_type: t_type.e_type,
-               location: a_static.source_info,
+               location: merge_locations(a_static.source_info, end_token.source_info),
                value: exp,
             });
          }
