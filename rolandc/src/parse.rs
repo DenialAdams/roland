@@ -390,7 +390,7 @@ pub fn astify(
             let kw = lexer.next().unwrap();
             let import_token = expect(&mut lexer, err_manager, &Token::StringLiteral(DUMMY_STR_TOKEN))?;
             imports.push(ImportNode {
-               import_path: extract_identifier(import_token.token),
+               import_path: extract_str_literal(import_token.token),
                location: merge_locations(kw.source_info, import_token.source_info),
             });
             expect(&mut lexer, err_manager, &Token::Semicolon)?;
