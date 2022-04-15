@@ -389,11 +389,11 @@ pub fn astify(
          Token::KeywordImport => {
             let kw = lexer.next().unwrap();
             let import_token = expect(&mut lexer, err_manager, &Token::StringLiteral(DUMMY_STR_TOKEN))?;
+            let sc = expect(&mut lexer, err_manager, &Token::Semicolon)?;
             imports.push(ImportNode {
                import_path: extract_str_literal(import_token.token),
-               location: merge_locations(kw.source_info, import_token.source_info),
+               location: merge_locations(kw.source_info, sc.source_info),
             });
-            expect(&mut lexer, err_manager, &Token::Semicolon)?;
          }
          Token::KeywordStructDef => {
             let def = lexer.next().unwrap();
