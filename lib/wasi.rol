@@ -41,7 +41,7 @@ proc count_digits(value: u64) -> u8 {
       value = value / 10;
    }
 
-   // unreachable();
+   unreachable();
    return 0;
 }
 
