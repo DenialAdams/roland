@@ -388,11 +388,10 @@ pub fn astify(
          }
          Token::KeywordImport => {
             let kw = lexer.next().unwrap();
-            let import_path =
-               extract_str_literal(expect(&mut lexer, err_manager, &Token::StringLiteral(DUMMY_STR_TOKEN))?.token);
+            let import_token = expect(&mut lexer, err_manager, &Token::StringLiteral(DUMMY_STR_TOKEN))?;
             imports.push(ImportNode {
-               import_path,
-               location: kw.source_info,
+               import_path: extract_identifier(import_token.token),
+               location: merge_locations(kw.source_info, import_token.source_info),
             });
             expect(&mut lexer, err_manager, &Token::Semicolon)?;
          }
