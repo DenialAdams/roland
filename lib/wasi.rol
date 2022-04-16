@@ -3,19 +3,33 @@ import "shared.rol";
 builtin proc wasm_memory_size() -> usize;
 builtin proc wasm_memory_grow(pages: usize) -> usize;
 
-extern proc fd_write(handle: usize, strings_to_write: &usize, strings_to_write_len: usize, written_ptr: &usize) -> isize;
+struct ciovec {
+   buf: &u8,
+   buf_len: usize,
+}
+
+extern proc fd_write(handle: usize, strings_to_write: &ciovec, strings_to_write_len: usize, written_ptr: &usize) -> isize;
 
 proc print(s: String) {
-   let data: [usize; 4] = [s.pointer transmute usize, s.length, "\n".pointer transmute usize, "\n".length];
+   let data = [
+      ciovec {
+         buf: s.pointer,
+         buf_len: s.length,
+      },
+      ciovec {
+         buf: "\n".pointer,
+         buf_len: "\n".length,
+      },
+   ];
 
    let written: usize = 0;
    loop {
-      fd_write(1, &data[0], 2, &written);
-      let remaining_len = &data[1];
+      fd_write(1, &data[0], data.length, &written);
+      let remaining_len = &data[0].buf_len;
       if written > *remaining_len {
          break;
       } else {
-         data[0] = data[0] + written;
+         data[0].buf = (data[0].buf transmute usize + written) transmute &u8;
          *remaining_len = *remaining_len - written;
       }
    }
