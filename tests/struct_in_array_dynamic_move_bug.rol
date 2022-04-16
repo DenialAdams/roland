@@ -1,0 +1,26 @@
+struct Bar {
+   buf: &u8,
+   buf_len: usize,
+}
+
+proc main() {
+   let data = [
+      Bar {
+         buf: "test".pointer,
+         buf_len: "test".length,
+      },
+      Bar {
+         buf: "\n".pointer,
+         buf_len: "\n".length,
+      },
+   ];
+
+   print("---ptr");
+   print(int_to_string(data[0].buf transmute usize extend u64));
+   print("---len");
+   print(int_to_string(data[0].buf_len transmute usize extend u64));
+   print("---ptr2");
+   print(int_to_string(data[1].buf transmute usize extend u64));
+   print("---len2");
+   print(int_to_string(data[1].buf_len transmute usize extend u64));
+}
