@@ -407,7 +407,8 @@ fn dynamic_move_locals_of_type_to_dest(
                generation_context.enum_info,
                generation_context.struct_size_info,
             );
-            *offset += aligned_address(this_size, alignment_of_next);
+            // we've already accounted for the size, but adding padding if necessary
+            *offset += aligned_address(this_size, alignment_of_next) - this_size;
          }
 
          if let Some(last_sub_field) = generation_context
@@ -425,17 +426,13 @@ fn dynamic_move_locals_of_type_to_dest(
                generation_context.enum_info,
                generation_context.struct_size_info,
             );
-            *offset += aligned_address(this_size, alignment_of_next);
+            // we've already accounted for the size, but adding padding if necessary
+            *offset += aligned_address(this_size, alignment_of_next) - this_size;
          }
       }
       ExpressionType::Value(ValueType::Array(inner_type, a_len)) => {
          for _ in 0..*a_len {
             dynamic_move_locals_of_type_to_dest(memory_lookup, offset, local_index, inner_type, generation_context);
-            *offset += sizeof_type_mem(
-               inner_type,
-               generation_context.enum_info,
-               generation_context.struct_size_info,
-            );
          }
       }
       _ => {
@@ -444,6 +441,11 @@ fn dynamic_move_locals_of_type_to_dest(
          generation_context.out.emit_get_local(*local_index);
          simple_store(field, generation_context);
          *local_index += 1;
+         *offset += sizeof_type_mem(
+            field,
+            generation_context.enum_info,
+            generation_context.struct_size_info,
+         );
       }
    }
 }
@@ -1640,8 +1642,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          let si = generation_context.struct_info.get(s_name).unwrap();
          for field in si.field_types.iter() {
             let value_of_field = map.get(field.0).copied().unwrap();
-            let field_virual_var = interner.reverse_lookup(&format!("::{}", value_of_field.index()));
-            get_stack_address_of_local(field_virual_var, generation_context);
+            let field_virtual_var = interner.reverse_lookup(&format!("::{}", value_of_field.index()));
+            get_stack_address_of_local(field_virtual_var, generation_context);
             load(field.1, generation_context);
          }
       }
