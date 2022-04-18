@@ -9,7 +9,7 @@ use crate::parse::{
    StatementNode, UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
-use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, mem_alignment};
+use crate::size_info::{calculate_struct_size_info, mem_alignment, sizeof_type_mem};
 use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE};
 use crate::Target;
 use arrayvec::ArrayVec;
@@ -1211,8 +1211,16 @@ fn get_type(
                );
                ExpressionType::Value(ValueType::CompileError)
             } else if size_source == size_target {
-               let alignment_source = mem_alignment(e_type, validation_context.enum_info, &validation_context.struct_size_info);
-               let alignment_target = mem_alignment(target_type, validation_context.enum_info, &validation_context.struct_size_info);
+               let alignment_source = mem_alignment(
+                  e_type,
+                  validation_context.enum_info,
+                  &validation_context.struct_size_info,
+               );
+               let alignment_target = mem_alignment(
+                  target_type,
+                  validation_context.enum_info,
+                  &validation_context.struct_size_info,
+               );
                if alignment_source < alignment_target {
                   validation_context.error_count += 1;
                   rolandc_error_w_details!(
