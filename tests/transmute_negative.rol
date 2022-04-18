@@ -1,0 +1,4 @@
+proc main() {
+   let x: u8 = 10;
+   let y = x transmute u16;
+}
