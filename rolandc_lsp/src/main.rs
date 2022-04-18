@@ -14,80 +14,76 @@ struct Backend {
 impl Backend {
    fn get_diagnostics(&self, doc_uri: &Url, content: &str) -> Vec<Diagnostic> {
       let mut ctx_ref = self.ctx.lock();
-         let _ = rolandc::compile_for_errors(
-            &mut *ctx_ref,
-            CompilationEntryPoint::Buffer(content),
-            Target::Wasi,
-         );
-         ctx_ref
-            .err_manager
-            .errors
-            .drain(..)
-            .map(|x| {
-               let (range, related_info) = match x.location {
-                  ErrorLocation::Simple(x) => (
-                     Range {
-                        start: Position {
-                           line: x.begin.line as u32,
-                           character: x.begin.col as u32,
-                        },
-                        end: Position {
-                           line: x.end.line as u32,
-                           character: x.end.col as u32,
-                        },
+      let _ = rolandc::compile_for_errors(&mut *ctx_ref, CompilationEntryPoint::Buffer(content), Target::Wasi);
+      ctx_ref
+         .err_manager
+         .errors
+         .drain(..)
+         .map(|x| {
+            let (range, related_info) = match x.location {
+               ErrorLocation::Simple(x) => (
+                  Range {
+                     start: Position {
+                        line: x.begin.line as u32,
+                        character: x.begin.col as u32,
                      },
-                     None,
-                  ),
-                  ErrorLocation::WithDetails(x) => (
-                     Range {
-                        start: Position {
-                           line: x[0].0.begin.line as u32,
-                           character: x[0].0.begin.col as u32,
-                        },
-                        end: Position {
-                           line: x[0].0.end.line as u32,
-                           character: x[0].0.end.col as u32,
-                        },
+                     end: Position {
+                        line: x.end.line as u32,
+                        character: x.end.col as u32,
                      },
-                     Some(
-                        x.into_iter()
-                           .map(|y| DiagnosticRelatedInformation {
-                              location: Location {
-                                 uri: doc_uri.clone(),
-                                 range: Range {
-                                    start: Position {
-                                       line: y.0.begin.line as u32,
-                                       character: y.0.begin.col as u32,
-                                    },
-                                    end: Position {
-                                       line: y.0.end.line as u32,
-                                       character: y.0.end.col as u32,
-                                    },
+                  },
+                  None,
+               ),
+               ErrorLocation::WithDetails(x) => (
+                  Range {
+                     start: Position {
+                        line: x[0].0.begin.line as u32,
+                        character: x[0].0.begin.col as u32,
+                     },
+                     end: Position {
+                        line: x[0].0.end.line as u32,
+                        character: x[0].0.end.col as u32,
+                     },
+                  },
+                  Some(
+                     x.into_iter()
+                        .map(|y| DiagnosticRelatedInformation {
+                           location: Location {
+                              uri: doc_uri.clone(),
+                              range: Range {
+                                 start: Position {
+                                    line: y.0.begin.line as u32,
+                                    character: y.0.begin.col as u32,
+                                 },
+                                 end: Position {
+                                    line: y.0.end.line as u32,
+                                    character: y.0.end.col as u32,
                                  },
                               },
-                              message: y.1,
-                           })
-                           .collect(),
-                     ),
+                           },
+                           message: y.1,
+                        })
+                        .collect(),
                   ),
-                  ErrorLocation::NoLocation => (
-                     Range {
-                        start: Position { line: 0, character: 0 },
-                        end: Position { line: 0, character: 0 },
-                     },
-                     None,
-                  ),
-               };
+               ),
+               ErrorLocation::NoLocation => (
+                  Range {
+                     start: Position { line: 0, character: 0 },
+                     end: Position { line: 0, character: 0 },
+                  },
+                  None,
+               ),
+            };
 
-               Diagnostic {
-                  range,
-                  severity: Some(DiagnosticSeverity::ERROR),
-                  message: x.message,
-                  related_information: related_info,
-                  ..Default::default()
-               }
-            })
-            .collect()
+            Diagnostic {
+               range,
+               severity: Some(DiagnosticSeverity::ERROR),
+               message: x.message,
+               related_information: related_info,
+               ..Default::default()
+            }
+         })
+         .collect()
    }
 }
 
@@ -131,10 +127,7 @@ impl LanguageServer for Backend {
 
    async fn did_close(&self, params: DidCloseTextDocumentParams) {
       let doc_uri = params.text_document.uri;
-      self
-         .client
-         .publish_diagnostics(doc_uri, vec![], None)
-         .await;
+      self.client.publish_diagnostics(doc_uri, vec![], None).await;
    }
 
    async fn shutdown(&self) -> Result<()> {

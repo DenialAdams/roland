@@ -6,6 +6,7 @@ use crate::interner::StrId;
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth, ValueType};
 
+#[derive(Clone)]
 pub struct SizeInfo {
    values_size: u32,
    pub mem_size: u32,

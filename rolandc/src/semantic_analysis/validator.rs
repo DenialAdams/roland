@@ -1,7 +1,7 @@
 use super::type_inference::try_set_inferred_type;
 use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
-use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details, rolandc_error_no_loc};
-use crate::error_handling::{ErrorManager};
+use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc, rolandc_error_w_details};
+use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::lex::{SourceInfo, SourcePath, SourcePosition};
 use crate::parse::{
@@ -9,6 +9,7 @@ use crate::parse::{
    StatementNode, UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
+use crate::size_info::calculate_struct_size_info;
 use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE};
 use crate::Target;
 use arrayvec::ArrayVec;
@@ -226,7 +227,10 @@ pub fn type_and_check_validity(
          error_count += 1;
          rolandc_error_w_details!(
             err_manager,
-            &[(old_enum.location, "first enum defined"), (a_enum.location, "first enum defined")],
+            &[
+               (old_enum.location, "first enum defined"),
+               (a_enum.location, "first enum defined")
+            ],
             "Encountered duplicate enums with the same name `{}`",
             interner.lookup(a_enum.name)
          );
@@ -258,7 +262,10 @@ pub fn type_and_check_validity(
          error_count += 1;
          rolandc_error_w_details!(
             err_manager,
-            &[(old_struct.location, "first struct defined"), (old_struct.location, "first struct defined")],
+            &[
+               (old_struct.location, "first struct defined"),
+               (old_struct.location, "first struct defined")
+            ],
             "Encountered duplicate structs with the same name `{}`",
             interner.lookup(a_struct.name)
          );
@@ -273,7 +280,10 @@ pub fn type_and_check_validity(
          error_count += 1;
          rolandc_error_w_details!(
             err_manager,
-            &[(enum_i.location, "enum defined"), (struct_i.1.location, "struct defined")],
+            &[
+               (enum_i.location, "enum defined"),
+               (struct_i.1.location, "struct defined")
+            ],
             "Enum and struct share the same name `{}`",
             interner.lookup(*struct_i.0)
          );
@@ -341,7 +351,10 @@ pub fn type_and_check_validity(
          error_count += 1;
          rolandc_error_w_details!(
             err_manager,
-            &[(old_value.location, "first static/const defined"), (*si, "second static/const defined"),],
+            &[
+               (old_value.location, "first static/const defined"),
+               (*si, "second static/const defined"),
+            ],
             "Encountered duplicate static/const with the same name `{}`",
             interner.lookup(const_node.name.identifier),
          );
@@ -375,7 +388,10 @@ pub fn type_and_check_validity(
          error_count += 1;
          rolandc_error_w_details!(
             err_manager,
-            &[(old_value.location, "first static/const defined"), (static_node.location, "second static/const defined")],
+            &[
+               (old_value.location, "first static/const defined"),
+               (static_node.location, "second static/const defined")
+            ],
             "Encountered duplicate static/const with the same name `{}`",
             interner.lookup(static_node.name.identifier),
          );
@@ -509,7 +525,10 @@ pub fn type_and_check_validity(
          let procedure_name_str = interner.lookup(definition.name);
          rolandc_error_w_details!(
             err_manager,
-            &[(old_procedure.location, "first procedure declared"), (source_location, "second procedure declared")],
+            &[
+               (old_procedure.location, "first procedure declared"),
+               (source_location, "second procedure declared")
+            ],
             "Encountered duplicate procedures with the same name `{}`",
             procedure_name_str
          );
@@ -531,6 +550,7 @@ pub fn type_and_check_validity(
       unknown_ints: IndexSet::new(),
       unknown_floats: IndexSet::new(),
       expressions,
+      struct_size_info: HashMap::new(),
    };
 
    let special_procs = get_special_procedures(target, interner);
@@ -576,6 +596,19 @@ pub fn type_and_check_validity(
    // procedure/struct definition errors, and probably invalidated invariants
    if validation_context.error_count > 0 {
       return validation_context.error_count;
+   }
+
+   //let struct_size_info: HashMap<StrId, SizeInfo> = HashMap::with_capacity(validation_context.struct_info.len());
+   validation_context
+      .struct_size_info
+      .reserve(validation_context.struct_info.len());
+   for s in validation_context.struct_info.iter() {
+      calculate_struct_size_info(
+         *s.0,
+         validation_context.enum_info,
+         validation_context.struct_info,
+         &mut validation_context.struct_size_info,
+      );
    }
 
    for p_const in program.consts.iter_mut() {
@@ -681,17 +714,20 @@ pub fn type_and_check_validity(
                interner.lookup(procedure.definition.name),
                x_str,
             );
-
          }
       }
    }
 
    if !validation_context.unknown_ints.is_empty() {
       validation_context.error_count += 1;
-      let err_details: Vec<_> = validation_context.unknown_ints.iter().map(|x| {
-         let loc = validation_context.expressions[*x].location;
-         (loc, "int literal")
-      }).collect();
+      let err_details: Vec<_> = validation_context
+         .unknown_ints
+         .iter()
+         .map(|x| {
+            let loc = validation_context.expressions[*x].location;
+            (loc, "int literal")
+         })
+         .collect();
       rolandc_error_w_details!(
          err_manager,
          &err_details,
@@ -702,10 +738,14 @@ pub fn type_and_check_validity(
 
    if !validation_context.unknown_floats.is_empty() {
       validation_context.error_count += 1;
-      let err_details: Vec<_> = validation_context.unknown_floats.iter().map(|x| {
-         let loc = validation_context.expressions[*x].location;
-         (loc, "float literal")
-      }).collect();
+      let err_details: Vec<_> = validation_context
+         .unknown_floats
+         .iter()
+         .map(|x| {
+            let loc = validation_context.expressions[*x].location;
+            (loc, "float literal")
+         })
+         .collect();
       rolandc_error_w_details!(
          err_manager,
          &err_details,
@@ -716,6 +756,7 @@ pub fn type_and_check_validity(
 
    let err_count = validation_context.error_count;
    program.literals = validation_context.string_literals;
+   program.struct_size_info = validation_context.struct_size_info;
    program.enum_info = enum_info;
    program.struct_info = struct_info;
    program.static_info = static_info;
@@ -789,13 +830,21 @@ fn type_statement(
       Statement::Continue => {
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
-            rolandc_error!(err_manager, statement.location, "Continue statement can only be used in a loop");
+            rolandc_error!(
+               err_manager,
+               statement.location,
+               "Continue statement can only be used in a loop"
+            );
          }
       }
       Statement::Break => {
          if validation_context.loop_depth == 0 {
             validation_context.error_count += 1;
-            rolandc_error!(err_manager, statement.location, "Break statement can only be used in a loop");
+            rolandc_error!(
+               err_manager,
+               statement.location,
+               "Break statement can only be used in a loop"
+            );
          }
       }
       Statement::For(var, start, end, bn, _) => {
@@ -833,7 +882,10 @@ fn type_statement(
                validation_context.error_count += 1;
                rolandc_error_w_details!(
                   err_manager,
-                  &[(start_expr.location, "start of range"), (end_expr.location, "end of range")],
+                  &[
+                     (start_expr.location, "start of range"),
+                     (end_expr.location, "end of range")
+                  ],
                   "Start and end of range must be integer types of the same kind; got types `{}` and `{}`",
                   start_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
                   end_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
@@ -1139,29 +1191,15 @@ fn get_type(
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
          } else {
-            let valid_cast = match (e_type, &target_type) {
-               (ExpressionType::Pointer(_, _), ExpressionType::Pointer(_, _)) => true,
-               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Pointer(_, _))
-                  if x.width == IntWidth::Pointer =>
-               {
-                  true
-               }
-               (ExpressionType::Pointer(_, _), ExpressionType::Value(ValueType::Int(x)))
-                  if x.width == IntWidth::Pointer =>
-               {
-                  true
-               }
-               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
-                  x.width.as_num_bytes() == y.width.as_num_bytes()
-               }
-               (ExpressionType::Value(ValueType::Float(x)), ExpressionType::Value(ValueType::Int(y))) => {
-                  x.width.as_num_bytes() == y.width.as_num_bytes()
-               }
-               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Float(y))) => {
-                  x.width.as_num_bytes() == y.width.as_num_bytes()
-               }
-               _ => false,
-            };
+            let valid_cast = crate::size_info::sizeof_type_mem(
+               e_type,
+               validation_context.enum_info,
+               &validation_context.struct_size_info,
+            ) == crate::size_info::sizeof_type_mem(
+               target_type,
+               validation_context.enum_info,
+               &validation_context.struct_size_info,
+            );
 
             if valid_cast {
                target_type.clone()
@@ -1313,7 +1351,10 @@ fn get_type(
             validation_context.error_count += 1;
             rolandc_error_w_details!(
                err_manager,
-               &[(lhs_expr.location, "left hand side"), (rhs_expr.location, "right hand side")],
+               &[
+                  (lhs_expr.location, "left hand side"),
+                  (rhs_expr.location, "right hand side")
+               ],
                "Binary operator {:?} requires LHS and RHS to have identical type; instead got {} and {}",
                operator,
                lhs_type.as_roland_type_info(interner),
@@ -1432,7 +1473,12 @@ fn get_type(
             Some(t) => t.clone(),
             None => {
                validation_context.error_count += 1;
-               rolandc_error!(err_manager, expr_location, "Encountered undefined variable `{}`", interner.lookup(*id));
+               rolandc_error!(
+                  err_manager,
+                  expr_location,
+                  "Encountered undefined variable `{}`",
+                  interner.lookup(*id)
+               );
                ExpressionType::Value(ValueType::CompileError)
             }
          }
@@ -1622,7 +1668,10 @@ fn get_type(
                         validation_context.error_count += 1;
                         rolandc_error_w_details!(
                            err_manager,
-                           &[(defined_struct.location, "struct defined"), (expr_location, "struct instantiated")],
+                           &[
+                              (defined_struct.location, "struct defined"),
+                              (expr_location, "struct instantiated")
+                           ],
                            "`{}` is not a known field of struct `{}`",
                            interner.lookup(field.0),
                            interner.lookup(*struct_name),
@@ -1636,7 +1685,10 @@ fn get_type(
                      validation_context.error_count += 1;
                      rolandc_error_w_details!(
                         err_manager,
-                        &[(defined_struct.location, "struct defined"), (expr_location, "struct instantiated")],
+                        &[
+                           (defined_struct.location, "struct defined"),
+                           (expr_location, "struct instantiated")
+                        ],
                         "`{}` is a valid field of struct `{}`, but is duplicated",
                         interner.lookup(field.0),
                         interner.lookup(*struct_name),
@@ -1655,7 +1707,11 @@ fn get_type(
                      let defined_type_str = defined_type.as_roland_type_info(interner);
                      rolandc_error_w_details!(
                         err_manager,
-                        &[(defined_struct.location, "struct defined"), (expr_location, "struct instantiated"), (field_expr.location, "field value")],
+                        &[
+                           (defined_struct.location, "struct defined"),
+                           (expr_location, "struct instantiated"),
+                           (field_expr.location, "field value")
+                        ],
                         "For field `{}` of struct `{}`, encountered value of type {} when we expected {}",
                         interner.lookup(field.0),
                         interner.lookup(*struct_name),
@@ -1671,7 +1727,10 @@ fn get_type(
                   let unmatched_fields_str: Vec<&str> = unmatched_fields.iter().map(|x| interner.lookup(*x)).collect();
                   rolandc_error_w_details!(
                      err_manager,
-                     &[(defined_struct.location, "struct defined"), (expr_location, "struct instantiated")],
+                     &[
+                        (defined_struct.location, "struct defined"),
+                        (expr_location, "struct instantiated")
+                     ],
                      "Literal of struct `{}` is missing fields [{}]",
                      interner.lookup(*struct_name),
                      unmatched_fields_str.join(", "),
@@ -1783,7 +1842,11 @@ fn get_type(
                validation_context.error_count += 1;
                rolandc_error_w_details!(
                   err_manager,
-                  &[(expr_location, "array literal".into()), (last_elem_expr.location, format!("element {}", i - 1)), (this_elem_expr.location, format!("element {}", i))],
+                  &[
+                     (expr_location, "array literal".into()),
+                     (last_elem_expr.location, format!("element {}", i - 1)),
+                     (this_elem_expr.location, format!("element {}", i))
+                  ],
                   "Element at array index {} has type of {}, but element at array index {} has mismatching type of {}",
                   i - 1,
                   last_elem_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
@@ -1858,7 +1921,10 @@ fn get_type(
                validation_context.error_count += 1;
                rolandc_error_w_details!(
                   err_manager,
-                  &[(array_expression.location, "expression"),(index_expression.location, "index")],
+                  &[
+                     (array_expression.location, "expression"),
+                     (index_expression.location, "index")
+                  ],
                   "Attempted to index expression of type {}, which is not an array type",
                   x.as_roland_type_info(interner),
                );

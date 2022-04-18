@@ -77,12 +77,7 @@ pub fn lower_single_expression(
    }
 }
 
-pub fn lower_consts(
-   struct_size_info: &HashMap<StrId, SizeInfo>,
-   program: &mut Program,
-   expressions: &mut ExpressionPool,
-   interner: &mut Interner,
-) {
+pub fn lower_consts(program: &mut Program, expressions: &mut ExpressionPool, interner: &mut Interner) {
    let mut const_replacements: HashMap<StrId, ExpressionId> = HashMap::new();
 
    for p_const in program.consts.drain(0..) {
@@ -99,7 +94,7 @@ pub fn lower_consts(
          sizeof_proc_id,
          length_id,
          &program.struct_info,
-         struct_size_info,
+         &program.struct_size_info,
          &program.enum_info,
       );
    }

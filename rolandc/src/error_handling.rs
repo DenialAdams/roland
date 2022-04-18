@@ -91,7 +91,9 @@ pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo, i
          writeln!(
             err_stream,
             "↳ line {}, column {} [{}]",
-            source_info.begin.line + 1, source_info.begin.col + 1, path_str
+            source_info.begin.line + 1,
+            source_info.begin.col + 1,
+            path_str
          )
          .unwrap();
       }
@@ -99,7 +101,8 @@ pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo, i
          writeln!(
             err_stream,
             "↳ line {}, column {}",
-            source_info.begin.line + 1, source_info.begin.col + 1
+            source_info.begin.line + 1,
+            source_info.begin.col + 1
          )
          .unwrap();
       }
@@ -118,7 +121,10 @@ pub fn emit_source_info_with_description<W: Write>(
          writeln!(
             err_stream,
             "↳ {} @ line {}, column {} [{}]",
-            description, source_info.begin.line + 1, source_info.begin.col + 1, path_str
+            description,
+            source_info.begin.line + 1,
+            source_info.begin.col + 1,
+            path_str
          )
          .unwrap();
       }
@@ -126,7 +132,9 @@ pub fn emit_source_info_with_description<W: Write>(
          writeln!(
             err_stream,
             "↳ {} @ line {}, column {}",
-            description, source_info.begin.line + 1, source_info.begin.col + 1
+            description,
+            source_info.begin.line + 1,
+            source_info.begin.col + 1
          )
          .unwrap();
       }

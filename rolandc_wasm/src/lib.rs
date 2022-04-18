@@ -26,11 +26,7 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
 
    let mut err_out = Vec::new();
 
-   let compile_result = rolandc::compile(
-      ctx,
-      rolandc::CompilationEntryPoint::Buffer(source_code),
-      Target::Wasi,
-   );
+   let compile_result = rolandc::compile(ctx, rolandc::CompilationEntryPoint::Buffer(source_code), Target::Wasi);
 
    ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner);
 

@@ -4,7 +4,7 @@
 
 use rolandc::{CompilationContext, CompilationEntryPoint, CompilationError, Target};
 use std::fs::File;
-use std::io::{Write};
+use std::io::Write;
 use std::path::PathBuf;
 
 const HELP: &str = r"
@@ -61,11 +61,7 @@ fn main() {
    let target = if opts.wasm4 { Target::Wasm4 } else { Target::Wasi };
 
    let mut ctx = CompilationContext::new();
-   let compile_result = rolandc::compile(
-      &mut ctx,
-      CompilationEntryPoint::Path(opts.source_file.clone()),
-      target,
-   );
+   let compile_result = rolandc::compile(&mut ctx, CompilationEntryPoint::Path(opts.source_file.clone()), target);
 
    ctx.err_manager.write_out_errors(&mut err_stream_l, &ctx.interner);
 

@@ -1,3 +1,4 @@
+use crate::add_virtual_variables::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    BinOp, Expression, ExpressionId, ExpressionPool, ParameterNode, ProcImplSource, Program, Statement, StatementNode,
@@ -441,11 +442,7 @@ fn dynamic_move_locals_of_type_to_dest(
          generation_context.out.emit_get_local(*local_index);
          simple_store(field, generation_context);
          *local_index += 1;
-         *offset += sizeof_type_mem(
-            field,
-            generation_context.enum_info,
-            generation_context.struct_size_info,
-         );
+         *offset += sizeof_type_mem(field, generation_context.enum_info, generation_context.struct_size_info);
       }
    }
 }
@@ -455,7 +452,6 @@ fn dynamic_move_locals_of_type_to_dest(
 // l-s statics
 // s+ program stack (local variables and parameters are pushed here during runtime)
 pub fn emit_wasm(
-   struct_size_info: &HashMap<StrId, SizeInfo>,
    program: &mut Program,
    interner: &mut Interner,
    expressions: &ExpressionPool,
@@ -473,7 +469,7 @@ pub fn emit_wasm(
       local_offsets_mem: HashMap::new(),
       needed_store_fns: IndexSet::new(),
       struct_info: &program.struct_info,
-      struct_size_info,
+      struct_size_info: &program.struct_size_info,
       enum_info: &program.enum_info,
       sum_sizeof_locals_mem: 0,
       expressions,
@@ -1434,39 +1430,52 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             _ => unreachable!(),
          }
       }
-      Expression::Transmute(target_type, e) => {
-         do_emit(*e, generation_context, interner);
+      Expression::Transmute(target_type, e_id) => {
+         let e = &generation_context.expressions[*e_id];
 
-         let e = &generation_context.expressions[*e];
+         if e.expression.is_lvalue_disregard_consts(generation_context.expressions) {
+            do_emit(*e_id, generation_context, interner);
+         } else if is_wasm_compatible_rval_transmute(e.exp_type.as_ref().unwrap(), target_type) {
+            do_emit(*e_id, generation_context, interner);
 
-         if e.expression.is_lvalue_disregard_consts(&generation_context.expressions) {
-            // nop
-         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Float(_)))
-            && matches!(target_type, ExpressionType::Value(ValueType::Int(_)))
-         {
-            // float -> int
-            match target_type {
-               ExpressionType::Value(ValueType::Int(x)) if x.width.as_num_bytes() == 4 => {
-                  generation_context.out.emit_constant_instruction("i32.reinterpret_f32");
+            if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Float(_)))
+               && matches!(target_type, ExpressionType::Value(ValueType::Int(_)))
+            {
+               // float -> int
+               match target_type {
+                  ExpressionType::Value(ValueType::Int(x)) if x.width.as_num_bytes() == 4 => {
+                     generation_context.out.emit_constant_instruction("i32.reinterpret_f32");
+                  }
+                  ExpressionType::Value(ValueType::Int(x)) if x.width.as_num_bytes() == 8 => {
+                     generation_context.out.emit_constant_instruction("i64.reinterpret_f64");
+                  }
+                  _ => unreachable!(),
                }
-               ExpressionType::Value(ValueType::Int(x)) if x.width.as_num_bytes() == 8 => {
-                  generation_context.out.emit_constant_instruction("i64.reinterpret_f64");
+            } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Int(_)))
+               && matches!(target_type, ExpressionType::Value(ValueType::Float(_)))
+            {
+               // int -> float
+               match target_type {
+                  ExpressionType::Value(F32_TYPE) => {
+                     generation_context.out.emit_constant_instruction("f32.reinterpret_i32");
+                  }
+                  ExpressionType::Value(F64_TYPE) => {
+                     generation_context.out.emit_constant_instruction("f64.reinterpret_i64");
+                  }
+                  _ => unreachable!(),
                }
-               _ => unreachable!(),
             }
-         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Int(_)))
-            && matches!(target_type, ExpressionType::Value(ValueType::Float(_)))
-         {
-            // int -> float
-            match target_type {
-               ExpressionType::Value(F32_TYPE) => {
-                  generation_context.out.emit_constant_instruction("f32.reinterpret_i32");
-               }
-               ExpressionType::Value(F64_TYPE) => {
-                  generation_context.out.emit_constant_instruction("f64.reinterpret_i64");
-               }
-               _ => unreachable!(),
-            }
+         } else {
+            let transmutee_vv = interner.reverse_lookup(&format!("::{}", e_id.index()));
+
+            // store to VV as the original type
+            get_stack_address_of_local(transmutee_vv, generation_context);
+            do_emit(*e_id, generation_context, interner);
+            store(e.exp_type.as_ref().unwrap(), generation_context, interner);
+
+            // load as the target type
+            get_stack_address_of_local(transmutee_vv, generation_context);
+            load(target_type, generation_context);
          }
       }
       Expression::Truncate(target_type, e) => {

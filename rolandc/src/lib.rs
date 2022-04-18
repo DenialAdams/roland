@@ -30,11 +30,9 @@ mod wasm;
 
 use error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
 use error_handling::ErrorManager;
-use interner::StrId;
 use lex::SourcePath;
 use parse::{ExpressionId, ExpressionNode, ExpressionPool, ImportNode, Program};
-use size_info::{calculate_struct_size_info, SizeInfo};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::path::PathBuf;
 use typed_index_vec::HandleMap;
@@ -71,7 +69,6 @@ pub enum CompilationEntryPoint<'a> {
 
 // Repeated compilations can be sped up by reusing the context
 pub struct CompilationContext {
-   struct_size_info: HashMap<StrId, SizeInfo>,
    expressions: HandleMap<ExpressionId, ExpressionNode>,
    pub interner: Interner,
    pub err_manager: ErrorManager,
@@ -84,7 +81,6 @@ impl CompilationContext {
          expressions: HandleMap::new(),
          interner: Interner::with_capacity(1024),
          err_manager: ErrorManager::new(),
-         struct_size_info: HashMap::new(),
       }
    }
 }
@@ -96,7 +92,6 @@ pub fn compile_for_errors(
 ) -> Result<Program, CompilationError> {
    ctx.expressions.clear();
    ctx.err_manager.clear();
-   ctx.struct_size_info.clear();
    // We don't have to clear the interner - assumption is that the context is coming a recent version of the same source, so symbols should be relevant
 
    let mut user_program = match user_program_ep {
@@ -220,34 +215,18 @@ pub fn compile_for_errors(
       return Err(CompilationError::Semantic(err_count));
    }
 
-   // We calculate this earlier than you might expect, because we need it for sizeof lowering
-   ctx.struct_size_info.reserve(user_program.struct_info.len());
-   for s in user_program.struct_info.iter() {
-      calculate_struct_size_info(
-         *s.0,
-         &user_program.enum_info,
-         &user_program.struct_info,
-         &mut ctx.struct_size_info,
-      );
-   }
-
    err_count = compile_globals::compile_globals(
       &user_program,
       &mut ctx.expressions,
       &mut ctx.interner,
-      &ctx.struct_size_info,
+      &user_program.struct_size_info,
       &mut ctx.err_manager,
    );
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));
    }
 
-   various_expression_lowering::lower_consts(
-      &ctx.struct_size_info,
-      &mut user_program,
-      &mut ctx.expressions,
-      &mut ctx.interner,
-   );
+   various_expression_lowering::lower_consts(&mut user_program, &mut ctx.expressions, &mut ctx.interner);
    user_program.static_info.retain(|_, v| !v.is_const);
 
    err_count = compile_globals::ensure_statics_const(
@@ -286,7 +265,6 @@ pub fn compile(
 
    match target {
       Target::Wasi => Ok(wasm::emit_wasm(
-         &ctx.struct_size_info,
          &mut user_program,
          &mut ctx.interner,
          &ctx.expressions,
@@ -294,14 +272,7 @@ pub fn compile(
          false,
       )),
       Target::Wasm4 => {
-         let wat = wasm::emit_wasm(
-            &ctx.struct_size_info,
-            &mut user_program,
-            &mut ctx.interner,
-            &ctx.expressions,
-            0x19a0,
-            true,
-         );
+         let wat = wasm::emit_wasm(&mut user_program, &mut ctx.interner, &ctx.expressions, 0x19a0, true);
          let wasm = match wat::parse_bytes(&wat) {
             Ok(wasm_bytes) => wasm_bytes.into_owned(),
             Err(_) => return Err(CompilationError::Internal),
