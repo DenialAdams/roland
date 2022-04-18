@@ -168,6 +168,10 @@ impl ExpressionType {
       matches!(self, ExpressionType::Pointer(_, _))
    }
 
+   pub fn is_enum(&self) -> bool {
+      matches!(self, ExpressionType::Value(ValueType::Enum(_)))
+   }
+
    pub fn as_roland_type_info(&self, interner: &mut Interner) -> String {
       match self {
          ExpressionType::Value(x) => x.as_roland_type_info(interner).into(),

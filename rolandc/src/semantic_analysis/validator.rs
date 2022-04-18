@@ -9,7 +9,7 @@ use crate::parse::{
    StatementNode, UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
-use crate::size_info::calculate_struct_size_info;
+use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, mem_alignment};
 use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE};
 use crate::Target;
 use arrayvec::ArrayVec;
@@ -1191,26 +1191,51 @@ fn get_type(
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
          } else {
-            let valid_cast = crate::size_info::sizeof_type_mem(
+            let size_source = sizeof_type_mem(
                e_type,
                validation_context.enum_info,
                &validation_context.struct_size_info,
-            ) == crate::size_info::sizeof_type_mem(
+            );
+            let size_target = sizeof_type_mem(
                target_type,
                validation_context.enum_info,
                &validation_context.struct_size_info,
             );
 
-            if valid_cast {
+            if target_type.is_enum() || e_type.is_enum() {
+               validation_context.error_count += 1;
+               rolandc_error_w_details!(
+                  err_manager,
+                  &[(expr_location, "transmute"), (e.location, "operand")],
+                  "Transmuting to or from enum types isn't currently supported due to the unspecified size of enums",
+               );
+               ExpressionType::Value(ValueType::CompileError)
+            } else if size_source == size_target {
+               let alignment_source = mem_alignment(e_type, validation_context.enum_info, &validation_context.struct_size_info);
+               let alignment_target = mem_alignment(target_type, validation_context.enum_info, &validation_context.struct_size_info);
+               if alignment_source < alignment_target {
+                  validation_context.error_count += 1;
+                  rolandc_error_w_details!(
+                     err_manager,
+                     &[(expr_location, "transmute"), (e.location, "operand")],
+                     "Transmute encountered an operand of type {}, which can't be transmuted to type {} as the alignment requirements would not be met ({} vs {})",
+                     e_type.as_roland_type_info(interner),
+                     target_type.as_roland_type_info(interner),
+                     alignment_source,
+                     alignment_target,
+                  );
+               }
                target_type.clone()
             } else {
                validation_context.error_count += 1;
                rolandc_error_w_details!(
                   err_manager,
                   &[(expr_location, "transmute"), (e.location, "operand")],
-                  "Transmute encountered an operand of type {} which can not be transmuted to type {}",
+                  "Transmute encountered an operand of type {} which can't be transmuted to type {} as the sizes do not match ({} vs {})",
                   e_type.as_roland_type_info(interner),
                   target_type.as_roland_type_info(interner),
+                  size_source,
+                  size_target,
                );
                ExpressionType::Value(ValueType::CompileError)
             }

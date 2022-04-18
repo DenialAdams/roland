@@ -1,0 +1,10 @@
+enum A {
+   Foo,
+   Bar,
+}
+
+proc main() {
+   let num: u8 = 0;
+   let x = num transmute A;
+   let y = A::Foo transmute u8;
+}

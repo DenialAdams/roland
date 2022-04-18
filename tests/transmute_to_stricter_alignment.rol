@@ -1,0 +1,17 @@
+struct Foo {
+   a: u8,
+   b: u8,
+}
+
+struct Bar {
+   a: u16,
+}
+
+proc main() {
+   let foo = Foo {
+      a: 10,
+      b: 20,
+   };
+
+   let bar = foo transmute Bar;
+}
