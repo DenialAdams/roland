@@ -1435,11 +1435,13 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          }
       }
       Expression::Transmute(target_type, e) => {
-         do_emit_and_load_lval(*e, generation_context, interner);
+         do_emit(*e, generation_context, interner);
 
          let e = &generation_context.expressions[*e];
 
-         if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Float(_)))
+         if e.expression.is_lvalue_disregard_consts(&generation_context.expressions) {
+            // nop
+         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Value(ValueType::Float(_)))
             && matches!(target_type, ExpressionType::Value(ValueType::Int(_)))
          {
             // float -> int
@@ -1465,12 +1467,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                }
                _ => unreachable!(),
             }
-         } else {
-            // pointer or int
-            // nop
          }
-
-         // nop, width is the same
       }
       Expression::Truncate(target_type, e) => {
          do_emit_and_load_lval(*e, generation_context, interner);

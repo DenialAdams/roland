@@ -245,6 +245,7 @@ pub struct GenericArgumentNode {
 impl Expression {
    pub fn is_lvalue(&self, expressions: &ExpressionPool, static_info: &IndexMap<StrId, StaticInfo>) -> bool {
       match self {
+         Expression::Transmute(_, e) => expressions[*e].expression.is_lvalue(expressions, static_info),
          Expression::Variable(x) => static_info.get(x).map_or(true, |x| !x.is_const),
          Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue(expressions, static_info),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
@@ -256,6 +257,7 @@ impl Expression {
    // After constants are lowered, we don't need to care about constants and pass a bulky data structure around
    pub fn is_lvalue_disregard_consts(&self, expressions: &ExpressionPool) -> bool {
       match self {
+         Expression::Transmute(_, e) => expressions[*e].expression.is_lvalue_disregard_consts(expressions),
          Expression::Variable(_) => true,
          Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue_disregard_consts(expressions),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
