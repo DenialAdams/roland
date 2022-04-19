@@ -8,7 +8,7 @@ use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
 };
-use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE};
+use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE};
 use crate::typed_index_vec::Handle;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::{HashMap, HashSet};
@@ -610,80 +610,45 @@ pub fn emit_wasm(
    )
    .unwrap();
 
-   // builtin wasm memory size
-   generation_context.out.emit_function_start_named_params(
-      interner.intern("wasm_memory_size"),
-      &[],
-      &ExpressionType::Value(USIZE_TYPE),
-      &program.enum_info,
-      &program.struct_info,
-      interner,
-   );
-   generation_context.out.emit_constant_instruction("memory.size");
-   generation_context.out.close();
+   for external_procedure in program
+   .external_procedures
+   .iter()
+   .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ProcImplSource::Builtin))
+   {
+      generation_context.out.emit_function_start_named_params(
+         external_procedure.definition.name,
+         &external_procedure.definition.parameters,
+         &external_procedure.definition.ret_type,
+         &program.enum_info,
+         &program.struct_info,
+         interner,
+      );
 
-   // builtin wasm memory grow
-   let new_pages_param = ParameterNode {
-      name: interner.intern("new_pages"),
-      p_type: ExpressionType::Value(USIZE_TYPE),
-      named: false,
-   };
-   generation_context.out.emit_function_start_named_params(
-      interner.intern("wasm_memory_grow"),
-      &[new_pages_param],
-      &ExpressionType::Value(USIZE_TYPE),
-      &program.enum_info,
-      &program.struct_info,
-      interner,
-   );
-   generation_context.out.emit_get_local(0);
-   generation_context.out.emit_constant_instruction("memory.grow");
-   generation_context.out.close();
-
-   let sqrt_param = ParameterNode {
-      name: interner.intern("x"),
-      p_type: ExpressionType::Value(F64_TYPE),
-      named: false,
-   };
-   generation_context.out.emit_function_start_named_params(
-      interner.intern("sqrt"),
-      &[sqrt_param],
-      &ExpressionType::Value(F64_TYPE),
-      &program.enum_info,
-      &program.struct_info,
-      interner,
-   );
-   generation_context.out.emit_get_local(0);
-   generation_context.out.emit_constant_instruction("f64.sqrt");
-   generation_context.out.close();
-
-   let sqrt_32_param = ParameterNode {
-      name: interner.intern("x"),
-      p_type: ExpressionType::Value(F32_TYPE),
-      named: false,
-   };
-   generation_context.out.emit_function_start_named_params(
-      interner.intern("sqrt_f32"),
-      &[sqrt_32_param],
-      &ExpressionType::Value(F32_TYPE),
-      &program.enum_info,
-      &program.struct_info,
-      interner,
-   );
-   generation_context.out.emit_get_local(0);
-   generation_context.out.emit_constant_instruction("f32.sqrt");
-   generation_context.out.close();
-
-   generation_context.out.emit_function_start_named_params(
-      interner.intern("unreachable"),
-      &[],
-      &ExpressionType::Value(ValueType::Unit),
-      &program.enum_info,
-      &program.struct_info,
-      interner,
-   );
-   generation_context.out.emit_constant_instruction("unreachable");
-   generation_context.out.close();
+      match interner.lookup(external_procedure.definition.name) {
+         "wasm_memory_size" => {
+            generation_context.out.emit_constant_instruction("memory.size");
+         }
+         "wasm_memory_grow" => {
+            generation_context.out.emit_get_local(0);
+            generation_context.out.emit_constant_instruction("memory.grow");
+         }
+         "sqrt" => {
+            generation_context.out.emit_get_local(0);
+            generation_context.out.emit_constant_instruction("f64.sqrt");
+         }
+         "sqrt_32" => {
+            generation_context.out.emit_get_local(0);
+            generation_context.out.emit_constant_instruction("f32.sqrt");
+         }
+         "unreachable" => {
+            generation_context.out.emit_constant_instruction("unreachable");
+         }
+         x => {
+            panic!("Unimplemented builtin: {}", x);
+         },
+      }
+      generation_context.out.close();
+   }
 
    for s in program.struct_info.iter() {
       let mut offset_begin = 0;
