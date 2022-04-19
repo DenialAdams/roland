@@ -611,9 +611,9 @@ pub fn emit_wasm(
    .unwrap();
 
    for external_procedure in program
-   .external_procedures
-   .iter()
-   .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ProcImplSource::Builtin))
+      .external_procedures
+      .iter()
+      .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ProcImplSource::Builtin))
    {
       generation_context.out.emit_function_start_named_params(
          external_procedure.definition.name,
@@ -645,7 +645,7 @@ pub fn emit_wasm(
          }
          x => {
             panic!("Unimplemented builtin: {}", x);
-         },
+         }
       }
       generation_context.out.close();
    }
