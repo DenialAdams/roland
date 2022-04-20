@@ -31,7 +31,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
    let mut pargs = pico_args::Arguments::from_env();
 
    if pargs.contains("--help") {
-      println!("{}", HELP);
+      eprintln!("{}", HELP);
 
       std::process::exit(0);
    }
@@ -42,21 +42,29 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
       source_file: pargs.free_from_os_str(parse_path)?,
    };
 
+   let remaining_args = pargs.finish();
+
+   if !remaining_args.is_empty() {
+      let remaining_args_unicode: Vec<_> = remaining_args.iter().map(|x| x.to_string_lossy()).collect();
+      eprintln!("Unrecognized arugments: '{}'", remaining_args_unicode.join("', '"));
+      eprintln!("{}", HELP);
+   }
+
    Ok(opts)
 }
 
 fn main() {
-   let err_stream = std::io::stderr();
-   let mut err_stream_l = err_stream.lock();
-
    let opts = match parse_args() {
       Ok(v) => v,
       Err(e) => {
-         writeln!(err_stream_l, "We didn't understand the arguments you provided: {}", e).unwrap();
-         println!("{}", HELP);
+         eprintln!("We didn't understand the arguments you provided: {}", e);
+         eprintln!("{}", HELP);
          std::process::exit(1);
       }
    };
+
+   let err_stream = std::io::stderr();
+   let mut err_stream_l = err_stream.lock();
 
    let target = if opts.wasm4 { Target::Wasm4 } else { Target::Wasi };
 
