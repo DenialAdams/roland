@@ -1400,6 +1400,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
 
          if e.expression.is_lvalue_disregard_consts(generation_context.expressions) {
             do_emit(*e_id, generation_context, interner);
+            load(target_type, generation_context);
          } else if is_wasm_compatible_rval_transmute(e.exp_type.as_ref().unwrap(), target_type) {
             do_emit(*e_id, generation_context, interner);
 
