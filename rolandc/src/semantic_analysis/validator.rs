@@ -847,7 +847,7 @@ fn type_statement(
             );
          }
       }
-      Statement::For(var, start, end, bn, _) => {
+      Statement::For(var, start, end, bn, inclusive) => {
          type_expression(err_manager, *start, validation_context, interner);
          type_expression(err_manager, *end, validation_context, interner);
 
@@ -893,6 +893,15 @@ fn type_statement(
                ExpressionType::Value(ValueType::CompileError)
             }
          };
+
+         if *inclusive {
+            validation_context.error_count += 1;
+            rolandc_error!(
+               err_manager,
+               statement.location,
+               "Inclusive ranges are not currently supported."
+            );
+         }
 
          // This way the variable is declared at the depth that we'll be typing in
          validation_context.block_depth += 1;
