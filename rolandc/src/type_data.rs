@@ -168,6 +168,13 @@ impl ExpressionType {
       matches!(self, ExpressionType::Pointer(_, _))
    }
 
+   pub fn get_value_type_or_value_being_pointed_to(&self) -> &ValueType {
+      match self {
+         ExpressionType::Value(vt) => vt,
+         ExpressionType::Pointer(_, vt) => vt,
+      }
+   }
+
    pub fn is_enum(&self) -> bool {
       matches!(self, ExpressionType::Value(ValueType::Enum(_)))
    }

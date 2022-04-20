@@ -9,7 +9,7 @@ use crate::parse::{
    StatementNode, UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
-use crate::size_info::{calculate_struct_size_info, mem_alignment, sizeof_type_mem};
+use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, value_type_mem_alignment};
 use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE};
 use crate::Target;
 use arrayvec::ArrayVec;
@@ -1220,17 +1220,20 @@ fn get_type(
                );
                ExpressionType::Value(ValueType::CompileError)
             } else if size_source == size_target {
-               let alignment_source = mem_alignment(
-                  e_type,
+               let alignment_source = value_type_mem_alignment(
+                  e_type.get_value_type_or_value_being_pointed_to(),
                   validation_context.enum_info,
                   &validation_context.struct_size_info,
                );
-               let alignment_target = mem_alignment(
-                  target_type,
+               let alignment_target = value_type_mem_alignment(
+                  target_type.get_value_type_or_value_being_pointed_to(),
                   validation_context.enum_info,
                   &validation_context.struct_size_info,
                );
-               if alignment_source < alignment_target {
+
+               let alignment_error = e_type.is_pointer() && target_type.is_pointer() && (alignment_source < alignment_target);
+
+               if alignment_error {
                   validation_context.error_count += 1;
                   rolandc_error_w_details!(
                      err_manager,
@@ -1241,8 +1244,10 @@ fn get_type(
                      alignment_source,
                      alignment_target,
                   );
+                  ExpressionType::Value(ValueType::CompileError)
+               } else {
+                  target_type.clone()
                }
-               target_type.clone()
             } else {
                validation_context.error_count += 1;
                rolandc_error_w_details!(

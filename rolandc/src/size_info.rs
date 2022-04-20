@@ -100,7 +100,7 @@ pub fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &Ha
    }
 }
 
-fn value_type_mem_alignment(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
+pub fn value_type_mem_alignment(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ValueType::Unresolved(_) => unreachable!(),
       ValueType::UnknownInt => unreachable!(),
