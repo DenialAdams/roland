@@ -339,13 +339,9 @@
                "match": "::"
             },
             {
-               "comment": "dereference asterisk",
-               "match": "(\\*)(?=\\w+)",
-               "captures": {
-                  "1": {
-                     "name": "keyword.operator.dereference.roland"
-                  }
-               }
+               "comment": "dereference",
+               "match": "~",
+               "name": "keyword.operator.dereference.roland"
             },
             {
                "comment": "dot access",
