@@ -766,7 +766,6 @@ fn parse_block(
             | Token::OpenParen
             | Token::Exclam
             | Token::Amp
-            | Token::MultiplyDeref
             | Token::Identifier(_)
             | Token::Minus,
          ) => {
@@ -959,7 +958,6 @@ fn parse_arguments(
             | Token::OpenSquareBracket
             | Token::Amp
             | Token::Exclam
-            | Token::MultiplyDeref
             | Token::Minus,
          ) => {
             let name: Option<StrId> = if let Some(Token::Identifier(x)) = l.peek_token().copied() {
@@ -1234,17 +1232,6 @@ fn pratt(
             expressions,
          )
       }
-      Some(x @ Token::MultiplyDeref) => {
-         let ((), r_bp) = prefix_binding_power(&x);
-         let begin_location = l.peek_source();
-         let rhs = pratt(l, err_manager, r_bp, if_head, expressions, interner)?;
-         let combined_location = merge_locations(expr_begin_source.unwrap(), begin_location.unwrap());
-         wrap(
-            Expression::UnaryOperator(UnOp::Dereference, rhs),
-            combined_location,
-            expressions,
-         )
-      }
       x => {
          if let Some(si) = expr_begin_source {
             rolandc_error!(
@@ -1268,7 +1255,7 @@ fn pratt(
          Some(
             x @ &(Token::Plus
             | Token::Minus
-            | Token::MultiplyDeref
+            | Token::Multiply
             | Token::Divide
             | Token::Remainder
             | Token::LessThan
@@ -1285,6 +1272,7 @@ fn pratt(
             | Token::KeywordExtend
             | Token::KeywordTruncate
             | Token::KeywordTransmute
+            | Token::Deref
             | Token::OpenSquareBracket
             | Token::ShiftLeft
             | Token::ShiftRight),
@@ -1313,9 +1301,9 @@ fn pratt(
             break;
          }
 
-         let op = l.next().unwrap().token;
+         let op = l.next().unwrap();
 
-         lhs = match op {
+         lhs = match op.token {
             Token::OpenSquareBracket => {
                let inner = parse_expression(l, err_manager, false, expressions, interner)?;
                let close_token = expect(l, err_manager, &Token::CloseSquareBracket)?;
@@ -1348,6 +1336,14 @@ fn pratt(
                   expressions,
                )
             }
+            Token::Deref => {
+               let combined_location = merge_locations(expr_begin_source.unwrap(), op.source_info);
+               wrap(
+                  Expression::UnaryOperator(UnOp::Dereference, lhs),
+                  combined_location,
+                  expressions,
+               )
+            }
             _ => unreachable!(),
          };
 
@@ -1370,7 +1366,7 @@ fn pratt(
          Token::Amp => BinOp::BitwiseAnd,
          Token::KeywordOr => BinOp::LogicalOr,
          Token::KeywordAnd => BinOp::LogicalAnd,
-         Token::MultiplyDeref => BinOp::Multiply,
+         Token::Multiply => BinOp::Multiply,
          Token::Divide => BinOp::Divide,
          Token::Remainder => BinOp::Remainder,
          Token::GreaterThan => BinOp::GreaterThan,
@@ -1405,17 +1401,17 @@ fn prefix_binding_power(op: &Token) -> ((), u8) {
       Token::Exclam => ((), 19),
       Token::Minus => ((), 19),
       Token::Amp => ((), 19),
-      Token::MultiplyDeref => ((), 19),
       _ => unreachable!(),
    }
 }
 
 fn postfix_binding_power(op: &Token) -> Option<(u8, ())> {
    match &op {
-      Token::OpenSquareBracket => Some((20, ())),
+      Token::OpenSquareBracket => Some((21, ())),
       Token::KeywordExtend => Some((18, ())),
       Token::KeywordTruncate => Some((18, ())),
       Token::KeywordTransmute => Some((18, ())),
+      Token::Deref => Some((20, ())),
       _ => None,
    }
 }
@@ -1435,7 +1431,7 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
       Token::Amp => (10, 11),
       Token::ShiftLeft | Token::ShiftRight => (12, 13),
       Token::Plus | Token::Minus => (14, 15),
-      Token::MultiplyDeref | Token::Divide | Token::Remainder => (16, 17),
+      Token::Multiply | Token::Divide | Token::Remainder => (16, 17),
       _ => unreachable!(),
    }
 }

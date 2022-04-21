@@ -84,7 +84,7 @@ pub enum Token {
    FloatLiteral(f64),
    Plus,
    Minus,
-   MultiplyDeref,
+   Multiply,
    Divide,
    Remainder,
    Assignment,
@@ -101,6 +101,7 @@ pub enum Token {
    Period,
    DoublePeriod,
    Dollar,
+   Deref,
 }
 
 impl Token {
@@ -147,7 +148,7 @@ impl Token {
          Token::FloatLiteral(_) => "float literal",
          Token::Plus => "+",
          Token::Minus => "-",
-         Token::MultiplyDeref => "*",
+         Token::Multiply => "*",
          Token::Divide => "/",
          Token::Remainder => "%",
          Token::Assignment => "=",
@@ -166,6 +167,7 @@ impl Token {
          Token::KeywordFor => "keyword for",
          Token::KeywordIn => "keyword in",
          Token::Dollar => "$",
+         Token::Deref => "~",
       }
    }
 }
@@ -397,7 +399,7 @@ pub fn lex(
                      end: cur_position.next_col(),
                      file: source_path,
                   },
-                  token: Token::MultiplyDeref,
+                  token: Token::Multiply,
                });
                cur_position.col += 1;
                let _ = chars.next().unwrap();
@@ -645,6 +647,17 @@ pub fn lex(
                      file: source_path,
                   },
                   token: Token::CloseSquareBracket,
+               });
+               cur_position.col += 1;
+               let _ = chars.next().unwrap();
+            } else if c == '~' {
+               tokens.push(SourceToken {
+                  source_info: SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.next_col(),
+                     file: source_path,
+                  },
+                  token: Token::Deref,
                });
                cur_position.col += 1;
                let _ = chars.next().unwrap();

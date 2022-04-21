@@ -12,7 +12,7 @@ proc main() {
      z: 12,
      a: 13,
    };
-   let address = (&a.y) transmute usize;
+   let address = &a.y transmute usize;
    let aligned = (address % 8) == 0;
    print_bool(aligned);
    print(int_to_string(sizeof$BadAlignment() extend u64));

@@ -98,18 +98,18 @@ proc int_to_string(value: u32, buf: &[u8; 10]) -> String {
    loop {
       if value <= 9 {
          next_digit = value truncate u8;
-         (*buf)[total_len - i - 1] = next_digit + 48;
+         buf~[total_len - i - 1] = next_digit + 48;
          i = i + 1;
          break;
       }
       next_digit = (value % 10) truncate u8;
       value = value / 10;
-      (*buf)[total_len - i - 1] = next_digit + 48;
+      buf~[total_len - i - 1] = next_digit + 48;
       i = i + 1;
    }
 
    return String {
       length: i,
-      pointer: &(*buf)[0],
+      pointer: &buf~[0],
    };
 }

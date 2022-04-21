@@ -26,11 +26,11 @@ proc print(s: String) {
    loop {
       fd_write(1, &data[0], data.length, &written);
       let remaining_len = &data[0].buf_len;
-      if written > *remaining_len {
+      if written > remaining_len~ {
          break;
       } else {
          data[0].buf = (data[0].buf transmute usize + written) transmute &u8;
-         *remaining_len = *remaining_len - written;
+         remaining_len~ = remaining_len~ - written;
       }
    }
 }
@@ -71,14 +71,14 @@ proc int_to_string(value: u64) -> String {
       if value <= 9 {
          next_digit = value truncate u8;
          let ptr = ((buf transmute usize) + digit_count_for_loop - i) transmute &u8;
-         *ptr = next_digit + 48;
+         ptr~ = next_digit + 48;
          i = i + 1;
          break;
       }
       next_digit = (value % 10) truncate u8;
       value = value / 10;
       let ptr = ((buf transmute usize) + digit_count_for_loop - i) transmute &u8;
-      *ptr = next_digit + 48;
+      ptr~ = next_digit + 48;
       i = i + 1;
    }
 
