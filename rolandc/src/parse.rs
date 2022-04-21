@@ -1402,10 +1402,10 @@ fn pratt(
 
 fn prefix_binding_power(op: &Token) -> ((), u8) {
    match op {
-      Token::Exclam => ((), 17),
-      Token::Minus => ((), 17),
-      Token::Amp => ((), 17),
-      Token::MultiplyDeref => ((), 17),
+      Token::Exclam => ((), 19),
+      Token::Minus => ((), 19),
+      Token::Amp => ((), 19),
+      Token::MultiplyDeref => ((), 19),
       _ => unreachable!(),
    }
 }

@@ -13,5 +13,5 @@ proc main() {
       b: 20,
    };
 
-   let bar = (&foo) transmute &Bar;
+   let bar = &foo transmute &Bar;
 }
