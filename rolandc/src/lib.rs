@@ -32,9 +32,10 @@ use error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc}
 use error_handling::ErrorManager;
 use lex::SourcePath;
 use parse::{ExpressionId, ExpressionNode, ExpressionPool, ImportNode, Program};
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt::Display;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use typed_index_vec::HandleMap;
 
 use crate::interner::Interner;
@@ -62,9 +63,13 @@ pub enum CompilationError {
    Internal,
 }
 
-pub enum CompilationEntryPoint<'a> {
-   Path(PathBuf),
-   Buffer(&'a str),
+pub trait FileResolver<'a> {
+   fn resolve_path(&mut self, path: &Path) -> std::io::Result<Cow<'a, str>>;
+}
+
+pub enum CompilationEntryPoint<'a, FR: FileResolver<'a>> {
+   Playground(&'a str),
+   PathResolving(PathBuf, FR)
 }
 
 // Repeated compilations can be sped up by reusing the context
@@ -85,9 +90,9 @@ impl CompilationContext {
    }
 }
 
-pub fn compile_for_errors(
+pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    ctx: &mut CompilationContext,
-   user_program_ep: CompilationEntryPoint,
+   user_program_ep: CompilationEntryPoint<'a, FR>,
    target: Target,
 ) -> Result<Program, CompilationError> {
    ctx.expressions.clear();
@@ -95,9 +100,9 @@ pub fn compile_for_errors(
    // We don't have to clear the interner - assumption is that the context is coming a recent version of the same source, so symbols should be relevant
 
    let mut user_program = match user_program_ep {
-      CompilationEntryPoint::Path(x) => {
+      CompilationEntryPoint::PathResolving(ep_path, mut resolver) => {
          let mut user_program = Program::new();
-         let mut import_queue: Vec<PathBuf> = vec![x];
+         let mut import_queue: Vec<PathBuf> = vec![ep_path];
          let mut imported_files = HashSet::new();
          while let Some(mut base_path) = import_queue.pop() {
             let canonical_path = match std::fs::canonicalize(&base_path) {
@@ -117,7 +122,7 @@ pub fn compile_for_errors(
             }
             imported_files.insert(canonical_path);
 
-            let program_s = match std::fs::read_to_string(&base_path) {
+            let program_s = match resolver.resolve_path(&base_path) {
                Ok(s) => s,
                Err(e) => {
                   rolandc_error_no_loc!(
@@ -129,6 +134,7 @@ pub fn compile_for_errors(
                   return Err(CompilationError::Io);
                }
             };
+
             let mut parsed = lex_and_parse(
                &program_s,
                SourcePath::File(ctx.interner.intern(&base_path.as_os_str().to_string_lossy())),
@@ -148,7 +154,7 @@ pub fn compile_for_errors(
          }
          user_program
       }
-      CompilationEntryPoint::Buffer(contents) => {
+      CompilationEntryPoint::Playground(contents) => {
          let (files_to_import, user_program) = lex_and_parse(
             contents,
             SourcePath::Sandbox,
@@ -254,9 +260,9 @@ pub fn compile_for_errors(
    Ok(user_program)
 }
 
-pub fn compile(
+pub fn compile<'a, FR: FileResolver<'a>>(
    ctx: &mut CompilationContext,
-   user_program_ep: CompilationEntryPoint,
+   user_program_ep: CompilationEntryPoint<'a, FR>,
    target: Target,
 ) -> Result<Vec<u8>, CompilationError> {
    let mut user_program = compile_for_errors(ctx, user_program_ep, target)?;

@@ -2,7 +2,8 @@
 #![allow(clippy::match_same_arms)] // Sometimes I find this more clear (when it's just calling something)
 #![allow(clippy::unnecessary_wraps)] // False positives
 
-use rolandc::{CompilationContext, CompilationEntryPoint, CompilationError, Target};
+use rolandc::{CompilationContext, CompilationEntryPoint, CompilationError, Target, FileResolver};
+use std::borrow::Cow;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -53,6 +54,16 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
    Ok(opts)
 }
 
+struct CliFileResolver {
+}
+
+impl<'a> FileResolver<'a> for CliFileResolver {
+   fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'a, str>> {
+      std::fs::read_to_string(path).map(Cow::Owned)
+   }
+}
+
+
 fn main() {
    let opts = match parse_args() {
       Ok(v) => v,
@@ -69,7 +80,7 @@ fn main() {
    let target = if opts.wasm4 { Target::Wasm4 } else { Target::Wasi };
 
    let mut ctx = CompilationContext::new();
-   let compile_result = rolandc::compile(&mut ctx, CompilationEntryPoint::Path(opts.source_file.clone()), target);
+   let compile_result = rolandc::compile::<CliFileResolver>(&mut ctx, CompilationEntryPoint::PathResolving(opts.source_file.clone(), CliFileResolver{}), target);
 
    ctx.err_manager.write_out_errors(&mut err_stream_l, &ctx.interner);
 
