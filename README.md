@@ -7,8 +7,10 @@ If you're still interested in trying Roland, I highly recommend doing so with WA
 
 Roland does not yet have an official release cycle. However, I do publish binaries built from the most recent git commit:
 
-Linux: http://www.brick.codes/roland/rolandc
+Linux: http://www.brick.codes/roland/rolandc  
 Windows: http://www.brick.codes/roland/rolandc.exe
+
+(After downloading, ensure that the bianry is marked as executable)
 
 Alternatively, you can build `rolandc` yourself by running `cargo build --release` and taking the binary out of the `target/release/` directory.
 
