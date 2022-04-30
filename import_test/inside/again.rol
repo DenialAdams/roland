@@ -1,4 +1,0 @@
-import "fifth.rol";
-import "../other.rol";
-import "../final.rol";
-proc aaaa() {}

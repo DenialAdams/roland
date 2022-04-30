@@ -463,7 +463,6 @@ pub fn emit_wasm(
          out: Vec::new(),
          depth: 0,
       },
-      // todo: just reuse the same map?
       literal_offsets: HashMap::with_capacity(program.literals.len()),
       static_addresses: HashMap::with_capacity(program.static_info.len()),
       local_offsets_mem: HashMap::new(),
