@@ -10,7 +10,7 @@ Roland does not yet have an official release cycle. However, I do publish binari
 Linux: http://www.brick.codes/roland/rolandc  
 Windows: http://www.brick.codes/roland/rolandc.exe
 
-(After downloading, ensure that the bianry is marked as executable)
+(After downloading, ensure that the bianry is marked as executable.)
 
 Alternatively, you can build `rolandc` yourself by running `cargo build --release` and taking the binary out of the `target/release/` directory.
 
@@ -19,6 +19,16 @@ Alternatively, you can build `rolandc` yourself by running `cargo build --releas
 Roland is a procedural programming language roughly at the level of C. If you have experience programming in any C-like language, you won't find much surprising here. That being said, here I'll enumerate the fundamentals and notable features.
 
 Syntax wise, Roland looks a lot like Rust. This is just because thats what I have the most experience with - **the syntax could change in the future.**
+
+### Notable Syntax
+
+Dereferencing in Roland is post-script, and marked with ~.
+
+```roland
+let x: u8 = 10;
+let y = &x;
+y~ = y~ * 2;
+```
 
 ### Types
 
@@ -68,8 +78,6 @@ proc main() {
 }
 ```
 
-Roland will re-order struct fields to minimize padding, so it's not a good idea to rely on the order (i.e. by passing the struct to an external API.)
-
 #### Strings
 
 `String` is a struct defined in the standard library that looks like this:
@@ -81,7 +89,7 @@ struct String {
 }
 ```
 
-String literals become instances of `String` and are encoded as UTF-8. And string support in the standard library will assume UTF-8 encoding in the future.
+String literals become instances of `String` and are encoded as UTF-8. String support in the standard library will assume UTF-8 encoding in the future.
 
 You can make your own strings just like you can create an instance of any struct.
 
@@ -167,5 +175,4 @@ at your option.
 ### Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
-additional terms or conditions.
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
