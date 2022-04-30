@@ -22,7 +22,7 @@ Syntax wise, Roland looks a lot like Rust. This is just because thats what I hav
 
 ### Notable Syntax
 
-Dereferencing in Roland is post-script, and marked with ~.
+Dereferencing in Roland is postfix, and marked with ~.
 
 ```roland
 let x: u8 = 10;
