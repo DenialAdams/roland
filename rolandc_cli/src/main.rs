@@ -12,10 +12,14 @@ const HELP: &str = r"
 Usage: rolandc (source.rol) [OPTION]+
 
 Valid boolean options are:
---wasm4
+--wasm4 | Links the WASM-4 standard library and emits a WASM-4 cart
 
 Valid options with arguments are:
---output (output_file.wasm)";
+--output (output_file.wasm) | Specify the name of the output file
+
+Other modes:
+--help | Prints this message
+--version | Prints the git commit this executable was built from";
 
 #[derive(Debug)]
 struct Opts {
@@ -32,7 +36,12 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
    let mut pargs = pico_args::Arguments::from_env();
 
    if pargs.contains("--help") {
-      eprintln!("{}", HELP);
+      println!("{}", HELP);
+
+      std::process::exit(0);
+   } else if pargs.contains("--version") {
+      let version = option_env!("GIT_COMMIT").unwrap_or("unknown");
+      println!("rolandc {}", version);
 
       std::process::exit(0);
    }

@@ -130,7 +130,7 @@ impl LanguageServer for Backend {
    }
 
    async fn initialized(&self, _: InitializedParams) {
-      self.client.log_message(MessageType::INFO, "rolandc  server initialized!").await;
+      self.client.log_message(MessageType::INFO, "rolandc server initialized!").await;
    }
 
    async fn did_open(&self, params: DidOpenTextDocumentParams) {
