@@ -18,11 +18,12 @@ mod add_virtual_variables;
 mod compile_globals;
 mod constant_folding;
 pub mod error_handling;
-mod interner;
+pub mod interner;
 mod lex;
 mod parse;
 mod semantic_analysis;
 mod size_info;
+pub mod source_info;
 mod type_data;
 mod typed_index_vec;
 mod various_expression_lowering;
@@ -30,12 +31,12 @@ mod wasm;
 
 use error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
 use error_handling::ErrorManager;
-use lex::SourcePath;
 use parse::{ExpressionId, ExpressionNode, ExpressionPool, ImportNode, Program};
+use source_info::SourcePath;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt::Display;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 use typed_index_vec::HandleMap;
 
 use crate::interner::Interner;
@@ -69,7 +70,7 @@ pub trait FileResolver<'a> {
 
 pub enum CompilationEntryPoint<'a, FR: FileResolver<'a>> {
    Playground(&'a str),
-   PathResolving(PathBuf, FR)
+   PathResolving(PathBuf, FR),
 }
 
 // Repeated compilations can be sped up by reusing the context

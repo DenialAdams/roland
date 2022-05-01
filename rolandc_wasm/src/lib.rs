@@ -2,7 +2,7 @@
 #![allow(clippy::single_match_else)] // Not always an improvement in my opinion
 #![allow(clippy::missing_panics_doc)] // We don't have any documentation
 
-use rolandc::{CompilationContext, CompilationError, Target, FileResolver};
+use rolandc::{CompilationContext, CompilationError, FileResolver, Target};
 use std::io::Write;
 use wasm_bindgen::prelude::*;
 
@@ -35,7 +35,11 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
 
    let mut err_out = Vec::new();
 
-   let compile_result = rolandc::compile::<PlaygroundFileResolver>(ctx, rolandc::CompilationEntryPoint::Playground(source_code), Target::Wasi);
+   let compile_result = rolandc::compile::<PlaygroundFileResolver>(
+      ctx,
+      rolandc::CompilationEntryPoint::Playground(source_code),
+      Target::Wasi,
+   );
 
    ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner);
 

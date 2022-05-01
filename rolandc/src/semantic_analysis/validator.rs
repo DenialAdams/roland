@@ -3,13 +3,13 @@ use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::lex::{SourceInfo, SourcePath, SourcePosition};
 use crate::parse::{
    BinOp, BlockNode, Expression, ExpressionId, ExpressionPool, IdentifierNode, ProcImplSource, Program, Statement,
    StatementNode, UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, value_type_mem_alignment};
+use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
 use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE};
 use crate::Target;
 use arrayvec::ArrayVec;
@@ -229,7 +229,7 @@ pub fn type_and_check_validity(
             err_manager,
             &[
                (old_enum.location, "first enum defined"),
-               (a_enum.location, "first enum defined")
+               (a_enum.location, "second enum defined")
             ],
             "Encountered duplicate enums with the same name `{}`",
             interner.lookup(a_enum.name)
@@ -264,7 +264,7 @@ pub fn type_and_check_validity(
             err_manager,
             &[
                (old_struct.location, "first struct defined"),
-               (old_struct.location, "first struct defined")
+               (a_struct.location, "second struct defined")
             ],
             "Encountered duplicate structs with the same name `{}`",
             interner.lookup(a_struct.name)
@@ -1231,7 +1231,8 @@ fn get_type(
                   &validation_context.struct_size_info,
                );
 
-               let alignment_error = e_type.is_pointer() && target_type.is_pointer() && (alignment_source < alignment_target);
+               let alignment_error =
+                  e_type.is_pointer() && target_type.is_pointer() && (alignment_source < alignment_target);
 
                if alignment_error {
                   validation_context.error_count += 1;

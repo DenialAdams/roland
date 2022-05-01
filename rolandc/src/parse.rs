@@ -1,9 +1,10 @@
-use super::lex::{SourceInfo, SourceToken, Token};
+use super::lex::{SourceToken, Token};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
 use crate::semantic_analysis::{EnumInfo, StaticInfo, StructInfo};
 use crate::size_info::SizeInfo;
+use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, ValueType};
 use crate::typed_index_vec::{Handle, HandleMap};
 use indexmap::{IndexMap, IndexSet};

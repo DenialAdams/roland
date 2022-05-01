@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::interner::StrId;
-use crate::lex::SourceInfo;
 use crate::parse::{ExpressionId, ExpressionPool};
 use crate::size_info::SizeInfo;
+use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 use crate::Target;
 

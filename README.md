@@ -10,7 +10,7 @@ Roland does not yet have an official release cycle. However, I do publish binari
 Linux: http://www.brick.codes/roland/rolandc  
 Windows: http://www.brick.codes/roland/rolandc.exe
 
-(After downloading, ensure that the bianry is marked as executable.)
+(After downloading, ensure that the binary is marked as executable.)
 
 Alternatively, you can build `rolandc` yourself by running `cargo build --release` and taking the binary out of the `target/release/` directory.
 

@@ -6,10 +6,10 @@ use crate::constant_folding::{self, FoldingContext};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::lex::SourceInfo;
 use crate::parse::{Expression, ExpressionId, ExpressionPool, Program};
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::SizeInfo;
+use crate::source_info::SourceInfo;
 use crate::various_expression_lowering;
 
 struct CgContext<'a> {

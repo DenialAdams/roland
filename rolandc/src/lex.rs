@@ -3,41 +3,7 @@ use std::num::IntErrorKind;
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SourcePosition {
-   pub line: usize,
-   pub col: usize,
-}
-
-impl SourcePosition {
-   fn next_col(&self) -> SourcePosition {
-      SourcePosition {
-         line: self.line,
-         col: self.col + 1,
-      }
-   }
-
-   fn col_plus(&self, n: usize) -> SourcePosition {
-      SourcePosition {
-         line: self.line,
-         col: self.col + n,
-      }
-   }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SourceInfo {
-   pub begin: SourcePosition,
-   pub end: SourcePosition,
-   pub file: SourcePath,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct SourceToken {
-   pub token: Token,
-   pub source_info: SourceInfo,
-}
+use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Token {
@@ -105,6 +71,7 @@ pub enum Token {
 }
 
 impl Token {
+   #[must_use]
    pub fn for_parse_err(&self) -> &'static str {
       match self {
          Token::Arrow => "->",
@@ -212,11 +179,10 @@ fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
    }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum SourcePath {
-   Sandbox,
-   Std,
-   File(StrId),
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct SourceToken {
+   pub token: Token,
+   pub source_info: SourceInfo,
 }
 
 struct CharCountingBuffer {

@@ -15,6 +15,7 @@ pub struct Interner {
 }
 
 impl Interner {
+   #[must_use]
    pub fn with_capacity(cap: usize) -> Interner {
       let cap = cap.next_power_of_two();
       Interner {
@@ -40,11 +41,13 @@ impl Interner {
       StrId(id)
    }
 
+   #[must_use]
    pub fn lookup(&self, id: StrId) -> &str {
       self.vec[id.0 as usize]
    }
 
    /// Panics if the string is not present
+   #[must_use]
    pub fn reverse_lookup(&self, name: &str) -> StrId {
       if let Some(&id) = self.map.get(name) {
          return StrId(id);

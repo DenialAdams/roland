@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use crate::interner::Interner;
-use crate::lex::{SourceInfo, SourcePath};
+use crate::source_info::{SourceInfo, SourcePath};
 
 pub(crate) mod error_handling_macros {
    macro_rules! rolandc_error {
