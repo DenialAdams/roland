@@ -15,19 +15,22 @@ use rolandc::*;
 
 struct LSPFileResolver<'a> {
    file_map: &'a HashMap<PathBuf, (String, i32)>,
+   touched_paths: &'a mut Vec<PathBuf>,
 }
 
 impl<'a> FileResolver<'a> for LSPFileResolver<'a> {
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<Cow<'a, str>> {
       let canon_path = std::fs::canonicalize(path)?;
-      if let Some(buf) = self.file_map.get(&canon_path) {
+      let resolved = if let Some(buf) = self.file_map.get(&canon_path) {
          Ok(Cow::Borrowed(buf.0.as_str()))
       } else {
          match std::fs::read_to_string(path) {
             Ok(s) => Ok(Cow::Owned(s)),
             Err(e) => Err(e),
          }
-      }
+      };
+      self.touched_paths.push(canon_path);
+      resolved
    }
 }
 
@@ -48,7 +51,6 @@ fn roland_source_path_to_canon_path(source_path: &SourcePath, interner: &Interne
    }
 }
 
-// Leaves the provided roland error a messageless husk
 fn roland_error_to_lsp_error(re: ErrorInfo, interner: &Interner) -> (Option<PathBuf>, Diagnostic) {
    let (report_path, range, related_info) = match re.location {
       ErrorLocation::Simple(x) => (
@@ -120,32 +122,32 @@ fn roland_error_to_lsp_error(re: ErrorInfo, interner: &Interner) -> (Option<Path
    )
 }
 
-// PUZZLE:
-// need to be able to get the version of the opened files for reporting
-// how to map the urls back to versions?
-// i put the version in our opened file map, but this is actually canonical paths
-// we can probably make that work by having roland_error_to_lsp_error return a pathbuf
-// still awkward to manage the lock though
-
 impl Backend {
    async fn compile_and_publish_diagnostics(&self, doc_uri: &Url, doc_version: i32) {
       let (opened_versions, diagnostic_buckets) = {
          let file_path = doc_uri.to_file_path().unwrap();
          let mut ctx_ref = self.ctx.lock();
-         let opened_versions: HashMap<PathBuf, i32> = {
+         let (opened_versions, touched_paths) = {
             let opened_files_l = self.opened_files.read();
+            let mut touched_paths = Vec::new();
             let resolver = LSPFileResolver {
                file_map: &opened_files_l,
+               touched_paths: &mut touched_paths,
             };
             let _ = rolandc::compile_for_errors(
                &mut *ctx_ref,
                CompilationEntryPoint::PathResolving(file_path, resolver),
                Target::Wasi,
             );
-            opened_files_l.iter().map(|(key, v)| (key.clone(), v.1)).collect()
+            (opened_files_l.iter().map(|(key, v)| (key.clone(), v.1)).collect::<HashMap<PathBuf, i32>>(), touched_paths)
          };
 
-         let mut diagnostic_buckets: HashMap<Option<PathBuf>, Vec<Diagnostic>> = HashMap::new();
+         let mut diagnostic_buckets: HashMap<Option<PathBuf>, Vec<Diagnostic>> = HashMap::with_capacity(touched_paths.len() + 1);
+
+         for path in touched_paths.into_iter() {
+            // By doing this, we ensure that we will clear errors for files we touched that no longer have any issues
+            diagnostic_buckets.insert(Some(path), Vec::new());
+         }
 
          // This obj local allows the subsequent split borrow to succeed
          let obj = ctx_ref.deref_mut();
