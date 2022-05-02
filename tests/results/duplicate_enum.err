@@ -1,0 +1,4 @@
+Encountered duplicate enums with the same name `Foo`
+↳ first enum defined @ line 5, column 1 [duplicate_enum.rol]
+↳ second enum defined @ line 7, column 1 [duplicate_enum.rol]
+There were 1 semantic errors, bailing
