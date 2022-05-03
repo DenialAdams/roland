@@ -22,9 +22,6 @@ fn inference_is_impossible(source_type: &ExpressionType, target_type: &Expressio
    }
 }
 
-// Many callers pay the cost of a clone;
-// I think that's mostly for borrowck reasons.
-// It would be nice to not have to do that
 pub fn try_set_inferred_type(
    e_type: &ExpressionType,
    expr_index: ExpressionId,
