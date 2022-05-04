@@ -3,10 +3,7 @@ use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::Interner;
 use crate::parse::{Expression, ExpressionId, UnOp};
-use crate::type_data::{
-   ExpressionType, IntType, ValueType, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
-   U8_TYPE, USIZE_TYPE,
-};
+use crate::type_data::{ExpressionType, IntType, ValueType};
 
 // Returns false if the types being inferred are incompatible
 // Inference may still not be possible for other reasons
@@ -51,33 +48,8 @@ fn set_inferred_type(
       Expression::Truncate(_, _) => unreachable!(),
       Expression::Transmute(_, _) => unreachable!(),
       Expression::BoolLiteral(_) => unreachable!(),
-      Expression::IntLiteral(val) => {
+      Expression::IntLiteral(_) => {
          validation_context.unknown_ints.remove(&expr_index);
-         let overflowing_literal = match e_type {
-            ExpressionType::Value(I8_TYPE) => *val > i128::from(i8::MAX) || *val < i128::from(i8::MIN),
-            ExpressionType::Value(I16_TYPE) => *val > i128::from(i16::MAX) || *val < i128::from(i16::MIN),
-            ExpressionType::Value(I32_TYPE) => *val > i128::from(i32::MAX) || *val < i128::from(i32::MIN),
-            // @FixedPointerWidth
-            ExpressionType::Value(ISIZE_TYPE) => *val > i128::from(i32::MAX) || *val < i128::from(i32::MIN),
-            ExpressionType::Value(I64_TYPE) => *val > i128::from(i64::MAX) || *val < i128::from(i64::MIN),
-            ExpressionType::Value(U8_TYPE) => *val > i128::from(u8::MAX) || *val < i128::from(u8::MIN),
-            ExpressionType::Value(U16_TYPE) => *val > i128::from(u16::MAX) || *val < i128::from(u16::MIN),
-            ExpressionType::Value(U32_TYPE) => *val > i128::from(u32::MAX) || *val < i128::from(u32::MIN),
-            // @FixedPointerWidth
-            ExpressionType::Value(USIZE_TYPE) => *val > i128::from(u32::MAX) || *val < i128::from(u32::MIN),
-            ExpressionType::Value(U64_TYPE) => *val > i128::from(u64::MAX) || *val < i128::from(u64::MIN),
-            _ => unreachable!(),
-         };
-         if overflowing_literal {
-            validation_context.error_count += 1;
-            rolandc_error!(
-               err_manager,
-               validation_context.expressions[expr_index].location,
-               "Literal of type {} has value `{}` which would immediately over/underflow",
-               e_type.as_roland_type_info(interner),
-               val
-            );
-         }
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }
       Expression::FloatLiteral(_) => {

@@ -26,6 +26,22 @@ struct CgContext<'a> {
    interner: &'a Interner,
 }
 
+#[must_use]
+fn fold_expr_id(
+   expr_id: ExpressionId,
+   expressions: &mut ExpressionPool,
+   interner: &Interner,
+   err_manager: &mut ErrorManager,
+) -> u64 {
+   let mut fc = FoldingContext {
+      error_count: 0,
+      expressions,
+   };
+   constant_folding::try_fold_and_replace_expr(expr_id, err_manager, &mut fc, interner);
+
+   fc.error_count
+}
+
 pub fn ensure_statics_const(
    program: &Program,
    expressions: &mut ExpressionPool,
@@ -52,15 +68,7 @@ pub fn ensure_statics_const(
       }
 
       if let Some(v) = p_static.value.as_ref() {
-         constant_folding::try_fold_and_replace_expr(
-            *v,
-            err_manager,
-            &mut FoldingContext {
-               error_count: 0,
-               expressions,
-            },
-            interner,
-         );
+         static_err_count += fold_expr_id(*v, expressions, interner, err_manager);
          let v = &expressions[*v];
          if !crate::constant_folding::is_const(&v.expression, expressions) {
             static_err_count += 1;
@@ -129,15 +137,7 @@ fn cg_const(c_name: StrId, cg_context: &mut CgContext, err_manager: &mut ErrorMa
    let c = cg_context.all_consts[&c_name];
    cg_expr(c.1, cg_context, err_manager);
 
-   constant_folding::try_fold_and_replace_expr(
-      c.1,
-      err_manager,
-      &mut FoldingContext {
-         error_count: 0,
-         expressions: cg_context.expressions,
-      },
-      cg_context.interner,
-   );
+   cg_context.error_count += fold_expr_id(c.1, cg_context.expressions, cg_context.interner, err_manager);
 
    let p_const_expr = &cg_context.expressions[c.1];
 

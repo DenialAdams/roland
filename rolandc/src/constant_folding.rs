@@ -1,4 +1,4 @@
-use crate::error_handling::error_handling_macros::rolandc_error_w_details;
+use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -175,7 +175,36 @@ fn fold_expr(
       }
       Expression::BoolLiteral(_) => None,
       Expression::StringLiteral(_) => None,
-      Expression::IntLiteral(_) => None,
+      Expression::IntLiteral(val) => {
+         let overflowing_literal = match expr_to_fold_type.as_ref().unwrap() {
+            ExpressionType::Value(I8_TYPE) => *val > i128::from(i8::MAX) || *val < i128::from(i8::MIN),
+            ExpressionType::Value(I16_TYPE) => *val > i128::from(i16::MAX) || *val < i128::from(i16::MIN),
+            ExpressionType::Value(I32_TYPE) => *val > i128::from(i32::MAX) || *val < i128::from(i32::MIN),
+            // @FixedPointerWidth
+            ExpressionType::Value(ISIZE_TYPE) => *val > i128::from(i32::MAX) || *val < i128::from(i32::MIN),
+            ExpressionType::Value(I64_TYPE) => *val > i128::from(i64::MAX) || *val < i128::from(i64::MIN),
+            ExpressionType::Value(U8_TYPE) => *val > i128::from(u8::MAX) || *val < i128::from(u8::MIN),
+            ExpressionType::Value(U16_TYPE) => *val > i128::from(u16::MAX) || *val < i128::from(u16::MIN),
+            ExpressionType::Value(U32_TYPE) => *val > i128::from(u32::MAX) || *val < i128::from(u32::MIN),
+            // @FixedPointerWidth
+            ExpressionType::Value(USIZE_TYPE) => *val > i128::from(u32::MAX) || *val < i128::from(u32::MIN),
+            ExpressionType::Value(U64_TYPE) => *val > i128::from(u64::MAX) || *val < i128::from(u64::MIN),
+            _ => unreachable!(),
+         };
+
+         if overflowing_literal {
+            folding_context.error_count += 1;
+            rolandc_error!(
+               err_manager,
+               folding_context.expressions[expr_index].location,
+               "Literal of type {} has value `{}` which would immediately over/underflow",
+               expr_to_fold_type.as_ref().unwrap().as_roland_type_info(interner),
+               val
+            );
+         }
+
+         None
+      }
       Expression::FloatLiteral(_) => None,
       Expression::UnitLiteral => None,
       Expression::BinaryOperator { operator, lhs, rhs } => {
@@ -523,6 +552,30 @@ fn fold_expr(
          }
       }
       Expression::UnaryOperator(op, expr) => {
+         if *op == UnOp::Negate {
+            // THE POINT:
+            // Users think of "-128" as one value, not the negation of 128
+            // Why do we care? Because if the user writes:
+            // let x: i8 = -128;
+            // 128 > than the max we can store in an i8, but -128 just fits.
+            // So, we match user expectations by applying the negation BEFORE
+            // we check the literal for overflow/underflow
+            let f_expr = &mut folding_context.expressions[*expr];
+            if let Expression::IntLiteral(x) = &mut f_expr.expression {
+               let val = -*x;
+               *x = val;
+
+               // Run the "fold" - will do nothing, but will do the error check!
+               let _fold_result = fold_expr(*expr, err_manager, folding_context, interner);
+
+               return Some(ExpressionNode {
+                  expression: Expression::IntLiteral(val),
+                  exp_type: expr_to_fold_type,
+                  location: expr_to_fold_location,
+               });
+            }
+         }
+
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
 
          let expr = &folding_context.expressions[*expr];

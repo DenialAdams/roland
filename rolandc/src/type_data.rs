@@ -179,7 +179,7 @@ impl ExpressionType {
       matches!(self, ExpressionType::Value(ValueType::Enum(_)))
    }
 
-   pub fn as_roland_type_info(&self, interner: &mut Interner) -> String {
+   pub fn as_roland_type_info(&self, interner: &Interner) -> String {
       match self {
          ExpressionType::Value(x) => x.as_roland_type_info(interner).into(),
          ExpressionType::Pointer(x, y) => {
@@ -246,7 +246,7 @@ impl ValueType {
       }
    }
 
-   fn as_roland_type_info<'i>(&self, interner: &'i mut Interner) -> Cow<'i, str> {
+   fn as_roland_type_info<'i>(&self, interner: &'i Interner) -> Cow<'i, str> {
       match self {
          ValueType::UnknownFloat => Cow::Borrowed("?? Float"),
          ValueType::UnknownInt => Cow::Borrowed("?? Int"),
@@ -269,7 +269,9 @@ impl ValueType {
          ValueType::Bool => Cow::Borrowed("bool"),
          ValueType::Unit => Cow::Borrowed("()"),
          ValueType::CompileError => Cow::Borrowed("ERROR"),
-         ValueType::Struct(x) if *x == interner.intern("String") => Cow::Borrowed("String"),
+         ValueType::Struct(x) if interner.reverse_lookup("String").map_or(false, |sid| sid == *x) => {
+            Cow::Borrowed("String")
+         }
          ValueType::Struct(x) => Cow::Owned(format!("Struct {}", interner.lookup(*x))),
          ValueType::Enum(x) => Cow::Owned(format!("Enum {}", interner.lookup(*x))),
          ValueType::Array(i_type, length) => {

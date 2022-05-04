@@ -4,3 +4,5 @@ rolandc/target
 roland-vscode/node_modules
 roland-vscode/out
 roland-vscode/*.vsix
+scratch.rol
+scratch.wat

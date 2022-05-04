@@ -48,12 +48,12 @@ impl Interner {
 
    /// Panics if the string is not present
    #[must_use]
-   pub fn reverse_lookup(&self, name: &str) -> StrId {
+   pub fn reverse_lookup(&self, name: &str) -> Option<StrId> {
       if let Some(&id) = self.map.get(name) {
-         return StrId(id);
+         Some(StrId(id))
+      } else {
+         None
       }
-
-      unreachable!();
    }
 
    unsafe fn alloc(&mut self, name: &str) -> &'static str {

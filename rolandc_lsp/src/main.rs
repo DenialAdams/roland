@@ -139,10 +139,17 @@ impl Backend {
                CompilationEntryPoint::PathResolving(file_path, resolver),
                Target::Wasi,
             );
-            (opened_files_l.iter().map(|(key, v)| (key.clone(), v.1)).collect::<HashMap<PathBuf, i32>>(), touched_paths)
+            (
+               opened_files_l
+                  .iter()
+                  .map(|(key, v)| (key.clone(), v.1))
+                  .collect::<HashMap<PathBuf, i32>>(),
+               touched_paths,
+            )
          };
 
-         let mut diagnostic_buckets: HashMap<Option<PathBuf>, Vec<Diagnostic>> = HashMap::with_capacity(touched_paths.len() + 1);
+         let mut diagnostic_buckets: HashMap<Option<PathBuf>, Vec<Diagnostic>> =
+            HashMap::with_capacity(touched_paths.len() + 1);
 
          for path in touched_paths.into_iter() {
             // By doing this, we ensure that we will clear errors for files we touched that no longer have any issues

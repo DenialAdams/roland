@@ -1431,7 +1431,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                }
             }
          } else {
-            let transmutee_vv = interner.reverse_lookup(&format!("::{}", e_id.index()));
+            let transmutee_vv = interner.reverse_lookup(&format!("::{}", e_id.index())).unwrap();
 
             // store to VV as the original type
             get_stack_address_of_local(transmutee_vv, generation_context);
@@ -1567,7 +1567,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
 
             // Store each named param as virtual variables, evaluating *in the order they were written*
             for arg in named_args.iter() {
-               let arg_virual_var = interner.reverse_lookup(&format!("::{}", arg.expr.index()));
+               let arg_virual_var = interner.reverse_lookup(&format!("::{}", arg.expr.index())).unwrap();
                get_stack_address_of_local(arg_virual_var, generation_context);
                do_emit_and_load_lval(arg.expr, generation_context, interner);
                store(
@@ -1580,7 +1580,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             // Output each named parameter in canonical order
             named_args.sort_unstable_by_key(|x| x.name);
             for named_arg in named_args {
-               let arg_virual_var = interner.reverse_lookup(&format!("::{}", named_arg.expr.index()));
+               let arg_virual_var = interner
+                  .reverse_lookup(&format!("::{}", named_arg.expr.index()))
+                  .unwrap();
                get_stack_address_of_local(arg_virual_var, generation_context);
                load(
                   generation_context.expressions[named_arg.expr]
@@ -1598,7 +1600,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          // First we emit the expressions *in the order they were written*,
          // storing them into temps
          for field in fields.iter() {
-            let field_virtual_var = interner.reverse_lookup(&format!("::{}", field.1.index()));
+            let field_virtual_var = interner.reverse_lookup(&format!("::{}", field.1.index())).unwrap();
             get_stack_address_of_local(field_virtual_var, generation_context);
             do_emit_and_load_lval(field.1, generation_context, interner);
             store(
@@ -1613,7 +1615,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          let si = generation_context.struct_info.get(s_name).unwrap();
          for field in si.field_types.iter() {
             let value_of_field = map.get(field.0).copied().unwrap();
-            let field_virtual_var = interner.reverse_lookup(&format!("::{}", value_of_field.index()));
+            let field_virtual_var = interner
+               .reverse_lookup(&format!("::{}", value_of_field.index()))
+               .unwrap();
             get_stack_address_of_local(field_virtual_var, generation_context);
             load(field.1, generation_context);
          }
@@ -1739,7 +1743,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             do_emit(*array, generation_context, interner);
             calculate_offset(*array, *index, generation_context, interner);
          } else {
-            let array_var_id = interner.reverse_lookup(&format!("::{}", array.index()));
+            let array_var_id = interner.reverse_lookup(&format!("::{}", array.index())).unwrap();
 
             // spill to the virtual variable
             get_stack_address_of_local(array_var_id, generation_context);
