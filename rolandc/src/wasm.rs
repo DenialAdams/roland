@@ -1162,16 +1162,20 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          writeln!(generation_context.out.out, "{}.const {}", wasm_type, index).unwrap();
       }
       Expression::IntLiteral(x) => {
-         let wasm_type = match expr_node.exp_type.as_ref().unwrap() {
+         let (signed, wasm_type) = match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => match x.width {
-               IntWidth::Eight => "i64",
-               _ => "i32",
+               IntWidth::Eight => (x.signed, "i64"),
+               _ => (x.signed, "i32"),
             },
-            ExpressionType::Pointer(_, _) => "i32",
+            ExpressionType::Pointer(_, _) => unreachable!(),
             _ => unreachable!(),
          };
          generation_context.out.emit_spaces();
-         writeln!(generation_context.out.out, "{}.const {}", wasm_type, x).unwrap();
+         if signed {
+            writeln!(generation_context.out.out, "{}.const {}", wasm_type, *x as i64).unwrap();
+         } else {
+            writeln!(generation_context.out.out, "{}.const {}", wasm_type, *x).unwrap();
+         }
       }
       Expression::FloatLiteral(x) => {
          let wasm_type = match expr_node.exp_type.as_ref().unwrap() {

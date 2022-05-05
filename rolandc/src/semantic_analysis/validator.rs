@@ -1923,12 +1923,12 @@ fn get_type(
          } else if elems.is_empty() {
             ExpressionType::Value(ValueType::Array(
                Box::new(ExpressionType::Value(ValueType::Unit)),
-               elems.len() as i128,
+               elems.len() as u64,
             ))
          } else {
             let a_type = validation_context.expressions[elems[0]].exp_type.clone().unwrap();
 
-            ExpressionType::Value(ValueType::Array(Box::new(a_type), elems.len() as i128))
+            ExpressionType::Value(ValueType::Array(Box::new(a_type), elems.len() as u64))
          }
       }
       Expression::ArrayIndex { array, index } => {

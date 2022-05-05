@@ -36,7 +36,7 @@ pub fn lower_single_expression(
 
          let type_size = crate::size_info::sizeof_type_mem(&generic_args[0].gtype, enum_info, struct_size_info);
 
-         expressions[ExpressionId::new(i)].expression = Expression::IntLiteral(i128::from(type_size));
+         expressions[ExpressionId::new(i)].expression = Expression::IntLiteral(u64::from(type_size));
       }
       Expression::FieldAccess(fields, other_exp) => {
          // Do this check first to try and skip most struct field accesses

@@ -76,7 +76,7 @@ pub enum ValueType {
    Bool,
    Unit,
    Struct(StrId),
-   Array(Box<ExpressionType>, i128),
+   Array(Box<ExpressionType>, u64),
    CompileError,
    Enum(StrId),
    Unresolved(StrId), // Could be a struct, enum, or fail to resolve (compilation error)

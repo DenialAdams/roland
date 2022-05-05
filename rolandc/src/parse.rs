@@ -217,7 +217,7 @@ pub enum Expression {
    },
    BoolLiteral(bool),
    StringLiteral(StrId),
-   IntLiteral(i128),
+   IntLiteral(u64),
    FloatLiteral(f64),
    UnitLiteral,
    Variable(StrId),
@@ -497,7 +497,7 @@ fn extract_str_literal(t: Token) -> StrId {
    }
 }
 
-fn extract_int_literal(t: Token) -> i128 {
+fn extract_int_literal(t: Token) -> u64 {
    match t {
       Token::IntLiteral(v) => v,
       _ => unreachable!(),

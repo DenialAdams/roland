@@ -46,7 +46,7 @@ pub enum Token {
    Identifier(StrId),
    BoolLiteral(bool),
    StringLiteral(StrId),
-   IntLiteral(i128),
+   IntLiteral(u64),
    FloatLiteral(f64),
    Plus,
    Minus,
@@ -880,7 +880,7 @@ fn finish_numeric_literal(
 }
 
 fn parse_int(s: &str, radix: u32, err_manager: &mut ErrorManager, source_info: SourceInfo) -> Result<Token, ()> {
-   match i128::from_str_radix(s, radix) {
+   match u64::from_str_radix(s, radix) {
       Ok(v) => Ok(Token::IntLiteral(v)),
       Err(pe) if *pe.kind() == IntErrorKind::InvalidDigit => {
          rolandc_error!(
