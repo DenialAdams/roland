@@ -125,9 +125,7 @@ fn fold_expr(
 
          // TODO @FixedPointerWidth
          if let Some(Literal::Uint32(v)) = extract_literal(index) {
-            // TODO: (len should be u32/usize, not i128. and we should be validating it before now)
-            // (maybe we already are?? but I don't think so)
-            if u64::from(v) >= len {
+            if v >= len {
                folding_context.error_count += 1;
                rolandc_error_w_details!(
                   err_manager,

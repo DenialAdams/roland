@@ -8,3 +8,24 @@ struct String {
    pointer: &u8,
    length: usize,
 }
+
+const U8_MIN: u8 = 0;
+const U8_MAX: u8 = 255;
+const U16_MIN: u16 = 0;
+const U16_MAX: u16 = 65535;
+const U32_MIN: u32 = 0;
+const U32_MAX: u32 = 4294967295;
+const U64_MIN: u64 = 0;
+const U64_MAX: u64 = 18446744073709551615;
+
+const I8_MIN: i8 = -128;
+const I8_MAX: i8 = 127;
+const I16_MIN: i16 = -32768;
+const I16_MAX: i16 = 32767;
+const I32_MIN: i32 = -2147483648;
+const I32_MAX: i32 = 2147483647;
+const I64_MIN: i64 = -9223372036854775808;
+const I64_MAX: i64 = 9223372036854775807;
+
+const USIZE_MIN: usize = U32_MIN transmute usize;
+const USIZE_MAX: usize = U32_MAX transmute usize;

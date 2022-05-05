@@ -1918,17 +1918,18 @@ fn get_type(
             );
          }
 
+
          if any_error {
             ExpressionType::Value(ValueType::CompileError)
          } else if elems.is_empty() {
             ExpressionType::Value(ValueType::Array(
                Box::new(ExpressionType::Value(ValueType::Unit)),
-               elems.len() as u64,
+               0,
             ))
          } else {
             let a_type = validation_context.expressions[elems[0]].exp_type.clone().unwrap();
-
-            ExpressionType::Value(ValueType::Array(Box::new(a_type), elems.len() as u64))
+            let t_len = elems.len().try_into().unwrap(); // unwrap should always succeed due to error check above
+            ExpressionType::Value(ValueType::Array(Box::new(a_type), t_len))
          }
       }
       Expression::ArrayIndex { array, index } => {

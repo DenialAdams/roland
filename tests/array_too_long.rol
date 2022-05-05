@@ -1,0 +1,5 @@
+extern proc get_too_big_array() -> [u8; 4294967296];
+
+proc main() {
+   let x = get_too_big_array();
+}

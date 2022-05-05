@@ -457,7 +457,7 @@ pub fn astify(
             rolandc_error!(
                err_manager,
                lexer.peek_source().unwrap(),
-               "While parsing top level - unexpected token '{}'; was expecting a procedure, const, static, enum, or struct declaration",
+               "While parsing top level, unexpected token '{}'; was expecting a procedure, const, static, enum, or struct declaration",
                x.for_parse_err()
             );
             return Err(());
@@ -794,7 +794,7 @@ fn parse_block(
                   rolandc_error!(
                      err_manager,
                      l.peek_source().unwrap(),
-                     "While parsing statement - unexpected token '{}'; was expecting a semicolon or assignment operator",
+                     "While parsing statement, unexpected token '{}'; was expecting a semicolon or assignment operator",
                      x.for_parse_err()
                   );
                   return Err(());
@@ -802,7 +802,7 @@ fn parse_block(
                None => {
                   rolandc_error_no_loc!(
                      err_manager,
-                     "While parsing statement - unexpected EOF; was expecting a semicolon or assignment operator",
+                     "While parsing statement, unexpected EOF; was expecting a semicolon or assignment operator",
                   );
                   return Err(());
                }
@@ -812,7 +812,7 @@ fn parse_block(
             rolandc_error!(
                err_manager,
                l.peek_source().unwrap(),
-               "While parsing block - unexpected token '{}'; was expecting a statement",
+               "While parsing block, unexpected token '{}'; was expecting a statement",
                x.for_parse_err()
             );
             return Err(());
@@ -820,7 +820,7 @@ fn parse_block(
          None => {
             rolandc_error_no_loc!(
                err_manager,
-               "While parsing block - unexpected EOF; was expecting a statement or a }}"
+               "While parsing block, unexpected EOF; was expecting a statement or a }}"
             );
             return Err(());
          }
@@ -905,7 +905,7 @@ fn parse_parameters(
             rolandc_error!(
                err_manager,
                l.peek_source().unwrap(),
-               "While parsing parameters - unexpected token '{}'; was expecting an identifier or a )",
+               "While parsing parameters, unexpected token '{}'; was expecting an identifier or a )",
                x.for_parse_err()
             );
             return Err(());
@@ -913,7 +913,7 @@ fn parse_parameters(
          None => {
             rolandc_error_no_loc!(
                err_manager,
-               "While parsing parameters - unexpected EOF; was expecting an identifier or a )",
+               "While parsing parameters, unexpected EOF; was expecting an identifier or a )",
             );
             return Err(());
          }
@@ -987,7 +987,7 @@ fn parse_arguments(
             rolandc_error!(
                err_manager,
                l.peek_source().unwrap(),
-               "While parsing arguments - unexpected token '{}'; was expecting an expression or a )",
+               "While parsing arguments, unexpected token '{}'; was expecting an expression or a )",
                x.for_parse_err()
             );
             return Err(());
@@ -995,7 +995,7 @@ fn parse_arguments(
          None => {
             rolandc_error_no_loc!(
                err_manager,
-               "While parsing arguments - unexpected EOF; was expecting an expression or a )",
+               "While parsing arguments, unexpected EOF; was expecting an expression or a )",
             );
             return Err(());
          }
@@ -1031,10 +1031,24 @@ fn parse_type(l: &mut Lexer, err_manager: &mut ErrorManager, interner: &Interner
          expect(l, err_manager, &Token::Semicolon)?;
          let length = expect(l, err_manager, &Token::IntLiteral(0))?;
          let t_close_token = expect(l, err_manager, &Token::CloseSquareBracket)?;
-         (
+
+         let arr_len_literal = extract_int_literal(length.token);
+
+
+         if let Ok(valid_arr_len) = arr_len_literal.try_into() {
+            (
             t_close_token.source_info,
-            ValueType::Array(Box::new(a_inner_type.e_type), extract_int_literal(length.token)),
-         )
+            ValueType::Array(Box::new(a_inner_type.e_type), valid_arr_len),
+         )} else {
+            rolandc_error!(
+               err_manager,
+               length.source_info,
+               "While parsing array type, encountered an overly big integer {}. The maximum length of an array is 4294967295.",
+               arr_len_literal
+            );
+            return Err(());
+         }
+
       }
       Some(Token::OpenParen) => {
          let _ = l.next();
@@ -1238,13 +1252,13 @@ fn pratt(
             rolandc_error!(
                err_manager,
                si,
-               "While parsing expression - unexpected token '{}'; was expecting a literal, call, variable, or prefix operator",
+               "While parsing expression, unexpected token '{}'; was expecting a literal, call, variable, or prefix operator",
                x.unwrap().for_parse_err(),
             );
          } else {
             rolandc_error_no_loc!(
                err_manager,
-               "While parsing expression - unexpected EOF; was expecting a literal, call, variable, or prefix operator",
+               "While parsing expression, unexpected EOF; was expecting a literal, call, variable, or prefix operator",
             );
          }
          return Err(());

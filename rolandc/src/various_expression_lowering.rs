@@ -71,7 +71,7 @@ pub fn lower_single_expression(
             _ => return,
          };
 
-         expressions[ExpressionId::new(i)].expression = Expression::IntLiteral(length_of_array);
+         expressions[ExpressionId::new(i)].expression = Expression::IntLiteral(u64::from(length_of_array));
       }
       _ => (),
    }
