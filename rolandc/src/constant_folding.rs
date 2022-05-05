@@ -1057,19 +1057,19 @@ fn extract_literal(expr_node: &ExpressionNode) -> Option<Literal> {
       Expression::IntLiteral(x) => {
          match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Value(I64_TYPE) => Some(Literal::Int64(x as i64)),
-            ExpressionType::Value(I32_TYPE) => Some(Literal::Int32((x as i64).try_into().unwrap())),
-            ExpressionType::Value(I16_TYPE) => Some(Literal::Int16((x as i64).try_into().unwrap())),
-            ExpressionType::Value(I8_TYPE) => Some(Literal::Int8((x as i64).try_into().unwrap())),
+            ExpressionType::Value(I32_TYPE) => Some(Literal::Int32((x as i64).try_into().ok()?)),
+            ExpressionType::Value(I16_TYPE) => Some(Literal::Int16((x as i64).try_into().ok()?)),
+            ExpressionType::Value(I8_TYPE) => Some(Literal::Int8((x as i64).try_into().ok()?)),
             // @FixedPointerWidth
-            ExpressionType::Value(ISIZE_TYPE) => Some(Literal::Int32(x.try_into().unwrap())),
+            ExpressionType::Value(ISIZE_TYPE) => Some(Literal::Int32(x.try_into().ok()?)),
             ExpressionType::Value(U64_TYPE) => Some(Literal::Uint64(x)),
-            ExpressionType::Value(U32_TYPE) => Some(Literal::Uint32(x.try_into().unwrap())),
-            ExpressionType::Value(U16_TYPE) => Some(Literal::Uint16(x.try_into().unwrap())),
-            ExpressionType::Value(U8_TYPE) => Some(Literal::Uint8(x.try_into().unwrap())),
+            ExpressionType::Value(U32_TYPE) => Some(Literal::Uint32(x.try_into().ok()?)),
+            ExpressionType::Value(U16_TYPE) => Some(Literal::Uint16(x.try_into().ok()?)),
+            ExpressionType::Value(U8_TYPE) => Some(Literal::Uint8(x.try_into().ok()?)),
             // @FixedPointerWidth
-            ExpressionType::Value(USIZE_TYPE) => Some(Literal::Uint32(x.try_into().unwrap())),
+            ExpressionType::Value(USIZE_TYPE) => Some(Literal::Uint32(x.try_into().ok()?)),
             // @FixedPointerWidth
-            ExpressionType::Pointer(_, _) => Some(Literal::Uint32(x.try_into().unwrap())),
+            ExpressionType::Pointer(_, _) => Some(Literal::Uint32(x.try_into().ok()?)),
             _ => unreachable!(),
          }
       }
