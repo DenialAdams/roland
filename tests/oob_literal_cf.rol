@@ -1,0 +1,4 @@
+proc main() {
+   // The fact that -129 is not a valid i8 should not cause constant folding to crash
+   let x: i8 = -129 - 1;
+}
