@@ -178,10 +178,16 @@ fn fold_expr(
       Expression::IntLiteral(val) => {
          let overflowing_literal = match expr_to_fold_type.as_ref().unwrap() {
             ExpressionType::Value(I8_TYPE) => (*val as i64) > i64::from(i8::MAX) || (*val as i64) < i64::from(i8::MIN),
-            ExpressionType::Value(I16_TYPE) => (*val as i64) > i64::from(i16::MAX) || (*val as i64) < i64::from(i16::MIN),
-            ExpressionType::Value(I32_TYPE) => (*val as i64) > i64::from(i32::MAX) || (*val as i64) < i64::from(i32::MIN),
+            ExpressionType::Value(I16_TYPE) => {
+               (*val as i64) > i64::from(i16::MAX) || (*val as i64) < i64::from(i16::MIN)
+            }
+            ExpressionType::Value(I32_TYPE) => {
+               (*val as i64) > i64::from(i32::MAX) || (*val as i64) < i64::from(i32::MIN)
+            }
             // @FixedPointerWidth
-            ExpressionType::Value(ISIZE_TYPE) => (*val as i64) > i64::from(i32::MAX) || (*val as i64) < i64::from(i32::MIN),
+            ExpressionType::Value(ISIZE_TYPE) => {
+               (*val as i64) > i64::from(i32::MAX) || (*val as i64) < i64::from(i32::MIN)
+            }
             ExpressionType::Value(I64_TYPE) => false,
             ExpressionType::Value(U8_TYPE) => *val > u64::from(u8::MAX) || *val < u64::from(u8::MIN),
             ExpressionType::Value(U16_TYPE) => *val > u64::from(u16::MAX) || *val < u64::from(u16::MIN),
@@ -193,14 +199,29 @@ fn fold_expr(
          };
 
          if overflowing_literal {
+            let signed = match expr_to_fold_type.as_ref().unwrap() {
+               ExpressionType::Value(ValueType::Int(x)) => x.signed,
+               _ => unreachable!(),
+            };
+
             folding_context.error_count += 1;
-            rolandc_error!(
-               err_manager,
-               folding_context.expressions[expr_index].location,
-               "Literal of type {} has value `{}` which would immediately over/underflow",
-               expr_to_fold_type.as_ref().unwrap().as_roland_type_info(interner),
-               val
-            );
+            if signed {
+               rolandc_error!(
+                  err_manager,
+                  folding_context.expressions[expr_index].location,
+                  "Literal of type {} has value `{}` which would immediately over/underflow",
+                  expr_to_fold_type.as_ref().unwrap().as_roland_type_info(interner),
+                  *val as i64
+               );
+            } else {
+               rolandc_error!(
+                  err_manager,
+                  folding_context.expressions[expr_index].location,
+                  "Literal of type {} has value `{}` which would immediately over/underflow",
+                  expr_to_fold_type.as_ref().unwrap().as_roland_type_info(interner),
+                  *val
+               );
+            }
          }
 
          None
@@ -782,9 +803,7 @@ impl Literal {
          (Literal::Float32(f), ExpressionType::Value(ValueType::Int(_))) => {
             Expression::IntLiteral(u64::from(f.to_bits()))
          }
-         (Literal::Float64(f), ExpressionType::Value(ValueType::Int(_))) => {
-            Expression::IntLiteral(f.to_bits())
-         }
+         (Literal::Float64(f), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral(f.to_bits()),
 
          // Transmute to pointer @FixedPointerWidth
          (Literal::Int32(i), ExpressionType::Pointer(_, _)) => Expression::IntLiteral(u64::from(i as u32)),
@@ -805,9 +824,7 @@ impl Literal {
          }
 
          // Transmute unsigned -> signed
-         (Literal::Uint64(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => {
-            Expression::IntLiteral(i)
-         }
+         (Literal::Uint64(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => Expression::IntLiteral(i),
          (Literal::Uint32(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => {
             Expression::IntLiteral(u64::from(i))
          }
@@ -869,9 +886,7 @@ impl Literal {
          (Literal::Int32(i), Literal::Int32(j)) => Some(Expression::IntLiteral(i64::from(i.checked_mul(j)?) as u64)),
          (Literal::Int16(i), Literal::Int16(j)) => Some(Expression::IntLiteral(i64::from(i.checked_mul(j)?) as u64)),
          (Literal::Int8(i), Literal::Int8(j)) => Some(Expression::IntLiteral(i64::from(i.checked_mul(j)?) as u64)),
-         (Literal::Uint64(i), Literal::Uint64(j)) => {
-            Some(Expression::IntLiteral(i.checked_mul(j)?))
-         }
+         (Literal::Uint64(i), Literal::Uint64(j)) => Some(Expression::IntLiteral(i.checked_mul(j)?)),
          (Literal::Uint32(i), Literal::Uint32(j)) => Some(Expression::IntLiteral(u64::from(i.checked_mul(j)?))),
          (Literal::Uint16(i), Literal::Uint16(j)) => Some(Expression::IntLiteral(u64::from(i.checked_mul(j)?))),
          (Literal::Uint8(i), Literal::Uint8(j)) => Some(Expression::IntLiteral(u64::from(i.checked_mul(j)?))),

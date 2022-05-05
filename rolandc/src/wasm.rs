@@ -1167,7 +1167,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                IntWidth::Eight => (x.signed, "i64"),
                _ => (x.signed, "i32"),
             },
-            ExpressionType::Pointer(_, _) => unreachable!(),
+            // can occur when an int->ptr transmute is constant folded
+            ExpressionType::Pointer(_, _) => (false, "i32"),
             _ => unreachable!(),
          };
          generation_context.out.emit_spaces();
