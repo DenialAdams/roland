@@ -1,0 +1,4 @@
+proc main() {
+   let my_zst = ();
+   let x = &my_zst;
+}

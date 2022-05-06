@@ -1493,6 +1493,17 @@ fn get_type(
                );
             }
             ExpressionType::Value(ValueType::CompileError)
+         } else if *un_op == UnOp::AddressOf
+            && sizeof_type_mem(e.exp_type.as_ref().unwrap(), validation_context.enum_info, &validation_context.struct_size_info) == 0
+         {
+            validation_context.error_count += 1;
+            // Allowing this wouldn't cause any clear bug (as far as I know), but it just seems whack
+            rolandc_error!(
+               err_manager,
+               expr_location,
+               "Taking a pointer to a zero sized type is disallowed, as they don't reside in memory.",
+            );
+            ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf {
             if let Expression::Variable(var) = e.expression {
                if validation_context.static_info.get(&var).map_or(false, |x| x.is_const) {
@@ -1918,14 +1929,10 @@ fn get_type(
             );
          }
 
-
          if any_error {
             ExpressionType::Value(ValueType::CompileError)
          } else if elems.is_empty() {
-            ExpressionType::Value(ValueType::Array(
-               Box::new(ExpressionType::Value(ValueType::Unit)),
-               0,
-            ))
+            ExpressionType::Value(ValueType::Array(Box::new(ExpressionType::Value(ValueType::Unit)), 0))
          } else {
             let a_type = validation_context.expressions[elems[0]].exp_type.clone().unwrap();
             let t_len = elems.len().try_into().unwrap(); // unwrap should always succeed due to error check above

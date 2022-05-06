@@ -1034,12 +1034,12 @@ fn parse_type(l: &mut Lexer, err_manager: &mut ErrorManager, interner: &Interner
 
          let arr_len_literal = extract_int_literal(length.token);
 
-
          if let Ok(valid_arr_len) = arr_len_literal.try_into() {
             (
-            t_close_token.source_info,
-            ValueType::Array(Box::new(a_inner_type.e_type), valid_arr_len),
-         )} else {
+               t_close_token.source_info,
+               ValueType::Array(Box::new(a_inner_type.e_type), valid_arr_len),
+            )
+         } else {
             rolandc_error!(
                err_manager,
                length.source_info,
@@ -1048,7 +1048,6 @@ fn parse_type(l: &mut Lexer, err_manager: &mut ErrorManager, interner: &Interner
             );
             return Err(());
          }
-
       }
       Some(Token::OpenParen) => {
          let _ = l.next();
