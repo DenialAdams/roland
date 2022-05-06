@@ -151,7 +151,7 @@ The only WASI API we support at the moment is printing text to stdout, through t
 ### WASM-4
 By providing the `--wasm4` flag to the roland compiler, you'll instead compile for [WASM-4](https://wasm4.org/). A `.wasm` file is emitted that can be directly provided to `w4 run`.
 
-When compiling for the wasm-4 target, all wasm-4 APIs will be automatically made available to you. No extra configuration is needed.
+When compiling for the WASM-4 target, all WASM-4 APIs will be automatically made available to you. No extra configuration is needed.
 
 An example WASM-4 game can be viewed here: https://github.com/DenialAdams/roland/blob/master/w4-games/endless-runner/cart.rol
 
