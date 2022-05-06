@@ -191,7 +191,7 @@ fn fold_expr(
             ExpressionType::Value(U16_TYPE) => *val > u64::from(u16::MAX) || *val < u64::from(u16::MIN),
             ExpressionType::Value(U32_TYPE) => *val > u64::from(u32::MAX) || *val < u64::from(u32::MIN),
             // @FixedPointerWidth
-            ExpressionType::Value(USIZE_TYPE) => *val > u64::from(u32::MAX) || *val < u64::from(u32::MIN),
+            ExpressionType::Value(USIZE_TYPE) | ExpressionType::Pointer(_, _) => *val > u64::from(u32::MAX) || *val < u64::from(u32::MIN),
             ExpressionType::Value(U64_TYPE) => false,
             _ => unreachable!(),
          };
@@ -581,7 +581,7 @@ fn fold_expr(
             // we check the literal for overflow/underflow
             let f_expr = &mut folding_context.expressions[*expr];
             if let Expression::IntLiteral(x) = &mut f_expr.expression {
-               let val = (-(*x as i64)) as u64;
+               let val = (*x as i64).wrapping_neg() as u64;
                *x = val;
 
                // Run the "fold" - will do nothing, but will do the error check!
@@ -602,11 +602,23 @@ fn fold_expr(
          if let Some(literal) = extract_literal(expr) {
             match op {
                // float and signed int
-               UnOp::Negate => Some(ExpressionNode {
-                  expression: literal.negate(),
-                  exp_type: expr_to_fold_type,
-                  location: expr_to_fold_location,
-               }),
+               UnOp::Negate => {
+                  if let Some(v) = literal.checked_negate() {
+                     Some(ExpressionNode {
+                        expression: v,
+                        exp_type: expr_to_fold_type,
+                        location: expr_to_fold_location,
+                     })
+                  } else {
+                     folding_context.error_count += 1;
+                     rolandc_error!(
+                        err_manager,
+                        expr_to_fold_location,
+                        "During constant folding, tried to negate the minimum value of a signed integer"
+                     );
+                     None
+                  }
+               }
                // int and bool
                UnOp::Complement => Some(ExpressionNode {
                   expression: literal.complement(),
@@ -926,14 +938,14 @@ impl Literal {
       }
    }
 
-   fn negate(self) -> Expression {
+   fn checked_negate(self) -> Option<Expression> {
       match self {
-         Literal::Int64(i) => Expression::IntLiteral((-i) as u64),
-         Literal::Int32(i) => Expression::IntLiteral(i64::from(-i) as u64),
-         Literal::Int16(i) => Expression::IntLiteral(i64::from(-i) as u64),
-         Literal::Int8(i) => Expression::IntLiteral(i64::from(-i) as u64),
-         Literal::Float64(i) => Expression::FloatLiteral(-i),
-         Literal::Float32(i) => Expression::FloatLiteral(f64::from(-i)),
+         Literal::Int64(i) => Some(Expression::IntLiteral(i.checked_neg()? as u64)),
+         Literal::Int32(i) => Some(Expression::IntLiteral(i64::from(i.checked_neg()?) as u64)),
+         Literal::Int16(i) => Some(Expression::IntLiteral(i64::from(i.checked_neg()?) as u64)),
+         Literal::Int8(i) => Some(Expression::IntLiteral(i64::from(i.checked_neg()?) as u64)),
+         Literal::Float64(i) => Some(Expression::FloatLiteral(-i)),
+         Literal::Float32(i) => Some(Expression::FloatLiteral(f64::from(-i))),
          _ => unreachable!(),
       }
    }

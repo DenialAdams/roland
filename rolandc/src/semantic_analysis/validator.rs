@@ -1494,7 +1494,11 @@ fn get_type(
             }
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf
-            && sizeof_type_mem(e.exp_type.as_ref().unwrap(), validation_context.enum_info, &validation_context.struct_size_info) == 0
+            && sizeof_type_mem(
+               e.exp_type.as_ref().unwrap(),
+               validation_context.enum_info,
+               &validation_context.struct_size_info,
+            ) == 0
          {
             validation_context.error_count += 1;
             // Allowing this wouldn't cause any clear bug (as far as I know), but it just seems whack

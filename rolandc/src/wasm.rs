@@ -34,7 +34,7 @@ struct PrettyWasmWriter {
    depth: usize,
 }
 
-impl<'a> PrettyWasmWriter {
+impl PrettyWasmWriter {
    fn close(&mut self) {
       self.depth -= 1;
       self.emit_spaces();
