@@ -13,6 +13,11 @@ use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 use rolandc::*;
 
+enum WorkspaceMode {
+   LooseFiles,
+   EntryPoint(PathBuf)
+}
+
 struct LSPFileResolver<'a> {
    file_map: &'a HashMap<PathBuf, (String, i32)>,
    touched_paths: &'a mut Vec<PathBuf>,
@@ -36,6 +41,7 @@ impl<'a> FileResolver<'a> for LSPFileResolver<'a> {
 
 struct Backend {
    client: Client,
+   mode: RwLock<WorkspaceMode>,
    opened_files: RwLock<HashMap<PathBuf, (String, i32)>>,
    ctx: Mutex<CompilationContext>,
 }
@@ -124,8 +130,11 @@ fn roland_error_to_lsp_error(re: ErrorInfo, interner: &Interner) -> (Option<Path
 
 impl Backend {
    async fn compile_and_publish_diagnostics(&self, doc_uri: &Url, doc_version: i32) {
+      let root_file_path = match &*self.mode.read() {
+         WorkspaceMode::LooseFiles => doc_uri.to_file_path().unwrap(),
+         WorkspaceMode::EntryPoint(x) => x.clone(),
+      };
       let (opened_versions, diagnostic_buckets) = {
-         let file_path = doc_uri.to_file_path().unwrap();
          let mut ctx_ref = self.ctx.lock();
          let (opened_versions, touched_paths) = {
             let opened_files_l = self.opened_files.read();
@@ -136,7 +145,7 @@ impl Backend {
             };
             let _ = rolandc::compile_for_errors(
                &mut *ctx_ref,
-               CompilationEntryPoint::PathResolving(file_path, resolver),
+               CompilationEntryPoint::PathResolving(root_file_path, resolver),
                Target::Wasi,
             );
             (
@@ -185,7 +194,25 @@ impl Backend {
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-   async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+   async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+      let workspace_root = params.root_uri;
+      let mode = if let Some(mut root_path) = workspace_root.and_then(|x| x.to_file_path().ok()) {
+         root_path.push("cart.rol");
+         if root_path.exists() {
+            WorkspaceMode::EntryPoint(root_path)
+         } else {
+            let _ = root_path.pop();
+            root_path.push("main.rol");
+            if root_path.exists() {
+               WorkspaceMode::EntryPoint(root_path)
+            } else {
+               WorkspaceMode::LooseFiles
+            }
+         }
+      } else {
+         WorkspaceMode::LooseFiles
+      };
+      *self.mode.write() = mode;
       Ok(InitializeResult {
          capabilities: ServerCapabilities {
             text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
@@ -196,9 +223,10 @@ impl LanguageServer for Backend {
    }
 
    async fn initialized(&self, _: InitializedParams) {
+      let version = option_env!("GIT_COMMIT").unwrap_or("unknown");
       self
          .client
-         .log_message(MessageType::INFO, "rolandc server initialized!")
+         .log_message(MessageType::INFO, format!("rolandc server initialized! v{}", version))
          .await;
    }
 
@@ -271,6 +299,7 @@ async fn main() {
    let (stdin, stdout) = (tokio::io::stdin(), tokio::io::stdout());
    let (service, socket) = LspService::new(|client| Backend {
       client,
+      mode: RwLock::new(WorkspaceMode::LooseFiles),
       opened_files: RwLock::new(HashMap::new()),
       ctx: Mutex::new(CompilationContext::new()),
    });
