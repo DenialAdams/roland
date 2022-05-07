@@ -7,7 +7,7 @@ If you're still interested in trying Roland, I highly recommend doing so with WA
 
 Roland does not yet have an official release cycle. However, I do publish binaries built from the most recent git commit:
 
-Linux: http://www.brick.codes/roland/rolandc  
+Linux: http://www.brick.codes/roland/rolandc
 Windows: http://www.brick.codes/roland/rolandc.exe
 
 (After downloading, ensure that the binary is marked as executable.)
@@ -32,7 +32,7 @@ y~ = y~ * 2;
 
 Logical OR and Logical AND are represented with keywords.
 
-``roland
+```roland
 if x and (y or z) {
    "..."
 }
