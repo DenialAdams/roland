@@ -26,6 +26,15 @@ pipeline {
          }
       }
 
+      stage('Build LSP') {
+         steps {
+            dir('rolandc_lsp') {
+               sh 'cargo build --release --target=x86_64-unknown-linux-musl'
+               sh 'cargo build --release --target x86_64-pc-windows-gnu'
+            }
+         }
+      }
+
       stage('Deploy Site') {
          when {
             expression { env.BRANCH_NAME == "master" }
