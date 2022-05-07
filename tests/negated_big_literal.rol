@@ -1,0 +1,13 @@
+proc main() {
+   // Should succeed
+   let x: i64 = -9223372036854775807;
+
+   // Should succeed
+   let y: i64 = -9223372036854775808;
+
+   // Should fail
+   let z: i64 = -9223372036854775809;
+
+   // Should also fail
+   let other: i64 = -I64_MIN;
+}

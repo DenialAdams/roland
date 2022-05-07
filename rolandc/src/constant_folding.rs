@@ -573,14 +573,19 @@ fn fold_expr(
       Expression::UnaryOperator(op, expr) => {
          if *op == UnOp::Negate {
             // THE POINT:
-            // Users think of "-128" as one value, not the negation of 128
-            // Why do we care? Because if the user writes:
+            // We want "-128" to be one value, not the negation of 128
+            // Why? Because:
             // let x: i8 = -128;
-            // 128 > than the max we can store in an i8, but -128 just fits.
-            // So, we match user expectations by applying the negation BEFORE
+            // 128 is > than the max we can store in an i8, but -128 just fits.
+            // So, we match expectations by applying the negation BEFORE
             // we check the literal for overflow/underflow
             let f_expr = &mut folding_context.expressions[*expr];
             if let Expression::IntLiteral(x) = &mut f_expr.expression {
+               // PROBLEM: this all assumes that the integer has not already been negated, which is usually true,
+               // but is NOT true for constants after they have been lowered.
+               if *x > (i64::MAX as u64 + 1) {
+                  // This negation is impossible, so have to die
+               }
                let val = (*x as i64).wrapping_neg() as u64;
                *x = val;
 
