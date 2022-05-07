@@ -167,8 +167,12 @@ An example WASM-4 game can be viewed here: https://github.com/DenialAdams/roland
 
 ## Tooling
 
-### Syntax Highlighting
-You can find syntax highlighting for Roland on the vscode marketplace - search for "Roland", and it's the extension published by "brick.codes".
+### Visual Studio Code Extension
+There is a VS Code extension for Roland - search for "Roland" on the vscode marketplace, and it's the extension published by "brick.codes".
+
+It has syntax highlighting and a primitive language server (it should give you errors as you type.)
+
+(If you develop on mac, the language server won't work for you - please file an issue!)
 
 ### Live editor
 You can compile Roland in the browser at https://www.brick.codes/roland/.

@@ -2,16 +2,30 @@ import * as lc from 'vscode-languageclient/node';
 import * as vscode from 'vscode';
 import * as os from "os";
 import { inspect } from "util";
+import { existsSync } from 'fs';
 
 let client: lc.LanguageClient;
 
-export async function activate(_context: vscode.ExtensionContext) {
-  let command = os.homedir() + "/roland/target/release/rolandc_lsp";
+function getLocalPath(): string {
+  let path = os.homedir() + "/roland/target/release/rolandc_lsp";
   if (process.platform == "win32") {
-    command += ".exe";
+    path += ".exe";
+  }
+  if (existsSync(path)) {
+    return path;
+  }
+  return "";
+}
+
+export async function activate(context: vscode.ExtensionContext) {
+  let extension_path = context.asAbsolutePath("rolandc_lsp");
+  let local_path = getLocalPath();
+  let final_path = extension_path;
+  if (local_path != "") {
+    final_path = local_path;
   }
   const run: lc.Executable = {
-    command: command,
+    command: final_path,
     transport: lc.TransportKind.stdio,
   };
   const serverOptions: lc.ServerOptions = {
