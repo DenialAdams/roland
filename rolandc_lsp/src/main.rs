@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use parking_lot::{Mutex, RwLock};
 use rolandc::error_handling::{ErrorInfo, ErrorLocation};
 use rolandc::interner::Interner;
-use rolandc::source_info::SourcePath;
+use rolandc::source_info::{SourcePath, SourceInfo};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
@@ -47,13 +47,13 @@ struct Backend {
    ctx: Mutex<CompilationContext>,
 }
 
-fn roland_source_path_to_canon_path(source_path: &SourcePath, interner: &Interner) -> std::io::Result<PathBuf> {
+fn roland_source_path_to_canon_path(source_path: &SourcePath, interner: &Interner) -> Option<std::io::Result<PathBuf>> {
    match source_path {
       SourcePath::Sandbox => unreachable!(), // No language server in the roland sandbox
-      SourcePath::Std => unreachable!(), // This is possible to be hit while developing Roland. Oh well, punt for now
+      SourcePath::Std => None, // This is possible to be hit when Roland provides a reference to a standard library defined type
       SourcePath::File(str_id) => {
          let some_path = interner.lookup(*str_id);
-         std::fs::canonicalize(some_path)
+         Some(std::fs::canonicalize(some_path))
       }
    }
 }
@@ -61,7 +61,7 @@ fn roland_source_path_to_canon_path(source_path: &SourcePath, interner: &Interne
 fn roland_error_to_lsp_error(re: ErrorInfo, interner: &Interner) -> (Option<PathBuf>, Diagnostic) {
    let (report_path, range, related_info) = match re.location {
       ErrorLocation::Simple(x) => (
-         Some(roland_source_path_to_canon_path(&x.file, interner).unwrap()),
+         roland_source_path_to_canon_path(&x.file, interner).map(|x| x.unwrap()),
          Range {
             start: Position {
                line: x.begin.line as u32,
@@ -75,7 +75,7 @@ fn roland_error_to_lsp_error(re: ErrorInfo, interner: &Interner) -> (Option<Path
          None,
       ),
       ErrorLocation::WithDetails(x) => (
-         Some(roland_source_path_to_canon_path(&x[0].0.file, interner).unwrap()),
+         roland_source_path_to_canon_path(&x[0].0.file, interner).map(|x| x.unwrap()),
          Range {
             start: Position {
                line: x[0].0.begin.line as u32,
@@ -88,22 +88,7 @@ fn roland_error_to_lsp_error(re: ErrorInfo, interner: &Interner) -> (Option<Path
          },
          Some(
             x.into_iter()
-               .map(|y| DiagnosticRelatedInformation {
-                  location: Location {
-                     uri: Url::from_file_path(roland_source_path_to_canon_path(&y.0.file, interner).unwrap()).unwrap(),
-                     range: Range {
-                        start: Position {
-                           line: y.0.begin.line as u32,
-                           character: y.0.begin.col as u32,
-                        },
-                        end: Position {
-                           line: y.0.end.line as u32,
-                           character: y.0.end.col as u32,
-                        },
-                     },
-                  },
-                  message: y.1,
-               })
+               .flat_map(|x| rolandc_detail_to_diagnostic_detail(x, interner))
                .collect(),
          ),
       ),
@@ -127,6 +112,28 @@ fn roland_error_to_lsp_error(re: ErrorInfo, interner: &Interner) -> (Option<Path
          ..Default::default()
       },
    )
+}
+
+fn rolandc_detail_to_diagnostic_detail(y: (SourceInfo, String), interner: &Interner) -> Option<DiagnosticRelatedInformation> {
+   let path = roland_source_path_to_canon_path(&y.0.file, interner).map(|x| x.unwrap());
+   path.map(|sp| {
+      DiagnosticRelatedInformation {
+         location: Location {
+            uri: Url::from_file_path(sp).unwrap(),
+            range: Range {
+               start: Position {
+                  line: y.0.begin.line as u32,
+                  character: y.0.begin.col as u32,
+               },
+               end: Position {
+                  line: y.0.end.line as u32,
+                  character: y.0.end.col as u32,
+               },
+            },
+         },
+         message: y.1,
+      }
+   })
 }
 
 impl Backend {
