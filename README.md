@@ -30,6 +30,16 @@ let y = &x;
 y~ = y~ * 2;
 ```
 
+Logical OR and Logical AND are represented with keywords.
+
+``roland
+if x and (y or z) {
+   "..."
+}
+```
+
+(bonus: note that parentheses aren't required for if conditions.)
+
 ### Types
 
 The following primitive types are supported:
