@@ -15,7 +15,8 @@ use rolandc::*;
 
 enum WorkspaceMode {
    LooseFiles,
-   EntryPoint(PathBuf)
+   Wasm4EntryPoint(PathBuf),
+   WasiEntryPoint(PathBuf),
 }
 
 struct LSPFileResolver<'a> {
@@ -130,9 +131,10 @@ fn roland_error_to_lsp_error(re: ErrorInfo, interner: &Interner) -> (Option<Path
 
 impl Backend {
    async fn compile_and_publish_diagnostics(&self, doc_uri: &Url, doc_version: i32) {
-      let root_file_path = match &*self.mode.read() {
-         WorkspaceMode::LooseFiles => doc_uri.to_file_path().unwrap(),
-         WorkspaceMode::EntryPoint(x) => x.clone(),
+      let (root_file_path, target) = match &*self.mode.read() {
+         WorkspaceMode::LooseFiles => (doc_uri.to_file_path().unwrap(), Target::Wasi),
+         WorkspaceMode::Wasm4EntryPoint(x) => (x.clone(), Target::Wasm4),
+         WorkspaceMode::WasiEntryPoint(x) => (x.clone(), Target::Wasm4),
       };
       let (opened_versions, diagnostic_buckets) = {
          let mut ctx_ref = self.ctx.lock();
@@ -146,7 +148,7 @@ impl Backend {
             let _ = rolandc::compile_for_errors(
                &mut *ctx_ref,
                CompilationEntryPoint::PathResolving(root_file_path, resolver),
-               Target::Wasi,
+               target,
             );
             (
                opened_files_l
@@ -199,12 +201,12 @@ impl LanguageServer for Backend {
       let mode = if let Some(mut root_path) = workspace_root.and_then(|x| x.to_file_path().ok()) {
          root_path.push("cart.rol");
          if root_path.exists() {
-            WorkspaceMode::EntryPoint(root_path)
+            WorkspaceMode::Wasm4EntryPoint(root_path)
          } else {
             let _ = root_path.pop();
             root_path.push("main.rol");
             if root_path.exists() {
-               WorkspaceMode::EntryPoint(root_path)
+               WorkspaceMode::WasiEntryPoint(root_path)
             } else {
                WorkspaceMode::LooseFiles
             }
