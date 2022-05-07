@@ -1040,7 +1040,7 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
             write!(generation_context.out.out, "\\{:02x}", val).unwrap();
          }
       }
-      Expression::IntLiteral(x) => {
+      Expression::IntLiteral { val: x, .. } => {
          let width = match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => x.width,
             ExpressionType::Pointer(_, _) => IntWidth::Pointer,
@@ -1161,7 +1161,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          generation_context.out.emit_spaces();
          writeln!(generation_context.out.out, "{}.const {}", wasm_type, index).unwrap();
       }
-      Expression::IntLiteral(x) => {
+      Expression::IntLiteral { val: x, .. } => {
          let (signed, wasm_type) = match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => match x.width {
                IntWidth::Eight => (x.signed, "i64"),
@@ -1728,7 +1728,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                _ => unreachable!(),
             };
 
-            if let Expression::IntLiteral(x) = generation_context.expressions[index_e].expression {
+            if let Expression::IntLiteral { val: x, .. } = generation_context.expressions[index_e].expression {
                // Safe assert due to inference and constant folding validating this
                let val_32 = u32::try_from(x).unwrap();
                let result = sizeof_inner.wrapping_mul(val_32);

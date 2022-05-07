@@ -217,7 +217,10 @@ pub enum Expression {
    },
    BoolLiteral(bool),
    StringLiteral(StrId),
-   IntLiteral(u64),
+   IntLiteral {
+      val: u64,
+      synthetic: bool,
+   },
    FloatLiteral(f64),
    UnitLiteral,
    Variable(StrId),
@@ -1104,7 +1107,14 @@ fn pratt(
    let expr_begin_source = expr_begin_token.as_ref().map(|x| x.source_info);
    let mut lhs = match expr_begin_token.map(|x| x.token) {
       Some(Token::BoolLiteral(x)) => wrap(Expression::BoolLiteral(x), expr_begin_source.unwrap(), expressions),
-      Some(Token::IntLiteral(x)) => wrap(Expression::IntLiteral(x), expr_begin_source.unwrap(), expressions),
+      Some(Token::IntLiteral(x)) => wrap(
+         Expression::IntLiteral {
+            val: x,
+            synthetic: false,
+         },
+         expr_begin_source.unwrap(),
+         expressions,
+      ),
       Some(Token::FloatLiteral(x)) => wrap(Expression::FloatLiteral(x), expr_begin_source.unwrap(), expressions),
       Some(Token::StringLiteral(x)) => wrap(Expression::StringLiteral(x), expr_begin_source.unwrap(), expressions),
       Some(Token::Identifier(s)) => {

@@ -48,7 +48,7 @@ fn set_inferred_type(
       Expression::Truncate(_, _) => unreachable!(),
       Expression::Transmute(_, _) => unreachable!(),
       Expression::BoolLiteral(_) => unreachable!(),
-      Expression::IntLiteral(_) => {
+      Expression::IntLiteral { .. } => {
          validation_context.unknown_ints.remove(&expr_index);
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }

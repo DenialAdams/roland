@@ -222,7 +222,7 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
       Expression::EnumLiteral(_, _) => (),
       Expression::BoolLiteral(_) => (),
       Expression::StringLiteral(_) => (),
-      Expression::IntLiteral(_) => (),
+      Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
       Expression::UnitLiteral => (),
    }

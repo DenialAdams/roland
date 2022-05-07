@@ -1092,7 +1092,7 @@ fn get_type(
    match unsafe { &mut (*expr_node).expression } {
       Expression::UnitLiteral => ExpressionType::Value(ValueType::Unit),
       Expression::BoolLiteral(_) => ExpressionType::Value(ValueType::Bool),
-      Expression::IntLiteral(_) => {
+      Expression::IntLiteral { .. } => {
          validation_context.unknown_ints.insert(expr_index);
          ExpressionType::Value(ValueType::UnknownInt)
       }

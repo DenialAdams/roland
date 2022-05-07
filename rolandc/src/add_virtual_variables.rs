@@ -156,7 +156,7 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
       Expression::EnumLiteral(_, _) => (),
       Expression::BoolLiteral(_) => (),
       Expression::StringLiteral(_) => (),
-      Expression::IntLiteral(_) => (),
+      Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
       Expression::UnitLiteral => (),
       Expression::Variable(_) => (),
