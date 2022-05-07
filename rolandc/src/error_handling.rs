@@ -97,10 +97,19 @@ pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo, i
          )
          .unwrap();
       }
-      SourcePath::Sandbox | SourcePath::Std => {
+      SourcePath::Sandbox => {
          writeln!(
             err_stream,
             "↳ line {}, column {}",
+            source_info.begin.line + 1,
+            source_info.begin.col + 1
+         )
+         .unwrap();
+      }
+      SourcePath::Std => {
+         writeln!(
+            err_stream,
+            "↳ line {}, column {} <std>",
             source_info.begin.line + 1,
             source_info.begin.col + 1
          )
