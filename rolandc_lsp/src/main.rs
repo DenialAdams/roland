@@ -201,11 +201,19 @@ impl LanguageServer for Backend {
       let mode = if let Some(mut root_path) = workspace_root.and_then(|x| x.to_file_path().ok()) {
          root_path.push("cart.rol");
          if root_path.exists() {
+            self
+               .client
+               .log_message(MessageType::INFO, "detected wasm4 project")
+               .await;
             WorkspaceMode::Wasm4EntryPoint(root_path)
          } else {
             let _ = root_path.pop();
             root_path.push("main.rol");
             if root_path.exists() {
+               self
+                  .client
+                  .log_message(MessageType::INFO, "detected wasi project")
+                  .await;
                WorkspaceMode::WasiEntryPoint(root_path)
             } else {
                WorkspaceMode::LooseFiles
