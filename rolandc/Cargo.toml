@@ -6,5 +6,7 @@ edition = "2021"
 
 [dependencies]
 arrayvec = "0.7"
+leb128 = "0.2"
+byteorder = "1"
 indexmap = "1"
 wat = "1"

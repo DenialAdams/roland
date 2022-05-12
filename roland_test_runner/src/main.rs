@@ -242,7 +242,7 @@ fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Res
       } else {
          return Err(TestFailureReason::ExpectedCompilationFailure);
       }
-      std::fs::remove_file(prog_path).unwrap();
+      //std::fs::remove_file(prog_path).unwrap();
    } else {
       let err_file = open_result_file(result_dir, t_file_path, "err");
       if let Ok(mut handle) = err_file {

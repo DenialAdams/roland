@@ -27,7 +27,7 @@ pub mod source_info;
 mod type_data;
 mod typed_index_vec;
 mod various_expression_lowering;
-mod wasm;
+mod wasm_backend;
 
 use error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
 use error_handling::ErrorManager;
@@ -271,7 +271,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    add_virtual_variables::add_virtual_vars(&mut user_program, &ctx.expressions);
 
    match target {
-      Target::Wasi => Ok(wasm::emit_wasm(
+      Target::Wasi => Ok(wasm_backend::wasm_emitter::emit_wasm(
          &mut user_program,
          &mut ctx.interner,
          &ctx.expressions,
@@ -279,7 +279,8 @@ pub fn compile<'a, FR: FileResolver<'a>>(
          false,
       )),
       Target::Wasm4 => {
-         let wat = wasm::emit_wasm(&mut user_program, &mut ctx.interner, &ctx.expressions, 0x19a0, true);
+         let wat =
+            wasm_backend::wast_emitter::emit_wast(&mut user_program, &mut ctx.interner, &ctx.expressions, 0x19a0, true);
          let wasm = match wat::parse_bytes(&wat) {
             Ok(wasm_bytes) => wasm_bytes.into_owned(),
             Err(_) => return Err(CompilationError::Internal),

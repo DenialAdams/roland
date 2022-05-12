@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use parking_lot::{Mutex, RwLock};
 use rolandc::error_handling::{ErrorInfo, ErrorLocation};
 use rolandc::interner::Interner;
-use rolandc::source_info::{SourcePath, SourceInfo};
+use rolandc::source_info::{SourceInfo, SourcePath};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
@@ -114,25 +114,26 @@ fn roland_error_to_lsp_error(re: ErrorInfo, interner: &Interner) -> (Option<Path
    )
 }
 
-fn rolandc_detail_to_diagnostic_detail(y: (SourceInfo, String), interner: &Interner) -> Option<DiagnosticRelatedInformation> {
+fn rolandc_detail_to_diagnostic_detail(
+   y: (SourceInfo, String),
+   interner: &Interner,
+) -> Option<DiagnosticRelatedInformation> {
    let path = roland_source_path_to_canon_path(&y.0.file, interner).map(|x| x.unwrap());
-   path.map(|sp| {
-      DiagnosticRelatedInformation {
-         location: Location {
-            uri: Url::from_file_path(sp).unwrap(),
-            range: Range {
-               start: Position {
-                  line: y.0.begin.line as u32,
-                  character: y.0.begin.col as u32,
-               },
-               end: Position {
-                  line: y.0.end.line as u32,
-                  character: y.0.end.col as u32,
-               },
+   path.map(|sp| DiagnosticRelatedInformation {
+      location: Location {
+         uri: Url::from_file_path(sp).unwrap(),
+         range: Range {
+            start: Position {
+               line: y.0.begin.line as u32,
+               character: y.0.begin.col as u32,
+            },
+            end: Position {
+               line: y.0.end.line as u32,
+               character: y.0.end.col as u32,
             },
          },
-         message: y.1,
-      }
+      },
+      message: y.1,
    })
 }
 

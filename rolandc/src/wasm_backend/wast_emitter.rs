@@ -1,3 +1,8 @@
+use std::collections::{HashMap, HashSet};
+use std::io::Write;
+
+use indexmap::{IndexMap, IndexSet};
+
 use crate::add_virtual_variables::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -5,33 +10,15 @@ use crate::parse::{
    UnOp,
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
-use crate::size_info::{
-   aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
-};
+use crate::size_info::{aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm};
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE};
 use crate::typed_index_vec::Handle;
-use indexmap::{IndexMap, IndexSet};
-use std::collections::{HashMap, HashSet};
-use std::io::Write;
 
-const MINIMUM_STACK_FRAME_SIZE: u32 = 4;
+use super::{GenerationContext, MINIMUM_STACK_FRAME_SIZE};
 
-struct GenerationContext<'a> {
-   out: PrettyWasmWriter,
-   literal_offsets: HashMap<StrId, (u32, u32)>,
-   static_addresses: HashMap<StrId, u32>,
-   local_offsets_mem: HashMap<StrId, u32>,
-   struct_info: &'a IndexMap<StrId, StructInfo>,
-   struct_size_info: &'a HashMap<StrId, SizeInfo>,
-   enum_info: &'a IndexMap<StrId, EnumInfo>,
-   needed_store_fns: IndexSet<ExpressionType>,
-   sum_sizeof_locals_mem: u32,
-   expressions: &'a ExpressionPool,
-}
-
-struct PrettyWasmWriter {
-   out: Vec<u8>,
-   depth: usize,
+pub struct PrettyWasmWriter {
+   pub out: Vec<u8>,
+   pub depth: usize,
 }
 
 impl PrettyWasmWriter {
@@ -451,7 +438,7 @@ fn dynamic_move_locals_of_type_to_dest(
 // 0-l literals
 // l-s statics
 // s+ program stack (local variables and parameters are pushed here during runtime)
-pub fn emit_wasm(
+pub fn emit_wast(
    program: &mut Program,
    interner: &mut Interner,
    expressions: &ExpressionPool,
