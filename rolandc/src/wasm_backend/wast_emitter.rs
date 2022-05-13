@@ -14,7 +14,7 @@ use crate::size_info::{aligned_address, mem_alignment, sizeof_type_mem, sizeof_t
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE};
 use crate::typed_index_vec::Handle;
 
-use super::{GenerationContext, MINIMUM_STACK_FRAME_SIZE};
+use super::{compare_alignment, compare_type_alignment, GenerationContext, MINIMUM_STACK_FRAME_SIZE};
 
 pub struct PrettyWasmWriter {
    pub out: Vec<u8>,
@@ -445,6 +445,15 @@ pub fn emit_wast(
    memory_base: u32,
    wasm4: bool,
 ) -> Vec<u8> {
+   program.static_info.sort_by(|_k_1, v_1, _k_2, v_2| {
+      compare_type_alignment(
+         &v_1.static_type,
+         &v_2.static_type,
+         &program.enum_info,
+         &program.struct_size_info,
+      )
+   });
+
    let mut generation_context = GenerationContext {
       out: PrettyWasmWriter {
          out: Vec::new(),
@@ -531,12 +540,8 @@ pub fn emit_wast(
       offset += s_len;
    }
 
-   // Handle alignment of statics
+   // Beginning of the statics is affected by the alignment requirements
    {
-      program.static_info.sort_by(|_k_1, v_1, _k_2, v_2| {
-         compare_type_alignment(&v_1.static_type, &v_2.static_type, &generation_context)
-      });
-
       let strictest_alignment = if let Some(v) = program.static_info.first() {
          mem_alignment(
             &v.1.static_type,
@@ -791,38 +796,6 @@ pub fn emit_wast(
    }
 
    generation_context.out.out
-}
-
-fn compare_alignment(alignment_1: u32, sizeof_1: u32, alignment_2: u32, sizeof_2: u32) -> std::cmp::Ordering {
-   let rem_1 = sizeof_1 % alignment_1;
-   let required_padding_1 = if rem_1 == 0 { 0 } else { alignment_1 - rem_1 };
-
-   let rem_2 = sizeof_2 % alignment_2;
-   let required_padding_2 = if rem_2 == 0 { 0 } else { alignment_2 - rem_2 };
-
-   // The idea is to process the types with the strictest alignment first, to minimize the amount of padding
-   // Some amount of padding between objects is still necessary because we have structs
-   // In that case, we put the structs towards the end to maybe save a couple of bytes per frame
-   // (example: a struct that would require 7 bytes of padding if the following element was a u64 would
-   // only require 3 bytes if the following element is a u32)
-   // ... I'm actually not sure this makes sense, maybe it's better to confirm this empirically
-   alignment_2
-      .cmp(&alignment_1)
-      .then(required_padding_1.cmp(&required_padding_2))
-}
-
-fn compare_type_alignment(
-   e_1: &ExpressionType,
-   e_2: &ExpressionType,
-   generation_context: &GenerationContext,
-) -> std::cmp::Ordering {
-   let alignment_1 = mem_alignment(e_1, generation_context.enum_info, generation_context.struct_size_info);
-   let alignment_2 = mem_alignment(e_2, generation_context.enum_info, generation_context.struct_size_info);
-
-   let sizeof_1 = sizeof_type_mem(e_1, generation_context.enum_info, generation_context.struct_size_info);
-   let sizeof_2 = sizeof_type_mem(e_1, generation_context.enum_info, generation_context.struct_size_info);
-
-   compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
 }
 
 fn emit_statement(statement: &StatementNode, generation_context: &mut GenerationContext, interner: &mut Interner) {

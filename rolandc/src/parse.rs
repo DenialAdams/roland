@@ -97,7 +97,7 @@ pub struct ProcedureNode {
    pub virtual_locals: IndexSet<ExpressionId>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum ProcImplSource {
    Builtin,
    External,

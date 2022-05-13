@@ -13,6 +13,7 @@
 #![allow(clippy::module_name_repetitions)] // I don't really care that much
 #![allow(clippy::match_wildcard_for_single_variants)] // False positives
 #![allow(clippy::new_without_default)] // I don't want dead code
+#![feature(drain_filter)]
 
 mod add_virtual_variables;
 mod compile_globals;
