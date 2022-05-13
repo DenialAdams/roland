@@ -398,6 +398,10 @@ pub fn emit_wasm(
    }
 
    {
+      // Datacount Section
+   }
+
+   {
       // Export Section
       generation_context.out.out.write_u8(0x07).unwrap();
 
