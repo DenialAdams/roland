@@ -44,9 +44,7 @@ fn set_inferred_type(
    // this clone is very sad, but we do it for borrowck
    let expr = validation_context.expressions[expr_index].expression.clone();
    match &expr {
-      Expression::Extend(_, _) => unreachable!(),
-      Expression::Truncate(_, _) => unreachable!(),
-      Expression::Transmute(_, _) => unreachable!(),
+      Expression::Cast{..} => unreachable!(),
       Expression::BoolLiteral(_) => unreachable!(),
       Expression::IntLiteral { .. } => {
          validation_context.unknown_ints.remove(&expr_index);

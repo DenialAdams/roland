@@ -205,13 +205,7 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
       Expression::FieldAccess(_field_names, expr) => {
          cg_expr(*expr, cg_context, err_manager);
       }
-      Expression::Extend(_, expr) => {
-         cg_expr(*expr, cg_context, err_manager);
-      }
-      Expression::Truncate(_, expr) => {
-         cg_expr(*expr, cg_context, err_manager);
-      }
-      Expression::Transmute(_, expr) => {
+      Expression::Cast { expr, .. } => {
          cg_expr(*expr, cg_context, err_manager);
       }
       Expression::ArrayLiteral(exprs) => {

@@ -1,6 +1,6 @@
 use indexmap::IndexSet;
 
-use crate::parse::{BlockNode, Expression, ExpressionId, ExpressionPool, Program, Statement};
+use crate::parse::{BlockNode, Expression, ExpressionId, ExpressionPool, Program, Statement, CastType};
 use crate::type_data::{ExpressionType, IntWidth, ValueType};
 
 pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
@@ -131,13 +131,7 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
       Expression::FieldAccess(_field_names, expr) => {
          vv_expr(*expr, vv_context);
       }
-      Expression::Extend(_, expr) => {
-         vv_expr(*expr, vv_context);
-      }
-      Expression::Truncate(_, expr) => {
-         vv_expr(*expr, vv_context);
-      }
-      Expression::Transmute(target_type, expr) => {
+      Expression::Cast { cast_type: CastType::Transmute, target_type, expr } => {
          vv_expr(*expr, vv_context);
 
          let e = &vv_context.expressions[*expr];
@@ -147,6 +141,9 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
          {
             vv_context.virtual_vars.insert(*expr);
          }
+      }
+      Expression::Cast { expr, .. } => {
+         vv_expr(*expr, vv_context);
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {

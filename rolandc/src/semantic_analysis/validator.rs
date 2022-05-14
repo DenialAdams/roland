@@ -5,7 +5,7 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    BinOp, BlockNode, Expression, ExpressionId, ExpressionPool, IdentifierNode, ProcImplSource, Program, Statement,
-   StatementNode, UnOp,
+   StatementNode, UnOp, CastType,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, value_type_mem_alignment};
@@ -1104,7 +1104,7 @@ fn get_type(
          validation_context.string_literals.insert(*lit);
          ExpressionType::Value(ValueType::Struct(interner.intern("String")))
       }
-      Expression::Extend(target_type, e) => {
+      Expression::Cast{ cast_type: CastType::Extend, target_type, expr: e} => {
          type_expression(err_manager, *e, validation_context, interner);
 
          let e = &validation_context.expressions[*e];
@@ -1164,7 +1164,7 @@ fn get_type(
             }
          }
       }
-      Expression::Transmute(target_type, e) => {
+      Expression::Cast{ cast_type: CastType::Transmute, target_type, expr: e} => {
          type_expression(err_manager, *e, validation_context, interner);
 
          if target_type.is_pointer() {
@@ -1264,7 +1264,7 @@ fn get_type(
             }
          }
       }
-      Expression::Truncate(target_type, e) => {
+      Expression::Cast{ cast_type: CastType::Truncate, target_type, expr: e} => {
          type_expression(err_manager, *e, validation_context, interner);
 
          let e = &validation_context.expressions[*e];

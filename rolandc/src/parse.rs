@@ -204,6 +204,13 @@ impl Handle for ExpressionId {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum CastType {
+   Extend,
+   Truncate,
+   Transmute,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expression {
    ProcedureCall {
       proc_name: StrId,
@@ -232,9 +239,11 @@ pub enum Expression {
    UnaryOperator(UnOp, ExpressionId),
    StructLiteral(StrId, Vec<(StrId, ExpressionId)>),
    FieldAccess(Vec<StrId>, ExpressionId),
-   Extend(ExpressionType, ExpressionId),
-   Truncate(ExpressionType, ExpressionId),
-   Transmute(ExpressionType, ExpressionId),
+   Cast {
+      cast_type: CastType,
+      target_type: ExpressionType,
+      expr: ExpressionId,
+   },
    EnumLiteral(StrId, StrId),
 }
 
@@ -1344,21 +1353,18 @@ fn pratt(
             Token::KeywordExtend => {
                let a_type = parse_type(l, err_manager, interner)?;
                let combined_location = merge_locations(expr_begin_source.unwrap(), a_type.location);
-               wrap(Expression::Extend(a_type.e_type, lhs), combined_location, expressions)
+               wrap(Expression::Cast{cast_type: CastType::Extend, target_type: a_type.e_type, expr: lhs}, combined_location, expressions)
             }
             Token::KeywordTruncate => {
                let a_type = parse_type(l, err_manager, interner)?;
                let combined_location = merge_locations(expr_begin_source.unwrap(), a_type.location);
-               wrap(Expression::Truncate(a_type.e_type, lhs), combined_location, expressions)
+               wrap(Expression::Cast{cast_type: CastType::Truncate, target_type: a_type.e_type, expr: lhs}, combined_location, expressions)
             }
             Token::KeywordTransmute => {
                let a_type = parse_type(l, err_manager, interner)?;
                let combined_location = merge_locations(expr_begin_source.unwrap(), a_type.location);
-               wrap(
-                  Expression::Transmute(a_type.e_type, lhs),
-                  combined_location,
-                  expressions,
-               )
+               wrap(Expression::Cast{cast_type: CastType::Transmute, target_type: a_type.e_type, expr: lhs}, combined_location, expressions)
+
             }
             Token::Deref => {
                let combined_location = merge_locations(expr_begin_source.unwrap(), op.source_info);
