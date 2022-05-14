@@ -1353,18 +1353,41 @@ fn pratt(
             Token::KeywordExtend => {
                let a_type = parse_type(l, err_manager, interner)?;
                let combined_location = merge_locations(expr_begin_source.unwrap(), a_type.location);
-               wrap(Expression::Cast{cast_type: CastType::Extend, target_type: a_type.e_type, expr: lhs}, combined_location, expressions)
+               wrap(
+                  Expression::Cast {
+                     cast_type: CastType::Extend,
+                     target_type: a_type.e_type,
+                     expr: lhs,
+                  },
+                  combined_location,
+                  expressions,
+               )
             }
             Token::KeywordTruncate => {
                let a_type = parse_type(l, err_manager, interner)?;
                let combined_location = merge_locations(expr_begin_source.unwrap(), a_type.location);
-               wrap(Expression::Cast{cast_type: CastType::Truncate, target_type: a_type.e_type, expr: lhs}, combined_location, expressions)
+               wrap(
+                  Expression::Cast {
+                     cast_type: CastType::Truncate,
+                     target_type: a_type.e_type,
+                     expr: lhs,
+                  },
+                  combined_location,
+                  expressions,
+               )
             }
             Token::KeywordTransmute => {
                let a_type = parse_type(l, err_manager, interner)?;
                let combined_location = merge_locations(expr_begin_source.unwrap(), a_type.location);
-               wrap(Expression::Cast{cast_type: CastType::Transmute, target_type: a_type.e_type, expr: lhs}, combined_location, expressions)
-
+               wrap(
+                  Expression::Cast {
+                     cast_type: CastType::Transmute,
+                     target_type: a_type.e_type,
+                     expr: lhs,
+                  },
+                  combined_location,
+                  expressions,
+               )
             }
             Token::Deref => {
                let combined_location = merge_locations(expr_begin_source.unwrap(), op.source_info);

@@ -4,8 +4,8 @@ use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   BinOp, BlockNode, Expression, ExpressionId, ExpressionPool, IdentifierNode, ProcImplSource, Program, Statement,
-   StatementNode, UnOp, CastType,
+   BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, IdentifierNode, ProcImplSource, Program,
+   Statement, StatementNode, UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, value_type_mem_alignment};
@@ -1104,80 +1104,24 @@ fn get_type(
          validation_context.string_literals.insert(*lit);
          ExpressionType::Value(ValueType::Struct(interner.intern("String")))
       }
-      Expression::Cast{ cast_type: CastType::Extend, target_type, expr: e} => {
-         type_expression(err_manager, *e, validation_context, interner);
+      Expression::Cast {
+         cast_type,
+         target_type,
+         expr: expr_id,
+      } => {
+         type_expression(err_manager, *expr_id, validation_context, interner);
 
-         let e = &validation_context.expressions[*e];
-         let e_type = e.exp_type.as_ref().unwrap();
-
-         if resolve_type(
-            target_type,
-            validation_context.enum_info,
-            validation_context.struct_info,
-         )
-         .is_err()
-         {
-            validation_context.error_count += 1;
-            rolandc_error!(
-               err_manager,
-               expr_location,
-               "Undeclared type `{}`",
-               target_type.as_roland_type_info(interner),
-            );
-
-            ExpressionType::Value(ValueType::CompileError)
-         } else if !e_type.is_concrete_type() {
-            // Avoid cascading errors
-            ExpressionType::Value(ValueType::CompileError)
-         } else {
-            let valid_cast = match (e_type, &target_type) {
-               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y)))
-                  if x.width == IntWidth::Pointer =>
-               {
-                  IntWidth::Pointer.as_num_bytes() <= y.width.as_num_bytes()
-               }
-               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y)))
-                  if y.width == IntWidth::Pointer =>
-               {
-                  x.width.as_num_bytes() <= IntWidth::Pointer.as_num_bytes()
-               }
-               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
-                  x.width.as_num_bytes() < y.width.as_num_bytes()
-               }
-               (ExpressionType::Value(F32_TYPE), ExpressionType::Value(F64_TYPE)) => true,
-               (ExpressionType::Value(ValueType::Bool), ExpressionType::Value(ValueType::Int(_))) => true,
-               _ => false,
-            };
-
-            if valid_cast {
-               target_type.clone()
-            } else {
-               validation_context.error_count += 1;
-               rolandc_error_w_details!(
-                  err_manager,
-                  &[(expr_location, "extend"), (e.location, "operand")],
-                  "Extend encountered an operand of type {} which can not be extended to type {}",
-                  e_type.as_roland_type_info(interner),
-                  target_type.as_roland_type_info(interner),
-               );
-               ExpressionType::Value(ValueType::CompileError)
-            }
-         }
-      }
-      Expression::Cast{ cast_type: CastType::Transmute, target_type, expr: e} => {
-         type_expression(err_manager, *e, validation_context, interner);
-
-         if target_type.is_pointer() {
+         if *cast_type == CastType::Transmute && target_type.is_pointer() {
             try_set_inferred_type(
                &ExpressionType::Value(USIZE_TYPE),
-               *e,
+               *expr_id,
                validation_context,
                err_manager,
                interner,
             );
          }
 
-         let e = &validation_context.expressions[*e];
+         let e = &validation_context.expressions[*expr_id];
          let e_type = e.exp_type.as_ref().unwrap();
 
          if resolve_type(
@@ -1195,133 +1139,145 @@ fn get_type(
                target_type.as_roland_type_info(interner),
             );
 
-            ExpressionType::Value(ValueType::CompileError)
+            return ExpressionType::Value(ValueType::CompileError);
          } else if !e_type.is_concrete_type() {
             // Avoid cascading errors
-            ExpressionType::Value(ValueType::CompileError)
-         } else {
-            let size_source = sizeof_type_mem(
-               e_type,
-               validation_context.enum_info,
-               &validation_context.struct_size_info,
-            );
-            let size_target = sizeof_type_mem(
-               target_type,
-               validation_context.enum_info,
-               &validation_context.struct_size_info,
-            );
+            return ExpressionType::Value(ValueType::CompileError);
+         }
 
-            if target_type.is_enum() || e_type.is_enum() {
-               validation_context.error_count += 1;
-               rolandc_error_w_details!(
-                  err_manager,
-                  &[(expr_location, "transmute"), (e.location, "operand")],
-                  "Transmuting to or from enum types isn't currently supported due to the unspecified size of enums",
-               );
-               ExpressionType::Value(ValueType::CompileError)
-            } else if size_source == size_target {
-               let alignment_source = value_type_mem_alignment(
-                  e_type.get_value_type_or_value_being_pointed_to(),
+         match cast_type {
+            CastType::Extend => {
+               let valid_cast = match (e_type, &target_type) {
+                  (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y)))
+                     if x.width == IntWidth::Pointer =>
+                  {
+                     IntWidth::Pointer.as_num_bytes() <= y.width.as_num_bytes()
+                  }
+                  (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y)))
+                     if y.width == IntWidth::Pointer =>
+                  {
+                     x.width.as_num_bytes() <= IntWidth::Pointer.as_num_bytes()
+                  }
+                  (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
+                     x.width.as_num_bytes() < y.width.as_num_bytes()
+                  }
+                  (ExpressionType::Value(F32_TYPE), ExpressionType::Value(F64_TYPE)) => true,
+                  (ExpressionType::Value(ValueType::Bool), ExpressionType::Value(ValueType::Int(_))) => true,
+                  _ => false,
+               };
+
+               if valid_cast {
+                  target_type.clone()
+               } else {
+                  validation_context.error_count += 1;
+                  rolandc_error_w_details!(
+                     err_manager,
+                     &[(expr_location, "extend"), (e.location, "operand")],
+                     "Extend encountered an operand of type {} which can not be extended to type {}",
+                     e_type.as_roland_type_info(interner),
+                     target_type.as_roland_type_info(interner),
+                  );
+                  ExpressionType::Value(ValueType::CompileError)
+               }
+            }
+            CastType::Truncate => {
+               let valid_cast = match (e_type, &target_type) {
+                  (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y)))
+                     if x.width == IntWidth::Pointer =>
+                  {
+                     IntWidth::Pointer.as_num_bytes() >= y.width.as_num_bytes()
+                  }
+                  (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y)))
+                     if y.width == IntWidth::Pointer =>
+                  {
+                     x.width.as_num_bytes() >= IntWidth::Pointer.as_num_bytes()
+                  }
+                  (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
+                     x.width.as_num_bytes() > y.width.as_num_bytes()
+                  }
+                  (ExpressionType::Value(F64_TYPE), ExpressionType::Value(F32_TYPE)) => true,
+                  (ExpressionType::Value(ValueType::Float(_)), ExpressionType::Value(ValueType::Int(_))) => true,
+                  (ExpressionType::Value(ValueType::Int(_)), ExpressionType::Value(ValueType::Float(_))) => true,
+                  _ => false,
+               };
+
+               if valid_cast {
+                  target_type.clone()
+               } else {
+                  validation_context.error_count += 1;
+                  rolandc_error_w_details!(
+                     err_manager,
+                     &[(expr_location, "truncate"), (e.location, "operand")],
+                     "Truncate encountered an operand of type {} which can not be truncated to type {}",
+                     e_type.as_roland_type_info(interner),
+                     target_type.as_roland_type_info(interner),
+                  );
+                  ExpressionType::Value(ValueType::CompileError)
+               }
+            }
+            CastType::Transmute => {
+               let size_source = sizeof_type_mem(
+                  e_type,
                   validation_context.enum_info,
                   &validation_context.struct_size_info,
                );
-               let alignment_target = value_type_mem_alignment(
-                  target_type.get_value_type_or_value_being_pointed_to(),
+               let size_target = sizeof_type_mem(
+                  target_type,
                   validation_context.enum_info,
                   &validation_context.struct_size_info,
                );
 
-               let alignment_error =
-                  e_type.is_pointer() && target_type.is_pointer() && (alignment_source < alignment_target);
-
-               if alignment_error {
+               if target_type.is_enum() || e_type.is_enum() {
                   validation_context.error_count += 1;
                   rolandc_error_w_details!(
                      err_manager,
                      &[(expr_location, "transmute"), (e.location, "operand")],
-                     "Transmute encountered an operand of type {}, which can't be transmuted to type {} as the alignment requirements would not be met ({} vs {})",
-                     e_type.as_roland_type_info(interner),
-                     target_type.as_roland_type_info(interner),
-                     alignment_source,
-                     alignment_target,
+                     "Transmuting to or from enum types isn't currently supported due to the unspecified size of enums",
                   );
                   ExpressionType::Value(ValueType::CompileError)
+               } else if size_source == size_target {
+                  let alignment_source = value_type_mem_alignment(
+                     e_type.get_value_type_or_value_being_pointed_to(),
+                     validation_context.enum_info,
+                     &validation_context.struct_size_info,
+                  );
+                  let alignment_target = value_type_mem_alignment(
+                     target_type.get_value_type_or_value_being_pointed_to(),
+                     validation_context.enum_info,
+                     &validation_context.struct_size_info,
+                  );
+
+                  let alignment_error =
+                     e_type.is_pointer() && target_type.is_pointer() && (alignment_source < alignment_target);
+
+                  if alignment_error {
+                     validation_context.error_count += 1;
+                     rolandc_error_w_details!(
+                        err_manager,
+                        &[(expr_location, "transmute"), (e.location, "operand")],
+                        "Transmute encountered an operand of type {}, which can't be transmuted to type {} as the alignment requirements would not be met ({} vs {})",
+                        e_type.as_roland_type_info(interner),
+                        target_type.as_roland_type_info(interner),
+                        alignment_source,
+                        alignment_target,
+                     );
+                     ExpressionType::Value(ValueType::CompileError)
+                  } else {
+                     target_type.clone()
+                  }
                } else {
-                  target_type.clone()
+                  validation_context.error_count += 1;
+                  rolandc_error_w_details!(
+                     err_manager,
+                     &[(expr_location, "transmute"), (e.location, "operand")],
+                     "Transmute encountered an operand of type {} which can't be transmuted to type {} as the sizes do not match ({} vs {})",
+                     e_type.as_roland_type_info(interner),
+                     target_type.as_roland_type_info(interner),
+                     size_source,
+                     size_target,
+                  );
+                  ExpressionType::Value(ValueType::CompileError)
                }
-            } else {
-               validation_context.error_count += 1;
-               rolandc_error_w_details!(
-                  err_manager,
-                  &[(expr_location, "transmute"), (e.location, "operand")],
-                  "Transmute encountered an operand of type {} which can't be transmuted to type {} as the sizes do not match ({} vs {})",
-                  e_type.as_roland_type_info(interner),
-                  target_type.as_roland_type_info(interner),
-                  size_source,
-                  size_target,
-               );
-               ExpressionType::Value(ValueType::CompileError)
-            }
-         }
-      }
-      Expression::Cast{ cast_type: CastType::Truncate, target_type, expr: e} => {
-         type_expression(err_manager, *e, validation_context, interner);
-
-         let e = &validation_context.expressions[*e];
-         let e_type = e.exp_type.as_ref().unwrap();
-
-         if resolve_type(
-            target_type,
-            validation_context.enum_info,
-            validation_context.struct_info,
-         )
-         .is_err()
-         {
-            validation_context.error_count += 1;
-            rolandc_error!(
-               err_manager,
-               expr_location,
-               "Undeclared type `{}`",
-               target_type.as_roland_type_info(interner),
-            );
-
-            ExpressionType::Value(ValueType::CompileError)
-         } else if !e_type.is_concrete_type() {
-            // Avoid cascading errors
-            ExpressionType::Value(ValueType::CompileError)
-         } else {
-            let valid_cast = match (e_type, &target_type) {
-               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y)))
-                  if x.width == IntWidth::Pointer =>
-               {
-                  IntWidth::Pointer.as_num_bytes() >= y.width.as_num_bytes()
-               }
-               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y)))
-                  if y.width == IntWidth::Pointer =>
-               {
-                  x.width.as_num_bytes() >= IntWidth::Pointer.as_num_bytes()
-               }
-               (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
-                  x.width.as_num_bytes() > y.width.as_num_bytes()
-               }
-               (ExpressionType::Value(F64_TYPE), ExpressionType::Value(F32_TYPE)) => true,
-               (ExpressionType::Value(ValueType::Float(_)), ExpressionType::Value(ValueType::Int(_))) => true,
-               (ExpressionType::Value(ValueType::Int(_)), ExpressionType::Value(ValueType::Float(_))) => true,
-               _ => false,
-            };
-
-            if valid_cast {
-               target_type.clone()
-            } else {
-               validation_context.error_count += 1;
-               rolandc_error_w_details!(
-                  err_manager,
-                  &[(expr_location, "truncate"), (e.location, "operand")],
-                  "Truncate encountered an operand of type {} which can not be truncated to type {}",
-                  e_type.as_roland_type_info(interner),
-                  target_type.as_roland_type_info(interner),
-               );
-               ExpressionType::Value(ValueType::CompileError)
             }
          }
       }

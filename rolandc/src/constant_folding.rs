@@ -2,7 +2,7 @@ use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   BinOp, BlockNode, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement, UnOp, CastType,
+   BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement, UnOp,
 };
 use crate::type_data::{
    ExpressionType, ValueType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE,
@@ -710,7 +710,11 @@ fn fold_expr(
             None
          }
       }
-      Expression::Cast { cast_type: CastType::Transmute, expr, .. } => {
+      Expression::Cast {
+         cast_type: CastType::Transmute,
+         expr,
+         ..
+      } => {
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
 
          let expr = &folding_context.expressions[*expr];

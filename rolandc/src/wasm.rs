@@ -1,8 +1,8 @@
 use crate::add_virtual_variables::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   BinOp, Expression, ExpressionId, ExpressionPool, ParameterNode, ProcImplSource, Program, Statement, StatementNode,
-   UnOp, CastType,
+   BinOp, CastType, Expression, ExpressionId, ExpressionPool, ParameterNode, ProcImplSource, Program, Statement,
+   StatementNode, UnOp,
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{
@@ -1370,7 +1370,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             }
          }
       }
-      Expression::Cast{cast_type: CastType::Extend, target_type, expr: e} => {
+      Expression::Cast {
+         cast_type: CastType::Extend,
+         target_type,
+         expr: e,
+      } => {
          do_emit_and_load_lval(*e, generation_context, interner);
 
          let e = &generation_context.expressions[*e];
@@ -1399,7 +1403,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             _ => unreachable!(),
          }
       }
-      Expression::Cast{cast_type: CastType::Transmute, target_type, expr: e_id} => {
+      Expression::Cast {
+         cast_type: CastType::Transmute,
+         target_type,
+         expr: e_id,
+      } => {
          let e = &generation_context.expressions[*e_id];
 
          if e.expression.is_lvalue_disregard_consts(generation_context.expressions) {
@@ -1448,7 +1456,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             load(target_type, generation_context);
          }
       }
-      Expression::Cast{cast_type: CastType::Truncate, target_type, expr: e} => {
+      Expression::Cast {
+         cast_type: CastType::Truncate,
+         target_type,
+         expr: e,
+      } => {
          do_emit_and_load_lval(*e, generation_context, interner);
 
          let e = &generation_context.expressions[*e];
