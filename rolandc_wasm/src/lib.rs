@@ -20,7 +20,6 @@ struct PlaygroundFileResolver;
 
 impl<'a> FileResolver<'a> for PlaygroundFileResolver {
    fn resolve_path(&mut self, _path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'a, str>> {
-      // Will throw an unsupported operation kind, which rolandc has special handling for
       unreachable!()
    }
 }
