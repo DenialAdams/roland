@@ -46,6 +46,7 @@ const MOUSE_X: &i16 = 0x1a transmute &i16;
 const MOUSE_Y: &i16 = 0x1c transmute &i16;
 const MOUSE_BUTTONS: &u8 = 0x1e transmute &u8;
 const SYSTEM_FLAGS: &u8 = 0x1f transmute &u8;
+const NETPLAY: &u8 = 0x20 transmute &u8;
 const FRAMEBUFFER: &[u8; 6400] = 0xa0 transmute &[u8; 6400];
 
 const BUTTON_1: u8 = 1;
