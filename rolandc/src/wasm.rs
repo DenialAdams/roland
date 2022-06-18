@@ -1735,7 +1735,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          ) {
             let sizeof_inner = match &generation_context.expressions[array].exp_type {
                Some(ExpressionType::Value(ValueType::Array(x, _))) => {
-                  sizeof_type_mem(&*x, generation_context.enum_info, generation_context.struct_size_info)
+                  sizeof_type_mem(x, generation_context.enum_info, generation_context.struct_size_info)
                }
                _ => unreachable!(),
             };
