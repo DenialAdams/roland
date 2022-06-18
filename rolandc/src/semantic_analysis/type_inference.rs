@@ -86,9 +86,11 @@ fn set_inferred_type(
             ExpressionType::Value(ValueType::UnknownInt(x)) => *x,
             _ => unreachable!(),
          };
-         validation_context.type_variable_definitions.insert(validation_context.type_variables.find(my_tv), e_type.clone());
+         validation_context
+            .type_variable_definitions
+            .insert(validation_context.type_variables.find(my_tv), e_type.clone());
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
-      },
+      }
       Expression::ProcedureCall { .. } => unreachable!(),
       Expression::StructLiteral(_, _) => unreachable!(),
       Expression::FieldAccess(_, _) => unreachable!(),

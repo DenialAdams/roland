@@ -59,5 +59,5 @@ pub struct ValidationContext<'a> {
    pub struct_size_info: HashMap<StrId, SizeInfo>,
    pub type_variables: DisjointSet,
    pub type_variable_definitions: HashMap<usize, ExpressionType>,
-   pub cur_procedure_locals: IndexMap<StrId, HashSet<ExpressionType>>
+   pub cur_procedure_locals: IndexMap<StrId, HashSet<ExpressionType>>,
 }

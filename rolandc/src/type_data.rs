@@ -157,11 +157,13 @@ impl ExpressionType {
    }
 
    pub fn is_known_or_unknown_int(&self) -> bool {
-      matches!(self, ExpressionType::Value(ValueType::Int(_))) | matches!(self, ExpressionType::Value(ValueType::UnknownInt(_)))
+      matches!(self, ExpressionType::Value(ValueType::Int(_)))
+         | matches!(self, ExpressionType::Value(ValueType::UnknownInt(_)))
    }
 
    pub fn is_known_or_unknown_float(&self) -> bool {
-      matches!(self, ExpressionType::Value(ValueType::Float(_))) | matches!(self, ExpressionType::Value(ValueType::UnknownFloat(_)))
+      matches!(self, ExpressionType::Value(ValueType::Float(_)))
+         | matches!(self, ExpressionType::Value(ValueType::UnknownFloat(_)))
    }
 
    pub fn is_pointer(&self) -> bool {
@@ -227,7 +229,9 @@ impl ExpressionType {
 impl ValueType {
    fn is_concrete_type(&self) -> bool {
       match self {
-         ValueType::UnknownInt(_) | ValueType::UnknownFloat(_) | ValueType::CompileError | ValueType::Unresolved(_) => false,
+         ValueType::UnknownInt(_) | ValueType::UnknownFloat(_) | ValueType::CompileError | ValueType::Unresolved(_) => {
+            false
+         }
          ValueType::Int(_)
          | ValueType::Float(_)
          | ValueType::Bool

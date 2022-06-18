@@ -16,7 +16,10 @@ impl DisjointSet {
 
    pub fn add_new_set(&mut self) -> usize {
       let old_len = self.tree.len();
-      self.tree.push(Node { parent: old_len, rank: 0 });
+      self.tree.push(Node {
+         parent: old_len,
+         rank: 0,
+      });
       old_len
    }
 
