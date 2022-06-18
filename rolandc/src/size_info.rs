@@ -103,8 +103,8 @@ pub fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &Ha
 pub fn value_type_mem_alignment(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ValueType::Unresolved(_) => unreachable!(),
-      ValueType::UnknownInt => unreachable!(),
-      ValueType::UnknownFloat => unreachable!(),
+      ValueType::UnknownInt(_) => unreachable!(),
+      ValueType::UnknownFloat(_) => unreachable!(),
       ValueType::Enum(x) => {
          let num_variants = ei.get(x).unwrap().variants.len();
          if num_variants > u32::MAX as usize {
@@ -147,8 +147,8 @@ pub fn sizeof_type_values(e: &ExpressionType, si: &HashMap<StrId, SizeInfo>) -> 
 fn sizeof_value_type_values(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ValueType::Unresolved(_) => unreachable!(),
-      ValueType::UnknownInt => unreachable!(),
-      ValueType::UnknownFloat => unreachable!(),
+      ValueType::UnknownInt(_) => unreachable!(),
+      ValueType::UnknownFloat(_) => unreachable!(),
       ValueType::Enum(_) => 1,
       ValueType::Int(_) => 1,
       ValueType::Float(_) => 1,
@@ -180,8 +180,8 @@ pub fn sizeof_type_mem(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &
 fn sizeof_value_type_mem(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ValueType::Unresolved(_) => unreachable!(),
-      ValueType::UnknownInt => unreachable!(),
-      ValueType::UnknownFloat => unreachable!(),
+      ValueType::UnknownInt(_) => unreachable!(),
+      ValueType::UnknownFloat(_) => unreachable!(),
       ValueType::Enum(x) => {
          let num_variants = ei.get(x).unwrap().variants.len();
          if num_variants > u32::MAX as usize {

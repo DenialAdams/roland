@@ -1,0 +1,6 @@
+proc main() {
+   let x = 1;
+   let y = -x;
+   let z = [false, true][y];
+   print_bool(z);
+}

@@ -216,8 +216,8 @@ fn write_value_type_as_result(
 ) {
    match e {
       ValueType::Unresolved(_) => unreachable!(),
-      ValueType::UnknownInt => unreachable!(),
-      ValueType::UnknownFloat => unreachable!(),
+      ValueType::UnknownInt(_) => unreachable!(),
+      ValueType::UnknownFloat(_) => unreachable!(),
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => write!(out, "(result i64)").unwrap(),
          _ => write!(out, "(result i32)").unwrap(),
@@ -276,8 +276,8 @@ fn write_value_type_as_params(
 ) {
    match e {
       ValueType::Unresolved(_) => unreachable!(),
-      ValueType::UnknownInt => unreachable!(),
-      ValueType::UnknownFloat => unreachable!(),
+      ValueType::UnknownInt(_) => unreachable!(),
+      ValueType::UnknownFloat(_) => unreachable!(),
       ValueType::Enum(_) => {
          write!(out, "(param ").unwrap();
          value_type_to_s(e, out, ei, si);
@@ -326,8 +326,8 @@ fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumInf
 fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) {
    match e {
       ValueType::Unresolved(_) => unreachable!(),
-      ValueType::UnknownInt => unreachable!(),
-      ValueType::UnknownFloat => unreachable!(),
+      ValueType::UnknownInt(_) => unreachable!(),
+      ValueType::UnknownFloat(_) => unreachable!(),
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => write!(out, "i64").unwrap(),
          _ => write!(out, "i32").unwrap(),

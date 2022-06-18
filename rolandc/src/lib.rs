@@ -14,9 +14,12 @@
 #![allow(clippy::match_wildcard_for_single_variants)] // False positives
 #![allow(clippy::new_without_default)] // I don't want dead code
 
+#![feature(hash_drain_filter)]
+
 mod add_virtual_variables;
 mod compile_globals;
 mod constant_folding;
+mod disjoint_set;
 pub mod error_handling;
 pub mod interner;
 mod lex;
