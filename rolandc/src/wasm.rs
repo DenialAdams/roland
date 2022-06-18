@@ -10,6 +10,7 @@ use crate::size_info::{
 };
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE};
 use crate::typed_index_vec::Handle;
+use crate::Target;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
@@ -455,8 +456,7 @@ pub fn emit_wasm(
    program: &mut Program,
    interner: &mut Interner,
    expressions: &ExpressionPool,
-   memory_base: u32,
-   wasm4: bool,
+   target: Target,
 ) -> Vec<u8> {
    let mut generation_context = GenerationContext {
       out: PrettyWasmWriter {
@@ -479,20 +479,23 @@ pub fn emit_wasm(
       .iter()
       .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ProcImplSource::External))
    {
-      if wasm4 {
-         writeln!(
-            generation_context.out.out,
-            "(import \"env\" \"{}\" ",
-            interner.lookup(external_procedure.definition.name),
-         )
-         .unwrap();
-      } else {
-         writeln!(
-            generation_context.out.out,
-            "(import \"wasi_unstable\" \"{}\" ",
-            interner.lookup(external_procedure.definition.name),
-         )
-         .unwrap();
+      match target {
+         Target::Wasm4 => {
+            writeln!(
+               generation_context.out.out,
+               "(import \"env\" \"{}\" ",
+               interner.lookup(external_procedure.definition.name),
+            )
+            .unwrap();
+         }
+         Target::Wasi => {
+            writeln!(
+               generation_context.out.out,
+               "(import \"wasi_unstable\" \"{}\" ",
+               interner.lookup(external_procedure.definition.name),
+            )
+            .unwrap();
+         }
       }
 
       generation_context.out.emit_function_start_named_params(
@@ -510,29 +513,37 @@ pub fn emit_wasm(
       generation_context.out.out.push(b'\n');
    }
 
-   if wasm4 {
-      generation_context
-         .out
-         .emit_constant_sexp("(import \"env\" \"memory\" (memory 1 1))");
-      generation_context
-         .out
-         .emit_constant_sexp("(export \"update\" (func $update))");
-      generation_context
-         .out
-         .emit_constant_sexp("(export \"start\" (func $start))");
-   } else {
-      generation_context.out.emit_constant_sexp("(memory 1)");
-      generation_context
-         .out
-         .emit_constant_sexp("(export \"memory\" (memory 0))");
-      generation_context
-         .out
-         .emit_constant_sexp("(export \"_start\" (func $main))");
+   match target {
+      Target::Wasm4 => {
+         generation_context
+            .out
+            .emit_constant_sexp("(import \"env\" \"memory\" (memory 1 1))");
+         generation_context
+            .out
+            .emit_constant_sexp("(export \"update\" (func $update))");
+         generation_context
+            .out
+            .emit_constant_sexp("(export \"start\" (func $start))");
+      }
+      Target::Wasi => {
+         generation_context.out.emit_constant_sexp("(memory 1)");
+         generation_context
+            .out
+            .emit_constant_sexp("(export \"memory\" (memory 0))");
+         generation_context
+            .out
+            .emit_constant_sexp("(export \"_start\" (func $main))");
+      }
    }
 
    // Data section
 
-   let mut offset: u32 = memory_base;
+   // the base memory offset varies per platform;
+   // on wasm-4, we don't own all of the memory!
+   let mut offset: u32 = match target {
+      Target::Wasi => 0x0,
+      Target::Wasm4 => 0x19a0,
+   };
 
    for s in program.literals.iter() {
       let str_value = interner.lookup(*s);

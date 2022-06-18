@@ -271,17 +271,15 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    let mut user_program = compile_for_errors(ctx, user_program_ep, target)?;
 
    add_virtual_variables::add_virtual_vars(&mut user_program, &ctx.expressions);
-
    match target {
       Target::Wasi => Ok(wasm::emit_wasm(
          &mut user_program,
          &mut ctx.interner,
          &ctx.expressions,
-         0,
-         false,
+         target,
       )),
       Target::Wasm4 => {
-         let wat = wasm::emit_wasm(&mut user_program, &mut ctx.interner, &ctx.expressions, 0x19a0, true);
+         let wat = wasm::emit_wasm(&mut user_program, &mut ctx.interner, &ctx.expressions, target);
          let wasm = match wat::parse_bytes(&wat) {
             Ok(wasm_bytes) => wasm_bytes.into_owned(),
             Err(_) => return Err(CompilationError::Internal),
