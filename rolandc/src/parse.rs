@@ -153,7 +153,7 @@ pub struct ExpressionTypeNode {
    pub location: SourceInfo,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BinOp {
    Add,
    Subtract,
@@ -175,7 +175,7 @@ pub enum BinOp {
    LogicalOr,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum UnOp {
    Negate,
    Complement,
@@ -203,7 +203,7 @@ impl Handle for ExpressionId {
    }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CastType {
    Extend,
    Truncate,
@@ -249,13 +249,13 @@ pub enum Expression {
 
 // TODO: it would be cool if StrId was NonZero so that this struct (and others like it)
 // could be smaller
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArgumentNode {
    pub name: Option<StrId>,
    pub expr: ExpressionId,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GenericArgumentNode {
    pub gtype: ExpressionType,
 }

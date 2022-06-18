@@ -1,5 +1,6 @@
 use super::type_inference::try_set_inferred_type;
 use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
+use crate::disjoint_set::DisjointSet;
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
@@ -11,6 +12,7 @@ use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, value_type_mem_alignment};
 use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
 use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE};
+use crate::typed_index_vec::Handle;
 use crate::Target;
 use arrayvec::ArrayVec;
 use indexmap::{IndexMap, IndexSet};
@@ -47,17 +49,17 @@ fn matches(type_validation: &TypeValidator, et: &ExpressionType) -> bool {
          | (TypeValidator::Bool, ExpressionType::Value(ValueType::Bool))
          | (
             TypeValidator::AnyInt,
-            ExpressionType::Value(ValueType::Int(_) | ValueType::UnknownInt)
+            ExpressionType::Value(ValueType::Int(_) | ValueType::UnknownInt(_))
          )
          | (
             TypeValidator::AnySignedInt,
             // Accepting unknown int looks weird (could be unsigned),
             // but the trick is that we double validate this for the pertinent nodes after we've inferred types
-            ExpressionType::Value(ValueType::Int(IntType { signed: true, .. }) | ValueType::UnknownInt)
+            ExpressionType::Value(ValueType::Int(IntType { signed: true, .. }) | ValueType::UnknownInt(_))
          )
          | (
             TypeValidator::AnyFloat,
-            ExpressionType::Value(ValueType::Float(_) | ValueType::UnknownFloat)
+            ExpressionType::Value(ValueType::Float(_) | ValueType::UnknownFloat(_))
          )
          | (TypeValidator::AnyEnum, ExpressionType::Value(ValueType::Enum(_)))
    )
@@ -148,8 +150,8 @@ fn resolve_value_type(
    si: &IndexMap<StrId, StructInfo>,
 ) -> Result<(), ()> {
    match v_type {
-      ValueType::UnknownInt => Ok(()),
-      ValueType::UnknownFloat => Ok(()),
+      ValueType::UnknownInt(_) => Ok(()),
+      ValueType::UnknownFloat(_) => Ok(()),
       ValueType::Int(_) => Ok(()),
       ValueType::Float(_) => Ok(()),
       ValueType::Bool => Ok(()),
@@ -551,6 +553,9 @@ pub fn type_and_check_validity(
       unknown_floats: IndexSet::new(),
       expressions,
       struct_size_info: HashMap::new(),
+      type_variables: DisjointSet::new(),
+      type_variable_definitions: HashMap::new(),
+      cur_procedure_locals: IndexMap::new(),
    };
 
    let special_procs = get_special_procedures(target, interner);
@@ -677,20 +682,16 @@ pub fn type_and_check_validity(
          validation_context
             .variable_types
             .insert(parameter.name, (parameter.p_type.clone(), 0));
-         procedure
-            .locals
+         validation_context
+            .cur_procedure_locals
             .entry(parameter.name)
             .or_insert_with(HashSet::new)
             .insert(parameter.p_type.clone());
       }
 
-      type_block(
-         err_manager,
-         &mut procedure.block,
-         &mut validation_context,
-         &mut procedure.locals,
-         interner,
-      );
+      type_block(err_manager, &mut procedure.block, &mut validation_context, interner);
+
+      std::mem::swap(&mut validation_context.cur_procedure_locals, &mut procedure.locals);
 
       // Ensure that the last statement is a return statement
       // (it has already been type checked, so we don't have to check that)
@@ -714,6 +715,77 @@ pub fn type_and_check_validity(
                interner.lookup(procedure.definition.name),
                x_str,
             );
+         }
+      }
+   }
+
+   // lower type variables
+   {
+      for (i, e) in validation_context.expressions.values.iter_mut().enumerate() {
+         let opt_tv = match e.exp_type.as_ref().unwrap() {
+            ExpressionType::Value(ValueType::UnknownInt(x)) => Some(*x),
+            ExpressionType::Value(ValueType::UnknownFloat(x)) => Some(*x),
+            _ => None,
+         };
+
+         if let Some(mut tv) = opt_tv {
+            tv = validation_context.type_variables.find(tv);
+            let the_type = validation_context.type_variable_definitions.get(&tv);
+            if let Some(t) = the_type {
+               debug_assert!(t.is_concrete_type());
+               e.exp_type = Some(t.clone());
+               validation_context.unknown_ints.remove(&ExpressionId::new(i));
+               validation_context.unknown_floats.remove(&ExpressionId::new(i));
+            }
+         }
+
+         // If we instead checked this immediately, we would error on any unary negation of an unknown int
+         // for instance, let x = -1; would fail to compile!
+         // as an alternative, we could introduce some sort of constraint system into the type inference engine,
+         // such that we could say "this type variable makes completely unkown ints signed upon unification"
+         // and immediately error if we try to union it with a known unsigned type. To be honest that sounds good,
+         // but I'm postponing such an improvement for the time being. --rjm June 18, 2022
+         if matches!(e.expression, Expression::UnaryOperator(UnOp::Negate, _))
+            && matches!(
+               e.exp_type.as_ref().unwrap(),
+               ExpressionType::Value(ValueType::Int(IntType { signed: false, .. }))
+            )
+         {
+            validation_context.error_count += 1;
+            rolandc_error!(
+               err_manager,
+               e.location,
+               "Unsigned integers (i.e. {}) can't be negated. Hint: Should this be a signed integer?",
+               e.exp_type.as_ref().unwrap().as_roland_type_info(interner),
+            );
+         }
+      }
+
+      for proc in program.procedures.iter_mut() {
+         for lt in proc.locals.iter_mut() {
+            let tvs: Vec<usize> = lt
+               .1
+               .drain_filter(|x| {
+                  matches!(
+                     x,
+                     ExpressionType::Value(ValueType::UnknownInt(_) | ValueType::UnknownFloat(_))
+                  )
+               })
+               .map(|x| match x {
+                  ExpressionType::Value(ValueType::UnknownInt(x)) => x,
+                  ExpressionType::Value(ValueType::UnknownFloat(x)) => x,
+                  _ => unreachable!(),
+               })
+               .map(|x| validation_context.type_variables.find(x))
+               .collect();
+
+            for t in tvs
+               .iter()
+               .flat_map(|x| validation_context.type_variable_definitions.get(x))
+            {
+               debug_assert!(t.is_concrete_type());
+               lt.1.insert(t.clone());
+            }
          }
       }
    }
@@ -768,7 +840,6 @@ fn type_statement(
    err_manager: &mut ErrorManager,
    statement: &mut StatementNode,
    validation_context: &mut ValidationContext,
-   cur_procedure_locals: &mut IndexMap<StrId, HashSet<ExpressionType>>,
    interner: &mut Interner,
 ) {
    match &mut statement.statement {
@@ -825,7 +896,7 @@ fn type_statement(
          }
       }
       Statement::Block(bn) => {
-         type_block(err_manager, bn, validation_context, cur_procedure_locals, interner);
+         type_block(err_manager, bn, validation_context, interner);
       }
       Statement::Continue => {
          if validation_context.loop_depth == 0 {
@@ -905,31 +976,24 @@ fn type_statement(
 
          // This way the variable is declared at the depth that we'll be typing in
          validation_context.block_depth += 1;
-         declare_variable(
-            err_manager,
-            var,
-            result_type,
-            validation_context,
-            cur_procedure_locals,
-            interner,
-         );
+         declare_variable(err_manager, var, result_type, validation_context, interner);
          validation_context.block_depth -= 1;
 
          validation_context.loop_depth += 1;
-         type_block(err_manager, bn, validation_context, cur_procedure_locals, interner);
+         type_block(err_manager, bn, validation_context, interner);
          validation_context.loop_depth -= 1;
       }
       Statement::Loop(bn) => {
          validation_context.loop_depth += 1;
-         type_block(err_manager, bn, validation_context, cur_procedure_locals, interner);
+         type_block(err_manager, bn, validation_context, interner);
          validation_context.loop_depth -= 1;
       }
       Statement::Expression(en) => {
          type_expression(err_manager, *en, validation_context, interner);
       }
       Statement::IfElse(en, block_1, block_2) => {
-         type_block(err_manager, block_1, validation_context, cur_procedure_locals, interner);
-         type_statement(err_manager, block_2, validation_context, cur_procedure_locals, interner);
+         type_block(err_manager, block_1, validation_context, interner);
+         type_statement(err_manager, block_2, validation_context, interner);
          type_expression(err_manager, *en, validation_context, interner);
 
          let en = &validation_context.expressions[*en];
@@ -959,7 +1023,7 @@ fn type_statement(
 
          let en = &validation_context.expressions[*en];
 
-         if en.exp_type.as_ref().unwrap().is_concrete_type()
+         if !en.exp_type.as_ref().unwrap().is_error_type()
             && en.exp_type.as_ref().unwrap() != &cur_procedure_info.ret_type
          {
             validation_context.error_count += 1;
@@ -1011,14 +1075,7 @@ fn type_statement(
             en.exp_type.clone().unwrap()
          };
 
-         declare_variable(
-            err_manager,
-            id,
-            result_type,
-            validation_context,
-            cur_procedure_locals,
-            interner,
-         );
+         declare_variable(err_manager, id, result_type, validation_context, interner);
       }
    }
 }
@@ -1028,7 +1085,6 @@ fn declare_variable(
    id: &IdentifierNode,
    var_type: ExpressionType,
    validation_context: &mut ValidationContext,
-   cur_procedure_locals: &mut IndexMap<StrId, HashSet<ExpressionType>>,
    interner: &mut Interner,
 ) {
    if validation_context.static_info.contains_key(&id.identifier)
@@ -1045,7 +1101,8 @@ fn declare_variable(
       validation_context
          .variable_types
          .insert(id.identifier, (var_type.clone(), validation_context.block_depth));
-      cur_procedure_locals
+      validation_context
+         .cur_procedure_locals
          .entry(id.identifier)
          .or_insert_with(HashSet::new)
          .insert(var_type);
@@ -1056,19 +1113,12 @@ fn type_block(
    err_manager: &mut ErrorManager,
    bn: &mut BlockNode,
    validation_context: &mut ValidationContext,
-   cur_procedure_locals: &mut IndexMap<StrId, HashSet<ExpressionType>>,
    interner: &mut Interner,
 ) {
    validation_context.block_depth += 1;
 
    for statement in bn.statements.iter_mut() {
-      type_statement(
-         err_manager,
-         statement,
-         validation_context,
-         cur_procedure_locals,
-         interner,
-      );
+      type_statement(err_manager, statement, validation_context, interner);
    }
 
    validation_context.block_depth -= 1;
@@ -1094,11 +1144,13 @@ fn get_type(
       Expression::BoolLiteral(_) => ExpressionType::Value(ValueType::Bool),
       Expression::IntLiteral { .. } => {
          validation_context.unknown_ints.insert(expr_index);
-         ExpressionType::Value(ValueType::UnknownInt)
+         let new_type_variable = validation_context.type_variables.add_new_set();
+         ExpressionType::Value(ValueType::UnknownInt(new_type_variable))
       }
       Expression::FloatLiteral(_) => {
          validation_context.unknown_floats.insert(expr_index);
-         ExpressionType::Value(ValueType::UnknownFloat)
+         let new_type_variable = validation_context.type_variables.add_new_set();
+         ExpressionType::Value(ValueType::UnknownFloat(new_type_variable))
       }
       Expression::StringLiteral(lit) => {
          validation_context.string_literals.insert(*lit);
@@ -1140,7 +1192,7 @@ fn get_type(
             );
 
             return ExpressionType::Value(ValueType::CompileError);
-         } else if !e_type.is_concrete_type() {
+         } else if e_type.is_error_type() {
             // Avoid cascading errors
             return ExpressionType::Value(ValueType::CompileError);
          }
@@ -1719,7 +1771,7 @@ fn get_type(
                   let field_expr = &validation_context.expressions[field.1];
 
                   if field_expr.exp_type.as_ref().unwrap() != defined_type
-                     && field_expr.exp_type.as_ref().unwrap().is_concrete_type()
+                     && !field_expr.exp_type.as_ref().unwrap().is_error_type()
                   {
                      validation_context.error_count += 1;
                      let field_1_type_str = field_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
@@ -1914,7 +1966,7 @@ fn get_type(
          let array_expression = &validation_context.expressions[*array];
          let index_expression = &validation_context.expressions[*index];
 
-         if !index_expression.exp_type.as_ref().unwrap().is_concrete_type() {
+         if !index_expression.exp_type.as_ref().unwrap().is_error_type() {
             // avoid cascading errors
          } else if index_expression.exp_type.as_ref().unwrap() != &ExpressionType::Value(USIZE_TYPE) {
             validation_context.error_count += 1;

@@ -1,20 +1,19 @@
 use super::ValidationContext;
-use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::Interner;
-use crate::parse::{Expression, ExpressionId, UnOp};
-use crate::type_data::{ExpressionType, IntType, ValueType};
+use crate::parse::{Expression, ExpressionId};
+use crate::type_data::{ExpressionType, ValueType};
 
 // Returns false if the types being inferred are incompatible
 // Inference may still not be possible for other reasons
-fn inference_is_impossible(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
-   match source_type {
-      ExpressionType::Value(ValueType::Array(src_e, _)) => match target_type {
+fn inference_is_impossible(current_type: &ExpressionType, potential_type: &ExpressionType) -> bool {
+   match current_type {
+      ExpressionType::Value(ValueType::Array(src_e, _)) => match potential_type {
          ExpressionType::Value(ValueType::Array(target_e, _)) => inference_is_impossible(src_e, target_e),
          _ => true,
       },
-      ExpressionType::Value(ValueType::UnknownFloat) => !target_type.is_any_known_float(),
-      ExpressionType::Value(ValueType::UnknownInt) => !target_type.is_any_known_int(),
+      ExpressionType::Value(ValueType::UnknownFloat(_)) => !potential_type.is_known_or_unknown_float(),
+      ExpressionType::Value(ValueType::UnknownInt(_)) => !potential_type.is_known_or_unknown_int(),
       _ => true,
    }
 }
@@ -26,8 +25,8 @@ pub fn try_set_inferred_type(
    err_manager: &mut ErrorManager,
    interner: &mut Interner,
 ) {
-   let source_type = validation_context.expressions[expr_index].exp_type.as_ref().unwrap();
-   if inference_is_impossible(source_type, e_type) {
+   let current_type = validation_context.expressions[expr_index].exp_type.as_ref().unwrap();
+   if inference_is_impossible(current_type, e_type) {
       return;
    }
 
@@ -47,11 +46,27 @@ fn set_inferred_type(
       Expression::Cast { .. } => unreachable!(),
       Expression::BoolLiteral(_) => unreachable!(),
       Expression::IntLiteral { .. } => {
-         validation_context.unknown_ints.remove(&expr_index);
+         if let ExpressionType::Value(ValueType::UnknownInt(e_tv)) = e_type {
+            let my_tv = match validation_context.expressions[expr_index].exp_type.as_ref().unwrap() {
+               ExpressionType::Value(ValueType::UnknownInt(x)) => *x,
+               _ => unreachable!(),
+            };
+            validation_context.type_variables.union(my_tv, *e_tv);
+         } else {
+            validation_context.unknown_ints.remove(&expr_index);
+         }
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }
       Expression::FloatLiteral(_) => {
-         validation_context.unknown_floats.remove(&expr_index);
+         if let ExpressionType::Value(ValueType::UnknownFloat(e_tv)) = e_type {
+            let my_tv = match validation_context.expressions[expr_index].exp_type.as_ref().unwrap() {
+               ExpressionType::Value(ValueType::UnknownFloat(x)) => *x,
+               _ => unreachable!(),
+            };
+            validation_context.type_variables.union(my_tv, *e_tv);
+         } else {
+            validation_context.unknown_floats.remove(&expr_index);
+         }
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }
       Expression::StringLiteral(_) => unreachable!(),
@@ -60,28 +75,22 @@ fn set_inferred_type(
          set_inferred_type(e_type, *rhs, validation_context, err_manager, interner);
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }
-      Expression::UnaryOperator(unop, e) => {
+      Expression::UnaryOperator(_, e) => {
          set_inferred_type(e_type, *e, validation_context, err_manager, interner);
-
-         if *unop == UnOp::Negate
-            && matches!(
-               e_type,
-               ExpressionType::Value(ValueType::Int(IntType { signed: false, .. }))
-            )
-         {
-            validation_context.error_count += 1;
-            rolandc_error!(
-               err_manager,
-               validation_context.expressions[expr_index].location,
-               "Unsigned integers (i.e. {}) can't be negated. Hint: Should this be a signed integer?",
-               e_type.as_roland_type_info(interner),
-            );
-         }
-
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }
       Expression::UnitLiteral => unreachable!(),
-      Expression::Variable(_) => (),
+      Expression::Variable(_) => {
+         let my_tv = match validation_context.expressions[expr_index].exp_type.as_ref().unwrap() {
+            ExpressionType::Value(ValueType::UnknownFloat(x)) => *x,
+            ExpressionType::Value(ValueType::UnknownInt(x)) => *x,
+            _ => unreachable!(),
+         };
+         validation_context
+            .type_variable_definitions
+            .insert(validation_context.type_variables.find(my_tv), e_type.clone());
+         validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
+      }
       Expression::ProcedureCall { .. } => unreachable!(),
       Expression::StructLiteral(_, _) => unreachable!(),
       Expression::FieldAccess(_, _) => unreachable!(),

@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use indexmap::{IndexMap, IndexSet};
 
+use crate::disjoint_set::DisjointSet;
 use crate::interner::StrId;
 use crate::parse::{ExpressionId, ExpressionPool};
 use crate::size_info::SizeInfo;
@@ -56,4 +57,7 @@ pub struct ValidationContext<'a> {
    pub unknown_floats: IndexSet<ExpressionId>,
    pub expressions: &'a mut ExpressionPool,
    pub struct_size_info: HashMap<StrId, SizeInfo>,
+   pub type_variables: DisjointSet,
+   pub type_variable_definitions: HashMap<usize, ExpressionType>,
+   pub cur_procedure_locals: IndexMap<StrId, HashSet<ExpressionType>>,
 }

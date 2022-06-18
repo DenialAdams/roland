@@ -69,8 +69,8 @@ pub enum ExpressionType {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ValueType {
-   UnknownInt,
-   UnknownFloat,
+   UnknownInt(usize),
+   UnknownFloat(usize),
    Int(IntType),
    Float(FloatType),
    Bool,
@@ -156,12 +156,14 @@ impl ExpressionType {
       }
    }
 
-   pub fn is_any_known_int(&self) -> bool {
+   pub fn is_known_or_unknown_int(&self) -> bool {
       matches!(self, ExpressionType::Value(ValueType::Int(_)))
+         | matches!(self, ExpressionType::Value(ValueType::UnknownInt(_)))
    }
 
-   pub fn is_any_known_float(&self) -> bool {
+   pub fn is_known_or_unknown_float(&self) -> bool {
       matches!(self, ExpressionType::Value(ValueType::Float(_)))
+         | matches!(self, ExpressionType::Value(ValueType::UnknownFloat(_)))
    }
 
    pub fn is_pointer(&self) -> bool {
@@ -227,7 +229,9 @@ impl ExpressionType {
 impl ValueType {
    fn is_concrete_type(&self) -> bool {
       match self {
-         ValueType::UnknownInt | ValueType::UnknownFloat | ValueType::CompileError | ValueType::Unresolved(_) => false,
+         ValueType::UnknownInt(_) | ValueType::UnknownFloat(_) | ValueType::CompileError | ValueType::Unresolved(_) => {
+            false
+         }
          ValueType::Int(_)
          | ValueType::Float(_)
          | ValueType::Bool
@@ -248,8 +252,8 @@ impl ValueType {
 
    fn as_roland_type_info<'i>(&self, interner: &'i Interner) -> Cow<'i, str> {
       match self {
-         ValueType::UnknownFloat => Cow::Borrowed("?? Float"),
-         ValueType::UnknownInt => Cow::Borrowed("?? Int"),
+         ValueType::UnknownFloat(_) => Cow::Borrowed("?? Float"),
+         ValueType::UnknownInt(_) => Cow::Borrowed("?? Int"),
          ValueType::Int(x) => match (x.signed, &x.width) {
             (true, IntWidth::Pointer) => Cow::Borrowed("isize"),
             (true, IntWidth::Eight) => Cow::Borrowed("i64"),
