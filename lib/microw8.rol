@@ -1,0 +1,50 @@
+import "shared.rol";
+
+// |-- microw8
+const FRAMEBUFFER: &[u8; 76800] = 0x78 transmute &[u8; 76800];
+
+// Math
+extern proc asin(x: f32) -> f32;
+extern proc acos(x: f32) -> f32;
+extern proc atan(x: f32) -> f32;
+extern proc atan2(y: f32, x: f32) -> f32;
+extern proc sin(x: f32) -> f32;
+extern proc tan(x: f32) -> f32;
+extern proc cos(x: f32) -> f32;
+extern proc exp(x: f32) -> f32;
+extern proc log(x: f32) -> f32;
+extern proc pow(x: f32, y: f32) -> f32;
+extern proc fmod(x: f32, y: f32) -> f32;
+
+// Random
+extern proc random() -> i32;
+extern proc randomf() -> f32;
+extern proc randomSeed(seed: i32);
+
+// Graphics
+extern proc cls(color: i32);
+extern proc setPixel(x: i32, y: i32, color: i32);
+extern proc getPixel(x: i32, y: i32) -> i32;
+extern proc hline(left: i32, right: i32, y: i32, color: i32);
+extern proc rectangle(x: f32, y: f32, w: f32, h: f32, color: i32);
+extern proc circle(cx: f32, cy: f32, radius: f32, color: i32);
+extern proc rectangle_outline(x: f32, y: f32, w: f32, h: f32, color: i32);
+extern proc circle_outline(cx: f32, cy: f32, radius: f32, color: i32);
+extern proc line(x1: f32, y1: f32, x2: f32, y2: f32, color: i32);
+
+// Input
+extern proc isButtonPressed(btn: i32) -> i32;
+extern proc isButtonTriggered(btn: i32) -> i32;
+extern proc time() -> f32;
+
+// Text output
+extern proc printChar(char: i32);
+extern proc printString(ptr: &u8); // Note that Roland strings are not null terminated!
+extern proc printInt(char: i32);
+extern proc setTextColor(color: i32);
+extern proc setBackgroundColor(color: i32);
+extern proc setCursorPosition(x: i32, y: i32);
+
+// Sound
+extern proc playNote(channel: i32, note: i32);
+// snd, sndGes are TODO. see issue #42

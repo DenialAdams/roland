@@ -13,6 +13,7 @@ Usage: rolandc (source.rol) [OPTION]+
 
 Valid boolean options are:
 --wasm4 | Links the WASM-4 standard library and emits a WASM-4 cart
+--microw8 | Links the microw8 standard library and emits a microw8 cart
 
 Valid options with arguments are:
 --output (output_file.wasm) | Specify the name of the output file
@@ -26,6 +27,7 @@ struct Opts {
    source_file: PathBuf,
    output: Option<PathBuf>,
    wasm4: bool,
+   microw8: bool,
 }
 
 fn parse_path(s: &std::ffi::OsStr) -> Result<std::path::PathBuf, &'static str> {
@@ -48,6 +50,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
 
    let opts = Opts {
       wasm4: pargs.contains("--wasm4"),
+      microw8: pargs.contains("--microw8"),
       output: pargs.opt_value_from_os_str("--output", parse_path)?,
       source_file: pargs.free_from_os_str(parse_path)?,
    };
@@ -84,7 +87,16 @@ fn main() {
    let err_stream = std::io::stderr();
    let mut err_stream_l = err_stream.lock();
 
-   let target = if opts.wasm4 { Target::Wasm4 } else { Target::Wasi };
+   // this doesn't scale :) we'll change the CLI at some point to accept --target <x>!
+   let target = match (opts.microw8, opts.wasm4) {
+      (true, true) => {
+         eprintln!("--wasm4 must not be specified with --microw8");
+         std::process::exit(1);
+      },
+      (true, false) => Target::Microw8,
+      (false, true) => Target::Wasm4,
+      (false, false) => Target::Wasi,
+   };
 
    let mut ctx = CompilationContext::new();
    let compile_result = rolandc::compile::<CliFileResolver>(
@@ -115,7 +127,7 @@ fn main() {
    } else {
       let mut output_path = opts.source_file.clone();
       match target {
-         Target::Wasm4 => output_path.set_extension("wasm"),
+         Target::Wasm4 | Target::Microw8 => output_path.set_extension("wasm"),
          Target::Wasi => output_path.set_extension("wat"),
       };
       output_path

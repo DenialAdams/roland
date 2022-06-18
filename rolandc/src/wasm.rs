@@ -480,7 +480,7 @@ pub fn emit_wasm(
       .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ProcImplSource::External))
    {
       match target {
-         Target::Wasm4 => {
+         Target::Wasm4 | Target::Microw8 => {
             writeln!(
                generation_context.out.out,
                "(import \"env\" \"{}\" ",
@@ -525,6 +525,14 @@ pub fn emit_wasm(
             .out
             .emit_constant_sexp("(export \"start\" (func $start))");
       }
+      Target::Microw8 => {
+         generation_context
+            .out
+            .emit_constant_sexp("(import \"env\" \"memory\" (memory 4 4))");
+         generation_context
+            .out
+            .emit_constant_sexp("(export \"upd\" (func $upd))");
+      }
       Target::Wasi => {
          generation_context.out.emit_constant_sexp("(memory 1)");
          generation_context
@@ -543,6 +551,7 @@ pub fn emit_wasm(
    let mut offset: u32 = match target {
       Target::Wasi => 0x0,
       Target::Wasm4 => 0x19a0,
+      Target::Microw8 => 0x14000
    };
 
    for s in program.literals.iter() {

@@ -47,6 +47,7 @@ use crate::interner::Interner;
 pub enum Target {
    Wasi,
    Wasm4,
+   Microw8,
 }
 
 impl Display for Target {
@@ -54,6 +55,7 @@ impl Display for Target {
       match self {
          Target::Wasi => write!(f, "WASI"),
          Target::Wasm4 => write!(f, "WASM-4"),
+         Target::Microw8 => write!(f, "Microw8"),
       }
    }
 }
@@ -198,6 +200,16 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
             &mut ctx.expressions,
          )
       }
+      Target::Microw8 => {
+         let std_lib_s = include_str!("../../lib/microw8.rol");
+         lex_and_parse(
+            std_lib_s,
+            SourcePath::Std,
+            &mut ctx.err_manager,
+            &mut ctx.interner,
+            &mut ctx.expressions,
+         )
+      }
    }?;
 
    merge_program(&mut user_program, &mut std_lib.1);
@@ -278,7 +290,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
          &ctx.expressions,
          target,
       )),
-      Target::Wasm4 => {
+      Target::Wasm4 | Target::Microw8 => {
          let wat = wasm::emit_wasm(&mut user_program, &mut ctx.interner, &ctx.expressions, target);
          let wasm = match wat::parse_bytes(&wat) {
             Ok(wasm_bytes) => wasm_bytes.into_owned(),

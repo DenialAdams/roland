@@ -27,6 +27,7 @@ fn get_special_procedures(target: Target, interner: &mut Interner) -> ArrayVec<S
    match target {
       Target::Wasm4 => ArrayVec::from([interner.intern("start"), interner.intern("update")]),
       Target::Wasi => [interner.intern("main")].as_slice().try_into().unwrap(),
+      Target::Microw8 => [interner.intern("upd")].as_slice().try_into().unwrap(),
    }
 }
 
@@ -732,7 +733,6 @@ pub fn type_and_check_validity(
             tv = validation_context.type_variables.find(tv);
             let the_type = validation_context.type_variable_definitions.get(&tv);
             if let Some(t) = the_type {
-               debug_assert!(t.is_concrete_type());
                e.exp_type = Some(t.clone());
                validation_context.unknown_ints.remove(&ExpressionId::new(i));
                validation_context.unknown_floats.remove(&ExpressionId::new(i));
@@ -783,7 +783,6 @@ pub fn type_and_check_validity(
                .iter()
                .flat_map(|x| validation_context.type_variable_definitions.get(x))
             {
-               debug_assert!(t.is_concrete_type());
                lt.1.insert(t.clone());
             }
          }
@@ -1966,7 +1965,7 @@ fn get_type(
          let array_expression = &validation_context.expressions[*array];
          let index_expression = &validation_context.expressions[*index];
 
-         if !index_expression.exp_type.as_ref().unwrap().is_error_type() {
+         if index_expression.exp_type.as_ref().unwrap().is_error_type() {
             // avoid cascading errors
          } else if index_expression.exp_type.as_ref().unwrap() != &ExpressionType::Value(USIZE_TYPE) {
             validation_context.error_count += 1;
