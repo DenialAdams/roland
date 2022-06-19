@@ -35,20 +35,6 @@ pipeline {
          }
       }
 
-      stage('Publish LSP') {
-         when {
-            expression { env.BRANCH_NAME == "master" }
-         }
-         steps {
-            dir('roland-vscode') {
-               sh 'npm install'
-               sh 'cp ../target/x86_64-pc-windows-gnu/release/rolandc_cli.exe ./rolandc.exe'
-               sh 'cp ../target/x86_64-unknown-linux-musl/release/rolandc_lsp .'
-               sh 'vsce publish'
-            }
-         }
-      }
-
       stage('Deploy Site') {
          when {
             expression { env.BRANCH_NAME == "master" }
@@ -68,6 +54,20 @@ pipeline {
                sshagent (credentials: ['jenkins-ssh-nfs']) {
                   sh 'rsync -avr -e "ssh -l flandoo_brickcodes -o StrictHostKeyChecking=no" --exclude ".git" --exclude "pkg@tmp" . ssh.phx.nearlyfreespeech.net:/home/public/roland'
                }
+            }
+         }
+      }
+
+      stage('Publish LSP') {
+         when {
+            expression { env.BRANCH_NAME == "master" }
+         }
+         steps {
+            dir('roland-vscode') {
+               sh 'npm install'
+               sh 'cp ../target/x86_64-pc-windows-gnu/release/rolandc_cli.exe ./rolandc.exe'
+               sh 'cp ../target/x86_64-unknown-linux-musl/release/rolandc_lsp .'
+               sh 'vsce publish'
             }
          }
       }
