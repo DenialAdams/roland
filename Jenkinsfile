@@ -67,7 +67,7 @@ pipeline {
                sh 'npm install'
                sh 'cp ../target/x86_64-pc-windows-gnu/release/rolandc_lsp.exe .'
                sh 'cp ../target/x86_64-unknown-linux-musl/release/rolandc_lsp .'
-               withCredentials([string(credentialsId: 'vsce', variable: 'VSCE_PAT') {
+               withCredentials([string(credentialsId: 'vsce', variable: 'VSCE_PAT')]) {
                   sh 'vsce publish'
                }
             }
