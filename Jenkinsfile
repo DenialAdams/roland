@@ -41,6 +41,7 @@ pipeline {
          }
          steps {
             dir('roland-vscode') {
+               sh 'npm install -g'
                sh 'cp ../target/x86_64-pc-windows-gnu/release/rolandc_cli.exe ./rolandc.exe'
                sh 'cp ../target/x86_64-unknown-linux-musl/release/rolandc_lsp .'
                sh 'vsce publish'
