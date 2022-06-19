@@ -1984,6 +1984,20 @@ fn get_type(
          match &array_expression.exp_type {
             Some(x) if x.is_error_type() => ExpressionType::Value(ValueType::CompileError),
             Some(ExpressionType::Value(ValueType::Array(b, _))) => *b.clone(),
+            Some(x @ ExpressionType::Pointer(1, ValueType::Array(_, _))) => {
+               validation_context.error_count += 1;
+               rolandc_error_w_details!(
+                  err_manager,
+                  &[
+                     (array_expression.location, "expression"),
+                     (index_expression.location, "index")
+                  ],
+                  "Attempted to index expression of type {}, which is not an array type. Hint: Dereference this pointer with ~",
+                  x.as_roland_type_info(interner),
+               );
+
+               ExpressionType::Value(ValueType::CompileError)
+            }
             Some(x) => {
                validation_context.error_count += 1;
                rolandc_error_w_details!(

@@ -1,0 +1,4 @@
+Attempted to index expression of type &[bool; 2], which is not an array type. Hint: Dereference this pointer with ~
+↳ expression @ line 4, column 12 [indexing_pointer_to_array.rol]
+↳ index @ line 4, column 14 [indexing_pointer_to_array.rol]
+There were 1 semantic errors, bailing
