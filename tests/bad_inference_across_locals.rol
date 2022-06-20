@@ -1,0 +1,5 @@
+proc main() {
+   let x = 10;
+   let y: u32 = x;
+   let z: u8 = x;
+}

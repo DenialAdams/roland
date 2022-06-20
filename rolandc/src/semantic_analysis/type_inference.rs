@@ -80,15 +80,35 @@ fn set_inferred_type(
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }
       Expression::UnitLiteral => unreachable!(),
-      Expression::Variable(_) => {
+      Expression::Variable(x) => {
          let my_tv = match validation_context.expressions[expr_index].exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::UnknownFloat(x)) => *x,
             ExpressionType::Value(ValueType::UnknownInt(x)) => *x,
             _ => unreachable!(),
          };
-         validation_context
-            .type_variable_definitions
-            .insert(validation_context.type_variables.find(my_tv), e_type.clone());
+
+         let representative = validation_context.type_variables.find(my_tv);
+
+         debug_assert!(!validation_context.type_variable_definitions.contains_key(&representative));
+
+         if e_type.is_concrete_type() {
+            validation_context
+               .type_variable_definitions
+               .insert(representative, e_type.clone());
+
+            // Update the existing variable immediately, so that future uses can't change the inferred type
+            {
+               let existing_var = validation_context
+                                          .variable_types
+                                          .get_mut(x);
+
+               debug_assert!(existing_var.is_some());
+               debug_assert!(existing_var.as_ref().map_or(false, |x| !x.0.is_concrete_type()));
+
+               existing_var.unwrap().0 = e_type.clone();
+            }
+         }
+
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }
       Expression::ProcedureCall { .. } => unreachable!(),
