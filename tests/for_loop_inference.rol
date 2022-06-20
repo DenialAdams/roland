@@ -1,0 +1,6 @@
+proc main() {
+   for i in 0..10 {
+     let x: usize = i;
+   }
+   print("OK");
+}
