@@ -114,6 +114,13 @@ fn set_inferred_type(
                   var_in_scope.0 = e_type.clone();
                }
             }
+         } else {
+            match e_type {
+               ExpressionType::Value(ValueType::UnknownInt(e_tv) | ValueType::UnknownFloat(e_tv)) => {
+                  validation_context.type_variables.union(my_tv, *e_tv);
+               }
+               _ => unreachable!(),
+            }
          }
 
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());

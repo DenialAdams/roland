@@ -1,9 +1,9 @@
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DisjointSet {
    tree: Vec<Node>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Node {
    parent: usize,
    rank: usize,
