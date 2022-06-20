@@ -948,6 +948,10 @@ fn type_statement(
             (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) if x == y => {
                ExpressionType::Value(ValueType::Int(*x))
             }
+            (ExpressionType::Value(ValueType::UnknownInt(x)), ExpressionType::Value(ValueType::UnknownInt(y))) => {
+               debug_assert!(x == y);
+               ExpressionType::Value(ValueType::UnknownInt(*x))
+            }
             _ => {
                validation_context.error_count += 1;
                rolandc_error_w_details!(

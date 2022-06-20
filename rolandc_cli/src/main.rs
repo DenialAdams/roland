@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 const HELP: &str = r"
-Usage: rolandc (source.rol) [OPTION]+
+Usage: rolandc (source.rol) [OPTION]*
 
 Valid boolean options are:
 --wasm4 | Links the WASM-4 standard library and emits a WASM-4 cart
