@@ -551,7 +551,7 @@ pub fn emit_wasm(
    let mut offset: u32 = match target {
       Target::Wasi => 0x0,
       Target::Wasm4 => 0x19a0,
-      Target::Microw8 => 0x14000
+      Target::Microw8 => 0x14000,
    };
 
    for s in program.literals.iter() {

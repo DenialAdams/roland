@@ -92,7 +92,7 @@ fn main() {
       (true, true) => {
          eprintln!("--wasm4 must not be specified with --microw8");
          std::process::exit(1);
-      },
+      }
       (true, false) => Target::Microw8,
       (false, true) => Target::Wasm4,
       (false, false) => Target::Wasi,

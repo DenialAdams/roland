@@ -1,0 +1,6 @@
+proc main() {
+   let x = 10;
+   let y = x - 9;
+   let a: i32 = x;
+   let b: i8 = y;
+}

@@ -80,32 +80,39 @@ fn set_inferred_type(
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }
       Expression::UnitLiteral => unreachable!(),
-      Expression::Variable(x) => {
+      Expression::Variable(_) => {
          let my_tv = match validation_context.expressions[expr_index].exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::UnknownFloat(x)) => *x,
             ExpressionType::Value(ValueType::UnknownInt(x)) => *x,
             _ => unreachable!(),
          };
 
-         let representative = validation_context.type_variables.find(my_tv);
+         let outer_representative = validation_context.type_variables.find(my_tv);
 
-         debug_assert!(!validation_context.type_variable_definitions.contains_key(&representative));
+         debug_assert!(!validation_context
+            .type_variable_definitions
+            .contains_key(&outer_representative));
 
          if e_type.is_concrete_type() {
             validation_context
                .type_variable_definitions
-               .insert(representative, e_type.clone());
+               .insert(outer_representative, e_type.clone());
 
-            // Update the existing variable immediately, so that future uses can't change the inferred type
-            {
-               let existing_var = validation_context
-                                          .variable_types
-                                          .get_mut(x);
+            // Update existing variables immediately, so that future uses can't change the inferred type
+            // (Is this a performance problem? It's obviously awkward, but straight forward)
+            for var_in_scope in validation_context.variable_types.values_mut() {
+               let my_tv = match validation_context.expressions[expr_index].exp_type.as_ref().unwrap() {
+                  ExpressionType::Value(ValueType::UnknownFloat(x)) => *x,
+                  ExpressionType::Value(ValueType::UnknownInt(x)) => *x,
+                  _ => continue,
+               };
 
-               debug_assert!(existing_var.is_some());
-               debug_assert!(existing_var.as_ref().map_or(false, |x| !x.0.is_concrete_type()));
+               let representative = validation_context.type_variables.find(my_tv);
 
-               existing_var.unwrap().0 = e_type.clone();
+               if representative == outer_representative {
+                  debug_assert!(!var_in_scope.0.is_concrete_type());
+                  var_in_scope.0 = e_type.clone();
+               }
             }
          }
 
