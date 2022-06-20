@@ -22,7 +22,7 @@
         "fix": " tsfmt -r       && eslint -c .eslintrc.js --ext ts ./src  --fix"
     },
     "dependencies": {
-        "vscode-languageclient": "8.0.0-next.12"
+        "vscode-languageclient": "8.0.2-next.5"
     },
     "devDependencies": {
         "@types/node": "~14.17.5",
