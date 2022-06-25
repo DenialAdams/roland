@@ -492,9 +492,6 @@ proc carve_path() {
 
 
       {
-         let current_row = current_cell / 4;
-         let current_col = current_cell % 4;
-
          let cur_cell_usize = current_cell transmute usize;
          let resulting_cell = (current_cell + direction) transmute usize;
          if direction == -1 {
@@ -522,9 +519,6 @@ proc carve_path() {
       if next_direction > 0 {
          direction = next_direction;
          next_direction = 0;
-
-         let current_row = current_cell / 4;
-         let current_col = current_cell % 4;
 
          let cur_cell_usize = current_cell transmute usize;
          let resulting_cell = (current_cell + direction) transmute usize;
@@ -810,7 +804,7 @@ proc sim(dt: f64) {
                   // bottom of player
                   let ffpt = segment_v_segment(PLAYER_POSITION.x, PLAYER_POSITION.y + PLAYER_HEIGHT, PLAYER_POSITION.x + PLAYER_WIDTH, PLAYER_POSITION.y + PLAYER_HEIGHT, midpoint, y, x, y + TILE_HEIGHT);
                   let fifpt = segment_v_segment(PLAYER_POSITION.x, PLAYER_POSITION.y + PLAYER_HEIGHT, PLAYER_POSITION.x + PLAYER_WIDTH, PLAYER_POSITION.y + PLAYER_HEIGHT, midpoint, y, x + TILE_WIDTH, y + TILE_HEIGHT);
-                  let touched_spike = fipt | spt | tpt | fopt | fipt | ffpt;
+                  let touched_spike = fipt | spt | tpt | fopt | fipt | ffpt | fifpt;
                   if touched_spike {
                      PLAYER_POSITION.x = x + offset;
                   }
@@ -887,7 +881,7 @@ proc sim(dt: f64) {
                   // bottom of player
                   let ffpt = segment_v_segment(PLAYER_POSITION.x, PLAYER_POSITION.y + PLAYER_HEIGHT, PLAYER_POSITION.x + PLAYER_WIDTH, PLAYER_POSITION.y + PLAYER_HEIGHT, midpoint, y, x, y + TILE_HEIGHT);
                   let fifpt = segment_v_segment(PLAYER_POSITION.x, PLAYER_POSITION.y + PLAYER_HEIGHT, PLAYER_POSITION.x + PLAYER_WIDTH, PLAYER_POSITION.y + PLAYER_HEIGHT, midpoint, y, x + TILE_WIDTH, y + TILE_HEIGHT);
-                  touched_spike = fipt | spt | tpt | fopt | fipt | ffpt;
+                  touched_spike = fipt | spt | tpt | fopt | fipt | ffpt | fifpt;
                } else if TILES[i] == Tile::Door {
                   touched_door = true;
                   PLAYER_POSITION.y = y - TILE_HEIGHT;
@@ -1178,8 +1172,6 @@ proc maybe_spawn_ghost() {
       let ending_freq: u32 = 350;
       let decay: u32 = 42;
       let release: u32 = 106;
-      let channel: u32 = 2;
-      let mode: u32 = 1;
       tone(starting_freq | (ending_freq << 16), (0 | (release << 8) | (decay << 16)), DEFAULT_VOLUME, TONE_PULSE2 | TONE_MODE1);
    }
 }
