@@ -1,8 +1,7 @@
 use crate::add_virtual_variables::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   BinOp, CastType, Expression, ExpressionId, ExpressionPool, ParameterNode, ProcImplSource, Program, Statement,
-   StatementNode, UnOp,
+   BinOp, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, Program, Statement, StatementNode, UnOp,
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{
@@ -50,20 +49,22 @@ impl PrettyWasmWriter {
       }
    }
 
-   fn emit_function_start_named_params(
+   fn emit_function_start<'a, I>(
       &mut self,
       name: StrId,
-      params: &[ParameterNode],
+      params: I,
       result_type: &ExpressionType,
       ei: &IndexMap<StrId, EnumInfo>,
       si: &IndexMap<StrId, StructInfo>,
       interner: &Interner,
-   ) {
+   ) where
+      I: IntoIterator<Item = &'a ExpressionType>,
+   {
       self.emit_spaces();
       write!(self.out, "(func ${}", interner.lookup(name)).unwrap();
-      for param in params.iter() {
+      for param in params {
          self.out.push(b' ');
-         write_type_as_params(&param.p_type, &mut self.out, ei, si);
+         write_type_as_params(param, &mut self.out, ei, si);
       }
       self.out.push(b' ');
       write_type_as_result(result_type, &mut self.out, ei, si);
@@ -498,9 +499,9 @@ pub fn emit_wasm(
          }
       }
 
-      generation_context.out.emit_function_start_named_params(
+      generation_context.out.emit_function_start(
          external_procedure.definition.name,
-         &external_procedure.definition.parameters,
+         external_procedure.definition.parameters.iter().map(|x| &x.p_type),
          &external_procedure.definition.ret_type,
          &program.enum_info,
          &program.struct_info,
@@ -634,9 +635,9 @@ pub fn emit_wasm(
       .iter()
       .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ProcImplSource::Builtin))
    {
-      generation_context.out.emit_function_start_named_params(
+      generation_context.out.emit_function_start(
          external_procedure.definition.name,
-         &external_procedure.definition.parameters,
+         external_procedure.definition.parameters.iter().map(|x| &x.p_type),
          &external_procedure.definition.ret_type,
          &program.enum_info,
          &program.struct_info,
@@ -678,14 +679,9 @@ pub fn emit_wasm(
             interner.lookup(*s.0),
             interner.lookup(*field.0)
          ));
-         let param = ParameterNode {
-            name: interner.intern(""),
-            p_type: ExpressionType::Value(ValueType::Struct(*s.0)),
-            named: false,
-         };
-         generation_context.out.emit_function_start_named_params(
+         generation_context.out.emit_function_start(
             full_name,
-            &[param],
+            &[ExpressionType::Value(ValueType::Struct(*s.0))],
             field.1,
             &program.enum_info,
             &program.struct_info,
@@ -761,9 +757,9 @@ pub fn emit_wasm(
          generation_context.sum_sizeof_locals_mem += local.1 .1;
       }
 
-      generation_context.out.emit_function_start_named_params(
+      generation_context.out.emit_function_start(
          procedure.definition.name,
-         &procedure.definition.parameters,
+         procedure.definition.parameters.iter().map(|x| &x.p_type),
          &procedure.definition.ret_type,
          &program.enum_info,
          &program.struct_info,

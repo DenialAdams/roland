@@ -115,6 +115,7 @@ pub struct ParameterNode {
    pub name: StrId,
    pub p_type: ExpressionType,
    pub named: bool,
+   pub location: SourceInfo,
 }
 
 #[derive(Clone)]
@@ -902,6 +903,7 @@ fn parse_parameters(
             let e_type = parse_type(l, err_manager, interner)?.e_type;
             parameters.push(ParameterNode {
                name: extract_identifier(id.token),
+               location: id.source_info,
                p_type: e_type,
                named,
             });

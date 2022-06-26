@@ -58,7 +58,11 @@ fn roland_source_path_to_canon_path(source_path: &SourcePath, interner: &Interne
    }
 }
 
-fn roland_error_to_lsp_error(re: ErrorInfo, interner: &Interner) -> (Option<PathBuf>, Diagnostic) {
+fn roland_error_to_lsp_error(
+   re: ErrorInfo,
+   interner: &Interner,
+   severity: DiagnosticSeverity,
+) -> (Option<PathBuf>, Diagnostic) {
    let (report_path, range, related_info) = match re.location {
       ErrorLocation::Simple(x) => (
          roland_source_path_to_canon_path(&x.file, interner).map(|x| x.unwrap()),
@@ -106,7 +110,7 @@ fn roland_error_to_lsp_error(re: ErrorInfo, interner: &Interner) -> (Option<Path
       report_path,
       Diagnostic {
          range,
-         severity: Some(DiagnosticSeverity::ERROR),
+         severity: Some(severity),
          message: re.message,
          related_information: related_info,
          ..Default::default()
@@ -178,9 +182,19 @@ impl Backend {
          // This obj local allows the subsequent split borrow to succeed
          let obj = ctx_ref.deref_mut();
          let errs = &mut obj.err_manager.errors;
+         let warnings = &mut obj.err_manager.warnings;
          let interner = &obj.interner;
+
          for err in errs.drain(..) {
-            let (bucket, lsp_error) = roland_error_to_lsp_error(err, interner);
+            let (bucket, lsp_error) = roland_error_to_lsp_error(err, interner, DiagnosticSeverity::ERROR);
+            diagnostic_buckets
+               .entry(bucket)
+               .or_insert_with(Vec::new)
+               .push(lsp_error);
+         }
+
+         for warning in warnings.drain(..) {
+            let (bucket, lsp_error) = roland_error_to_lsp_error(warning, interner, DiagnosticSeverity::WARNING);
             diagnostic_buckets
                .entry(bucket)
                .or_insert_with(Vec::new)

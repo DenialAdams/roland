@@ -110,8 +110,8 @@ fn set_inferred_type(
                let representative = validation_context.type_variables.find(my_tv);
 
                if representative == outer_representative {
-                  debug_assert!(!var_in_scope.0.is_concrete_type());
-                  var_in_scope.0 = e_type.clone();
+                  debug_assert!(!var_in_scope.var_type.is_concrete_type());
+                  var_in_scope.var_type = e_type.clone();
                }
             }
          } else {

@@ -1,0 +1,9 @@
+proc main() {
+   {
+      let x = true;
+   }
+   let x = true;
+}
+
+proc foo(x: bool) {
+}

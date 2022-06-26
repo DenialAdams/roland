@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_or_else_default)] // I want to know exactly what is being called
+
 use std::env;
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
@@ -15,6 +17,7 @@ use rayon::prelude::*;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 enum TestFailureReason {
+   TestingNothing,
    ExpectedCompilationFailure,
    ExpectedCompilationSuccess,
    FailedToRunExecutable,
@@ -101,6 +104,14 @@ fn main() -> Result<(), &'static str> {
             writeln!(out_handle, "FAILED").unwrap();
             let _ = out_handle.set_color(&reset_color);
             match reason {
+               TestFailureReason::TestingNothing => {
+                  writeln!(out_handle, "There was no test specified for this input.").unwrap();
+
+                  writeln!(out_handle, "\ncompilation output:").unwrap();
+                  writeln!(out_handle, "```").unwrap();
+                  writeln!(out_handle, "{}", String::from_utf8_lossy(&tc_output.stderr)).unwrap();
+                  writeln!(out_handle, "```").unwrap();
+               }
                TestFailureReason::ExpectedCompilationFailure => {
                   writeln!(out_handle, "Compilation was supposed to fail, but it succeeded.").unwrap();
                }
@@ -203,61 +214,89 @@ fn print_diff<W: WriteColor>(t: &mut W, expected: &str, actual: &str) {
 }
 
 fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Result<(), TestFailureReason> {
-   let mut desired_result = String::new();
+   let mut expected_comptime_output = String::new();
+   let mut err_handle: Option<File> = None;
+   {
+      let err_file = open_result_file(result_dir, t_file_path, "err");
 
-   if tc_output.stderr.is_empty() {
+      match err_file {
+         Ok(mut f) => {
+            f.read_to_string(&mut expected_comptime_output).unwrap();
+            err_handle = Some(f);
+         }
+         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+         Err(e) => panic!("{}", e),
+      }
+   }
+
+   let mut expected_runtime_output: Option<String> = None;
+   {
+      let out_file = open_result_file(result_dir, t_file_path, "out");
+
+      match out_file {
+         Ok(mut f) => {
+            let mut s = String::new();
+            f.read_to_string(&mut s).unwrap();
+            expected_runtime_output = Some(s);
+         }
+         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+         Err(e) => panic!("{}", e),
+      }
+   }
+
+   if expected_comptime_output.is_empty() && expected_runtime_output.is_none() {
+      return Err(TestFailureReason::TestingNothing);
+   }
+
+   let stderr_text = String::from_utf8_lossy(&tc_output.stderr);
+
+   if tc_output.status.success() {
+      if !expected_comptime_output.is_empty() && stderr_text.is_empty() {
+         return Err(TestFailureReason::ExpectedCompilationFailure);
+      } else if !expected_comptime_output.is_empty() && stderr_text != expected_comptime_output {
+         return Err(TestFailureReason::MismatchedCompilationErrorOutput(
+            expected_comptime_output,
+            stderr_text.into_owned(),
+            err_handle.unwrap(),
+         ));
+      }
+
+      let ero = expected_runtime_output.unwrap_or_else(String::new);
+
+      // Execute the program
       let mut prog_path = t_file_path.to_path_buf();
       prog_path.set_extension("wat");
-      let out_file = open_result_file(result_dir, t_file_path, "out");
-      if let Ok(mut handle) = out_file {
-         handle.read_to_string(&mut desired_result).unwrap();
-         let mut prog_output = String::new();
-         {
-            let mut prog_command = Command::new("wasmtime");
-            prog_command.arg(prog_path.as_os_str());
-            // It's desirable to combine stdout and stderr, so an output test can test either or both
-            let mut prog_output_stream = {
-               let (reader, writer) = pipe().unwrap();
-               let writer_clone = writer.try_clone().unwrap();
-               prog_command.stdout(writer);
-               prog_command.stderr(writer_clone);
-               reader
-            };
-            let mut handle = match prog_command.spawn() {
-               Ok(v) => v,
-               Err(_) => {
-                  return Err(TestFailureReason::FailedToRunExecutable);
-               }
-            };
-            drop(prog_command);
-            prog_output_stream.read_to_string(&mut prog_output).unwrap();
-            handle.wait().unwrap();
+
+      let mut prog_output = String::new();
+      {
+         let mut prog_command = Command::new("wasmtime");
+         prog_command.arg(prog_path.as_os_str());
+         // It's desirable to combine stdout and stderr, so an output test can test either or both
+         let mut prog_output_stream = {
+            let (reader, writer) = pipe().unwrap();
+            let writer_clone = writer.try_clone().unwrap();
+            prog_command.stdout(writer);
+            prog_command.stderr(writer_clone);
+            reader
          };
-         if prog_output != desired_result {
-            return Err(TestFailureReason::MismatchedExecutionOutput(
-               desired_result,
-               prog_output,
-            ));
-         }
-      } else {
-         return Err(TestFailureReason::ExpectedCompilationFailure);
+         let mut handle = match prog_command.spawn() {
+            Ok(v) => v,
+            Err(_) => {
+               return Err(TestFailureReason::FailedToRunExecutable);
+            }
+         };
+         drop(prog_command);
+         prog_output_stream.read_to_string(&mut prog_output).unwrap();
+         handle.wait().unwrap();
+      };
+
+      if prog_output != ero {
+         return Err(TestFailureReason::MismatchedExecutionOutput(ero, prog_output));
       }
+
       std::fs::remove_file(prog_path).unwrap();
-   } else {
-      let err_file = open_result_file(result_dir, t_file_path, "err");
-      if let Ok(mut handle) = err_file {
-         handle.read_to_string(&mut desired_result).unwrap();
-         let stderr_text = String::from_utf8_lossy(&tc_output.stderr);
-         if stderr_text != desired_result {
-            return Err(TestFailureReason::MismatchedCompilationErrorOutput(
-               desired_result,
-               stderr_text.into_owned(),
-               handle,
-            ));
-         }
-      } else {
-         return Err(TestFailureReason::ExpectedCompilationSuccess);
-      }
+   } else if expected_runtime_output.is_some() {
+      return Err(TestFailureReason::ExpectedCompilationSuccess);
    }
 
    Ok(())

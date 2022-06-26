@@ -2,11 +2,11 @@
 name = "roland_test_runner"
 version = "0.1.0"
 authors = ["Richard McCormack <brick@brick.codes>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-pico-args = { version = "0.4", default-features=false, features=[] }
+pico-args = { version = "0.5", default-features=false, features=[] }
 similar = "2"
-os_pipe = "0.9"
+os_pipe = "1"
 rayon = "1"
 termcolor = "1"

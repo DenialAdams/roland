@@ -1,7 +1,9 @@
 use super::type_inference::try_set_inferred_type;
-use super::{ProcedureInfo, StaticInfo, StructInfo, ValidationContext};
+use super::{ProcedureInfo, ScopedVariableDetails, ScopedVariableKind, StaticInfo, StructInfo, ValidationContext};
 use crate::disjoint_set::DisjointSet;
-use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc, rolandc_error_w_details};
+use crate::error_handling::error_handling_macros::{
+   rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn,
+};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -541,7 +543,7 @@ pub fn type_and_check_validity(
    let mut validation_context = ValidationContext {
       target,
       string_literals: IndexSet::new(),
-      variable_types: HashMap::new(),
+      variable_types: IndexMap::new(),
       error_count,
       procedure_info: &procedure_info,
       enum_info: &enum_info,
@@ -680,9 +682,16 @@ pub fn type_and_check_validity(
       validation_context.cur_procedure_info = procedure_info.get(&procedure.definition.name);
 
       for parameter in procedure.definition.parameters.iter() {
-         validation_context
-            .variable_types
-            .insert(parameter.name, (parameter.p_type.clone(), 0));
+         validation_context.variable_types.insert(
+            parameter.name,
+            ScopedVariableDetails {
+               var_type: parameter.p_type.clone(),
+               depth: 1,
+               used: false,
+               declaration_location: parameter.location,
+               kind: ScopedVariableKind::Parameter,
+            },
+         );
          validation_context
             .cur_procedure_locals
             .entry(parameter.name)
@@ -1101,9 +1110,16 @@ fn declare_variable(
          interner.lookup(id.identifier)
       );
    } else {
-      validation_context
-         .variable_types
-         .insert(id.identifier, (var_type.clone(), validation_context.block_depth));
+      validation_context.variable_types.insert(
+         id.identifier,
+         ScopedVariableDetails {
+            var_type: var_type.clone(),
+            depth: validation_context.block_depth,
+            declaration_location: id.location,
+            used: false,
+            kind: ScopedVariableKind::Local,
+         },
+      );
       validation_context
          .cur_procedure_locals
          .entry(id.identifier)
@@ -1126,7 +1142,28 @@ fn type_block(
 
    validation_context.block_depth -= 1;
    let cur_block_depth = validation_context.block_depth;
-   validation_context.variable_types.retain(|_, v| v.1 <= cur_block_depth);
+
+   validation_context.variable_types.retain(|k, v| {
+      if v.depth <= cur_block_depth {
+         return true;
+      }
+
+      if !v.used {
+         let begin = match v.kind {
+            ScopedVariableKind::Parameter => "Parameter",
+            ScopedVariableKind::Local => "Local variable",
+         };
+         rolandc_warn!(
+            err_manager,
+            v.declaration_location,
+            "{} `{}` is unused",
+            begin,
+            interner.lookup(*k),
+         );
+      }
+
+      false
+   });
 }
 
 fn get_type(
@@ -1537,11 +1574,15 @@ fn get_type(
          }
       }
       Expression::Variable(id) => {
+         if let Some(scoped_variable) = validation_context.variable_types.get_mut(id) {
+            scoped_variable.used = true;
+         }
+
          let defined_type = validation_context
             .static_info
             .get(id)
             .map(|x| &x.static_type)
-            .or_else(|| validation_context.variable_types.get(id).map(|x| &x.0));
+            .or_else(|| validation_context.variable_types.get(id).map(|x| &x.var_type));
 
          match defined_type {
             Some(t) => t.clone(),

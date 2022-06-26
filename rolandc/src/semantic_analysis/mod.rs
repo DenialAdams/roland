@@ -41,6 +41,19 @@ pub struct StaticInfo {
    pub is_const: bool,
 }
 
+pub enum ScopedVariableKind {
+   Parameter,
+   Local,
+}
+
+pub struct ScopedVariableDetails {
+   pub var_type: ExpressionType,
+   pub declaration_location: SourceInfo,
+   pub kind: ScopedVariableKind,
+   pub depth: u64,
+   pub used: bool,
+}
+
 pub struct ValidationContext<'a> {
    pub target: Target,
    pub procedure_info: &'a IndexMap<StrId, ProcedureInfo>,
@@ -49,7 +62,7 @@ pub struct ValidationContext<'a> {
    pub static_info: &'a IndexMap<StrId, StaticInfo>,
    pub cur_procedure_info: Option<&'a ProcedureInfo>,
    pub string_literals: IndexSet<StrId>,
-   pub variable_types: HashMap<StrId, (ExpressionType, u64)>,
+   pub variable_types: IndexMap<StrId, ScopedVariableDetails>,
    pub error_count: u64,
    pub block_depth: u64,
    pub loop_depth: u64,
