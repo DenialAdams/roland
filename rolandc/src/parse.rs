@@ -35,17 +35,16 @@ impl Lexer {
       self.tokens.last().map(|x| x.source_info)
    }
 
-   fn peek_token(&self) -> Option<&Token> {
-      // TODO: We probably can just copy this instead of returning a reference now
-      self.tokens.last().map(|x| &x.token)
+   fn peek_token(&self) -> Option<Token> {
+      self.tokens.last().map(|x| x.token)
    }
 
-   fn double_peek_token(&self) -> Option<&Token> {
+   fn double_peek_token(&self) -> Option<Token> {
       if self.tokens.len() <= 1 {
          return None;
       }
 
-      self.tokens.get(self.tokens.len() - 2).map(|x| &x.token)
+      self.tokens.get(self.tokens.len() - 2).map(|x| x.token)
    }
 
    fn next(&mut self) -> Option<SourceToken> {
@@ -449,7 +448,7 @@ pub fn astify(
             let variable_name = expect(&mut lexer, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
             expect(&mut lexer, err_manager, &Token::Colon)?;
             let t_type = parse_type(&mut lexer, err_manager, interner)?;
-            let exp = if lexer.peek_token() == Some(&Token::Assignment) {
+            let exp = if lexer.peek_token() == Some(Token::Assignment) {
                let _ = lexer.next();
                Some(parse_expression(&mut lexer, err_manager, false, expressions, interner)?)
             } else {
@@ -528,7 +527,7 @@ fn parse_procedure(
    expect(l, err_manager, &Token::OpenParen)?;
    let parameters = parse_parameters(l, err_manager, interner)?;
    expect(l, err_manager, &Token::CloseParen)?;
-   let ret_type = if let Some(&Token::Arrow) = l.peek_token() {
+   let ret_type = if let Some(Token::Arrow) = l.peek_token() {
       let _ = l.next();
       parse_type(l, err_manager, interner)?.e_type
    } else {
@@ -560,7 +559,7 @@ fn parse_external_procedure(
    expect(l, err_manager, &Token::OpenParen)?;
    let parameters = parse_parameters(l, err_manager, interner)?;
    expect(l, err_manager, &Token::CloseParen)?;
-   let ret_type = if let Some(&Token::Arrow) = l.peek_token() {
+   let ret_type = if let Some(Token::Arrow) = l.peek_token() {
       let _ = l.next();
       parse_type(l, err_manager, interner)?.e_type
    } else {
@@ -588,16 +587,16 @@ fn parse_struct(
    expect(l, err_manager, &Token::OpenBrace)?;
    let mut fields: Vec<(StrId, ExpressionType)> = vec![];
    loop {
-      if let Some(&Token::CloseBrace) = l.peek_token() {
+      if let Some(Token::CloseBrace) = l.peek_token() {
          break;
       }
       let identifier = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
       let _ = expect(l, err_manager, &Token::Colon)?;
       let f_type = parse_type(l, err_manager, interner)?.e_type;
       fields.push((extract_identifier(identifier.token), f_type));
-      if let Some(&Token::CloseBrace) = l.peek_token() {
+      if let Some(Token::CloseBrace) = l.peek_token() {
          break;
-      } else if let Some(&Token::Identifier(x)) = l.peek_token().as_ref() {
+      } else if let Some(Token::Identifier(x)) = l.peek_token().as_ref() {
          rolandc_error!(
             err_manager,
             l.peek_source().unwrap(),
@@ -627,14 +626,14 @@ fn parse_enum(
    expect(l, err_manager, &Token::OpenBrace)?;
    let mut variants: Vec<StrId> = vec![];
    loop {
-      if let Some(&Token::CloseBrace) = l.peek_token() {
+      if let Some(Token::CloseBrace) = l.peek_token() {
          break;
       }
       let identifier = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
       variants.push(extract_identifier(identifier.token));
-      if let Some(&Token::CloseBrace) = l.peek_token() {
+      if let Some(Token::CloseBrace) = l.peek_token() {
          break;
-      } else if let Some(&Token::Identifier(x)) = l.peek_token().as_ref() {
+      } else if let Some(Token::Identifier(x)) = l.peek_token().as_ref() {
          rolandc_error!(
             err_manager,
             l.peek_source().unwrap(),
@@ -700,7 +699,7 @@ fn parse_block(
             let _ = expect(l, err_manager, &Token::KeywordIn)?;
             let start_en = parse_expression(l, err_manager, true, expressions, interner)?;
             let _ = expect(l, err_manager, &Token::DoublePeriod)?;
-            let inclusive = if l.peek_token() == Some(&Token::Assignment) {
+            let inclusive = if l.peek_token() == Some(Token::Assignment) {
                let _ = l.next();
                true
             } else {
@@ -747,7 +746,7 @@ fn parse_block(
             let mut declared_type = None;
             let let_token = l.next().unwrap();
             let variable_name = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
-            let next_discrim = l.peek_token().map(discriminant);
+            let next_discrim = l.peek_token().map(|x| discriminant(&x));
             if next_discrim == Some(discriminant(&Token::Colon)) {
                let _ = l.next();
                declared_type = Some(parse_type(l, err_manager, interner)?);
@@ -785,7 +784,7 @@ fn parse_block(
          ) => {
             let e = parse_expression(l, err_manager, false, expressions, interner)?;
             match l.peek_token() {
-               Some(&Token::Assignment) => {
+               Some(Token::Assignment) => {
                   let _ = l.next();
                   let re = parse_expression(l, err_manager, false, expressions, interner)?;
                   let sc = expect(l, err_manager, &Token::Semicolon)?;
@@ -795,7 +794,7 @@ fn parse_block(
                      location: statement_location,
                   });
                }
-               Some(&Token::Semicolon) => {
+               Some(Token::Semicolon) => {
                   let sc = l.next().unwrap();
                   let statement_location = merge_locations(expressions[e].location, sc.source_info);
                   statements.push(StatementNode {
@@ -856,11 +855,11 @@ fn parse_if_else_statement(
    let e = parse_expression(l, err_manager, true, expressions, interner)?;
    let if_block = parse_block(l, err_manager, expressions, interner)?;
    let else_statement = match (l.peek_token(), l.double_peek_token()) {
-      (Some(&Token::KeywordElse), Some(&Token::KeywordIf)) => {
+      (Some(Token::KeywordElse), Some(Token::KeywordIf)) => {
          let _ = l.next();
          parse_if_else_statement(l, err_manager, expressions, interner)?
       }
-      (Some(&Token::KeywordElse), _) => {
+      (Some(Token::KeywordElse), _) => {
          let else_token = l.next().unwrap();
          StatementNode {
             statement: Statement::Block(parse_block(l, err_manager, expressions, interner)?),
@@ -892,7 +891,7 @@ fn parse_parameters(
    loop {
       match l.peek_token() {
          Some(Token::Identifier(_) | Token::KeywordNamed) => {
-            let named = if l.peek_token() == Some(&Token::KeywordNamed) {
+            let named = if l.peek_token() == Some(Token::KeywordNamed) {
                let _ = l.next();
                true
             } else {
@@ -907,7 +906,7 @@ fn parse_parameters(
                p_type: e_type,
                named,
             });
-            if l.peek_token() == Some(&Token::CloseParen) {
+            if l.peek_token() == Some(Token::CloseParen) {
                break;
             }
             expect(l, err_manager, &Token::Comma)?;
@@ -975,8 +974,8 @@ fn parse_arguments(
             | Token::Exclam
             | Token::Minus,
          ) => {
-            let name: Option<StrId> = if let Some(Token::Identifier(x)) = l.peek_token().copied() {
-               if l.double_peek_token() == Some(&Token::Colon) {
+            let name: Option<StrId> = if let Some(Token::Identifier(x)) = l.peek_token() {
+               if l.double_peek_token() == Some(Token::Colon) {
                   let _ = l.next();
                   let _ = l.next();
                   Some(x)
@@ -988,7 +987,7 @@ fn parse_arguments(
             };
             let expr = parse_expression(l, err_manager, false, expressions, interner)?;
             arguments.push(ArgumentNode { name, expr });
-            let next_discrim = l.peek_token().map(discriminant);
+            let next_discrim = l.peek_token().map(|x| discriminant(&x));
             if next_discrim == Some(discriminant(&Token::CloseParen)) {
                break;
             }
@@ -1033,7 +1032,7 @@ fn parse_expression(
 fn parse_type(l: &mut Lexer, err_manager: &mut ErrorManager, interner: &Interner) -> Result<ExpressionTypeNode, ()> {
    let mut ptr_count: usize = 0;
    let loc_start = l.peek_source();
-   while let Some(&Token::Amp) = l.peek_token() {
+   while let Some(Token::Amp) = l.peek_token() {
       ptr_count += 1;
       let _ = l.next();
    }
@@ -1129,7 +1128,7 @@ fn pratt(
       Some(Token::FloatLiteral(x)) => wrap(Expression::FloatLiteral(x), expr_begin_source.unwrap(), expressions),
       Some(Token::StringLiteral(x)) => wrap(Expression::StringLiteral(x), expr_begin_source.unwrap(), expressions),
       Some(Token::Identifier(s)) => {
-         if l.peek_token() == Some(&Token::Dollar) {
+         if l.peek_token() == Some(Token::Dollar) {
             let generic_args = parse_generic_arguments(l, err_manager, interner)?;
             expect(l, err_manager, &Token::OpenParen)?;
             let args = parse_arguments(l, err_manager, expressions, interner)?;
@@ -1144,7 +1143,7 @@ fn pratt(
                combined_location,
                expressions,
             )
-         } else if l.peek_token() == Some(&Token::OpenParen) {
+         } else if l.peek_token() == Some(Token::OpenParen) {
             let _ = l.next();
             let args = parse_arguments(l, err_manager, expressions, interner)?;
             let close_token = expect(l, err_manager, &Token::CloseParen)?;
@@ -1158,7 +1157,7 @@ fn pratt(
                combined_location,
                expressions,
             )
-         } else if l.peek_token() == Some(&Token::DoubleColon) {
+         } else if l.peek_token() == Some(Token::DoubleColon) {
             let _ = l.next();
             let variant = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
             let variant_identifier = extract_identifier(variant.token);
@@ -1168,20 +1167,20 @@ fn pratt(
                combined_location,
                expressions,
             )
-         } else if !if_head && l.peek_token() == Some(&Token::OpenBrace) {
+         } else if !if_head && l.peek_token() == Some(Token::OpenBrace) {
             let _ = l.next();
             let mut fields = vec![];
             loop {
-               if let Some(&Token::CloseBrace) = l.peek_token() {
+               if let Some(Token::CloseBrace) = l.peek_token() {
                   break;
                }
                let identifier = extract_identifier(expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
                let _ = expect(l, err_manager, &Token::Colon)?;
                let val = parse_expression(l, err_manager, false, expressions, interner)?;
                fields.push((identifier, val));
-               if let Some(&Token::CloseBrace) = l.peek_token() {
+               if let Some(Token::CloseBrace) = l.peek_token() {
                   break;
-               } else if let Some(&Token::Identifier(x)) = l.peek_token().as_ref() {
+               } else if let Some(Token::Identifier(x)) = l.peek_token().as_ref() {
                   let struct_str = interner.lookup(s);
                   let identifier_str = interner.lookup(*x);
                   rolandc_error!(
@@ -1203,7 +1202,7 @@ fn pratt(
          }
       }
       Some(Token::OpenParen) => {
-         if let Some(&Token::CloseParen) = l.peek_token() {
+         if let Some(Token::CloseParen) = l.peek_token() {
             let end_token = l.next().unwrap();
             let combined_location = merge_locations(expr_begin_source.unwrap(), end_token.source_info);
             wrap(Expression::UnitLiteral, combined_location, expressions)
@@ -1286,9 +1285,9 @@ fn pratt(
    };
 
    loop {
-      let op: &Token = match l.peek_token() {
+      let op: Token = match l.peek_token() {
          Some(
-            x @ &(Token::Plus
+            x @ (Token::Plus
             | Token::Minus
             | Token::Multiply
             | Token::Divide
@@ -1312,7 +1311,7 @@ fn pratt(
             | Token::ShiftLeft
             | Token::ShiftRight),
          ) => x,
-         Some(&Token::Period) => {
+         Some(Token::Period) => {
             let mut fields = vec![];
             let mut last_location;
             loop {
@@ -1320,7 +1319,7 @@ fn pratt(
                let ident_token = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
                last_location = ident_token.source_info;
                fields.push(extract_identifier(ident_token.token));
-               if l.peek_token() != Some(&Token::Period) {
+               if l.peek_token() != Some(Token::Period) {
                   break;
                }
             }
@@ -1460,7 +1459,7 @@ fn prefix_binding_power(op: &Token) -> ((), u8) {
    }
 }
 
-fn postfix_binding_power(op: &Token) -> Option<(u8, ())> {
+fn postfix_binding_power(op: Token) -> Option<(u8, ())> {
    match &op {
       Token::OpenSquareBracket => Some((21, ())),
       Token::KeywordExtend => Some((18, ())),
@@ -1471,7 +1470,7 @@ fn postfix_binding_power(op: &Token) -> Option<(u8, ())> {
    }
 }
 
-fn infix_binding_power(op: &Token) -> (u8, u8) {
+fn infix_binding_power(op: Token) -> (u8, u8) {
    match &op {
       Token::KeywordOr => (1, 2),
       Token::KeywordAnd => (3, 4),

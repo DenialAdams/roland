@@ -190,7 +190,7 @@ impl ExpressionType {
             for _ in 0..*x {
                s.push('&');
             }
-            s.push_str(&*base_type);
+            s.push_str(&base_type);
             s
          }
       }

@@ -158,7 +158,7 @@ impl Backend {
                touched_paths: &mut touched_paths,
             };
             let _ = rolandc::compile_for_errors(
-               &mut *ctx_ref,
+               &mut ctx_ref,
                CompilationEntryPoint::PathResolving(root_file_path, resolver),
                target,
             );
