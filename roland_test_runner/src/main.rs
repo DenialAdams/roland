@@ -297,6 +297,12 @@ fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Res
       std::fs::remove_file(prog_path).unwrap();
    } else if expected_runtime_output.is_some() {
       return Err(TestFailureReason::ExpectedCompilationSuccess);
+   } else if !expected_comptime_output.is_empty() && stderr_text != expected_comptime_output {
+      return Err(TestFailureReason::MismatchedCompilationErrorOutput(
+         expected_comptime_output,
+         stderr_text.into_owned(),
+         err_handle.unwrap(),
+      ));
    }
 
    Ok(())
