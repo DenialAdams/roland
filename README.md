@@ -163,7 +163,7 @@ By providing the `--wasm4` flag to the roland compiler, you'll instead compile f
 
 When compiling for the WASM-4 target, all WASM-4 APIs will be automatically made available to you. No extra configuration is needed.
 
-An example WASM-4 game can be viewed here: https://github.com/DenialAdams/roland/blob/master/w4-games/endless-runner/cart.rol
+An example WASM-4 game can be viewed here: https://github.com/DenialAdams/roland/blob/master/samples/wasm4/endless-runner/cart.rol
 
 ## Tooling
 
