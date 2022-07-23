@@ -169,7 +169,8 @@ proc shade(rgb: u32, shade_factor: f64) -> u32 {
 proc start() {
    //         [ black,   grey,    brown,     white  ]
    PALETTE~ = [0x211e20, 0x555568,0xa0a08b,0xe9efec];
-   DRAW_COLORS~ = 0x2340;
+
+   DRAW_COLORS~ = 0x1432;
    make_maps();
    reset_game(0);
 }
@@ -445,6 +446,8 @@ proc update() {
       }
 
       for t in 0..TILES.length {
+         let tmp: u16 = DRAW_COLORS~;
+         DRAW_COLORS~ = 0x2341;
          let x = ((t % 40) * 16) truncate f64;
          let y = ((t / 40) * 16) truncate f64;
          if TILES[t] == Tile::Air {
@@ -464,6 +467,7 @@ proc update() {
             let coin_spritesheet_x = advance_animation_and_return_x(&COIN_CYCLE, (1.0/60.0));
             blit_sub(&COIN[0], (x - camera_offset_x) truncate i32, (y - camera_offset_y) truncate i32, 16, 16, coin_spritesheet_x, 0, COIN_WIDTH, COIN_FLAGS);
          }
+         DRAW_COLORS~ = tmp;
       }
    }
 
@@ -473,7 +477,7 @@ proc update() {
    {
       let tmp: u16 = DRAW_COLORS~;
       // use black (color 1) as text color, and white (color 4) as the background.
-      DRAW_COLORS~ = 0x2341;
+      DRAW_COLORS~ = 0x3241;
       text("SCORE: ", 2, 2);
       text(int_to_string(SCORE, &SCORE_BUF), 47, 2);
       DRAW_COLORS~ = tmp;
@@ -488,11 +492,17 @@ const FALLING_SPRITE_X: i32 = 340;
 
 proc draw_player(player_x: i32, player_y: i32, player_index: usize) {
    let tmp: u16 = DRAW_COLORS~;
-   DRAW_COLORS~ = 0x2340;
+   DRAW_COLORS~ = 0x1432;
 
    let current_sprite_y: i32 = 0;
    let current_sprite_x: i32 = get_next_player_sprite_x(JUMP_STATES[player_index], player_index);
-   blit_sub(&PLAYER_SPRITESHEET[0], player_x -1 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPREADSHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
+   // Choose which player sprite to use based on the player index. Then draw the player.
+   if (player_index % 2 == 0) { 
+      blit_sub(&PLAYER_SPRITESHEET[0], player_x -1 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
+   }
+   else {
+      blit_sub(&PLAYER_2_SPRITESHEET[0], player_x -1 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_2_SPRITESHEET_WIDTH, PLAYER_2_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
+   }
    // one array for jumping (8 sprites), one array for running (2 sprites), one array for idle (8 sprites).
    DRAW_COLORS~ = tmp;
 }
@@ -582,7 +592,7 @@ proc draw_ghost(camera_offset_x: f64, camera_offset_y: f64) {
 proc draw_game_over_text() {
    let tmp: u16 = DRAW_COLORS~;
    // use black (color 1) as text color, and white (color 4) as the background.
-   DRAW_COLORS~ = 0x2341;
+   DRAW_COLORS~ = 0x3241;
    text("DEATH", 40, 50);
    DRAW_COLORS~ = tmp;
 }
