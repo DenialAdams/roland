@@ -3,6 +3,7 @@ import "levelgen.rol";
 import "sprites.rol";
 
 static GAME_OVER: bool;
+static PLAYERS_ALIVE: [bool; 4];
 static PLAYER_POSITIONS: [Position; 4];
 const PLAYER_WIDTH: f64 = 16.0;
 const PLAYER_HEIGHT: f64 = 16.0;
@@ -105,6 +106,7 @@ proc reset_game(starting_score: u32) {
    for p in 0..JUMP_SPEEDS.length {
      JUMP_SPEEDS[p] = 0.0;
      JUMP_STATES[p] = JumpState::Standing;
+     PLAYERS_ALIVE[p] = true;
    }
    GHOST_IS_PRESENT = false;
    TIME_ALIVE = 0;
@@ -187,14 +189,11 @@ proc sim(dt: f64) {
       return;
    }
 
-   {
-      if (!GHOST_IS_PRESENT) {
-         maybe_spawn_ghost();
-      }
-      move_ghost(dt);
-   }
-
    for p in 0..ACTIVE_PLAYERS {
+      if !PLAYERS_ALIVE[p] {
+         continue;
+      }
+
       // Handle input
       let jump_pressed = (GAMEPADS~[p] & BUTTON_1) > 0;
       if jump_pressed and JUMP_STATES[p] == JumpState::Standing {
@@ -262,8 +261,8 @@ proc sim(dt: f64) {
          // Check if colliding with ghost
          if rectangles_collide(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y, PLAYER_WIDTH, PLAYER_HEIGHT, GHOST_POSITION.x, GHOST_POSITION.y, GHOST_WIDTH truncate f64, GHOST_HEIGHT truncate f64) {
                maybe_play_game_over_noise();
-               GAME_OVER = true;
-               return;
+               PLAYERS_ALIVE[p] = false;
+               break;
          }
       }
 
@@ -341,10 +340,9 @@ proc sim(dt: f64) {
             if touched_door {
                handle_door_collision();
             } else if touched_spike {
-               // hit a spike, wasn't touching door. end early.
+               PLAYERS_ALIVE[p] = false;
                maybe_play_game_over_noise();
-               GAME_OVER = true;
-               return;
+               break;
             }
          } else if JUMP_STATES[p] == JumpState::Standing {
             let ontop = false;
@@ -366,6 +364,19 @@ proc sim(dt: f64) {
             }
          }
       }
+   }
+   let at_least_one_player_alive: bool = false;
+   for p in 0..ACTIVE_PLAYERS {
+      if PLAYERS_ALIVE[p] {
+         at_least_one_player_alive = true;        
+      }
+   }
+   GAME_OVER = !at_least_one_player_alive;
+   if !GAME_OVER {
+      if (!GHOST_IS_PRESENT) {
+         maybe_spawn_ghost();
+      }
+      move_ghost(dt);
    }
 }
 
