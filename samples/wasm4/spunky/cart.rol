@@ -185,7 +185,7 @@ proc sim(dt: f64) {
       }
       move_ghost(dt);
    }
-   
+
    for p in 0..MAX_PLAYERS {
    // Handle input
       let jump_pressed = (GAMEPADS~[p] & BUTTON_1) > 0;
@@ -195,8 +195,8 @@ proc sim(dt: f64) {
          tone(300 | (800 << 16), 6, 50, TONE_MODE1);
       }
 
-      let left_pressed = (GAMEPADS~[0] & BUTTON_LEFT) > 0;
-      let right_pressed = (GAMEPADS~[0] & BUTTON_RIGHT) > 0;
+      let left_pressed = (GAMEPADS~[p] & BUTTON_LEFT) > 0;
+      let right_pressed = (GAMEPADS~[p] & BUTTON_RIGHT) > 0;
 
       let go_left = left_pressed & !right_pressed;
       let go_right = right_pressed & !left_pressed;
@@ -429,8 +429,9 @@ proc update() {
       let camera_offset_x: f64 = (camera_position.x) - 80.0;
       let camera_offset_y: f64 = (camera_position.y) - 80.0;
 
-      // Draw player
-      draw_players((PLAYER_POSITIONS[(NETPLAY~ & 0b11) extend usize].x - camera_offset_x) truncate i32, (PLAYER_POSITIONS[(NETPLAY~ & 0b11) extend usize].y - camera_offset_y) truncate i32);
+      for p in 0..MAX_PLAYERS {
+         draw_player((PLAYER_POSITIONS[p].x - camera_offset_x) truncate i32, (PLAYER_POSITIONS[p].y - camera_offset_y) truncate i32, p);
+      }
 
       if (GHOST_IS_PRESENT) {
          draw_ghost(camera_offset_x, camera_offset_y);
@@ -478,17 +479,15 @@ proc update() {
 const JUMP_SPRITE_X: i32 = 320;
 const FALLING_SPRITE_X: i32 = 340;
 
-proc draw_players(player_x: i32, player_y: i32) {
-   for p in 0..MAX_PLAYERS {
-      let tmp: u16 = DRAW_COLORS~;
-      DRAW_COLORS~ = 0x2340;
+proc draw_player(player_x: i32, player_y: i32, player_index: usize) {
+   let tmp: u16 = DRAW_COLORS~;
+   DRAW_COLORS~ = 0x2340;
 
-      let current_sprite_y: i32 = 0;
-      let current_sprite_x: i32 = get_next_player_sprite_x(JUMP_STATES[p], p);
-      blit_sub(&PLAYER_SPRITESHEET[0], player_x -1 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPREADSHEET_FLAGS | (PLAYERS_FACING_LEFT[p] extend u32 << 1));
-      // one array for jumping (8 sprites), one array for running (2 sprites), one array for idle (8 sprites).
-      DRAW_COLORS~ = tmp;
-   }
+   let current_sprite_y: i32 = 0;
+   let current_sprite_x: i32 = get_next_player_sprite_x(JUMP_STATES[player_index], player_index);
+   blit_sub(&PLAYER_SPRITESHEET[0], player_x -1 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPREADSHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
+   // one array for jumping (8 sprites), one array for running (2 sprites), one array for idle (8 sprites).
+   DRAW_COLORS~ = tmp;
 }
 
 const GHOST_SPAWN_TIME: u64 = 60*25; // Number of frames after which the ghost should spawn.
