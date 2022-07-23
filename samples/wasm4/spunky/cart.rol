@@ -408,18 +408,22 @@ proc update() {
 
    // Draw world
    {
+      // We can't use this local variable as Roland will put this local variable in memory
+      // A future roland optimization that recognizes variables don't need to live in memory
+      // and "demotes" them to wasm locals would be good.
+      //let active_player: usize = (NETPLAY~ & 0b11) extend usize;
       let camera_position = Position {
-         x: PLAYER_POSITION.x + 5.0,
-         y: PLAYER_POSITION.y + 8.0,
+         x: PLAYER_POSITIONS[(NETPLAY~ & 0b11) extend usize].x + 5.0,
+         y: PLAYER_POSITIONS[(NETPLAY~ & 0b11) extend usize].y + 8.0,
       };
-      camera_position.x = PLAYER_POSITION.x + 5.0;
-      camera_position.y = PLAYER_POSITION.y + 8.0;
+      camera_position.x = PLAYER_POSITIONS[(NETPLAY~ & 0b11) extend usize].x + 5.0;
+      camera_position.y = PLAYER_POSITIONS[(NETPLAY~ & 0b11) extend usize].y + 8.0;
 
       let camera_offset_x: f64 = (camera_position.x) - 80.0;
       let camera_offset_y: f64 = (camera_position.y) - 80.0;
 
       // Draw player
-      draw_player((PLAYER_POSITION.x - camera_offset_x) truncate i32, (PLAYER_POSITION.y - camera_offset_y) truncate i32, JUMP_STATE);
+      draw_player((PLAYER_POSITIONS[(NETPLAY~ & 0b11) extend usize].x - camera_offset_x) truncate i32, (PLAYER_POSITIONS[(NETPLAY~ & 0b11) extend usize].y - camera_offset_y) truncate i32, JUMP_STATES[(NETPLAY~ & 0b11) extend usize]);
 
       if (GHOST_IS_PRESENT) {
          draw_ghost(camera_offset_x, camera_offset_y);
