@@ -420,8 +420,10 @@ proc carve_path() {
          let final = start_index + c_offset + r_offset;
          let x = ((final % 40) * 16) truncate f64;
          let y = ((final / 40) * 16) truncate f64;
-         PLAYER_POSITION.x = x;
-         PLAYER_POSITION.y = y;
+         for i in 0..PLAYER_POSITIONS.length {
+            PLAYER_POSITIONS[i].x = x;
+            PLAYER_POSITIONS[i].y = y;
+         }
       }
 
       if cell_i == ending_cell transmute usize {
