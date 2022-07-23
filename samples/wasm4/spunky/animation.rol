@@ -61,7 +61,7 @@ proc advance_animation_and_return_x(anim_cycle: &AnimationCycle, seconds_to_adva
 // Returns the x value in the PLAYER_SPRITESHEET of the next sprite for the player.
 //
 // Note this advances the current animation to the next frame and therefore should only be called once per draw loop.
-proc get_next_player_sprite_x(current_jump_state: JumpState, previous_jump_state: JumpState) -> i32 {
+proc get_next_player_sprite_x(current_jump_state: JumpState, player_index: usize) -> i32 {
    // TODO worry about previous jump state.
    if current_jump_state == JumpState::Jumping {
       return JUMP_SPRITE_X;
@@ -69,7 +69,7 @@ proc get_next_player_sprite_x(current_jump_state: JumpState, previous_jump_state
    if (current_jump_state == JumpState::Falling) {
       return FALLING_SPRITE_X;
    }
-   if (PLAYER_MOVED_ON_LAST_FRAME) {
+   if (PLAYERS_MOVED_ON_LAST_FRAME[player_index]) {
       return advance_animation_and_return_x(&RUNNING_CYCLE, (1.0/60.0));
    }
    return advance_animation_and_return_x(&IDLE_CYCLE, (1.0/60.0));
