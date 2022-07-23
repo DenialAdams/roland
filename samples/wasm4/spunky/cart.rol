@@ -492,18 +492,16 @@ const FALLING_SPRITE_X: i32 = 340;
 
 proc draw_player(player_x: i32, player_y: i32, player_index: usize) {
    let tmp: u16 = DRAW_COLORS~;
-   DRAW_COLORS~ = 0x1432;
-
    let current_sprite_y: i32 = 0;
    let current_sprite_x: i32 = get_next_player_sprite_x(JUMP_STATES[player_index], player_index);
    // Choose which player sprite to use based on the player index. Then draw the player.
    if (player_index % 2 == 0) { 
+      DRAW_COLORS~ = 0x1432;
       blit_sub(&PLAYER_SPRITESHEET[0], player_x -1 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
-   }
-   else {
+   } else {
+      DRAW_COLORS~ = 0x1324;
       blit_sub(&PLAYER_2_SPRITESHEET[0], player_x -1 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_2_SPRITESHEET_WIDTH, PLAYER_2_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
    }
-   // one array for jumping (8 sprites), one array for running (2 sprites), one array for idle (8 sprites).
    DRAW_COLORS~ = tmp;
 }
 
