@@ -28,26 +28,6 @@ static LAST_GAMEPAD: u8;
 
 static TILES: [Tile; 1600];
 
-const CAMERAS: [Position; 16] = [
-   // center of the first square, etc
-   Position { x: 80.0, y: 80.0 },
-   Position { x: 240.0, y: 80.0 },
-   Position { x: 400.0, y: 80.0 },
-   Position { x: 560.0, y: 80.0 },
-   Position { x: 80.0, y: 240.0 },
-   Position { x: 240.0, y: 240.0 },
-   Position { x: 400.0, y: 240.0 },
-   Position { x: 560.0, y: 240.0 },
-   Position { x: 80.0, y: 400.0 },
-   Position { x: 240.0, y: 400.0 },
-   Position { x: 400.0, y: 400.0 },
-   Position { x: 560.0, y: 400.0 },
-   Position { x: 80.0, y: 560.0 },
-   Position { x: 240.0, y: 560.0 },
-   Position { x: 400.0, y: 560.0 },
-   Position { x: 560.0, y: 560.0 },
-];
-
 struct Position {
    x: f64,
    y: f64,
@@ -209,9 +189,6 @@ proc sim(dt: f64) {
       JUMP_STATE = JumpState::Jumping;
       JUMP_SPEED = 9.0;
       tone(300 | (800 << 16), 6, 50, TONE_MODE1);
-   } else if (false) and TIME_DEAD >= 5 {
-      reset_game(0);
-      return;
    }
 
    let left_pressed = (GAMEPADS~[0] & BUTTON_LEFT) > 0;
@@ -431,23 +408,10 @@ proc update() {
 
    // Draw world
    {
-
-      // Always keep camera centered
-      let center_of_player = PLAYER_POSITION;
-      center_of_player.x = center_of_player.x + 5.0;
-      center_of_player.y = center_of_player.y + 8.0;
-      let clens: usize = 16;
-      let closest_cam: usize = 0;
-      let min_dist: f64 = dist(center_of_player, CAMERAS[0]);
-      for x in 1..clens {
-         let dist = dist(center_of_player, CAMERAS[x]);
-         if dist < min_dist {
-            min_dist = dist;
-            closest_cam = x;
-         }
-      }
-
-      let camera_position = CAMERAS[closest_cam];
+      let camera_position = Position {
+         x: PLAYER_POSITION.x + 5.0,
+         y: PLAYER_POSITION.y + 8.0,
+      };
       camera_position.x = PLAYER_POSITION.x + 5.0;
       camera_position.y = PLAYER_POSITION.y + 8.0;
 
@@ -482,7 +446,6 @@ proc update() {
             blit_sub(&COIN[0], (x - camera_offset_x) truncate i32, (y - camera_offset_y) truncate i32, 16, 16, coin_spritesheet_x, 0, COIN_WIDTH, COIN_FLAGS);
          }
       }
-      FRAME_COUNT = FRAME_COUNT+1;
    }
 
    //trace(int_to_string(PLAYER_POSITION.y truncate u32, &SCORE_BUF));
@@ -503,9 +466,6 @@ proc update() {
 
 const JUMP_SPRITE_X: i32 = 320;
 const FALLING_SPRITE_X: i32 = 340;
-
-// Frames since the game has begun. Game runs at 60 fps.
-static FRAME_COUNT:u32 = 0;
 
 proc draw_player(player_x: i32, player_y: i32, jump_state: JumpState) {
    let tmp: u16 = DRAW_COLORS~;
