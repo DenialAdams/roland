@@ -1,0 +1,76 @@
+// Player animations, and related stuff.
+enum CurrentPlayerAnimationCycle {
+   // TODO: add "player hurt" cycle, "player death" cycle etc.
+   Jumping,
+   Standing,
+   Falling,
+}
+
+static PREVIOUS_JUMP_STATE: JumpState = JumpState::Standing;
+
+static CURRENT_PLAYER_ANIMATION_CYCLE: CurrentPlayerAnimationCycle = CurrentPlayerAnimationCycle::Standing;
+
+struct AnimationCycle {
+   current_time_in_animation_seconds: f64,
+   animation_length_seconds: f64, // 4.0 = animation loops over 4 seconds, etc.
+   animation_sprites: i32,
+   starting_animation_x: i32,
+   offset_between_sprites: i32,
+   repeat_cycle: bool,
+}
+
+static RUNNING_CYCLE : AnimationCycle = AnimationCycle {
+   current_time_in_animation_seconds: 0.0,
+   animation_length_seconds: 1.0,
+   animation_sprites: 8,
+   starting_animation_x: 160,
+   offset_between_sprites: 20,
+   repeat_cycle: true,
+};
+
+static IDLE_CYCLE : AnimationCycle = AnimationCycle {
+   current_time_in_animation_seconds: 0.0,
+   animation_length_seconds: 1.0,
+   animation_sprites: 8,
+   starting_animation_x: 0,
+   offset_between_sprites: 20,
+   repeat_cycle: true,
+};
+
+proc advance_animation_and_return_x(anim_cycle: &AnimationCycle, seconds_to_advance: f64) -> i32 {
+   anim_cycle~.current_time_in_animation_seconds = anim_cycle~.current_time_in_animation_seconds + seconds_to_advance;
+
+   if (anim_cycle~.current_time_in_animation_seconds >= anim_cycle~.animation_length_seconds) {
+       if anim_cycle~.repeat_cycle {
+         anim_cycle~.current_time_in_animation_seconds = 0.0;
+       } else {
+         anim_cycle~.current_time_in_animation_seconds = anim_cycle~.animation_length_seconds;
+       }
+   }
+   // Calculate the location of the correct sprite.
+   let ratio: f64 = 0.0;
+   if anim_cycle~.current_time_in_animation_seconds > 0.0 {
+      ratio =  (anim_cycle~.current_time_in_animation_seconds/anim_cycle~.animation_length_seconds);
+   }
+
+   let sprite_index = ((ratio * (anim_cycle~.animation_sprites -1) truncate f64) truncate i32);
+   let x = anim_cycle~.starting_animation_x + anim_cycle~.offset_between_sprites*sprite_index;
+   return x;
+}
+
+// Returns the x value in the PLAYER_SPRITESHEET of the next sprite for the player.
+//
+// Note this advances the current animation to the next frame and therefore should only be called once per draw loop.
+proc get_next_player_sprite_x(current_jump_state: JumpState, previous_jump_state: JumpState) -> i32 {
+   // TODO worry about previous jump state.
+   if current_jump_state == JumpState::Jumping {
+      return JUMP_SPRITE_X;
+   }
+   if (current_jump_state == JumpState::Falling) {
+      return FALLING_SPRITE_X;
+   }
+   if (PLAYER_MOVED_ON_LAST_FRAME) {
+      return advance_animation_and_return_x(&RUNNING_CYCLE, (1.0/60.0));
+   }
+   return advance_animation_and_return_x(&IDLE_CYCLE, (1.0/60.0));
+}
