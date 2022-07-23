@@ -393,32 +393,32 @@ proc update() {
       if reset_pressed {
          reset_game(0);
       }
+   }
 
-      if DOING_DOOR {
-         PALETTE~[0] = shade(PALETTE~[0], 0.01);
-         PALETTE~[1] = shade(PALETTE~[1], 0.01);
-         PALETTE~[2] = shade(PALETTE~[2], 0.01);
-         PALETTE~[3] = shade(PALETTE~[3], 0.01);
+   if DOING_DOOR {
+      PALETTE~[0] = shade(PALETTE~[0], 0.01);
+      PALETTE~[1] = shade(PALETTE~[1], 0.01);
+      PALETTE~[2] = shade(PALETTE~[2], 0.01);
+      PALETTE~[3] = shade(PALETTE~[3], 0.01);
 
-         if TIME_DOING_DOOR > 150 {
-            DOING_DOOR = false;
-            TIME_DOING_DOOR = 0;
-            PALETTE~ = [0x211e20, 0x555568,0xa0a08b,0xe9efec];
-            reset_game(SCORE);
-            return;
-         }
-      } else {
-         sim(0.1);
-         sim(0.1);
-         sim(0.1);
-         sim(0.1);
-         sim(0.1);
-         sim(0.1);
-         sim(0.1);
-         sim(0.1);
-         sim(0.1);
-         sim(0.1);
+      if TIME_DOING_DOOR > 150 {
+         DOING_DOOR = false;
+         TIME_DOING_DOOR = 0;
+         PALETTE~ = [0x211e20, 0x555568,0xa0a08b,0xe9efec];
+         reset_game(SCORE);
+         return;
       }
+   } else {
+      sim(0.1);
+      sim(0.1);
+      sim(0.1);
+      sim(0.1);
+      sim(0.1);
+      sim(0.1);
+      sim(0.1);
+      sim(0.1);
+      sim(0.1);
+      sim(0.1);
    }
 
    // Draw world
@@ -447,7 +447,7 @@ proc update() {
 
       for t in 0..TILES.length {
          let tmp: u16 = DRAW_COLORS~;
-         DRAW_COLORS~ = 0x2341;
+         DRAW_COLORS~ = 0x2340;
          let x = ((t % 40) * 16) truncate f64;
          let y = ((t / 40) * 16) truncate f64;
          if TILES[t] == Tile::Air {
@@ -496,10 +496,10 @@ proc draw_player(player_x: i32, player_y: i32, player_index: usize) {
    let current_sprite_x: i32 = get_next_player_sprite_x(JUMP_STATES[player_index], player_index);
    // Choose which player sprite to use based on the player index. Then draw the player.
    if (player_index % 2 == 0) { 
-      DRAW_COLORS~ = 0x1432;
+      DRAW_COLORS~ = 0x0432;
       blit_sub(&PLAYER_SPRITESHEET[0], player_x -1 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
    } else {
-      DRAW_COLORS~ = 0x1324;
+      DRAW_COLORS~ = 0x0324;
       blit_sub(&PLAYER_2_SPRITESHEET[0], player_x -1 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_2_SPRITESHEET_WIDTH, PLAYER_2_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
    }
    DRAW_COLORS~ = tmp;
