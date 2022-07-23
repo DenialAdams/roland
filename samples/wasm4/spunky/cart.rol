@@ -16,7 +16,7 @@ static JUMP_STATES: [JumpState; 4];
 static RNG: u64 = 0;
 static SCORE_BUF: [u8; 10];
 static SCORE: u32;
-static ACTIVE_PLAYERS: usize = 2;
+static ACTIVE_PLAYERS: usize = 1;
 
 static DOING_DOOR: bool = false;
 
@@ -175,6 +175,13 @@ proc start() {
 }
 
 proc sim(dt: f64) {
+   let netplay_on_now = (NETPLAY~ & 0b100) != 0;
+   if netplay_on_now {
+      ACTIVE_PLAYERS = 2;
+   } else {
+      ACTIVE_PLAYERS = 1;
+   }
+
    if GAME_OVER | DOING_DOOR {
       return;
    }
