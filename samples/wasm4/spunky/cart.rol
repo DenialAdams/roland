@@ -16,7 +16,7 @@ static JUMP_STATES: [JumpState; 4];
 static RNG: u64 = 0;
 static SCORE_BUF: [u8; 10];
 static SCORE: u32;
-const MAX_PLAYERS: usize = 4;
+static ACTIVE_PLAYERS: usize = 2;
 
 static DOING_DOOR: bool = false;
 
@@ -102,7 +102,7 @@ proc segment_v_segment(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64, x4:
 proc reset_game(starting_score: u32) {
    GAME_OVER = false;
    TIME_DEAD = 0;
-   for p in 0..MAX_PLAYERS {
+   for p in 0..JUMP_SPEEDS.length {
      JUMP_SPEEDS[p] = 0.0;
      JUMP_STATES[p] = JumpState::Standing;
    }
@@ -186,8 +186,8 @@ proc sim(dt: f64) {
       move_ghost(dt);
    }
 
-   for p in 0..MAX_PLAYERS {
-   // Handle input
+   for p in 0..ACTIVE_PLAYERS {
+      // Handle input
       let jump_pressed = (GAMEPADS~[p] & BUTTON_1) > 0;
       if jump_pressed and JUMP_STATES[p] == JumpState::Standing {
          JUMP_STATES[p] = JumpState::Jumping;
@@ -376,7 +376,7 @@ proc handle_door_collision() {
 proc update() {
    update_timers();
 
-   for p in 0..MAX_PLAYERS {
+   for p in 0..ACTIVE_PLAYERS {
       let gamepad = GAMEPADS~[p];
       let pressed_this_frame = gamepad & (gamepad ^ LAST_GAMEPADS[p]);
       LAST_GAMEPADS[p] = gamepad;
@@ -429,7 +429,7 @@ proc update() {
       let camera_offset_x: f64 = (camera_position.x) - 80.0;
       let camera_offset_y: f64 = (camera_position.y) - 80.0;
 
-      for p in 0..MAX_PLAYERS {
+      for p in 0..ACTIVE_PLAYERS {
          draw_player((PLAYER_POSITIONS[p].x - camera_offset_x) truncate i32, (PLAYER_POSITIONS[p].y - camera_offset_y) truncate i32, p);
       }
 
