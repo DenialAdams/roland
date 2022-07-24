@@ -368,7 +368,7 @@ proc sim(dt: f64) {
    let at_least_one_player_alive: bool = false;
    for p in 0..ACTIVE_PLAYERS {
       if PLAYERS_ALIVE[p] {
-         at_least_one_player_alive = true;        
+         at_least_one_player_alive = true;
       }
    }
    GAME_OVER = !at_least_one_player_alive;
@@ -506,7 +506,7 @@ proc draw_player(player_x: i32, player_y: i32, player_index: usize) {
    let current_sprite_y: i32 = 0;
    let current_sprite_x: i32 = get_next_player_sprite_x(JUMP_STATES[player_index], player_index);
    // Choose which player sprite to use based on the player index. Then draw the player.
-   if (player_index % 2 == 0) { 
+   if (player_index % 2 == 0) {
       DRAW_COLORS~ = 0x0432;
       blit_sub(&PLAYER_SPRITESHEET[0], player_x -1 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
    } else {
@@ -553,12 +553,24 @@ proc maybe_spawn_ghost() {
 }
 
 // Caller should check if GHOST_IS_PRESENT before moving.
-// Moves towards player 1.
-// TODO: move towards the closest player, perhaps.
+// Moves towards closest alive player.
 proc move_ghost(dt: f64) {
    // if player x > ghost x, ghost x++
    // if player x < ghost x, ghost x--
-   if (PLAYER_POSITIONS[0].x > GHOST_POSITION.x) {
+
+   let target_position: Position = PLAYER_POSITIONS[0];
+   // (this should be INF, but we don't have that yet in Roland!)
+   let best_dist: f64 = 99999999999999999999999999.0;
+   for i in 0..ACTIVE_PLAYERS {
+      if !PLAYERS_ALIVE[i] {
+         continue;
+      }
+      if dist(PLAYER_POSITIONS[i], GHOST_POSITION) < best_dist {
+         target_position = PLAYER_POSITIONS[i];
+      }
+   }
+
+   if (target_position.x > GHOST_POSITION.x) {
       GHOST_POSITION.x = GHOST_POSITION.x + (1.0 * dt);
       GHOST_FACING_LEFT = false;
    }
@@ -566,7 +578,7 @@ proc move_ghost(dt: f64) {
       GHOST_POSITION.x = GHOST_POSITION.x - (1.0 * dt);
       GHOST_FACING_LEFT = true;
    }
-   if (PLAYER_POSITIONS[0].y >= GHOST_POSITION.y) {
+   if (target_position.y >= GHOST_POSITION.y) {
       GHOST_POSITION.y = GHOST_POSITION.y + (1.0 * dt);
    }
    else {
