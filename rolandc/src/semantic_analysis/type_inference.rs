@@ -101,16 +101,15 @@ fn set_inferred_type(
             // Update existing variables immediately, so that future uses can't change the inferred type
             // (Is this a performance problem? It's obviously awkward, but straight forward)
             for var_in_scope in validation_context.variable_types.values_mut() {
-               let my_tv = match validation_context.expressions[expr_index].exp_type.as_ref().unwrap() {
-                  ExpressionType::Value(ValueType::UnknownFloat(x)) => *x,
-                  ExpressionType::Value(ValueType::UnknownInt(x)) => *x,
+               let my_tv = match var_in_scope.var_type {
+                  ExpressionType::Value(ValueType::UnknownFloat(x)) => x,
+                  ExpressionType::Value(ValueType::UnknownInt(x)) => x,
                   _ => continue,
                };
 
                let representative = validation_context.type_variables.find(my_tv);
 
                if representative == outer_representative {
-                  debug_assert!(!var_in_scope.var_type.is_concrete_type());
                   var_in_scope.var_type = e_type.clone();
                }
             }
