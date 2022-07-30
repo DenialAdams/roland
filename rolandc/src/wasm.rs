@@ -548,7 +548,7 @@ pub fn emit_wasm(
    // Data section
 
    // the base memory offset varies per platform;
-   // on wasm-4, we don't own all of the memory!
+   // on wasm-4/microw8, we don't own all of the memory!
    let mut offset: u32 = match target {
       Target::Wasi => 0x0,
       Target::Wasm4 => 0x19a0,

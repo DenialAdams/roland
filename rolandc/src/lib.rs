@@ -22,7 +22,7 @@ mod disjoint_set;
 pub mod error_handling;
 pub mod interner;
 mod lex;
-mod parse;
+pub mod parse;
 mod semantic_analysis;
 mod size_info;
 pub mod source_info;
@@ -33,10 +33,12 @@ mod wasm;
 
 use error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
 use error_handling::ErrorManager;
-use parse::{ExpressionId, ExpressionNode, ExpressionPool, ImportNode, Program};
+use indexmap::{IndexMap, IndexSet};
+pub use parse::Program;
+use parse::{ExpressionId, ExpressionNode, ExpressionPool, ImportNode};
 use source_info::SourcePath;
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use typed_index_vec::HandleMap;
@@ -79,9 +81,10 @@ pub enum CompilationEntryPoint<'a, FR: FileResolver<'a>> {
 
 // Repeated compilations can be sped up by reusing the context
 pub struct CompilationContext {
-   expressions: HandleMap<ExpressionId, ExpressionNode>,
+   pub expressions: HandleMap<ExpressionId, ExpressionNode>,
    pub interner: Interner,
    pub err_manager: ErrorManager,
+   pub program: Program,
 }
 
 impl CompilationContext {
@@ -91,6 +94,20 @@ impl CompilationContext {
          expressions: HandleMap::new(),
          interner: Interner::with_capacity(1024),
          err_manager: ErrorManager::new(),
+         program: Program {
+            external_procedures: Vec::new(),
+            procedures: Vec::new(),
+            enums: Vec::new(),
+            structs: Vec::new(),
+            consts: Vec::new(),
+            statics: Vec::new(),
+            literals: IndexSet::new(),
+            struct_info: IndexMap::new(),
+            static_info: IndexMap::new(),
+            enum_info: IndexMap::new(),
+            procedure_info: IndexMap::new(),
+            struct_size_info: HashMap::new(),
+         },
       }
    }
 }
@@ -99,12 +116,12 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    ctx: &mut CompilationContext,
    user_program_ep: CompilationEntryPoint<'a, FR>,
    target: Target,
-) -> Result<Program, CompilationError> {
+) -> Result<(), CompilationError> {
    ctx.expressions.clear();
    ctx.err_manager.clear();
-   // We don't have to clear the interner - assumption is that the context is coming a recent version of the same source, so symbols should be relevant
+   // We don't have to clear the interner - assumption is that the context is coming from a recent version of the same source, so symbols should be relevant
 
-   let mut user_program = match user_program_ep {
+   ctx.program = match user_program_ep {
       CompilationEntryPoint::PathResolving(ep_path, mut resolver) => {
          let mut user_program = Program::new();
          let mut import_queue: Vec<PathBuf> = vec![ep_path];
@@ -212,7 +229,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       }
    }?;
 
-   merge_program(&mut user_program, &mut std_lib.1);
+   merge_program(&mut ctx.program, &mut std_lib.1);
 
    let std_lib_s = include_str!("../../lib/shared.rol");
    let mut shared_std = lex_and_parse(
@@ -222,10 +239,20 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       &mut ctx.interner,
       &mut ctx.expressions,
    )?;
-   merge_program(&mut user_program, &mut shared_std.1);
+   merge_program(&mut ctx.program, &mut shared_std.1);
 
-   let mut err_count = semantic_analysis::validator::type_and_check_validity(
-      &mut user_program,
+   let mut err_count = semantic_analysis::type_and_procedure_info::populate_type_and_procedure_info(
+      &mut ctx.program,
+      &mut ctx.err_manager,
+      &mut ctx.interner,
+   );
+
+   if err_count > 0 {
+      return Err(CompilationError::Semantic(err_count));
+   }
+
+   err_count = semantic_analysis::validator::type_and_check_validity(
+      &mut ctx.program,
       &mut ctx.err_manager,
       &mut ctx.interner,
       &mut ctx.expressions,
@@ -237,21 +264,21 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    }
 
    err_count = compile_globals::compile_globals(
-      &user_program,
+      &ctx.program,
       &mut ctx.expressions,
       &mut ctx.interner,
-      &user_program.struct_size_info,
+      &ctx.program.struct_size_info,
       &mut ctx.err_manager,
    );
    if err_count > 0 {
       return Err(CompilationError::Semantic(err_count));
    }
 
-   various_expression_lowering::lower_consts(&mut user_program, &mut ctx.expressions, &mut ctx.interner);
-   user_program.static_info.retain(|_, v| !v.is_const);
+   various_expression_lowering::lower_consts(&mut ctx.program, &mut ctx.expressions, &mut ctx.interner);
+   ctx.program.static_info.retain(|_, v| !v.is_const);
 
    err_count = compile_globals::ensure_statics_const(
-      &user_program,
+      &ctx.program,
       &mut ctx.expressions,
       &mut ctx.interner,
       &mut ctx.err_manager,
@@ -262,7 +289,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    }
 
    err_count = constant_folding::fold_constants(
-      &mut user_program,
+      &mut ctx.program,
       &mut ctx.err_manager,
       &mut ctx.expressions,
       &ctx.interner,
@@ -272,7 +299,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       return Err(CompilationError::Semantic(err_count));
    }
 
-   Ok(user_program)
+   Ok(())
 }
 
 pub fn compile<'a, FR: FileResolver<'a>>(
@@ -280,18 +307,18 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    user_program_ep: CompilationEntryPoint<'a, FR>,
    target: Target,
 ) -> Result<Vec<u8>, CompilationError> {
-   let mut user_program = compile_for_errors(ctx, user_program_ep, target)?;
+   compile_for_errors(ctx, user_program_ep, target)?;
 
-   add_virtual_variables::add_virtual_vars(&mut user_program, &ctx.expressions);
+   add_virtual_variables::add_virtual_vars(&mut ctx.program, &ctx.expressions);
    match target {
       Target::Wasi => Ok(wasm::emit_wasm(
-         &mut user_program,
+         &mut ctx.program,
          &mut ctx.interner,
          &ctx.expressions,
          target,
       )),
       Target::Wasm4 | Target::Microw8 => {
-         let wat = wasm::emit_wasm(&mut user_program, &mut ctx.interner, &ctx.expressions, target);
+         let wat = wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, &ctx.expressions, target);
          let wasm = match wat::parse_bytes(&wat) {
             Ok(wasm_bytes) => wasm_bytes.into_owned(),
             Err(_) => return Err(CompilationError::Internal),

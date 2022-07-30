@@ -3,15 +3,18 @@ use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::path::PathBuf;
 
+use goto_definition::find_definition;
 use parking_lot::{Mutex, RwLock};
 use rolandc::error_handling::{ErrorInfo, ErrorLocation};
 use rolandc::interner::Interner;
-use rolandc::source_info::{SourceInfo, SourcePath};
+use rolandc::source_info::{SourceInfo, SourcePath, SourcePosition};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 use rolandc::*;
+
+mod goto_definition;
 
 enum WorkspaceMode {
    LooseFiles,
@@ -247,6 +250,11 @@ impl LanguageServer for Backend {
       *self.mode.write() = mode;
       Ok(InitializeResult {
          capabilities: ServerCapabilities {
+            definition_provider: Some(OneOf::Right(DefinitionOptions {
+               work_done_progress_options: WorkDoneProgressOptions {
+                  work_done_progress: None,
+               },
+            })),
             text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
             ..Default::default()
          },
@@ -260,6 +268,73 @@ impl LanguageServer for Backend {
          .client
          .log_message(MessageType::INFO, format!("rolandc server initialized! v{}", version))
          .await;
+   }
+
+   async fn shutdown(&self) -> Result<()> {
+      Ok(())
+   }
+
+   async fn goto_definition(&self, params: GotoDefinitionParams) -> Result<Option<GotoDefinitionResponse>> {
+      let given_document = params.text_document_position_params.text_document;
+      let given_location = params.text_document_position_params.position;
+      if let Ok(p) = given_document.uri.to_file_path() {
+         if let Ok(canon_path) = std::fs::canonicalize(p) {
+            let ctx = self.ctx.lock();
+            if let Some(si) = find_definition(
+               SourcePosition {
+                  line: given_location.line as usize,
+                  col: given_location.character as usize,
+               },
+               &canon_path,
+               &ctx,
+            ) {
+               let dest_range = Range {
+                  start: Position {
+                     line: si.begin.line as u32,
+                     character: si.begin.col as u32,
+                  },
+                  end: Position {
+                     line: si.end.line as u32,
+                     character: si.end.col as u32,
+                  },
+               };
+               let target_path = roland_source_path_to_canon_path(&si.file, &ctx.interner);
+               if target_path.is_none() {
+                  // We can't give people linkes into the standard library
+                  return Ok(None);
+               }
+               return Ok(Some(GotoDefinitionResponse::Link(vec![LocationLink {
+                  origin_selection_range: None,
+                  target_uri: Url::from_file_path(target_path.unwrap().unwrap()).unwrap(),
+                  target_range: dest_range,
+                  target_selection_range: dest_range,
+               }])));
+            } else {
+               return Ok(None);
+            }
+         } else {
+            self
+               .client
+               .log_message(
+                  MessageType::WARNING,
+                  format!("Can't canonicalize path: {}", given_document.uri),
+               )
+               .await;
+         }
+      } else {
+         self
+            .client
+            .log_message(
+               MessageType::WARNING,
+               format!(
+                  "Hopelessly bailing on document uri as we can't convert it to a local path: {}",
+                  given_document.uri
+               ),
+            )
+            .await;
+      }
+
+      Ok(None)
    }
 
    async fn did_open(&self, params: DidOpenTextDocumentParams) {
@@ -319,10 +394,6 @@ impl LanguageServer for Backend {
          }
       }
       self.client.publish_diagnostics(doc_uri, vec![], None).await;
-   }
-
-   async fn shutdown(&self) -> Result<()> {
-      Ok(())
    }
 }
 

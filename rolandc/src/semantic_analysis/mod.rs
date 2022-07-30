@@ -10,9 +10,11 @@ use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 use crate::Target;
 
+pub mod type_and_procedure_info;
 pub mod type_inference;
 pub mod validator;
 
+#[derive(Clone)]
 pub struct ProcedureInfo {
    // This includes named parameters
    pub parameters: Vec<ExpressionType>,

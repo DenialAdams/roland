@@ -2,7 +2,7 @@ use super::lex::{SourceToken, Token};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
-use crate::semantic_analysis::{EnumInfo, StaticInfo, StructInfo};
+use crate::semantic_analysis::{EnumInfo, ProcedureInfo, StaticInfo, StructInfo};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, ValueType};
@@ -261,6 +261,7 @@ pub struct GenericArgumentNode {
 }
 
 impl Expression {
+   #[must_use]
    pub fn is_lvalue(&self, expressions: &ExpressionPool, static_info: &IndexMap<StrId, StaticInfo>) -> bool {
       match self {
          Expression::Variable(x) => static_info.get(x).map_or(true, |x| !x.is_const),
@@ -272,6 +273,7 @@ impl Expression {
    }
 
    // After constants are lowered, we don't need to care about constants and pass a bulky data structure around
+   #[must_use]
    pub fn is_lvalue_disregard_consts(&self, expressions: &ExpressionPool) -> bool {
       match self {
          Expression::Variable(_) => true,
@@ -338,10 +340,12 @@ pub struct Program {
    pub enum_info: IndexMap<StrId, EnumInfo>,
    pub struct_info: IndexMap<StrId, StructInfo>,
    pub static_info: IndexMap<StrId, StaticInfo>,
+   pub procedure_info: IndexMap<StrId, ProcedureInfo>,
    pub struct_size_info: HashMap<StrId, SizeInfo>,
 }
 
 impl Program {
+   #[must_use]
    pub fn new() -> Program {
       Program {
          enums: Vec::new(),
@@ -354,6 +358,7 @@ impl Program {
          enum_info: IndexMap::new(),
          struct_info: IndexMap::new(),
          static_info: IndexMap::new(),
+         procedure_info: IndexMap::new(),
          struct_size_info: HashMap::new(),
       }
    }
@@ -490,6 +495,7 @@ pub fn astify(
          struct_info: IndexMap::new(),
          static_info: IndexMap::new(),
          enum_info: IndexMap::new(),
+         procedure_info: IndexMap::new(),
          struct_size_info: HashMap::new(),
       },
    ))
