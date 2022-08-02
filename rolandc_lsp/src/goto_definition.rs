@@ -46,28 +46,27 @@ pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationCon
    for expr in ctx.expressions.values.iter() {
       match &expr.expression {
          Expression::ProcedureCall { proc_name, .. } => {
-            if !span_contains(proc_name.location, sp, document, &ctx.interner) {
-               continue;
-            }
-            return ctx
+            if span_contains(proc_name.location, sp, document, &ctx.interner) {
+               return ctx
                .program
                .procedure_info
                .get(&proc_name.identifier)
                .map(|x| x.location);
+            }
          }
          Expression::StructLiteral(struct_name, _) => {
-            if !span_contains(struct_name.location, sp, document, &ctx.interner) {
-               continue;
+            if span_contains(struct_name.location, sp, document, &ctx.interner) {
+               return ctx.program.struct_info.get(&struct_name.identifier).map(|x| x.location);
             }
-            return ctx.program.struct_info.get(&struct_name.identifier).map(|x| x.location);
          }
-         Expression::EnumLiteral(enum_name, _) => {
-            if !span_contains(enum_name.location, sp, document, &ctx.interner) {
-               continue;
+         Expression::EnumLiteral(enum_name, enum_variant) => {
+            if span_contains(enum_name.location, sp, document, &ctx.interner) {
+               return ctx.program.enum_info.get(&enum_name.identifier).map(|x| x.location);
+            } else if span_contains(enum_variant.location, sp, document, &ctx.interner) {
+               return ctx.program.enum_info.get(&enum_name.identifier).and_then(|x| x.variants.get(&enum_variant.identifier).copied());
             }
-            return ctx.program.enum_info.get(&enum_name.identifier).map(|x| x.location);
          }
-         _ => continue,
+         _ => (),
       }
    }
 

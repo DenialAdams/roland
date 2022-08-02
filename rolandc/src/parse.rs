@@ -127,7 +127,7 @@ pub struct StructNode {
 #[derive(Clone)]
 pub struct EnumNode {
    pub name: StrId,
-   pub variants: Vec<StrId>,
+   pub variants: Vec<IdentifierNode>,
    pub location: SourceInfo,
 }
 
@@ -244,7 +244,7 @@ pub enum Expression {
       target_type: ExpressionType,
       expr: ExpressionId,
    },
-   EnumLiteral(IdentifierNode, StrId),
+   EnumLiteral(IdentifierNode, IdentifierNode),
 }
 
 // TODO: it would be cool if StrId was NonZero so that this struct (and others like it)
@@ -630,13 +630,16 @@ fn parse_enum(
 ) -> Result<EnumNode, ()> {
    let enum_name = extract_identifier(expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
    expect(l, err_manager, &Token::OpenBrace)?;
-   let mut variants: Vec<StrId> = vec![];
+   let mut variants = vec![];
    loop {
       if let Some(Token::CloseBrace) = l.peek_token() {
          break;
       }
       let identifier = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
-      variants.push(extract_identifier(identifier.token));
+      variants.push(IdentifierNode {
+         identifier: extract_identifier(identifier.token),
+         location: identifier.source_info,
+      });
       if let Some(Token::CloseBrace) = l.peek_token() {
          break;
       } else if let Some(Token::Identifier(x)) = l.peek_token().as_ref() {
@@ -1180,7 +1183,10 @@ fn pratt(
                      identifier: s,
                      location: expr_begin_source.unwrap(),
                   },
-                  variant_identifier,
+                  IdentifierNode {
+                     identifier: variant_identifier,
+                     location: variant.source_info,
+                  },
                ),
                combined_location,
                expressions,

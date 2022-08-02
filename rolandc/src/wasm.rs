@@ -1048,7 +1048,7 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
             .get(&name.identifier)
             .unwrap()
             .variants
-            .get_index_of(variant)
+            .get_index_of(&variant.identifier)
             .unwrap();
          generation_context.out.emit_spaces();
          for w in 0..width {
@@ -1172,7 +1172,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             .get(&name.identifier)
             .unwrap()
             .variants
-            .get_index_of(variant)
+            .get_index_of(&variant.identifier)
             .unwrap();
          generation_context.out.emit_spaces();
          writeln!(generation_context.out.out, "{}.const {}", wasm_type, index).unwrap();

@@ -1641,15 +1641,15 @@ fn get_type(
       }
       Expression::EnumLiteral(x, v) => {
          if let Some(enum_info) = validation_context.enum_info.get(&x.identifier) {
-            if enum_info.variants.contains(v) {
+            if enum_info.variants.contains_key(&v.identifier) {
                ExpressionType::Value(ValueType::Enum(x.identifier))
             } else {
                validation_context.error_count += 1;
                rolandc_error!(
                   err_manager,
                   expr_location,
-                  "Attempted to instantiate variant `{}` of enum `{}`, which is not a valid variant",
-                  interner.lookup(*v),
+                  "Attempted to instantiate unknown variant `{}` of enum `{}`",
+                  interner.lookup(v.identifier),
                   interner.lookup(x.identifier),
                );
 

@@ -26,7 +26,7 @@ pub struct ProcedureInfo {
 
 #[derive(Clone)]
 pub struct EnumInfo {
-   pub variants: IndexSet<StrId>,
+   pub variants: IndexMap<StrId, SourceInfo>,
    pub location: SourceInfo,
 }
 

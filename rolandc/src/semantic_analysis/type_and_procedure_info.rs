@@ -100,15 +100,15 @@ pub fn populate_type_and_procedure_info(
    for a_enum in program.enums.iter() {
       dupe_check.clear();
       dupe_check.reserve(a_enum.variants.len());
-      for variant in a_enum.variants.iter().copied() {
-         if !dupe_check.insert(variant) {
+      for variant in a_enum.variants.iter() {
+         if !dupe_check.insert(variant.identifier) {
             error_count += 1;
             rolandc_error_w_details!(
                err_manager,
                &[(a_enum.location, "enum defined")],
                "Enum `{}` has a duplicate variant `{}`",
                interner.lookup(a_enum.name),
-               interner.lookup(variant),
+               interner.lookup(variant.identifier),
             );
          }
       }
@@ -116,7 +116,7 @@ pub fn populate_type_and_procedure_info(
       if let Some(old_enum) = program.enum_info.insert(
          a_enum.name,
          EnumInfo {
-            variants: a_enum.variants.iter().copied().collect(),
+            variants: a_enum.variants.iter().map(|x| (x.identifier, x.location)).collect(),
             location: a_enum.location,
          },
       ) {
