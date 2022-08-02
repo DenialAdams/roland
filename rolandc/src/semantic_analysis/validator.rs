@@ -1201,22 +1201,22 @@ fn get_type(
                   &[(expr_location, "call")],
                   "Undeclared type `{}` given as a type argument to `{}`",
                   etype_str,
-                  interner.lookup(*proc_name),
+                  interner.lookup(proc_name.identifier),
                );
             }
          }
 
-         if is_special_procedure(validation_context.target, *proc_name, interner) {
+         if is_special_procedure(validation_context.target, proc_name.identifier, interner) {
             validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
                expr_location,
                "`{}` is a special procedure and is not allowed to be called",
-               interner.lookup(*proc_name),
+               interner.lookup(proc_name.identifier),
             );
          }
 
-         match validation_context.procedure_info.get(proc_name) {
+         match validation_context.procedure_info.get(&proc_name.identifier) {
             Some(procedure_info) => {
                // Validate that there are no non-named arguments after named arguments, then reorder the argument list
                let first_named_arg = args.iter().enumerate().find(|(_, arg)| arg.name.is_some()).map(|x| x.0);
@@ -1235,7 +1235,7 @@ fn get_type(
                      err_manager,
                      expr_location,
                      "Call to `{}` has named argument(s) which come before non-named argument(s)",
-                     interner.lookup(*proc_name),
+                     interner.lookup(proc_name.identifier),
                   );
                }
 
@@ -1245,7 +1245,7 @@ fn get_type(
                      err_manager,
                      expr_location,
                      "In call to `{}`, mismatched arity. Expected {} type arguments but got {}",
-                     interner.lookup(*proc_name),
+                     interner.lookup(proc_name.identifier),
                      procedure_info.type_parameters,
                      generic_args.len()
                   );
@@ -1257,7 +1257,7 @@ fn get_type(
                      err_manager,
                      expr_location,
                      "In call to `{}`, mismatched arity. Expected {} arguments but got {}",
-                     interner.lookup(*proc_name),
+                     interner.lookup(proc_name.identifier),
                      procedure_info.parameters.len(),
                      args.len()
                   );
@@ -1283,7 +1283,7 @@ fn get_type(
                            err_manager,
                            &[(expr_location, "call"), (actual_expr.location, "argument")],
                            "In call to `{}`, argument at position {} is of type {} when we expected {}",
-                           interner.lookup(*proc_name),
+                           interner.lookup(proc_name.identifier),
                            i,
                            actual_type_str,
                            expected_type_str,
@@ -1300,7 +1300,7 @@ fn get_type(
                            err_manager,
                            expr_location,
                            "In call to `{}`, encountered named argument `{}` that does not correspond to any named parameter",
-                           interner.lookup(*proc_name),
+                           interner.lookup(proc_name.identifier),
                            interner.lookup(arg.name.unwrap()),
                         );
                         continue;
@@ -1321,7 +1321,7 @@ fn get_type(
                            err_manager,
                            expr_location,
                            "In call to `{}`, encountered argument of type {} when we expected {} for named parameter {}",
-                           interner.lookup(*proc_name),
+                           interner.lookup(proc_name.identifier),
                            actual_type_str,
                            expected_type_str,
                            interner.lookup(arg.name.unwrap())
@@ -1338,7 +1338,7 @@ fn get_type(
                   err_manager,
                   expr_location,
                   "Encountered call to undefined procedure `{}`",
-                  interner.lookup(*proc_name),
+                  interner.lookup(proc_name.identifier),
                );
                ExpressionType::Value(ValueType::CompileError)
             }
@@ -1349,7 +1349,7 @@ fn get_type(
             type_expression(err_manager, field.1, validation_context, interner);
          }
 
-         match validation_context.struct_info.get(struct_name) {
+         match validation_context.struct_info.get(&struct_name.identifier) {
             Some(defined_struct) => {
                let defined_fields = &defined_struct.field_types;
 
@@ -1368,7 +1368,7 @@ fn get_type(
                            ],
                            "`{}` is not a known field of struct `{}`",
                            interner.lookup(field.0),
-                           interner.lookup(*struct_name),
+                           interner.lookup(struct_name.identifier),
                         );
                         continue;
                      }
@@ -1385,7 +1385,7 @@ fn get_type(
                         ],
                         "`{}` is a valid field of struct `{}`, but is duplicated",
                         interner.lookup(field.0),
-                        interner.lookup(*struct_name),
+                        interner.lookup(struct_name.identifier),
                      );
                   }
 
@@ -1408,7 +1408,7 @@ fn get_type(
                         ],
                         "For field `{}` of struct `{}`, encountered value of type {} when we expected {}",
                         interner.lookup(field.0),
-                        interner.lookup(*struct_name),
+                        interner.lookup(struct_name.identifier),
                         field_1_type_str,
                         defined_type_str,
                      );
@@ -1426,12 +1426,12 @@ fn get_type(
                         (expr_location, "struct instantiated")
                      ],
                      "Literal of struct `{}` is missing fields [{}]",
-                     interner.lookup(*struct_name),
+                     interner.lookup(struct_name.identifier),
                      unmatched_fields_str.join(", "),
                   );
                }
 
-               ExpressionType::Value(ValueType::Struct(*struct_name))
+               ExpressionType::Value(ValueType::Struct(struct_name.identifier))
             }
             None => {
                validation_context.error_count += 1;
@@ -1439,7 +1439,7 @@ fn get_type(
                   err_manager,
                   expr_location,
                   "Encountered construction of undefined struct `{}`",
-                  interner.lookup(*struct_name)
+                  interner.lookup(struct_name.identifier)
                );
                ExpressionType::Value(ValueType::CompileError)
             }
@@ -1640,17 +1640,17 @@ fn get_type(
          }
       }
       Expression::EnumLiteral(x, v) => {
-         if let Some(enum_info) = validation_context.enum_info.get(x) {
+         if let Some(enum_info) = validation_context.enum_info.get(&x.identifier) {
             if enum_info.variants.contains(v) {
-               ExpressionType::Value(ValueType::Enum(*x))
+               ExpressionType::Value(ValueType::Enum(x.identifier))
             } else {
                validation_context.error_count += 1;
                rolandc_error!(
                   err_manager,
                   expr_location,
-                  "Attempted to instantiate enum variant `{}` of enum `{}`, which is not a valid variant",
+                  "Attempted to instantiate variant `{}` of enum `{}`, which is not a valid variant",
                   interner.lookup(*v),
-                  interner.lookup(*x),
+                  interner.lookup(x.identifier),
                );
 
                ExpressionType::Value(ValueType::CompileError)
@@ -1661,7 +1661,7 @@ fn get_type(
                err_manager,
                expr_location,
                "Attempted to instantiate enum `{}`, which does not exist",
-               interner.lookup(*x),
+               interner.lookup(x.identifier),
             );
 
             ExpressionType::Value(ValueType::CompileError)

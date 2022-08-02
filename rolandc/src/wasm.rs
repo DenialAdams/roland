@@ -1045,7 +1045,7 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
          };
          let index = generation_context
             .enum_info
-            .get(name)
+            .get(&name.identifier)
             .unwrap()
             .variants
             .get_index_of(variant)
@@ -1104,8 +1104,8 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
       Expression::StructLiteral(s_name, fields) => {
          // We need to emit this in the proper order!!
          let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
-         let si = generation_context.struct_info.get(s_name).unwrap();
-         let ssi = generation_context.struct_size_info.get(s_name).unwrap();
+         let si = generation_context.struct_info.get(&s_name.identifier).unwrap();
+         let ssi = generation_context.struct_size_info.get(&s_name.identifier).unwrap();
          for (field, next_field) in si.field_types.iter().zip(si.field_types.keys().skip(1)) {
             let value_of_field = map.get(field.0).copied().unwrap();
             emit_literal_bytes(value_of_field, generation_context);
@@ -1169,7 +1169,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          };
          let index = generation_context
             .enum_info
-            .get(name)
+            .get(&name.identifier)
             .unwrap()
             .variants
             .get_index_of(variant)
@@ -1627,7 +1627,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             }
          }
 
-         generation_context.out.emit_call(*proc_name, interner);
+         generation_context.out.emit_call(proc_name.identifier, interner);
       }
       Expression::StructLiteral(s_name, fields) => {
          // First we emit the expressions *in the order they were written*,
@@ -1645,7 +1645,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
 
          // Then we load from the temps in the order the struct is laid out
          let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
-         let si = generation_context.struct_info.get(s_name).unwrap();
+         let si = generation_context.struct_info.get(&s_name.identifier).unwrap();
          for field in si.field_types.iter() {
             let value_of_field = map.get(field.0).copied().unwrap();
             let field_virtual_var = interner

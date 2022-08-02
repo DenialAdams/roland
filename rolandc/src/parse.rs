@@ -213,7 +213,7 @@ pub enum CastType {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expression {
    ProcedureCall {
-      proc_name: StrId,
+      proc_name: IdentifierNode,
       generic_args: Box<[GenericArgumentNode]>,
       args: Box<[ArgumentNode]>,
    },
@@ -237,14 +237,14 @@ pub enum Expression {
       rhs: ExpressionId,
    },
    UnaryOperator(UnOp, ExpressionId),
-   StructLiteral(StrId, Vec<(StrId, ExpressionId)>),
+   StructLiteral(IdentifierNode, Vec<(StrId, ExpressionId)>),
    FieldAccess(Vec<StrId>, ExpressionId),
    Cast {
       cast_type: CastType,
       target_type: ExpressionType,
       expr: ExpressionId,
    },
-   EnumLiteral(StrId, StrId),
+   EnumLiteral(IdentifierNode, StrId),
 }
 
 // TODO: it would be cool if StrId was NonZero so that this struct (and others like it)
@@ -307,7 +307,7 @@ pub enum Statement {
    VariableDeclaration(IdentifierNode, ExpressionId, Option<ExpressionType>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IdentifierNode {
    pub identifier: StrId,
    pub location: SourceInfo,
@@ -1142,7 +1142,10 @@ fn pratt(
             let combined_location = merge_locations(expr_begin_source.unwrap(), close_token.source_info);
             wrap(
                Expression::ProcedureCall {
-                  proc_name: s,
+                  proc_name: IdentifierNode {
+                     identifier: s,
+                     location: expr_begin_source.unwrap(),
+                  },
                   generic_args: generic_args.into_boxed_slice(),
                   args: args.into_boxed_slice(),
                },
@@ -1156,7 +1159,10 @@ fn pratt(
             let combined_location = merge_locations(expr_begin_source.unwrap(), close_token.source_info);
             wrap(
                Expression::ProcedureCall {
-                  proc_name: s,
+                  proc_name: IdentifierNode {
+                     identifier: s,
+                     location: expr_begin_source.unwrap(),
+                  },
                   generic_args: vec![].into_boxed_slice(),
                   args: args.into_boxed_slice(),
                },
@@ -1169,7 +1175,10 @@ fn pratt(
             let variant_identifier = extract_identifier(variant.token);
             let combined_location = merge_locations(expr_begin_source.unwrap(), variant.source_info);
             wrap(
-               Expression::EnumLiteral(s, variant_identifier),
+               Expression::EnumLiteral(IdentifierNode {
+                  identifier: s,
+                  location: expr_begin_source.unwrap(),
+               }, variant_identifier),
                combined_location,
                expressions,
             )
@@ -1202,7 +1211,7 @@ fn pratt(
             }
             let closing_brace = l.next().unwrap();
             let combined_location = merge_locations(expr_begin_source.unwrap(), closing_brace.source_info);
-            wrap(Expression::StructLiteral(s, fields), combined_location, expressions)
+            wrap(Expression::StructLiteral(IdentifierNode { identifier: s, location: expr_begin_source.unwrap() }, fields), combined_location, expressions)
          } else {
             wrap(Expression::Variable(s), expr_begin_source.unwrap(), expressions)
          }

@@ -300,12 +300,12 @@ impl LanguageServer for Backend {
                };
                let target_path = roland_source_path_to_canon_path(&si.file, &ctx.interner);
                if target_path.is_none() {
-                  // We can't give people linkes into the standard library
+                  // We can't give people links into the standard library
                   return Ok(None);
                }
-               return Ok(Some(GotoDefinitionResponse::Link(vec![LocationLink {
+               return Ok(target_path.map(|x| GotoDefinitionResponse::Link(vec![LocationLink {
                   origin_selection_range: None,
-                  target_uri: Url::from_file_path(target_path.unwrap().unwrap()).unwrap(),
+                  target_uri: Url::from_file_path(x.unwrap()).unwrap(),
                   target_range: dest_range,
                   target_selection_range: dest_range,
                }])));

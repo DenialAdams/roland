@@ -30,7 +30,7 @@ pub fn lower_single_expression(
          generic_args,
          args: _args,
       } => {
-         if *x != sizeof_proc_id {
+         if x.identifier != sizeof_proc_id {
             return;
          }
 

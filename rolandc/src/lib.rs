@@ -10,9 +10,11 @@
 #![allow(clippy::cast_possible_truncation)] // I am aware
 #![allow(clippy::single_match_else)] // Not always an improvement in my opinion
 #![allow(clippy::missing_errors_doc)] // Nothing is documented
+#![allow(clippy::missing_panics_doc)] // Nothing is documented
 #![allow(clippy::module_name_repetitions)] // I don't really care that much
 #![allow(clippy::match_wildcard_for_single_variants)] // False positives
 #![allow(clippy::new_without_default)] // I don't want dead code
+#![allow(clippy::result_unit_err)] // This is based on a notion of public that doesn't really apply for me
 #![feature(hash_drain_filter)]
 
 mod add_virtual_variables;

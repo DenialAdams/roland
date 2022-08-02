@@ -44,12 +44,24 @@ fn span_contains(span: SourceInfo, location: SourcePosition, document: &Path, in
 #[must_use]
 pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationContext) -> Option<SourceInfo> {
    for expr in ctx.expressions.values.iter() {
-      if !span_contains(expr.location, sp, document, &ctx.interner) {
-         continue;
-      }
       match &expr.expression {
          Expression::ProcedureCall { proc_name, .. } => {
-            return ctx.program.procedure_info.get(proc_name).map(|x| x.location);
+            if !span_contains(proc_name.location, sp, document, &ctx.interner) {
+               continue;
+            }
+            return ctx.program.procedure_info.get(&proc_name.identifier).map(|x| x.location);
+         }
+         Expression::StructLiteral(struct_name, _) => {
+            if !span_contains(struct_name.location, sp, document, &ctx.interner) {
+               continue;
+            }
+            return ctx.program.struct_info.get(&struct_name.identifier).map(|x| x.location);
+         }
+         Expression::EnumLiteral(enum_name, _) => {
+            if !span_contains(enum_name.location, sp, document, &ctx.interner) {
+               continue;
+            }
+            return ctx.program.enum_info.get(&enum_name.identifier).map(|x| x.location);
          }
          _ => continue,
       }
