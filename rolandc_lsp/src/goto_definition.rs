@@ -49,7 +49,11 @@ pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationCon
             if !span_contains(proc_name.location, sp, document, &ctx.interner) {
                continue;
             }
-            return ctx.program.procedure_info.get(&proc_name.identifier).map(|x| x.location);
+            return ctx
+               .program
+               .procedure_info
+               .get(&proc_name.identifier)
+               .map(|x| x.location);
          }
          Expression::StructLiteral(struct_name, _) => {
             if !span_contains(struct_name.location, sp, document, &ctx.interner) {

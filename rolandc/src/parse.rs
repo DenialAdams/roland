@@ -1175,10 +1175,13 @@ fn pratt(
             let variant_identifier = extract_identifier(variant.token);
             let combined_location = merge_locations(expr_begin_source.unwrap(), variant.source_info);
             wrap(
-               Expression::EnumLiteral(IdentifierNode {
-                  identifier: s,
-                  location: expr_begin_source.unwrap(),
-               }, variant_identifier),
+               Expression::EnumLiteral(
+                  IdentifierNode {
+                     identifier: s,
+                     location: expr_begin_source.unwrap(),
+                  },
+                  variant_identifier,
+               ),
                combined_location,
                expressions,
             )
@@ -1211,7 +1214,17 @@ fn pratt(
             }
             let closing_brace = l.next().unwrap();
             let combined_location = merge_locations(expr_begin_source.unwrap(), closing_brace.source_info);
-            wrap(Expression::StructLiteral(IdentifierNode { identifier: s, location: expr_begin_source.unwrap() }, fields), combined_location, expressions)
+            wrap(
+               Expression::StructLiteral(
+                  IdentifierNode {
+                     identifier: s,
+                     location: expr_begin_source.unwrap(),
+                  },
+                  fields,
+               ),
+               combined_location,
+               expressions,
+            )
          } else {
             wrap(Expression::Variable(s), expr_begin_source.unwrap(), expressions)
          }

@@ -303,12 +303,14 @@ impl LanguageServer for Backend {
                   // We can't give people links into the standard library
                   return Ok(None);
                }
-               return Ok(target_path.map(|x| GotoDefinitionResponse::Link(vec![LocationLink {
-                  origin_selection_range: None,
-                  target_uri: Url::from_file_path(x.unwrap()).unwrap(),
-                  target_range: dest_range,
-                  target_selection_range: dest_range,
-               }])));
+               return Ok(target_path.map(|x| {
+                  GotoDefinitionResponse::Link(vec![LocationLink {
+                     origin_selection_range: None,
+                     target_uri: Url::from_file_path(x.unwrap()).unwrap(),
+                     target_range: dest_range,
+                     target_selection_range: dest_range,
+                  }])
+               }));
             } else {
                return Ok(None);
             }
