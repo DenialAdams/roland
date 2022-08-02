@@ -8,9 +8,9 @@
     "license": "MIT OR Apache-2.0",
     "displayName": "Roland",
     "description": "Support for the Roland programming language",
-    "version": "0.4.0",
+    "version": "0.4.1",
     "engines": {
-        "vscode": "^1.66.0"
+        "vscode": "^1.69.2"
     },
     "scripts": {
         "vscode:prepublish": "npm run build-base -- --minify",
