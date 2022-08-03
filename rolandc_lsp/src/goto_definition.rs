@@ -48,10 +48,10 @@ pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationCon
          Expression::ProcedureCall { proc_name, .. } => {
             if span_contains(proc_name.location, sp, document, &ctx.interner) {
                return ctx
-               .program
-               .procedure_info
-               .get(&proc_name.identifier)
-               .map(|x| x.location);
+                  .program
+                  .procedure_info
+                  .get(&proc_name.identifier)
+                  .map(|x| x.location);
             }
          }
          Expression::StructLiteral(struct_name, _) => {
@@ -63,7 +63,11 @@ pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationCon
             if span_contains(enum_name.location, sp, document, &ctx.interner) {
                return ctx.program.enum_info.get(&enum_name.identifier).map(|x| x.location);
             } else if span_contains(enum_variant.location, sp, document, &ctx.interner) {
-               return ctx.program.enum_info.get(&enum_name.identifier).and_then(|x| x.variants.get(&enum_variant.identifier).copied());
+               return ctx
+                  .program
+                  .enum_info
+                  .get(&enum_name.identifier)
+                  .and_then(|x| x.variants.get(&enum_variant.identifier).copied());
             }
          }
          _ => (),

@@ -1135,6 +1135,20 @@ fn get_type(
                "Taking a pointer to a zero sized type is disallowed, as they don't reside in memory.",
             );
             ExpressionType::Value(ValueType::CompileError)
+         } else if *un_op == UnOp::Dereference
+            && sizeof_type_mem(
+               e.exp_type.as_ref().unwrap(),
+               validation_context.enum_info,
+               &validation_context.struct_size_info,
+            ) == 0
+         {
+            validation_context.error_count += 1;
+            rolandc_error!(
+               err_manager,
+               expr_location,
+               "Dereferencing a pointer to a zero sized type is disallowed, as there is nothing to load.",
+            );
+            ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf {
             if let Expression::Variable(var) = e.expression {
                if validation_context.static_info.get(&var).map_or(false, |x| x.is_const) {
