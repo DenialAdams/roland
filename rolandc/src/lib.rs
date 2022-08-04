@@ -28,7 +28,6 @@ pub mod parse;
 mod semantic_analysis;
 mod size_info;
 pub mod source_info;
-mod tree_walker;
 mod type_data;
 mod typed_index_vec;
 mod various_expression_lowering;
