@@ -170,7 +170,10 @@ An example WASM-4 game can be viewed here: https://github.com/DenialAdams/roland
 ### Visual Studio Code Extension
 There is a VS Code extension for Roland - search for "Roland" on the vscode marketplace, and it's the extension published by "brick.codes".
 
-It has syntax highlighting and a primitive language server (it should give you errors as you type.)
+It should provide the following features:
+- Syntax Highlighting
+- Errors as you type
+- "Goto definition" support for procedure calls, struct literals, and enum literals
 
 (If you develop on mac, the language server won't work for you - please file an issue!)
 
