@@ -1,5 +1,7 @@
 use std::num::IntErrorKind;
 
+use unicode_ident::{is_xid_start, is_xid_continue};
+
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
@@ -629,7 +631,7 @@ pub fn lex(
                let _ = chars.next().unwrap();
             } else if c.is_ascii_digit() {
                mode = LexMode::NumericLiteral;
-            } else if c.is_alphabetic() || c == '_' {
+            } else if is_xid_start(c) {
                mode = LexMode::Ident;
             } else {
                rolandc_error!(
@@ -646,7 +648,10 @@ pub fn lex(
             }
          }
          LexMode::Ident => {
-            if !c.is_alphanumeric() && c != '_' {
+            if is_xid_continue(c) {
+               str_buf.push(c);
+               let _ = chars.next().unwrap();
+            } else {
                let resulting_token = extract_keyword_or_ident(&str_buf.buf, interner);
                tokens.push(SourceToken {
                   source_info: SourceInfo {
@@ -658,9 +663,6 @@ pub fn lex(
                });
                cur_position.col += str_buf.clear();
                mode = LexMode::Normal;
-            } else {
-               str_buf.push(c);
-               let _ = chars.next().unwrap();
             }
          }
          LexMode::StringLiteral => {

@@ -528,6 +528,7 @@ version = "0.1.0"
 dependencies = [
  "arrayvec",
  "indexmap",
+ "unicode-ident",
  "wat",
 ]
 
