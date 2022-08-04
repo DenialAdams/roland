@@ -237,7 +237,7 @@ pub enum Expression {
       rhs: ExpressionId,
    },
    UnaryOperator(UnOp, ExpressionId),
-   StructLiteral(IdentifierNode, Vec<(StrId, ExpressionId)>),
+   StructLiteral(IdentifierNode, Box<[(StrId, ExpressionId)]>),
    FieldAccess(Vec<StrId>, ExpressionId),
    Cast {
       cast_type: CastType,
@@ -1226,7 +1226,7 @@ fn pratt(
                      identifier: s,
                      location: expr_begin_source.unwrap(),
                   },
-                  fields,
+                  fields.into_boxed_slice(),
                ),
                combined_location,
                expressions,

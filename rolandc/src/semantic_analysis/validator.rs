@@ -1368,7 +1368,7 @@ fn get_type(
                let defined_fields = &defined_struct.field_types;
 
                let mut unmatched_fields: HashSet<StrId> = defined_fields.keys().copied().collect();
-               for field in fields {
+               for field in fields.iter() {
                   // Extraneous field check
                   let defined_type = match defined_fields.get(&field.0) {
                      Some(x) => x,
