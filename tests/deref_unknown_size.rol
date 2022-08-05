@@ -1,0 +1,6 @@
+proc main() {
+   // address of and dereference check the size to ensure that we're not dealing with a ZST
+   // this should obviously not cause a crash
+   let x = 10;
+   let y = x~;
+}

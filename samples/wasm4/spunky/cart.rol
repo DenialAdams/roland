@@ -559,8 +559,7 @@ proc move_ghost(dt: f64) {
    // if player x < ghost x, ghost x--
 
    let target_position: Position = PLAYER_POSITIONS[0];
-   // (this should be INF, but we don't have that yet in Roland!)
-   let best_dist: f64 = 99999999999999999999999999.0;
+   let best_dist: f64 = F64_INFINITY;
    for i in 0..ACTIVE_PLAYERS {
       if !PLAYERS_ALIVE[i] {
          continue;

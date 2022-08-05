@@ -1,0 +1,5 @@
+Expected type [AnyPointer] for expression Dereference; instead got ?? Int
+↳ line 5, column 12 [deref_unknown_size.rol]
+We weren't able to determine the types of 1 int literals
+↳ int literal @ line 4, column 12 [deref_unknown_size.rol]
+There were 2 semantic errors, bailing

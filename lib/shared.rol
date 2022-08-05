@@ -32,3 +32,9 @@ const USIZE_MAX: usize = U32_MAX transmute usize;
 
 const ISIZE_MIN: isize = I32_MIN transmute isize;
 const ISIZE_MAX: isize = I32_MAX transmute isize;
+
+const F64_INFINITY: f64 = 0x7ff0000000000000 transmute f64;
+const F64_NEG_INFINITY: f64 = 0xfff0000000000000 transmute f64;
+
+const F32_INFINITY: f32 = 0x7f800000 transmute f32;
+const F32_NEG_INFINITY: f32 = 0xff800000 transmute f32;

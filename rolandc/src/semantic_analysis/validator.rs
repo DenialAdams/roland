@@ -12,7 +12,7 @@ use crate::parse::{
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, value_type_mem_alignment};
-use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE};
+use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE, U64_TYPE, U32_TYPE};
 use crate::typed_index_vec::Handle;
 use crate::Target;
 use arrayvec::ArrayVec;
@@ -188,7 +188,6 @@ pub fn type_and_check_validity(
       return validation_context.error_count;
    }
 
-   //let struct_size_info: HashMap<StrId, SizeInfo> = HashMap::with_capacity(validation_context.struct_info.len());
    validation_context
       .struct_size_info
       .reserve(validation_context.struct_info.len());
@@ -380,41 +379,7 @@ pub fn type_and_check_validity(
       }
    }
 
-   if !validation_context.unknown_ints.is_empty() {
-      validation_context.error_count += 1;
-      let err_details: Vec<_> = validation_context
-         .unknown_ints
-         .iter()
-         .map(|x| {
-            let loc = validation_context.expressions[*x].location;
-            (loc, "int literal")
-         })
-         .collect();
-      rolandc_error_w_details!(
-         err_manager,
-         &err_details,
-         "We weren't able to determine the types of {} int literals",
-         validation_context.unknown_ints.len()
-      );
-   }
-
-   if !validation_context.unknown_floats.is_empty() {
-      validation_context.error_count += 1;
-      let err_details: Vec<_> = validation_context
-         .unknown_floats
-         .iter()
-         .map(|x| {
-            let loc = validation_context.expressions[*x].location;
-            (loc, "float literal")
-         })
-         .collect();
-      rolandc_error_w_details!(
-         err_manager,
-         &err_details,
-         "We weren't able to determine the types of {} float literals",
-         validation_context.unknown_floats.len()
-      );
-   }
+   error_on_unknown_literals(err_manager, &mut validation_context);
 
    let err_count = validation_context.error_count;
    program.literals = validation_context.string_literals;
@@ -782,19 +747,6 @@ fn get_type(
       } => {
          type_expression(err_manager, *expr_id, validation_context, interner);
 
-         if *cast_type == CastType::Transmute && target_type.is_pointer() {
-            try_set_inferred_type(
-               &ExpressionType::Value(USIZE_TYPE),
-               *expr_id,
-               validation_context,
-               err_manager,
-               interner,
-            );
-         }
-
-         let e = &validation_context.expressions[*expr_id];
-         let e_type = e.exp_type.as_ref().unwrap();
-
          if resolve_type(
             target_type,
             validation_context.enum_info,
@@ -811,7 +763,38 @@ fn get_type(
             );
 
             return ExpressionType::Value(ValueType::CompileError);
-         } else if e_type.is_error_type() {
+         }
+
+         if *cast_type == CastType::Transmute && target_type.is_pointer() {
+            try_set_inferred_type(
+               &ExpressionType::Value(USIZE_TYPE),
+               *expr_id,
+               validation_context,
+               err_manager,
+               interner,
+            );
+         } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Value(F64_TYPE)) {
+            try_set_inferred_type(
+               &ExpressionType::Value(U64_TYPE),
+               *expr_id,
+               validation_context,
+               err_manager,
+               interner,
+            );
+         } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Value(F32_TYPE)) {
+            try_set_inferred_type(
+               &ExpressionType::Value(U32_TYPE),
+               *expr_id,
+               validation_context,
+               err_manager,
+               interner,
+            );
+         }
+
+         let e = &validation_context.expressions[*expr_id];
+         let e_type = e.exp_type.as_ref().unwrap();
+
+         if e_type.is_error_type() {
             // Avoid cascading errors
             return ExpressionType::Value(ValueType::CompileError);
          }
@@ -887,6 +870,16 @@ fn get_type(
                }
             }
             CastType::Transmute => {
+               if !e_type.is_concrete_type() {
+                  validation_context.error_count += 1;
+                  rolandc_error_w_details!(
+                     err_manager,
+                     &[(expr_location, "transmute"), (e.location, "operand")],
+                     "Transmute encountered an operand whose size is not yet known",
+                  );
+                  return ExpressionType::Value(ValueType::CompileError);
+               }
+
                let size_source = sizeof_type_mem(
                   e_type,
                   validation_context.enum_info,
@@ -1086,6 +1079,14 @@ fn get_type(
             }
          };
 
+         // important that we check for concreteness first:
+         // an UnknownInt is not zero sized, but sizeof_type_mem asserts on it
+         let is_zst = e.exp_type.as_ref().unwrap().is_concrete_type() && sizeof_type_mem(
+            e.exp_type.as_ref().unwrap(),
+            validation_context.enum_info,
+            &validation_context.struct_size_info,
+         ) == 0;
+
          if e.exp_type.as_ref().unwrap().is_error_type() {
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
@@ -1121,11 +1122,7 @@ fn get_type(
             }
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf
-            && sizeof_type_mem(
-               e.exp_type.as_ref().unwrap(),
-               validation_context.enum_info,
-               &validation_context.struct_size_info,
-            ) == 0
+            && is_zst
          {
             validation_context.error_count += 1;
             // Allowing this wouldn't cause any clear bug (as far as I know), but it just seems whack
@@ -1136,11 +1133,7 @@ fn get_type(
             );
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::Dereference
-            && sizeof_type_mem(
-               e.exp_type.as_ref().unwrap(),
-               validation_context.enum_info,
-               &validation_context.struct_size_info,
-            ) == 0
+            && is_zst
          {
             validation_context.error_count += 1;
             rolandc_error!(
@@ -1692,4 +1685,45 @@ fn type_expression(
 ) {
    validation_context.expressions[expr_index].exp_type =
       Some(get_type(err_manager, expr_index, validation_context, interner));
+}
+
+fn error_on_unknown_literals(
+   err_manager: &mut ErrorManager,
+   validation_context: &mut ValidationContext,
+) {
+   if !validation_context.unknown_ints.is_empty() {
+      validation_context.error_count += 1;
+      let err_details: Vec<_> = validation_context
+         .unknown_ints
+         .iter()
+         .map(|x| {
+            let loc = validation_context.expressions[*x].location;
+            (loc, "int literal")
+         })
+         .collect();
+      rolandc_error_w_details!(
+         err_manager,
+         &err_details,
+         "We weren't able to determine the types of {} int literals",
+         validation_context.unknown_ints.len()
+      );
+   }
+
+   if !validation_context.unknown_floats.is_empty() {
+      validation_context.error_count += 1;
+      let err_details: Vec<_> = validation_context
+         .unknown_floats
+         .iter()
+         .map(|x| {
+            let loc = validation_context.expressions[*x].location;
+            (loc, "float literal")
+         })
+         .collect();
+      rolandc_error_w_details!(
+         err_manager,
+         &err_details,
+         "We weren't able to determine the types of {} float literals",
+         validation_context.unknown_floats.len()
+      );
+   }
 }

@@ -1,0 +1,6 @@
+Transmute encountered an operand whose size is not yet known
+↳ transmute @ line 2, column 12 [transmute_literal_of_unknown_size.rol]
+↳ operand @ line 2, column 12 [transmute_literal_of_unknown_size.rol]
+We weren't able to determine the types of 1 int literals
+↳ int literal @ line 2, column 12 [transmute_literal_of_unknown_size.rol]
+There were 2 semantic errors, bailing

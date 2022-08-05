@@ -1,0 +1,7 @@
+proc main() {
+   // address of and dereference check the size to ensure that we're not dealing with a ZST
+   // an unknown int / unknown float is > size 0, so that should be ok
+   let a = 0;
+   let b = &a;
+   let c: u64 = a;
+}
