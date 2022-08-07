@@ -3,6 +3,7 @@ import "levelgen.rol";
 import "sprites.rol";
 
 static GAME_OVER: bool;
+static STARTED_FALLING_FRAMES: [usize; 4];
 static PLAYERS_ALIVE: [bool; 4];
 static PLAYER_POSITIONS: [Position; 4];
 const PLAYER_WIDTH: f64 = 16.0;
@@ -78,6 +79,7 @@ proc rectangles_collide(x1: f64, y1: f64, width1: f64, height1: f64, x2: f64, y2
       (height1 + y1 > y2);
 
 }
+
 proc segment_v_segment(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64, x4: f64, y4: f64) -> bool {
    let dx1 = x2 - x1;
    let dy1 = y2 - y1;
@@ -87,6 +89,7 @@ proc segment_v_segment(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64, x4:
    let dy3 = y1 - y3;
    let d = dx1*dy2 - dy1*dx2;
    if d == 0.0 {
+      // parallel lines
       return false;
    }
    let t1 = (dx2*dy3 - dy2*dx3)/d;
@@ -107,6 +110,7 @@ proc reset_game(starting_score: u32) {
      JUMP_SPEEDS[p] = 0.0;
      JUMP_STATES[p] = JumpState::Standing;
      PLAYERS_ALIVE[p] = true;
+     STARTED_FALLING_FRAMES[p] = 0;
    }
    GHOST_IS_PRESENT = false;
    TIME_ALIVE = 0;
@@ -194,34 +198,8 @@ proc sim(dt: f64) {
          continue;
       }
 
-      // Handle input
-      let jump_pressed = (GAMEPADS~[p] & BUTTON_1) > 0;
-      if jump_pressed and JUMP_STATES[p] == JumpState::Standing {
-         JUMP_STATES[p] = JumpState::Jumping;
-         JUMP_SPEEDS[p] = 9.0;
-         tone(300 | (800 << 16), 6, 50, TONE_MODE1);
-      }
-
-      let left_pressed = (GAMEPADS~[p] & BUTTON_LEFT) > 0;
-      let right_pressed = (GAMEPADS~[p] & BUTTON_RIGHT) > 0;
-
-      let go_left = left_pressed & !right_pressed;
-      let go_right = right_pressed & !left_pressed;
-
-      let offset: f64 = 0.0;
-      if go_left {
-         PLAYER_POSITIONS[p].x = PLAYER_POSITIONS[p].x - (2.0 * dt);
-         offset = TILE_WIDTH;
-         PLAYERS_FACING_LEFT[p] = true;
-         PLAYERS_MOVED_ON_LAST_FRAME[p] = true;
-      } else if go_right {
-         PLAYER_POSITIONS[p].x = PLAYER_POSITIONS[p].x + (2.0 * dt);
-         offset = TILE_WIDTH*-1.0;
-         PLAYERS_FACING_LEFT[p] = false;
-         PLAYERS_MOVED_ON_LAST_FRAME[p] = true;
-      }
-      else {
-         PLAYERS_MOVED_ON_LAST_FRAME[p] = false;
+      if STARTED_FALLING_FRAMES[p] > 0 {
+         STARTED_FALLING_FRAMES[p] = STARTED_FALLING_FRAMES[p] - 1;
       }
 
       let collidable_tiles: [usize; 30] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -259,6 +237,53 @@ proc sim(dt: f64) {
       collidable_tiles[28] = tile_corresponding_to_upper_left_player + 121;
       collidable_tiles[29] = tile_corresponding_to_upper_left_player + 122;
 
+      // Handle input
+      let jump_pressed = (GAMEPADS~[p] & BUTTON_1) > 0;
+
+      let underneath = false;
+      for ti in 0..collidable_tiles.length {
+         let t = collidable_tiles[ti];
+         if t >= TILES.length or TILES[t] == Tile::Air or TILES[t] == Tile::Coin or TILES[t] == Tile::Spike or TILES[t] == Tile::Door {
+            continue;
+         }
+
+         let x = ((t % 40) * 16) truncate f64;
+         let y = ((t / 40) * 16) truncate f64;
+         if rectangles_collide(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y - PLAYER_HEIGHT, PLAYER_WIDTH, PLAYER_HEIGHT, x, y, TILE_WIDTH, TILE_HEIGHT) {
+            underneath = true;
+            break;
+         }
+      }
+
+
+      if jump_pressed and JUMP_STATES[p] == JumpState::Standing and !underneath {
+         JUMP_STATES[p] = JumpState::Jumping;
+         JUMP_SPEEDS[p] = 9.0;
+         tone(300 | (800 << 16), 6, DEFAULT_VOLUME, TONE_MODE1);
+      }
+
+      let left_pressed = (GAMEPADS~[p] & BUTTON_LEFT) > 0;
+      let right_pressed = (GAMEPADS~[p] & BUTTON_RIGHT) > 0;
+
+      let go_left = left_pressed & !right_pressed;
+      let go_right = right_pressed & !left_pressed;
+
+      let offset: f64 = 0.0;
+      if go_left {
+         PLAYER_POSITIONS[p].x = PLAYER_POSITIONS[p].x - (2.0 * dt);
+         offset = TILE_WIDTH;
+         PLAYERS_FACING_LEFT[p] = true;
+         PLAYERS_MOVED_ON_LAST_FRAME[p] = true;
+      } else if go_right {
+         PLAYER_POSITIONS[p].x = PLAYER_POSITIONS[p].x + (2.0 * dt);
+         offset = TILE_WIDTH*-1.0;
+         PLAYERS_FACING_LEFT[p] = false;
+         PLAYERS_MOVED_ON_LAST_FRAME[p] = true;
+      }
+      else {
+         PLAYERS_MOVED_ON_LAST_FRAME[p] = false;
+      }
+
       for ti in 0..collidable_tiles.length {
          let t = collidable_tiles[ti];
 
@@ -287,7 +312,7 @@ proc sim(dt: f64) {
                let ffpt = segment_v_segment(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x, y + TILE_HEIGHT);
                let fifpt = segment_v_segment(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x + TILE_WIDTH, y + TILE_HEIGHT);
                let touched_spike = fipt | spt | tpt | fopt | ffpt | fifpt;
-               if touched_spike {
+               if touched_spike and JUMP_STATES[p] == JumpState::Standing {
                   PLAYER_POSITIONS[p].x = x + offset;
                }
             } else {
@@ -323,11 +348,18 @@ proc sim(dt: f64) {
 
                let x = ((t % 40) * 16) truncate f64;
                let y = ((t / 40) * 16) truncate f64;
-               if rectangles_collide(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y, 16.0, 16.0, x, y, 16.0, 16.0) {
+               if rectangles_collide(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y, PLAYER_WIDTH, PLAYER_HEIGHT, x, y, TILE_WIDTH, TILE_HEIGHT) {
                   if TILES[t] == Tile::Coin {
                      handle_coin_collision(t);
                   } else if TILES[t] == Tile::Spike {
-                     // h,,,
+                     // if the top of the player hits the bottom of the spike, headbump!
+                     // otherwise, let the player keep jumping over the spike
+                     let collides = rectangles_collide(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y, PLAYER_WIDTH, 1.0, x, y + (TILE_HEIGHT - 1.0), TILE_WIDTH, 1.0);
+                     if collides {
+                        PLAYER_POSITIONS[p].y = y + 16.0;
+                        JUMP_SPEEDS[p] = 0.0;
+                        JUMP_STATES[p] = JumpState::Falling;
+                     }
                   } else {
                      PLAYER_POSITIONS[p].y = y + 16.0;
                      JUMP_SPEEDS[p] = 0.0;
@@ -372,7 +404,9 @@ proc sim(dt: f64) {
                      PLAYER_POSITIONS[p].y = y - TILE_HEIGHT;
                      JUMP_STATES[p] = JumpState::Standing;
                      break;
-                  } else {
+                  } else if STARTED_FALLING_FRAMES[p] == 0 {
+                     // reset the players position, unless they just started falling
+                     // (we don't want the player to loop between falling and standing)
                      PLAYER_POSITIONS[p].y = y - TILE_HEIGHT;
                      JUMP_STATES[p] = JumpState::Standing;
                   }
@@ -380,7 +414,9 @@ proc sim(dt: f64) {
             }
             if touched_door {
                handle_door_collision();
-            } else if touched_spike {
+            } else if touched_spike and STARTED_FALLING_FRAMES[p] == 0 {
+               // don't instagib the player if he runs into spikes just after falling,
+               // because he was probably running into them fine while running
                PLAYERS_ALIVE[p] = false;
                maybe_play_game_over_noise();
                break;
@@ -403,6 +439,7 @@ proc sim(dt: f64) {
             if !ontop {
                JUMP_SPEEDS[p] = 0.0;
                JUMP_STATES[p] = JumpState::Falling;
+               STARTED_FALLING_FRAMES[p] = 2;
             }
          }
       }
@@ -421,14 +458,14 @@ proc sim(dt: f64) {
 }
 
 proc handle_coin_collision(current_tile_index: usize) {
-   tone(500 | (1000 << 16), 3, 50, TONE_MODE1);
+   tone(500 | (1000 << 16), 3, DEFAULT_VOLUME, TONE_MODE1);
    SCORE = SCORE + 1;
    TILES[current_tile_index] = Tile::Air;
 }
 
 proc handle_door_collision() {
    DOING_DOOR = true;
-   tone(90 | (160 << 16), (100 << 24) | (86 << 16) | 10 | (166 << 8), 3, 3 | (0 << 2));
+   tone(90 | (160 << 16), (100 << 24) | (86 << 16) | 10 | (166 << 8), 3 | (DEFAULT_VOLUME << 8), 3 | (0 << 2));
    SCORE = SCORE + 5;
 }
 
@@ -492,10 +529,6 @@ proc update() {
          draw_player((PLAYER_POSITIONS[p].x - camera_offset_x) truncate i32, (PLAYER_POSITIONS[p].y - camera_offset_y) truncate i32, p);
       }
 
-      if (GHOST_IS_PRESENT) {
-         draw_ghost(camera_offset_x, camera_offset_y);
-      }
-
       for t in 0..TILES.length {
          let tmp: u16 = DRAW_COLORS~;
          DRAW_COLORS~ = 0x2340;
@@ -519,6 +552,10 @@ proc update() {
             blit_sub(&COIN[0], (x - camera_offset_x) truncate i32, (y - camera_offset_y) truncate i32, 16, 16, coin_spritesheet_x, 0, COIN_WIDTH, COIN_FLAGS);
          }
          DRAW_COLORS~ = tmp;
+      }
+
+      if (GHOST_IS_PRESENT) {
+         draw_ghost(camera_offset_x, camera_offset_y);
       }
    }
 
@@ -548,10 +585,10 @@ proc draw_player(player_x: i32, player_y: i32, player_index: usize) {
    // Choose which player sprite to use based on the player index. Then draw the player.
    if (player_index % 2 == 0) {
       DRAW_COLORS~ = 0x0432;
-      blit_sub(&PLAYER_SPRITESHEET[0], player_x -1 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
+      blit_sub(&PLAYER_SPRITESHEET[0], player_x - 2 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
    } else {
       DRAW_COLORS~ = 0x0324;
-      blit_sub(&PLAYER_2_SPRITESHEET[0], player_x -1 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
+      blit_sub(&PLAYER_2_SPRITESHEET[0], player_x - 2 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
    }
    DRAW_COLORS~ = tmp;
 }
@@ -563,7 +600,7 @@ static GHOST_POSITION: Position;
 const GHOST_HEIGHT: u32 = 30;
 const GHOST_WIDTH: u32 = 30;
 const GHOST_SPEED: u64 = 1;
-const DEFAULT_VOLUME: u32 = 50;
+const DEFAULT_VOLUME: u32 = 30;
 
 
 proc update_timers() {
@@ -588,7 +625,7 @@ proc maybe_spawn_ghost() {
       let ending_freq: u32 = 350;
       let decay: u32 = 42;
       let release: u32 = 106;
-      tone(starting_freq | (ending_freq << 16), (0 | (release << 8) | (decay << 16)), DEFAULT_VOLUME, TONE_PULSE2 | TONE_MODE1);
+      tone(starting_freq | (ending_freq << 16), (0 | (release << 8) | (decay << 16)), DEFAULT_VOLUME | (DEFAULT_VOLUME << 8), TONE_PULSE2 | TONE_MODE1);
    }
 }
 
