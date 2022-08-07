@@ -26,7 +26,7 @@ static COIN: [u8; 384] = [ 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x0
 
 static COIN_CYCLE : AnimationCycle = AnimationCycle {
    current_time_in_animation_seconds: 0.0,
-   animation_length_seconds: 3.0,
+   animation_length_seconds: 9.0,
    animation_sprites: 6,
    starting_animation_x: 0,
    offset_between_sprites: 16,
