@@ -76,8 +76,8 @@ proc rectangles_collide(x1: f64, y1: f64, width1: f64, height1: f64, x2: f64, y2
       (x1 + width1 > x2) &
       (y1 < y2 + height2) &
       (height1 + y1 > y2);
-}
 
+}
 proc segment_v_segment(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64, x4: f64, y4: f64) -> bool {
    let dx1 = x2 - x1;
    let dy1 = y2 - y1;
@@ -224,13 +224,51 @@ proc sim(dt: f64) {
          PLAYERS_MOVED_ON_LAST_FRAME[p] = false;
       }
 
-      for t in 0..TILES.length {
-         if TILES[t] == Tile::Air {
+      let collidable_tiles: [usize; 30] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+      let tile_corresponding_to_upper_left_player: usize = ((PLAYER_POSITIONS[p].y / TILE_HEIGHT) truncate usize * 40 + (PLAYER_POSITIONS[p].x / TILE_WIDTH) truncate usize);
+
+      collidable_tiles[0] = tile_corresponding_to_upper_left_player - 82;
+      collidable_tiles[1] = tile_corresponding_to_upper_left_player - 81;
+      collidable_tiles[2] = tile_corresponding_to_upper_left_player - 80;
+      collidable_tiles[3] = tile_corresponding_to_upper_left_player - 79;
+      collidable_tiles[4] = tile_corresponding_to_upper_left_player - 78;
+      collidable_tiles[5] = tile_corresponding_to_upper_left_player - 42;
+      collidable_tiles[6] = tile_corresponding_to_upper_left_player - 41;
+      collidable_tiles[7] = tile_corresponding_to_upper_left_player - 40;
+      collidable_tiles[8] = tile_corresponding_to_upper_left_player - 39;
+      collidable_tiles[9] = tile_corresponding_to_upper_left_player - 38;
+      collidable_tiles[10] = tile_corresponding_to_upper_left_player - 2;
+      collidable_tiles[11] = tile_corresponding_to_upper_left_player - 1;
+      collidable_tiles[12] = tile_corresponding_to_upper_left_player;
+      collidable_tiles[13] = tile_corresponding_to_upper_left_player + 1;
+      collidable_tiles[14] = tile_corresponding_to_upper_left_player + 2;
+      collidable_tiles[15] = tile_corresponding_to_upper_left_player + 38;
+      collidable_tiles[16] = tile_corresponding_to_upper_left_player + 39;
+      collidable_tiles[17] = tile_corresponding_to_upper_left_player + 40;
+      collidable_tiles[18] = tile_corresponding_to_upper_left_player + 41;
+      collidable_tiles[19] = tile_corresponding_to_upper_left_player + 42;
+      collidable_tiles[20] = tile_corresponding_to_upper_left_player + 78;
+      collidable_tiles[21] = tile_corresponding_to_upper_left_player + 79;
+      collidable_tiles[22] = tile_corresponding_to_upper_left_player + 80;
+      collidable_tiles[23] = tile_corresponding_to_upper_left_player + 81;
+      collidable_tiles[24] = tile_corresponding_to_upper_left_player + 82;
+      collidable_tiles[25] = tile_corresponding_to_upper_left_player + 118;
+      collidable_tiles[26] = tile_corresponding_to_upper_left_player + 119;
+      collidable_tiles[27] = tile_corresponding_to_upper_left_player + 120;
+      collidable_tiles[28] = tile_corresponding_to_upper_left_player + 121;
+      collidable_tiles[29] = tile_corresponding_to_upper_left_player + 122;
+
+      for ti in 0..collidable_tiles.length {
+         let t = collidable_tiles[ti];
+
+         if t >= TILES.length or TILES[t] == Tile::Air {
             continue;
          }
 
          let x = ((t % 40) * 16) truncate f64;
          let y = ((t / 40) * 16) truncate f64;
+
          if rectangles_collide(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y, PLAYER_WIDTH, PLAYER_HEIGHT, x, y, TILE_WIDTH, TILE_HEIGHT) {
             if TILES[t] == Tile::Coin {
                handle_coin_collision(t);
@@ -238,25 +276,26 @@ proc sim(dt: f64) {
                PLAYER_POSITIONS[p].x = x + offset;
                handle_door_collision();
             } else if TILES[t] == Tile::Spike {
-                     let midpoint = x + (TILE_WIDTH / 2.0);
-                     // left edge of player
-                     let fipt = segment_v_segment(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y, PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x, y + TILE_HEIGHT);
-                     let spt = segment_v_segment(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y, PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x + TILE_WIDTH, y + TILE_HEIGHT);
-                     // right edge of player
-                     let tpt = segment_v_segment(PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y, PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x, y + TILE_HEIGHT);
-                     let fopt = segment_v_segment(PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y, PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x + TILE_WIDTH, y + TILE_HEIGHT);
-                     // bottom of player
-                     let ffpt = segment_v_segment(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x, y + TILE_HEIGHT);
-                     let fifpt = segment_v_segment(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x + TILE_WIDTH, y + TILE_HEIGHT);
-                     let touched_spike = fipt | spt | tpt | fopt | fipt | ffpt | fifpt;
-                     if touched_spike {
-                        PLAYER_POSITIONS[p].x = x + offset;
-                     }
+               let midpoint = x + (TILE_WIDTH / 2.0);
+               // left edge of player
+               let fipt = segment_v_segment(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y, PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x, y + TILE_HEIGHT);
+               let spt = segment_v_segment(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y, PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x + TILE_WIDTH, y + TILE_HEIGHT);
+               // right edge of player
+               let tpt = segment_v_segment(PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y, PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x, y + TILE_HEIGHT);
+               let fopt = segment_v_segment(PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y, PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x + TILE_WIDTH, y + TILE_HEIGHT);
+               // bottom of player
+               let ffpt = segment_v_segment(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x, y + TILE_HEIGHT);
+               let fifpt = segment_v_segment(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x + TILE_WIDTH, y + TILE_HEIGHT);
+               let touched_spike = fipt | spt | tpt | fopt | ffpt | fifpt;
+               if touched_spike {
+                  PLAYER_POSITIONS[p].x = x + offset;
+               }
             } else {
                PLAYER_POSITIONS[p].x = x + offset;
             }
          }
       }
+
       if (GHOST_IS_PRESENT) {
          // Check if colliding with ghost
          if rectangles_collide(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y, PLAYER_WIDTH, PLAYER_HEIGHT, GHOST_POSITION.x, GHOST_POSITION.y, GHOST_WIDTH truncate f64, GHOST_HEIGHT truncate f64) {
@@ -276,8 +315,9 @@ proc sim(dt: f64) {
                JUMP_STATES[p] = JumpState::Falling;
             }
 
-            for t in 0..TILES.length {
-               if TILES[t] == Tile::Air {
+            for ti in 0..collidable_tiles.length {
+               let t = collidable_tiles[ti];
+               if t > TILES.length or TILES[t] == Tile::Air {
                   continue;
                }
 
@@ -305,8 +345,9 @@ proc sim(dt: f64) {
 
             let touched_door: bool = false;
             let touched_spike: bool = false;
-            for t in 0..TILES.length {
-               if TILES[t] == Tile::Air{
+            for ti in 0..collidable_tiles.length {
+               let t = collidable_tiles[ti];
+               if t >= TILES.length or TILES[t] == Tile::Air {
                   continue;
                }
                let x = ((t % 40) * 16) truncate f64;
@@ -325,7 +366,7 @@ proc sim(dt: f64) {
                      // bottom of player
                      let ffpt = segment_v_segment(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x, y + TILE_HEIGHT);
                      let fifpt = segment_v_segment(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, PLAYER_POSITIONS[p].x + PLAYER_WIDTH, PLAYER_POSITIONS[p].y + PLAYER_HEIGHT, midpoint, y, x + TILE_WIDTH, y + TILE_HEIGHT);
-                     touched_spike = fipt | spt | tpt | fopt | fipt | ffpt | fifpt;
+                     touched_spike = touched_spike | fipt | spt | tpt | fopt | ffpt | fifpt;
                   } else if TILES[t] == Tile::Door {
                      touched_door = true;
                      PLAYER_POSITIONS[p].y = y - TILE_HEIGHT;
@@ -346,8 +387,9 @@ proc sim(dt: f64) {
             }
          } else if JUMP_STATES[p] == JumpState::Standing {
             let ontop = false;
-            for t in 0..TILES.length {
-               if TILES[t] == Tile::Air or TILES[t] == Tile::Coin or TILES[t] == Tile::Spike or TILES[t] == Tile::Door {
+            for ti in 0..collidable_tiles.length {
+               let t = collidable_tiles[ti];
+               if t >= TILES.length or TILES[t] == Tile::Air or TILES[t] == Tile::Coin or TILES[t] == Tile::Spike or TILES[t] == Tile::Door {
                   continue;
                }
 
@@ -367,16 +409,14 @@ proc sim(dt: f64) {
    }
    let at_least_one_player_alive: bool = false;
    for p in 0..ACTIVE_PLAYERS {
-      if PLAYERS_ALIVE[p] {
-         at_least_one_player_alive = true;
-      }
+      at_least_one_player_alive = at_least_one_player_alive | PLAYERS_ALIVE[p];
    }
    GAME_OVER = !at_least_one_player_alive;
    if !GAME_OVER {
-      if (!GHOST_IS_PRESENT) {
-         maybe_spawn_ghost();
+      maybe_spawn_ghost();
+      if GHOST_IS_PRESENT {
+         move_ghost(dt);
       }
-      move_ghost(dt);
    }
 }
 
@@ -415,7 +455,7 @@ proc update() {
       if TIME_DOING_DOOR > 150 {
          DOING_DOOR = false;
          TIME_DOING_DOOR = 0;
-         PALETTE~ = [0x211e20, 0x555568,0xa0a08b,0xe9efec];
+         PALETTE~ = [0x211e20, 0x555568, 0xa0a08b, 0xe9efec];
          reset_game(SCORE);
          return;
       }
@@ -467,7 +507,7 @@ proc update() {
             blit_sub(&BLOCKS[0], (x - camera_offset_x) truncate i32, (y - camera_offset_y) truncate i32, 16, 16, 0, 0, BLOCKS_WIDTH, BLOCKS_FLAGS);
          } else if TILES[t] == Tile::Spike {
             blit_sub(&SPIKES[0], (x - camera_offset_x) truncate i32, (y - camera_offset_y) truncate i32, 16, 16, 0, 0, SPIKES_WIDTH, SPIKES_FLAGS);
-         } else if TILES[t] == Tile::Door{
+         } else if TILES[t] == Tile::Door {
             if DOING_DOOR {
                let door_spritesheet_x = advance_animation_and_return_x(&DOOR_CYCLE, (1.0/60.0));
                blit_sub(&DOOR[0], (x - camera_offset_x) truncate i32, (y - camera_offset_y) truncate i32, 16, 16, door_spritesheet_x, 0, DOOR_WIDTH, DOOR_FLAGS);
@@ -511,7 +551,7 @@ proc draw_player(player_x: i32, player_y: i32, player_index: usize) {
       blit_sub(&PLAYER_SPRITESHEET[0], player_x -1 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
    } else {
       DRAW_COLORS~ = 0x0324;
-      blit_sub(&PLAYER_2_SPRITESHEET[0], player_x -1 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_2_SPRITESHEET_WIDTH, PLAYER_2_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
+      blit_sub(&PLAYER_2_SPRITESHEET[0], player_x -1 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
    }
    DRAW_COLORS~ = tmp;
 }
@@ -538,7 +578,7 @@ proc update_timers() {
 }
 
 proc maybe_spawn_ghost() {
-   if (TIME_ALIVE > GHOST_SPAWN_TIME) {
+   if (!GHOST_IS_PRESENT and TIME_ALIVE > GHOST_SPAWN_TIME) {
       GHOST_IS_PRESENT = true;
       // TODO: spawn in opposite corner of player, instead of top left.
       GHOST_POSITION.x = 0.0;
@@ -587,12 +627,12 @@ proc move_ghost(dt: f64) {
 
 // TODO: add some other color to the ghost to make it stand out.
 proc draw_ghost(camera_offset_x: f64, camera_offset_y: f64) {
-   // Draw ghost body.
+   // body
    let ghost_draw_x = (GHOST_POSITION.x - camera_offset_x) truncate i32;
    let ghost_draw_y = (GHOST_POSITION.y - camera_offset_y) truncate i32;
    rect(ghost_draw_x, ghost_draw_y, GHOST_WIDTH, GHOST_HEIGHT);
-   // Draw ghost eyes.
 
+   // eyes
    let ghost_left_eye_x = ghost_draw_x;
    let ghost_right_eye_x = ghost_draw_x;
    if GHOST_FACING_LEFT {
@@ -604,9 +644,9 @@ proc draw_ghost(camera_offset_x: f64, camera_offset_y: f64) {
    }
    rect(ghost_right_eye_x, ghost_draw_y + 6, 4, 5);
    rect(ghost_left_eye_x, ghost_draw_y + 4, 4, 5);
-   // draw mouth
-   rect(ghost_left_eye_x, ghost_draw_y + 12, 12, 10);
 
+   // mouth
+   rect(ghost_left_eye_x, ghost_draw_y + 12, 12, 10);
 }
 
 proc draw_game_over_text() {
@@ -621,6 +661,6 @@ proc maybe_play_game_over_noise() {
    if !GAME_OVER {
      let starting_freq: u32 = 590;
      let ending_freq: u32 = 110;
-     tone(starting_freq| (ending_freq << 16), 60, DEFAULT_VOLUME, TONE_PULSE1 | TONE_MODE3);
+     tone(starting_freq | (ending_freq << 16), 60, DEFAULT_VOLUME, TONE_PULSE1 | TONE_MODE3);
    }
 }
