@@ -1,0 +1,20 @@
+// Must be initialized to a non-zero value before using
+static RNG: u64 = 0;
+
+// xorshift
+proc rand() -> u64 {
+   RNG = RNG ^ (RNG << 13);
+   RNG = RNG ^ (RNG >> 7);
+   RNG = RNG ^ (RNG << 17);
+   return RNG;
+}
+
+// inclusive on both ends
+proc rand_range(rand_min: u64, rand_max: u64) -> u64 {
+   return rand() % (rand_max + 1 - rand_min) + rand_min;
+}
+
+// one_in(10) returns "true" 10% of the time
+proc one_in(x: u64) -> bool {
+   return rand_range(0, x - 1) == 0;
+}

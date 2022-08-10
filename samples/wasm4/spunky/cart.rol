@@ -1,5 +1,6 @@
 import "animation.rol";
 import "levelgen.rol";
+import "random.rol";
 import "sprites.rol";
 
 static GAME_OVER: bool;
@@ -15,7 +16,6 @@ const TILE_HEIGHT: f64 = 16.0;
 static JUMP_SPEEDS: [f64; 4];
 const TERMINAL_VELOCITY: f64 = 3.5;
 static JUMP_STATES: [JumpState; 4];
-static RNG: u64 = 0;
 static SCORE_BUF: [u8; 10];
 static SCORE: u32;
 static ACTIVE_PLAYERS: usize = 1;
@@ -54,21 +54,6 @@ proc dist(position_1: Position, position_2: Position) -> f64 {
    let x_diff = position_1.x - position_2.x;
    let y_diff = position_1.y - position_2.y;
    return sqrt((x_diff * x_diff) + (y_diff * y_diff));
-}
-
-proc rand() -> u64 {
-   RNG = RNG ^ (RNG << 13);
-   RNG = RNG ^ (RNG >> 7);
-   RNG = RNG ^ (RNG << 17);
-   return RNG;
-}
-
-proc rand_range(rand_min: u64, rand_max: u64) -> u64 {
-   return rand() % (rand_max + 1 - rand_min) + rand_min;
-}
-
-proc one_in(x: u64) -> bool {
-   return rand_range(0, x - 1) == 0;
 }
 
 proc rectangles_collide(x1: f64, y1: f64, width1: f64, height1: f64, x2: f64, y2: f64, width2: f64, height2: f64) -> bool {
