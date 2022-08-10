@@ -1,4 +1,4 @@
-use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
+use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details, rolandc_warn};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -64,6 +64,17 @@ pub fn fold_statement(
          try_fold_and_replace_expr(*if_expr, err_manager, folding_context, interner);
          fold_block(if_block, err_manager, folding_context, interner);
          fold_statement(&mut else_statement.statement, err_manager, folding_context, interner);
+
+         // It would be good to also prune the statements based on this observation.
+         // We could do this pruning before we bother folding the inner block,
+         // but then we might miss some constant folding errors/warnings
+         // so seems probably better to do this now, afterwards
+         let if_expr_d = &folding_context.expressions[*if_expr];
+         if let Some(Literal::Bool(false)) = extract_literal(if_expr_d) {
+            rolandc_warn!(err_manager, if_expr_d.location, "This condition will always be false");
+         } else if let Some(Literal::Bool(true)) = extract_literal(if_expr_d) {
+            rolandc_warn!(err_manager, if_expr_d.location, "This condition will always be true");
+         }
       }
       Statement::For(_var, start_expr, end_expr, block, _) => {
          try_fold_and_replace_expr(*start_expr, err_manager, folding_context, interner);
@@ -602,8 +613,6 @@ fn fold_expr(
                synthetic: false,
             } = &mut f_expr.expression
             {
-               // PROBLEM: this all assumes that the integer has not already been negated, which is usually true,
-               // but is NOT true for constants after they have been lowered.
                if *x > (i64::MAX as u64 + 1) {
                   // This negation is impossible, so have to die
                   folding_context.error_count += 1;
