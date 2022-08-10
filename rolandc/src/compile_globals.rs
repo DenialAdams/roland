@@ -162,19 +162,19 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
 
    match unsafe { &(*expr_to_fold).expression } {
       Expression::Variable(x) => {
-         if cg_context.consts_being_processed.contains(x) {
+         if cg_context.consts_being_processed.contains(&x.identifier) {
             cg_context.error_count += 1;
-            let loc = cg_context.all_consts[x].0;
+            let loc = cg_context.all_consts[&x.identifier].0;
             rolandc_error!(
                err_manager,
                loc,
                "const `{}` has a cyclic dependency",
-               cg_context.interner.lookup(*x),
+               cg_context.interner.lookup(x.identifier),
             );
-         } else if cg_context.const_replacements.contains_key(x) {
+         } else if cg_context.const_replacements.contains_key(&x.identifier) {
             // We've already visited this constant, great, nothing to do
-         } else if cg_context.all_consts.contains_key(x) {
-            cg_const(*x, cg_context, err_manager);
+         } else if cg_context.all_consts.contains_key(&x.identifier) {
+            cg_const(x.identifier, cg_context, err_manager);
          }
       }
       Expression::ArrayIndex { array, index } => {

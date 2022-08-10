@@ -230,7 +230,7 @@ pub enum Expression {
    },
    FloatLiteral(f64),
    UnitLiteral,
-   Variable(StrId),
+   Variable(IdentifierNode),
    BinaryOperator {
       operator: BinOp,
       lhs: ExpressionId,
@@ -264,7 +264,7 @@ impl Expression {
    #[must_use]
    pub fn is_lvalue(&self, expressions: &ExpressionPool, static_info: &IndexMap<StrId, StaticInfo>) -> bool {
       match self {
-         Expression::Variable(x) => static_info.get(x).map_or(true, |x| !x.is_const),
+         Expression::Variable(x) => static_info.get(&x.identifier).map_or(true, |x| !x.is_const),
          Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue(expressions, static_info),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
          Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue(expressions, static_info),
@@ -1232,7 +1232,14 @@ fn pratt(
                expressions,
             )
          } else {
-            wrap(Expression::Variable(s), expr_begin_source.unwrap(), expressions)
+            wrap(
+               Expression::Variable(IdentifierNode {
+                  identifier: s,
+                  location: expr_begin_source.unwrap(),
+               }),
+               expr_begin_source.unwrap(),
+               expressions,
+            )
          }
       }
       Some(Token::OpenParen) => {

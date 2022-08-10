@@ -277,7 +277,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    }
 
    various_expression_lowering::lower_consts(&mut ctx.program, &mut ctx.expressions, &mut ctx.interner);
-   ctx.program.static_info.retain(|_, v| !v.is_const);
 
    err_count = compile_globals::ensure_statics_const(
       &ctx.program,
@@ -310,6 +309,8 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    target: Target,
 ) -> Result<Vec<u8>, CompilationError> {
    compile_for_errors(ctx, user_program_ep, target)?;
+
+   ctx.program.static_info.retain(|_, v| !v.is_const);
 
    add_virtual_variables::add_virtual_vars(&mut ctx.program, &ctx.expressions);
    match target {

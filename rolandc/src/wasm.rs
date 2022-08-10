@@ -1572,10 +1572,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          }
       }
       Expression::Variable(id) => {
-         if let Some(v) = generation_context.static_addresses.get(id).copied() {
+         if let Some(v) = generation_context.static_addresses.get(&id.identifier).copied() {
             generation_context.out.emit_const_i32(v);
          } else {
-            get_stack_address_of_local(*id, generation_context);
+            get_stack_address_of_local(id.identifier, generation_context);
          }
       }
       Expression::ProcedureCall {

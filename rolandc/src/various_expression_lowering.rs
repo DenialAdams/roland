@@ -21,7 +21,7 @@ pub fn lower_single_expression(
    let i = expression_id.index();
    match &expressions[expression_id].expression {
       Expression::Variable(x) => {
-         if let Some(replacement_index) = const_replacements.get(x).copied() {
+         if let Some(replacement_index) = const_replacements.get(&x.identifier).copied() {
             expressions[ExpressionId::new(i)].expression = expressions[replacement_index].expression.clone();
          }
       }

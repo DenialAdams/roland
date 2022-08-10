@@ -12,7 +12,9 @@ use crate::parse::{
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, value_type_mem_alignment};
-use crate::type_data::{ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, USIZE_TYPE, U64_TYPE, U32_TYPE};
+use crate::type_data::{
+   ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE,
+};
 use crate::typed_index_vec::Handle;
 use crate::Target;
 use arrayvec::ArrayVec;
@@ -1081,11 +1083,12 @@ fn get_type(
 
          // important that we check for concreteness first:
          // an UnknownInt is not zero sized, but sizeof_type_mem asserts on it
-         let is_zst = e.exp_type.as_ref().unwrap().is_concrete_type() && sizeof_type_mem(
-            e.exp_type.as_ref().unwrap(),
-            validation_context.enum_info,
-            &validation_context.struct_size_info,
-         ) == 0;
+         let is_zst = e.exp_type.as_ref().unwrap().is_concrete_type()
+            && sizeof_type_mem(
+               e.exp_type.as_ref().unwrap(),
+               validation_context.enum_info,
+               &validation_context.struct_size_info,
+            ) == 0;
 
          if e.exp_type.as_ref().unwrap().is_error_type() {
             // Avoid cascading errors
@@ -1121,9 +1124,7 @@ fn get_type(
                );
             }
             ExpressionType::Value(ValueType::CompileError)
-         } else if *un_op == UnOp::AddressOf
-            && is_zst
-         {
+         } else if *un_op == UnOp::AddressOf && is_zst {
             validation_context.error_count += 1;
             // Allowing this wouldn't cause any clear bug (as far as I know), but it just seems whack
             rolandc_error!(
@@ -1132,9 +1133,7 @@ fn get_type(
                "Taking a pointer to a zero sized type is disallowed, as they don't reside in memory.",
             );
             ExpressionType::Value(ValueType::CompileError)
-         } else if *un_op == UnOp::Dereference
-            && is_zst
-         {
+         } else if *un_op == UnOp::Dereference && is_zst {
             validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
@@ -1143,14 +1142,18 @@ fn get_type(
             );
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf {
-            if let Expression::Variable(var) = e.expression {
-               if validation_context.static_info.get(&var).map_or(false, |x| x.is_const) {
+            if let Expression::Variable(var) = &e.expression {
+               if validation_context
+                  .static_info
+                  .get(&var.identifier)
+                  .map_or(false, |x| x.is_const)
+               {
                   validation_context.error_count += 1;
                   rolandc_error!(
                      err_manager,
                      expr_location,
                      "Attempting to take a pointer to a const, which does not have a memory location. Hint: Should `{}` be a static?",
-                     interner.lookup(var),
+                     interner.lookup(var.identifier),
                   );
                }
             }
@@ -1160,15 +1163,20 @@ fn get_type(
          }
       }
       Expression::Variable(id) => {
-         if let Some(scoped_variable) = validation_context.variable_types.get_mut(id) {
+         if let Some(scoped_variable) = validation_context.variable_types.get_mut(&id.identifier) {
             scoped_variable.used = true;
          }
 
          let defined_type = validation_context
             .static_info
-            .get(id)
+            .get(&id.identifier)
             .map(|x| &x.static_type)
-            .or_else(|| validation_context.variable_types.get(id).map(|x| &x.var_type));
+            .or_else(|| {
+               validation_context
+                  .variable_types
+                  .get(&id.identifier)
+                  .map(|x| &x.var_type)
+            });
 
          match defined_type {
             Some(t) => t.clone(),
@@ -1178,7 +1186,7 @@ fn get_type(
                   err_manager,
                   expr_location,
                   "Encountered undefined variable `{}`",
-                  interner.lookup(*id)
+                  interner.lookup(id.identifier)
                );
                ExpressionType::Value(ValueType::CompileError)
             }
@@ -1687,10 +1695,7 @@ fn type_expression(
       Some(get_type(err_manager, expr_index, validation_context, interner));
 }
 
-fn error_on_unknown_literals(
-   err_manager: &mut ErrorManager,
-   validation_context: &mut ValidationContext,
-) {
+fn error_on_unknown_literals(err_manager: &mut ErrorManager, validation_context: &mut ValidationContext) {
    if !validation_context.unknown_ints.is_empty() {
       validation_context.error_count += 1;
       let err_details: Vec<_> = validation_context

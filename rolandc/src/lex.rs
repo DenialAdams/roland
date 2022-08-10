@@ -1,6 +1,6 @@
 use std::num::IntErrorKind;
 
-use unicode_ident::{is_xid_start, is_xid_continue};
+use unicode_ident::{is_xid_continue, is_xid_start};
 
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;

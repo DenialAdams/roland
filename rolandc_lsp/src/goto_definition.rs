@@ -45,6 +45,11 @@ fn span_contains(span: SourceInfo, location: SourcePosition, document: &Path, in
 pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationContext) -> Option<SourceInfo> {
    for expr in ctx.expressions.values.iter() {
       match &expr.expression {
+         Expression::Variable(x) => {
+            if span_contains(x.location, sp, document, &ctx.interner) {
+               return ctx.program.static_info.get(&x.identifier).map(|x| x.location);
+            }
+         }
          Expression::ProcedureCall { proc_name, .. } => {
             if span_contains(proc_name.location, sp, document, &ctx.interner) {
                return ctx
