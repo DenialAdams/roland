@@ -65,10 +65,8 @@ pub fn fold_statement(
          fold_block(if_block, err_manager, folding_context, interner);
          fold_statement(&mut else_statement.statement, err_manager, folding_context, interner);
 
-         // It would be good to also prune the statements based on this observation.
-         // We could do this pruning before we bother folding the inner block,
-         // but then we might miss some constant folding errors/warnings
-         // so seems probably better to do this now, afterwards
+         // We could also prune dead branches here,
+         // but we would be losing data the language server might care about.
          let if_expr_d = &folding_context.expressions[*if_expr];
          if let Some(Literal::Bool(false)) = extract_literal(if_expr_d) {
             rolandc_warn!(err_manager, if_expr_d.location, "This condition will always be false");

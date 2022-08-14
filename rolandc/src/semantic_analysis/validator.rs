@@ -381,7 +381,9 @@ pub fn type_and_check_validity(
       }
    }
 
-   error_on_unknown_literals(err_manager, &mut validation_context);
+   if validation_context.error_count == 0 {
+      error_on_unknown_literals(err_manager, &mut validation_context);
+   }
 
    let err_count = validation_context.error_count;
    program.literals = validation_context.string_literals;
@@ -1294,9 +1296,9 @@ fn get_type(
                         validation_context.error_count += 1;
                         let actual_type_str = actual_type.as_roland_type_info(interner);
                         let expected_type_str = expected.as_roland_type_info(interner);
-                        rolandc_error_w_details!(
+                        rolandc_error!(
                            err_manager,
-                           &[(expr_location, "call"), (actual_expr.location, "argument")],
+                           actual_expr.location,
                            "In call to `{}`, argument at position {} is of type {} when we expected {}",
                            interner.lookup(proc_name.identifier),
                            i,
