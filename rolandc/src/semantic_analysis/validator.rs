@@ -1380,8 +1380,8 @@ fn get_type(
                         rolandc_error_w_details!(
                            err_manager,
                            &[
+                              (expr_location, "struct instantiated"),
                               (defined_struct.location, "struct defined"),
-                              (expr_location, "struct instantiated")
                            ],
                            "`{}` is not a known field of struct `{}`",
                            interner.lookup(field.0),
@@ -1397,8 +1397,8 @@ fn get_type(
                      rolandc_error_w_details!(
                         err_manager,
                         &[
+                           (expr_location, "struct instantiated"),
                            (defined_struct.location, "struct defined"),
-                           (expr_location, "struct instantiated")
                         ],
                         "`{}` is a valid field of struct `{}`, but is duplicated",
                         interner.lookup(field.0),
@@ -1419,9 +1419,8 @@ fn get_type(
                      rolandc_error_w_details!(
                         err_manager,
                         &[
+                           (field_expr.location, "field value"),
                            (defined_struct.location, "struct defined"),
-                           (expr_location, "struct instantiated"),
-                           (field_expr.location, "field value")
                         ],
                         "For field `{}` of struct `{}`, encountered value of type {} when we expected {}",
                         interner.lookup(field.0),
@@ -1439,8 +1438,8 @@ fn get_type(
                   rolandc_error_w_details!(
                      err_manager,
                      &[
+                        (expr_location, "struct instantiated"),
                         (defined_struct.location, "struct defined"),
-                        (expr_location, "struct instantiated")
                      ],
                      "Literal of struct `{}` is missing fields [{}]",
                      interner.lookup(struct_name.identifier),
