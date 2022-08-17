@@ -33,18 +33,19 @@ mod typed_index_vec;
 mod various_expression_lowering;
 mod wasm;
 
-use error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
+use error_handling::error_handling_macros::{rolandc_error};
 use error_handling::ErrorManager;
 use indexmap::{IndexMap, IndexSet};
 pub use parse::Program;
 use parse::{ExpressionId, ExpressionNode, ExpressionPool, ImportNode};
-use source_info::SourcePath;
+use source_info::{SourcePath, SourceInfo};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use typed_index_vec::HandleMap;
 
+use crate::error_handling::error_handling_macros::rolandc_error_no_loc;
 use crate::interner::Interner;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -126,18 +127,30 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    ctx.program = match user_program_ep {
       CompilationEntryPoint::PathResolving(ep_path, mut resolver) => {
          let mut user_program = Program::new();
-         let mut import_queue: Vec<PathBuf> = vec![ep_path];
+         let mut import_queue: Vec<(PathBuf, Option<SourceInfo>)> = vec![(ep_path, None)];
          let mut imported_files = HashSet::new();
-         while let Some(mut base_path) = import_queue.pop() {
+         while let Some(pair) = import_queue.pop() {
+            let mut base_path = pair.0;
+            let location = pair.1;
             let canonical_path = match std::fs::canonicalize(&base_path) {
                Ok(p) => p,
                Err(e) => {
-                  rolandc_error_no_loc!(
-                     ctx.err_manager,
-                     "Failed to canonicalize path '{}': {}",
-                     base_path.as_os_str().to_string_lossy(),
-                     e
-                  );
+                  if let Some(l) = location {
+                     rolandc_error!(
+                        ctx.err_manager,
+                        l,
+                        "Failed to canonicalize path '{}': {}",
+                        base_path.as_os_str().to_string_lossy(),
+                        e
+                     );
+                  } else {
+                     rolandc_error_no_loc!(
+                        ctx.err_manager,
+                        "Failed to canonicalize path '{}': {}",
+                        base_path.as_os_str().to_string_lossy(),
+                        e
+                     );
+                  }
                   return Err(CompilationError::Io);
                }
             };
@@ -149,12 +162,22 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
             let program_s = match resolver.resolve_path(&base_path) {
                Ok(s) => s,
                Err(e) => {
-                  rolandc_error_no_loc!(
-                     ctx.err_manager,
-                     "Failed to read imported file '{}': {}",
-                     base_path.as_os_str().to_string_lossy(),
-                     e
-                  );
+                  if let Some(l) = location {
+                     rolandc_error!(
+                        ctx.err_manager,
+                        l,
+                        "Failed to read imported file '{}': {}",
+                        base_path.as_os_str().to_string_lossy(),
+                        e
+                     );
+                  } else {
+                     rolandc_error_no_loc!(
+                        ctx.err_manager,
+                        "Failed to read imported file '{}': {}",
+                        base_path.as_os_str().to_string_lossy(),
+                        e
+                     );
+                  }
                   return Err(CompilationError::Io);
                }
             };
@@ -169,11 +192,11 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
             merge_program(&mut user_program, &mut parsed.1);
 
             base_path.pop(); // /foo/bar/main.rol -> /foo/bar
-            for file in parsed.0.iter().map(|x| x.import_path) {
-               let file_str = ctx.interner.lookup(file);
+            for file in parsed.0.iter() {
+               let file_str = ctx.interner.lookup(file.import_path);
                let mut new_path = base_path.clone();
                new_path.push(file_str);
-               import_queue.push(new_path);
+               import_queue.push((new_path, Some(file.location)));
             }
          }
          user_program
