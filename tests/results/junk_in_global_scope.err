@@ -1,2 +1,2 @@
-While parsing top level, unexpected token 'string literal'; was expecting a procedure, const, static, enum, or struct declaration
+While parsing top level, encountered unexpected string literal; was expecting a procedure, const, static, enum, or struct declaration
 ↳ line 4, column 1 [junk_in_global_scope.rol]

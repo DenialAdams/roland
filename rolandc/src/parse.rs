@@ -1,7 +1,8 @@
 use super::lex::{SourceToken, Token};
-use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
+use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
+use crate::lex::Lexer;
 use crate::semantic_analysis::{EnumInfo, ProcedureInfo, StaticInfo, StructInfo};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
@@ -21,61 +22,20 @@ fn merge_locations(begin: SourceInfo, end: SourceInfo) -> SourceInfo {
    }
 }
 
-struct Lexer {
-   tokens: Vec<SourceToken>,
-}
-
-impl Lexer {
-   fn from_tokens(mut tokens: Vec<SourceToken>) -> Lexer {
-      tokens.reverse();
-      Lexer { tokens }
-   }
-
-   fn peek_source(&self) -> Option<SourceInfo> {
-      self.tokens.last().map(|x| x.source_info)
-   }
-
-   fn peek_token(&self) -> Option<Token> {
-      self.tokens.last().map(|x| x.token)
-   }
-
-   fn double_peek_token(&self) -> Option<Token> {
-      if self.tokens.len() <= 1 {
-         return None;
-      }
-
-      self.tokens.get(self.tokens.len() - 2).map(|x| x.token)
-   }
-
-   fn next(&mut self) -> Option<SourceToken> {
-      self.tokens.pop()
-   }
-}
-
-fn expect(l: &mut Lexer, err_manager: &mut ErrorManager, token: &Token) -> Result<SourceToken, ()> {
+fn expect(l: &mut Lexer, err_manager: &mut ErrorManager, token: Token) -> Result<SourceToken, ()> {
    let lex_token = l.next();
-   if lex_token
-      .as_ref()
-      .map_or(true, |x| discriminant(&x.token) != discriminant(token))
-   {
-      if let Some(l_token) = lex_token {
-         rolandc_error!(
-            err_manager,
-            l_token.source_info,
-            "Encountered '{}' when expecting '{}'",
-            l_token.token.for_parse_err(),
-            token.for_parse_err()
-         );
-      } else {
-         rolandc_error_no_loc!(
-            err_manager,
-            "Encountered 'EOF' when expecting '{}'",
-            token.for_parse_err()
-         );
-      }
-      return Err(());
+   if discriminant(&lex_token.token) == discriminant(&token) {
+      Ok(lex_token)
+   } else {
+      rolandc_error!(
+         err_manager,
+         lex_token.source_info,
+         "Encountered {} when expecting {}",
+         lex_token.token.for_parse_err(),
+         token.for_parse_err()
+      );
+      Err(())
    }
-   Ok(lex_token.unwrap())
 }
 
 #[derive(Clone)]
@@ -365,13 +325,11 @@ impl Program {
 }
 
 pub fn astify(
-   tokens: Vec<SourceToken>,
+   mut lexer: Lexer,
    err_manager: &mut ErrorManager,
    interner: &Interner,
    expressions: &mut ExpressionPool,
 ) -> Result<(Vec<ImportNode>, Program), ()> {
-   let mut lexer = Lexer::from_tokens(tokens);
-
    let mut external_procedures = vec![];
    let mut procedures = vec![];
    let mut structs = vec![];
@@ -380,11 +338,12 @@ pub fn astify(
    let mut statics = vec![];
    let mut imports = vec![];
 
-   while let Some(peeked_token) = lexer.peek_token() {
+   loop {
+      let peeked_token = lexer.peek_token();
       match peeked_token {
          Token::KeywordExtern => {
-            let extern_kw = lexer.next().unwrap();
-            expect(&mut lexer, err_manager, &Token::KeywordProcedureDef)?;
+            let extern_kw = lexer.next();
+            expect(&mut lexer, err_manager, Token::KeywordProcedureDef)?;
             let p = parse_external_procedure(
                &mut lexer,
                err_manager,
@@ -395,8 +354,8 @@ pub fn astify(
             external_procedures.push(p);
          }
          Token::KeywordBuiltin => {
-            let builtin_kw = lexer.next().unwrap();
-            expect(&mut lexer, err_manager, &Token::KeywordProcedureDef)?;
+            let builtin_kw = lexer.next();
+            expect(&mut lexer, err_manager, Token::KeywordProcedureDef)?;
             let p = parse_external_procedure(
                &mut lexer,
                err_manager,
@@ -407,37 +366,37 @@ pub fn astify(
             external_procedures.push(p);
          }
          Token::KeywordProcedureDef => {
-            let def = lexer.next().unwrap();
+            let def = lexer.next();
             let p = parse_procedure(&mut lexer, err_manager, def.source_info, expressions, interner)?;
             procedures.push(p);
          }
          Token::KeywordImport => {
-            let kw = lexer.next().unwrap();
-            let import_token = expect(&mut lexer, err_manager, &Token::StringLiteral(DUMMY_STR_TOKEN))?;
-            let sc = expect(&mut lexer, err_manager, &Token::Semicolon)?;
+            let kw = lexer.next();
+            let import_token = expect(&mut lexer, err_manager, Token::StringLiteral(DUMMY_STR_TOKEN))?;
+            let sc = expect(&mut lexer, err_manager, Token::Semicolon)?;
             imports.push(ImportNode {
                import_path: extract_str_literal(import_token.token),
                location: merge_locations(kw.source_info, sc.source_info),
             });
          }
          Token::KeywordStructDef => {
-            let def = lexer.next().unwrap();
+            let def = lexer.next();
             let s = parse_struct(&mut lexer, err_manager, def.source_info, interner)?;
             structs.push(s);
          }
          Token::KeywordEnumDef => {
-            let def = lexer.next().unwrap();
+            let def = lexer.next();
             let s = parse_enum(&mut lexer, err_manager, def.source_info, interner)?;
             enums.push(s);
          }
          Token::KeywordConst => {
-            let a_const = lexer.next().unwrap();
-            let variable_name = expect(&mut lexer, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
-            expect(&mut lexer, err_manager, &Token::Colon)?;
+            let a_const = lexer.next();
+            let variable_name = expect(&mut lexer, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
+            expect(&mut lexer, err_manager, Token::Colon)?;
             let t_type = parse_type(&mut lexer, err_manager, interner)?;
-            expect(&mut lexer, err_manager, &Token::Assignment)?;
+            expect(&mut lexer, err_manager, Token::Assignment)?;
             let exp = parse_expression(&mut lexer, err_manager, false, expressions, interner)?;
-            let end_token = expect(&mut lexer, err_manager, &Token::Semicolon)?;
+            let end_token = expect(&mut lexer, err_manager, Token::Semicolon)?;
             consts.push(ConstNode {
                name: IdentifierNode {
                   identifier: extract_identifier(variable_name.token),
@@ -449,17 +408,17 @@ pub fn astify(
             });
          }
          Token::KeywordStatic => {
-            let a_static = lexer.next().unwrap();
-            let variable_name = expect(&mut lexer, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
-            expect(&mut lexer, err_manager, &Token::Colon)?;
+            let a_static = lexer.next();
+            let variable_name = expect(&mut lexer, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
+            expect(&mut lexer, err_manager, Token::Colon)?;
             let t_type = parse_type(&mut lexer, err_manager, interner)?;
-            let exp = if lexer.peek_token() == Some(Token::Assignment) {
+            let exp = if lexer.peek_token() == Token::Assignment {
                let _ = lexer.next();
                Some(parse_expression(&mut lexer, err_manager, false, expressions, interner)?)
             } else {
                None
             };
-            let end_token = expect(&mut lexer, err_manager, &Token::Semicolon)?;
+            let end_token = expect(&mut lexer, err_manager, Token::Semicolon)?;
             statics.push(StaticNode {
                name: IdentifierNode {
                   identifier: extract_identifier(variable_name.token),
@@ -470,11 +429,14 @@ pub fn astify(
                value: exp,
             });
          }
+         Token::Eof => {
+            break;
+         }
          x => {
             rolandc_error!(
                err_manager,
-               lexer.peek_source().unwrap(),
-               "While parsing top level, unexpected token '{}'; was expecting a procedure, const, static, enum, or struct declaration",
+               lexer.peek_source(),
+               "While parsing top level, encountered unexpected {}; was expecting a procedure, const, static, enum, or struct declaration",
                x.for_parse_err()
             );
             return Err(());
@@ -529,11 +491,11 @@ fn parse_procedure(
    expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<ProcedureNode, ()> {
-   let procedure_name = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
-   expect(l, err_manager, &Token::OpenParen)?;
+   let procedure_name = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
+   expect(l, err_manager, Token::OpenParen)?;
    let parameters = parse_parameters(l, err_manager, interner)?;
-   expect(l, err_manager, &Token::CloseParen)?;
-   let ret_type = if let Some(Token::Arrow) = l.peek_token() {
+   expect(l, err_manager, Token::CloseParen)?;
+   let ret_type = if l.peek_token() == Token::Arrow {
       let _ = l.next();
       parse_type(l, err_manager, interner)?.e_type
    } else {
@@ -561,17 +523,17 @@ fn parse_external_procedure(
    interner: &Interner,
    proc_impl_source: ProcImplSource,
 ) -> Result<ExternalProcedureNode, ()> {
-   let procedure_name = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
-   expect(l, err_manager, &Token::OpenParen)?;
+   let procedure_name = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
+   expect(l, err_manager, Token::OpenParen)?;
    let parameters = parse_parameters(l, err_manager, interner)?;
-   expect(l, err_manager, &Token::CloseParen)?;
-   let ret_type = if let Some(Token::Arrow) = l.peek_token() {
+   expect(l, err_manager, Token::CloseParen)?;
+   let ret_type = if l.peek_token() == Token::Arrow {
       let _ = l.next();
       parse_type(l, err_manager, interner)?.e_type
    } else {
       ExpressionType::Value(ValueType::Unit)
    };
-   let end_token = expect(l, err_manager, &Token::Semicolon)?;
+   let end_token = expect(l, err_manager, Token::Semicolon)?;
    Ok(ExternalProcedureNode {
       definition: ProcedureDefinition {
          name: extract_identifier(procedure_name.token),
@@ -589,32 +551,31 @@ fn parse_struct(
    source_info: SourceInfo,
    interner: &Interner,
 ) -> Result<StructNode, ()> {
-   let struct_name = extract_identifier(expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
-   expect(l, err_manager, &Token::OpenBrace)?;
+   let struct_name = extract_identifier(expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?.token);
+   expect(l, err_manager, Token::OpenBrace)?;
    let mut fields: Vec<(StrId, ExpressionType)> = vec![];
-   loop {
-      if let Some(Token::CloseBrace) = l.peek_token() {
-         break;
+   let close_brace = loop {
+      if l.peek_token() == Token::CloseBrace {
+         break l.next();
       }
-      let identifier = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
-      let _ = expect(l, err_manager, &Token::Colon)?;
+      let identifier = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
+      let _ = expect(l, err_manager, Token::Colon)?;
       let f_type = parse_type(l, err_manager, interner)?.e_type;
       fields.push((extract_identifier(identifier.token), f_type));
-      if let Some(Token::CloseBrace) = l.peek_token() {
-         break;
-      } else if let Some(Token::Identifier(x)) = l.peek_token().as_ref() {
+      if l.peek_token() == Token::CloseBrace {
+         break l.next();
+      } else if let Token::Identifier(x) = l.peek_token() {
          rolandc_error!(
             err_manager,
-            l.peek_source().unwrap(),
+            l.peek_source(),
             "While parsing definition of struct `{}`, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?",
             interner.lookup(struct_name),
-            interner.lookup(*x),
+            interner.lookup(x),
          );
          return Result::Err(());
       }
-      expect(l, err_manager, &Token::Comma)?;
-   }
-   let close_brace = l.next().unwrap();
+      expect(l, err_manager, Token::Comma)?;
+   };
    Ok(StructNode {
       name: struct_name,
       fields,
@@ -628,34 +589,33 @@ fn parse_enum(
    source_info: SourceInfo,
    interner: &Interner,
 ) -> Result<EnumNode, ()> {
-   let enum_name = extract_identifier(expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
-   expect(l, err_manager, &Token::OpenBrace)?;
+   let enum_name = extract_identifier(expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?.token);
+   expect(l, err_manager, Token::OpenBrace)?;
    let mut variants = vec![];
-   loop {
-      if let Some(Token::CloseBrace) = l.peek_token() {
-         break;
+   let close_brace = loop {
+      if l.peek_token() == Token::CloseBrace {
+         break l.next();
       }
-      let identifier = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
+      let identifier = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
       variants.push(IdentifierNode {
          identifier: extract_identifier(identifier.token),
          location: identifier.source_info,
       });
-      if let Some(Token::CloseBrace) = l.peek_token() {
-         break;
-      } else if let Some(Token::Identifier(x)) = l.peek_token().as_ref() {
+      if l.peek_token() == Token::CloseBrace {
+         break l.next();
+      } else if let Token::Identifier(x) = l.peek_token() {
          rolandc_error!(
             err_manager,
-            l.peek_source().unwrap(),
+            l.peek_source(),
             "While parsing definition of enum `{}`, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?",
             interner.lookup(enum_name),
-            interner.lookup(*x),
+            interner.lookup(x),
          );
          return Result::Err(());
       }
 
-      expect(l, err_manager, &Token::Comma)?;
-   }
-   let close_brace = l.next().unwrap();
+      expect(l, err_manager, Token::Comma)?;
+   };
    Ok(EnumNode {
       name: enum_name,
       variants,
@@ -669,46 +629,46 @@ fn parse_block(
    expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<BlockNode, ()> {
-   let open_brace = expect(l, err_manager, &Token::OpenBrace)?;
+   let open_brace = expect(l, err_manager, Token::OpenBrace)?;
 
    let mut statements: Vec<StatementNode> = vec![];
 
-   loop {
+   let close_brace = loop {
       match l.peek_token() {
-         Some(Token::OpenBrace) => {
-            let source = l.peek_source().unwrap();
+         Token::OpenBrace => {
+            let source = l.peek_source();
             let new_block = parse_block(l, err_manager, expressions, interner)?;
             statements.push(StatementNode {
                statement: Statement::Block(new_block),
                location: source,
             });
          }
-         Some(Token::CloseBrace) => {
-            break;
+         Token::CloseBrace => {
+            break l.next();
          }
-         Some(Token::KeywordContinue) => {
-            let continue_token = l.next().unwrap();
-            let sc = expect(l, err_manager, &Token::Semicolon)?;
+         Token::KeywordContinue => {
+            let continue_token = l.next();
+            let sc = expect(l, err_manager, Token::Semicolon)?;
             statements.push(StatementNode {
                statement: Statement::Continue,
                location: merge_locations(continue_token.source_info, sc.source_info),
             });
          }
-         Some(Token::KeywordBreak) => {
-            let break_token = l.next().unwrap();
-            let sc = expect(l, err_manager, &Token::Semicolon)?;
+         Token::KeywordBreak => {
+            let break_token = l.next();
+            let sc = expect(l, err_manager, Token::Semicolon)?;
             statements.push(StatementNode {
                statement: Statement::Break,
                location: merge_locations(break_token.source_info, sc.source_info),
             });
          }
-         Some(Token::KeywordFor) => {
-            let for_token = l.next().unwrap();
-            let variable_name = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
-            let _ = expect(l, err_manager, &Token::KeywordIn)?;
+         Token::KeywordFor => {
+            let for_token = l.next();
+            let variable_name = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
+            let _ = expect(l, err_manager, Token::KeywordIn)?;
             let start_en = parse_expression(l, err_manager, true, expressions, interner)?;
-            let _ = expect(l, err_manager, &Token::DoublePeriod)?;
-            let inclusive = if l.peek_token() == Some(Token::Assignment) {
+            let _ = expect(l, err_manager, Token::DoublePeriod)?;
+            let inclusive = if l.peek_token() == Token::Assignment {
                let _ = l.next();
                true
             } else {
@@ -730,39 +690,38 @@ fn parse_block(
                location: for_token.source_info,
             });
          }
-         Some(Token::KeywordLoop) => {
-            let loop_token = l.next().unwrap();
+         Token::KeywordLoop => {
+            let loop_token = l.next();
             let new_block = parse_block(l, err_manager, expressions, interner)?;
             statements.push(StatementNode {
                statement: Statement::Loop(new_block),
                location: loop_token.source_info,
             });
          }
-         Some(Token::KeywordReturn) => {
-            let return_token = l.next().unwrap();
-            let e = if let Some(Token::Semicolon) = l.peek_token() {
+         Token::KeywordReturn => {
+            let return_token = l.next();
+            let e = if l.peek_token() == Token::Semicolon {
                wrap(Expression::UnitLiteral, return_token.source_info, expressions)
             } else {
                parse_expression(l, err_manager, false, expressions, interner)?
             };
-            let sc = expect(l, err_manager, &Token::Semicolon)?;
+            let sc = expect(l, err_manager, Token::Semicolon)?;
             statements.push(StatementNode {
                statement: Statement::Return(e),
                location: merge_locations(return_token.source_info, sc.source_info),
             });
          }
-         Some(Token::KeywordLet) => {
+         Token::KeywordLet => {
             let mut declared_type = None;
-            let let_token = l.next().unwrap();
-            let variable_name = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
-            let next_discrim = l.peek_token().map(|x| discriminant(&x));
-            if next_discrim == Some(discriminant(&Token::Colon)) {
+            let let_token = l.next();
+            let variable_name = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
+            if l.peek_token() == Token::Colon {
                let _ = l.next();
                declared_type = Some(parse_type(l, err_manager, interner)?);
             }
-            expect(l, err_manager, &Token::Assignment)?;
+            expect(l, err_manager, Token::Assignment)?;
             let e = parse_expression(l, err_manager, false, expressions, interner)?;
-            let sc = expect(l, err_manager, &Token::Semicolon)?;
+            let sc = expect(l, err_manager, Token::Semicolon)?;
             let statement_location = merge_locations(let_token.source_info, sc.source_info);
             statements.push(StatementNode {
                statement: Statement::VariableDeclaration(
@@ -776,78 +735,61 @@ fn parse_block(
                location: statement_location,
             });
          }
-         Some(Token::KeywordIf) => {
+         Token::KeywordIf => {
             let s = parse_if_else_statement(l, err_manager, expressions, interner)?;
             statements.push(s);
          }
-         Some(
-            Token::BoolLiteral(_)
-            | Token::StringLiteral(_)
-            | Token::IntLiteral(_)
-            | Token::FloatLiteral(_)
-            | Token::OpenParen
-            | Token::Exclam
-            | Token::Amp
-            | Token::Identifier(_)
-            | Token::Minus,
-         ) => {
+         Token::BoolLiteral(_)
+         | Token::StringLiteral(_)
+         | Token::IntLiteral(_)
+         | Token::FloatLiteral(_)
+         | Token::OpenParen
+         | Token::Exclam
+         | Token::Amp
+         | Token::Identifier(_)
+         | Token::Minus => {
             let e = parse_expression(l, err_manager, false, expressions, interner)?;
             match l.peek_token() {
-               Some(Token::Assignment) => {
+               Token::Assignment => {
                   let _ = l.next();
                   let re = parse_expression(l, err_manager, false, expressions, interner)?;
-                  let sc = expect(l, err_manager, &Token::Semicolon)?;
+                  let sc = expect(l, err_manager, Token::Semicolon)?;
                   let statement_location = merge_locations(expressions[e].location, sc.source_info);
                   statements.push(StatementNode {
                      statement: Statement::Assignment(e, re),
                      location: statement_location,
                   });
                }
-               Some(Token::Semicolon) => {
-                  let sc = l.next().unwrap();
+               Token::Semicolon => {
+                  let sc = l.next();
                   let statement_location = merge_locations(expressions[e].location, sc.source_info);
                   statements.push(StatementNode {
                      statement: Statement::Expression(e),
                      location: statement_location,
                   });
                }
-               Some(x) => {
+               x => {
                   rolandc_error!(
                      err_manager,
-                     l.peek_source().unwrap(),
-                     "While parsing statement, unexpected token '{}'; was expecting a semicolon or assignment operator",
+                     l.peek_source(),
+                     "While parsing statement, encountered unexpected {}; was expecting a semicolon or assignment operator",
                      x.for_parse_err()
-                  );
-                  return Err(());
-               }
-               None => {
-                  rolandc_error_no_loc!(
-                     err_manager,
-                     "While parsing statement, unexpected EOF; was expecting a semicolon or assignment operator",
                   );
                   return Err(());
                }
             }
          }
-         Some(x) => {
+         x => {
             rolandc_error!(
                err_manager,
-               l.peek_source().unwrap(),
-               "While parsing block, unexpected token '{}'; was expecting a statement",
+               l.peek_source(),
+               "While parsing block, encountered unexpected {}; was expecting a statement",
                x.for_parse_err()
             );
             return Err(());
          }
-         None => {
-            rolandc_error_no_loc!(
-               err_manager,
-               "While parsing block, unexpected EOF; was expecting a statement or a }}"
-            );
-            return Err(());
-         }
       }
-   }
-   let close_brace = l.next().unwrap();
+   };
    Ok(BlockNode {
       statements,
       location: merge_locations(open_brace.source_info, close_brace.source_info),
@@ -860,16 +802,16 @@ fn parse_if_else_statement(
    expressions: &mut ExpressionPool,
    interner: &Interner,
 ) -> Result<StatementNode, ()> {
-   let if_token = l.next().unwrap();
+   let if_token = l.next();
    let e = parse_expression(l, err_manager, true, expressions, interner)?;
    let if_block = parse_block(l, err_manager, expressions, interner)?;
    let else_statement = match (l.peek_token(), l.double_peek_token()) {
-      (Some(Token::KeywordElse), Some(Token::KeywordIf)) => {
+      (Token::KeywordElse, Token::KeywordIf) => {
          let _ = l.next();
          parse_if_else_statement(l, err_manager, expressions, interner)?
       }
-      (Some(Token::KeywordElse), _) => {
-         let else_token = l.next().unwrap();
+      (Token::KeywordElse, _) => {
+         let else_token = l.next();
          StatementNode {
             statement: Statement::Block(parse_block(l, err_manager, expressions, interner)?),
             location: else_token.source_info,
@@ -899,15 +841,15 @@ fn parse_parameters(
 
    loop {
       match l.peek_token() {
-         Some(Token::Identifier(_) | Token::KeywordNamed) => {
-            let named = if l.peek_token() == Some(Token::KeywordNamed) {
+         Token::Identifier(_) | Token::KeywordNamed => {
+            let named = if l.peek_token() == Token::KeywordNamed {
                let _ = l.next();
                true
             } else {
                false
             };
-            let id = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
-            expect(l, err_manager, &Token::Colon)?;
+            let id = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
+            expect(l, err_manager, Token::Colon)?;
             let e_type = parse_type(l, err_manager, interner)?.e_type;
             parameters.push(ParameterNode {
                name: extract_identifier(id.token),
@@ -915,27 +857,20 @@ fn parse_parameters(
                p_type: e_type,
                named,
             });
-            if l.peek_token() == Some(Token::CloseParen) {
+            if l.peek_token() == Token::CloseParen {
                break;
             }
-            expect(l, err_manager, &Token::Comma)?;
+            expect(l, err_manager, Token::Comma)?;
          }
-         Some(Token::CloseParen) => {
+         Token::CloseParen => {
             break;
          }
-         Some(x) => {
+         x => {
             rolandc_error!(
                err_manager,
-               l.peek_source().unwrap(),
-               "While parsing parameters, unexpected token '{}'; was expecting an identifier or a )",
+               l.peek_source(),
+               "While parsing parameters, encountered unexpected {}; was expecting an identifier or a )",
                x.for_parse_err()
-            );
-            return Err(());
-         }
-         None => {
-            rolandc_error_no_loc!(
-               err_manager,
-               "While parsing parameters, unexpected EOF; was expecting an identifier or a )",
             );
             return Err(());
          }
@@ -952,7 +887,7 @@ fn parse_generic_arguments(
 ) -> Result<Vec<GenericArgumentNode>, ()> {
    let mut generic_arguments = vec![];
 
-   while let Some(Token::Dollar) = l.peek_token() {
+   while l.peek_token() == Token::Dollar {
       let _ = l.next();
       let gtype = parse_type(l, err_manager, interner)?.e_type;
       generic_arguments.push(GenericArgumentNode { gtype });
@@ -971,20 +906,18 @@ fn parse_arguments(
 
    loop {
       match l.peek_token() {
-         Some(
-            Token::Identifier(_)
-            | Token::BoolLiteral(_)
-            | Token::StringLiteral(_)
-            | Token::IntLiteral(_)
-            | Token::FloatLiteral(_)
-            | Token::OpenParen
-            | Token::OpenSquareBracket
-            | Token::Amp
-            | Token::Exclam
-            | Token::Minus,
-         ) => {
-            let name: Option<StrId> = if let Some(Token::Identifier(x)) = l.peek_token() {
-               if l.double_peek_token() == Some(Token::Colon) {
+         Token::Identifier(_)
+         | Token::BoolLiteral(_)
+         | Token::StringLiteral(_)
+         | Token::IntLiteral(_)
+         | Token::FloatLiteral(_)
+         | Token::OpenParen
+         | Token::OpenSquareBracket
+         | Token::Amp
+         | Token::Exclam
+         | Token::Minus => {
+            let name: Option<StrId> = if let Token::Identifier(x) = l.peek_token() {
+               if l.double_peek_token() == Token::Colon {
                   let _ = l.next();
                   let _ = l.next();
                   Some(x)
@@ -996,28 +929,20 @@ fn parse_arguments(
             };
             let expr = parse_expression(l, err_manager, false, expressions, interner)?;
             arguments.push(ArgumentNode { name, expr });
-            let next_discrim = l.peek_token().map(|x| discriminant(&x));
-            if next_discrim == Some(discriminant(&Token::CloseParen)) {
+            if l.peek_token() == Token::CloseParen {
                break;
             }
-            expect(l, err_manager, &Token::Comma)?;
+            expect(l, err_manager, Token::Comma)?;
          }
-         Some(Token::CloseParen) => {
+         Token::CloseParen => {
             break;
          }
-         Some(x) => {
+         x => {
             rolandc_error!(
                err_manager,
-               l.peek_source().unwrap(),
-               "While parsing arguments, unexpected token '{}'; was expecting an expression or a )",
+               l.peek_source(),
+               "While parsing arguments, encountered unexpected {}; was expecting an expression or a )",
                x.for_parse_err()
-            );
-            return Err(());
-         }
-         None => {
-            rolandc_error_no_loc!(
-               err_manager,
-               "While parsing arguments, unexpected EOF; was expecting an expression or a )",
             );
             return Err(());
          }
@@ -1041,18 +966,18 @@ fn parse_expression(
 fn parse_type(l: &mut Lexer, err_manager: &mut ErrorManager, interner: &Interner) -> Result<ExpressionTypeNode, ()> {
    let mut ptr_count: usize = 0;
    let loc_start = l.peek_source();
-   while let Some(Token::Amp) = l.peek_token() {
+   while l.peek_token() == Token::Amp {
       ptr_count += 1;
       let _ = l.next();
    }
 
    let (loc_end, value_type) = match l.peek_token() {
-      Some(Token::OpenSquareBracket) => {
+      Token::OpenSquareBracket => {
          let _ = l.next();
          let a_inner_type = parse_type(l, err_manager, interner)?;
-         expect(l, err_manager, &Token::Semicolon)?;
-         let length = expect(l, err_manager, &Token::IntLiteral(0))?;
-         let t_close_token = expect(l, err_manager, &Token::CloseSquareBracket)?;
+         expect(l, err_manager, Token::Semicolon)?;
+         let length = expect(l, err_manager, Token::IntLiteral(0))?;
+         let t_close_token = expect(l, err_manager, Token::CloseSquareBracket)?;
 
          let arr_len_literal = extract_int_literal(length.token);
 
@@ -1071,13 +996,13 @@ fn parse_type(l: &mut Lexer, err_manager: &mut ErrorManager, interner: &Interner
             return Err(());
          }
       }
-      Some(Token::OpenParen) => {
+      Token::OpenParen => {
          let _ = l.next();
-         let close_token = expect(l, err_manager, &Token::CloseParen)?;
+         let close_token = expect(l, err_manager, Token::CloseParen)?;
          (close_token.source_info, ValueType::Unit)
       }
       _ => {
-         let type_token = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
+         let type_token = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
          let type_s = extract_identifier(type_token.token);
          (
             type_token.source_info,
@@ -1104,12 +1029,12 @@ fn parse_type(l: &mut Lexer, err_manager: &mut ErrorManager, interner: &Interner
    if ptr_count > 0 {
       Ok(ExpressionTypeNode {
          e_type: ExpressionType::Pointer(ptr_count, value_type),
-         location: merge_locations(loc_start.unwrap(), loc_end),
+         location: merge_locations(loc_start, loc_end),
       })
    } else {
       Ok(ExpressionTypeNode {
          e_type: ExpressionType::Value(value_type),
-         location: merge_locations(loc_start.unwrap(), loc_end),
+         location: merge_locations(loc_start, loc_end),
       })
    }
 }
@@ -1123,31 +1048,30 @@ fn pratt(
    interner: &Interner,
 ) -> Result<ExpressionId, ()> {
    let expr_begin_token = l.next();
-   let expr_begin_source = expr_begin_token.as_ref().map(|x| x.source_info);
-   let mut lhs = match expr_begin_token.map(|x| x.token) {
-      Some(Token::BoolLiteral(x)) => wrap(Expression::BoolLiteral(x), expr_begin_source.unwrap(), expressions),
-      Some(Token::IntLiteral(x)) => wrap(
+   let mut lhs = match expr_begin_token.token {
+      Token::BoolLiteral(x) => wrap(Expression::BoolLiteral(x), expr_begin_token.source_info, expressions),
+      Token::IntLiteral(x) => wrap(
          Expression::IntLiteral {
             val: x,
             synthetic: false,
          },
-         expr_begin_source.unwrap(),
+         expr_begin_token.source_info,
          expressions,
       ),
-      Some(Token::FloatLiteral(x)) => wrap(Expression::FloatLiteral(x), expr_begin_source.unwrap(), expressions),
-      Some(Token::StringLiteral(x)) => wrap(Expression::StringLiteral(x), expr_begin_source.unwrap(), expressions),
-      Some(Token::Identifier(s)) => {
-         if l.peek_token() == Some(Token::Dollar) {
+      Token::FloatLiteral(x) => wrap(Expression::FloatLiteral(x), expr_begin_token.source_info, expressions),
+      Token::StringLiteral(x) => wrap(Expression::StringLiteral(x), expr_begin_token.source_info, expressions),
+      Token::Identifier(s) => {
+         if l.peek_token() == Token::Dollar {
             let generic_args = parse_generic_arguments(l, err_manager, interner)?;
-            expect(l, err_manager, &Token::OpenParen)?;
+            expect(l, err_manager, Token::OpenParen)?;
             let args = parse_arguments(l, err_manager, expressions, interner)?;
-            let close_token = expect(l, err_manager, &Token::CloseParen)?;
-            let combined_location = merge_locations(expr_begin_source.unwrap(), close_token.source_info);
+            let close_token = expect(l, err_manager, Token::CloseParen)?;
+            let combined_location = merge_locations(expr_begin_token.source_info, close_token.source_info);
             wrap(
                Expression::ProcedureCall {
                   proc_name: IdentifierNode {
                      identifier: s,
-                     location: expr_begin_source.unwrap(),
+                     location: expr_begin_token.source_info,
                   },
                   generic_args: generic_args.into_boxed_slice(),
                   args: args.into_boxed_slice(),
@@ -1155,16 +1079,16 @@ fn pratt(
                combined_location,
                expressions,
             )
-         } else if l.peek_token() == Some(Token::OpenParen) {
+         } else if l.peek_token() == Token::OpenParen {
             let _ = l.next();
             let args = parse_arguments(l, err_manager, expressions, interner)?;
-            let close_token = expect(l, err_manager, &Token::CloseParen)?;
-            let combined_location = merge_locations(expr_begin_source.unwrap(), close_token.source_info);
+            let close_token = expect(l, err_manager, Token::CloseParen)?;
+            let combined_location = merge_locations(expr_begin_token.source_info, close_token.source_info);
             wrap(
                Expression::ProcedureCall {
                   proc_name: IdentifierNode {
                      identifier: s,
-                     location: expr_begin_source.unwrap(),
+                     location: expr_begin_token.source_info,
                   },
                   generic_args: vec![].into_boxed_slice(),
                   args: args.into_boxed_slice(),
@@ -1172,16 +1096,16 @@ fn pratt(
                combined_location,
                expressions,
             )
-         } else if l.peek_token() == Some(Token::DoubleColon) {
+         } else if l.peek_token() == Token::DoubleColon {
             let _ = l.next();
-            let variant = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
+            let variant = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
             let variant_identifier = extract_identifier(variant.token);
-            let combined_location = merge_locations(expr_begin_source.unwrap(), variant.source_info);
+            let combined_location = merge_locations(expr_begin_token.source_info, variant.source_info);
             wrap(
                Expression::EnumLiteral(
                   IdentifierNode {
                      identifier: s,
-                     location: expr_begin_source.unwrap(),
+                     location: expr_begin_token.source_info,
                   },
                   IdentifierNode {
                      identifier: variant_identifier,
@@ -1191,40 +1115,39 @@ fn pratt(
                combined_location,
                expressions,
             )
-         } else if !if_head && l.peek_token() == Some(Token::OpenBrace) {
+         } else if !if_head && l.peek_token() == Token::OpenBrace {
             let _ = l.next();
             let mut fields = vec![];
-            loop {
-               if let Some(Token::CloseBrace) = l.peek_token() {
-                  break;
+            let close_brace = loop {
+               if l.peek_token() == Token::CloseBrace {
+                  break l.next();
                }
-               let identifier = extract_identifier(expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?.token);
-               let _ = expect(l, err_manager, &Token::Colon)?;
+               let identifier = extract_identifier(expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?.token);
+               let _ = expect(l, err_manager, Token::Colon)?;
                let val = parse_expression(l, err_manager, false, expressions, interner)?;
                fields.push((identifier, val));
-               if let Some(Token::CloseBrace) = l.peek_token() {
-                  break;
-               } else if let Some(Token::Identifier(x)) = l.peek_token().as_ref() {
+               if l.peek_token() == Token::CloseBrace {
+                  break l.next();
+               } else if let Token::Identifier(x) = l.peek_token() {
                   let struct_str = interner.lookup(s);
-                  let identifier_str = interner.lookup(*x);
+                  let identifier_str = interner.lookup(x);
                   rolandc_error!(
                      err_manager,
-                     l.peek_source().unwrap(),
+                     l.peek_source(),
                      "While parsing instantiation of struct `{}`, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?",
                      struct_str,
                      identifier_str,
                   );
                   return Result::Err(());
                };
-               expect(l, err_manager, &Token::Comma)?;
-            }
-            let closing_brace = l.next().unwrap();
-            let combined_location = merge_locations(expr_begin_source.unwrap(), closing_brace.source_info);
+               expect(l, err_manager, Token::Comma)?;
+            };
+            let combined_location = merge_locations(expr_begin_token.source_info, close_brace.source_info);
             wrap(
                Expression::StructLiteral(
                   IdentifierNode {
                      identifier: s,
-                     location: expr_begin_source.unwrap(),
+                     location: expr_begin_token.source_info,
                   },
                   fields.into_boxed_slice(),
                ),
@@ -1235,72 +1158,71 @@ fn pratt(
             wrap(
                Expression::Variable(IdentifierNode {
                   identifier: s,
-                  location: expr_begin_source.unwrap(),
+                  location: expr_begin_token.source_info,
                }),
-               expr_begin_source.unwrap(),
+               expr_begin_token.source_info,
                expressions,
             )
          }
       }
-      Some(Token::OpenParen) => {
-         if let Some(Token::CloseParen) = l.peek_token() {
-            let end_token = l.next().unwrap();
-            let combined_location = merge_locations(expr_begin_source.unwrap(), end_token.source_info);
+      Token::OpenParen => {
+         if l.peek_token() == Token::CloseParen {
+            let end_token = l.next();
+            let combined_location = merge_locations(expr_begin_token.source_info, end_token.source_info);
             wrap(Expression::UnitLiteral, combined_location, expressions)
          } else {
             let new_lhs = pratt(l, err_manager, 0, false, expressions, interner)?;
-            expect(l, err_manager, &Token::CloseParen)?;
+            expect(l, err_manager, Token::CloseParen)?;
             new_lhs
          }
       }
-      Some(Token::OpenSquareBracket) => {
+      Token::OpenSquareBracket => {
          // Array creation
          let mut es = vec![];
-         loop {
-            if let Some(Token::CloseSquareBracket) = l.peek_token() {
-               break;
+         let closing_square_bracket = loop {
+            if l.peek_token() == Token::CloseSquareBracket {
+               break l.next();
             }
             es.push(parse_expression(l, err_manager, false, expressions, interner)?);
-            if let Some(Token::CloseSquareBracket) = l.peek_token() {
-               break;
+            if l.peek_token() == Token::CloseSquareBracket {
+               break l.next();
             }
-            expect(l, err_manager, &Token::Comma)?;
-         }
-         let closing_token = l.next().unwrap(); // ]
-         let combined_location = merge_locations(expr_begin_source.unwrap(), closing_token.source_info);
+            expect(l, err_manager, Token::Comma)?;
+         };
+         let combined_location = merge_locations(expr_begin_token.source_info, closing_square_bracket.source_info);
          wrap(
             Expression::ArrayLiteral(es.into_boxed_slice()),
             combined_location,
             expressions,
          )
       }
-      Some(x @ Token::Minus) => {
+      x @ Token::Minus => {
          let ((), r_bp) = prefix_binding_power(&x);
          let begin_location = l.peek_source();
          let rhs = pratt(l, err_manager, r_bp, if_head, expressions, interner)?;
-         let combined_location = merge_locations(expr_begin_source.unwrap(), begin_location.unwrap());
+         let combined_location = merge_locations(expr_begin_token.source_info, begin_location);
          wrap(
             Expression::UnaryOperator(UnOp::Negate, rhs),
             combined_location,
             expressions,
          )
       }
-      Some(x @ Token::Exclam) => {
+      x @ Token::Exclam => {
          let ((), r_bp) = prefix_binding_power(&x);
          let begin_location = l.peek_source();
          let rhs = pratt(l, err_manager, r_bp, if_head, expressions, interner)?;
-         let combined_location = merge_locations(expr_begin_source.unwrap(), begin_location.unwrap());
+         let combined_location = merge_locations(expr_begin_token.source_info, begin_location);
          wrap(
             Expression::UnaryOperator(UnOp::Complement, rhs),
             combined_location,
             expressions,
          )
       }
-      Some(x @ Token::Amp) => {
+      x @ Token::Amp => {
          let ((), r_bp) = prefix_binding_power(&x);
          let begin_location = l.peek_source();
          let rhs = pratt(l, err_manager, r_bp, if_head, expressions, interner)?;
-         let combined_location = merge_locations(expr_begin_source.unwrap(), begin_location.unwrap());
+         let combined_location = merge_locations(expr_begin_token.source_info, begin_location);
          wrap(
             Expression::UnaryOperator(UnOp::AddressOf, rhs),
             combined_location,
@@ -1308,63 +1230,54 @@ fn pratt(
          )
       }
       x => {
-         if let Some(si) = expr_begin_source {
-            rolandc_error!(
-               err_manager,
-               si,
-               "While parsing expression, unexpected token '{}'; was expecting a literal, call, variable, or prefix operator",
-               x.unwrap().for_parse_err(),
-            );
-         } else {
-            rolandc_error_no_loc!(
-               err_manager,
-               "While parsing expression, unexpected EOF; was expecting a literal, call, variable, or prefix operator",
-            );
-         }
+         rolandc_error!(
+            err_manager,
+            expr_begin_token.source_info,
+            "While parsing expression, encountered unexpected {}; was expecting a literal, call, variable, or prefix operator",
+            x.for_parse_err(),
+         );
          return Err(());
       }
    };
 
    loop {
       let op: Token = match l.peek_token() {
-         Some(
-            x @ (Token::Plus
-            | Token::Minus
-            | Token::Multiply
-            | Token::Divide
-            | Token::Remainder
-            | Token::LessThan
-            | Token::LessThanOrEqualTo
-            | Token::GreaterThan
-            | Token::GreaterThanOrEqualTo
-            | Token::Equality
-            | Token::Amp
-            | Token::KeywordAnd
-            | Token::KeywordOr
-            | Token::Pipe
-            | Token::Caret
-            | Token::NotEquality
-            | Token::KeywordExtend
-            | Token::KeywordTruncate
-            | Token::KeywordTransmute
-            | Token::Deref
-            | Token::OpenSquareBracket
-            | Token::ShiftLeft
-            | Token::ShiftRight),
-         ) => x,
-         Some(Token::Period) => {
+         x @ (Token::Plus
+         | Token::Minus
+         | Token::Multiply
+         | Token::Divide
+         | Token::Remainder
+         | Token::LessThan
+         | Token::LessThanOrEqualTo
+         | Token::GreaterThan
+         | Token::GreaterThanOrEqualTo
+         | Token::Equality
+         | Token::Amp
+         | Token::KeywordAnd
+         | Token::KeywordOr
+         | Token::Pipe
+         | Token::Caret
+         | Token::NotEquality
+         | Token::KeywordExtend
+         | Token::KeywordTruncate
+         | Token::KeywordTransmute
+         | Token::Deref
+         | Token::OpenSquareBracket
+         | Token::ShiftLeft
+         | Token::ShiftRight) => x,
+         Token::Period => {
             let mut fields = vec![];
             let mut last_location;
             loop {
                let _ = l.next();
-               let ident_token = expect(l, err_manager, &Token::Identifier(DUMMY_STR_TOKEN))?;
+               let ident_token = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
                last_location = ident_token.source_info;
                fields.push(extract_identifier(ident_token.token));
-               if l.peek_token() != Some(Token::Period) {
+               if l.peek_token() != Token::Period {
                   break;
                }
             }
-            let combined_location = merge_locations(expr_begin_source.unwrap(), last_location);
+            let combined_location = merge_locations(expr_begin_token.source_info, last_location);
             lhs = wrap(Expression::FieldAccess(fields, lhs), combined_location, expressions);
             continue;
          }
@@ -1376,13 +1289,13 @@ fn pratt(
             break;
          }
 
-         let op = l.next().unwrap();
+         let op = l.next();
 
          lhs = match op.token {
             Token::OpenSquareBracket => {
                let inner = parse_expression(l, err_manager, false, expressions, interner)?;
-               let close_token = expect(l, err_manager, &Token::CloseSquareBracket)?;
-               let combined_location = merge_locations(expr_begin_source.unwrap(), close_token.source_info);
+               let close_token = expect(l, err_manager, Token::CloseSquareBracket)?;
+               let combined_location = merge_locations(expr_begin_token.source_info, close_token.source_info);
                wrap(
                   Expression::ArrayIndex {
                      array: lhs,
@@ -1394,7 +1307,7 @@ fn pratt(
             }
             Token::KeywordExtend => {
                let a_type = parse_type(l, err_manager, interner)?;
-               let combined_location = merge_locations(expr_begin_source.unwrap(), a_type.location);
+               let combined_location = merge_locations(expr_begin_token.source_info, a_type.location);
                wrap(
                   Expression::Cast {
                      cast_type: CastType::Extend,
@@ -1407,7 +1320,7 @@ fn pratt(
             }
             Token::KeywordTruncate => {
                let a_type = parse_type(l, err_manager, interner)?;
-               let combined_location = merge_locations(expr_begin_source.unwrap(), a_type.location);
+               let combined_location = merge_locations(expr_begin_token.source_info, a_type.location);
                wrap(
                   Expression::Cast {
                      cast_type: CastType::Truncate,
@@ -1420,7 +1333,7 @@ fn pratt(
             }
             Token::KeywordTransmute => {
                let a_type = parse_type(l, err_manager, interner)?;
-               let combined_location = merge_locations(expr_begin_source.unwrap(), a_type.location);
+               let combined_location = merge_locations(expr_begin_token.source_info, a_type.location);
                wrap(
                   Expression::Cast {
                      cast_type: CastType::Transmute,
@@ -1432,7 +1345,7 @@ fn pratt(
                )
             }
             Token::Deref => {
-               let combined_location = merge_locations(expr_begin_source.unwrap(), op.source_info);
+               let combined_location = merge_locations(expr_begin_token.source_info, op.source_info);
                wrap(
                   Expression::UnaryOperator(UnOp::Dereference, lhs),
                   combined_location,
@@ -1450,7 +1363,7 @@ fn pratt(
          break;
       }
 
-      let next_token = l.next().unwrap();
+      let next_token = l.next();
       let op = next_token.token;
       let rhs = pratt(l, err_manager, r_b, if_head, expressions, interner)?;
 

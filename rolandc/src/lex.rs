@@ -70,13 +70,14 @@ pub enum Token {
    DoublePeriod,
    Dollar,
    Deref,
+   Eof,
 }
 
 impl Token {
    #[must_use]
    pub fn for_parse_err(&self) -> &'static str {
       match self {
-         Token::Arrow => "->",
+         Token::Arrow => "token '->'",
          Token::KeywordElse => "keyword else",
          Token::KeywordIf => "keyword if",
          Token::KeywordProcedureDef => "keyword proc",
@@ -98,45 +99,46 @@ impl Token {
          Token::KeywordExtern => "keyword extern",
          Token::KeywordBuiltin => "keyword builtin",
          Token::KeywordImport => "keyword import",
-         Token::OpenBrace => "{",
-         Token::CloseBrace => "}",
-         Token::OpenParen => "(",
-         Token::CloseParen => ")",
-         Token::OpenSquareBracket => "[",
-         Token::CloseSquareBracket => "]",
-         Token::Colon => ":",
-         Token::DoubleColon => "::",
-         Token::Caret => "^",
-         Token::Amp => "&",
-         Token::Pipe => "|",
-         Token::Semicolon => ";",
+         Token::OpenBrace => "token '{'",
+         Token::CloseBrace => "token '}'",
+         Token::OpenParen => "token '('",
+         Token::CloseParen => "token ')'",
+         Token::OpenSquareBracket => "token '['",
+         Token::CloseSquareBracket => "token ']'",
+         Token::Colon => "token ':'",
+         Token::DoubleColon => "token '::'",
+         Token::Caret => "token '^'",
+         Token::Amp => "token '&'",
+         Token::Pipe => "token '|'",
+         Token::Semicolon => "token ';'",
          Token::Identifier(_) => "identifier",
          Token::BoolLiteral(_) => "boolean literal",
          Token::StringLiteral(_) => "string literal",
          Token::IntLiteral(_) => "int literal",
          Token::FloatLiteral(_) => "float literal",
-         Token::Plus => "+",
-         Token::Minus => "-",
-         Token::Multiply => "*",
-         Token::Divide => "/",
-         Token::Remainder => "%",
-         Token::Assignment => "=",
-         Token::Equality => "==",
-         Token::NotEquality => "!=",
-         Token::LessThan => "<",
-         Token::LessThanOrEqualTo => "<=",
-         Token::GreaterThan => ">",
-         Token::GreaterThanOrEqualTo => ">=",
-         Token::Comma => ",",
-         Token::Exclam => "!",
-         Token::Period => ".",
-         Token::DoublePeriod => ".",
-         Token::ShiftLeft => "<<",
-         Token::ShiftRight => ">>",
+         Token::Plus => "token '+'",
+         Token::Minus => "token '-'",
+         Token::Multiply => "token '*'",
+         Token::Divide => "token '/'",
+         Token::Remainder => "token '%'",
+         Token::Assignment => "token '='",
+         Token::Equality => "token '=='",
+         Token::NotEquality => "token '!='",
+         Token::LessThan => "token '<'",
+         Token::LessThanOrEqualTo => "token '<='",
+         Token::GreaterThan => "token '>'",
+         Token::GreaterThanOrEqualTo => "token '>='",
+         Token::Comma => "token ','",
+         Token::Exclam => "token '!'",
+         Token::Period => "token '.'",
+         Token::DoublePeriod => "token '.'",
+         Token::ShiftLeft => "token '<<'",
+         Token::ShiftRight => "token '>>'",
          Token::KeywordFor => "keyword for",
          Token::KeywordIn => "keyword in",
-         Token::Dollar => "$",
-         Token::Deref => "~",
+         Token::Dollar => "token '$'",
+         Token::Deref => "token '~'",
+         Token::Eof => "EOF",
       }
    }
 }
@@ -207,6 +209,15 @@ impl CharCountingBuffer {
 }
 
 pub fn lex(
+   input: &str,
+   source_path: SourcePath,
+   err_manager: &mut ErrorManager,
+   interner: &mut Interner,
+) -> Result<Lexer, ()> {
+   lex_for_tokens(input, source_path, err_manager, interner).map(|x| Lexer::from_tokens(x, source_path))
+}
+
+pub fn lex_for_tokens(
    input: &str,
    source_path: SourcePath,
    err_manager: &mut ErrorManager,
@@ -905,5 +916,52 @@ fn parse_int(s: &str, radix: u32, err_manager: &mut ErrorManager, source_info: S
          Err(())
       }
       Err(_) => unreachable!(),
+   }
+}
+
+pub struct Lexer {
+   tokens: Vec<SourceToken>,
+   eof_location: SourceInfo,
+}
+
+impl Lexer {
+   pub fn from_tokens(mut tokens: Vec<SourceToken>, file: SourcePath) -> Lexer {
+      let eof_location = tokens.last().map_or(
+         SourceInfo {
+            begin: SourcePosition { line: 0, col: 0 },
+            end: SourcePosition { line: 0, col: 0 },
+            file,
+         },
+         |x| SourceInfo {
+            begin: x.source_info.end,
+            end: x.source_info.end,
+            file: x.source_info.file,
+         },
+      );
+      tokens.reverse();
+      Lexer { tokens, eof_location }
+   }
+
+   pub fn peek_source(&self) -> SourceInfo {
+      self.tokens.last().map_or(self.eof_location, |x| x.source_info)
+   }
+
+   pub fn peek_token(&self) -> Token {
+      self.tokens.last().map_or(Token::Eof, |x| x.token)
+   }
+
+   pub fn double_peek_token(&self) -> Token {
+      if self.tokens.len() <= 1 {
+         return Token::Eof;
+      }
+
+      self.tokens.get(self.tokens.len() - 2).map_or(Token::Eof, |x| x.token)
+   }
+
+   pub fn next(&mut self) -> SourceToken {
+      self.tokens.pop().unwrap_or(SourceToken {
+         token: Token::Eof,
+         source_info: self.eof_location,
+      })
    }
 }
