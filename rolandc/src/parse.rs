@@ -486,13 +486,11 @@ fn parse_identifier(l: &mut Lexer, err_manager: &mut ErrorManager) -> Result<Ide
    })
 }
 
-fn parse_procedure(
+fn parse_procedure_definition(
    l: &mut Lexer,
    err_manager: &mut ErrorManager,
-   source_info: SourceInfo,
-   expressions: &mut ExpressionPool,
    interner: &Interner,
-) -> Result<ProcedureNode, ()> {
+) -> Result<ProcedureDefinition, ()> {
    let procedure_name = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
    expect(l, err_manager, Token::OpenParen)?;
    let parameters = parse_parameters(l, err_manager, interner)?;
@@ -503,14 +501,25 @@ fn parse_procedure(
    } else {
       ExpressionType::Value(ValueType::Unit)
    };
+   Ok(ProcedureDefinition {
+      name: extract_identifier(procedure_name.token),
+      parameters,
+      ret_type,
+   })
+}
+
+fn parse_procedure(
+   l: &mut Lexer,
+   err_manager: &mut ErrorManager,
+   source_info: SourceInfo,
+   expressions: &mut ExpressionPool,
+   interner: &Interner,
+) -> Result<ProcedureNode, ()> {
+   let definition = parse_procedure_definition(l, err_manager, interner)?;
    let block = parse_block(l, err_manager, expressions, interner)?;
    let combined_location = merge_locations(source_info, block.location);
    Ok(ProcedureNode {
-      definition: ProcedureDefinition {
-         name: extract_identifier(procedure_name.token),
-         parameters,
-         ret_type,
-      },
+      definition,
       locals: IndexMap::new(),
       virtual_locals: IndexSet::new(),
       block,
@@ -525,23 +534,10 @@ fn parse_external_procedure(
    interner: &Interner,
    proc_impl_source: ProcImplSource,
 ) -> Result<ExternalProcedureNode, ()> {
-   let procedure_name = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
-   expect(l, err_manager, Token::OpenParen)?;
-   let parameters = parse_parameters(l, err_manager, interner)?;
-   expect(l, err_manager, Token::CloseParen)?;
-   let ret_type = if l.peek_token() == Token::Arrow {
-      let _ = l.next();
-      parse_type(l, err_manager, interner)?.e_type
-   } else {
-      ExpressionType::Value(ValueType::Unit)
-   };
+   let definition = parse_procedure_definition(l, err_manager, interner)?;
    let end_token = expect(l, err_manager, Token::Semicolon)?;
    Ok(ExternalProcedureNode {
-      definition: ProcedureDefinition {
-         name: extract_identifier(procedure_name.token),
-         parameters,
-         ret_type,
-      },
+      definition,
       location: merge_locations(source_info, end_token.source_info),
       impl_source: proc_impl_source,
    })
