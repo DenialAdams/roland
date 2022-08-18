@@ -99,6 +99,9 @@ fn roland_error_to_lsp_error(
                .collect(),
          ),
       ),
+      // Reporting this error with a bogus location is... well, it works, but can look strange.
+      // The problem is that there is no good way to report an error that truly has no associated location.
+      // See https://github.com/microsoft/language-server-protocol/issues/256
       ErrorLocation::NoLocation => (
          None,
          Range {
