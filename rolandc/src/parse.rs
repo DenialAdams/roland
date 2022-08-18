@@ -671,13 +671,7 @@ fn parse_block(
             let end_en = parse_expression(l, err_manager, true, expressions, interner)?;
             let new_block = parse_block(l, err_manager, expressions, interner)?;
             statements.push(StatementNode {
-               statement: Statement::For(
-                  variable_name,
-                  start_en,
-                  end_en,
-                  new_block,
-                  inclusive,
-               ),
+               statement: Statement::For(variable_name, start_en, end_en, new_block, inclusive),
                location: for_token.source_info,
             });
          }
@@ -715,11 +709,7 @@ fn parse_block(
             let sc = expect(l, err_manager, Token::Semicolon)?;
             let statement_location = merge_locations(let_token.source_info, sc.source_info);
             statements.push(StatementNode {
-               statement: Statement::VariableDeclaration(
-                  variable_name,
-                  e,
-                  declared_type.map(|x| x.e_type),
-               ),
+               statement: Statement::VariableDeclaration(variable_name, e, declared_type.map(|x| x.e_type)),
                location: statement_location,
             });
          }
