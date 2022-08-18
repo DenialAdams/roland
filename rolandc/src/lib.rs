@@ -33,7 +33,7 @@ mod typed_index_vec;
 mod various_expression_lowering;
 mod wasm;
 
-use error_handling::error_handling_macros::{rolandc_error};
+use error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
 use error_handling::ErrorManager;
 use indexmap::{IndexMap, IndexSet};
 pub use parse::Program;
@@ -44,9 +44,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use typed_index_vec::HandleMap;
-
-use crate::error_handling::error_handling_macros::rolandc_error_no_loc;
-use crate::interner::Interner;
+use interner::Interner;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Target {
@@ -154,10 +152,9 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
                   return Err(CompilationError::Io);
                }
             };
-            if imported_files.contains(&canonical_path) {
+            if !imported_files.insert(canonical_path) {
                continue;
             }
-            imported_files.insert(canonical_path);
 
             let program_s = match resolver.resolve_path(&base_path) {
                Ok(s) => s,
