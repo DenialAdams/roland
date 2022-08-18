@@ -391,17 +391,14 @@ pub fn astify(
          }
          Token::KeywordConst => {
             let a_const = lexer.next();
-            let variable_name = expect(&mut lexer, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
+            let variable_name = parse_identifier(&mut lexer, err_manager)?;
             expect(&mut lexer, err_manager, Token::Colon)?;
             let t_type = parse_type(&mut lexer, err_manager, interner)?;
             expect(&mut lexer, err_manager, Token::Assignment)?;
             let exp = parse_expression(&mut lexer, err_manager, false, expressions, interner)?;
             let end_token = expect(&mut lexer, err_manager, Token::Semicolon)?;
             consts.push(ConstNode {
-               name: IdentifierNode {
-                  identifier: extract_identifier(variable_name.token),
-                  location: variable_name.source_info,
-               },
+               name: variable_name,
                const_type: t_type.e_type,
                location: merge_locations(a_const.source_info, end_token.source_info),
                value: exp,
@@ -409,7 +406,7 @@ pub fn astify(
          }
          Token::KeywordStatic => {
             let a_static = lexer.next();
-            let variable_name = expect(&mut lexer, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
+            let variable_name = parse_identifier(&mut lexer, err_manager)?;
             expect(&mut lexer, err_manager, Token::Colon)?;
             let t_type = parse_type(&mut lexer, err_manager, interner)?;
             let exp = if lexer.peek_token() == Token::Assignment {
@@ -420,10 +417,7 @@ pub fn astify(
             };
             let end_token = expect(&mut lexer, err_manager, Token::Semicolon)?;
             statics.push(StaticNode {
-               name: IdentifierNode {
-                  identifier: extract_identifier(variable_name.token),
-                  location: variable_name.source_info,
-               },
+               name: variable_name,
                static_type: t_type.e_type,
                location: merge_locations(a_static.source_info, end_token.source_info),
                value: exp,
@@ -482,6 +476,14 @@ fn extract_int_literal(t: Token) -> u64 {
       Token::IntLiteral(v) => v,
       _ => unreachable!(),
    }
+}
+
+fn parse_identifier(l: &mut Lexer, err_manager: &mut ErrorManager) -> Result<IdentifierNode, ()> {
+   let ident = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
+   Ok(IdentifierNode {
+      identifier: extract_identifier(ident.token),
+      location: ident.source_info,
+   })
 }
 
 fn parse_procedure(
@@ -596,11 +598,7 @@ fn parse_enum(
       if l.peek_token() == Token::CloseBrace {
          break l.next();
       }
-      let identifier = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
-      variants.push(IdentifierNode {
-         identifier: extract_identifier(identifier.token),
-         location: identifier.source_info,
-      });
+      variants.push(parse_identifier(l, err_manager)?);
       if l.peek_token() == Token::CloseBrace {
          break l.next();
       } else if let Token::Identifier(x) = l.peek_token() {
@@ -664,7 +662,7 @@ fn parse_block(
          }
          Token::KeywordFor => {
             let for_token = l.next();
-            let variable_name = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
+            let variable_name = parse_identifier(l, err_manager)?;
             let _ = expect(l, err_manager, Token::KeywordIn)?;
             let start_en = parse_expression(l, err_manager, true, expressions, interner)?;
             let _ = expect(l, err_manager, Token::DoublePeriod)?;
@@ -678,10 +676,7 @@ fn parse_block(
             let new_block = parse_block(l, err_manager, expressions, interner)?;
             statements.push(StatementNode {
                statement: Statement::For(
-                  IdentifierNode {
-                     location: variable_name.source_info,
-                     identifier: extract_identifier(variable_name.token),
-                  },
+                  variable_name,
                   start_en,
                   end_en,
                   new_block,
@@ -714,7 +709,7 @@ fn parse_block(
          Token::KeywordLet => {
             let mut declared_type = None;
             let let_token = l.next();
-            let variable_name = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
+            let variable_name = parse_identifier(l, err_manager)?;
             if l.peek_token() == Token::Colon {
                let _ = l.next();
                declared_type = Some(parse_type(l, err_manager, interner)?);
@@ -725,10 +720,7 @@ fn parse_block(
             let statement_location = merge_locations(let_token.source_info, sc.source_info);
             statements.push(StatementNode {
                statement: Statement::VariableDeclaration(
-                  IdentifierNode {
-                     identifier: extract_identifier(variable_name.token),
-                     location: variable_name.source_info,
-                  },
+                  variable_name,
                   e,
                   declared_type.map(|x| x.e_type),
                ),
@@ -1098,19 +1090,15 @@ fn pratt(
             )
          } else if l.peek_token() == Token::DoubleColon {
             let _ = l.next();
-            let variant = expect(l, err_manager, Token::Identifier(DUMMY_STR_TOKEN))?;
-            let variant_identifier = extract_identifier(variant.token);
-            let combined_location = merge_locations(expr_begin_token.source_info, variant.source_info);
+            let variant = parse_identifier(l, err_manager)?;
+            let combined_location = merge_locations(expr_begin_token.source_info, variant.location);
             wrap(
                Expression::EnumLiteral(
                   IdentifierNode {
                      identifier: s,
                      location: expr_begin_token.source_info,
                   },
-                  IdentifierNode {
-                     identifier: variant_identifier,
-                     location: variant.source_info,
-                  },
+                  variant,
                ),
                combined_location,
                expressions,
