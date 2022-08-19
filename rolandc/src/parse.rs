@@ -324,6 +324,19 @@ impl Program {
    }
 }
 
+fn token_starts_expression(token: Token) -> bool {
+   matches!(token ,Token::BoolLiteral(_)
+         | Token::StringLiteral(_)
+         | Token::IntLiteral(_)
+         | Token::FloatLiteral(_)
+         | Token::OpenParen
+         | Token::OpenSquareBracket
+         | Token::Exclam
+         | Token::Amp
+         | Token::Identifier(_)
+         | Token::Minus)
+}
+
 pub fn astify(
    mut lexer: Lexer,
    err_manager: &mut ErrorManager,
@@ -717,15 +730,7 @@ fn parse_block(
             let s = parse_if_else_statement(l, err_manager, expressions, interner)?;
             statements.push(s);
          }
-         Token::BoolLiteral(_)
-         | Token::StringLiteral(_)
-         | Token::IntLiteral(_)
-         | Token::FloatLiteral(_)
-         | Token::OpenParen
-         | Token::Exclam
-         | Token::Amp
-         | Token::Identifier(_)
-         | Token::Minus => {
+         x if token_starts_expression(x) => {
             let e = parse_expression(l, err_manager, false, expressions, interner)?;
             match l.peek_token() {
                Token::Assignment => {
@@ -884,16 +889,7 @@ fn parse_arguments(
 
    loop {
       match l.peek_token() {
-         Token::Identifier(_)
-         | Token::BoolLiteral(_)
-         | Token::StringLiteral(_)
-         | Token::IntLiteral(_)
-         | Token::FloatLiteral(_)
-         | Token::OpenParen
-         | Token::OpenSquareBracket
-         | Token::Amp
-         | Token::Exclam
-         | Token::Minus => {
+         x if token_starts_expression(x) => {
             let name: Option<StrId> = if let Token::Identifier(x) = l.peek_token() {
                if l.double_peek_token() == Token::Colon {
                   let _ = l.next();
