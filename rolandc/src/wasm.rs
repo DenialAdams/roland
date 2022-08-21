@@ -1547,11 +1547,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             let (dest_type_str, suffix) = match e.exp_type.as_ref().unwrap() {
                ExpressionType::Value(ValueType::Int(x)) => {
                   let base_str = match x.width {
-                     IntWidth::Pointer => "i32",
                      IntWidth::Eight => "i64",
+                     IntWidth::Pointer => "i32",
                      IntWidth::Four => "i32",
-                     IntWidth::Two => "i16",
-                     IntWidth::One => "i8",
+                     IntWidth::Two => "i32",
+                     IntWidth::One => "i32",
                   };
                   (base_str, if x.signed { "_s" } else { "_u" })
                }
