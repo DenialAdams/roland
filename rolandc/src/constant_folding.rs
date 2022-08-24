@@ -353,6 +353,20 @@ fn fold_expr(
                      location: expr_to_fold_location,
                   });
                }
+               (Some(x), BinOp::GreaterThan) if x.is_int_max() => {
+                  return Some(ExpressionNode {
+                     expression: Expression::BoolLiteral(false),
+                     exp_type: expr_to_fold_type,
+                     location: expr_to_fold_location,
+                  });
+               }
+               (Some(x), BinOp::LessThan) if x.is_int_min() => {
+                  return Some(ExpressionNode {
+                     expression: Expression::BoolLiteral(false),
+                     exp_type: expr_to_fold_type,
+                     location: expr_to_fold_location,
+                  });
+               }
                _ => (),
             }
 
@@ -367,6 +381,20 @@ fn fold_expr(
                (Some(x), BinOp::LessThanOrEqualTo) if x.is_int_min() => {
                   return Some(ExpressionNode {
                      expression: Expression::BoolLiteral(true),
+                     exp_type: expr_to_fold_type,
+                     location: expr_to_fold_location,
+                  });
+               }
+               (Some(x), BinOp::GreaterThan) if x.is_int_min() => {
+                  return Some(ExpressionNode {
+                     expression: Expression::BoolLiteral(false),
+                     exp_type: expr_to_fold_type,
+                     location: expr_to_fold_location,
+                  });
+               }
+               (Some(x), BinOp::LessThan) if x.is_int_max() => {
+                  return Some(ExpressionNode {
+                     expression: Expression::BoolLiteral(false),
                      exp_type: expr_to_fold_type,
                      location: expr_to_fold_location,
                   });
