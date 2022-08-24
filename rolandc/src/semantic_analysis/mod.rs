@@ -37,21 +37,22 @@ pub struct StructInfo {
 }
 
 #[derive(Clone, Debug)]
-pub struct StaticInfo {
-   pub static_type: ExpressionType,
+pub struct GlobalInfo {
+   pub expr_type: ExpressionType,
    pub location: SourceInfo,
    pub is_const: bool,
 }
 
-pub enum ScopedVariableKind {
+pub enum VariableKind {
    Parameter,
    Local,
+   Global,
 }
 
-pub struct ScopedVariableDetails {
+pub struct VariableDetails {
    pub var_type: ExpressionType,
    pub declaration_location: SourceInfo,
-   pub kind: ScopedVariableKind,
+   pub kind: VariableKind,
    pub depth: u64,
    pub used: bool,
 }
@@ -61,10 +62,10 @@ pub struct ValidationContext<'a> {
    pub procedure_info: &'a IndexMap<StrId, ProcedureInfo>,
    pub enum_info: &'a IndexMap<StrId, EnumInfo>,
    pub struct_info: &'a IndexMap<StrId, StructInfo>,
-   pub static_info: &'a IndexMap<StrId, StaticInfo>,
+   pub global_info: &'a IndexMap<StrId, GlobalInfo>,
    pub cur_procedure_info: Option<&'a ProcedureInfo>,
    pub string_literals: IndexSet<StrId>,
-   pub variable_types: IndexMap<StrId, ScopedVariableDetails>,
+   pub variable_types: IndexMap<StrId, VariableDetails>,
    pub error_count: u64,
    pub block_depth: u64,
    pub loop_depth: u64,

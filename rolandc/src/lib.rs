@@ -318,7 +318,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    // it would make sense to do this right after constants are lowered
    // however, we want to keep that information around for the language server
-   ctx.program.static_info.retain(|_, v| !v.is_const);
+   ctx.program.global_info.retain(|_, v| !v.is_const);
 
    add_virtual_variables::add_virtual_vars(&mut ctx.program, &ctx.expressions);
    match target {

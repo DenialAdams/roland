@@ -465,7 +465,7 @@ pub fn emit_wasm(
          depth: 0,
       },
       literal_offsets: HashMap::with_capacity(program.literals.len()),
-      static_addresses: HashMap::with_capacity(program.static_info.len()),
+      static_addresses: HashMap::with_capacity(program.global_info.len()),
       local_offsets_mem: HashMap::new(),
       needed_store_fns: IndexSet::new(),
       struct_info: &program.struct_info,
@@ -567,13 +567,13 @@ pub fn emit_wasm(
 
    // Handle alignment of statics
    {
-      program.static_info.sort_by(|_k_1, v_1, _k_2, v_2| {
-         compare_type_alignment(&v_1.static_type, &v_2.static_type, &generation_context)
+      program.global_info.sort_by(|_k_1, v_1, _k_2, v_2| {
+         compare_type_alignment(&v_1.expr_type, &v_2.expr_type, &generation_context)
       });
 
-      let strictest_alignment = if let Some(v) = program.static_info.first() {
+      let strictest_alignment = if let Some(v) = program.global_info.first() {
          mem_alignment(
-            &v.1.static_type,
+            &v.1.expr_type,
             generation_context.enum_info,
             generation_context.struct_size_info,
          )
@@ -583,11 +583,11 @@ pub fn emit_wasm(
 
       offset = aligned_address(offset, strictest_alignment);
    }
-   for (static_name, static_details) in program.static_info.iter() {
+   for (static_name, static_details) in program.global_info.iter() {
       generation_context.static_addresses.insert(*static_name, offset);
 
       offset += sizeof_type_mem(
-         &static_details.static_type,
+         &static_details.expr_type,
          generation_context.enum_info,
          generation_context.struct_size_info,
       );

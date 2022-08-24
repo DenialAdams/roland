@@ -3,7 +3,7 @@ use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
 use crate::lex::Lexer;
-use crate::semantic_analysis::{EnumInfo, ProcedureInfo, StaticInfo, StructInfo};
+use crate::semantic_analysis::{EnumInfo, ProcedureInfo, GlobalInfo, StructInfo};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, ValueType};
@@ -222,7 +222,7 @@ pub struct GenericArgumentNode {
 
 impl Expression {
    #[must_use]
-   pub fn is_lvalue(&self, expressions: &ExpressionPool, static_info: &IndexMap<StrId, StaticInfo>) -> bool {
+   pub fn is_lvalue(&self, expressions: &ExpressionPool, static_info: &IndexMap<StrId, GlobalInfo>) -> bool {
       match self {
          Expression::Variable(x) => static_info.get(&x.identifier).map_or(true, |x| !x.is_const),
          Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue(expressions, static_info),
@@ -299,7 +299,7 @@ pub struct Program {
    pub literals: IndexSet<StrId>,
    pub enum_info: IndexMap<StrId, EnumInfo>,
    pub struct_info: IndexMap<StrId, StructInfo>,
-   pub static_info: IndexMap<StrId, StaticInfo>,
+   pub global_info: IndexMap<StrId, GlobalInfo>,
    pub procedure_info: IndexMap<StrId, ProcedureInfo>,
    pub struct_size_info: HashMap<StrId, SizeInfo>,
 }
@@ -317,7 +317,7 @@ impl Program {
          literals: IndexSet::new(),
          enum_info: IndexMap::new(),
          struct_info: IndexMap::new(),
-         static_info: IndexMap::new(),
+         global_info: IndexMap::new(),
          procedure_info: IndexMap::new(),
          struct_size_info: HashMap::new(),
       }
@@ -325,7 +325,9 @@ impl Program {
 }
 
 fn token_starts_expression(token: Token) -> bool {
-   matches!(token ,Token::BoolLiteral(_)
+   matches!(
+      token,
+      Token::BoolLiteral(_)
          | Token::StringLiteral(_)
          | Token::IntLiteral(_)
          | Token::FloatLiteral(_)
@@ -334,7 +336,8 @@ fn token_starts_expression(token: Token) -> bool {
          | Token::Exclam
          | Token::Amp
          | Token::Identifier(_)
-         | Token::Minus)
+         | Token::Minus
+   )
 }
 
 pub fn astify(
@@ -462,7 +465,7 @@ pub fn astify(
          statics,
          literals: IndexSet::new(),
          struct_info: IndexMap::new(),
-         static_info: IndexMap::new(),
+         global_info: IndexMap::new(),
          enum_info: IndexMap::new(),
          procedure_info: IndexMap::new(),
          struct_size_info: HashMap::new(),

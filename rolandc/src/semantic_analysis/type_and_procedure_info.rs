@@ -12,7 +12,7 @@ use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
 use crate::type_data::{ExpressionType, ValueType, USIZE_TYPE};
 use crate::Program;
 
-use super::{EnumInfo, ProcedureInfo, StaticInfo, StructInfo};
+use super::{EnumInfo, ProcedureInfo, GlobalInfo, StructInfo};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum RecursiveStructCheckResult {
@@ -240,10 +240,10 @@ pub fn populate_type_and_procedure_info(
          );
       }
 
-      if let Some(old_value) = program.static_info.insert(
+      if let Some(old_value) = program.global_info.insert(
          const_node.name.identifier,
-         StaticInfo {
-            static_type: const_node.const_type.clone(),
+         GlobalInfo {
+            expr_type: const_node.const_type.clone(),
             location: const_node.location,
             is_const: true,
          },
@@ -277,10 +277,10 @@ pub fn populate_type_and_procedure_info(
          );
       }
 
-      if let Some(old_value) = program.static_info.insert(
+      if let Some(old_value) = program.global_info.insert(
          static_node.name.identifier,
-         StaticInfo {
-            static_type: static_node.static_type.clone(),
+         GlobalInfo {
+            expr_type: static_node.static_type.clone(),
             location: static_node.location,
             is_const: false,
          },

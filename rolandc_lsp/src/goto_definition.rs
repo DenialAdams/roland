@@ -47,7 +47,7 @@ pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationCon
       match &expr.expression {
          Expression::Variable(x) => {
             if span_contains(x.location, sp, document, &ctx.interner) {
-               return ctx.program.static_info.get(&x.identifier).map(|x| x.location);
+               return ctx.program.global_info.get(&x.identifier).map(|x| x.location);
             }
          }
          Expression::ProcedureCall { proc_name, .. } => {

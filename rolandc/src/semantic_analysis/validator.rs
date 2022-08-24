@@ -1,5 +1,5 @@
 use super::type_inference::try_set_inferred_type;
-use super::{ScopedVariableDetails, ScopedVariableKind, StructInfo, ValidationContext};
+use super::{VariableDetails, VariableKind, StructInfo, ValidationContext};
 use crate::disjoint_set::DisjointSet;
 use crate::error_handling::error_handling_macros::{
    rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn,
@@ -132,7 +132,7 @@ pub fn type_and_check_validity(
       procedure_info: &program.procedure_info,
       enum_info: &program.enum_info,
       struct_info: &program.struct_info,
-      static_info: &program.static_info,
+      global_info: &program.global_info,
       cur_procedure_info: None,
       block_depth: 0,
       loop_depth: 0,
@@ -144,6 +144,11 @@ pub fn type_and_check_validity(
       type_variable_definitions: HashMap::new(),
       cur_procedure_locals: IndexMap::new(),
    };
+
+   // Populate variable resolution with globals
+   for si in program.global_info.iter() {
+      validation_context.variable_types.insert(*si.0, VariableDetails { var_type: si.1.expr_type.clone(), declaration_location: si.1.location, kind: VariableKind::Global, depth: 0, used: true });
+   }
 
    let special_procs = get_special_procedures(target, interner);
    for special_proc_name in special_procs.iter().copied() {
@@ -261,18 +266,17 @@ pub fn type_and_check_validity(
    }
 
    for procedure in program.procedures.iter_mut() {
-      validation_context.variable_types.clear();
       validation_context.cur_procedure_info = program.procedure_info.get(&procedure.definition.name);
 
       for parameter in procedure.definition.parameters.iter() {
          validation_context.variable_types.insert(
             parameter.name,
-            ScopedVariableDetails {
+            VariableDetails {
                var_type: parameter.p_type.clone(),
                depth: 1,
                used: false,
                declaration_location: parameter.location,
-               kind: ScopedVariableKind::Parameter,
+               kind: VariableKind::Parameter,
             },
          );
          validation_context
@@ -430,7 +434,7 @@ fn type_statement(
             );
          } else if !len
             .expression
-            .is_lvalue(validation_context.expressions, validation_context.static_info)
+            .is_lvalue(validation_context.expressions, validation_context.global_info)
          {
             validation_context.error_count += 1;
             if len
@@ -647,9 +651,7 @@ fn declare_variable(
    validation_context: &mut ValidationContext,
    interner: &mut Interner,
 ) {
-   if validation_context.static_info.contains_key(&id.identifier)
-      || validation_context.variable_types.contains_key(&id.identifier)
-   {
+   if validation_context.variable_types.contains_key(&id.identifier) {
       validation_context.error_count += 1;
       rolandc_error_w_details!(
          err_manager,
@@ -660,12 +662,12 @@ fn declare_variable(
    } else {
       validation_context.variable_types.insert(
          id.identifier,
-         ScopedVariableDetails {
+         VariableDetails {
             var_type: var_type.clone(),
             depth: validation_context.block_depth,
             declaration_location: id.location,
             used: false,
-            kind: ScopedVariableKind::Local,
+            kind: VariableKind::Local,
          },
       );
       validation_context
@@ -689,17 +691,17 @@ fn type_block(
    }
 
    validation_context.block_depth -= 1;
-   let cur_block_depth = validation_context.block_depth;
 
    validation_context.variable_types.retain(|k, v| {
-      if v.depth <= cur_block_depth {
+      if v.depth <= validation_context.block_depth {
          return true;
       }
 
       if !v.used {
          let begin = match v.kind {
-            ScopedVariableKind::Parameter => "Parameter",
-            ScopedVariableKind::Local => "Local variable",
+            VariableKind::Parameter => "Parameter",
+            VariableKind::Local => "Local variable",
+            VariableKind::Global => "Global variable",
          };
          rolandc_warn!(
             err_manager,
@@ -1109,7 +1111,7 @@ fn get_type(
          } else if *un_op == UnOp::AddressOf
             && !e
                .expression
-               .is_lvalue(validation_context.expressions, validation_context.static_info)
+               .is_lvalue(validation_context.expressions, validation_context.global_info)
          {
             validation_context.error_count += 1;
             if e.expression.is_lvalue_disregard_consts(validation_context.expressions) {
@@ -1146,7 +1148,7 @@ fn get_type(
          } else if *un_op == UnOp::AddressOf {
             if let Expression::Variable(var) = &e.expression {
                if validation_context
-                  .static_info
+                  .global_info
                   .get(&var.identifier)
                   .map_or(false, |x| x.is_const)
                {
@@ -1170,15 +1172,9 @@ fn get_type(
          }
 
          let defined_type = validation_context
-            .static_info
+            .variable_types
             .get(&id.identifier)
-            .map(|x| &x.static_type)
-            .or_else(|| {
-               validation_context
-                  .variable_types
-                  .get(&id.identifier)
-                  .map(|x| &x.var_type)
-            });
+            .map(|x| &x.var_type);
 
          match defined_type {
             Some(t) => t.clone(),
