@@ -222,12 +222,12 @@ pub struct GenericArgumentNode {
 
 impl Expression {
    #[must_use]
-   pub fn is_lvalue(&self, expressions: &ExpressionPool, static_info: &IndexMap<StrId, GlobalInfo>) -> bool {
+   pub fn is_lvalue(&self, expressions: &ExpressionPool, global_info: &IndexMap<StrId, GlobalInfo>) -> bool {
       match self {
-         Expression::Variable(x) => static_info.get(&x.identifier).map_or(true, |x| !x.is_const),
-         Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue(expressions, static_info),
+         Expression::Variable(x) => global_info.get(&x.identifier).map_or(true, |x| !x.is_const),
+         Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue(expressions, global_info),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
-         Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue(expressions, static_info),
+         Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue(expressions, global_info),
          _ => false,
       }
    }
