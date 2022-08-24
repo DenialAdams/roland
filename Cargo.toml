@@ -8,6 +8,5 @@ members = [
    "rolandc_lsp",
 ]
 
-#[profile.release]
-#lto = true
-#codegen-units = 1
+[profile.release]
+panic= 'abort'
