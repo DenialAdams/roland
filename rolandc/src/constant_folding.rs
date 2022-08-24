@@ -339,6 +339,38 @@ fn fold_expr(
                      location: expr_to_fold_location,
                   });
                }
+               (Some(x), BinOp::GreaterThanOrEqualTo) if x.is_int_min() => {
+                  return Some(ExpressionNode {
+                     expression: Expression::BoolLiteral(true),
+                     exp_type: expr_to_fold_type,
+                     location: expr_to_fold_location,
+                  });
+               }
+               (Some(x), BinOp::LessThanOrEqualTo) if x.is_int_max() => {
+                  return Some(ExpressionNode {
+                     expression: Expression::BoolLiteral(true),
+                     exp_type: expr_to_fold_type,
+                     location: expr_to_fold_location,
+                  });
+               }
+               _ => (),
+            }
+
+            match (lhs, *operator) {
+               (Some(x), BinOp::GreaterThanOrEqualTo) if x.is_int_max() => {
+                  return Some(ExpressionNode {
+                     expression: Expression::BoolLiteral(true),
+                     exp_type: expr_to_fold_type,
+                     location: expr_to_fold_location,
+                  });
+               }
+               (Some(x), BinOp::LessThanOrEqualTo) if x.is_int_min() => {
+                  return Some(ExpressionNode {
+                     expression: Expression::BoolLiteral(true),
+                     exp_type: expr_to_fold_type,
+                     location: expr_to_fold_location,
+                  });
+               }
                _ => (),
             }
 
@@ -797,6 +829,20 @@ impl Literal {
       }
    }
 
+   fn is_int_min(self) -> bool {
+      matches!(
+         self,
+         Literal::Int8(i8::MIN)
+            | Literal::Int16(i16::MIN)
+            | Literal::Int32(i32::MIN)
+            | Literal::Int64(i64::MIN)
+            | Literal::Uint8(u8::MIN)
+            | Literal::Uint16(u16::MIN)
+            | Literal::Uint32(u32::MIN)
+            | Literal::Uint64(u64::MIN)
+      )
+   }
+
    fn is_int_max(self) -> bool {
       matches!(
          self,
@@ -810,6 +856,7 @@ impl Literal {
             | Literal::Uint64(u64::MAX)
       )
    }
+
    fn is_int_zero(self) -> bool {
       matches!(
          self,
