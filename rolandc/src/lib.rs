@@ -35,13 +35,12 @@ mod wasm;
 
 use error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
 use error_handling::ErrorManager;
-use indexmap::{IndexMap, IndexSet};
 use interner::Interner;
 pub use parse::Program;
 use parse::{ExpressionId, ExpressionNode, ExpressionPool, ImportNode};
 use source_info::{SourceInfo, SourcePath};
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use typed_index_vec::HandleMap;
@@ -95,20 +94,7 @@ impl CompilationContext {
          expressions: HandleMap::new(),
          interner: Interner::with_capacity(1024),
          err_manager: ErrorManager::new(),
-         program: Program {
-            external_procedures: Vec::new(),
-            procedures: Vec::new(),
-            enums: Vec::new(),
-            structs: Vec::new(),
-            consts: Vec::new(),
-            statics: Vec::new(),
-            literals: IndexSet::new(),
-            struct_info: IndexMap::new(),
-            static_info: IndexMap::new(),
-            enum_info: IndexMap::new(),
-            procedure_info: IndexMap::new(),
-            struct_size_info: HashMap::new(),
-         },
+         program: Program::new(),
       }
    }
 }
