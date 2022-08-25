@@ -1,14 +1,16 @@
 use std::collections::HashMap;
 use std::mem;
+use std::num::NonZeroUsize;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord)]
-pub struct StrId(usize);
+pub struct StrId(NonZeroUsize);
 
 // TODO: remove this, we only use it for a dumb reason
-pub const DUMMY_STR_TOKEN: StrId = StrId(0);
+// Obviously safe, but we can't use the safe constructor until const unwrap
+pub const DUMMY_STR_TOKEN: StrId = StrId(unsafe { NonZeroUsize::new_unchecked(1) });
 
 pub struct Interner {
-   map: HashMap<&'static str, usize>,
+   map: HashMap<&'static str, NonZeroUsize>,
    vec: Vec<&'static str>,
    buf: String,
    full: Vec<String>,
@@ -20,7 +22,7 @@ impl Interner {
       let cap = cap.next_power_of_two();
       Interner {
          map: HashMap::default(),
-         vec: Vec::new(),
+         vec: vec![""],
          buf: String::with_capacity(cap),
          full: Vec::new(),
       }
@@ -31,7 +33,8 @@ impl Interner {
          return StrId(id);
       }
       let name = unsafe { self.alloc(name) };
-      let id = self.map.len();
+      // Obviously safe, due to the +1
+      let id = unsafe { NonZeroUsize::new_unchecked(self.map.len() + 1) };
       self.map.insert(name, id);
       self.vec.push(name);
 
@@ -43,7 +46,7 @@ impl Interner {
 
    #[must_use]
    pub fn lookup(&self, id: StrId) -> &str {
-      self.vec[id.0 as usize]
+      self.vec[id.0.get()]
    }
 
    /// Panics if the string is not present

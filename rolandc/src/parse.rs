@@ -3,7 +3,7 @@ use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
 use crate::lex::Lexer;
-use crate::semantic_analysis::{EnumInfo, ProcedureInfo, GlobalInfo, StructInfo};
+use crate::semantic_analysis::{EnumInfo, GlobalInfo, ProcedureInfo, StructInfo};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, ValueType};
@@ -207,8 +207,6 @@ pub enum Expression {
    EnumLiteral(IdentifierNode, IdentifierNode),
 }
 
-// TODO: it would be cool if StrId was NonZero so that this struct (and others like it)
-// could be smaller
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArgumentNode {
    pub name: Option<StrId>,
