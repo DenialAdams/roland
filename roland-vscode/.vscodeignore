@@ -4,6 +4,6 @@
 !out/main.js
 !package-lock.json
 !package.json
-!syntaxes/roland.tmGrammar.json
+!syntaxes/roland.tmLanguage.json
 !rolandc_lsp
 !rolandc_lsp.exe

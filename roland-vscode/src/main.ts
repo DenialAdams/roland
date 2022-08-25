@@ -2,7 +2,7 @@ import * as lc from 'vscode-languageclient/node';
 import * as vscode from 'vscode';
 import * as os from "os";
 import { inspect } from "util";
-import { existsSync, watch } from 'fs';
+import { existsSync, watchFile } from 'fs';
 
 let client: lc.LanguageClient;
 
@@ -41,8 +41,8 @@ export async function activate(context: vscode.ExtensionContext) {
    let local_path = getLocalPath();
    if (local_path != "") {
       log.info("Launching local copy of rolandc...");
-      watch(local_path, {persistent: false}, async function(event, _filename) {
-         if (event == "change") {
+      watchFile(local_path, { persistent: false }, async function(current, _prev) {
+         if (current.isFile()) {
             log.info("Detected change to language server, restarting..");
             await deactivate();
             await startServer(local_path)
@@ -102,8 +102,8 @@ const log = new class {
    private stringify(val: unknown): string {
       if (typeof val === "string") return val;
       return inspect(val, {
-            colors: false,
-            depth: 6, // heuristic
+         colors: false,
+         depth: 6, // heuristic
       });
    }
 };
