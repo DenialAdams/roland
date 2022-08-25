@@ -2,7 +2,7 @@ import * as lc from 'vscode-languageclient/node';
 import * as vscode from 'vscode';
 import * as os from "os";
 import { inspect } from "util";
-import { existsSync } from 'fs';
+import { existsSync, watch } from 'fs';
 
 let client: lc.LanguageClient;
 
@@ -17,32 +17,49 @@ function getLocalPath(): string {
    return "";
 }
 
-export async function activate(context: vscode.ExtensionContext) {
-   let extension_path = context.asAbsolutePath("rolandc_lsp");
-   if (process.platform == "win32") {
-      extension_path += ".exe";
-   }
-   let local_path = getLocalPath();
-   let final_path = extension_path;
-   if (local_path != "") {
-      final_path = local_path;
-   }
+async function startServer(path: string) {
    const run: lc.Executable = {
-      command: final_path,
+      command: path,
       transport: lc.TransportKind.stdio,
    };
    const serverOptions: lc.ServerOptions = {
       run,
       debug: run,
    };
-
    const clientOptions: lc.LanguageClientOptions = {
       documentSelector: [{ scheme: 'file', language: 'roland' }],
    }
 
-   log.info("Starting language client...");
    client = new lc.LanguageClient('roland', 'Roland Language Server', serverOptions, clientOptions);
-   client.start();
+
+   await client.start();
+}
+
+export async function activate(context: vscode.ExtensionContext) {
+   log.info("Starting language client...");
+
+   let local_path = getLocalPath();
+   if (local_path != "") {
+      log.info("Launching local copy of rolandc...");
+      watch(local_path, {persistent: false}, async function(event, _filename) {
+         if (event == "change") {
+            log.info("Detected change to language server, restarting..");
+            await deactivate();
+            await startServer(local_path)
+            log.info("Finished restarting language server");
+         }
+      });
+      await deactivate(); // just in case the watcher triggered before we got here? seems reasonable
+      await startServer(local_path);
+   } else {
+      log.info("Launching embedded rolandc...");
+      let extension_path = context.asAbsolutePath("rolandc_lsp");
+      if (process.platform == "win32") {
+         extension_path += ".exe";
+      }
+      await startServer(extension_path);
+   }
+
    log.info("Finished starting language client");
 }
 

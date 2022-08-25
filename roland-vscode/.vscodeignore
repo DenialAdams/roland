@@ -1,1 +1,9 @@
-.vscode/**
+**
+!language-configuration.json
+!LICENSE
+!out/main.js
+!package-lock.json
+!package.json
+!syntaxes/roland.tmGrammar.json
+!rolandc_lsp
+!rolandc_lsp.exe
