@@ -10,3 +10,7 @@ members = [
 
 [profile.release]
 panic = "abort"
+
+[profile.dhat]
+inherits = "release"
+debug = true

@@ -8,6 +8,10 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 const HELP: &str = r"
 Usage: rolandc (source.rol) [OPTION]*
 
@@ -75,6 +79,9 @@ impl<'a> FileResolver<'a> for CliFileResolver {
 }
 
 fn main() {
+   #[cfg(feature = "dhat-heap")]
+   let _profiler = dhat::Profiler::new_heap();
+
    let opts = match parse_args() {
       Ok(v) => v,
       Err(e) => {
