@@ -1,5 +1,5 @@
 use super::type_inference::try_set_inferred_type;
-use super::{VariableDetails, VariableKind, StructInfo, ValidationContext};
+use super::{StructInfo, ValidationContext, VariableDetails, VariableKind};
 use crate::disjoint_set::DisjointSet;
 use crate::error_handling::error_handling_macros::{
    rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn,
@@ -147,7 +147,16 @@ pub fn type_and_check_validity(
 
    // Populate variable resolution with globals
    for si in program.global_info.iter() {
-      validation_context.variable_types.insert(*si.0, VariableDetails { var_type: si.1.expr_type.clone(), declaration_location: si.1.location, kind: VariableKind::Global, depth: 0, used: true });
+      validation_context.variable_types.insert(
+         *si.0,
+         VariableDetails {
+            var_type: si.1.expr_type.clone(),
+            declaration_location: si.1.location,
+            kind: VariableKind::Global,
+            depth: 0,
+            used: true,
+         },
+      );
    }
 
    let special_procs = get_special_procedures(target, interner);
@@ -1195,7 +1204,7 @@ fn get_type(
          args,
          generic_args,
       } => {
-         for arg in args.iter_mut() {
+         for arg in args.iter() {
             type_expression(err_manager, arg.expr, validation_context, interner);
          }
 
@@ -1277,7 +1286,7 @@ fn get_type(
                   // We shortcircuit here, because there will likely be lots of mismatched types if an arg was forgotten
                } else if args_in_order {
                   let expected_types = procedure_info.parameters.iter();
-                  for (i, (actual, expected)) in args.iter_mut().zip(expected_types).enumerate() {
+                  for (i, (actual, expected)) in args.iter().zip(expected_types).enumerate() {
                      // These should be at the end by now, so we've checked everything we needed to
                      if actual.name.is_some() {
                         break;
@@ -1304,7 +1313,7 @@ fn get_type(
                      }
                   }
 
-                  for arg in args.iter_mut().filter(|x| x.name.is_some()) {
+                  for arg in args.iter().filter(|x| x.name.is_some()) {
                      let expected = procedure_info.named_parameters.get(&arg.name.unwrap());
 
                      if expected.is_none() {
@@ -1358,7 +1367,7 @@ fn get_type(
          }
       }
       Expression::StructLiteral(struct_name, fields) => {
-         for field in fields.iter_mut() {
+         for field in fields.iter() {
             type_expression(err_manager, field.1, validation_context, interner);
          }
 
@@ -1522,7 +1531,7 @@ fn get_type(
          lhs_type
       }
       Expression::ArrayLiteral(elems) => {
-         for elem in elems.iter_mut() {
+         for elem in elems.iter() {
             type_expression(err_manager, *elem, validation_context, interner);
          }
 
