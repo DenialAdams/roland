@@ -20,6 +20,7 @@ use crate::Target;
 use arrayvec::ArrayVec;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::{HashMap, HashSet};
+use std::ops::Deref;
 
 fn is_special_procedure(target: Target, name: StrId, interner: &mut Interner) -> bool {
    get_special_procedures(target, interner).contains(&name)
@@ -1628,7 +1629,7 @@ fn get_type(
 
          match &array_expression.exp_type {
             Some(x) if x.is_error_type() => ExpressionType::Value(ValueType::CompileError),
-            Some(ExpressionType::Value(ValueType::Array(b, _))) => *b.clone(),
+            Some(ExpressionType::Value(ValueType::Array(b, _))) => b.deref().clone(),
             Some(x @ ExpressionType::Pointer(1, ValueType::Array(_, _))) => {
                validation_context.error_count += 1;
                rolandc_error_w_details!(
