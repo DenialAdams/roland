@@ -733,12 +733,56 @@ fn get_type(
 ) -> ExpressionType {
    let expr_location = validation_context.expressions[expr_index].location;
 
-   // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
-   // while this pointer is alive. We don't do this, because we update this expression in place and don't
-   // add new expressions during validation.
-   let expr_node = std::ptr::addr_of_mut!(validation_context.expressions[expr_index]);
+   // For borrow checking reasons, we resolve types first
+   // (which requires mutable access to the expression)
+   match &mut validation_context.expressions[expr_index].expression {
+      Expression::Cast { target_type, .. } => {
+         if resolve_type(
+            target_type,
+            validation_context.enum_info,
+            validation_context.struct_info,
+         )
+         .is_err()
+         {
+            validation_context.error_count += 1;
+            rolandc_error!(
+               err_manager,
+               expr_location,
+               "Undeclared type `{}`",
+               target_type.as_roland_type_info(interner),
+            );
+            *target_type = ExpressionType::Value(ValueType::CompileError);
+         }
+      }
+      Expression::ProcedureCall {
+         generic_args,
+         proc_name,
+         ..
+      } => {
+         for g_arg in generic_args.iter_mut() {
+            if resolve_type(
+               &mut g_arg.gtype,
+               validation_context.enum_info,
+               validation_context.struct_info,
+            )
+            .is_err()
+            {
+               validation_context.error_count += 1;
+               let etype_str = g_arg.gtype.as_roland_type_info(interner);
+               rolandc_error_w_details!(
+                  err_manager,
+                  &[(expr_location, "call")],
+                  "Undeclared type `{}` given as a type argument to `{}`",
+                  etype_str,
+                  interner.lookup(proc_name.identifier),
+               );
+            }
+         }
+      }
+      _ => (),
+   }
 
-   match unsafe { &mut (*expr_node).expression } {
+   match &validation_context.expressions[expr_index].expression.clone() {
       Expression::UnitLiteral => ExpressionType::Value(ValueType::Unit),
       Expression::BoolLiteral(_) => ExpressionType::Value(ValueType::Bool),
       Expression::IntLiteral { .. } => {
@@ -762,25 +806,10 @@ fn get_type(
       } => {
          type_expression(err_manager, *expr_id, validation_context, interner);
 
-         if resolve_type(
-            target_type,
-            validation_context.enum_info,
-            validation_context.struct_info,
-         )
-         .is_err()
-         {
-            validation_context.error_count += 1;
-            rolandc_error!(
-               err_manager,
-               expr_location,
-               "Undeclared type `{}`",
-               target_type.as_roland_type_info(interner),
-            );
-
+         if target_type.is_error_type() {
+            // Avoid cascading errors
             return ExpressionType::Value(ValueType::CompileError);
-         }
-
-         if *cast_type == CastType::Transmute && target_type.is_pointer() {
+         } else if *cast_type == CastType::Transmute && target_type.is_pointer() {
             try_set_inferred_type(
                &ExpressionType::Value(USIZE_TYPE),
                *expr_id,
@@ -1206,26 +1235,6 @@ fn get_type(
       } => {
          for arg in args.iter() {
             type_expression(err_manager, arg.expr, validation_context, interner);
-         }
-
-         for g_arg in generic_args.iter_mut() {
-            if resolve_type(
-               &mut g_arg.gtype,
-               validation_context.enum_info,
-               validation_context.struct_info,
-            )
-            .is_err()
-            {
-               validation_context.error_count += 1;
-               let etype_str = g_arg.gtype.as_roland_type_info(interner);
-               rolandc_error_w_details!(
-                  err_manager,
-                  &[(expr_location, "call")],
-                  "Undeclared type `{}` given as a type argument to `{}`",
-                  etype_str,
-                  interner.lookup(proc_name.identifier),
-               );
-            }
          }
 
          if is_special_procedure(validation_context.target, proc_name.identifier, interner) {

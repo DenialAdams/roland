@@ -12,7 +12,7 @@ use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
 use crate::type_data::{ExpressionType, ValueType, USIZE_TYPE};
 use crate::Program;
 
-use super::{EnumInfo, ProcedureInfo, GlobalInfo, StructInfo};
+use super::{EnumInfo, GlobalInfo, ProcedureInfo, StructInfo};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum RecursiveStructCheckResult {

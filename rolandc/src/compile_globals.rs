@@ -156,11 +156,7 @@ fn cg_const(c_name: StrId, cg_context: &mut CgContext, err_manager: &mut ErrorMa
 }
 
 fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
-   // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
-   // while this pointer is alive. We don't do this, because we update this expression in place.
-   let expr_to_fold = std::ptr::addr_of!(cg_context.expressions[expr_index]);
-
-   match unsafe { &(*expr_to_fold).expression } {
+   match &cg_context.expressions[expr_index].expression.clone() {
       Expression::Variable(x) => {
          if cg_context.consts_being_processed.contains(&x.identifier) {
             cg_context.error_count += 1;
