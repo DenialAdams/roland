@@ -567,9 +567,9 @@ pub fn emit_wasm(
 
    // Handle alignment of statics
    {
-      program.global_info.sort_by(|_k_1, v_1, _k_2, v_2| {
-         compare_type_alignment(&v_1.expr_type, &v_2.expr_type, &generation_context)
-      });
+      program
+         .global_info
+         .sort_by(|_k_1, v_1, _k_2, v_2| compare_type_alignment(&v_1.expr_type, &v_2.expr_type, &generation_context));
 
       let strictest_alignment = if let Some(v) = program.global_info.first() {
          mem_alignment(
