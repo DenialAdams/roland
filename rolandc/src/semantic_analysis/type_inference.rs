@@ -40,7 +40,11 @@ fn set_inferred_type(
    err_manager: &mut ErrorManager,
    interner: &mut Interner,
 ) {
-   match &validation_context.expressions[expr_index].expression.clone() {
+   // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
+   // while this pointer is alive. We don't do this, because we update this expression in place.
+   let inferring_expr = std::ptr::addr_of_mut!(validation_context.expressions[expr_index]);
+
+   match unsafe { &(*inferring_expr).expression } {
       Expression::Cast { .. } => unreachable!(),
       Expression::BoolLiteral(_) => unreachable!(),
       Expression::IntLiteral { .. } => {
