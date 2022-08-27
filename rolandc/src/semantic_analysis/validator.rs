@@ -199,12 +199,6 @@ pub fn type_and_check_validity(
       }
    }
 
-   // We won't proceed with type checking because there could be false positives due to
-   // procedure/struct definition errors, and probably invalidated invariants
-   if validation_context.error_count > 0 {
-      return validation_context.error_count;
-   }
-
    validation_context
       .struct_size_info
       .reserve(validation_context.struct_info.len());
