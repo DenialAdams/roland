@@ -28,7 +28,7 @@ pub mod parse;
 mod semantic_analysis;
 mod size_info;
 pub mod source_info;
-mod type_data;
+pub mod type_data;
 mod typed_index_vec;
 mod various_expression_lowering;
 mod wasm;
@@ -349,6 +349,7 @@ fn merge_program(main_program: &mut Program, other_program: &mut Program) {
    main_program.statics.extend(other_program.statics.drain(0..));
    main_program.enums.extend(other_program.enums.drain(0..));
    main_program.consts.extend(other_program.consts.drain(0..));
+   main_program.parsed_types.extend(other_program.parsed_types.drain(0..));
 }
 
 fn lex_and_parse(

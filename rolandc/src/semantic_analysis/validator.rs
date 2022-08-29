@@ -88,7 +88,7 @@ pub fn resolve_type(
    }
 }
 
-fn resolve_value_type(
+pub fn resolve_value_type(
    v_type: &mut ValueType,
    ei: &IndexMap<StrId, EnumInfo>,
    si: &IndexMap<StrId, StructInfo>,

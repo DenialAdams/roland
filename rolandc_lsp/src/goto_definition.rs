@@ -4,6 +4,7 @@ use rolandc::interner::Interner;
 use rolandc::parse::Expression;
 use rolandc::source_info::{SourceInfo, SourcePosition};
 use rolandc::CompilationContext;
+use rolandc::type_data::ValueType;
 
 use crate::roland_source_path_to_canon_path;
 
@@ -43,6 +44,17 @@ fn span_contains(span: SourceInfo, location: SourcePosition, document: &Path, in
 
 #[must_use]
 pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationContext) -> Option<SourceInfo> {
+   for parsed_type in ctx.program.parsed_types.iter() {
+      if !span_contains(parsed_type.location, sp, document, &ctx.interner) {
+         continue;
+      }
+
+      if let ValueType::Unresolved(id) = parsed_type.e_type.get_value_type_or_value_being_pointed_to() {
+         // These nodes should never be resolved
+         return ctx.program.struct_info.get(id).map(|x| x.location).or_else(|| ctx.program.enum_info.get(id).map(|x| x.location));
+      }
+   }
+
    for expr in ctx.expressions.values.iter() {
       match &expr.expression {
          Expression::Variable(x) => {

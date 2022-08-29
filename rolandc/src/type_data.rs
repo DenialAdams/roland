@@ -89,6 +89,7 @@ pub enum FloatWidth {
 }
 
 impl FloatWidth {
+   #[must_use]
    pub fn as_num_bytes(self) -> u8 {
       match self {
          FloatWidth::Eight => 8,
@@ -119,6 +120,7 @@ pub enum IntWidth {
 }
 
 impl IntWidth {
+   #[must_use]
    pub fn as_num_bytes(self) -> u8 {
       match self {
          IntWidth::Eight => 8,
@@ -142,6 +144,7 @@ pub struct FloatType {
 }
 
 impl ExpressionType {
+   #[must_use]
    pub fn is_concrete_type(&self) -> bool {
       match self {
          ExpressionType::Value(x) => x.is_concrete_type(),
@@ -149,6 +152,7 @@ impl ExpressionType {
       }
    }
 
+   #[must_use]
    pub fn is_error_type(&self) -> bool {
       match self {
          ExpressionType::Value(x) => x.is_error_type(),
@@ -156,20 +160,24 @@ impl ExpressionType {
       }
    }
 
+   #[must_use]
    pub fn is_known_or_unknown_int(&self) -> bool {
       matches!(self, ExpressionType::Value(ValueType::Int(_)))
          | matches!(self, ExpressionType::Value(ValueType::UnknownInt(_)))
    }
 
+   #[must_use]
    pub fn is_known_or_unknown_float(&self) -> bool {
       matches!(self, ExpressionType::Value(ValueType::Float(_)))
          | matches!(self, ExpressionType::Value(ValueType::UnknownFloat(_)))
    }
 
+   #[must_use]
    pub fn is_pointer(&self) -> bool {
       matches!(self, ExpressionType::Pointer(_, _))
    }
 
+   #[must_use]
    pub fn get_value_type_or_value_being_pointed_to(&self) -> &ValueType {
       match self {
          ExpressionType::Value(vt) => vt,
@@ -177,10 +185,12 @@ impl ExpressionType {
       }
    }
 
+   #[must_use]
    pub fn is_enum(&self) -> bool {
       matches!(self, ExpressionType::Value(ValueType::Enum(_)))
    }
 
+   #[must_use]
    pub fn as_roland_type_info(&self, interner: &Interner) -> String {
       match self {
          ExpressionType::Value(x) => x.as_roland_type_info(interner).into(),
