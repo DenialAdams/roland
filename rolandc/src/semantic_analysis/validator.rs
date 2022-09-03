@@ -144,15 +144,16 @@ pub fn type_and_check_validity(
       type_variables: DisjointSet::new(),
       type_variable_definitions: HashMap::new(),
       cur_procedure_locals: IndexMap::new(),
+      source_to_definition: IndexMap::new(),
    };
 
    // Populate variable resolution with globals
-   for si in program.global_info.iter() {
+   for gi in program.global_info.iter() {
       validation_context.variable_types.insert(
-         *si.0,
+         *gi.0,
          VariableDetails {
-            var_type: si.1.expr_type.clone(),
-            declaration_location: si.1.location,
+            var_type: gi.1.expr_type.clone(),
+            declaration_location: gi.1.location,
             kind: VariableKind::Global,
             depth: 0,
             used: true,
@@ -396,6 +397,7 @@ pub fn type_and_check_validity(
    let err_count = validation_context.error_count;
    program.literals = validation_context.string_literals;
    program.struct_size_info = validation_context.struct_size_info;
+   program.source_to_definition = validation_context.source_to_definition;
 
    err_count
 }
@@ -1170,30 +1172,25 @@ fn get_type(
             node_type
          }
       }
-      Expression::Variable(id) => {
-         if let Some(scoped_variable) = validation_context.variable_types.get_mut(&id.identifier) {
-            scoped_variable.used = true;
+      Expression::Variable(id) => match validation_context.variable_types.get_mut(&id.identifier) {
+         Some(var_info) => {
+            var_info.used = true;
+            validation_context
+               .source_to_definition
+               .insert(expr_location, var_info.declaration_location);
+            var_info.var_type.clone()
          }
-
-         let defined_type = validation_context
-            .variable_types
-            .get(&id.identifier)
-            .map(|x| &x.var_type);
-
-         match defined_type {
-            Some(t) => t.clone(),
-            None => {
-               validation_context.error_count += 1;
-               rolandc_error!(
-                  err_manager,
-                  expr_location,
-                  "Encountered undefined variable `{}`",
-                  interner.lookup(id.identifier)
-               );
-               ExpressionType::Value(ValueType::CompileError)
-            }
+         None => {
+            validation_context.error_count += 1;
+            rolandc_error!(
+               err_manager,
+               expr_location,
+               "Encountered undefined variable `{}`",
+               interner.lookup(id.identifier)
+            );
+            ExpressionType::Value(ValueType::CompileError)
          }
-      }
+      },
       Expression::ProcedureCall {
          proc_name,
          args,
@@ -1235,6 +1232,8 @@ fn get_type(
 
          match validation_context.procedure_info.get(&proc_name.identifier) {
             Some(procedure_info) => {
+               validation_context.source_to_definition.insert(proc_name.location, procedure_info.location);
+
                // Validate that there are no non-named arguments after named arguments, then reorder the argument list
                let first_named_arg = args.iter().enumerate().find(|(_, arg)| arg.name.is_some()).map(|x| x.0);
                let last_normal_arg = args
@@ -1368,6 +1367,7 @@ fn get_type(
 
          match validation_context.struct_info.get(&struct_name.identifier) {
             Some(defined_struct) => {
+               validation_context.source_to_definition.insert(struct_name.location, defined_struct.location);
                let defined_fields = &defined_struct.field_types;
 
                let mut unmatched_fields: HashSet<StrId> = defined_fields.keys().copied().collect();
@@ -1657,7 +1657,9 @@ fn get_type(
       }
       Expression::EnumLiteral(x, v) => {
          if let Some(enum_info) = validation_context.enum_info.get(&x.identifier) {
-            if enum_info.variants.contains_key(&v.identifier) {
+            validation_context.source_to_definition.insert(x.location, enum_info.location);
+            if let Some(variant_location) = enum_info.variants.get(&v.identifier) {
+               validation_context.source_to_definition.insert(v.location, *variant_location);
                ExpressionType::Value(ValueType::Enum(x.identifier))
             } else {
                validation_context.error_count += 1;

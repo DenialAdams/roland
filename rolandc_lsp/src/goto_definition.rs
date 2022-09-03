@@ -1,10 +1,9 @@
 use std::path::Path;
 
 use rolandc::interner::Interner;
-use rolandc::parse::Expression;
 use rolandc::source_info::{SourceInfo, SourcePosition};
-use rolandc::CompilationContext;
 use rolandc::type_data::ValueType;
+use rolandc::CompilationContext;
 
 use crate::roland_source_path_to_canon_path;
 
@@ -51,43 +50,18 @@ pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationCon
 
       if let ValueType::Unresolved(id) = parsed_type.e_type.get_value_type_or_value_being_pointed_to() {
          // These nodes should never be resolved
-         return ctx.program.struct_info.get(id).map(|x| x.location).or_else(|| ctx.program.enum_info.get(id).map(|x| x.location));
+         return ctx
+            .program
+            .struct_info
+            .get(id)
+            .map(|x| x.location)
+            .or_else(|| ctx.program.enum_info.get(id).map(|x| x.location));
       }
    }
 
-   for expr in ctx.expressions.values.iter() {
-      match &expr.expression {
-         Expression::Variable(x) => {
-            if span_contains(x.location, sp, document, &ctx.interner) {
-               return ctx.program.global_info.get(&x.identifier).map(|x| x.location);
-            }
-         }
-         Expression::ProcedureCall { proc_name, .. } => {
-            if span_contains(proc_name.location, sp, document, &ctx.interner) {
-               return ctx
-                  .program
-                  .procedure_info
-                  .get(&proc_name.identifier)
-                  .map(|x| x.location);
-            }
-         }
-         Expression::StructLiteral(struct_name, _) => {
-            if span_contains(struct_name.location, sp, document, &ctx.interner) {
-               return ctx.program.struct_info.get(&struct_name.identifier).map(|x| x.location);
-            }
-         }
-         Expression::EnumLiteral(enum_name, enum_variant) => {
-            if span_contains(enum_name.location, sp, document, &ctx.interner) {
-               return ctx.program.enum_info.get(&enum_name.identifier).map(|x| x.location);
-            } else if span_contains(enum_variant.location, sp, document, &ctx.interner) {
-               return ctx
-                  .program
-                  .enum_info
-                  .get(&enum_name.identifier)
-                  .and_then(|x| x.variants.get(&enum_variant.identifier).copied());
-            }
-         }
-         _ => (),
+   for (source_span, definition_span) in ctx.program.source_to_definition.iter() {
+      if span_contains(*source_span, sp, document, &ctx.interner) {
+         return Some(*definition_span);
       }
    }
 

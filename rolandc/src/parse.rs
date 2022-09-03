@@ -302,6 +302,7 @@ pub struct Program {
    pub global_info: IndexMap<StrId, GlobalInfo>,
    pub procedure_info: IndexMap<StrId, ProcedureInfo>,
    pub struct_size_info: HashMap<StrId, SizeInfo>,
+   pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
 }
 
 impl Program {
@@ -321,6 +322,7 @@ impl Program {
          global_info: IndexMap::new(),
          procedure_info: IndexMap::new(),
          struct_size_info: HashMap::new(),
+         source_to_definition: IndexMap::new(),
       }
    }
 }
@@ -481,6 +483,7 @@ pub fn astify(
          enum_info: IndexMap::new(),
          procedure_info: IndexMap::new(),
          struct_size_info: HashMap::new(),
+         source_to_definition: IndexMap::new(),
       },
    ))
 }

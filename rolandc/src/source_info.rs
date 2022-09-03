@@ -1,6 +1,6 @@
 use crate::interner::StrId;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SourcePosition {
    pub line: usize,
    pub col: usize,
@@ -9,10 +9,7 @@ pub struct SourcePosition {
 impl SourcePosition {
    #[must_use]
    pub fn next_col(&self) -> SourcePosition {
-      SourcePosition {
-         line: self.line,
-         col: self.col + 1,
-      }
+      self.col_plus(1)
    }
 
    #[must_use]
@@ -24,14 +21,14 @@ impl SourcePosition {
    }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SourceInfo {
    pub begin: SourcePosition,
    pub end: SourcePosition,
    pub file: SourcePath,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum SourcePath {
    Sandbox,
    Std,
