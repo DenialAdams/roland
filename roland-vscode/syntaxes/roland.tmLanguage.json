@@ -55,7 +55,7 @@
             },
             {
                "comment": "constant declarations",
-               "match": "\\b(const)\\s+([A-Z][A-Za-z0-9_]*)\\b",
+               "match": "\\b(const|static)\\s+([A-Z][A-Za-z0-9_]*)\\b",
                "captures": {
                   "1": {
                      "name": "storage.type.roland"
