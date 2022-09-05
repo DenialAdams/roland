@@ -1,3 +1,3 @@
 Procedure `alacadabra` is declared to be builtin, but only the compiler can declare builtin procedures
-↳ procedure declared @ line 1, column 1 [user_code_builtin.rol]
+↳ line 1, column 1 [user_code_builtin.rol]
 There were 1 semantic errors, bailing

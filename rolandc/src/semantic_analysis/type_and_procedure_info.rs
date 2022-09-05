@@ -3,7 +3,7 @@ use std::ops::BitOrAssign;
 
 use indexmap::IndexMap;
 
-use crate::error_handling::error_handling_macros::rolandc_error_w_details;
+use crate::error_handling::error_handling_macros::{rolandc_error_w_details, rolandc_error};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{ProcImplSource, ParameterNode, IdentifierNode};
@@ -327,9 +327,9 @@ pub fn populate_type_and_procedure_info(
          && source_location.file != SourcePath::Std
       {
          error_count += 1;
-         rolandc_error_w_details!(
+         rolandc_error!(
             err_manager,
-            &[(source_location, "procedure declared")],
+            source_location,
             "Procedure `{}` is declared to be builtin, but only the compiler can declare builtin procedures",
             interner.lookup(definition.name),
          );
@@ -388,9 +388,9 @@ pub fn populate_type_and_procedure_info(
          if resolve_parameter_type(&definition.generic_parameters, parameter, &program.enum_info, &program.struct_info).is_err() {
             error_count += 1;
             let etype_str = parameter.p_type.as_roland_type_info(interner);
-            rolandc_error_w_details!(
+            rolandc_error!(
                err_manager,
-               &[(source_location, "procedure declared")],
+               source_location,
                "Parameter `{}` of procedure `{}` is of undeclared type `{}`",
                interner.lookup(parameter.name),
                interner.lookup(definition.name),
@@ -402,12 +402,21 @@ pub fn populate_type_and_procedure_info(
       if resolve_type(&mut definition.ret_type, &program.enum_info, &program.struct_info).is_err() {
          error_count += 1;
          let etype_str = definition.ret_type.as_roland_type_info(interner);
-         rolandc_error_w_details!(
+         rolandc_error!(
             err_manager,
-            &[(source_location, "procedure declared")],
+            source_location,
             "Return type of procedure `{}` is of undeclared type `{}`",
             interner.lookup(definition.name),
             etype_str,
+         );
+      }
+
+      if !definition.generic_parameters.is_empty() && source_location.file != SourcePath::Std {
+         error_count += 1;
+         rolandc_error!(
+            err_manager,
+            source_location,
+            "Generic parameters are unstable and currently unsupported in user code"
          );
       }
 

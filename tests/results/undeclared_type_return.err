@@ -1,3 +1,3 @@
 Return type of procedure `foo` is of undeclared type `Y`
-↳ procedure declared @ line 1, column 1 [undeclared_type_return.rol]
+↳ line 1, column 1 [undeclared_type_return.rol]
 There were 1 semantic errors, bailing
