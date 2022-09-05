@@ -41,3 +41,9 @@ const F64_NEG_INFINITY: f64 = 0xfff0000000000000 transmute f64;
 
 const F32_INFINITY: f32 = 0x7f800000 transmute f32;
 const F32_NEG_INFINITY: f32 = 0xff800000 transmute f32;
+
+proc assert(condition: bool) {
+   if !condition {
+      unreachable();
+   }
+}
