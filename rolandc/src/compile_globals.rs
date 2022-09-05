@@ -22,6 +22,7 @@ struct CgContext<'a> {
    enum_info: &'a IndexMap<StrId, EnumInfo>,
    struct_size_info: &'a HashMap<StrId, SizeInfo>,
    sizeof_id: StrId,
+   alignof_id: StrId,
    length_id: StrId,
    interner: &'a Interner,
 }
@@ -112,6 +113,7 @@ pub fn compile_globals(
       consts_being_processed: &mut consts_being_processed,
       const_replacements: &mut const_replacements,
       sizeof_id: interner.intern("sizeof"),
+      alignof_id: interner.intern("alignof"),
       length_id: interner.intern("length"),
       struct_info: &program.struct_info,
       enum_info: &program.enum_info,
@@ -226,6 +228,7 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
       expr_index,
       cg_context.const_replacements,
       cg_context.sizeof_id,
+      cg_context.alignof_id,
       cg_context.length_id,
       cg_context.struct_info,
       cg_context.struct_size_info,

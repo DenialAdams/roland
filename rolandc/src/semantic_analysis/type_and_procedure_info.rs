@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::ops::BitOrAssign;
 
 use indexmap::IndexMap;
@@ -6,10 +6,10 @@ use indexmap::IndexMap;
 use crate::error_handling::error_handling_macros::rolandc_error_w_details;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::ProcImplSource;
+use crate::parse::{ProcImplSource, ParameterNode, IdentifierNode};
 use crate::semantic_analysis::validator::resolve_type;
-use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
-use crate::type_data::{ExpressionType, ValueType, USIZE_TYPE};
+use crate::source_info::SourcePath;
+use crate::type_data::{ExpressionType, ValueType};
 use crate::Program;
 
 use super::{EnumInfo, GlobalInfo, ProcedureInfo, StructInfo};
@@ -74,27 +74,32 @@ fn recursive_struct_check(
    is_recursive
 }
 
+fn resolve_parameter_type(generic_parameters: &[IdentifierNode], parameter: &mut ParameterNode, enum_info: &IndexMap<StrId, EnumInfo>, struct_info: &IndexMap<StrId, StructInfo>) -> Result<(), ()> {
+   if resolve_type(&mut parameter.p_type, enum_info, struct_info).is_ok() {
+      return Ok(());
+   }
+
+   let param_type_name = match parameter.p_type.get_value_type_or_value_being_pointed_to() {
+      ValueType::Unresolved(x) => *x,
+      _ => unreachable!(),
+   };
+
+   // This could be a generic type parameter
+   for generic_parameter in generic_parameters.iter() {
+      if generic_parameter.identifier == param_type_name {
+         return Ok(());
+      }
+   }
+
+   Err(())
+}
+
 pub fn populate_type_and_procedure_info(
    program: &mut Program,
    err_manager: &mut ErrorManager,
    interner: &mut Interner,
 ) -> u64 {
    let mut error_count: u64 = 0;
-
-   program.procedure_info.insert(
-      interner.intern("sizeof"),
-      ProcedureInfo {
-         parameters: vec![],
-         named_parameters: HashMap::new(),
-         type_parameters: 1,
-         ret_type: ExpressionType::Value(USIZE_TYPE),
-         location: SourceInfo {
-            begin: SourcePosition { line: 0, col: 0 },
-            end: SourcePosition { line: 0, col: 0 },
-            file: SourcePath::Std,
-         },
-      },
-   );
 
    let mut dupe_check = HashSet::new();
    for a_enum in program.enums.iter() {
@@ -380,7 +385,7 @@ pub fn populate_type_and_procedure_info(
       }
 
       for parameter in definition.parameters.iter_mut() {
-         if resolve_type(&mut parameter.p_type, &program.enum_info, &program.struct_info).is_err() {
+         if resolve_parameter_type(&definition.generic_parameters, parameter, &program.enum_info, &program.struct_info).is_err() {
             error_count += 1;
             let etype_str = parameter.p_type.as_roland_type_info(interner);
             rolandc_error_w_details!(
@@ -409,7 +414,7 @@ pub fn populate_type_and_procedure_info(
       if let Some(old_procedure) = program.procedure_info.insert(
          definition.name,
          ProcedureInfo {
-            type_parameters: 0,
+            type_parameters: definition.generic_parameters.len(),
             parameters: definition.parameters.iter().map(|x| x.p_type.clone()).collect(),
             named_parameters: definition
                .parameters

@@ -635,6 +635,12 @@ pub fn emit_wasm(
       .iter()
       .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ProcImplSource::Builtin))
    {
+      let proc_name = interner.lookup(external_procedure.definition.name);
+      if proc_name == "sizeof" || proc_name == "alignof" {
+         // These builtins have no body. All calls should have been lowered.
+         continue;
+      }
+
       generation_context.out.emit_function_start(
          external_procedure.definition.name,
          external_procedure.definition.parameters.iter().map(|x| &x.p_type),

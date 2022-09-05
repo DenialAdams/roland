@@ -4,6 +4,9 @@ builtin proc sqrt_32(x: f32) -> f32;
 
 builtin proc unreachable(); // -> !;
 
+builtin proc sizeof$T() -> usize;
+builtin proc alignof$T() -> usize;
+
 struct String {
    pointer: &u8,
    length: usize,

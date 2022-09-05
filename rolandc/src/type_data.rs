@@ -79,7 +79,7 @@ pub enum ValueType {
    Array(Box<ExpressionType>, u32),
    CompileError,
    Enum(StrId),
-   Unresolved(StrId), // Could be a struct, enum, or fail to resolve (compilation error)
+   Unresolved(StrId), // Could be a struct, enum, generic parameter, or fail to resolve (compilation error)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

@@ -41,6 +41,7 @@ fn expect(l: &mut Lexer, parse_context: &mut ParseContext, token: Token) -> Resu
 #[derive(Clone)]
 pub struct ProcedureDefinition {
    pub name: StrId,
+   pub generic_parameters: Vec<IdentifierNode>,
    pub parameters: Vec<ParameterNode>,
    pub ret_type: ExpressionType,
 }
@@ -522,6 +523,12 @@ fn parse_procedure_definition(
    parse_context: &mut ParseContext,
 ) -> Result<ProcedureDefinition, ()> {
    let procedure_name = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
+   let mut generic_parameters = vec![];
+   while l.peek_token() == Token::Dollar {
+      let _ = l.next();
+      let gtype_definition = parse_identifier(l, parse_context)?;
+      generic_parameters.push(gtype_definition);
+   }
    expect(l, parse_context, Token::OpenParen)?;
    let parameters = parse_parameters(l, parse_context)?;
    expect(l, parse_context, Token::CloseParen)?;
@@ -533,6 +540,7 @@ fn parse_procedure_definition(
    };
    Ok(ProcedureDefinition {
       name: extract_identifier(procedure_name.token),
+      generic_parameters,
       parameters,
       ret_type,
    })
