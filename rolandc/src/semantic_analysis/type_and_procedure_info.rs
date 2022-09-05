@@ -6,7 +6,7 @@ use indexmap::IndexMap;
 use crate::error_handling::error_handling_macros::{rolandc_error_w_details, rolandc_error};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{ProcImplSource, ParameterNode, IdentifierNode};
+use crate::parse::ProcImplSource;
 use crate::semantic_analysis::validator::resolve_type;
 use crate::source_info::SourcePath;
 use crate::type_data::{ExpressionType, ValueType};
@@ -72,26 +72,6 @@ fn recursive_struct_check(
    }
 
    is_recursive
-}
-
-fn resolve_parameter_type(generic_parameters: &[IdentifierNode], parameter: &mut ParameterNode, enum_info: &IndexMap<StrId, EnumInfo>, struct_info: &IndexMap<StrId, StructInfo>) -> Result<(), ()> {
-   if resolve_type(&mut parameter.p_type, enum_info, struct_info).is_ok() {
-      return Ok(());
-   }
-
-   let param_type_name = match parameter.p_type.get_value_type_or_value_being_pointed_to() {
-      ValueType::Unresolved(x) => *x,
-      _ => unreachable!(),
-   };
-
-   // This could be a generic type parameter
-   for generic_parameter in generic_parameters.iter() {
-      if generic_parameter.identifier == param_type_name {
-         return Ok(());
-      }
-   }
-
-   Err(())
 }
 
 pub fn populate_type_and_procedure_info(
@@ -385,7 +365,7 @@ pub fn populate_type_and_procedure_info(
       }
 
       for parameter in definition.parameters.iter_mut() {
-         if resolve_parameter_type(&definition.generic_parameters, parameter, &program.enum_info, &program.struct_info).is_err() {
+         if resolve_type(&mut parameter.p_type, &program.enum_info, &program.struct_info).is_err() {
             error_count += 1;
             let etype_str = parameter.p_type.as_roland_type_info(interner);
             rolandc_error!(
