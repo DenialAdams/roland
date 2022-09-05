@@ -13,7 +13,6 @@ use crate::source_info::SourceInfo;
 use crate::various_expression_lowering;
 
 struct CgContext<'a> {
-   error_count: u64,
    expressions: &'a mut ExpressionPool,
    all_consts: &'a HashMap<StrId, (SourceInfo, ExpressionId)>,
    consts_being_processed: &'a mut HashSet<StrId>,
@@ -27,20 +26,14 @@ struct CgContext<'a> {
    interner: &'a Interner,
 }
 
-#[must_use]
 fn fold_expr_id(
    expr_id: ExpressionId,
    expressions: &mut ExpressionPool,
    interner: &Interner,
    err_manager: &mut ErrorManager,
-) -> u64 {
-   let mut fc = FoldingContext {
-      error_count: 0,
-      expressions,
-   };
+) {
+   let mut fc = FoldingContext { expressions };
    constant_folding::try_fold_and_replace_expr(expr_id, err_manager, &mut fc, interner);
-
-   fc.error_count
 }
 
 pub fn ensure_statics_const(
@@ -48,15 +41,13 @@ pub fn ensure_statics_const(
    expressions: &mut ExpressionPool,
    interner: &mut Interner,
    err_manager: &mut ErrorManager,
-) -> u64 {
-   let mut static_err_count: u64 = 0;
+) {
    for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
       let p_static_expr = &expressions[p_static.value.unwrap()];
 
       if p_static.static_type != *p_static_expr.exp_type.as_ref().unwrap()
          && !p_static_expr.exp_type.as_ref().unwrap().is_error_type()
       {
-         static_err_count += 1;
          let actual_type_str = p_static_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
          rolandc_error_w_details!(
             err_manager,
@@ -69,10 +60,9 @@ pub fn ensure_statics_const(
       }
 
       if let Some(v) = p_static.value.as_ref() {
-         static_err_count += fold_expr_id(*v, expressions, interner, err_manager);
+         fold_expr_id(*v, expressions, interner, err_manager);
          let v = &expressions[*v];
          if !crate::constant_folding::is_const(&v.expression, expressions) {
-            static_err_count += 1;
             rolandc_error_w_details!(
                err_manager,
                &[(p_static.location, "static"), (v.location, "expression")],
@@ -82,8 +72,6 @@ pub fn ensure_statics_const(
          }
       }
    }
-
-   static_err_count
 }
 
 pub fn compile_globals(
@@ -92,7 +80,7 @@ pub fn compile_globals(
    interner: &mut Interner,
    struct_size_info: &HashMap<StrId, SizeInfo>,
    err_manager: &mut ErrorManager,
-) -> u64 {
+) {
    // There is an effective second compilation pipeline for constants. This is because:
    // 1) Lowering constants is something we need to do for compilation
    // 2) Constants can form a DAG of dependency, such that we need to lower them in the right order
@@ -119,14 +107,11 @@ pub fn compile_globals(
       enum_info: &program.enum_info,
       struct_size_info,
       interner,
-      error_count: 0,
    };
 
    for c in program.consts.iter() {
       cg_const(c.name.identifier, &mut cg_ctx, err_manager);
    }
-
-   cg_ctx.error_count
 }
 
 fn cg_const(c_name: StrId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
@@ -139,12 +124,11 @@ fn cg_const(c_name: StrId, cg_context: &mut CgContext, err_manager: &mut ErrorMa
    let c = cg_context.all_consts[&c_name];
    cg_expr(c.1, cg_context, err_manager);
 
-   cg_context.error_count += fold_expr_id(c.1, cg_context.expressions, cg_context.interner, err_manager);
+   fold_expr_id(c.1, cg_context.expressions, cg_context.interner, err_manager);
 
    let p_const_expr = &cg_context.expressions[c.1];
 
    if !crate::constant_folding::is_const(&p_const_expr.expression, cg_context.expressions) {
-      cg_context.error_count += 1;
       rolandc_error_w_details!(
          err_manager,
          &[(c.0, "const"), (p_const_expr.location, "expression")],
@@ -165,7 +149,6 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
    match unsafe { &(*expr_to_fold).expression } {
       Expression::Variable(x) => {
          if cg_context.consts_being_processed.contains(&x.identifier) {
-            cg_context.error_count += 1;
             let loc = cg_context.all_consts[&x.identifier].0;
             rolandc_error!(
                err_manager,

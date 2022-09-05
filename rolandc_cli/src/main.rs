@@ -118,7 +118,8 @@ fn main() {
       Ok(v) => v,
       Err(CompilationError::Lex) => std::process::exit(1),
       Err(CompilationError::Parse) => std::process::exit(1),
-      Err(CompilationError::Semantic(err_count)) => {
+      Err(CompilationError::Semantic) => {
+         let err_count = ctx.err_manager.errors.len();
          writeln!(err_stream_l, "There were {} semantic errors, bailing", err_count).unwrap();
          std::process::exit(1);
       }

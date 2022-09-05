@@ -3,7 +3,7 @@ use std::ops::BitOrAssign;
 
 use indexmap::IndexMap;
 
-use crate::error_handling::error_handling_macros::{rolandc_error_w_details, rolandc_error};
+use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::ProcImplSource;
@@ -78,16 +78,13 @@ pub fn populate_type_and_procedure_info(
    program: &mut Program,
    err_manager: &mut ErrorManager,
    interner: &mut Interner,
-) -> u64 {
-   let mut error_count: u64 = 0;
-
+) {
    let mut dupe_check = HashSet::new();
    for a_enum in program.enums.iter() {
       dupe_check.clear();
       dupe_check.reserve(a_enum.variants.len());
       for variant in a_enum.variants.iter() {
          if !dupe_check.insert(variant.identifier) {
-            error_count += 1;
             rolandc_error_w_details!(
                err_manager,
                &[(a_enum.location, "enum defined")],
@@ -105,7 +102,6 @@ pub fn populate_type_and_procedure_info(
             location: a_enum.location,
          },
       ) {
-         error_count += 1;
          rolandc_error_w_details!(
             err_manager,
             &[
@@ -122,7 +118,6 @@ pub fn populate_type_and_procedure_info(
       let mut field_map = IndexMap::with_capacity(a_struct.fields.len());
       for field in a_struct.fields.iter() {
          if field_map.insert(field.0, field.1.clone()).is_some() {
-            error_count += 1;
             rolandc_error_w_details!(
                err_manager,
                &[(a_struct.location, "struct defined")],
@@ -140,7 +135,6 @@ pub fn populate_type_and_procedure_info(
             location: a_struct.location,
          },
       ) {
-         error_count += 1;
          rolandc_error_w_details!(
             err_manager,
             &[
@@ -158,7 +152,6 @@ pub fn populate_type_and_procedure_info(
    let cloned_struct_info = program.struct_info.clone();
    for struct_i in program.struct_info.iter_mut() {
       if let Some(enum_i) = program.enum_info.get(struct_i.0) {
-         error_count += 1;
          rolandc_error_w_details!(
             err_manager,
             &[
@@ -175,7 +168,6 @@ pub fn populate_type_and_procedure_info(
             continue;
          }
 
-         error_count += 1;
          let etype_str = e_type.as_roland_type_info(interner);
          rolandc_error_w_details!(
             err_manager,
@@ -199,7 +191,6 @@ pub fn populate_type_and_procedure_info(
          &program.struct_info,
       ) == RecursiveStructCheckResult::ContainsSelf
       {
-         error_count += 1;
          rolandc_error_w_details!(
             err_manager,
             &[(struct_i.1.location, "struct defined")],
@@ -214,7 +205,6 @@ pub fn populate_type_and_procedure_info(
       let si = &const_node.location;
 
       if resolve_type(const_type, &program.enum_info, &program.struct_info).is_err() {
-         error_count += 1;
          let static_type_str = const_type.as_roland_type_info(interner);
          rolandc_error_w_details!(
             err_manager,
@@ -233,7 +223,6 @@ pub fn populate_type_and_procedure_info(
             is_const: true,
          },
       ) {
-         error_count += 1;
          rolandc_error_w_details!(
             err_manager,
             &[
@@ -251,7 +240,6 @@ pub fn populate_type_and_procedure_info(
       let si = &static_node.location;
 
       if resolve_type(static_type, &program.enum_info, &program.struct_info).is_err() {
-         error_count += 1;
          let static_type_str = static_type.as_roland_type_info(interner);
          rolandc_error_w_details!(
             err_manager,
@@ -270,7 +258,6 @@ pub fn populate_type_and_procedure_info(
             is_const: false,
          },
       ) {
-         error_count += 1;
          rolandc_error_w_details!(
             err_manager,
             &[
@@ -306,7 +293,6 @@ pub fn populate_type_and_procedure_info(
       if extern_impl_source == Some(std::mem::discriminant(&ProcImplSource::Builtin))
          && source_location.file != SourcePath::Std
       {
-         error_count += 1;
          rolandc_error!(
             err_manager,
             source_location,
@@ -319,7 +305,6 @@ pub fn populate_type_and_procedure_info(
       let mut reported_named_error = false;
       for (i, param) in definition.parameters.iter().enumerate() {
          if !dupe_check.insert(param.name) {
-            error_count += 1;
             rolandc_error_w_details!(
                err_manager,
                &[(source_location, "procedure declared")],
@@ -334,7 +319,6 @@ pub fn populate_type_and_procedure_info(
 
             if extern_impl_source == Some(std::mem::discriminant(&ProcImplSource::External)) {
                reported_named_error = true;
-               error_count += 1;
                rolandc_error_w_details!(
                   err_manager,
                   &[(source_location, "procedure declared")],
@@ -346,7 +330,6 @@ pub fn populate_type_and_procedure_info(
 
          if !param.named && first_named_param.is_some() && !reported_named_error {
             reported_named_error = true;
-            error_count += 1;
             rolandc_error_w_details!(
                err_manager,
                &[(source_location, "procedure declared")],
@@ -366,7 +349,6 @@ pub fn populate_type_and_procedure_info(
 
       for parameter in definition.parameters.iter_mut() {
          if resolve_type(&mut parameter.p_type, &program.enum_info, &program.struct_info).is_err() {
-            error_count += 1;
             let etype_str = parameter.p_type.as_roland_type_info(interner);
             rolandc_error!(
                err_manager,
@@ -380,7 +362,6 @@ pub fn populate_type_and_procedure_info(
       }
 
       if resolve_type(&mut definition.ret_type, &program.enum_info, &program.struct_info).is_err() {
-         error_count += 1;
          let etype_str = definition.ret_type.as_roland_type_info(interner);
          rolandc_error!(
             err_manager,
@@ -392,7 +373,6 @@ pub fn populate_type_and_procedure_info(
       }
 
       if !definition.generic_parameters.is_empty() && source_location.file != SourcePath::Std {
-         error_count += 1;
          rolandc_error!(
             err_manager,
             source_location,
@@ -415,7 +395,6 @@ pub fn populate_type_and_procedure_info(
             location: source_location,
          },
       ) {
-         error_count += 1;
          let procedure_name_str = interner.lookup(definition.name);
          rolandc_error_w_details!(
             err_manager,
@@ -428,6 +407,4 @@ pub fn populate_type_and_procedure_info(
          );
       }
    }
-
-   error_count
 }

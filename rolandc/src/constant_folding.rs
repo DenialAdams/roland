@@ -13,7 +13,6 @@ use std::ops::{BitAnd, BitOr, BitXor, Shl, Shr};
 
 pub struct FoldingContext<'a> {
    pub expressions: &'a mut ExpressionPool,
-   pub error_count: u64,
 }
 
 pub fn fold_constants(
@@ -21,17 +20,12 @@ pub fn fold_constants(
    err_manager: &mut ErrorManager,
    expressions: &mut ExpressionPool,
    interner: &Interner,
-) -> u64 {
-   let mut folding_context = FoldingContext {
-      error_count: 0,
-      expressions,
-   };
+) {
+   let mut folding_context = FoldingContext { expressions };
 
    for procedure in program.procedures.iter_mut() {
       fold_block(&mut procedure.block, err_manager, &mut folding_context, interner);
    }
-
-   folding_context.error_count
 }
 
 pub fn fold_block(
@@ -134,7 +128,6 @@ fn fold_expr(
          // TODO @FixedPointerWidth
          if let Some(Literal::Uint32(v)) = extract_literal(index) {
             if v >= len {
-               folding_context.error_count += 1;
                rolandc_error_w_details!(
                   err_manager,
                   &[(array.location, "array"), (index.location, "index")],
@@ -212,7 +205,6 @@ fn fold_expr(
                _ => unreachable!(),
             };
 
-            folding_context.error_count += 1;
             if signed {
                rolandc_error!(
                   err_manager,
@@ -337,7 +329,6 @@ fn fold_expr(
             // First we handle the non-commutative cases
             match (rhs, *operator) {
                (Some(x), BinOp::Divide) if x.is_int_zero() => {
-                  folding_context.error_count += 1;
                   rolandc_error_w_details!(
                      err_manager,
                      &[
@@ -526,7 +517,6 @@ fn fold_expr(
                      location: expr_to_fold_location,
                   })
                } else {
-                  folding_context.error_count += 1;
                   rolandc_error_w_details!(
                      err_manager,
                      &[
@@ -547,7 +537,6 @@ fn fold_expr(
                      location: expr_to_fold_location,
                   })
                } else {
-                  folding_context.error_count += 1;
                   rolandc_error_w_details!(
                      err_manager,
                      &[
@@ -568,7 +557,6 @@ fn fold_expr(
                      location: expr_to_fold_location,
                   })
                } else {
-                  folding_context.error_count += 1;
                   rolandc_error_w_details!(
                      err_manager,
                      &[
@@ -601,7 +589,6 @@ fn fold_expr(
                      location: expr_to_fold_location,
                   })
                } else {
-                  folding_context.error_count += 1;
                   rolandc_error_w_details!(
                      err_manager,
                      &[
@@ -691,7 +678,6 @@ fn fold_expr(
             {
                if *x > (i64::MAX as u64 + 1) {
                   // This negation is impossible, so have to die
-                  folding_context.error_count += 1;
                   rolandc_error!(
                      err_manager,
                      expr_to_fold_location,
@@ -730,7 +716,6 @@ fn fold_expr(
                         location: expr_to_fold_location,
                      })
                   } else {
-                     folding_context.error_count += 1;
                      rolandc_error!(
                         err_manager,
                         expr_to_fold_location,

@@ -65,7 +65,7 @@ impl Display for Target {
 pub enum CompilationError {
    Lex,
    Parse,
-   Semantic(u64),
+   Semantic,
    Io,
    Internal,
 }
@@ -249,17 +249,17 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    )?;
    merge_program(&mut ctx.program, &mut shared_std.1);
 
-   let mut err_count = semantic_analysis::type_and_procedure_info::populate_type_and_procedure_info(
+   semantic_analysis::type_and_procedure_info::populate_type_and_procedure_info(
       &mut ctx.program,
       &mut ctx.err_manager,
       &mut ctx.interner,
    );
 
-   if err_count > 0 {
-      return Err(CompilationError::Semantic(err_count));
+   if !ctx.err_manager.errors.is_empty() {
+      return Err(CompilationError::Semantic);
    }
 
-   err_count = semantic_analysis::validator::type_and_check_validity(
+   semantic_analysis::validator::type_and_check_validity(
       &mut ctx.program,
       &mut ctx.err_manager,
       &mut ctx.interner,
@@ -267,43 +267,43 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       target,
    );
 
-   if err_count > 0 {
-      return Err(CompilationError::Semantic(err_count));
+   if !ctx.err_manager.errors.is_empty() {
+      return Err(CompilationError::Semantic);
    }
 
-   err_count = compile_globals::compile_globals(
+   compile_globals::compile_globals(
       &ctx.program,
       &mut ctx.expressions,
       &mut ctx.interner,
       &ctx.program.struct_size_info,
       &mut ctx.err_manager,
    );
-   if err_count > 0 {
-      return Err(CompilationError::Semantic(err_count));
+   if !ctx.err_manager.errors.is_empty() {
+      return Err(CompilationError::Semantic);
    }
 
    various_expression_lowering::lower_consts(&mut ctx.program, &mut ctx.expressions, &mut ctx.interner);
 
-   err_count = compile_globals::ensure_statics_const(
+   compile_globals::ensure_statics_const(
       &ctx.program,
       &mut ctx.expressions,
       &mut ctx.interner,
       &mut ctx.err_manager,
    );
 
-   if err_count > 0 {
-      return Err(CompilationError::Semantic(err_count));
+   if !ctx.err_manager.errors.is_empty() {
+      return Err(CompilationError::Semantic);
    }
 
-   err_count = constant_folding::fold_constants(
+   constant_folding::fold_constants(
       &mut ctx.program,
       &mut ctx.err_manager,
       &mut ctx.expressions,
       &ctx.interner,
    );
 
-   if err_count > 0 {
-      return Err(CompilationError::Semantic(err_count));
+   if !ctx.err_manager.errors.is_empty() {
+      return Err(CompilationError::Semantic);
    }
 
    Ok(())

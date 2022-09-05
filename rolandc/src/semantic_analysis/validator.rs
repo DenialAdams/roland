@@ -129,7 +129,6 @@ pub fn type_and_check_validity(
       target,
       string_literals: IndexSet::new(),
       variable_types: IndexMap::new(),
-      error_count: 0,
       procedure_info: &program.procedure_info,
       enum_info: &program.enum_info,
       struct_info: &program.struct_info,
@@ -164,7 +163,6 @@ pub fn type_and_check_validity(
    let special_procs = get_special_procedures(target, interner);
    for special_proc_name in special_procs.iter().copied() {
       if !validation_context.procedure_info.contains_key(&special_proc_name) {
-         validation_context.error_count += 1;
          rolandc_error_no_loc!(
             err_manager,
             "A procedure with the name `{}` must be present for this target ({})",
@@ -184,7 +182,6 @@ pub fn type_and_check_validity(
             .parameters
             .is_empty()
       {
-         validation_context.error_count += 1;
          let si = validation_context
             .procedure_info
             .get(&special_proc_name)
@@ -228,7 +225,6 @@ pub fn type_and_check_validity(
       if p_const.const_type != *p_const_expr.exp_type.as_ref().unwrap()
          && !p_const_expr.exp_type.as_ref().unwrap().is_error_type()
       {
-         validation_context.error_count += 1;
          let actual_type_str = p_const_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
          rolandc_error_w_details!(
             err_manager,
@@ -257,7 +253,6 @@ pub fn type_and_check_validity(
       if p_static.static_type != *p_static_expr.exp_type.as_ref().unwrap()
          && !p_static_expr.exp_type.as_ref().unwrap().is_error_type()
       {
-         validation_context.error_count += 1;
          let actual_type_str = p_static_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
          rolandc_error_w_details!(
             err_manager,
@@ -304,7 +299,6 @@ pub fn type_and_check_validity(
          (ExpressionType::Value(ValueType::Unit), _) => (),
          (_, Some(Statement::Return(_))) => (),
          (x, _) => {
-            validation_context.error_count += 1;
             let x_str = x.as_roland_type_info(interner);
             let mut err_details = vec![(procedure.location, "procedure defined")];
             if let Some(fs) = procedure.block.statements.last() {
@@ -352,7 +346,6 @@ pub fn type_and_check_validity(
                ExpressionType::Value(ValueType::Int(IntType { signed: false, .. }))
             )
          {
-            validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
                e.location,
@@ -390,16 +383,15 @@ pub fn type_and_check_validity(
       }
    }
 
-   if validation_context.error_count == 0 {
+   if err_manager.errors.is_empty() {
       error_on_unknown_literals(err_manager, &mut validation_context);
    }
 
-   let err_count = validation_context.error_count;
    program.literals = validation_context.string_literals;
    program.struct_size_info = validation_context.struct_size_info;
    program.source_to_definition = validation_context.source_to_definition;
 
-   err_count
+   err_manager.errors.len() as u64 //nocheckin
 }
 
 fn type_statement(
@@ -430,7 +422,6 @@ fn type_statement(
          if lhs_type.is_error_type() || rhs_type.is_error_type() {
             // avoid cascading errors
          } else if lhs_type != rhs_type {
-            validation_context.error_count += 1;
             rolandc_error_w_details!(
                err_manager,
                &[(len.location, "left hand side"), (en.location, "right hand side")],
@@ -442,7 +433,6 @@ fn type_statement(
             .expression
             .is_lvalue(validation_context.expressions, validation_context.global_info)
          {
-            validation_context.error_count += 1;
             if len
                .expression
                .is_lvalue_disregard_consts(validation_context.expressions)
@@ -466,7 +456,6 @@ fn type_statement(
       }
       Statement::Continue => {
          if validation_context.loop_depth == 0 {
-            validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
                statement.location,
@@ -476,7 +465,6 @@ fn type_statement(
       }
       Statement::Break => {
          if validation_context.loop_depth == 0 {
-            validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
                statement.location,
@@ -520,7 +508,6 @@ fn type_statement(
                ExpressionType::Value(ValueType::UnknownInt(*x))
             }
             _ => {
-               validation_context.error_count += 1;
                rolandc_error_w_details!(
                   err_manager,
                   &[
@@ -536,7 +523,6 @@ fn type_statement(
          };
 
          if *inclusive {
-            validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
                statement.location,
@@ -569,7 +555,6 @@ fn type_statement(
          let en = &validation_context.expressions[*en];
          let if_exp_type = en.exp_type.as_ref().unwrap();
          if if_exp_type != &ExpressionType::Value(ValueType::Bool) && !if_exp_type.is_error_type() {
-            validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
                en.location,
@@ -596,7 +581,6 @@ fn type_statement(
          if !en.exp_type.as_ref().unwrap().is_error_type()
             && en.exp_type.as_ref().unwrap() != &cur_procedure_info.ret_type
          {
-            validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
                en.location,
@@ -618,7 +602,6 @@ fn type_statement(
          let en = &validation_context.expressions[*en];
 
          let result_type = if dt.is_some() && *dt != en.exp_type && !en.exp_type.as_ref().unwrap().is_error_type() {
-            validation_context.error_count += 1;
             rolandc_error_w_details!(
                err_manager,
                &[(statement.location, "declaration"), (en.location, "expression")],
@@ -631,7 +614,6 @@ fn type_statement(
             .as_ref()
             .map_or(false, |x| matches!(x, ExpressionType::Value(ValueType::Unresolved(_))))
          {
-            validation_context.error_count += 1;
             let dt_str = dt.as_ref().unwrap().as_roland_type_info(interner);
             rolandc_error_w_details!(
                err_manager,
@@ -658,7 +640,6 @@ fn declare_variable(
    interner: &mut Interner,
 ) {
    if validation_context.variable_types.contains_key(&id.identifier) {
-      validation_context.error_count += 1;
       rolandc_error_w_details!(
          err_manager,
          &[(id.location, "declaration")],
@@ -766,7 +747,6 @@ fn get_type(
          )
          .is_err()
          {
-            validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
                expr_location,
@@ -835,7 +815,6 @@ fn get_type(
                if valid_cast {
                   target_type.clone()
                } else {
-                  validation_context.error_count += 1;
                   rolandc_error_w_details!(
                      err_manager,
                      &[(expr_location, "extend"), (e.location, "operand")],
@@ -870,7 +849,6 @@ fn get_type(
                if valid_cast {
                   target_type.clone()
                } else {
-                  validation_context.error_count += 1;
                   rolandc_error_w_details!(
                      err_manager,
                      &[(expr_location, "truncate"), (e.location, "operand")],
@@ -883,7 +861,6 @@ fn get_type(
             }
             CastType::Transmute => {
                if !e_type.is_concrete_type() {
-                  validation_context.error_count += 1;
                   rolandc_error_w_details!(
                      err_manager,
                      &[(expr_location, "transmute"), (e.location, "operand")],
@@ -904,7 +881,6 @@ fn get_type(
                );
 
                if target_type.is_enum() || e_type.is_enum() {
-                  validation_context.error_count += 1;
                   rolandc_error_w_details!(
                      err_manager,
                      &[(expr_location, "transmute"), (e.location, "operand")],
@@ -927,7 +903,6 @@ fn get_type(
                      e_type.is_pointer() && target_type.is_pointer() && (alignment_source < alignment_target);
 
                   if alignment_error {
-                     validation_context.error_count += 1;
                      rolandc_error_w_details!(
                         err_manager,
                         &[(expr_location, "transmute"), (e.location, "operand")],
@@ -942,7 +917,6 @@ fn get_type(
                      target_type.clone()
                   }
                } else {
-                  validation_context.error_count += 1;
                   rolandc_error_w_details!(
                      err_manager,
                      &[(expr_location, "transmute"), (e.location, "operand")],
@@ -1006,7 +980,6 @@ fn get_type(
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_arg_types, lhs_type) {
-            validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
                lhs_expr.location,
@@ -1017,7 +990,6 @@ fn get_type(
             );
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_arg_types, rhs_type) {
-            validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
                rhs_expr.location,
@@ -1028,7 +1000,6 @@ fn get_type(
             );
             ExpressionType::Value(ValueType::CompileError)
          } else if lhs_type != rhs_type {
-            validation_context.error_count += 1;
             rolandc_error_w_details!(
                err_manager,
                &[
@@ -1104,7 +1075,6 @@ fn get_type(
             // Avoid cascading errors
             ExpressionType::Value(ValueType::CompileError)
          } else if !any_match(correct_type, e.exp_type.as_ref().unwrap()) {
-            validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
                e.location,
@@ -1119,7 +1089,6 @@ fn get_type(
                .expression
                .is_lvalue(validation_context.expressions, validation_context.global_info)
          {
-            validation_context.error_count += 1;
             if e.expression.is_lvalue_disregard_consts(validation_context.expressions) {
                rolandc_error!(
                   err_manager,
@@ -1135,7 +1104,6 @@ fn get_type(
             }
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf && is_zst {
-            validation_context.error_count += 1;
             // Allowing this wouldn't cause any clear bug (as far as I know), but it just seems whack
             rolandc_error!(
                err_manager,
@@ -1144,7 +1112,6 @@ fn get_type(
             );
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::Dereference && is_zst {
-            validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
                expr_location,
@@ -1158,7 +1125,6 @@ fn get_type(
                   .get(&var.identifier)
                   .map_or(false, |x| x.is_const)
                {
-                  validation_context.error_count += 1;
                   rolandc_error!(
                      err_manager,
                      expr_location,
@@ -1181,7 +1147,6 @@ fn get_type(
             var_info.var_type.clone()
          }
          None => {
-            validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
                expr_location,
@@ -1208,7 +1173,6 @@ fn get_type(
             )
             .is_err()
             {
-               validation_context.error_count += 1;
                let etype_str = g_arg.gtype.as_roland_type_info(interner);
                rolandc_error_w_details!(
                   err_manager,
@@ -1221,7 +1185,6 @@ fn get_type(
          }
 
          if is_special_procedure(validation_context.target, proc_name.identifier, interner) {
-            validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
                expr_location,
@@ -1232,7 +1195,9 @@ fn get_type(
 
          match validation_context.procedure_info.get(&proc_name.identifier) {
             Some(procedure_info) => {
-               validation_context.source_to_definition.insert(proc_name.location, procedure_info.location);
+               validation_context
+                  .source_to_definition
+                  .insert(proc_name.location, procedure_info.location);
 
                // Validate that there are no non-named arguments after named arguments, then reorder the argument list
                let first_named_arg = args.iter().enumerate().find(|(_, arg)| arg.name.is_some()).map(|x| x.0);
@@ -1246,7 +1211,6 @@ fn get_type(
                   .unwrap_or(true);
 
                if !args_in_order {
-                  validation_context.error_count += 1;
                   rolandc_error!(
                      err_manager,
                      expr_location,
@@ -1256,7 +1220,6 @@ fn get_type(
                }
 
                if procedure_info.type_parameters != generic_args.len() {
-                  validation_context.error_count += 1;
                   rolandc_error!(
                      err_manager,
                      expr_location,
@@ -1268,7 +1231,6 @@ fn get_type(
                }
 
                if args_in_order && procedure_info.parameters.len() != args.len() {
-                  validation_context.error_count += 1;
                   rolandc_error!(
                      err_manager,
                      expr_location,
@@ -1292,7 +1254,6 @@ fn get_type(
                      let actual_type = actual_expr.exp_type.as_ref().unwrap();
 
                      if actual_type != expected && !actual_type.is_error_type() {
-                        validation_context.error_count += 1;
                         let actual_type_str = actual_type.as_roland_type_info(interner);
                         let expected_type_str = expected.as_roland_type_info(interner);
                         rolandc_error!(
@@ -1311,7 +1272,6 @@ fn get_type(
                      let expected = procedure_info.named_parameters.get(&arg.name.unwrap());
 
                      if expected.is_none() {
-                        validation_context.error_count += 1;
                         rolandc_error!(
                            err_manager,
                            expr_location,
@@ -1330,7 +1290,6 @@ fn get_type(
 
                      let actual_type = arg_expr.exp_type.as_ref().unwrap();
                      if actual_type != expected && !actual_type.is_error_type() {
-                        validation_context.error_count += 1;
                         let actual_type_str = actual_type.as_roland_type_info(interner);
                         let expected_type_str = expected.as_roland_type_info(interner);
                         rolandc_error!(
@@ -1349,7 +1308,6 @@ fn get_type(
                procedure_info.ret_type.clone()
             }
             None => {
-               validation_context.error_count += 1;
                rolandc_error!(
                   err_manager,
                   expr_location,
@@ -1367,7 +1325,9 @@ fn get_type(
 
          match validation_context.struct_info.get(&struct_name.identifier) {
             Some(defined_struct) => {
-               validation_context.source_to_definition.insert(struct_name.location, defined_struct.location);
+               validation_context
+                  .source_to_definition
+                  .insert(struct_name.location, defined_struct.location);
                let defined_fields = &defined_struct.field_types;
 
                let mut unmatched_fields: HashSet<StrId> = defined_fields.keys().copied().collect();
@@ -1376,7 +1336,6 @@ fn get_type(
                   let defined_type = match defined_fields.get(&field.0) {
                      Some(x) => x,
                      None => {
-                        validation_context.error_count += 1;
                         rolandc_error_w_details!(
                            err_manager,
                            &[
@@ -1393,7 +1352,6 @@ fn get_type(
 
                   // Duplicate field check
                   if !unmatched_fields.remove(&field.0) {
-                     validation_context.error_count += 1;
                      rolandc_error_w_details!(
                         err_manager,
                         &[
@@ -1413,7 +1371,6 @@ fn get_type(
                   if field_expr.exp_type.as_ref().unwrap() != defined_type
                      && !field_expr.exp_type.as_ref().unwrap().is_error_type()
                   {
-                     validation_context.error_count += 1;
                      let field_1_type_str = field_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
                      let defined_type_str = defined_type.as_roland_type_info(interner);
                      rolandc_error_w_details!(
@@ -1433,7 +1390,6 @@ fn get_type(
 
                // Missing field check
                if !unmatched_fields.is_empty() {
-                  validation_context.error_count += 1;
                   let unmatched_fields_str: Vec<&str> = unmatched_fields.iter().map(|x| interner.lookup(*x)).collect();
                   rolandc_error_w_details!(
                      err_manager,
@@ -1450,7 +1406,6 @@ fn get_type(
                ExpressionType::Value(ValueType::Struct(struct_name.identifier))
             }
             None => {
-               validation_context.error_count += 1;
                rolandc_error!(
                   err_manager,
                   expr_location,
@@ -1478,7 +1433,6 @@ fn get_type(
                   if let Some(new_t) = struct_fields.get(&field) {
                      lhs_type = new_t.clone();
                   } else {
-                     validation_context.error_count += 1;
                      rolandc_error!(
                         err_manager,
                         expr_location,
@@ -1493,7 +1447,6 @@ fn get_type(
                   if field == length_token {
                      lhs_type = ExpressionType::Value(USIZE_TYPE);
                   } else {
-                     validation_context.error_count += 1;
                      rolandc_error!(
                         err_manager,
                         expr_location,
@@ -1507,7 +1460,6 @@ fn get_type(
                   lhs_type = ExpressionType::Value(ValueType::CompileError);
                }
                other_type => {
-                  validation_context.error_count += 1;
                   rolandc_error!(
                      err_manager,
                      expr_location,
@@ -1549,7 +1501,6 @@ fn get_type(
             {
                // avoid cascading errors
             } else if last_elem_expr.exp_type.as_ref().unwrap() != this_elem_expr.exp_type.as_ref().unwrap() {
-               validation_context.error_count += 1;
                rolandc_error_w_details!(
                   err_manager,
                   &[
@@ -1608,7 +1559,6 @@ fn get_type(
          if index_expression.exp_type.as_ref().unwrap().is_error_type() {
             // avoid cascading errors
          } else if index_expression.exp_type.as_ref().unwrap() != &ExpressionType::Value(USIZE_TYPE) {
-            validation_context.error_count += 1;
             rolandc_error_w_details!(
                err_manager,
                &[(index_expression.location, "index")],
@@ -1625,7 +1575,6 @@ fn get_type(
             Some(x) if x.is_error_type() => ExpressionType::Value(ValueType::CompileError),
             Some(ExpressionType::Value(ValueType::Array(b, _))) => b.deref().clone(),
             Some(x @ ExpressionType::Pointer(1, ValueType::Array(_, _))) => {
-               validation_context.error_count += 1;
                rolandc_error_w_details!(
                   err_manager,
                   &[
@@ -1639,7 +1588,6 @@ fn get_type(
                ExpressionType::Value(ValueType::CompileError)
             }
             Some(x) => {
-               validation_context.error_count += 1;
                rolandc_error_w_details!(
                   err_manager,
                   &[
@@ -1657,12 +1605,15 @@ fn get_type(
       }
       Expression::EnumLiteral(x, v) => {
          if let Some(enum_info) = validation_context.enum_info.get(&x.identifier) {
-            validation_context.source_to_definition.insert(x.location, enum_info.location);
+            validation_context
+               .source_to_definition
+               .insert(x.location, enum_info.location);
             if let Some(variant_location) = enum_info.variants.get(&v.identifier) {
-               validation_context.source_to_definition.insert(v.location, *variant_location);
+               validation_context
+                  .source_to_definition
+                  .insert(v.location, *variant_location);
                ExpressionType::Value(ValueType::Enum(x.identifier))
             } else {
-               validation_context.error_count += 1;
                rolandc_error!(
                   err_manager,
                   expr_location,
@@ -1674,7 +1625,6 @@ fn get_type(
                ExpressionType::Value(ValueType::CompileError)
             }
          } else {
-            validation_context.error_count += 1;
             rolandc_error!(
                err_manager,
                expr_location,
@@ -1700,7 +1650,6 @@ fn type_expression(
 
 fn error_on_unknown_literals(err_manager: &mut ErrorManager, validation_context: &mut ValidationContext) {
    if !validation_context.unknown_ints.is_empty() {
-      validation_context.error_count += 1;
       let err_details: Vec<_> = validation_context
          .unknown_ints
          .iter()
@@ -1718,7 +1667,6 @@ fn error_on_unknown_literals(err_manager: &mut ErrorManager, validation_context:
    }
 
    if !validation_context.unknown_floats.is_empty() {
-      validation_context.error_count += 1;
       let err_details: Vec<_> = validation_context
          .unknown_floats
          .iter()

@@ -66,7 +66,6 @@ pub struct ValidationContext<'a> {
    pub cur_procedure_info: Option<&'a ProcedureInfo>,
    pub string_literals: IndexSet<StrId>,
    pub variable_types: IndexMap<StrId, VariableDetails>,
-   pub error_count: u64,
    pub block_depth: u64,
    pub loop_depth: u64,
    pub unknown_ints: IndexSet<ExpressionId>,

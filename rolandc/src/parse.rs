@@ -518,10 +518,7 @@ fn parse_identifier(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<I
    })
 }
 
-fn parse_procedure_definition(
-   l: &mut Lexer,
-   parse_context: &mut ParseContext,
-) -> Result<ProcedureDefinition, ()> {
+fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<ProcedureDefinition, ()> {
    let procedure_name = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
    let mut generic_parameters = vec![];
    while l.peek_token() == Token::Dollar {
@@ -579,11 +576,7 @@ fn parse_external_procedure(
    })
 }
 
-fn parse_struct(
-   l: &mut Lexer,
-   parse_context: &mut ParseContext,
-   source_info: SourceInfo,
-) -> Result<StructNode, ()> {
+fn parse_struct(l: &mut Lexer, parse_context: &mut ParseContext, source_info: SourceInfo) -> Result<StructNode, ()> {
    let struct_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
    expect(l, parse_context, Token::OpenBrace)?;
    let mut fields: Vec<(StrId, ExpressionType)> = vec![];
@@ -616,11 +609,7 @@ fn parse_struct(
    })
 }
 
-fn parse_enum(
-   l: &mut Lexer,
-   parse_context: &mut ParseContext,
-   source_info: SourceInfo,
-) -> Result<EnumNode, ()> {
+fn parse_enum(l: &mut Lexer, parse_context: &mut ParseContext, source_info: SourceInfo) -> Result<EnumNode, ()> {
    let enum_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
    expect(l, parse_context, Token::OpenBrace)?;
    let mut variants = vec![];
@@ -834,10 +823,7 @@ fn parse_if_else_statement(
    })
 }
 
-fn parse_parameters(
-   l: &mut Lexer,
-   parse_context: &mut ParseContext,
-) -> Result<Vec<ParameterNode>, ()> {
+fn parse_parameters(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Vec<ParameterNode>, ()> {
    let mut parameters = vec![];
 
    loop {
@@ -881,10 +867,7 @@ fn parse_parameters(
    Ok(parameters)
 }
 
-fn parse_generic_arguments(
-   l: &mut Lexer,
-   parse_context: &mut ParseContext,
-) -> Result<Vec<GenericArgumentNode>, ()> {
+fn parse_generic_arguments(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Vec<GenericArgumentNode>, ()> {
    let mut generic_arguments = vec![];
 
    while l.peek_token() == Token::Dollar {
