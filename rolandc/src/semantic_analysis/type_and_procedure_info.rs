@@ -291,7 +291,7 @@ pub fn populate_type_and_procedure_info(
       dupe_check.reserve(definition.parameters.len());
 
       if extern_impl_source == Some(std::mem::discriminant(&ProcImplSource::Builtin))
-         && source_location.file != SourcePath::Std
+         && !matches!(source_location.file, SourcePath::Std(_))
       {
          rolandc_error!(
             err_manager,
@@ -372,7 +372,7 @@ pub fn populate_type_and_procedure_info(
          );
       }
 
-      if !definition.generic_parameters.is_empty() && source_location.file != SourcePath::Std {
+      if !definition.generic_parameters.is_empty() && !matches!(source_location.file, SourcePath::Std(_)) {
          rolandc_error!(
             err_manager,
             source_location,

@@ -130,12 +130,14 @@ pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo, i
          )
          .unwrap();
       }
-      SourcePath::Std => {
+      SourcePath::Std(x) => {
+         let path_str = interner.lookup(x);
          writeln!(
             err_stream,
-            "↳ line {}, column {} <std>",
+            "↳ line {}, column {} [rolandc:{}]",
             source_info.begin.line + 1,
-            source_info.begin.col + 1
+            source_info.begin.col + 1,
+            path_str
          )
          .unwrap();
       }
@@ -161,7 +163,19 @@ pub fn emit_source_info_with_description<W: Write>(
          )
          .unwrap();
       }
-      SourcePath::Sandbox | SourcePath::Std => {
+      SourcePath::Std(x) => {
+         let path_str = interner.lookup(x);
+         writeln!(
+            err_stream,
+            "↳ {} @ line {}, column {} [rolandc:{}]",
+            description,
+            source_info.begin.line + 1,
+            source_info.begin.col + 1,
+            path_str
+         )
+         .unwrap();
+      }
+      SourcePath::Sandbox => {
          writeln!(
             err_stream,
             "↳ {} @ line {}, column {}",

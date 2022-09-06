@@ -124,7 +124,7 @@ pub fn type_and_check_validity(
    interner: &mut Interner,
    expressions: &mut ExpressionPool,
    target: Target,
-) -> u64 {
+) {
    let mut validation_context = ValidationContext {
       target,
       string_literals: IndexSet::new(),
@@ -390,8 +390,6 @@ pub fn type_and_check_validity(
    program.literals = validation_context.string_literals;
    program.struct_size_info = validation_context.struct_size_info;
    program.source_to_definition = validation_context.source_to_definition;
-
-   err_manager.errors.len() as u64 //nocheckin
 }
 
 fn type_statement(

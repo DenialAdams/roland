@@ -17,6 +17,9 @@
 #![allow(clippy::result_unit_err)] // This is based on a notion of public that doesn't really apply for me
 #![feature(hash_drain_filter)]
 
+use include_dir::{include_dir, Dir};
+static PROJECT_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../lib");
+
 mod add_virtual_variables;
 mod compile_globals;
 mod constant_folding;
@@ -38,7 +41,7 @@ use error_handling::ErrorManager;
 use interner::Interner;
 pub use parse::Program;
 use parse::{ExpressionId, ExpressionNode, ExpressionPool, ImportNode};
-use source_info::{SourceInfo, SourcePath};
+use source_info::SourcePath;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -99,6 +102,36 @@ impl CompilationContext {
    }
 }
 
+
+#[derive(PartialEq, Eq, Hash, Clone)]
+enum ImportPath {
+   Std(PathBuf),
+   Disk(PathBuf),
+}
+
+impl ImportPath {
+   fn pop(&mut self) -> bool {
+      match self {
+         ImportPath::Disk(x) => x.pop(),
+         ImportPath::Std(x) => x.pop(),
+      }
+   }
+
+   fn push(&mut self, y: &str) {
+      match self {
+         ImportPath::Disk(x) => x.push(y),
+         ImportPath::Std(x) => x.push(y),
+      }
+   }
+
+   fn to_source_path(&self, interner: &mut Interner) -> SourcePath {
+      match self {
+         ImportPath::Disk(x) => SourcePath::File(interner.intern(&x.as_os_str().to_string_lossy())),
+         ImportPath::Std(x) => SourcePath::Std(interner.intern(&x.as_os_str().to_string_lossy())),
+      }
+   }
+}
+
 pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    ctx: &mut CompilationContext,
    user_program_ep: CompilationEntryPoint<'a, FR>,
@@ -108,81 +141,21 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    ctx.err_manager.clear();
    // We don't have to clear the interner - assumption is that the context is coming from a recent version of the same source, so symbols should be relevant
 
-   ctx.program = match user_program_ep {
-      CompilationEntryPoint::PathResolving(ep_path, mut resolver) => {
-         let mut user_program = Program::new();
-         let mut import_queue: Vec<(PathBuf, Option<SourceInfo>)> = vec![(ep_path, None)];
-         let mut imported_files = HashSet::new();
-         while let Some(pair) = import_queue.pop() {
-            let mut base_path = pair.0;
-            let location = pair.1;
-            let canonical_path = match std::fs::canonicalize(&base_path) {
-               Ok(p) => p,
-               Err(e) => {
-                  if let Some(l) = location {
-                     rolandc_error!(
-                        ctx.err_manager,
-                        l,
-                        "Failed to canonicalize path '{}': {}",
-                        base_path.as_os_str().to_string_lossy(),
-                        e
-                     );
-                  } else {
-                     rolandc_error_no_loc!(
-                        ctx.err_manager,
-                        "Failed to canonicalize path '{}': {}",
-                        base_path.as_os_str().to_string_lossy(),
-                        e
-                     );
-                  }
-                  return Err(CompilationError::Io);
-               }
-            };
-            if !imported_files.insert(canonical_path) {
-               continue;
-            }
+   let std_lib_start_path: PathBuf = match target {
+      Target::Wasi => {
+         "wasi.rol"
+      }
+      Target::Wasm4 => {
+         "wasm4.rol"
+      }
+      Target::Microw8 => {
+         "microw8.rol"
+      }
+   }.into();
 
-            let program_s = match resolver.resolve_path(&base_path) {
-               Ok(s) => s,
-               Err(e) => {
-                  if let Some(l) = location {
-                     rolandc_error!(
-                        ctx.err_manager,
-                        l,
-                        "Failed to read imported file '{}': {}",
-                        base_path.as_os_str().to_string_lossy(),
-                        e
-                     );
-                  } else {
-                     rolandc_error_no_loc!(
-                        ctx.err_manager,
-                        "Failed to read imported file '{}': {}",
-                        base_path.as_os_str().to_string_lossy(),
-                        e
-                     );
-                  }
-                  return Err(CompilationError::Io);
-               }
-            };
-
-            let mut parsed = lex_and_parse(
-               &program_s,
-               SourcePath::File(ctx.interner.intern(&base_path.as_os_str().to_string_lossy())),
-               &mut ctx.err_manager,
-               &mut ctx.interner,
-               &mut ctx.expressions,
-            )?;
-            merge_program(&mut user_program, &mut parsed.1);
-
-            base_path.pop(); // /foo/bar/main.rol -> /foo/bar
-            for file in parsed.0.iter() {
-               let file_str = ctx.interner.lookup(file.import_path);
-               let mut new_path = base_path.clone();
-               new_path.push(file_str);
-               import_queue.push((new_path, Some(file.location)));
-            }
-         }
-         user_program
+   let (user_program, mut import_queue, mut resolver) = match user_program_ep {
+      CompilationEntryPoint::PathResolving(ep_path, resolver) => {
+         (Program::new(), vec![(ImportPath::Std(std_lib_start_path), None), (ImportPath::Disk(ep_path), None)], Some(resolver))
       }
       CompilationEntryPoint::Playground(contents) => {
          let (files_to_import, user_program) = lex_and_parse(
@@ -200,54 +173,91 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
             );
             return Err(CompilationError::Io);
          }
-         user_program
+         (user_program, vec![(ImportPath::Std(std_lib_start_path), None)], None)
       }
    };
+   ctx.program = user_program;
 
-   let mut std_lib = match target {
-      Target::Wasi => {
-         let std_lib_s = include_str!("../../lib/wasi.rol");
-         lex_and_parse(
-            std_lib_s,
-            SourcePath::Std,
-            &mut ctx.err_manager,
-            &mut ctx.interner,
-            &mut ctx.expressions,
-         )
+   let mut imported_files = HashSet::new();
+   while let Some(pair) = import_queue.pop() {
+      let mut base_path = pair.0;
+      let location = pair.1;
+      let canonical_path = match &base_path {
+          ImportPath::Std(_) => base_path.clone(),
+          ImportPath::Disk(x) => match std::fs::canonicalize(&x) {
+            Ok(p) => ImportPath::Disk(p),
+            Err(e) => {
+               if let Some(l) = location {
+                  rolandc_error!(
+                     ctx.err_manager,
+                     l,
+                     "Failed to canonicalize path '{}': {}",
+                     x.as_os_str().to_string_lossy(),
+                     e
+                  );
+               } else {
+                  rolandc_error_no_loc!(
+                     ctx.err_manager,
+                     "Failed to canonicalize path '{}': {}",
+                     x.as_os_str().to_string_lossy(),
+                     e
+                  );
+               }
+               return Err(CompilationError::Io);
+            }
+         },
+      };
+      if !imported_files.insert(canonical_path) {
+         continue;
       }
-      Target::Wasm4 => {
-         let std_lib_s = include_str!("../../lib/wasm4.rol");
-         lex_and_parse(
-            std_lib_s,
-            SourcePath::Std,
-            &mut ctx.err_manager,
-            &mut ctx.interner,
-            &mut ctx.expressions,
-         )
-      }
-      Target::Microw8 => {
-         let std_lib_s = include_str!("../../lib/microw8.rol");
-         lex_and_parse(
-            std_lib_s,
-            SourcePath::Std,
-            &mut ctx.err_manager,
-            &mut ctx.interner,
-            &mut ctx.expressions,
-         )
-      }
-   }?;
 
-   merge_program(&mut ctx.program, &mut std_lib.1);
+      let program_s = match &base_path {
+         ImportPath::Disk(x) => {
+            match resolver.as_mut().unwrap().resolve_path(x) {
+               Ok(s) => s,
+               Err(e) => {
+                  if let Some(l) = location {
+                     rolandc_error!(
+                        ctx.err_manager,
+                        l,
+                        "Failed to read imported file '{}': {}",
+                        x.as_os_str().to_string_lossy(),
+                        e
+                     );
+                  } else {
+                     rolandc_error_no_loc!(
+                        ctx.err_manager,
+                        "Failed to read imported file '{}': {}",
+                        x.as_os_str().to_string_lossy(),
+                        e
+                     );
+                  }
+                  return Err(CompilationError::Io);
+               }
+            }
+         }
+         ImportPath::Std(x) => {
+            Cow::Borrowed(PROJECT_DIR.get_file(x).unwrap().contents_utf8().unwrap())
+         }
+      };
 
-   let std_lib_s = include_str!("../../lib/shared.rol");
-   let mut shared_std = lex_and_parse(
-      std_lib_s,
-      SourcePath::Std,
-      &mut ctx.err_manager,
-      &mut ctx.interner,
-      &mut ctx.expressions,
-   )?;
-   merge_program(&mut ctx.program, &mut shared_std.1);
+      let mut parsed = lex_and_parse(
+         &program_s,
+         base_path.to_source_path(&mut ctx.interner),
+         &mut ctx.err_manager,
+         &mut ctx.interner,
+         &mut ctx.expressions,
+      )?;
+      merge_program(&mut ctx.program, &mut parsed.1);
+
+      base_path.pop(); // /foo/bar/main.rol -> /foo/bar
+      for file in parsed.0.iter() {
+         let file_str = ctx.interner.lookup(file.import_path);
+         let mut new_path = base_path.clone();
+         new_path.push(file_str);
+         import_queue.push((new_path, Some(file.location)));
+      }
+   }
 
    semantic_analysis::type_and_procedure_info::populate_type_and_procedure_info(
       &mut ctx.program,

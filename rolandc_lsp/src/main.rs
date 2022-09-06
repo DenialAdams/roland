@@ -53,7 +53,7 @@ struct Backend {
 fn roland_source_path_to_canon_path(source_path: &SourcePath, interner: &Interner) -> Option<std::io::Result<PathBuf>> {
    match source_path {
       SourcePath::Sandbox => unreachable!(), // No language server in the roland sandbox
-      SourcePath::Std => None, // This is possible to be hit when Roland provides a reference to a standard library defined type
+      SourcePath::Std(_) => None, // This is possible to be hit when Roland provides a reference to a standard library defined type
       SourcePath::File(str_id) => {
          let some_path = interner.lookup(*str_id);
          Some(std::fs::canonicalize(some_path))

@@ -31,6 +31,6 @@ pub struct SourceInfo {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum SourcePath {
    Sandbox,
-   Std,
+   Std(StrId),
    File(StrId),
 }
