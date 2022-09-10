@@ -2,7 +2,8 @@ use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement, UnOp,
+   BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement,
+   StatementNode, UnOp,
 };
 use crate::type_data::{
    ExpressionType, ValueType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE,
@@ -35,17 +36,17 @@ pub fn fold_block(
    interner: &Interner,
 ) {
    for statement in block.statements.iter_mut() {
-      fold_statement(&mut statement.statement, err_manager, folding_context, interner);
+      fold_statement(statement, err_manager, folding_context, interner);
    }
 }
 
 pub fn fold_statement(
-   statement: &mut Statement,
+   statement: &mut StatementNode,
    err_manager: &mut ErrorManager,
    folding_context: &mut FoldingContext,
    interner: &Interner,
 ) {
-   match statement {
+   match &mut statement.statement {
       Statement::Assignment(lhs_expr, rhs_expr) => {
          try_fold_and_replace_expr(*lhs_expr, err_manager, folding_context, interner);
          try_fold_and_replace_expr(*rhs_expr, err_manager, folding_context, interner);
@@ -57,7 +58,7 @@ pub fn fold_statement(
       Statement::IfElse(if_expr, if_block, else_statement) => {
          try_fold_and_replace_expr(*if_expr, err_manager, folding_context, interner);
          fold_block(if_block, err_manager, folding_context, interner);
-         fold_statement(&mut else_statement.statement, err_manager, folding_context, interner);
+         fold_statement(else_statement, err_manager, folding_context, interner);
 
          // We could also prune dead branches here
          let if_expr_d = &folding_context.expressions[*if_expr];
@@ -75,8 +76,20 @@ pub fn fold_statement(
       Statement::Loop(block) => {
          fold_block(block, err_manager, folding_context, interner);
       }
-      Statement::Expression(expr) => {
-         try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
+      Statement::Expression(expr_id) => {
+         try_fold_and_replace_expr(*expr_id, err_manager, folding_context, interner);
+
+         let expression = &folding_context.expressions[*expr_id];
+         if !matches!(
+            expression.expression,
+            Expression::ProcedureCall {
+               proc_name: _,
+               generic_args: _,
+               args: _
+            }
+         ) {
+            rolandc_warn!(err_manager, expression.location, "The result of this expression is not conumed");
+         }
       }
       Statement::Return(expr) => {
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
@@ -235,18 +248,22 @@ fn fold_expr(
       }
       Expression::FloatLiteral(_) => None,
       Expression::UnitLiteral => None,
-      Expression::BinaryOperator { operator, lhs, rhs } => {
-         try_fold_and_replace_expr(*lhs, err_manager, folding_context, interner);
-         try_fold_and_replace_expr(*rhs, err_manager, folding_context, interner);
+      Expression::BinaryOperator {
+         operator,
+         lhs: lhs_id,
+         rhs: rhs_id,
+      } => {
+         try_fold_and_replace_expr(*lhs_id, err_manager, folding_context, interner);
+         try_fold_and_replace_expr(*rhs_id, err_manager, folding_context, interner);
 
-         let lhs_expr = &folding_context.expressions[*lhs];
-         let rhs_expr = &folding_context.expressions[*rhs];
+         let lhs_expr = &folding_context.expressions[*lhs_id];
+         let rhs_expr = &folding_context.expressions[*rhs_id];
+
+         let lhs_could_have_side_effects = expression_could_have_side_effects(*lhs_id, folding_context.expressions);
+         let rhs_could_have_side_effects = expression_could_have_side_effects(*rhs_id, folding_context.expressions);
 
          // For some cases, we don't care if either operand is literal
-         if !expression_could_have_side_effects(&lhs_expr.expression)
-            && !expression_could_have_side_effects(&rhs_expr.expression)
-            && lhs_expr.expression == rhs_expr.expression
-         {
+         if !lhs_could_have_side_effects && !rhs_could_have_side_effects && lhs_expr.expression == rhs_expr.expression {
             match operator {
                BinOp::Divide
                   if !matches!(
@@ -410,10 +427,10 @@ fn fold_expr(
                _ => (),
             }
 
-            let (one_literal, non_literal_expr) = if let Some(v) = rhs {
-               (v, &lhs_expr.expression)
+            let (one_literal, non_literal_expr, non_literal_side_effects) = if let Some(v) = rhs {
+               (v, &lhs_expr.expression, lhs_could_have_side_effects)
             } else {
-               (lhs.unwrap(), &rhs_expr.expression)
+               (lhs.unwrap(), &rhs_expr.expression, rhs_could_have_side_effects)
             };
 
             if is_commutative_noop(one_literal, *operator) {
@@ -423,7 +440,7 @@ fn fold_expr(
                   exp_type: folding_context.expressions[expr_index].exp_type.clone(),
                   location: expr_to_fold_location,
                });
-            } else if !expression_could_have_side_effects(non_literal_expr) {
+            } else if !non_literal_side_effects {
                match (one_literal, *operator) {
                   (x, BinOp::BitwiseOr) if x.is_int_max() => {
                      return Some(ExpressionNode {
@@ -1560,13 +1577,29 @@ fn is_commutative_noop(literal: Literal, op: BinOp) -> bool {
       || ((literal == Literal::Bool(true)) & (op == BinOp::LogicalAnd))
 }
 
-fn expression_could_have_side_effects(expression: &Expression) -> bool {
-   matches!(
-      expression,
-      Expression::ProcedureCall {
-         proc_name: _,
-         generic_args: _,
-         args: _
+fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &ExpressionPool) -> bool {
+   match &expressions[expr_id].expression {
+      Expression::ProcedureCall { .. } => true,
+      Expression::ArrayLiteral(arr) => arr.iter().any(|x| expression_could_have_side_effects(*x, expressions)),
+      Expression::ArrayIndex { array, index } => {
+         expression_could_have_side_effects(*array, expressions)
+            || expression_could_have_side_effects(*index, expressions)
       }
-   )
+      Expression::BoolLiteral(_) => false,
+      Expression::StringLiteral(_) => false,
+      Expression::IntLiteral { .. } => false,
+      Expression::FloatLiteral(_) => false,
+      Expression::UnitLiteral => false,
+      Expression::Variable(_) => false,
+      Expression::BinaryOperator { lhs, rhs, .. } => {
+         expression_could_have_side_effects(*lhs, expressions) || expression_could_have_side_effects(*rhs, expressions)
+      }
+      Expression::UnaryOperator(_, expr) => expression_could_have_side_effects(*expr, expressions),
+      Expression::StructLiteral(_, fields) => fields
+         .iter()
+         .any(|x| expression_could_have_side_effects(x.1, expressions)),
+      Expression::FieldAccess(_, expr) => expression_could_have_side_effects(*expr, expressions),
+      Expression::Cast { expr, .. } => expression_could_have_side_effects(*expr, expressions),
+      Expression::EnumLiteral(_, _) => false,
+   }
 }

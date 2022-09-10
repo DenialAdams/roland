@@ -105,6 +105,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    user_program_ep: CompilationEntryPoint<'a, FR>,
    target: Target,
 ) -> Result<(), CompilationError> {
+   ctx.program.clear();
    ctx.expressions.clear();
    ctx.err_manager.clear();
    // We don't have to clear the interner - assumption is that the context is coming from a recent version of the same source, so symbols should be relevant

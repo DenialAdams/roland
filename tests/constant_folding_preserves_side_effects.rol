@@ -5,4 +5,5 @@ proc fire_missiles() -> usize {
 
 proc main() {
     let x = 0 * fire_missiles();
+    let y = 0 * (fire_missiles() + 1);
 }

@@ -326,6 +326,23 @@ impl Program {
          source_to_definition: IndexMap::new(),
       }
    }
+
+   pub fn clear(&mut self) {
+      self.enums.clear();
+      self.external_procedures.clear();
+      self.procedures.clear();
+      self.structs.clear();
+      self.consts.clear();
+      self.statics.clear();
+      self.parsed_types.clear();
+      self.literals.clear();
+      self.enum_info.clear();
+      self.struct_info.clear();
+      self.global_info.clear();
+      self.procedure_info.clear();
+      self.struct_size_info.clear();
+      self.source_to_definition.clear();
+   }
 }
 
 fn token_starts_expression(token: Token) -> bool {
