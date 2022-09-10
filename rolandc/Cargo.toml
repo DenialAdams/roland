@@ -6,7 +6,6 @@ edition = "2021"
 
 [dependencies]
 unicode-ident = "1"
-arrayvec = "0.7"
 indexmap = "1"
 wat = "1"
 include_dir = "0.7"
