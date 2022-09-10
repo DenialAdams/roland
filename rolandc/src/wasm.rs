@@ -522,9 +522,11 @@ pub fn emit_wasm(
          generation_context
             .out
             .emit_constant_sexp("(export \"update\" (func $update))");
-         generation_context
-            .out
-            .emit_constant_sexp("(export \"start\" (func $start))");
+         if program.procedure_info.contains_key(&interner.intern("start")) {
+            generation_context
+               .out
+               .emit_constant_sexp("(export \"start\" (func $start))");
+         }
       }
       Target::Microw8 => {
          generation_context
@@ -533,6 +535,11 @@ pub fn emit_wasm(
          generation_context
             .out
             .emit_constant_sexp("(export \"upd\" (func $upd))");
+         if program.procedure_info.contains_key(&interner.intern("snd")) {
+            generation_context
+               .out
+               .emit_constant_sexp("(export \"snd\" (func $snd))");
+         }
       }
       Target::Wasi => {
          generation_context.out.emit_constant_sexp("(memory 1)");

@@ -13,24 +13,57 @@ use crate::parse::{
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, value_type_mem_alignment};
 use crate::type_data::{
-   ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE,
+   ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, I32_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE,
 };
 use crate::typed_index_vec::Handle;
 use crate::Target;
-use arrayvec::ArrayVec;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
-fn is_special_procedure(target: Target, name: StrId, interner: &mut Interner) -> bool {
-   get_special_procedures(target, interner).contains(&name)
+struct SpecialProcedure {
+   name: StrId,
+   required: bool,
+   input_types: Vec<ExpressionType>,
+   return_type: ExpressionType,
 }
 
-fn get_special_procedures(target: Target, interner: &mut Interner) -> ArrayVec<StrId, 2> {
+fn get_special_procedures(target: Target, interner: &mut Interner) -> Vec<SpecialProcedure> {
    match target {
-      Target::Wasm4 => ArrayVec::from([interner.intern("start"), interner.intern("update")]),
-      Target::Wasi => [interner.intern("main")].as_slice().try_into().unwrap(),
-      Target::Microw8 => [interner.intern("upd")].as_slice().try_into().unwrap(),
+      Target::Wasm4 => vec![
+         SpecialProcedure {
+            name: interner.intern("start"),
+            required: false,
+            input_types: vec![],
+            return_type: ExpressionType::Value(ValueType::Unit),
+         },
+         SpecialProcedure {
+            name: interner.intern("update"),
+            required: true,
+            input_types: vec![],
+            return_type: ExpressionType::Value(ValueType::Unit),
+         },
+      ],
+      Target::Wasi => vec![SpecialProcedure {
+         name: interner.intern("main"),
+         required: true,
+         input_types: vec![],
+         return_type: ExpressionType::Value(ValueType::Unit),
+      }],
+      Target::Microw8 => vec![
+         SpecialProcedure {
+            name: interner.intern("upd"),
+            required: true,
+            input_types: vec![],
+            return_type: ExpressionType::Value(ValueType::Unit),
+         },
+         SpecialProcedure {
+            name: interner.intern("snd"),
+            required: false,
+            input_types: vec![ExpressionType::Value(I32_TYPE)],
+            return_type: ExpressionType::Value(F32_TYPE),
+         },
+      ],
    }
 }
 
@@ -161,37 +194,68 @@ pub fn type_and_check_validity(
    }
 
    let special_procs = get_special_procedures(target, interner);
-   for special_proc_name in special_procs.iter().copied() {
-      if !validation_context.procedure_info.contains_key(&special_proc_name) {
+   for special_proc in special_procs.iter() {
+      let actual_proc = validation_context.procedure_info.get(&special_proc.name);
+      if let Some(p) = actual_proc {
+         if !p.named_parameters.is_empty() {
+            rolandc_error!(
+               err_manager,
+               p.location,
+               "`{}` is a special procedure for this target ({}) and is not allowed to have named parameters",
+               interner.lookup(special_proc.name),
+               validation_context.target,
+            );
+         }
+         if p.parameters != special_proc.input_types {
+            if special_proc.input_types.is_empty() {
+               rolandc_error!(
+                  err_manager,
+                  p.location,
+                  "`{}` is a special procedure for this target ({}) and is not allowed to have parameters",
+                  interner.lookup(special_proc.name),
+                  validation_context.target,
+               );
+            } else {
+               rolandc_error!(
+                  err_manager,
+                  p.location,
+                  "`{}` is a special procedure for this target ({}) and must have the following signature: ({})",
+                  interner.lookup(special_proc.name),
+                  validation_context.target,
+                  special_proc
+                     .input_types
+                     .iter()
+                     .map(|x| x.as_roland_type_info(interner))
+                     .collect::<Vec<String>>()
+                     .join(", ")
+               );
+            }
+         }
+         if p.ret_type != special_proc.return_type {
+            if special_proc.return_type == ExpressionType::Value(ValueType::Unit) {
+               rolandc_error!(
+                  err_manager,
+                  p.location,
+                  "`{}` is a special procedure for this target ({}) and must not return a value",
+                  interner.lookup(special_proc.name),
+                  validation_context.target,
+               );
+            } else {
+               rolandc_error!(
+                  err_manager,
+                  p.location,
+                  "`{}` is a special procedure for this target ({}) and must return {}",
+                  interner.lookup(special_proc.name),
+                  validation_context.target,
+                  special_proc.return_type.as_roland_type_info(interner),
+               );
+            }
+         }
+      } else if special_proc.required {
          rolandc_error_no_loc!(
             err_manager,
             "A procedure with the name `{}` must be present for this target ({})",
-            interner.lookup(special_proc_name),
-            validation_context.target,
-         );
-      } else if validation_context
-         .procedure_info
-         .get(&special_proc_name)
-         .unwrap()
-         .ret_type
-         != ExpressionType::Value(ValueType::Unit)
-         || !validation_context
-            .procedure_info
-            .get(&special_proc_name)
-            .unwrap()
-            .parameters
-            .is_empty()
-      {
-         let si = validation_context
-            .procedure_info
-            .get(&special_proc_name)
-            .unwrap()
-            .location;
-         rolandc_error_w_details!(
-            err_manager,
-            &[(si, "defined")],
-            "`{}` is a special procedure for this target ({}) and is not allowed to return a value or take arguments",
-            interner.lookup(special_proc_name),
+            interner.lookup(special_proc.name),
             validation_context.target,
          );
       }
@@ -1134,15 +1198,6 @@ fn get_type(
                   interner.lookup(proc_name.identifier),
                );
             }
-         }
-
-         if is_special_procedure(validation_context.target, proc_name.identifier, interner) {
-            rolandc_error!(
-               err_manager,
-               expr_location,
-               "`{}` is a special procedure and is not allowed to be called",
-               interner.lookup(proc_name.identifier),
-            );
          }
 
          match validation_context.procedure_info.get(&proc_name.identifier) {

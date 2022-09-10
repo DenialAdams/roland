@@ -1,9 +1,9 @@
 proc fire_missiles() -> usize {
-    print("Missiles fired");
-    return 10;
+   print("Missiles fired");
+   return 10;
 }
 
 proc main() {
-    let x = 0 * fire_missiles();
-    let y = 0 * (fire_missiles() + 1);
+   let x = 0 * fire_missiles();
+   let y = 0 * (fire_missiles() + 1);
 }

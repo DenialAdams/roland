@@ -88,7 +88,11 @@ pub fn fold_statement(
                args: _
             }
          ) {
-            rolandc_warn!(err_manager, expression.location, "The result of this expression is not conumed");
+            rolandc_warn!(
+               err_manager,
+               expression.location,
+               "The result of this expression is not conumed"
+            );
          }
       }
       Statement::Return(expr) => {

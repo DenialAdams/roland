@@ -1,3 +1,5 @@
-`main` is a special procedure for this target (WASI) and is not allowed to return a value or take arguments
-↳ defined @ line 1, column 1 [main_parameters.rol]
-There were 1 semantic errors, bailing
+`main` is a special procedure for this target (WASI) and is not allowed to have named parameters
+↳ line 1, column 1 [main_parameters.rol]
+`main` is a special procedure for this target (WASI) and is not allowed to have parameters
+↳ line 1, column 1 [main_parameters.rol]
+There were 2 semantic errors, bailing

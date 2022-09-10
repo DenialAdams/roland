@@ -47,4 +47,4 @@ extern proc setCursorPosition(x: i32, y: i32);
 
 // Sound
 extern proc playNote(channel: i32, note: i32);
-// snd, sndGes are TODO. see issue #42
+extern proc sndGes(sampleIndex: i32) -> f32;
