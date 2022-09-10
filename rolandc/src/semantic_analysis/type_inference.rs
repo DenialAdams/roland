@@ -1,6 +1,4 @@
 use super::ValidationContext;
-use crate::error_handling::ErrorManager;
-use crate::interner::Interner;
 use crate::parse::{Expression, ExpressionId};
 use crate::type_data::{ExpressionType, ValueType};
 
@@ -22,24 +20,16 @@ pub fn try_set_inferred_type(
    e_type: &ExpressionType,
    expr_index: ExpressionId,
    validation_context: &mut ValidationContext,
-   err_manager: &mut ErrorManager,
-   interner: &mut Interner,
 ) {
    let current_type = validation_context.expressions[expr_index].exp_type.as_ref().unwrap();
    if inference_is_impossible(current_type, e_type) {
       return;
    }
 
-   set_inferred_type(e_type, expr_index, validation_context, err_manager, interner);
+   set_inferred_type(e_type, expr_index, validation_context);
 }
 
-fn set_inferred_type(
-   e_type: &ExpressionType,
-   expr_index: ExpressionId,
-   validation_context: &mut ValidationContext,
-   err_manager: &mut ErrorManager,
-   interner: &mut Interner,
-) {
+fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validation_context: &mut ValidationContext) {
    // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
    // while this pointer is alive. We don't do this, because we update this expression in place.
    let inferring_expr = std::ptr::addr_of_mut!(validation_context.expressions[expr_index]);
@@ -73,12 +63,12 @@ fn set_inferred_type(
       }
       Expression::StringLiteral(_) => unreachable!(),
       Expression::BinaryOperator { lhs, rhs, .. } => {
-         set_inferred_type(e_type, *lhs, validation_context, err_manager, interner);
-         set_inferred_type(e_type, *rhs, validation_context, err_manager, interner);
+         set_inferred_type(e_type, *lhs, validation_context);
+         set_inferred_type(e_type, *rhs, validation_context);
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }
       Expression::UnaryOperator(_, e) => {
-         set_inferred_type(e_type, *e, validation_context, err_manager, interner);
+         set_inferred_type(e_type, *e, validation_context);
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }
       Expression::UnitLiteral => unreachable!(),
@@ -136,7 +126,7 @@ fn set_inferred_type(
          };
 
          for expr in exprs.iter() {
-            set_inferred_type(target_elem_type, *expr, validation_context, err_manager, interner);
+            set_inferred_type(target_elem_type, *expr, validation_context);
          }
 
          // It's important that we don't override the length here; that can't be inferred
@@ -148,7 +138,7 @@ fn set_inferred_type(
       Expression::ArrayIndex { array, index: _index } => {
          // The length is bogus, but we don't care about that during inference anyway
          let array_type = ExpressionType::Value(ValueType::Array(Box::new(e_type.clone()), 0));
-         set_inferred_type(&array_type, *array, validation_context, err_manager, interner);
+         set_inferred_type(&array_type, *array, validation_context);
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }
       Expression::EnumLiteral(_, _) => unreachable!(),

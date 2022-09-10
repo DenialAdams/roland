@@ -212,13 +212,7 @@ pub fn type_and_check_validity(
    for p_const in program.consts.iter_mut() {
       // p_const.const_type is guaranteed to be resolved at this point
       type_expression(err_manager, p_const.value, &mut validation_context, interner);
-      try_set_inferred_type(
-         &p_const.const_type,
-         p_const.value,
-         &mut validation_context,
-         err_manager,
-         interner,
-      );
+      try_set_inferred_type(&p_const.const_type, p_const.value, &mut validation_context);
 
       let p_const_expr = &validation_context.expressions[p_const.value];
 
@@ -240,13 +234,7 @@ pub fn type_and_check_validity(
    for p_static in program.statics.iter_mut().filter(|x| x.value.is_some()) {
       // p_static.static_type is guaranteed to be resolved at this point
       type_expression(err_manager, p_static.value.unwrap(), &mut validation_context, interner);
-      try_set_inferred_type(
-         &p_static.static_type,
-         p_static.value.unwrap(),
-         &mut validation_context,
-         err_manager,
-         interner,
-      );
+      try_set_inferred_type(&p_static.static_type, p_static.value.unwrap(), &mut validation_context);
 
       let p_static_expr = &validation_context.expressions[p_static.value.unwrap()];
 
@@ -407,8 +395,6 @@ fn type_statement(
             &validation_context.expressions[*lhs].exp_type.clone().unwrap(),
             *rhs,
             validation_context,
-            err_manager,
-            interner,
          );
 
          let len = &validation_context.expressions[*lhs];
@@ -478,15 +464,11 @@ fn type_statement(
             &validation_context.expressions[*start].exp_type.clone().unwrap(),
             *end,
             validation_context,
-            err_manager,
-            interner,
          );
          try_set_inferred_type(
             &validation_context.expressions[*end].exp_type.clone().unwrap(),
             *start,
             validation_context,
-            err_manager,
-            interner,
          );
 
          let start_expr = &validation_context.expressions[*start];
@@ -566,13 +548,7 @@ fn type_statement(
          let cur_procedure_info = validation_context.cur_procedure_info.unwrap();
 
          // Type Inference
-         try_set_inferred_type(
-            &cur_procedure_info.ret_type,
-            *en,
-            validation_context,
-            err_manager,
-            interner,
-         );
+         try_set_inferred_type(&cur_procedure_info.ret_type, *en, validation_context);
 
          let en = &validation_context.expressions[*en];
 
@@ -594,7 +570,7 @@ fn type_statement(
          if let Some(v) = dt.as_mut() {
             // Failure to resolve is handled below
             let _ = resolve_type(v, validation_context.enum_info, validation_context.struct_info);
-            try_set_inferred_type(v, *en, validation_context, err_manager, interner);
+            try_set_inferred_type(v, *en, validation_context);
          }
 
          let en = &validation_context.expressions[*en];
@@ -756,29 +732,11 @@ fn get_type(
          }
 
          if *cast_type == CastType::Transmute && target_type.is_pointer() {
-            try_set_inferred_type(
-               &ExpressionType::Value(USIZE_TYPE),
-               *expr_id,
-               validation_context,
-               err_manager,
-               interner,
-            );
+            try_set_inferred_type(&ExpressionType::Value(USIZE_TYPE), *expr_id, validation_context);
          } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Value(F64_TYPE)) {
-            try_set_inferred_type(
-               &ExpressionType::Value(U64_TYPE),
-               *expr_id,
-               validation_context,
-               err_manager,
-               interner,
-            );
+            try_set_inferred_type(&ExpressionType::Value(U64_TYPE), *expr_id, validation_context);
          } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Value(F32_TYPE)) {
-            try_set_inferred_type(
-               &ExpressionType::Value(U32_TYPE),
-               *expr_id,
-               validation_context,
-               err_manager,
-               interner,
-            );
+            try_set_inferred_type(&ExpressionType::Value(U32_TYPE), *expr_id, validation_context);
          }
 
          let e = &validation_context.expressions[*expr_id];
@@ -957,15 +915,11 @@ fn get_type(
             &validation_context.expressions[*lhs].exp_type.clone().unwrap(),
             *rhs,
             validation_context,
-            err_manager,
-            interner,
          );
          try_set_inferred_type(
             &validation_context.expressions[*rhs].exp_type.clone().unwrap(),
             *lhs,
             validation_context,
-            err_manager,
-            interner,
          );
 
          let lhs_expr = &validation_context.expressions[*lhs];
@@ -1246,7 +1200,7 @@ fn get_type(
                         break;
                      }
 
-                     try_set_inferred_type(expected, actual.expr, validation_context, err_manager, interner);
+                     try_set_inferred_type(expected, actual.expr, validation_context);
 
                      let actual_expr = &validation_context.expressions[actual.expr];
                      let actual_type = actual_expr.exp_type.as_ref().unwrap();
@@ -1282,7 +1236,7 @@ fn get_type(
 
                      let expected = expected.unwrap();
 
-                     try_set_inferred_type(expected, arg.expr, validation_context, err_manager, interner);
+                     try_set_inferred_type(expected, arg.expr, validation_context);
 
                      let arg_expr = &validation_context.expressions[arg.expr];
 
@@ -1362,7 +1316,7 @@ fn get_type(
                      );
                   }
 
-                  try_set_inferred_type(defined_type, field.1, validation_context, err_manager, interner);
+                  try_set_inferred_type(defined_type, field.1, validation_context);
 
                   let field_expr = &validation_context.expressions[field.1];
 
@@ -1487,8 +1441,6 @@ fn get_type(
                &validation_context.expressions[elems[i - 1]].exp_type.clone().unwrap(),
                elems[i],
                validation_context,
-               err_manager,
-               interner,
             );
 
             let last_elem_expr = &validation_context.expressions[elems[i - 1]];
@@ -1543,13 +1495,7 @@ fn get_type(
          type_expression(err_manager, *array, validation_context, interner);
          type_expression(err_manager, *index, validation_context, interner);
 
-         try_set_inferred_type(
-            &ExpressionType::Value(USIZE_TYPE),
-            *index,
-            validation_context,
-            err_manager,
-            interner,
-         );
+         try_set_inferred_type(&ExpressionType::Value(USIZE_TYPE), *index, validation_context);
 
          let array_expression = &validation_context.expressions[*array];
          let index_expression = &validation_context.expressions[*index];

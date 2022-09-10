@@ -6,7 +6,7 @@ use include_dir::{include_dir, Dir};
 
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
 use crate::source_info::{SourceInfo, SourcePath};
-use crate::{lex_and_parse, CompilationContext, CompilationError, FileResolver, merge_program};
+use crate::{lex_and_parse, merge_program, CompilationContext, CompilationError, FileResolver};
 
 static STDLIB_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../lib");
 
@@ -21,7 +21,11 @@ impl<'a> FileResolver<'a> for StdFileResolver {
    }
 }
 
-pub fn import_program<'a, FR: FileResolver<'a>>(ctx: &mut CompilationContext, path: PathBuf, mut resolver: FR) -> Result<(), CompilationError> {
+pub fn import_program<'a, FR: FileResolver<'a>>(
+   ctx: &mut CompilationContext,
+   path: PathBuf,
+   mut resolver: FR,
+) -> Result<(), CompilationError> {
    let mut import_queue: Vec<(PathBuf, Option<SourceInfo>)> = vec![(path, None)];
 
    let mut imported_files = HashSet::new();
