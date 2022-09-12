@@ -173,7 +173,7 @@ There is a VS Code extension for Roland - search for "Roland" on the vscode mark
 It should provide the following features:
 - Syntax Highlighting
 - Errors as you type
-- "Goto definition" support for procedure calls, struct literals, and enum literals
+- "Goto definition" support
 
 (If you develop on mac, the language server won't work for you - please file an issue!)
 
