@@ -152,7 +152,7 @@ impl Backend {
       let (root_file_path, target) = match &*self.mode.read() {
          WorkspaceMode::LooseFiles => (doc_uri.to_file_path().unwrap(), Target::Wasi),
          WorkspaceMode::Wasm4EntryPoint(x) => (x.clone(), Target::Wasm4),
-         WorkspaceMode::WasiEntryPoint(x) => (x.clone(), Target::Wasm4),
+         WorkspaceMode::WasiEntryPoint(x) => (x.clone(), Target::Wasi),
       };
       let (opened_versions, diagnostic_buckets) = {
          let mut ctx_ref = self.ctx.lock();
