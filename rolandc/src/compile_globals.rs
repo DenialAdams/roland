@@ -216,5 +216,6 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
       cg_context.struct_info,
       cg_context.struct_size_info,
       cg_context.enum_info,
+      cg_context.interner,
    );
 }

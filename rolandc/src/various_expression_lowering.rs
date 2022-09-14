@@ -18,12 +18,12 @@ pub fn lower_single_expression(
    struct_info: &IndexMap<StrId, StructInfo>,
    struct_size_info: &HashMap<StrId, SizeInfo>,
    enum_info: &IndexMap<StrId, EnumInfo>,
+   interner: &Interner,
 ) {
-   let i = expression_id.index();
    match &expressions[expression_id].expression {
       Expression::Variable(x) => {
          if let Some(replacement_index) = const_replacements.get(&x.identifier).copied() {
-            expressions[ExpressionId::new(i)].expression = expressions[replacement_index].expression.clone();
+            expressions[expression_id].expression = expressions[replacement_index].expression.clone();
          }
       }
       Expression::ProcedureCall {
@@ -34,14 +34,14 @@ pub fn lower_single_expression(
          if x.identifier == sizeof_proc_id {
             let type_size = crate::size_info::sizeof_type_mem(&generic_args[0].gtype, enum_info, struct_size_info);
 
-            expressions[ExpressionId::new(i)].expression = Expression::IntLiteral {
+            expressions[expression_id].expression = Expression::IntLiteral {
                val: u64::from(type_size),
                synthetic: true,
             };
          } else if x.identifier == alignof_proc_id {
             let type_size = crate::size_info::mem_alignment(&generic_args[0].gtype, enum_info, struct_size_info);
 
-            expressions[ExpressionId::new(i)].expression = Expression::IntLiteral {
+            expressions[expression_id].expression = Expression::IntLiteral {
                val: u64::from(type_size),
                synthetic: true,
             };
@@ -50,6 +50,15 @@ pub fn lower_single_expression(
       Expression::FieldAccess(fields, other_exp) => {
          // Do this check first to try and skip most struct field accesses
          if fields.last().map(|x| *x != length_id).unwrap() {
+            return;
+         }
+
+         if let Expression::StringLiteral(id) = expressions[*other_exp].expression {
+            let strlen = interner.lookup(id).len();
+            expressions[expression_id].expression = Expression::IntLiteral {
+               val: strlen as u64,
+               synthetic: true,
+            };
             return;
          }
 
@@ -80,7 +89,7 @@ pub fn lower_single_expression(
             _ => return,
          };
 
-         expressions[ExpressionId::new(i)].expression = Expression::IntLiteral {
+         expressions[expression_id].expression = Expression::IntLiteral {
             val: u64::from(length_of_array),
             synthetic: true,
          };
@@ -110,6 +119,7 @@ pub fn lower_consts(program: &mut Program, expressions: &mut ExpressionPool, int
          &program.struct_info,
          &program.struct_size_info,
          &program.enum_info,
+         interner,
       );
    }
 }
