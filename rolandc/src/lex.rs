@@ -149,6 +149,7 @@ enum LexMode {
    StringLiteral,
    StringLiteralEscape,
    NumericLiteral,
+   FloatLiteralAfterE,
    Comment,
 }
 
@@ -738,14 +739,20 @@ pub fn lex_for_tokens(
          }
          LexMode::NumericLiteral => {
             // Alphanumeric because we support parsing hex, i.e. 0xff
-            if c.is_ascii_alphanumeric() {
+            // '-' to support i.e. 3.14E-10
+            if (c == 'e' || c == 'E') && !str_buf.buf.starts_with("0x") {
+               str_buf.push(c);
+               is_float = true;
+               let _ = chars.next().unwrap();
+               mode = LexMode::FloatLiteralAfterE;
+            } else if c.is_ascii_alphanumeric() {
                str_buf.push(c);
                let _ = chars.next().unwrap();
             } else if c == '_' {
                let _ = chars.next().unwrap();
             } else if c == '.' {
                let _ = chars.next().unwrap();
-               if chars.peek() == Some(&'.') {
+               if chars.peek().copied() == Some('.') {
                   // This is pretty hacky, but oh well
                   tokens.push(finish_numeric_literal(
                      &str_buf.buf,
@@ -772,10 +779,49 @@ pub fn lex_for_tokens(
                      token: Token::DoublePeriod,
                   });
                   cur_position.col += 2;
-               } else {
+               } else if !is_float {
                   is_float = true;
                   str_buf.push(c);
+               } else {
+                  tokens.push(finish_numeric_literal(
+                     &str_buf.buf,
+                     err_manager,
+                     SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.col_plus(str_buf.length_in_chars),
+                        file: source_path,
+                     },
+                     is_float,
+                  )?);
+                  cur_position.col += str_buf.clear();
+                  is_float = false;
+                  str_buf.clear();
+                  mode = LexMode::Normal;
                }
+            } else {
+               tokens.push(finish_numeric_literal(
+                  &str_buf.buf,
+                  err_manager,
+                  SourceInfo {
+                     begin: cur_position,
+                     end: cur_position.col_plus(str_buf.length_in_chars),
+                     file: source_path,
+                  },
+                  is_float,
+               )?);
+               cur_position.col += str_buf.clear();
+               is_float = false;
+               str_buf.clear();
+               mode = LexMode::Normal;
+            }
+         }
+         LexMode::FloatLiteralAfterE => {
+            if c.is_ascii_digit() {
+               str_buf.push(c);
+               let _ = chars.next().unwrap();
+            } else if c == '-' && str_buf.buf.as_bytes().last().map(u8::to_ascii_lowercase) == Some(b'e') {
+               str_buf.push(c);
+               let _ = chars.next().unwrap();
             } else {
                tokens.push(finish_numeric_literal(
                   &str_buf.buf,
@@ -823,7 +869,7 @@ pub fn lex_for_tokens(
          Ok(tokens)
       }
       // Same for numbers
-      LexMode::NumericLiteral => {
+      LexMode::NumericLiteral | LexMode::FloatLiteralAfterE => {
          tokens.push(finish_numeric_literal(
             &str_buf.buf,
             err_manager,
