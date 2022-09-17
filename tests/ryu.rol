@@ -1,0 +1,122 @@
+static BUF: [u8; 16];
+
+proc main() {
+   // Basic
+   ASSERT_F2S("0E0", 0.0);
+   ASSERT_F2S("-0E0", -0.0);
+   ASSERT_F2S("1E0", 1.0);
+   ASSERT_F2S("-1E0", -1.0);
+   ASSERT_F2S("NaN", 0x7fffffff transmute f32);
+   ASSERT_F2S("Infinity", F32_INFINITY);
+   ASSERT_F2S("-Infinity", F32_NEG_INFINITY);
+   print("\n");
+
+   // SwitchToSubnormal
+   ASSERT_F2S("1.1754944E-38", 1.1754944E-38);
+   print("\n");
+
+   // MinAndMax
+   ASSERT_F2S("3.4028235E38", 0x7f7fffff transmute f32);
+   ASSERT_F2S("1E-45", 1 transmute f32);
+   print("\n");
+
+   // BoundaryRoundEven
+   // Check that we return the exact boundary if it is the shortest
+   // representation, but only if the original floating point number is even.
+   ASSERT_F2S("3.355445E7", 3.355445E7);
+   ASSERT_F2S("9E9", 8.999999E9);
+   ASSERT_F2S("3.436672E10", 3.4366717E10);
+   print("\n");
+
+   // ExactValueRoundEven
+   // If the exact value is exactly halfway between two shortest representations,
+   // then we round to even. It seems like this only makes a difference if the
+   // last two digits are ...2|5 or ...7|5, and we cut off the 5.
+   ASSERT_F2S("3.0540412E5", 3.0540412E5);
+   ASSERT_F2S("8.0990312E3", 8.0990312E3);
+   print("\n");
+
+   // LotsOfTrailingZeros
+   // Pattern for the first test: 00111001100000000000000000000000
+   ASSERT_F2S("2.4414062E-4", 2.4414062E-4);
+   ASSERT_F2S("2.4414062E-3", 2.4414062E-3);
+   ASSERT_F2S("4.3945312E-3", 4.3945312E-3);
+   ASSERT_F2S("6.3476562E-3", 6.3476562E-3);
+   print("\n");
+
+   // Regression
+   ASSERT_F2S("4.7223665E21", 4.7223665E21);
+   ASSERT_F2S("8.388608E6", 8388608.0);
+   ASSERT_F2S("1.6777216E7", 1.6777216E7);
+   ASSERT_F2S("3.3554436E7", 3.3554436E7);
+   ASSERT_F2S("6.7131496E7", 6.7131496E7);
+   ASSERT_F2S("1.9310392E-38", 1.9310392E-38);
+   ASSERT_F2S("-2.47E-43", -2.47E-43);
+   ASSERT_F2S("1.993244E-38", 1.993244E-38);
+   ASSERT_F2S("4.1039004E3", 4103.9003);
+   ASSERT_F2S("5.3399997E9", 5.3399997E9);
+   ASSERT_F2S("6.0898E-39", 6.0898E-39);
+   ASSERT_F2S("1.0310042E-3", 0.0010310042);
+   ASSERT_F2S("2.882326E17", 2.8823261E17);
+   ASSERT_F2S("7.038531E-26", 7.0385309E-26);
+   ASSERT_F2S("9.223404E17", 9.2234038E17);
+   ASSERT_F2S("6.710887E7", 6.7108872E7);
+   ASSERT_F2S("1E-44", 1.0E-44);
+   ASSERT_F2S("2.816025E14", 2.816025E14);
+   ASSERT_F2S("9.223372E18", 9.223372E18);
+   ASSERT_F2S("1.5846086E29", 1.5846085E29);
+   ASSERT_F2S("1.1811161E19", 1.1811161E19);
+   ASSERT_F2S("5.368709E18", 5.368709E18);
+   ASSERT_F2S("4.6143166E18", 4.6143165E18);
+   ASSERT_F2S("7.812537E-3", 0.007812537);
+   ASSERT_F2S("1E-45", 1.4E-45);
+   ASSERT_F2S("1.18697725E20", 1.18697724E20);
+   ASSERT_F2S("1.00014165E-36", 1.00014165E-36);
+   ASSERT_F2S("2E2", 200.0);
+   ASSERT_F2S("3.3554432E7", 3.3554432E7);
+   print("\n");
+
+   // LooksLikePow5
+   // These numbers have a mantissa that is the largest power of 5 that fits,
+   // and an exponent that causes the computation for q to result in 10, which is a corner
+   // case for Ryu.
+   ASSERT_F2S("6.7108864E17", 0x5D1502F9 transmute f32);
+   ASSERT_F2S("1.3421773E18", 0x5D9502F9 transmute f32);
+   ASSERT_F2S("2.6843546E18", 0x5E1502F9 transmute f32);
+   print("\n");
+
+   // OutputLength
+   ASSERT_F2S("1E0", 1.0); // already tested in Basic
+   ASSERT_F2S("1.2E0", 1.2);
+   ASSERT_F2S("1.23E0", 1.23);
+   ASSERT_F2S("1.234E0", 1.234);
+   ASSERT_F2S("1.2345E0", 1.2345);
+   ASSERT_F2S("1.23456E0", 1.23456);
+   ASSERT_F2S("1.234567E0", 1.234567);
+   ASSERT_F2S("1.2345678E0", 1.2345678);
+   ASSERT_F2S("1.23456735E-36", 1.23456735E-36);
+}
+
+proc string_equal(x: String, y: String) -> bool {
+   if x.length != y.length {
+      return false;
+   }
+   let all_eq: bool = true;
+   for i in 0..x.length {
+      all_eq = all_eq & ((((x.pointer transmute usize) + i) transmute &u8)~ == (((y.pointer transmute usize) + i) transmute &u8)~);
+   }
+   return all_eq;
+}
+
+proc ASSERT_F2S(x: String, y: f32) {
+   let str = ryu_f2s_buffered(y, &BUF[0]);
+   if string_equal(x, str) {
+      print(x);
+      println(" ✓");
+   }
+   if !string_equal(x, str) {
+      print(x);
+      print(" ≠ ");
+      println(str);
+   }
+}

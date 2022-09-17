@@ -1,4 +1,5 @@
 import "shared.rol";
+import "ryu/f2s.rol";
 
 builtin proc wasm_memory_size() -> usize;
 builtin proc wasm_memory_grow(pages: usize) -> usize;
@@ -79,6 +80,12 @@ proc count_digits(value: u64) -> u8 {
    unreachable();
    return 0;
 }
+
+proc f32_to_string(f: f32) -> String {
+   let result: &u8 = malloc(16);
+   return ryu_f2s_buffered(f, result);
+}
+
 
 proc int_to_string(value: u64) -> String {
    let digit_count = count_digits(value);
