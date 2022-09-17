@@ -1216,7 +1216,19 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             _ => unreachable!(),
          };
          generation_context.out.emit_spaces();
-         writeln!(generation_context.out.out, "{}.const {}", wasm_type, x).unwrap();
+         if x.is_nan() {
+            // It would be nice to support NaN payloads too, but it was kind of a pain when I tried.
+            // Better maybe would be to just output everything as a hex float?
+            // This would all be so much better if the web assembly text format had a
+            // "raw:0x{hex}" format. I don't agree with their reasoning not to support it.
+            if x.is_sign_negative() {
+               writeln!(generation_context.out.out, "{}.const -nan", wasm_type).unwrap();
+            } else {
+               writeln!(generation_context.out.out, "{}.const nan", wasm_type).unwrap();
+            }
+         } else {
+            writeln!(generation_context.out.out, "{}.const {}", wasm_type, x).unwrap();
+         }
       }
       Expression::StringLiteral(str) => {
          let (offset, len) = generation_context.literal_offsets.get(str).unwrap();
