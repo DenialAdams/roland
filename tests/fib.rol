@@ -1,8 +1,8 @@
 proc main() {
    let x = fib(9);
    let z = fast_fib(9);
-   print_bool(x == 34);
-   print_bool(x == z);
+   println_bool(x == 34);
+   println_bool(x == z);
 }
 
 proc fib(n: u64) -> u64 {

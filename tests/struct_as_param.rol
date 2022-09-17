@@ -5,8 +5,8 @@ struct X {
 }
 
 proc foo_baz(a: String, b: X) {
-   print(a);
-   print(b.animal);
+   println(a);
+   println(b.animal);
 }
 
 proc main() {

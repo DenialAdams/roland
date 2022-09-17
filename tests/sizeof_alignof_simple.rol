@@ -1,5 +1,5 @@
 proc main() {
    let x = sizeof$i64();
-   print_bool(x == 8);
-   print_bool(alignof$i64() == 8);
+   println_bool(x == 8);
+   println_bool(alignof$i64() == 8);
 }

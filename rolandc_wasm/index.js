@@ -3,7 +3,7 @@ import { start, compile_and_update_all, default as init } from './pkg/rolandc_wa
 const FIB =
 `proc main() {
    let x = fib(9);
-   print_bool(x == 34);
+   println(int_to_string(x));
 }
 
 proc fib(n: u64) -> u64 {
@@ -18,7 +18,7 @@ proc fib(n: u64) -> u64 {
 
 const HELLO_WORLD =
 `proc main() {
-   print("Hello, world!");
+   println("Hello, world!");
 }
 `;
 

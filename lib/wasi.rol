@@ -16,6 +16,27 @@ proc print(s: String) {
          buf: s.pointer,
          buf_len: s.length,
       },
+   ];
+
+   let written: usize = 0;
+   loop {
+      fd_write(1, &data[0], data.length, &written);
+      let remaining_len = &data[0].buf_len;
+      if written >= remaining_len~ {
+         break;
+      } else {
+         data[0].buf = (data[0].buf transmute usize + written) transmute &u8;
+         remaining_len~ = remaining_len~ - written;
+      }
+   }
+}
+
+proc println(s: String) {
+   let data = [
+      ciovec {
+         buf: s.pointer,
+         buf_len: s.length,
+      },
       ciovec {
          buf: "\n".pointer,
          buf_len: "\n".length,
@@ -35,11 +56,11 @@ proc print(s: String) {
    }
 }
 
-proc print_bool(value: bool) {
+proc println_bool(value: bool) {
    if value {
-      print("true");
+      println("true");
    } else {
-      print("false");
+      println("false");
    }
 }
 

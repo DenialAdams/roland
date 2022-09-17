@@ -1,5 +1,5 @@
 proc main() {
-   print_bool(wasm_memory_size() == 1);
-   print_bool(wasm_memory_grow(2) == 1);
-   print_bool(wasm_memory_size() == 3);
+   println_bool(wasm_memory_size() == 1);
+   println_bool(wasm_memory_grow(2) == 1);
+   println_bool(wasm_memory_size() == 3);
 }

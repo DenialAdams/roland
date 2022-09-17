@@ -1,5 +1,5 @@
 static X: u64 = 123456;
 
 proc main() {
-   print(int_to_string(X));
+   println(int_to_string(X));
 }

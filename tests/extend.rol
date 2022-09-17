@@ -3,9 +3,9 @@ proc main() {
    let y = x extend u16;
    let z = x extend u32;
    let q = x extend u64;
-   print_bool(z == y extend u32);
+   println_bool(z == y extend u32);
    let bint_true = true extend u32;
    let bint_false = false extend u32;
-   print_bool(bint_true == 1);
-   print_bool(bint_false == 0);
+   println_bool(bint_true == 1);
+   println_bool(bint_false == 0);
 }

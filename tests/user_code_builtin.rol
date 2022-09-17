@@ -2,5 +2,5 @@ builtin proc alacadabra();
 
 proc main() {
    alacadabra();
-   print("Everything is ok");
+   println("Everything is ok");
 }

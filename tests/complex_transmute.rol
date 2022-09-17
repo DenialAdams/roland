@@ -18,17 +18,17 @@ proc main() {
    let bar = foo transmute Bar;
 
    // this test assumes little endianness...¯\_(ツ)_/¯
-   print_bool(bar.x1 == 0x8455cd23);
-   print_bool(bar.x2 == 0xba98);
-   print_bool(bar.x3 == 0xdc);
-   print_bool(bar.x4 == 0xfe);
+   println_bool(bar.x1 == 0x8455cd23);
+   println_bool(bar.x2 == 0xba98);
+   println_bool(bar.x3 == 0xdc);
+   println_bool(bar.x4 == 0xfe);
 
    // rvalue transmute
    let bar2 = Foo {
       x: 0xfedcba98_8455_cd_23,
    } transmute Bar;
-   print_bool(bar2.x1 == 0x8455cd23);
-   print_bool(bar2.x2 == 0xba98);
-   print_bool(bar2.x3 == 0xdc);
-   print_bool(bar2.x4 == 0xfe);
+   println_bool(bar2.x1 == 0x8455cd23);
+   println_bool(bar2.x2 == 0xba98);
+   println_bool(bar2.x3 == 0xdc);
+   println_bool(bar2.x4 == 0xfe);
 }

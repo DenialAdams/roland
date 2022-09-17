@@ -1,5 +1,5 @@
 proc main() {
    let x = true;
    x = false;
-   print_bool(x);
+   println_bool(x);
 }

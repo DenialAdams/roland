@@ -1,5 +1,5 @@
 proc main() {
    let x = [true, false];
    let y: usize = x.length;
-   print_bool(y == 2);
+   println_bool(y == 2);
 }

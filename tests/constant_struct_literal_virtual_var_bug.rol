@@ -7,5 +7,5 @@ struct Bar {
 
 proc main() {
    let z = FOO;
-   print("ok");
+   println("ok");
 }

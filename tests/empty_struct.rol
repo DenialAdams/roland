@@ -3,5 +3,5 @@ struct X {
 
 proc main() {
    let empty_thing = X{};
-   print_bool(true);
+   println_bool(true);
 }

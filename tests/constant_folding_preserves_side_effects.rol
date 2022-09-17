@@ -1,5 +1,5 @@
 proc fire_missiles() -> usize {
-   print("Missiles fired");
+   println("Missiles fired");
    return 10;
 }
 

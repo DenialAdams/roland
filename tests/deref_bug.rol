@@ -1,5 +1,5 @@
 proc main() {
    let buf = malloc(20);
    ((buf transmute usize) transmute &u8)~ = 123;
-   print_bool(buf~ == 123);
+   println_bool(buf~ == 123);
 }

@@ -8,5 +8,5 @@ proc main() {
    };
 
    let len =  y.x.length;
-   print("ok");
+   println("ok");
 }

@@ -1,6 +1,6 @@
 proc dual_custody_lock(param_1: bool, named param_2: u8) {
    if param_1 & (param_2 < 10) {
-      print("Nuclear missiles launched");
+      println("Nuclear missiles launched");
    }
 }
 

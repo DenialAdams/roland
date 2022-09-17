@@ -1,4 +1,4 @@
 proc main() {
    let x: i8 = -128;
-   print("ok");
+   println("ok");
 }

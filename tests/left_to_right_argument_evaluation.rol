@@ -1,10 +1,10 @@
 proc eval(foo: String) -> bool {
-   print(foo);
+   println(foo);
    return true;
 }
 
 proc aux(x: bool, y: bool, named a: bool, named b: bool) {
-   print("done");
+   println("done");
 }
 
 proc main() {

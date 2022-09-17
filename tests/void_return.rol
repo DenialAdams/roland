@@ -1,17 +1,17 @@
 proc main() {
    a();
    b();
-   print("finished");
+   println("finished");
 }
 
 proc a() -> () {
    let x: i16 = 5 + 5;
    return;
-   print("never reached");
+   println("never reached");
 }
 
 proc b() {
    let x: i16 = -10 + -10;
    return ();
-   print("also never reached");
+   println("also never reached");
 }

@@ -9,5 +9,5 @@ proc main() {
       let y = x extend i32;
       let z = x truncate i32;
    }
-   print("ok");
+   println("ok");
 }

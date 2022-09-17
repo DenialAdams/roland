@@ -11,6 +11,6 @@ proc main() {
       }
       y = y + 1;
    }
-   print_bool(x == 10);
-   print_bool(y == 8);
+   println_bool(x == 10);
+   println_bool(y == 8);
 }

@@ -3,6 +3,6 @@ proc main() {
    let y = malloc(10);
    x~ = 123;
    y~ = 213;
-   print_bool(x~ == 123);
-   print_bool(y~ == 213);
+   println_bool(x~ == 123);
+   println_bool(y~ == 213);
 }

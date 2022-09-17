@@ -3,6 +3,6 @@ proc main() {
    let y1: f64 = 1_.2_3__;
    let x2: u64 = 0b11101111;
    let y2: f64 = 1.23;
-   print_bool(x1 == x2);
-   print_bool(y1 == y2);
+   println_bool(x1 == x2);
+   println_bool(y1 == y2);
 }

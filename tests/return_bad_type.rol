@@ -1,5 +1,5 @@
 proc main() {
-   print(get_a_cool_string());
+   println(get_a_cool_string());
 }
 
 proc get_a_cool_string() -> String {

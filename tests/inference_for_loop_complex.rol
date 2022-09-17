@@ -3,5 +3,5 @@ proc main() {
    for i in 0..x {
      let z: usize = x;
    }
-   print("OK");
+   println("OK");
 }

@@ -8,10 +8,10 @@ static Y: [Blah; 2] = [Blah { foo: 10, bar: 123, baz: 22 }, Blah { foo: 10, bar:
 
 proc main() {
    let z = Y;
-   print_bool(Y[0].foo == 10);
-   print_bool(Y[0].bar == 123);
-   print_bool(Y[0].baz == 22);
-   print_bool(Y[1].foo == 10);
-   print_bool(Y[1].bar == 123);
-   print_bool(Y[1].baz == 22);
+   println_bool(Y[0].foo == 10);
+   println_bool(Y[0].bar == 123);
+   println_bool(Y[0].baz == 22);
+   println_bool(Y[1].foo == 10);
+   println_bool(Y[1].bar == 123);
+   println_bool(Y[1].baz == 22);
 }

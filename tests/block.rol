@@ -2,7 +2,7 @@ proc main() {
    {
       {
          {
-            print("Hello world, I'm in a block!");
+            println("Hello world, I'm in a block!");
          }
       }
    }

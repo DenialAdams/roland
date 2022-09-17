@@ -1,7 +1,7 @@
 proc main() {
    loop {
      loop {
-        print("ok");
+        println("ok");
         break;
      }
      break;

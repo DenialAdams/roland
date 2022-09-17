@@ -2,5 +2,5 @@ proc main() {
    if true {
       let y = "out of scope";
    }
-   print(y);
+   println(y);
 }

@@ -2,5 +2,5 @@ proc main() {
    let x = 10;
    let y = x - 9;
    let z = [false, true][y];
-   print_bool(z);
+   println_bool(z);
 }

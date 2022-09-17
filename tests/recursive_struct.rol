@@ -7,5 +7,5 @@ struct Y {
 }
 
 proc main() {
-   print("kaboom");
+   println("kaboom");
 }

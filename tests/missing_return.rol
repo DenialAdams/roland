@@ -3,5 +3,5 @@ proc main() {
 }
 
 proc foo() -> u8 {
-   print("i'm not returning anything");
+   println("i'm not returning anything");
 }

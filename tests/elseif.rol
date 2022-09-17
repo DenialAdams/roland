@@ -1,9 +1,9 @@
 proc main() {
    if false {
-      print("bad!");
+      println("bad!");
    } else if true {
-      print("good!");
+      println("good!");
    } else {
-      print("very bad!");
+      println("very bad!");
    }
 }

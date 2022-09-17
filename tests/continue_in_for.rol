@@ -5,6 +5,6 @@ proc main() {
          // i still needs to increment to avoid an infinite loop
          continue;
       }
-      print("Hello from the loop");
+      println("Hello from the loop");
    }
 }

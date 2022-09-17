@@ -1,5 +1,5 @@
 static X: fooble;
 
 proc main() {
-   print("everything a ok");
+   println("everything a ok");
 }

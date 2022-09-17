@@ -3,5 +3,5 @@ proc foo(named a: bool, b: bool) -> bool {
 }
 
 proc main() {
-   print_bool(foo(true, true));
+   println_bool(foo(true, true));
 }

@@ -6,9 +6,9 @@ enum ReticulateSplines {
 
 proc process_data(reticulate_splines: ReticulateSplines) {
    if reticulate_splines == ReticulateSplines::Always {
-      print("Reticulating splines...");
+      println("Reticulating splines...");
    } else if reticulate_splines == ReticulateSplines::Sometimes {
-      print("Maybe reticulating splines...");
+      println("Maybe reticulating splines...");
    }
 }
 

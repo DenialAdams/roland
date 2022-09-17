@@ -2,6 +2,6 @@ proc main() {
    let len: usize = 4;
    let x: [u64; 4] = [123, 456, 789, 0];
    for i in 0..len {
-      print(int_to_string(x[i]));
+      println(int_to_string(x[i]));
    }
 }

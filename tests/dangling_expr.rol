@@ -4,6 +4,6 @@ proc main() {
 
 proc a() -> u8 {
    "wasm backend bug; unused expressions must be dropped from the stack";
-   print("hello");
+   println("hello");
    return 10;
 }

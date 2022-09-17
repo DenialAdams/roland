@@ -1,7 +1,7 @@
 proc main() {
    let x = ();
    foo(x);
-   print("hello");
+   println("hello");
 }
 
 proc foo(x: ()) {

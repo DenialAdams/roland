@@ -17,23 +17,23 @@ proc main() {
       },
    };
 
-   print_bool(instance.my_field == 10);
-   print_bool(instance.my_other_field.another_field == 300);
+   println_bool(instance.my_field == 10);
+   println_bool(instance.my_other_field.another_field == 300);
 
    instance.my_field = 22;
    instance.my_other_field.another_field = 222;
 
-   print_bool(instance.my_field == 22);
-   print_bool(instance.my_other_field.another_field == 222);
+   println_bool(instance.my_field == 22);
+   println_bool(instance.my_other_field.another_field == 222);
 
    instance.my_field = instance.my_other_field.another_field;
 
-   print_bool(instance.my_field == 222);
+   println_bool(instance.my_field == 222);
 
    let z = foo();
 
-   print_bool(z.another_field == 123);
-   print_bool(foo().another_field == 123);
+   println_bool(z.another_field == 123);
+   println_bool(foo().another_field == 123);
 }
 
 struct Y {

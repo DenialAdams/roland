@@ -14,5 +14,5 @@ proc main() {
    give_me_a_number() + f;
    // and we should not overwrite the type of target_position!
    target_position.x;
-   print("OK");
+   println("OK");
 }
