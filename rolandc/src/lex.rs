@@ -643,7 +643,7 @@ pub fn lex_for_tokens(
                let _ = chars.next().unwrap();
             } else if c.is_ascii_digit() {
                mode = LexMode::NumericLiteral;
-            } else if is_xid_start(c) {
+            } else if is_xid_start(c) || c == '_' {
                mode = LexMode::Ident;
             } else {
                rolandc_error!(
