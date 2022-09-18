@@ -352,7 +352,7 @@ pub fn populate_type_and_procedure_info(
             let etype_str = parameter.p_type.as_roland_type_info(interner);
             rolandc_error!(
                err_manager,
-               source_location,
+               parameter.location,
                "Parameter `{}` of procedure `{}` is of undeclared type `{}`",
                interner.lookup(parameter.name),
                interner.lookup(definition.name),
