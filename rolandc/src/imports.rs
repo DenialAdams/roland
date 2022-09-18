@@ -16,7 +16,7 @@ impl<'a> FileResolver<'a> for StdFileResolver {
    const IS_STD: bool = true;
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'a, str>> {
       Ok(Cow::Borrowed(
-         STDLIB_DIR.get_file(path).unwrap().contents_utf8().unwrap(),
+         STDLIB_DIR.get_file(path).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "The standard library doesn't contain that file"))?.contents_utf8().unwrap(),
       ))
    }
 }
@@ -103,6 +103,10 @@ pub fn import_program<'a, FR: FileResolver<'a>>(
       base_path.pop(); // /foo/bar/main.rol -> /foo/bar
       for file in parsed.0.iter() {
          let file_str = ctx.interner.lookup(file.import_path);
+         if let Some(std_path) = file_str.strip_prefix("std:") {
+            import_program(ctx, std_path.into(), StdFileResolver)?;
+            continue;
+         }
          let mut new_path = base_path.clone();
          new_path.push(file_str);
          import_queue.push((new_path, Some(file.location)));
