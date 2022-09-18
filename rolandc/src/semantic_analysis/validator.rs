@@ -324,7 +324,7 @@ pub fn type_and_check_validity(
          validation_context.variable_types.insert(
             parameter.name,
             VariableDetails {
-               var_type: parameter.p_type.clone(),
+               var_type: parameter.p_type.e_type.clone(),
                depth: 1,
                used: false,
                declaration_location: parameter.location,
@@ -335,7 +335,7 @@ pub fn type_and_check_validity(
             .cur_procedure_locals
             .entry(parameter.name)
             .or_insert_with(HashSet::new)
-            .insert(parameter.p_type.clone());
+            .insert(parameter.p_type.e_type.clone());
       }
 
       type_block(err_manager, &mut procedure.block, &mut validation_context, interner);
@@ -345,7 +345,7 @@ pub fn type_and_check_validity(
       // Ensure that the last statement is a return statement
       // (it has already been type checked, so we don't have to check that)
       match (
-         &procedure.definition.ret_type,
+         &procedure.definition.ret_type.e_type,
          procedure.block.statements.last().map(|x| &x.statement),
       ) {
          (ExpressionType::Value(ValueType::Unit), _) => (),

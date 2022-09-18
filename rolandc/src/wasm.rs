@@ -501,8 +501,8 @@ pub fn emit_wasm(
 
       generation_context.out.emit_function_start(
          external_procedure.definition.name,
-         external_procedure.definition.parameters.iter().map(|x| &x.p_type),
-         &external_procedure.definition.ret_type,
+         external_procedure.definition.parameters.iter().map(|x| &x.p_type.e_type),
+         &external_procedure.definition.ret_type.e_type,
          &program.enum_info,
          &program.struct_info,
          interner,
@@ -650,8 +650,8 @@ pub fn emit_wasm(
 
       generation_context.out.emit_function_start(
          external_procedure.definition.name,
-         external_procedure.definition.parameters.iter().map(|x| &x.p_type),
-         &external_procedure.definition.ret_type,
+         external_procedure.definition.parameters.iter().map(|x| &x.p_type.e_type),
+         &external_procedure.definition.ret_type.e_type,
          &program.enum_info,
          &program.struct_info,
          interner,
@@ -772,8 +772,8 @@ pub fn emit_wasm(
 
       generation_context.out.emit_function_start(
          procedure.definition.name,
-         procedure.definition.parameters.iter().map(|x| &x.p_type),
-         &procedure.definition.ret_type,
+         procedure.definition.parameters.iter().map(|x| &x.p_type.e_type),
+         &procedure.definition.ret_type.e_type,
          &program.enum_info,
          &program.struct_info,
          interner,
@@ -784,12 +784,12 @@ pub fn emit_wasm(
       // Copy parameters to stack memory so we can take pointers
       let mut values_index = 0;
       for param in &procedure.definition.parameters {
-         match sizeof_type_values(&param.p_type, generation_context.struct_size_info).cmp(&1) {
+         match sizeof_type_values(&param.p_type.e_type, generation_context.struct_size_info).cmp(&1) {
             std::cmp::Ordering::Less => (),
             std::cmp::Ordering::Equal => {
                get_stack_address_of_local(param.name, &mut generation_context);
                generation_context.out.emit_get_local(values_index);
-               simple_store(&param.p_type, &mut generation_context);
+               simple_store(&param.p_type.e_type, &mut generation_context);
                values_index += 1;
             }
             std::cmp::Ordering::Greater => {
@@ -799,7 +799,7 @@ pub fn emit_wasm(
                   "global.get $mem_address",
                   &mut 0,
                   &mut values_index,
-                  &param.p_type,
+                  &param.p_type.e_type,
                   &mut generation_context,
                );
             }

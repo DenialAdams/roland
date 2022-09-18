@@ -348,11 +348,11 @@ pub fn populate_type_and_procedure_info(
       }
 
       for parameter in definition.parameters.iter_mut() {
-         if resolve_type(&mut parameter.p_type, &program.enum_info, &program.struct_info).is_err() {
-            let etype_str = parameter.p_type.as_roland_type_info(interner);
+         if resolve_type(&mut parameter.p_type.e_type, &program.enum_info, &program.struct_info).is_err() {
+            let etype_str = parameter.p_type.e_type.as_roland_type_info(interner);
             rolandc_error!(
                err_manager,
-               parameter.location,
+               parameter.p_type.location,
                "Parameter `{}` of procedure `{}` is of undeclared type `{}`",
                interner.lookup(parameter.name),
                interner.lookup(definition.name),
@@ -361,11 +361,11 @@ pub fn populate_type_and_procedure_info(
          }
       }
 
-      if resolve_type(&mut definition.ret_type, &program.enum_info, &program.struct_info).is_err() {
-         let etype_str = definition.ret_type.as_roland_type_info(interner);
+      if resolve_type(&mut definition.ret_type.e_type, &program.enum_info, &program.struct_info).is_err() {
+         let etype_str = definition.ret_type.e_type.as_roland_type_info(interner);
          rolandc_error!(
             err_manager,
-            source_location,
+            definition.ret_type.location,
             "Return type of procedure `{}` is of undeclared type `{}`",
             interner.lookup(definition.name),
             etype_str,
@@ -384,14 +384,14 @@ pub fn populate_type_and_procedure_info(
          definition.name,
          ProcedureInfo {
             type_parameters: definition.generic_parameters.len(),
-            parameters: definition.parameters.iter().map(|x| x.p_type.clone()).collect(),
+            parameters: definition.parameters.iter().map(|x| x.p_type.e_type.clone()).collect(),
             named_parameters: definition
                .parameters
                .iter()
                .filter(|x| x.named)
-               .map(|x| (x.name, x.p_type.clone()))
+               .map(|x| (x.name, x.p_type.e_type.clone()))
                .collect(),
-            ret_type: definition.ret_type.clone(),
+            ret_type: definition.ret_type.e_type.clone(),
             location: source_location,
          },
       ) {

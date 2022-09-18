@@ -43,7 +43,7 @@ pub struct ProcedureDefinition {
    pub name: StrId,
    pub generic_parameters: Vec<IdentifierNode>,
    pub parameters: Vec<ParameterNode>,
-   pub ret_type: ExpressionType,
+   pub ret_type: ExpressionTypeNode,
 }
 
 #[derive(Clone)]
@@ -73,7 +73,7 @@ pub struct ExternalProcedureNode {
 #[derive(Clone)]
 pub struct ParameterNode {
    pub name: StrId,
-   pub p_type: ExpressionType,
+   pub p_type: ExpressionTypeNode,
    pub named: bool,
    pub location: SourceInfo,
 }
@@ -545,12 +545,16 @@ fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -
    }
    expect(l, parse_context, Token::OpenParen)?;
    let parameters = parse_parameters(l, parse_context)?;
-   expect(l, parse_context, Token::CloseParen)?;
+   let close_paren = expect(l, parse_context, Token::CloseParen)?;
    let ret_type = if l.peek_token() == Token::Arrow {
       let _ = l.next();
-      parse_type(l, parse_context)?.e_type
+      parse_type(l, parse_context)?
    } else {
-      ExpressionType::Value(ValueType::Unit)
+      ExpressionTypeNode {
+         e_type: ExpressionType::Value(ValueType::Unit),
+         // this location is somewhat bogus. ok for now?
+         location: merge_locations(procedure_name.source_info, close_paren.source_info),
+      }
    };
    Ok(ProcedureDefinition {
       name: extract_identifier(procedure_name.token),
@@ -854,7 +858,7 @@ fn parse_parameters(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<V
             };
             let id = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
             expect(l, parse_context, Token::Colon)?;
-            let e_type = parse_type(l, parse_context)?.e_type;
+            let e_type = parse_type(l, parse_context)?;
             parameters.push(ParameterNode {
                name: extract_identifier(id.token),
                location: id.source_info,
