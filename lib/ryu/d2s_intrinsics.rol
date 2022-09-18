@@ -1,0 +1,172 @@
+proc _ryu_umul128(a: u64, b: u64, productHi: &u64) -> u64 {
+   // The casts here help MSVC to avoid calls to the __allmul library function.
+   let aLo: u32 = a truncate u32;
+   let aHi: u32 = (a >> 32) truncate u32;
+   let bLo: u32 = b truncate u32;
+   let bHi: u32 = (b >> 32) truncate u32;
+
+   let b00: u64 = aLo extend u64 * bLo extend u64;
+   let b01: u64 = aLo extend u64 * bHi extend u64;
+   let b10: u64 = aHi extend u64 * bLo extend u64;
+   let b11: u64 = aHi extend u64 * bHi extend u64;
+
+   let b00Lo: u32 = b00 truncate u32;
+   let b00Hi: u32 = (b00 >> 32) truncate u32;
+
+   let mid1: u64 = b10 + b00Hi extend u64;
+   let mid1Lo: u32 = mid1 truncate u32;
+   let mid1Hi: u32 = (mid1 >> 32) truncate u32;
+
+   let mid2: u64 = b01 + mid1Lo extend u64;
+   let mid2Lo: u32 = mid2 truncate u32;
+   let mid2Hi: u32 = (mid2 >> 32) truncate u32;
+
+   let pHi: u64 = b11 + mid1Hi extend u64 + mid2Hi extend u64;
+   let pLo: u64 = (mid2Lo extend u64 << 32) | b00Lo extend u64;
+
+   productHi~ = pHi;
+   return pLo;
+}
+
+proc _ryu_shiftright128(lo: u64, hi: u64, dist: u32) -> u64 {
+   // We don't need to handle the case dist >= 64 here (see above).
+   assert(dist < 64);
+   assert(dist > 0);
+   return (hi << (64 - dist) extend u64) | (lo >> dist extend u64);
+}
+
+proc _ryu_div5(x: u64) -> u64 {
+   return x / 5;
+}
+
+proc _ryu_div10(x: u64) -> u64 {
+   return x / 10;
+}
+
+proc _ryu_div100(x: u64) -> u64{
+   return x / 100;
+}
+
+proc _ryu_div1e8(x: u64) -> u64 {
+   return x / 100000000;
+}
+
+proc _ryu_div1e9(x: u64) -> u64 {
+   return x / 1000000000;
+}
+
+proc _ryu_mod1e9(x: u64) -> u32 {
+   return (x - 1000000000 * _ryu_div1e9(x)) truncate u32;
+}
+
+proc _ryu_pow5Factor(value: u64) -> u32 {
+   let m_inv_5: u64 = 14757395258967641293; // 5 * m_inv_5 = 1 (mod 2^64)
+   let n_div_5: u64 = 3689348814741910323;  // #{ n | n = 0 (mod 2^64) } = 2^64 / 5
+   let count: u32 = 0;
+   loop {
+      assert(value != 0);
+      value = value * m_inv_5;
+      if (value > n_div_5) {
+         break;
+      }
+      count = count + 1;
+   }
+   return count;
+}
+
+// Returns true if value is divisible by 5^p.
+proc _ryu_multipleOfPowerOf5(value: u64, p: u32) -> bool {
+   // I tried a case distinction on p, but there was no performance difference.
+   return _ryu_pow5Factor(value) >= p;
+}
+
+// Returns true if value is divisible by 2^p.
+proc _ryu_multipleOfPowerOf2(value: u64, p: u32) -> bool {
+   assert(value != 0);
+   assert(p < 64);
+   // __builtin_ctzll doesn't appear to be faster here.
+   return (value & ((1 << p) - 1) extend u64) == 0;
+}
+
+// We need a 64x128-bit multiplication and a subsequent 128-bit shift.
+// Multiplication:
+//   The 64-bit factor is variable and passed in, the 128-bit factor comes
+//   from a lookup table. We know that the 64-bit factor only has 55
+//   significant bits (i.e., the 9 topmost bits are zeros). The 128-bit
+//   factor only has 124 significant bits (i.e., the 4 topmost bits are
+//   zeros).
+// Shift:
+//   In principle, the multiplication result requires 55 + 124 = 179 bits to
+//   represent. However, we then shift this value to the right by j, which is
+//   at least j >= 115, so the result is guaranteed to fit into 179 - 115 = 64
+//   bits. This means that we only need the topmost 64 significant bits of
+//   the 64x128-bit multiplication.
+//
+// There are several ways to do this:
+// 1. Best case: the compiler exposes a 128-bit type.
+//    We perform two 64x64-bit multiplications, add the higher 64 bits of the
+//    lower result to the higher result, and shift by j - 64 bits.
+//
+//    We explicitly cast from 64-bit to 128-bit, so the compiler can tell
+//    that these are only 64-bit inputs, and can map these to the best
+//    possible sequence of assembly instructions.
+//    x64 machines happen to have matching assembly instructions for
+//    64x64-bit multiplications and 128-bit shifts.
+//
+// 2. Second best case: the compiler exposes intrinsics for the x64 assembly
+//    instructions mentioned in 1.
+//
+// 3. We only have 64x64 bit instructions that return the lower 64 bits of
+//    the result, i.e., we have to use plain C.
+//    Our inputs are less than the full width, so we have three options:
+//    a. Ignore this fact and just implement the intrinsics manually.
+//    b. Split both into 31-bit pieces, which guarantees no internal overflow,
+//       but requires extra work upfront (unless we change the lookup table).
+//    c. Split only the first factor into 31-bit pieces, which also guarantees
+//       no internal overflow, but requires extra work since the intermediate
+//       results are not perfectly aligned.
+proc _ryu_mulShift64(m: u64, mul: &[u64; 2], j: i32) -> u64 {
+   // m is maximum 55 bits
+   let high1: u64 = 0; // @uninit                    // 128
+   let low1: u64 = _ryu_umul128(m, mul~[1], &high1);       // 64
+   let high0: u64 = 0; // @uninit                    // 64
+   _ryu_umul128(m, mul~[0], &high0);                       // 0
+   let sum: u64 = high0 + low1;
+   if (sum < high0) {
+      high1 = high1 + 1; // overflow into high1
+   }
+   return _ryu_shiftright128(sum, high1, (j - 64) transmute u32);
+}
+
+// This is faster if we don't have a 64x64->128-bit multiplication.
+proc _ryu_mulShiftAll64(m: u64, mul: &[u64; 2], j: i32, vp: &u64, vm: &u64, mmShift: u32) -> u64{
+   m = m << 1;
+   // m is maximum 55 bits
+   let tmp: u64 = 0; // @uninit
+   let lo: u64 = _ryu_umul128(m, mul~[0], &tmp);
+   let hi: u64 = 0; // @uninit
+   let mid: u64 = tmp + _ryu_umul128(m, mul~[1], &hi);
+   hi = hi + (mid < tmp) extend u64; // overflow into hi
+
+   let lo2: u64 = lo + mul~[0];
+   let mid2: u64 = mid + mul~[1] + (lo2 < lo) extend u64;
+   let hi2: u64 = hi + (mid2 < mid) extend u64;
+   vp~ = _ryu_shiftright128(mid2, hi2, (j - 64 - 1) transmute u32);
+
+   if (mmShift == 1) {
+      let lo3: u64 = lo - mul~[0];
+      let mid3: u64 = mid - mul~[1] - (lo3 > lo) extend u64;
+      let hi3: u64 = hi - (mid3 > mid) extend u64;
+      vm~ = _ryu_shiftright128(mid3, hi3, (j - 64 - 1) transmute u32);
+   } else {
+      let lo3: u64 = lo + lo;
+      let mid3: u64 = mid + mid + (lo3 < lo) extend u64;
+      let hi3: u64 = hi + hi + (mid3 < mid) extend u64;
+      let lo4: u64 = lo3 - mul~[0];
+      let mid4: u64 = mid3 - mul~[1] - (lo4 > lo3) extend u64;
+      let hi4: u64 = hi3 - (mid4 > mid3) extend u64;
+      vm~ = _ryu_shiftright128(mid4, hi4, (j - 64) transmute u32);
+   }
+
+   return _ryu_shiftright128(mid, hi, (j - 64 - 1) transmute u32);
+}
