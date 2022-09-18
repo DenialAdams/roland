@@ -817,15 +817,19 @@ fn get_type(
                   (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y)))
                      if x.width == IntWidth::Pointer =>
                   {
-                     IntWidth::Pointer.as_num_bytes() <= y.width.as_num_bytes()
+                     // going from unsigned -> signed is ok, but signed -> unsigned is not
+                     let bad = x.signed & !y.signed;
+                     (IntWidth::Pointer.as_num_bytes() <= y.width.as_num_bytes()) & !bad
                   }
                   (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y)))
                      if y.width == IntWidth::Pointer =>
                   {
-                     x.width.as_num_bytes() <= IntWidth::Pointer.as_num_bytes()
+                     let bad = x.signed & !y.signed;
+                     (x.width.as_num_bytes() <= IntWidth::Pointer.as_num_bytes()) & !bad
                   }
                   (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
-                     x.width.as_num_bytes() < y.width.as_num_bytes()
+                     let bad = x.signed & !y.signed;
+                     (x.width.as_num_bytes() < y.width.as_num_bytes()) & !bad
                   }
                   (ExpressionType::Value(F32_TYPE), ExpressionType::Value(F64_TYPE)) => true,
                   (ExpressionType::Value(ValueType::Bool), ExpressionType::Value(ValueType::Int(_))) => true,

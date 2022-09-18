@@ -39,7 +39,7 @@ proc mulShift32(m: u32, factor: u64, shift: i32) -> u32 {
   let bits1: u64 = m extend u64 * factorHi extend u64;
 
   let sum: u64  = (bits0 >> 32) + bits1;
-  let shiftedSum: u64 = sum >> (shift - 32) extend u64;
+  let shiftedSum: u64 = sum >> (shift - 32) transmute u32 extend u64;
   assert(shiftedSum <= U32_MAX extend u64);
   return shiftedSum truncate u32;
 }
