@@ -10,7 +10,8 @@ use crate::type_data::{
    U32_TYPE, U64_TYPE, U8_TYPE, USIZE_TYPE,
 };
 use std::collections::HashMap;
-use std::ops::{BitAnd, BitOr, BitXor, Shl, Shr};
+use std::convert::TryInto;
+use std::ops::{BitAnd, BitOr, BitXor};
 
 pub struct FoldingContext<'a> {
    pub expressions: &'a mut ExpressionPool,
@@ -658,16 +659,46 @@ fn fold_expr(
                location: expr_to_fold_location,
             }),
             // int
-            BinOp::BitwiseLeftShift => Some(ExpressionNode {
-               expression: lhs << rhs,
-               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            }),
-            BinOp::BitwiseRightShift => Some(ExpressionNode {
-               expression: lhs >> rhs,
-               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            }),
+            BinOp::BitwiseLeftShift => {
+               if let Some(v) = lhs.checked_shl(rhs) {
+                  Some(ExpressionNode {
+                     expression: v,
+                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
+                     location: expr_to_fold_location,
+                  })
+               } else {
+                  rolandc_error_w_details!(
+                     err_manager,
+                     &[
+                        (expr_to_fold_location, "left shift"),
+                        (lhs_expr.location, "LHS"),
+                        (rhs_expr.location, "RHS")
+                     ],
+                     "During constant folding, got a bad left shift",
+                  );
+                  None
+               }
+            }
+            BinOp::BitwiseRightShift => {
+               if let Some(v) = lhs.checked_shr(rhs) {
+                  Some(ExpressionNode {
+                     expression: v,
+                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
+                     location: expr_to_fold_location,
+                  })
+               } else {
+                  rolandc_error_w_details!(
+                     err_manager,
+                     &[
+                        (expr_to_fold_location, "right shift"),
+                        (lhs_expr.location, "LHS"),
+                        (rhs_expr.location, "RHS")
+                     ],
+                     "During constant folding, got a bad right shift",
+                  );
+                  None
+               }
+            }
             // bool
             BinOp::LogicalAnd => Some(ExpressionNode {
                expression: lhs & rhs,
@@ -1241,6 +1272,82 @@ impl Literal {
       }
    }
 
+   fn checked_shl(self, rhs: Self) -> Option<Expression> {
+      Some(match (self, rhs) {
+         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral {
+            val: (i.checked_shl(j.try_into().ok()?)?) as u64,
+            synthetic: true,
+         },
+         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral {
+            val: i64::from(i.checked_shl(j.try_into().ok()?)?) as u64,
+            synthetic: true,
+         },
+         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral {
+            val: i64::from(i.checked_shl(j.try_into().ok()?)?) as u64,
+            synthetic: true,
+         },
+         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral {
+            val: i64::from(i.checked_shl(j.try_into().ok()?)?) as u64,
+            synthetic: true,
+         },
+         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral {
+            val: i.checked_shl(j.try_into().ok()?)?,
+            synthetic: true,
+         },
+         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral {
+            val: u64::from(i.checked_shl(j)?),
+            synthetic: true,
+         },
+         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral {
+            val: u64::from(i.checked_shl(u32::from(j))?),
+            synthetic: true,
+         },
+         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral {
+            val: u64::from(i.checked_shl(u32::from(j))?),
+            synthetic: true,
+         },
+         _ => unreachable!(),
+      })
+   }
+
+   fn checked_shr(self, rhs: Self) -> Option<Expression> {
+      Some(match (self, rhs) {
+         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral {
+            val: (i.checked_shr(j.try_into().ok()?)?) as u64,
+            synthetic: true,
+         },
+         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral {
+            val: i64::from(i.checked_shr(j.try_into().ok()?)?) as u64,
+            synthetic: true,
+         },
+         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral {
+            val: i64::from(i.checked_shr(j.try_into().ok()?)?) as u64,
+            synthetic: true,
+         },
+         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral {
+            val: i64::from(i.checked_shr(j.try_into().ok()?)?) as u64,
+            synthetic: true,
+         },
+         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral {
+            val: i.checked_shr(j.try_into().ok()?)?,
+            synthetic: true,
+         },
+         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral {
+            val: u64::from(i.checked_shr(j)?),
+            synthetic: true,
+         },
+         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral {
+            val: u64::from(i.checked_shr(u32::from(j))?),
+            synthetic: true,
+         },
+         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral {
+            val: u64::from(i.checked_shr(u32::from(j))?),
+            synthetic: true,
+         },
+         _ => unreachable!(),
+      })
+   }
+
    fn checked_negate(self) -> Option<Expression> {
       match self {
          Literal::Int64(i) => Some(Expression::IntLiteral {
@@ -1429,90 +1536,6 @@ impl BitAnd for Literal {
             synthetic: true,
          },
          (Literal::Bool(i), Literal::Bool(j)) => Expression::BoolLiteral(i & j),
-         _ => unreachable!(),
-      }
-   }
-}
-
-impl Shl for Literal {
-   type Output = Expression;
-
-   fn shl(self, rhs: Self) -> Self::Output {
-      match (self, rhs) {
-         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral {
-            val: (i << j) as u64,
-            synthetic: true,
-         },
-         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral {
-            val: i64::from(i << j) as u64,
-            synthetic: true,
-         },
-         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral {
-            val: i64::from(i << j) as u64,
-            synthetic: true,
-         },
-         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral {
-            val: i64::from(i << j) as u64,
-            synthetic: true,
-         },
-         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral {
-            val: i << j,
-            synthetic: true,
-         },
-         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral {
-            val: u64::from(i << j),
-            synthetic: true,
-         },
-         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral {
-            val: u64::from(i << j),
-            synthetic: true,
-         },
-         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral {
-            val: u64::from(i << j),
-            synthetic: true,
-         },
-         _ => unreachable!(),
-      }
-   }
-}
-
-impl Shr for Literal {
-   type Output = Expression;
-
-   fn shr(self, rhs: Self) -> Self::Output {
-      match (self, rhs) {
-         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral {
-            val: (i >> j) as u64,
-            synthetic: true,
-         },
-         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral {
-            val: i64::from(i >> j) as u64,
-            synthetic: true,
-         },
-         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral {
-            val: i64::from(i >> j) as u64,
-            synthetic: true,
-         },
-         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral {
-            val: i64::from(i >> j) as u64,
-            synthetic: true,
-         },
-         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral {
-            val: i >> j,
-            synthetic: true,
-         },
-         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral {
-            val: u64::from(i >> j),
-            synthetic: true,
-         },
-         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral {
-            val: u64::from(i >> j),
-            synthetic: true,
-         },
-         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral {
-            val: u64::from(i >> j),
-            synthetic: true,
-         },
          _ => unreachable!(),
       }
    }
