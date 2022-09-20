@@ -69,7 +69,7 @@ pub fn fold_statement(
             rolandc_warn!(err_manager, if_expr_d.location, "This condition will always be true");
          }
       }
-      Statement::For(_var, start_expr, end_expr, block, _) => {
+      Statement::For(_var, start_expr, end_expr, block, _, _) => {
          try_fold_and_replace_expr(*start_expr, err_manager, folding_context, interner);
          try_fold_and_replace_expr(*end_expr, err_manager, folding_context, interner);
          fold_block(block, err_manager, folding_context, interner);
@@ -99,7 +99,7 @@ pub fn fold_statement(
       Statement::Return(expr) => {
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
       }
-      Statement::VariableDeclaration(_, expr, _) => {
+      Statement::VariableDeclaration(_, expr, _, _) => {
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
       }
    }
@@ -174,6 +174,7 @@ fn fold_expr(
 
          None
       }
+      Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::Variable(_) => None,
       Expression::ProcedureCall { args, .. } => {
          for arg in args.iter().map(|x| x.expr) {
@@ -1617,6 +1618,7 @@ fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &Expre
       Expression::IntLiteral { .. } => false,
       Expression::FloatLiteral(_) => false,
       Expression::UnitLiteral => false,
+      Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::Variable(_) => false,
       Expression::BinaryOperator { lhs, rhs, .. } => {
          expression_could_have_side_effects(*lhs, expressions) || expression_could_have_side_effects(*rhs, expressions)

@@ -216,11 +216,12 @@ pub fn populate_type_and_procedure_info(
       }
 
       if let Some(old_value) = program.global_info.insert(
-         const_node.name.identifier,
+         program.next_variable,
          GlobalInfo {
             expr_type: const_node.const_type.clone(),
             location: const_node.location,
             is_const: true,
+            name: const_node.name.identifier,
          },
       ) {
          rolandc_error_w_details!(
@@ -233,6 +234,8 @@ pub fn populate_type_and_procedure_info(
             interner.lookup(const_node.name.identifier),
          );
       }
+      const_node.var_id = program.next_variable;
+      program.next_variable = program.next_variable.next();
    }
 
    for static_node in program.statics.iter_mut() {
@@ -251,11 +254,12 @@ pub fn populate_type_and_procedure_info(
       }
 
       if let Some(old_value) = program.global_info.insert(
-         static_node.name.identifier,
+         program.next_variable,
          GlobalInfo {
             expr_type: static_node.static_type.clone(),
             location: static_node.location,
             is_const: false,
+            name: static_node.name.identifier,
          },
       ) {
          rolandc_error_w_details!(
@@ -268,6 +272,7 @@ pub fn populate_type_and_procedure_info(
             interner.lookup(static_node.name.identifier),
          );
       }
+      program.next_variable = program.next_variable.next();
    }
 
    for (definition, source_location, extern_impl_source) in program
@@ -361,7 +366,13 @@ pub fn populate_type_and_procedure_info(
          }
       }
 
-      if resolve_type(&mut definition.ret_type.e_type, &program.enum_info, &program.struct_info).is_err() {
+      if resolve_type(
+         &mut definition.ret_type.e_type,
+         &program.enum_info,
+         &program.struct_info,
+      )
+      .is_err()
+      {
          let etype_str = definition.ret_type.e_type.as_roland_type_info(interner);
          rolandc_error!(
             err_manager,

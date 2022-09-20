@@ -1,10 +1,10 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
 
 use crate::disjoint_set::DisjointSet;
 use crate::interner::StrId;
-use crate::parse::{ExpressionId, ExpressionPool};
+use crate::parse::{ExpressionId, ExpressionPool, VariableId};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
@@ -41,6 +41,7 @@ pub struct GlobalInfo {
    pub expr_type: ExpressionType,
    pub location: SourceInfo,
    pub is_const: bool,
+   pub name: StrId,
 }
 
 pub enum VariableKind {
@@ -51,6 +52,7 @@ pub enum VariableKind {
 
 pub struct VariableDetails {
    pub var_type: ExpressionType,
+   pub var_id: VariableId,
    pub declaration_location: SourceInfo,
    pub kind: VariableKind,
    pub depth: u64,
@@ -62,7 +64,7 @@ pub struct ValidationContext<'a> {
    pub procedure_info: &'a IndexMap<StrId, ProcedureInfo>,
    pub enum_info: &'a IndexMap<StrId, EnumInfo>,
    pub struct_info: &'a IndexMap<StrId, StructInfo>,
-   pub global_info: &'a IndexMap<StrId, GlobalInfo>,
+   pub global_info: &'a IndexMap<VariableId, GlobalInfo>,
    pub cur_procedure_info: Option<&'a ProcedureInfo>,
    pub string_literals: IndexSet<StrId>,
    pub variable_types: IndexMap<StrId, VariableDetails>,
@@ -74,6 +76,15 @@ pub struct ValidationContext<'a> {
    pub struct_size_info: HashMap<StrId, SizeInfo>,
    pub type_variables: DisjointSet,
    pub type_variable_definitions: HashMap<usize, ExpressionType>,
-   pub cur_procedure_locals: IndexMap<StrId, HashSet<ExpressionType>>,
+   pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,
    pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
+   next_var_dont_access: VariableId,
+}
+
+impl ValidationContext<'_> {
+   pub fn next_var(&mut self) -> VariableId {
+      let ret_val = self.next_var_dont_access;
+      self.next_var_dont_access = self.next_var_dont_access.next();
+      ret_val
+   }
 }

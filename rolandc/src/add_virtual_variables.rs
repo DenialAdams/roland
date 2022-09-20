@@ -1,6 +1,6 @@
-use indexmap::IndexSet;
+use indexmap::IndexMap;
 
-use crate::parse::{BlockNode, CastType, Expression, ExpressionId, ExpressionPool, Program, Statement};
+use crate::parse::{BlockNode, CastType, Expression, ExpressionId, ExpressionPool, Program, Statement, VariableId};
 use crate::type_data::{ExpressionType, IntWidth, ValueType};
 
 pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
@@ -21,23 +21,41 @@ pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_ty
    }
 }
 
-struct VvContext<'a> {
+struct VvContext<'a, 'b> {
    expressions: &'a ExpressionPool,
-   virtual_vars: IndexSet<ExpressionId>,
+   virtual_vars: IndexMap<ExpressionId, VariableId>,
+   cur_procedure_locals: &'b mut IndexMap<VariableId, ExpressionType>,
+   next_variable: VariableId,
+}
+
+impl VvContext<'_, '_> {
+   fn declare_vv(&mut self, expr_id: ExpressionId) {
+      let var_id = self.next_variable;
+      self.next_variable = self.next_variable.next();
+      self
+         .cur_procedure_locals
+         .insert(var_id, self.expressions[expr_id].exp_type.clone().unwrap());
+      self.virtual_vars.insert(expr_id, var_id);
+   }
 }
 
 pub fn add_virtual_vars(program: &mut Program, expressions: &ExpressionPool) {
    let mut vv_context = VvContext {
       expressions,
-      virtual_vars: IndexSet::new(),
+      virtual_vars: IndexMap::new(),
+      cur_procedure_locals: &mut IndexMap::new(),
+      next_variable: program.next_variable,
    };
 
    for procedure in program.procedures.iter_mut() {
+      vv_context.cur_procedure_locals = &mut procedure.locals;
       vv_block(&mut procedure.block, &mut vv_context);
 
       debug_assert!(procedure.virtual_locals.is_empty());
       std::mem::swap(&mut procedure.virtual_locals, &mut vv_context.virtual_vars);
    }
+
+   program.next_variable = vv_context.next_variable;
 }
 
 fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext) {
@@ -61,13 +79,13 @@ fn vv_statement(statement: &mut Statement, vv_context: &mut VvContext) {
          vv_block(if_block, vv_context);
          vv_statement(&mut else_statement.statement, vv_context);
       }
-      Statement::For(_var, start, end, block, _) => {
+      Statement::For(_var, start, end, block, _, _) => {
          vv_expr(*start, vv_context);
          vv_expr(*end, vv_context);
          vv_block(block, vv_context);
 
          // This virtual variable will be used to hoist the end expression out of the loop
-         vv_context.virtual_vars.insert(*end);
+         vv_context.declare_vv(*end);
       }
       Statement::Loop(block) => {
          vv_block(block, vv_context);
@@ -78,7 +96,7 @@ fn vv_statement(statement: &mut Statement, vv_context: &mut VvContext) {
       Statement::Return(expr) => {
          vv_expr(*expr, vv_context);
       }
-      Statement::VariableDeclaration(_, expr, _) => {
+      Statement::VariableDeclaration(_, expr, _, _) => {
          vv_expr(*expr, vv_context);
       }
    }
@@ -99,7 +117,7 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
             .expression
             .is_lvalue_disregard_consts(vv_context.expressions)
          {
-            vv_context.virtual_vars.insert(*array);
+            vv_context.declare_vv(*array);
          }
       }
       Expression::ProcedureCall { args, .. } => {
@@ -107,7 +125,7 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
             vv_expr(arg.expr, vv_context);
 
             if arg.name.is_some() {
-               vv_context.virtual_vars.insert(arg.expr);
+               vv_context.declare_vv(arg.expr);
             }
          }
       }
@@ -125,7 +143,7 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
       Expression::StructLiteral(_, field_exprs) => {
          for (_, expr) in field_exprs.iter() {
             vv_expr(*expr, vv_context);
-            vv_context.virtual_vars.insert(*expr);
+            vv_context.declare_vv(*expr);
          }
       }
       Expression::FieldAccess(_field_names, expr) => {
@@ -143,7 +161,7 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
          if !e.expression.is_lvalue_disregard_consts(vv_context.expressions)
             && !is_wasm_compatible_rval_transmute(e.exp_type.as_ref().unwrap(), target_type)
          {
-            vv_context.virtual_vars.insert(*expr);
+            vv_context.declare_vv(*expr);
          }
       }
       Expression::Cast { expr, .. } => {
@@ -160,6 +178,7 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
       Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
       Expression::UnitLiteral => (),
+      Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::Variable(_) => (),
    }
 }

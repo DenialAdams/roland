@@ -2,16 +2,16 @@ use crate::add_virtual_variables::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    BinOp, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, Program, Statement, StatementNode, UnOp,
+   VariableId,
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
 };
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE};
-use crate::typed_index_vec::Handle;
 use crate::Target;
 use indexmap::{IndexMap, IndexSet};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::Write;
 
 const MINIMUM_STACK_FRAME_SIZE: u32 = 4;
@@ -19,14 +19,15 @@ const MINIMUM_STACK_FRAME_SIZE: u32 = 4;
 struct GenerationContext<'a> {
    out: PrettyWasmWriter,
    literal_offsets: HashMap<StrId, (u32, u32)>,
-   static_addresses: HashMap<StrId, u32>,
-   local_offsets_mem: HashMap<StrId, u32>,
+   static_addresses: HashMap<VariableId, u32>,
+   local_offsets_mem: HashMap<VariableId, u32>,
    struct_info: &'a IndexMap<StrId, StructInfo>,
    struct_size_info: &'a HashMap<StrId, SizeInfo>,
    enum_info: &'a IndexMap<StrId, EnumInfo>,
    needed_store_fns: IndexSet<ExpressionType>,
    sum_sizeof_locals_mem: u32,
    expressions: &'a ExpressionPool,
+   procedure_virtual_vars: &'a IndexMap<ExpressionId, VariableId>,
 }
 
 struct PrettyWasmWriter {
@@ -473,6 +474,7 @@ pub fn emit_wasm(
       enum_info: &program.enum_info,
       sum_sizeof_locals_mem: 0,
       expressions,
+      procedure_virtual_vars: &IndexMap::new(),
    };
 
    for external_procedure in program
@@ -501,7 +503,11 @@ pub fn emit_wasm(
 
       generation_context.out.emit_function_start(
          external_procedure.definition.name,
-         external_procedure.definition.parameters.iter().map(|x| &x.p_type.e_type),
+         external_procedure
+            .definition
+            .parameters
+            .iter()
+            .map(|x| &x.p_type.e_type),
          &external_procedure.definition.ret_type.e_type,
          &program.enum_info,
          &program.struct_info,
@@ -590,8 +596,11 @@ pub fn emit_wasm(
 
       offset = aligned_address(offset, strictest_alignment);
    }
-   for (static_name, static_details) in program.global_info.iter() {
-      generation_context.static_addresses.insert(*static_name, offset);
+   // what ridiculous crap. we need to get rid of this map.
+   let mut static_addresses_by_name = HashMap::new();
+   for (static_var, static_details) in program.global_info.iter() {
+      generation_context.static_addresses.insert(*static_var, offset);
+      static_addresses_by_name.insert(static_details.name, offset);
 
       offset += sizeof_type_mem(
          &static_details.expr_type,
@@ -601,8 +610,7 @@ pub fn emit_wasm(
    }
 
    for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
-      let static_address = generation_context
-         .static_addresses
+      let static_address = static_addresses_by_name
          .get(&p_static.name.identifier)
          .copied()
          .unwrap();
@@ -650,7 +658,11 @@ pub fn emit_wasm(
 
       generation_context.out.emit_function_start(
          external_procedure.definition.name,
-         external_procedure.definition.parameters.iter().map(|x| &x.p_type.e_type),
+         external_procedure
+            .definition
+            .parameters
+            .iter()
+            .map(|x| &x.p_type.e_type),
          &external_procedure.definition.ret_type.e_type,
          &program.enum_info,
          &program.struct_info,
@@ -714,37 +726,19 @@ pub fn emit_wasm(
    }
 
    for procedure in program.procedures.iter_mut() {
-      // This is very hacky, we're creating a bunch of strings for things that don't need to be strings!
-      // We shouldn't do this, and instead make the following logic applicable to both StrId/ExpressionId
-      // But this is my lazy approach for now, and I at least moved the logic right next to where it should go
-      for expr in procedure.virtual_locals.iter().copied() {
-         procedure
-            .locals
-            .entry(interner.intern(&format!("::{}", expr.index())))
-            .or_insert_with(HashSet::new)
-            .insert(generation_context.expressions[expr].exp_type.clone().unwrap());
-      }
-
+      generation_context.procedure_virtual_vars = &procedure.virtual_locals;
       generation_context.local_offsets_mem.clear();
 
       // 0-4 == value of previous frame base pointer
       generation_context.sum_sizeof_locals_mem = MINIMUM_STACK_FRAME_SIZE;
 
-      let mut mem_info: IndexMap<StrId, (u32, u32)> = procedure
+      let mut mem_info: IndexMap<VariableId, (u32, u32)> = procedure
          .locals
          .iter()
          .map(|x| {
-            let strictest_alignment =
-               x.1.iter()
-                  .map(|y| mem_alignment(y, generation_context.enum_info, generation_context.struct_size_info))
-                  .max()
-                  .unwrap();
-            let biggest_size =
-               x.1.iter()
-                  .map(|y| sizeof_type_mem(y, generation_context.enum_info, generation_context.struct_size_info))
-                  .max()
-                  .unwrap();
-            (*x.0, (strictest_alignment, biggest_size))
+            let alignment = mem_alignment(x.1, generation_context.enum_info, generation_context.struct_size_info);
+            let size = sizeof_type_mem(x.1, generation_context.enum_info, generation_context.struct_size_info);
+            (*x.0, (alignment, size))
          })
          .collect();
 
@@ -787,13 +781,13 @@ pub fn emit_wasm(
          match sizeof_type_values(&param.p_type.e_type, generation_context.struct_size_info).cmp(&1) {
             std::cmp::Ordering::Less => (),
             std::cmp::Ordering::Equal => {
-               get_stack_address_of_local(param.name, &mut generation_context);
+               get_stack_address_of_local(param.var_id, &mut generation_context);
                generation_context.out.emit_get_local(values_index);
                simple_store(&param.p_type.e_type, &mut generation_context);
                values_index += 1;
             }
             std::cmp::Ordering::Greater => {
-               get_stack_address_of_local(param.name, &mut generation_context);
+               get_stack_address_of_local(param.var_id, &mut generation_context);
                generation_context.out.emit_set_global("mem_address");
                dynamic_move_locals_of_type_to_dest(
                   "global.get $mem_address",
@@ -875,8 +869,8 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          let val_type = generation_context.expressions[*en].exp_type.as_ref().unwrap();
          store(val_type, generation_context, interner);
       }
-      Statement::VariableDeclaration(id, en, _) => {
-         get_stack_address_of_local(id.identifier, generation_context);
+      Statement::VariableDeclaration(_, en, _, var_id) => {
+         get_stack_address_of_local(*var_id, generation_context);
          do_emit_and_load_lval(*en, generation_context, interner);
          let val_type = generation_context.expressions[*en].exp_type.as_ref().unwrap();
          store(val_type, generation_context, interner);
@@ -886,7 +880,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             emit_statement(statement, generation_context, interner);
          }
       }
-      Statement::For(var, start, end, bn, inclusive) => {
+      Statement::For(_, start, end, bn, inclusive, start_var_id) => {
          let start_expr = &generation_context.expressions[*start];
 
          let (wasm_type, suffix) = match start_expr.exp_type.as_ref().unwrap() {
@@ -894,15 +888,13 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             _ => unreachable!(),
          };
 
-         if *inclusive {
-            todo!();
-         }
+         debug_assert!(!*inclusive); // unimplemented
 
-         let end_var_id = interner.intern(&format!("::{}", end.index()));
+         let end_var_id = generation_context.procedure_virtual_vars.get(end).copied().unwrap();
 
          // Set start var
          {
-            get_stack_address_of_local(var.identifier, generation_context);
+            get_stack_address_of_local(*start_var_id, generation_context);
             do_emit_and_load_lval(*start, generation_context, interner);
             store(start_expr.exp_type.as_ref().unwrap(), generation_context, interner);
          }
@@ -917,7 +909,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          generation_context.out.emit_block_start("bi", 0);
          // Check and break if needed
          {
-            get_stack_address_of_local(var.identifier, generation_context);
+            get_stack_address_of_local(*start_var_id, generation_context);
             load(start_expr.exp_type.as_ref().unwrap(), generation_context);
             get_stack_address_of_local(end_var_id, generation_context);
             load(start_expr.exp_type.as_ref().unwrap(), generation_context);
@@ -944,8 +936,8 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          generation_context.out.emit_spaces();
          // Increment
          {
-            get_stack_address_of_local(var.identifier, generation_context);
-            get_stack_address_of_local(var.identifier, generation_context);
+            get_stack_address_of_local(*start_var_id, generation_context);
+            get_stack_address_of_local(*start_var_id, generation_context);
             load(start_expr.exp_type.as_ref().unwrap(), generation_context);
             generation_context.out.emit_spaces();
             writeln!(generation_context.out.out, "{}.const 1", wasm_type).unwrap();
@@ -1485,7 +1477,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                }
             }
          } else {
-            let transmutee_vv = interner.reverse_lookup(&format!("::{}", e_id.index())).unwrap();
+            let transmutee_vv = generation_context.procedure_virtual_vars.get(e_id).copied().unwrap();
 
             // store to VV as the original type
             get_stack_address_of_local(transmutee_vv, generation_context);
@@ -1597,11 +1589,14 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          }
       }
       Expression::Variable(id) => {
-         if let Some(v) = generation_context.static_addresses.get(&id.identifier).copied() {
+         if let Some(v) = generation_context.static_addresses.get(id).copied() {
             generation_context.out.emit_const_i32(v);
          } else {
-            get_stack_address_of_local(id.identifier, generation_context);
+            get_stack_address_of_local(*id, generation_context);
          }
+      }
+      Expression::UnresolvedVariable(_) => {
+         unreachable!()
       }
       Expression::ProcedureCall {
          proc_name,
@@ -1625,8 +1620,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
 
             // Store each named param as virtual variables, evaluating *in the order they were written*
             for arg in named_args.iter() {
-               let arg_virual_var = interner.reverse_lookup(&format!("::{}", arg.expr.index())).unwrap();
-               get_stack_address_of_local(arg_virual_var, generation_context);
+               let arg_virtual_var = generation_context.procedure_virtual_vars.get(&arg.expr).copied().unwrap();
+               get_stack_address_of_local(arg_virtual_var, generation_context);
                do_emit_and_load_lval(arg.expr, generation_context, interner);
                store(
                   generation_context.expressions[arg.expr].exp_type.as_ref().unwrap(),
@@ -1638,10 +1633,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             // Output each named parameter in canonical order
             named_args.sort_unstable_by_key(|x| x.name);
             for named_arg in named_args {
-               let arg_virual_var = interner
-                  .reverse_lookup(&format!("::{}", named_arg.expr.index()))
-                  .unwrap();
-               get_stack_address_of_local(arg_virual_var, generation_context);
+               let arg_virtual_var = generation_context.procedure_virtual_vars.get(&named_arg.expr).copied().unwrap();
+               get_stack_address_of_local(arg_virtual_var, generation_context);
                load(
                   generation_context.expressions[named_arg.expr]
                      .exp_type
@@ -1658,7 +1651,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          // First we emit the expressions *in the order they were written*,
          // storing them into temps
          for field in fields.iter() {
-            let field_virtual_var = interner.reverse_lookup(&format!("::{}", field.1.index())).unwrap();
+            let field_virtual_var = generation_context.procedure_virtual_vars.get(&field.1).copied().unwrap();
             get_stack_address_of_local(field_virtual_var, generation_context);
             do_emit_and_load_lval(field.1, generation_context, interner);
             store(
@@ -1673,9 +1666,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          let si = generation_context.struct_info.get(&s_name.identifier).unwrap();
          for field in si.field_types.iter() {
             let value_of_field = map.get(field.0).copied().unwrap();
-            let field_virtual_var = interner
-               .reverse_lookup(&format!("::{}", value_of_field.index()))
-               .unwrap();
+            let field_virtual_var = generation_context.procedure_virtual_vars.get(&value_of_field).copied().unwrap();
             get_stack_address_of_local(field_virtual_var, generation_context);
             load(field.1, generation_context);
          }
@@ -1801,7 +1792,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             do_emit(*array, generation_context, interner);
             calculate_offset(*array, *index, generation_context, interner);
          } else {
-            let array_var_id = interner.reverse_lookup(&format!("::{}", array.index())).unwrap();
+            let array_var_id = generation_context.procedure_virtual_vars.get(array).copied().unwrap();
 
             // spill to the virtual variable
             get_stack_address_of_local(array_var_id, generation_context);
@@ -1846,7 +1837,7 @@ fn complement_val(t_type: &ExpressionType, wasm_type: &str, generation_context: 
 }
 
 /// Places the address of given local on the stack
-fn get_stack_address_of_local(id: StrId, generation_context: &mut GenerationContext) {
+fn get_stack_address_of_local(id: VariableId, generation_context: &mut GenerationContext) {
    let offset = generation_context.local_offsets_mem.get(&id).copied().unwrap();
    generation_context.out.emit_get_global("bp");
    generation_context.out.emit_const_add_i32(offset);

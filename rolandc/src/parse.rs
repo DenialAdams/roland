@@ -9,7 +9,7 @@ use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, ValueType};
 use crate::typed_index_vec::{Handle, HandleMap};
 use indexmap::{IndexMap, IndexSet};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::mem::discriminant;
 
 pub type ExpressionPool = HandleMap<ExpressionId, ExpressionNode>;
@@ -53,8 +53,8 @@ pub struct ProcedureNode {
    pub location: SourceInfo,
 
    // TODO: if we use id-s for types (ala strings), we could use tinyset?
-   pub locals: IndexMap<StrId, HashSet<ExpressionType>>,
-   pub virtual_locals: IndexSet<ExpressionId>,
+   pub locals: IndexMap<VariableId, ExpressionType>,
+   pub virtual_locals: IndexMap<ExpressionId, VariableId>,
 }
 
 #[derive(Clone)]
@@ -74,6 +74,7 @@ pub struct ExternalProcedureNode {
 pub struct ParameterNode {
    pub name: StrId,
    pub p_type: ExpressionTypeNode,
+   pub var_id: VariableId,
    pub named: bool,
    pub location: SourceInfo,
 }
@@ -95,6 +96,7 @@ pub struct EnumNode {
 #[derive(Clone, Debug)]
 pub struct ConstNode {
    pub name: IdentifierNode,
+   pub var_id: VariableId,
    pub const_type: ExpressionType,
    pub value: ExpressionId,
    pub location: SourceInfo,
@@ -171,6 +173,21 @@ pub enum CastType {
    Transmute,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct VariableId(u64);
+
+impl VariableId {
+   #[must_use]
+   pub fn first() -> VariableId {
+      VariableId(0)
+   }
+
+   #[must_use]
+   pub fn next(&self) -> VariableId {
+      VariableId(self.0 + 1)
+   }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expression {
    ProcedureCall {
@@ -191,7 +208,8 @@ pub enum Expression {
    },
    FloatLiteral(f64),
    UnitLiteral,
-   Variable(IdentifierNode),
+   UnresolvedVariable(IdentifierNode),
+   Variable(VariableId),
    BinaryOperator {
       operator: BinOp,
       lhs: ExpressionId,
@@ -221,9 +239,10 @@ pub struct GenericArgumentNode {
 
 impl Expression {
    #[must_use]
-   pub fn is_lvalue(&self, expressions: &ExpressionPool, global_info: &IndexMap<StrId, GlobalInfo>) -> bool {
+   pub fn is_lvalue(&self, expressions: &ExpressionPool, global_info: &IndexMap<VariableId, GlobalInfo>) -> bool {
       match self {
-         Expression::Variable(x) => global_info.get(&x.identifier).map_or(true, |x| !x.is_const),
+         Expression::Variable(x) => global_info.get(x).map_or(true, |x| !x.is_const),
+         Expression::UnresolvedVariable(_) => true,
          Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue(expressions, global_info),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
          Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue(expressions, global_info),
@@ -236,6 +255,7 @@ impl Expression {
    pub fn is_lvalue_disregard_consts(&self, expressions: &ExpressionPool) -> bool {
       match self {
          Expression::Variable(_) => true,
+         Expression::UnresolvedVariable(_) => true,
          Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue_disregard_consts(expressions),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
          Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue_disregard_consts(expressions),
@@ -255,7 +275,7 @@ pub enum Statement {
    Assignment(ExpressionId, ExpressionId),
    Block(BlockNode),
    Loop(BlockNode),
-   For(IdentifierNode, ExpressionId, ExpressionId, BlockNode, bool),
+   For(IdentifierNode, ExpressionId, ExpressionId, BlockNode, bool, VariableId),
    Continue,
    Break,
    Expression(ExpressionId),
@@ -263,7 +283,7 @@ pub enum Statement {
    // so we should try to rectify that too.
    IfElse(ExpressionId, BlockNode, Box<StatementNode>),
    Return(ExpressionId),
-   VariableDeclaration(IdentifierNode, ExpressionId, Option<ExpressionType>),
+   VariableDeclaration(IdentifierNode, ExpressionId, Option<ExpressionType>, VariableId),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -300,10 +320,11 @@ pub struct Program {
    pub literals: IndexSet<StrId>,
    pub enum_info: IndexMap<StrId, EnumInfo>,
    pub struct_info: IndexMap<StrId, StructInfo>,
-   pub global_info: IndexMap<StrId, GlobalInfo>,
+   pub global_info: IndexMap<VariableId, GlobalInfo>,
    pub procedure_info: IndexMap<StrId, ProcedureInfo>,
    pub struct_size_info: HashMap<StrId, SizeInfo>,
    pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
+   pub next_variable: VariableId,
 }
 
 impl Program {
@@ -324,6 +345,7 @@ impl Program {
          procedure_info: IndexMap::new(),
          struct_size_info: HashMap::new(),
          source_to_definition: IndexMap::new(),
+         next_variable: VariableId::first(),
       }
    }
 
@@ -342,6 +364,7 @@ impl Program {
       self.procedure_info.clear();
       self.struct_size_info.clear();
       self.source_to_definition.clear();
+      self.next_variable = VariableId::first();
    }
 }
 
@@ -449,6 +472,7 @@ pub fn astify(
                const_type: t_type.e_type,
                location: merge_locations(a_const.source_info, end_token.source_info),
                value: exp,
+               var_id: VariableId::first(),
             });
          }
          Token::KeywordStatic => {
@@ -502,6 +526,7 @@ pub fn astify(
          procedure_info: IndexMap::new(),
          struct_size_info: HashMap::new(),
          source_to_definition: IndexMap::new(),
+         next_variable: VariableId::first(),
       },
    ))
 }
@@ -576,7 +601,7 @@ fn parse_procedure(
    Ok(ProcedureNode {
       definition,
       locals: IndexMap::new(),
-      virtual_locals: IndexSet::new(),
+      virtual_locals: IndexMap::new(),
       block,
       location: combined_location,
    })
@@ -714,7 +739,7 @@ fn parse_block(
             let end_en = parse_expression(l, parse_context, true, expressions)?;
             let new_block = parse_block(l, parse_context, expressions)?;
             statements.push(StatementNode {
-               statement: Statement::For(variable_name, start_en, end_en, new_block, inclusive),
+               statement: Statement::For(variable_name, start_en, end_en, new_block, inclusive, VariableId::first()),
                location: for_token.source_info,
             });
          }
@@ -752,7 +777,7 @@ fn parse_block(
             let sc = expect(l, parse_context, Token::Semicolon)?;
             let statement_location = merge_locations(let_token.source_info, sc.source_info);
             statements.push(StatementNode {
-               statement: Statement::VariableDeclaration(variable_name, e, declared_type.map(|x| x.e_type)),
+               statement: Statement::VariableDeclaration(variable_name, e, declared_type.map(|x| x.e_type), VariableId::first()),
                location: statement_location,
             });
          }
@@ -863,6 +888,7 @@ fn parse_parameters(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<V
                name: extract_identifier(id.token),
                location: id.source_info,
                p_type: e_type,
+               var_id: VariableId::first(),
                named,
             });
             if l.peek_token() == Token::CloseParen {
@@ -1148,7 +1174,7 @@ fn pratt(
             )
          } else {
             wrap(
-               Expression::Variable(IdentifierNode {
+               Expression::UnresolvedVariable(IdentifierNode {
                   identifier: s,
                   location: expr_begin_token.source_info,
                }),

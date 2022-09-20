@@ -6,7 +6,7 @@ use crate::constant_folding::{self, FoldingContext};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{Expression, ExpressionId, ExpressionPool, Program};
+use crate::parse::{Expression, ExpressionId, ExpressionPool, Program, VariableId};
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
@@ -14,9 +14,9 @@ use crate::various_expression_lowering;
 
 struct CgContext<'a> {
    expressions: &'a mut ExpressionPool,
-   all_consts: &'a HashMap<StrId, (SourceInfo, ExpressionId)>,
-   consts_being_processed: &'a mut HashSet<StrId>,
-   const_replacements: &'a mut HashMap<StrId, ExpressionId>,
+   all_consts: &'a HashMap<VariableId, (SourceInfo, ExpressionId, StrId)>,
+   consts_being_processed: &'a mut HashSet<VariableId>,
+   const_replacements: &'a mut HashMap<VariableId, ExpressionId>,
    struct_info: &'a IndexMap<StrId, StructInfo>,
    enum_info: &'a IndexMap<StrId, EnumInfo>,
    struct_size_info: &'a HashMap<StrId, SizeInfo>,
@@ -87,13 +87,13 @@ pub fn compile_globals(
    // 3) Constants can use sizeof, MY_ARRAY.length (constant time expressions)
    // As a result, we need to completely simplify constant expressions in the correct (DAG) order before we can proceed with the rest of compilation.
 
-   let all_consts: HashMap<StrId, (SourceInfo, ExpressionId)> = program
+   let all_consts: HashMap<VariableId, (SourceInfo, ExpressionId, StrId)> = program
       .consts
       .iter()
-      .map(|x| (x.name.identifier, (x.location, x.value)))
+      .map(|x| (x.var_id, (x.location, x.value, x.name.identifier)))
       .collect();
-   let mut consts_being_processed: HashSet<StrId> = HashSet::new();
-   let mut const_replacements: HashMap<StrId, ExpressionId> = HashMap::new();
+   let mut consts_being_processed: HashSet<VariableId> = HashSet::new();
+   let mut const_replacements: HashMap<VariableId, ExpressionId> = HashMap::new();
 
    let mut cg_ctx = CgContext {
       expressions,
@@ -110,18 +110,18 @@ pub fn compile_globals(
    };
 
    for c in program.consts.iter() {
-      cg_const(c.name.identifier, &mut cg_ctx, err_manager);
+      cg_const(c.var_id, &mut cg_ctx, err_manager);
    }
 }
 
-fn cg_const(c_name: StrId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
-   if cg_context.const_replacements.contains_key(&c_name) {
+fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
+   if cg_context.const_replacements.contains_key(&c_id) {
       return;
    }
 
-   cg_context.consts_being_processed.insert(c_name);
+   cg_context.consts_being_processed.insert(c_id);
 
-   let c = cg_context.all_consts[&c_name];
+   let c = cg_context.all_consts[&c_id];
    cg_expr(c.1, cg_context, err_manager);
 
    fold_expr_id(c.1, cg_context.expressions, cg_context.interner, err_manager);
@@ -133,12 +133,12 @@ fn cg_const(c_name: StrId, cg_context: &mut CgContext, err_manager: &mut ErrorMa
          err_manager,
          &[(c.0, "const"), (p_const_expr.location, "expression")],
          "Value of const `{}` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static and initialize it on program start.",
-         cg_context.interner.lookup(c_name)
+         cg_context.interner.lookup(c.2)
       );
    }
 
-   cg_context.consts_being_processed.remove(&c_name);
-   cg_context.const_replacements.insert(c_name, c.1);
+   cg_context.consts_being_processed.remove(&c_id);
+   cg_context.const_replacements.insert(c_id, c.1);
 }
 
 fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
@@ -148,20 +148,22 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
 
    match unsafe { &(*expr_to_fold).expression } {
       Expression::Variable(x) => {
-         if cg_context.consts_being_processed.contains(&x.identifier) {
-            let loc = cg_context.all_consts[&x.identifier].0;
+         if cg_context.consts_being_processed.contains(x) {
+            let loc = cg_context.all_consts[x].0;
+            let name = cg_context.all_consts[x].2;
             rolandc_error!(
                err_manager,
                loc,
                "const `{}` has a cyclic dependency",
-               cg_context.interner.lookup(x.identifier),
+               cg_context.interner.lookup(name),
             );
-         } else if cg_context.const_replacements.contains_key(&x.identifier) {
+         } else if cg_context.const_replacements.contains_key(x) {
             // We've already visited this constant, great, nothing to do
-         } else if cg_context.all_consts.contains_key(&x.identifier) {
-            cg_const(x.identifier, cg_context, err_manager);
+         } else if cg_context.all_consts.contains_key(x) {
+            cg_const(*x, cg_context, err_manager);
          }
       }
+      Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::ArrayIndex { array, index } => {
          cg_expr(*array, cg_context, err_manager);
          cg_expr(*index, cg_context, err_manager);

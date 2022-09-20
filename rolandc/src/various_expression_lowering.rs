@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 
 use crate::interner::{Interner, StrId};
-use crate::parse::{Expression, ExpressionId, ExpressionPool, Program};
+use crate::parse::{Expression, ExpressionId, ExpressionPool, Program, VariableId};
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::SizeInfo;
 use crate::type_data::{ExpressionType, ValueType};
@@ -11,7 +11,7 @@ use std::collections::HashMap;
 pub fn lower_single_expression(
    expressions: &mut ExpressionPool,
    expression_id: ExpressionId,
-   const_replacements: &HashMap<StrId, ExpressionId>,
+   const_replacements: &HashMap<VariableId, ExpressionId>,
    sizeof_proc_id: StrId,
    alignof_proc_id: StrId,
    length_id: StrId,
@@ -22,10 +22,11 @@ pub fn lower_single_expression(
 ) {
    match &expressions[expression_id].expression {
       Expression::Variable(x) => {
-         if let Some(replacement_index) = const_replacements.get(&x.identifier).copied() {
+         if let Some(replacement_index) = const_replacements.get(x).copied() {
             expressions[expression_id].expression = expressions[replacement_index].expression.clone();
          }
       }
+      Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::ProcedureCall {
          proc_name: x,
          generic_args,
@@ -99,10 +100,10 @@ pub fn lower_single_expression(
 }
 
 pub fn lower_consts(program: &mut Program, expressions: &mut ExpressionPool, interner: &mut Interner) {
-   let mut const_replacements: HashMap<StrId, ExpressionId> = HashMap::new();
+   let mut const_replacements: HashMap<VariableId, ExpressionId> = HashMap::new();
 
    for p_const in program.consts.drain(0..) {
-      const_replacements.insert(p_const.name.identifier, p_const.value);
+      const_replacements.insert(p_const.var_id, p_const.value);
    }
 
    let sizeof_proc_id = interner.intern("sizeof");

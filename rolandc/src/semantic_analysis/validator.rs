@@ -8,7 +8,7 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, IdentifierNode, Program, Statement,
-   StatementNode, UnOp,
+   StatementNode, UnOp, VariableId,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, value_type_mem_alignment};
@@ -177,18 +177,20 @@ pub fn type_and_check_validity(
       type_variable_definitions: HashMap::new(),
       cur_procedure_locals: IndexMap::new(),
       source_to_definition: IndexMap::new(),
+      next_var_dont_access: program.next_variable,
    };
 
    // Populate variable resolution with globals
    for gi in program.global_info.iter() {
       validation_context.variable_types.insert(
-         *gi.0,
+         gi.1.name,
          VariableDetails {
             var_type: gi.1.expr_type.clone(),
             declaration_location: gi.1.location,
             kind: VariableKind::Global,
             depth: 0,
             used: true,
+            var_id: *gi.0,
          },
       );
    }
@@ -320,7 +322,8 @@ pub fn type_and_check_validity(
    for procedure in program.procedures.iter_mut() {
       validation_context.cur_procedure_info = program.procedure_info.get(&procedure.definition.name);
 
-      for parameter in procedure.definition.parameters.iter() {
+      for parameter in procedure.definition.parameters.iter_mut() {
+         let next_var = validation_context.next_var();
          validation_context.variable_types.insert(
             parameter.name,
             VariableDetails {
@@ -329,13 +332,13 @@ pub fn type_and_check_validity(
                used: false,
                declaration_location: parameter.location,
                kind: VariableKind::Parameter,
+               var_id: next_var,
             },
          );
          validation_context
             .cur_procedure_locals
-            .entry(parameter.name)
-            .or_insert_with(HashSet::new)
-            .insert(parameter.p_type.e_type.clone());
+            .insert(next_var, parameter.p_type.e_type.clone());
+         parameter.var_id = next_var;
       }
 
       type_block(err_manager, &mut procedure.block, &mut validation_context, interner);
@@ -408,29 +411,19 @@ pub fn type_and_check_validity(
       }
 
       for proc in program.procedures.iter_mut() {
-         for lt in proc.locals.iter_mut() {
-            let tvs: Vec<usize> = lt
-               .1
-               .drain_filter(|x| {
-                  matches!(
-                     x,
-                     ExpressionType::Value(ValueType::UnknownInt(_) | ValueType::UnknownFloat(_))
-                  )
-               })
-               .map(|x| match x {
-                  ExpressionType::Value(ValueType::UnknownInt(x)) => x,
-                  ExpressionType::Value(ValueType::UnknownFloat(x)) => x,
-                  _ => unreachable!(),
-               })
-               .map(|x| validation_context.type_variables.find(x))
-               .collect();
+         for lt in proc.locals.values_mut() {
+            let tv = match lt {
+               ExpressionType::Value(ValueType::UnknownInt(x)) => *x,
+               ExpressionType::Value(ValueType::UnknownFloat(x)) => *x,
+               _ => continue,
+            };
 
-            for t in tvs
-               .iter()
-               .flat_map(|x| validation_context.type_variable_definitions.get(x))
-            {
-               lt.1.insert(t.clone());
-            }
+            let rep = validation_context.type_variables.find(tv);
+            if let Some(et) = validation_context.type_variable_definitions.get(&rep) {
+              *lt = et.clone();
+            } else {
+               debug_assert!(!err_manager.errors.is_empty());
+            };
          }
       }
    }
@@ -442,6 +435,7 @@ pub fn type_and_check_validity(
    program.literals = validation_context.string_literals;
    program.struct_size_info = validation_context.struct_size_info;
    program.source_to_definition = validation_context.source_to_definition;
+   program.next_variable = validation_context.next_var_dont_access;
 }
 
 fn type_statement(
@@ -520,7 +514,7 @@ fn type_statement(
             );
          }
       }
-      Statement::For(var, start, end, bn, inclusive) => {
+      Statement::For(var, start, end, bn, inclusive, var_id) => {
          type_expression(err_manager, *start, validation_context, interner);
          type_expression(err_manager, *end, validation_context, interner);
 
@@ -576,7 +570,7 @@ fn type_statement(
 
          // This way the variable is declared at the depth that we'll be typing in
          validation_context.block_depth += 1;
-         declare_variable(err_manager, var, result_type, validation_context, interner);
+         *var_id = declare_variable(err_manager, var, result_type, validation_context, interner);
          validation_context.block_depth -= 1;
 
          validation_context.loop_depth += 1;
@@ -628,7 +622,7 @@ fn type_statement(
             );
          }
       }
-      Statement::VariableDeclaration(id, en, dt) => {
+      Statement::VariableDeclaration(id, en, dt, var_id) => {
          type_expression(err_manager, *en, validation_context, interner);
 
          if let Some(v) = dt.as_mut() {
@@ -665,18 +659,20 @@ fn type_statement(
             en.exp_type.clone().unwrap()
          };
 
-         declare_variable(err_manager, id, result_type, validation_context, interner);
+         *var_id = declare_variable(err_manager, id, result_type, validation_context, interner);
       }
    }
 }
 
+#[must_use]
 fn declare_variable(
    err_manager: &mut ErrorManager,
    id: &IdentifierNode,
    var_type: ExpressionType,
    validation_context: &mut ValidationContext,
    interner: &mut Interner,
-) {
+) -> VariableId {
+   let next_var = validation_context.next_var();
    if validation_context.variable_types.contains_key(&id.identifier) {
       rolandc_error_w_details!(
          err_manager,
@@ -693,14 +689,12 @@ fn declare_variable(
             declaration_location: id.location,
             used: false,
             kind: VariableKind::Local,
+            var_id: next_var,
          },
       );
-      validation_context
-         .cur_procedure_locals
-         .entry(id.identifier)
-         .or_insert_with(HashSet::new)
-         .insert(var_type);
+      validation_context.cur_procedure_locals.insert(next_var, var_type);
    }
+   next_var
 }
 
 fn type_block(
@@ -1140,17 +1134,15 @@ fn get_type(
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf {
             if let Expression::Variable(var) = &e.expression {
-               if validation_context
-                  .global_info
-                  .get(&var.identifier)
-                  .map_or(false, |x| x.is_const)
-               {
-                  rolandc_error!(
-                     err_manager,
-                     expr_location,
-                     "Attempting to take a pointer to a const, which does not have a memory location. Hint: Should `{}` be a static?",
-                     interner.lookup(var.identifier),
-                  );
+               if let Some(gi) = validation_context.global_info.get(var) {
+                  if gi.is_const {
+                     rolandc_error!(
+                        err_manager,
+                        expr_location,
+                        "Attempting to take a pointer to a const, which does not have a memory location. Hint: Should `{}` be a static?",
+                        interner.lookup(gi.name),
+                     );
+                  }
                }
             }
             node_type
@@ -1158,12 +1150,13 @@ fn get_type(
             node_type
          }
       }
-      Expression::Variable(id) => match validation_context.variable_types.get_mut(&id.identifier) {
+      Expression::UnresolvedVariable(id) => match validation_context.variable_types.get_mut(&id.identifier) {
          Some(var_info) => {
             var_info.used = true;
             validation_context
                .source_to_definition
                .insert(expr_location, var_info.declaration_location);
+            validation_context.expressions[expr_index].expression = Expression::Variable(var_info.var_id);
             var_info.var_type.clone()
          }
          None => {
@@ -1176,6 +1169,7 @@ fn get_type(
             ExpressionType::Value(ValueType::CompileError)
          }
       },
+      Expression::Variable(_) => unreachable!(),
       Expression::ProcedureCall {
          proc_name,
          args,

@@ -816,7 +816,9 @@ pub fn lex_for_tokens(
             }
          }
          LexMode::FloatLiteralAfterE => {
-            if c.is_ascii_digit() || ((c == '-' || c == '+') && str_buf.buf.as_bytes().last().map(u8::to_ascii_lowercase) == Some(b'e')) {
+            if c.is_ascii_digit()
+               || ((c == '-' || c == '+') && str_buf.buf.as_bytes().last().map(u8::to_ascii_lowercase) == Some(b'e'))
+            {
                str_buf.push(c);
                let _ = chars.next().unwrap();
             } else {

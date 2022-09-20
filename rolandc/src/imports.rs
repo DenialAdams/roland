@@ -16,7 +16,16 @@ impl<'a> FileResolver<'a> for StdFileResolver {
    const IS_STD: bool = true;
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'a, str>> {
       Ok(Cow::Borrowed(
-         STDLIB_DIR.get_file(path).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "The standard library doesn't contain that file"))?.contents_utf8().unwrap(),
+         STDLIB_DIR
+            .get_file(path)
+            .ok_or_else(|| {
+               std::io::Error::new(
+                  std::io::ErrorKind::NotFound,
+                  "The standard library doesn't contain that file",
+               )
+            })?
+            .contents_utf8()
+            .unwrap(),
       ))
    }
 }

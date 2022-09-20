@@ -4,15 +4,15 @@ use crate::type_data::{ExpressionType, ValueType};
 
 // Returns false if the types being inferred are incompatible
 // Inference may still not be possible for other reasons
-fn inference_is_impossible(current_type: &ExpressionType, potential_type: &ExpressionType) -> bool {
+fn inference_is_possible(current_type: &ExpressionType, potential_type: &ExpressionType) -> bool {
    match current_type {
       ExpressionType::Value(ValueType::Array(src_e, _)) => match potential_type {
-         ExpressionType::Value(ValueType::Array(target_e, _)) => inference_is_impossible(src_e, target_e),
-         _ => true,
+         ExpressionType::Value(ValueType::Array(target_e, _)) => inference_is_possible(src_e, target_e),
+         _ => false,
       },
-      ExpressionType::Value(ValueType::UnknownFloat(_)) => !potential_type.is_known_or_unknown_float(),
-      ExpressionType::Value(ValueType::UnknownInt(_)) => !potential_type.is_known_or_unknown_int(),
-      _ => true,
+      ExpressionType::Value(ValueType::UnknownFloat(_)) => potential_type.is_known_or_unknown_float(),
+      ExpressionType::Value(ValueType::UnknownInt(_)) => potential_type.is_known_or_unknown_int(),
+      _ => false,
    }
 }
 
@@ -22,7 +22,7 @@ pub fn try_set_inferred_type(
    validation_context: &mut ValidationContext,
 ) {
    let current_type = validation_context.expressions[expr_index].exp_type.as_ref().unwrap();
-   if inference_is_impossible(current_type, e_type) {
+   if !inference_is_possible(current_type, e_type) {
       return;
    }
 
@@ -116,6 +116,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
 
          validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
       }
+      Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::ProcedureCall { .. } => unreachable!(),
       Expression::StructLiteral(_, _) => unreachable!(),
       Expression::FieldAccess(_, _) => unreachable!(),
