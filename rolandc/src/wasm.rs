@@ -235,7 +235,7 @@ fn write_value_type_as_result(
          FloatWidth::Four => write!(out, "(result f32)").unwrap(),
       },
       ValueType::Bool => write!(out, "(result i32)").unwrap(),
-      ValueType::Unit => (),
+      ValueType::Unit | ValueType::Never => (),
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
@@ -295,7 +295,7 @@ fn write_value_type_as_params(
          FloatWidth::Four => write!(out, "(param f32)").unwrap(),
       },
       ValueType::Bool => write!(out, "(param i32)").unwrap(),
-      ValueType::Unit => (),
+      ValueType::Unit | ValueType::Never => (),
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
@@ -340,7 +340,7 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumIn
          FloatWidth::Four => write!(out, "f32").unwrap(),
       },
       ValueType::Bool => write!(out, "i32").unwrap(),
-      ValueType::Unit => unreachable!(),
+      ValueType::Unit | ValueType::Never => unreachable!(),
       ValueType::CompileError => unreachable!(),
       ValueType::Enum(x) => {
          let num_variants = ei.get(x).unwrap().variants.len();
@@ -1003,8 +1003,13 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
       Statement::Return(en) => {
          do_emit_and_load_lval(*en, generation_context, interner);
 
-         adjust_stack_function_exit(generation_context);
-         generation_context.out.emit_constant_instruction("return");
+         if generation_context.expressions[*en].exp_type.as_ref().unwrap() == &ExpressionType::Value(ValueType::Never) {
+            // WASM has strict rules about the stack - we need a literal "unreachable" to bypass them
+            generation_context.out.emit_constant_instruction("unreachable");
+         } else {
+            adjust_stack_function_exit(generation_context);
+            generation_context.out.emit_constant_instruction("return");
+         }
       }
    }
 }

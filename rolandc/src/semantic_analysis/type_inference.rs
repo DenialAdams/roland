@@ -91,7 +91,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
                .insert(outer_representative, e_type.clone());
 
             // Update existing variables immediately, so that future uses can't change the inferred type
-            // (Is this a performance problem? It's obviously awkward, but straight forward)
+            // (Is this a performance problem? It's obviously awkward, but straightforward)
             for var_in_scope in validation_context.variable_types.values_mut() {
                let my_tv = match var_in_scope.var_type {
                   ExpressionType::Value(ValueType::UnknownFloat(x)) => x,

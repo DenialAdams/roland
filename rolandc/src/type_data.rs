@@ -80,6 +80,7 @@ pub enum ValueType {
    CompileError,
    Enum(StrId),
    Unresolved(StrId), // Could be a struct, enum, or fail to resolve (compilation error)
+   Never,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -178,6 +179,11 @@ impl ExpressionType {
    }
 
    #[must_use]
+   pub fn is_never(&self) -> bool {
+      matches!(self, ExpressionType::Value(ValueType::Never))
+   }
+
+   #[must_use]
    pub fn get_value_type_or_value_being_pointed_to(&self) -> &ValueType {
       match self {
          ExpressionType::Value(vt) => vt,
@@ -246,6 +252,7 @@ impl ValueType {
          | ValueType::Float(_)
          | ValueType::Bool
          | ValueType::Unit
+         | ValueType::Never
          | ValueType::Struct(_)
          | ValueType::Enum(_) => true,
          ValueType::Array(exp, _) => exp.is_concrete_type(),
@@ -282,6 +289,7 @@ impl ValueType {
          },
          ValueType::Bool => Cow::Borrowed("bool"),
          ValueType::Unit => Cow::Borrowed("()"),
+         ValueType::Never => Cow::Borrowed("!"),
          ValueType::CompileError => Cow::Borrowed("ERROR"),
          ValueType::Struct(x) if interner.reverse_lookup("String").map_or(false, |sid| sid == *x) => {
             Cow::Borrowed("String")

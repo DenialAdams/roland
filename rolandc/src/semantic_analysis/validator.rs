@@ -81,7 +81,8 @@ enum TypeValidator {
 fn matches(type_validation: &TypeValidator, et: &ExpressionType) -> bool {
    matches!(
       (type_validation, et),
-      (TypeValidator::Any, _)
+      (_, ExpressionType::Value(ValueType::Never))
+         | (TypeValidator::Any, _)
          | (TypeValidator::AnyPointer, ExpressionType::Pointer(_, _))
          | (TypeValidator::Bool, ExpressionType::Value(ValueType::Bool))
          | (
@@ -127,6 +128,7 @@ pub fn resolve_value_type(
    si: &IndexMap<StrId, StructInfo>,
 ) -> Result<(), ()> {
    match v_type {
+      ValueType::Never => Ok(()),
       ValueType::UnknownInt(_) => Ok(()),
       ValueType::UnknownFloat(_) => Ok(()),
       ValueType::Int(_) => Ok(()),
@@ -610,7 +612,7 @@ fn type_statement(
 
          let en = &validation_context.expressions[*en];
 
-         if !en.exp_type.as_ref().unwrap().is_error_type()
+         if !en.exp_type.as_ref().unwrap().is_error_type() && !en.exp_type.as_ref().unwrap().is_never()
             && en.exp_type.as_ref().unwrap() != &cur_procedure_info.ret_type
          {
             rolandc_error!(
