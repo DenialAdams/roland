@@ -146,7 +146,7 @@ pub struct FloatType {
 
 impl ExpressionType {
    #[must_use]
-   pub fn is_concrete_type(&self) -> bool {
+   pub fn is_concrete(&self) -> bool {
       match self {
          ExpressionType::Value(x) => x.is_concrete_type(),
          ExpressionType::Pointer(_, x) => x.is_concrete_type(),
@@ -154,7 +154,7 @@ impl ExpressionType {
    }
 
    #[must_use]
-   pub fn is_error_type(&self) -> bool {
+   pub fn is_error(&self) -> bool {
       match self {
          ExpressionType::Value(x) => x.is_error_type(),
          ExpressionType::Pointer(_, x) => x.is_error_type(),
@@ -255,14 +255,14 @@ impl ValueType {
          | ValueType::Never
          | ValueType::Struct(_)
          | ValueType::Enum(_) => true,
-         ValueType::Array(exp, _) => exp.is_concrete_type(),
+         ValueType::Array(exp, _) => exp.is_concrete(),
       }
    }
 
    fn is_error_type(&self) -> bool {
       match self {
          ValueType::CompileError => true,
-         ValueType::Array(exp, _) => exp.is_error_type(),
+         ValueType::Array(exp, _) => exp.is_error(),
          _ => false,
       }
    }

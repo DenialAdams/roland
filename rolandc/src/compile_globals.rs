@@ -46,7 +46,7 @@ pub fn ensure_statics_const(
       let p_static_expr = &expressions[p_static.value.unwrap()];
 
       if p_static.static_type != *p_static_expr.exp_type.as_ref().unwrap()
-         && !p_static_expr.exp_type.as_ref().unwrap().is_error_type()
+         && !p_static_expr.exp_type.as_ref().unwrap().is_error()
       {
          let actual_type_str = p_static_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
          rolandc_error_w_details!(

@@ -1625,7 +1625,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
 
             // Store each named param as virtual variables, evaluating *in the order they were written*
             for arg in named_args.iter() {
-               let arg_virtual_var = generation_context.procedure_virtual_vars.get(&arg.expr).copied().unwrap();
+               let arg_virtual_var = generation_context
+                  .procedure_virtual_vars
+                  .get(&arg.expr)
+                  .copied()
+                  .unwrap();
                get_stack_address_of_local(arg_virtual_var, generation_context);
                do_emit_and_load_lval(arg.expr, generation_context, interner);
                store(
@@ -1638,7 +1642,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             // Output each named parameter in canonical order
             named_args.sort_unstable_by_key(|x| x.name);
             for named_arg in named_args {
-               let arg_virtual_var = generation_context.procedure_virtual_vars.get(&named_arg.expr).copied().unwrap();
+               let arg_virtual_var = generation_context
+                  .procedure_virtual_vars
+                  .get(&named_arg.expr)
+                  .copied()
+                  .unwrap();
                get_stack_address_of_local(arg_virtual_var, generation_context);
                load(
                   generation_context.expressions[named_arg.expr]
@@ -1656,7 +1664,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          // First we emit the expressions *in the order they were written*,
          // storing them into temps
          for field in fields.iter() {
-            let field_virtual_var = generation_context.procedure_virtual_vars.get(&field.1).copied().unwrap();
+            let field_virtual_var = generation_context
+               .procedure_virtual_vars
+               .get(&field.1)
+               .copied()
+               .unwrap();
             get_stack_address_of_local(field_virtual_var, generation_context);
             do_emit_and_load_lval(field.1, generation_context, interner);
             store(
@@ -1671,7 +1683,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          let si = generation_context.struct_info.get(&s_name.identifier).unwrap();
          for field in si.field_types.iter() {
             let value_of_field = map.get(field.0).copied().unwrap();
-            let field_virtual_var = generation_context.procedure_virtual_vars.get(&value_of_field).copied().unwrap();
+            let field_virtual_var = generation_context
+               .procedure_virtual_vars
+               .get(&value_of_field)
+               .copied()
+               .unwrap();
             get_stack_address_of_local(field_virtual_var, generation_context);
             load(field.1, generation_context);
          }

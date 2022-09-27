@@ -85,7 +85,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             .type_variable_definitions
             .contains_key(&outer_representative));
 
-         if e_type.is_concrete_type() {
+         if e_type.is_concrete() {
             validation_context
                .type_variable_definitions
                .insert(outer_representative, e_type.clone());
