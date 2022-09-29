@@ -1,0 +1,5 @@
+proc main() {
+   let x = 10;
+   let y: &u64 = &x;
+   println("ok");
+}
