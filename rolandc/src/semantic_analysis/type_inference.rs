@@ -76,6 +76,8 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          let my_tv = match validation_context.expressions[expr_index].exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::UnknownFloat(x)) => *x,
             ExpressionType::Value(ValueType::UnknownInt(x)) => *x,
+            ExpressionType::Pointer(_, ValueType::UnknownFloat(x)) => *x,
+            ExpressionType::Pointer(_, ValueType::UnknownInt(x)) => *x,
             _ => unreachable!(),
          };
 
@@ -96,18 +98,22 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
                let my_tv = match var_in_scope.var_type {
                   ExpressionType::Value(ValueType::UnknownFloat(x)) => x,
                   ExpressionType::Value(ValueType::UnknownInt(x)) => x,
+                  ExpressionType::Pointer(_, ValueType::UnknownFloat(x)) => x,
+                  ExpressionType::Pointer(_, ValueType::UnknownInt(x)) => x,
                   _ => continue,
                };
 
                let representative = validation_context.type_variables.find(my_tv);
 
                if representative == outer_representative {
-                  var_in_scope.var_type = e_type.clone();
+                  *var_in_scope.var_type.get_value_type_or_value_being_pointed_to_mut() =
+                     e_type.get_value_type_or_value_being_pointed_to().clone();
                }
             }
          } else {
             match e_type {
-               ExpressionType::Value(ValueType::UnknownInt(e_tv) | ValueType::UnknownFloat(e_tv)) => {
+               ExpressionType::Pointer(_, ValueType::UnknownInt(e_tv) | ValueType::UnknownFloat(e_tv))
+               | ExpressionType::Value(ValueType::UnknownInt(e_tv) | ValueType::UnknownFloat(e_tv)) => {
                   validation_context.type_variables.union(my_tv, *e_tv);
                }
                _ => unreachable!(),

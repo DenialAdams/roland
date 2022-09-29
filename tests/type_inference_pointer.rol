@@ -1,0 +1,8 @@
+proc main() {
+   let x = 10;
+   let y = &x;
+   let zz = y~;
+   let z: usize = x;
+   // This should be a compilation error
+   let q: i32 = y~ + 1;
+}

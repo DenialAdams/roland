@@ -417,12 +417,15 @@ pub fn type_and_check_validity(
             let tv = match lt {
                ExpressionType::Value(ValueType::UnknownInt(x)) => *x,
                ExpressionType::Value(ValueType::UnknownFloat(x)) => *x,
+               ExpressionType::Pointer(_, ValueType::UnknownFloat(x)) => *x,
+               ExpressionType::Pointer(_, ValueType::UnknownInt(x)) => *x,
                _ => continue,
             };
 
             let rep = validation_context.type_variables.find(tv);
             if let Some(et) = validation_context.type_variable_definitions.get(&rep) {
-               *lt = et.clone();
+               *lt.get_value_type_or_value_being_pointed_to_mut() =
+                  et.get_value_type_or_value_being_pointed_to().clone();
             } else {
                debug_assert!(!err_manager.errors.is_empty());
             };
