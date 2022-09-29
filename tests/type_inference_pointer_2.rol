@@ -1,0 +1,7 @@
+proc main() {
+   let x = 10;
+   let y = &x;
+   let z = &x;
+   let a: u64 = y~ + z~;
+   println(int_to_string(a));
+}

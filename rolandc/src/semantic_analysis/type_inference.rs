@@ -12,6 +12,18 @@ fn inference_is_possible(current_type: &ExpressionType, potential_type: &Express
       },
       ExpressionType::Value(ValueType::UnknownFloat(_)) => potential_type.is_known_or_unknown_float(),
       ExpressionType::Value(ValueType::UnknownInt(_)) => potential_type.is_known_or_unknown_int(),
+      ExpressionType::Pointer(src_indirection, ValueType::UnknownFloat(_)) => match potential_type {
+         ExpressionType::Pointer(target_indirection, ValueType::UnknownFloat(_)) => {
+            src_indirection == target_indirection
+         }
+         ExpressionType::Pointer(target_indirection, ValueType::Float(_)) => src_indirection == target_indirection,
+         _ => false,
+      },
+      ExpressionType::Pointer(src_indirection, ValueType::UnknownInt(_)) => match potential_type {
+         ExpressionType::Pointer(target_indirection, ValueType::UnknownInt(_)) => src_indirection == target_indirection,
+         ExpressionType::Pointer(target_indirection, ValueType::Int(_)) => src_indirection == target_indirection,
+         _ => false,
+      },
       _ => false,
    }
 }
@@ -47,7 +59,11 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          } else {
             validation_context.unknown_ints.remove(&expr_index);
          }
-         validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
+         *validation_context.expressions[expr_index]
+            .exp_type
+            .as_mut()
+            .unwrap()
+            .get_value_type_or_value_being_pointed_to_mut() = e_type.get_value_type_or_value_being_pointed_to().clone();
       }
       Expression::FloatLiteral(_) => {
          if let ExpressionType::Value(ValueType::UnknownFloat(e_tv)) = e_type {
@@ -59,17 +75,29 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          } else {
             validation_context.unknown_floats.remove(&expr_index);
          }
-         validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
+         *validation_context.expressions[expr_index]
+            .exp_type
+            .as_mut()
+            .unwrap()
+            .get_value_type_or_value_being_pointed_to_mut() = e_type.get_value_type_or_value_being_pointed_to().clone();
       }
       Expression::StringLiteral(_) => unreachable!(),
       Expression::BinaryOperator { lhs, rhs, .. } => {
          set_inferred_type(e_type, *lhs, validation_context);
          set_inferred_type(e_type, *rhs, validation_context);
-         validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
+         *validation_context.expressions[expr_index]
+            .exp_type
+            .as_mut()
+            .unwrap()
+            .get_value_type_or_value_being_pointed_to_mut() = e_type.get_value_type_or_value_being_pointed_to().clone();
       }
       Expression::UnaryOperator(_, e) => {
          set_inferred_type(e_type, *e, validation_context);
-         validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
+         *validation_context.expressions[expr_index]
+            .exp_type
+            .as_mut()
+            .unwrap()
+            .get_value_type_or_value_being_pointed_to_mut() = e_type.get_value_type_or_value_being_pointed_to().clone();
       }
       Expression::UnitLiteral => unreachable!(),
       Expression::Variable(_) => {
@@ -120,7 +148,11 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             }
          }
 
-         validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
+         *validation_context.expressions[expr_index]
+            .exp_type
+            .as_mut()
+            .unwrap()
+            .get_value_type_or_value_being_pointed_to_mut() = e_type.get_value_type_or_value_being_pointed_to().clone();
       }
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::ProcedureCall { .. } => unreachable!(),
@@ -146,7 +178,11 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          // The length is bogus, but we don't care about that during inference anyway
          let array_type = ExpressionType::Value(ValueType::Array(Box::new(e_type.clone()), 0));
          set_inferred_type(&array_type, *array, validation_context);
-         validation_context.expressions[expr_index].exp_type = Some(e_type.clone());
+         *validation_context.expressions[expr_index]
+            .exp_type
+            .as_mut()
+            .unwrap()
+            .get_value_type_or_value_being_pointed_to_mut() = e_type.get_value_type_or_value_being_pointed_to().clone();
       }
       Expression::EnumLiteral(_, _) => unreachable!(),
    }
