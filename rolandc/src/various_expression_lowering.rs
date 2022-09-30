@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use indexmap::IndexMap;
 
 use crate::interner::{Interner, StrId};
@@ -6,7 +8,6 @@ use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::SizeInfo;
 use crate::type_data::{ExpressionType, ValueType};
 use crate::typed_index_vec::Handle;
-use std::collections::HashMap;
 
 pub fn lower_single_expression(
    expressions: &mut ExpressionPool,

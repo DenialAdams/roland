@@ -35,15 +35,16 @@ mod typed_index_vec;
 mod various_expression_lowering;
 mod wasm;
 
+use std::borrow::Cow;
+use std::fmt::Display;
+use std::path::{Path, PathBuf};
+
 use error_handling::error_handling_macros::rolandc_error;
 use error_handling::ErrorManager;
 use interner::Interner;
 pub use parse::Program;
 use parse::{ExpressionId, ExpressionNode, ExpressionPool, ImportNode};
 use source_info::SourcePath;
-use std::borrow::Cow;
-use std::fmt::Display;
-use std::path::{Path, PathBuf};
 use typed_index_vec::HandleMap;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

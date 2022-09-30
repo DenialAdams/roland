@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+use std::convert::TryInto;
+use std::ops::{BitAnd, BitOr, BitXor};
+
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details, rolandc_warn};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
@@ -9,9 +13,6 @@ use crate::type_data::{
    ExpressionType, ValueType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE,
    U32_TYPE, U64_TYPE, U8_TYPE, USIZE_TYPE,
 };
-use std::collections::HashMap;
-use std::convert::TryInto;
-use std::ops::{BitAnd, BitOr, BitXor};
 
 pub struct FoldingContext<'a> {
    pub expressions: &'a mut ExpressionPool,

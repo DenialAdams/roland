@@ -1,3 +1,8 @@
+use std::collections::HashMap;
+use std::io::Write;
+
+use indexmap::{IndexMap, IndexSet};
+
 use crate::add_virtual_variables::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -10,9 +15,6 @@ use crate::size_info::{
 };
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE};
 use crate::Target;
-use indexmap::{IndexMap, IndexSet};
-use std::collections::HashMap;
-use std::io::Write;
 
 const MINIMUM_STACK_FRAME_SIZE: u32 = 4;
 

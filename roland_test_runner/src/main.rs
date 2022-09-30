@@ -8,12 +8,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::Mutex;
 
-use similar::{ChangeTag, TextDiff};
-
 use os_pipe::pipe;
-
 use rayon::prelude::*;
-
+use similar::{ChangeTag, TextDiff};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 enum TestFailureReason {

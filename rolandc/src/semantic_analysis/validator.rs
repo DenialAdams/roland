@@ -1,3 +1,8 @@
+use std::collections::{HashMap, HashSet};
+use std::ops::Deref;
+
+use indexmap::{IndexMap, IndexSet};
+
 use super::type_inference::try_set_inferred_type;
 use super::{StructInfo, ValidationContext, VariableDetails, VariableKind};
 use crate::disjoint_set::DisjointSet;
@@ -17,9 +22,6 @@ use crate::type_data::{
 };
 use crate::typed_index_vec::Handle;
 use crate::Target;
-use indexmap::{IndexMap, IndexSet};
-use std::collections::{HashMap, HashSet};
-use std::ops::Deref;
 
 struct SpecialProcedure {
    name: StrId,

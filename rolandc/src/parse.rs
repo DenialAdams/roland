@@ -1,3 +1,8 @@
+use std::collections::HashMap;
+use std::mem::discriminant;
+
+use indexmap::{IndexMap, IndexSet};
+
 use super::lex::{SourceToken, Token};
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
@@ -8,9 +13,6 @@ use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, ValueType};
 use crate::typed_index_vec::{Handle, HandleMap};
-use indexmap::{IndexMap, IndexSet};
-use std::collections::HashMap;
-use std::mem::discriminant;
 
 pub type ExpressionPool = HandleMap<ExpressionId, ExpressionNode>;
 

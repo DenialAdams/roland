@@ -3,6 +3,7 @@ use std::ops::BitOrAssign;
 
 use indexmap::IndexMap;
 
+use super::{EnumInfo, GlobalInfo, ProcedureInfo, StructInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
@@ -11,8 +12,6 @@ use crate::semantic_analysis::validator::resolve_type;
 use crate::source_info::SourcePath;
 use crate::type_data::{ExpressionType, ValueType};
 use crate::Program;
-
-use super::{EnumInfo, GlobalInfo, ProcedureInfo, StructInfo};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum RecursiveStructCheckResult {

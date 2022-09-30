@@ -2,8 +2,9 @@
 #![allow(clippy::single_match_else)] // Not always an improvement in my opinion
 #![allow(clippy::missing_panics_doc)] // We don't have any documentation
 
-use rolandc::{CompilationContext, CompilationError, FileResolver, Target};
 use std::io::Write;
+
+use rolandc::{CompilationContext, CompilationError, FileResolver, Target};
 use wasm_bindgen::prelude::*;
 
 static mut COMPILATION_CTX: Option<CompilationContext> = None;

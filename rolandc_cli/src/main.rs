@@ -2,11 +2,12 @@
 #![allow(clippy::match_same_arms)] // Sometimes I find this more clear (when it's just calling something)
 #![allow(clippy::unnecessary_wraps)] // False positives
 
-use rolandc::{CompilationContext, CompilationEntryPoint, CompilationError, FileResolver, Target};
 use std::borrow::Cow;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
+
+use rolandc::{CompilationContext, CompilationEntryPoint, CompilationError, FileResolver, Target};
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]

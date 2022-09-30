@@ -8,11 +8,10 @@ use parking_lot::{Mutex, RwLock};
 use rolandc::error_handling::{ErrorInfo, ErrorLocation};
 use rolandc::interner::Interner;
 use rolandc::source_info::{SourceInfo, SourcePath, SourcePosition};
+use rolandc::*;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
-
-use rolandc::*;
 
 mod goto_definition;
 
