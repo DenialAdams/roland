@@ -1,0 +1,5 @@
+proc main() {
+
+}
+
+extern proc foo(x: u64) where x: Enum;
