@@ -323,7 +323,6 @@ pub struct Program {
    pub structs: Vec<StructNode>,
    pub consts: Vec<ConstNode>,
    pub statics: Vec<StaticNode>,
-   pub traits: Vec<TraitNode>,
 
    pub parsed_types: Vec<ExpressionTypeNode>, // (only read by the language server)
 
@@ -348,7 +347,6 @@ impl Program {
          structs: Vec::new(),
          consts: Vec::new(),
          statics: Vec::new(),
-         traits: Vec::new(),
          parsed_types: Vec::new(),
          literals: IndexSet::new(),
          enum_info: IndexMap::new(),
@@ -418,7 +416,6 @@ pub fn astify(
    let mut procedures = vec![];
    let mut structs = vec![];
    let mut enums = vec![];
-   let mut traits = vec![];
    let mut consts = vec![];
    let mut statics = vec![];
    let mut imports = vec![];
@@ -439,35 +436,14 @@ pub fn astify(
          }
          Token::KeywordBuiltin => {
             let builtin_kw = lexer.next();
-            match lexer.peek_token() {
-               Token::KeywordProcedureDef => {
-                  let _ = lexer.next();
-                  let p = parse_external_procedure(
-                     &mut lexer,
-                     &mut parse_context,
-                     builtin_kw.source_info,
-                     ProcImplSource::Builtin,
-                  )?;
-                  external_procedures.push(p);
-               }
-               Token::KeywordTrait => {
-                  let t_kw = lexer.next();
-                  let trait_name = parse_identifier(&mut lexer, &mut parse_context)?;
-                  let sc = expect(&mut lexer, &mut parse_context, Token::Semicolon)?;
-                  traits.push(TraitNode {
-                     name: trait_name,
-                     location: merge_locations(t_kw.source_info, sc.source_info),
-                  });
-               }
-               x => {
-                  rolandc_error!(
-                     &mut parse_context.err_manager,
-                     lexer.peek_source(),
-                     "While parsing a builtin, encountered unexpected {}; was expecting a procedure or trait",
-                     x.for_parse_err()
-                  );
-               }
-            }
+            expect(&mut lexer, &mut parse_context, Token::KeywordProcedureDef)?;
+            let p = parse_external_procedure(
+               &mut lexer,
+               &mut parse_context,
+               builtin_kw.source_info,
+               ProcImplSource::Builtin,
+            )?;
+            external_procedures.push(p);
          }
          Token::KeywordProcedureDef => {
             let def = lexer.next();
@@ -552,7 +528,6 @@ pub fn astify(
          structs,
          consts,
          statics,
-         traits,
          parsed_types: parse_context.parsed_types,
          literals: IndexSet::new(),
          struct_info: IndexMap::new(),

@@ -104,16 +104,6 @@ pub fn populate_type_and_procedure_info(
    interner: &mut Interner,
 ) {
    let mut dupe_check = HashSet::new();
-   for a_trait in program.traits.iter() {
-      if !matches!(a_trait.location.file, SourcePath::Std(_)) {
-         rolandc_error!(
-            err_manager,
-            a_trait.location,
-            "Trait `{}` is declared to be builtin, but only the compiler can declare builtin traits",
-            interner.lookup(a_trait.name.identifier),
-         );
-      }
-   }
 
    for a_enum in program.enums.iter() {
       dupe_check.clear();
@@ -453,13 +443,9 @@ pub fn populate_type_and_procedure_info(
          };
 
          for constraint_trait_name in constraint.1.iter() {
-            let _matching_trait = match program
-               .traits
-               .iter()
-               .find(|x| x.name.identifier == *constraint_trait_name)
-            {
-               Some(x) => x,
-               None => {
+            match interner.lookup(*constraint_trait_name) {
+               "Enum" => (),
+               _ => {
                   rolandc_error!(
                      err_manager,
                      source_location,
@@ -467,9 +453,8 @@ pub fn populate_type_and_procedure_info(
                      interner.lookup(*constraint_trait_name),
                      interner.lookup(matching_generic_param),
                   );
-                  continue;
                }
-            };
+            }
          }
       }
 

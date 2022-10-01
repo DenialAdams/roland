@@ -33,7 +33,6 @@ pub enum Token {
    KeywordExtern,
    KeywordBuiltin,
    KeywordImport,
-   KeywordTrait,
    KeywordWhere,
    OpenBrace,
    CloseBrace,
@@ -101,7 +100,6 @@ impl Token {
          Token::KeywordExtern => "keyword 'extern'",
          Token::KeywordBuiltin => "keyword 'builtin'",
          Token::KeywordImport => "keyword 'import'",
-         Token::KeywordTrait => "keyword 'trait'",
          Token::KeywordWhere => "keyword 'where'",
          Token::OpenBrace => "token '{'",
          Token::CloseBrace => "token '}'",
@@ -184,7 +182,6 @@ fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
       "extern" => Token::KeywordExtern,
       "builtin" => Token::KeywordBuiltin,
       "import" => Token::KeywordImport,
-      "trait" => Token::KeywordTrait,
       "where" => Token::KeywordWhere,
       other => Token::Identifier(interner.intern(other)),
    }
