@@ -1,13 +1,13 @@
 use std::collections::HashSet;
 use std::ops::BitOrAssign;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use super::{EnumInfo, GlobalInfo, ProcedureInfo, StructInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{ProcImplSource, ParameterNode, IdentifierNode};
+use crate::parse::{IdentifierNode, ProcImplSource};
 use crate::semantic_analysis::validator::resolve_type;
 use crate::source_info::SourcePath;
 use crate::type_data::{ExpressionType, ValueType};
@@ -73,12 +73,17 @@ fn recursive_struct_check(
    is_recursive
 }
 
-fn resolve_parameter_type(generic_parameters: &[IdentifierNode], parameter: &mut ParameterNode, enum_info: &IndexMap<StrId, EnumInfo>, struct_info: &IndexMap<StrId, StructInfo>) -> Result<(), ()> {
-   if resolve_type(&mut parameter.p_type.e_type, enum_info, struct_info).is_ok() {
+fn resolve_to_type_or_generic_parameter(
+   generic_parameters: &[IdentifierNode],
+   the_type: &mut ExpressionType,
+   enum_info: &IndexMap<StrId, EnumInfo>,
+   struct_info: &IndexMap<StrId, StructInfo>,
+) -> Result<(), ()> {
+   if resolve_type(the_type, enum_info, struct_info).is_ok() {
       return Ok(());
    }
 
-   let param_type_name = match parameter.p_type.e_type.get_value_type_or_value_being_pointed_to() {
+   let param_type_name = match the_type.get_value_type_or_value_being_pointed_to() {
       ValueType::Unresolved(x) => *x,
       _ => unreachable!(),
    };
@@ -99,6 +104,17 @@ pub fn populate_type_and_procedure_info(
    interner: &mut Interner,
 ) {
    let mut dupe_check = HashSet::new();
+   for a_trait in program.traits.iter() {
+      if !matches!(a_trait.location.file, SourcePath::Std(_)) {
+         rolandc_error!(
+            err_manager,
+            a_trait.location,
+            "Trait `{}` is declared to be builtin, but only the compiler can declare builtin traits",
+            interner.lookup(a_trait.name.identifier),
+         );
+      }
+   }
+
    for a_enum in program.enums.iter() {
       dupe_check.clear();
       dupe_check.reserve(a_enum.variants.len());
@@ -372,7 +388,14 @@ pub fn populate_type_and_procedure_info(
       }
 
       for parameter in definition.parameters.iter_mut() {
-         if resolve_parameter_type(&definition.generic_parameters, parameter, &program.enum_info, &program.struct_info).is_err() {
+         if resolve_to_type_or_generic_parameter(
+            &definition.generic_parameters,
+            &mut parameter.p_type.e_type,
+            &program.enum_info,
+            &program.struct_info,
+         )
+         .is_err()
+         {
             let etype_str = parameter.p_type.e_type.as_roland_type_info(interner);
             rolandc_error!(
                err_manager,
@@ -385,7 +408,8 @@ pub fn populate_type_and_procedure_info(
          }
       }
 
-      if resolve_type(
+      if resolve_to_type_or_generic_parameter(
+         &definition.generic_parameters,
          &mut definition.ret_type.e_type,
          &program.enum_info,
          &program.struct_info,
@@ -410,10 +434,60 @@ pub fn populate_type_and_procedure_info(
          );
       }
 
+      for constraint in definition.constraints.iter() {
+         let matching_generic_param = match definition
+            .generic_parameters
+            .iter()
+            .find(|x| x.identifier == *constraint.0)
+         {
+            Some(x) => x.identifier,
+            None => {
+               rolandc_error!(
+                  err_manager,
+                  source_location,
+                  "A constraint was declared on {}, but there is no matching generic parameter by that name",
+                  interner.lookup(*constraint.0),
+               );
+               continue;
+            }
+         };
+
+         for constraint_trait_name in constraint.1.iter() {
+            let _matching_trait = match program
+               .traits
+               .iter()
+               .find(|x| x.name.identifier == *constraint_trait_name)
+            {
+               Some(x) => x,
+               None => {
+                  rolandc_error!(
+                     err_manager,
+                     source_location,
+                     "Unknown trait {} was declared as a constraint on {}",
+                     interner.lookup(*constraint_trait_name),
+                     interner.lookup(matching_generic_param),
+                  );
+                  continue;
+               }
+            };
+         }
+      }
+
+      let type_parameters_with_constraints: Vec<IndexSet<StrId>> = definition
+         .generic_parameters
+         .iter()
+         .map(|x| {
+            definition
+               .constraints
+               .get_mut(&x.identifier)
+               .map_or_else(IndexSet::new, |x| std::mem::replace(x, IndexSet::new()))
+         })
+         .collect();
+
       if let Some(old_procedure) = program.procedure_info.insert(
          definition.name,
          ProcedureInfo {
-            type_parameters: definition.generic_parameters.len(),
+            type_parameters: type_parameters_with_constraints,
             parameters: definition.parameters.iter().map(|x| x.p_type.e_type.clone()).collect(),
             named_parameters: definition
                .parameters

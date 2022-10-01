@@ -1232,13 +1232,13 @@ fn get_type(
                   );
                }
 
-               if procedure_info.type_parameters != generic_args.len() {
+               if procedure_info.type_parameters.len() != generic_args.len() {
                   rolandc_error!(
                      err_manager,
                      expr_location,
                      "In call to `{}`, mismatched arity. Expected {} type arguments but got {}",
                      interner.lookup(proc_name.identifier),
-                     procedure_info.type_parameters,
+                     procedure_info.type_parameters.len(),
                      generic_args.len()
                   );
                }
@@ -1314,6 +1314,32 @@ fn get_type(
                            expected_type_str,
                            interner.lookup(arg.name.unwrap())
                         );
+                     }
+                  }
+
+                  if generic_args.len() == procedure_info.type_parameters.len() {
+                     for (g_arg, constraints) in generic_args.iter().zip(procedure_info.type_parameters.iter()) {
+                        if matches!(g_arg.gtype, ExpressionType::Value(ValueType::Unresolved(_))) {
+                           // We have already errored on this argument
+                           continue;
+                        }
+
+                        for constraint in constraints {
+                           match interner.lookup(*constraint) {
+                              "Enum" => {
+                                 if !matches!(g_arg.gtype, ExpressionType::Value(ValueType::Enum(_))) {
+                                    rolandc_error!(
+                                       err_manager,
+                                       g_arg.location,
+                                       "In call to `{}`, encountered generic argument of type {} which does not meet the constraint `Enum`",
+                                       interner.lookup(proc_name.identifier),
+                                       g_arg.gtype.as_roland_type_info(interner),
+                                    );
+                                 }
+                              }
+                              _ => unreachable!(),
+                           }
+                        }
                      }
                   }
                }

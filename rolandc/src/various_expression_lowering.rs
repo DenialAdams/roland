@@ -13,9 +13,6 @@ pub fn lower_single_expression(
    expressions: &mut ExpressionPool,
    expression_id: ExpressionId,
    const_replacements: &HashMap<VariableId, ExpressionId>,
-   sizeof_proc_id: StrId,
-   alignof_proc_id: StrId,
-   length_id: StrId,
    struct_info: &IndexMap<StrId, StructInfo>,
    struct_size_info: &HashMap<StrId, SizeInfo>,
    enum_info: &IndexMap<StrId, EnumInfo>,
@@ -29,29 +26,39 @@ pub fn lower_single_expression(
       }
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::ProcedureCall {
-         proc_name: x,
+         proc_name,
          generic_args,
          args: _args,
       } => {
-         if x.identifier == sizeof_proc_id {
+         if interner.lookup(proc_name.identifier) == "sizeof" {
             let type_size = crate::size_info::sizeof_type_mem(&generic_args[0].gtype, enum_info, struct_size_info);
 
             expressions[expression_id].expression = Expression::IntLiteral {
                val: u64::from(type_size),
                synthetic: true,
             };
-         } else if x.identifier == alignof_proc_id {
+         } else if interner.lookup(proc_name.identifier) == "alignof" {
             let type_size = crate::size_info::mem_alignment(&generic_args[0].gtype, enum_info, struct_size_info);
 
             expressions[expression_id].expression = Expression::IntLiteral {
                val: u64::from(type_size),
                synthetic: true,
             };
+         } else if interner.lookup(proc_name.identifier) == "num_variants" {
+            let num_variants = match generic_args[0].gtype {
+               ExpressionType::Value(ValueType::Enum(enum_name)) => enum_info.get(&enum_name).unwrap().variants.len(),
+               _ => unreachable!(),
+            };
+
+            expressions[expression_id].expression = Expression::IntLiteral {
+               val: num_variants as u64,
+               synthetic: true,
+            };
          }
       }
       Expression::FieldAccess(fields, other_exp) => {
          // Do this check first to try and skip most struct field accesses
-         if fields.last().map(|x| *x != length_id).unwrap() {
+         if fields.last().map(|x| interner.lookup(*x) != "length").unwrap() {
             return;
          }
 
@@ -106,18 +113,11 @@ pub fn lower_consts(program: &mut Program, expressions: &mut ExpressionPool, int
    for p_const in program.consts.drain(0..) {
       const_replacements.insert(p_const.var_id, p_const.value);
    }
-
-   let sizeof_proc_id = interner.intern("sizeof");
-   let alignof_proc_id = interner.intern("alignof");
-   let length_id = interner.intern("length");
    for i in 0..expressions.len() {
       lower_single_expression(
          expressions,
          ExpressionId::new(i),
          &const_replacements,
-         sizeof_proc_id,
-         alignof_proc_id,
-         length_id,
          &program.struct_info,
          &program.struct_size_info,
          &program.enum_info,

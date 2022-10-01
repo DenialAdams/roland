@@ -1,8 +1,12 @@
-builtin trait Float;
 builtin trait Enum;
+builtin proc num_variants$T() -> usize where T: Enum;
 
-builtin proc sqrt$T(x: T) -> T where T: Float;
-builtin proc num_variants$T() where T: Enum;
+builtin proc sqrt(x: f64) -> f64;
+builtin proc sqrt_32(x: f32) -> f32;
+// The following *almost* works now:
+//builtin trait Float;
+//builtin proc sqrt$T(x: T) -> T where T: Float;
+// but we need to somehow split this into two bodies during compile
 
 builtin proc unreachable() -> !;
 

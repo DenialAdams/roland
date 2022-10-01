@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::mem::discriminant;
 
 use indexmap::{IndexMap, IndexSet};
@@ -44,6 +44,7 @@ fn expect(l: &mut Lexer, parse_context: &mut ParseContext, token: Token) -> Resu
 pub struct ProcedureDefinition {
    pub name: StrId,
    pub generic_parameters: Vec<IdentifierNode>,
+   pub constraints: IndexMap<StrId, IndexSet<StrId>>,
    pub parameters: Vec<ParameterNode>,
    pub ret_type: ExpressionTypeNode,
 }
@@ -243,6 +244,7 @@ pub struct ArgumentNode {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GenericArgumentNode {
    pub gtype: ExpressionType,
+   pub location: SourceInfo,
 }
 
 impl Expression {
@@ -614,14 +616,17 @@ fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -
          location: merge_locations(procedure_name.source_info, close_paren.source_info),
       }
    };
-   let mut constraints: HashMap<StrId, HashSet<StrId>> = HashMap::new();
+   let mut constraints = IndexMap::new();
    if l.peek_token() == Token::KeywordWhere {
       let _ = l.next();
       loop {
          let corresponding_generic_param = parse_identifier(l, parse_context)?;
          expect(l, parse_context, Token::Colon)?;
          let trait_constraint = parse_identifier(l, parse_context)?;
-         constraints.entry(corresponding_generic_param.identifier).or_insert_with(HashSet::new).insert(trait_constraint.identifier);
+         constraints
+            .entry(corresponding_generic_param.identifier)
+            .or_insert_with(IndexSet::new)
+            .insert(trait_constraint.identifier);
          if l.peek_token() == Token::Comma {
             let _ = l.next();
          } else {
@@ -632,6 +637,7 @@ fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -
    Ok(ProcedureDefinition {
       name: extract_identifier(procedure_name.token),
       generic_parameters,
+      constraints,
       parameters,
       ret_type,
    })
@@ -978,9 +984,13 @@ fn parse_generic_arguments(l: &mut Lexer, parse_context: &mut ParseContext) -> R
    let mut generic_arguments = vec![];
 
    while l.peek_token() == Token::Dollar {
-      let _ = l.next();
-      let gtype = parse_type(l, parse_context)?.e_type;
-      generic_arguments.push(GenericArgumentNode { gtype });
+      let dollar = l.next();
+      let gtype = parse_type(l, parse_context)?;
+      let combined_location = merge_locations(dollar.source_info, gtype.location);
+      generic_arguments.push(GenericArgumentNode {
+         gtype: gtype.e_type,
+         location: combined_location,
+      });
    }
 
    Ok(generic_arguments)
