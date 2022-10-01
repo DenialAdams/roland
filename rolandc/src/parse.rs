@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::mem::discriminant;
 
 use indexmap::{IndexMap, IndexSet};
@@ -115,6 +115,12 @@ pub struct StaticNode {
 #[derive(Clone, Debug)]
 pub struct ExpressionTypeNode {
    pub e_type: ExpressionType,
+   pub location: SourceInfo,
+}
+
+#[derive(Clone, Debug)]
+pub struct TraitNode {
+   pub name: IdentifierNode,
    pub location: SourceInfo,
 }
 
@@ -315,6 +321,7 @@ pub struct Program {
    pub structs: Vec<StructNode>,
    pub consts: Vec<ConstNode>,
    pub statics: Vec<StaticNode>,
+   pub traits: Vec<TraitNode>,
 
    pub parsed_types: Vec<ExpressionTypeNode>, // (only read by the language server)
 
@@ -339,6 +346,7 @@ impl Program {
          structs: Vec::new(),
          consts: Vec::new(),
          statics: Vec::new(),
+         traits: Vec::new(),
          parsed_types: Vec::new(),
          literals: IndexSet::new(),
          enum_info: IndexMap::new(),
@@ -408,6 +416,7 @@ pub fn astify(
    let mut procedures = vec![];
    let mut structs = vec![];
    let mut enums = vec![];
+   let mut traits = vec![];
    let mut consts = vec![];
    let mut statics = vec![];
    let mut imports = vec![];
@@ -428,14 +437,35 @@ pub fn astify(
          }
          Token::KeywordBuiltin => {
             let builtin_kw = lexer.next();
-            expect(&mut lexer, &mut parse_context, Token::KeywordProcedureDef)?;
-            let p = parse_external_procedure(
-               &mut lexer,
-               &mut parse_context,
-               builtin_kw.source_info,
-               ProcImplSource::Builtin,
-            )?;
-            external_procedures.push(p);
+            match lexer.peek_token() {
+               Token::KeywordProcedureDef => {
+                  let _ = lexer.next();
+                  let p = parse_external_procedure(
+                     &mut lexer,
+                     &mut parse_context,
+                     builtin_kw.source_info,
+                     ProcImplSource::Builtin,
+                  )?;
+                  external_procedures.push(p);
+               }
+               Token::KeywordTrait => {
+                  let t_kw = lexer.next();
+                  let trait_name = parse_identifier(&mut lexer, &mut parse_context)?;
+                  let sc = expect(&mut lexer, &mut parse_context, Token::Semicolon)?;
+                  traits.push(TraitNode {
+                     name: trait_name,
+                     location: merge_locations(t_kw.source_info, sc.source_info),
+                  });
+               }
+               x => {
+                  rolandc_error!(
+                     &mut parse_context.err_manager,
+                     lexer.peek_source(),
+                     "While parsing a builtin, encountered unexpected {}; was expecting a procedure or trait",
+                     x.for_parse_err()
+                  );
+               }
+            }
          }
          Token::KeywordProcedureDef => {
             let def = lexer.next();
@@ -520,6 +550,7 @@ pub fn astify(
          structs,
          consts,
          statics,
+         traits,
          parsed_types: parse_context.parsed_types,
          literals: IndexSet::new(),
          struct_info: IndexMap::new(),
@@ -583,6 +614,21 @@ fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -
          location: merge_locations(procedure_name.source_info, close_paren.source_info),
       }
    };
+   let mut constraints: HashMap<StrId, HashSet<StrId>> = HashMap::new();
+   if l.peek_token() == Token::KeywordWhere {
+      let _ = l.next();
+      loop {
+         let corresponding_generic_param = parse_identifier(l, parse_context)?;
+         expect(l, parse_context, Token::Colon)?;
+         let trait_constraint = parse_identifier(l, parse_context)?;
+         constraints.entry(corresponding_generic_param.identifier).or_insert_with(HashSet::new).insert(trait_constraint.identifier);
+         if l.peek_token() == Token::Comma {
+            let _ = l.next();
+         } else {
+            break;
+         }
+      }
+   }
    Ok(ProcedureDefinition {
       name: extract_identifier(procedure_name.token),
       generic_parameters,

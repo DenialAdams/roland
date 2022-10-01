@@ -1,6 +1,8 @@
-builtin proc sqrt(x: f64) -> f64;
-// It's very sad that we have to name it like this, we need generics
-builtin proc sqrt_32(x: f32) -> f32;
+builtin trait Float;
+builtin trait Enum;
+
+builtin proc sqrt$T(x: T) -> T where T: Float;
+builtin proc num_variants$T() where T: Enum;
 
 builtin proc unreachable() -> !;
 

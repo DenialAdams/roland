@@ -263,4 +263,5 @@ fn merge_program(main_program: &mut Program, other_program: &mut Program) {
    main_program.enums.extend(other_program.enums.drain(0..));
    main_program.consts.extend(other_program.consts.drain(0..));
    main_program.parsed_types.extend(other_program.parsed_types.drain(0..));
+   main_program.traits.extend(other_program.traits.drain(0..));
 }
