@@ -60,7 +60,7 @@ pub fn calculate_struct_size_info(
 
       // todo: Check this addition for overflow?
       sum_mem += aligned_address(our_mem_size, next_mem_alignment);
-      sum_values += sizeof_type_values(field_t, struct_size_info);
+      sum_values += sizeof_type_values(field_t, enum_info, struct_size_info);
 
       strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(field_t, enum_info, struct_size_info));
    }
@@ -75,7 +75,7 @@ pub fn calculate_struct_size_info(
       field_offsets.insert(*last_field_name, sum_mem);
 
       sum_mem += sizeof_type_mem(last_field_t, enum_info, struct_size_info);
-      sum_values += sizeof_type_values(last_field_t, struct_size_info);
+      sum_values += sizeof_type_values(last_field_t, enum_info, struct_size_info);
       strictest_alignment = std::cmp::max(
          strictest_alignment,
          mem_alignment(last_field_t, enum_info, struct_size_info),
@@ -138,19 +138,19 @@ pub fn value_type_mem_alignment(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, s
 }
 
 /// The size of a type, in number of WASM values
-pub fn sizeof_type_values(e: &ExpressionType, si: &HashMap<StrId, SizeInfo>) -> u32 {
+pub fn sizeof_type_values(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
-      ExpressionType::Value(x) => sizeof_value_type_values(x, si),
+      ExpressionType::Value(x) => sizeof_value_type_values(x, ei, si),
       ExpressionType::Pointer(_, _) => 1,
    }
 }
 
-fn sizeof_value_type_values(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32 {
+fn sizeof_value_type_values(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ValueType::Unresolved(_) => unreachable!(),
       ValueType::UnknownInt(_) => unreachable!(),
       ValueType::UnknownFloat(_) => unreachable!(),
-      ValueType::Enum(_) => 1,
+      ValueType::Enum(x) => u32::from(!ei.get(x).unwrap().variants.is_empty()),
       ValueType::Int(_) => 1,
       ValueType::Float(_) => 1,
       ValueType::Bool => 1,
@@ -158,7 +158,7 @@ fn sizeof_value_type_values(e: &ValueType, si: &HashMap<StrId, SizeInfo>) -> u32
       ValueType::Never => 0,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().values_size,
-      ValueType::Array(a_type, len) => sizeof_type_values(a_type, si) * (*len as u32),
+      ValueType::Array(a_type, len) => sizeof_type_values(a_type, ei, si) * (*len as u32),
    }
 }
 
@@ -193,7 +193,7 @@ fn sizeof_value_type_mem(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &Has
          } else if num_variants > u8::MAX as usize {
             2
          } else {
-            1
+            u32::from(num_variants != 0)
          }
       }
       ValueType::Int(x) => match x.width {

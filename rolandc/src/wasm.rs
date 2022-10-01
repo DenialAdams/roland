@@ -351,6 +351,8 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumIn
          } else {
             write!(out, "i32").unwrap();
          }
+         // If the num variants is 0, enum should be a ZST and this function shouldn't have been called
+         debug_assert!(num_variants != 0);
       }
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
@@ -390,8 +392,12 @@ fn dynamic_move_locals_of_type_to_dest(
    field: &ExpressionType,
    generation_context: &mut GenerationContext,
 ) {
+   if sizeof_type_values(field, generation_context.enum_info, generation_context.struct_size_info) == 0 {
+      // Nothing to move
+      return;
+   }
+
    match field {
-      ExpressionType::Value(ValueType::Unit) => (),
       ExpressionType::Value(ValueType::Struct(x)) => {
          for (sub_field, next_sub_field) in generation_context.struct_info.get(x).unwrap().field_types.values().zip(
             generation_context
@@ -715,7 +721,7 @@ pub fn emit_wasm(
             interner,
          );
 
-         let offset_end = offset_begin + sizeof_type_values(field.1, generation_context.struct_size_info);
+         let offset_end = offset_begin + sizeof_type_values(field.1, generation_context.enum_info, generation_context.struct_size_info);
 
          for i in offset_begin..offset_end {
             generation_context.out.emit_get_local(i);
@@ -780,7 +786,7 @@ pub fn emit_wasm(
       // Copy parameters to stack memory so we can take pointers
       let mut values_index = 0;
       for param in &procedure.definition.parameters {
-         match sizeof_type_values(&param.p_type.e_type, generation_context.struct_size_info).cmp(&1) {
+         match sizeof_type_values(&param.p_type.e_type, generation_context.enum_info, generation_context.struct_size_info).cmp(&1) {
             std::cmp::Ordering::Less => (),
             std::cmp::Ordering::Equal => {
                get_stack_address_of_local(param.var_id, &mut generation_context);
@@ -977,6 +983,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          do_emit(*en, generation_context, interner);
          for _ in 0..sizeof_type_values(
             generation_context.expressions[*en].exp_type.as_ref().unwrap(),
+            generation_context.enum_info,
             generation_context.struct_size_info,
          ) {
             generation_context.out.emit_constant_instruction("drop");
@@ -1050,7 +1057,7 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
                } else if num_variants > u8::MAX as usize {
                   2
                } else {
-                  1
+                  u8::from(num_variants != 0)
                }
             }
             _ => unreachable!(),
@@ -1173,8 +1180,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
                if num_variants > u32::MAX as usize {
                   "i64"
-               } else {
+               } else if num_variants > 0 {
                   "i32"
+               } else {
+                  return;
                }
             }
             _ => unreachable!(),
@@ -1287,6 +1296,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             ExpressionType::Value(ValueType::Int(x)) => int_to_wasm_runtime_and_suffix(*x),
             ExpressionType::Value(ValueType::Enum(x)) => {
                let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
+               // There should be no way that we are doing a binary option on nothing
+               debug_assert!(num_variants > 0);
                (if num_variants > u32::MAX as usize { "i64" } else { "i32" }, "_u")
             }
             ExpressionType::Value(ValueType::Float(x)) => match x.width {
@@ -1867,7 +1878,7 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
 }
 
 fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   if sizeof_type_values(val_type, generation_context.struct_size_info) > 1 {
+   if sizeof_type_values(val_type, generation_context.enum_info, generation_context.struct_size_info) > 1 {
       generation_context.out.emit_set_global("mem_address");
       complex_load(0, val_type, generation_context);
    } else {
@@ -1886,7 +1897,7 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
                .field_offsets
                .get(field_name)
                .unwrap();
-            match sizeof_type_values(field, generation_context.struct_size_info).cmp(&1) {
+            match sizeof_type_values(field, generation_context.enum_info, generation_context.struct_size_info).cmp(&1) {
                std::cmp::Ordering::Less => (),
                std::cmp::Ordering::Equal => {
                   generation_context.out.emit_get_global("mem_address");
@@ -1899,7 +1910,7 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
       }
       ExpressionType::Value(ValueType::Array(a_type, len)) => {
          for _ in 0..*len {
-            match sizeof_type_values(a_type, generation_context.struct_size_info).cmp(&1) {
+            match sizeof_type_values(a_type, generation_context.enum_info, generation_context.struct_size_info).cmp(&1) {
                std::cmp::Ordering::Less => (),
                std::cmp::Ordering::Equal => {
                   generation_context.out.emit_get_global("mem_address");
@@ -1930,7 +1941,7 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
          // Find the first non-zero-sized struct field and load that
          // (there should only be one if we're in simple_load)
          for (_, field_type) in si.field_types.iter() {
-            match sizeof_type_values(field_type, generation_context.struct_size_info) {
+            match sizeof_type_values(field_type, generation_context.enum_info, generation_context.struct_size_info) {
                0 => continue,
                1 => return simple_load(field_type, generation_context),
                _ => unreachable!(),
@@ -1942,7 +1953,7 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
       }
       _ => (),
    }
-   if sizeof_type_values(val_type, generation_context.struct_size_info) == 0 {
+   if sizeof_type_values(val_type, generation_context.enum_info, generation_context.struct_size_info) == 0 {
       // Drop the load address; nothing to load
       generation_context.out.emit_constant_instruction("drop");
    } else if sizeof_type_mem(
@@ -1976,6 +1987,7 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
          }
          ExpressionType::Value(ValueType::Enum(x)) => {
             let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
+            debug_assert!(num_variants != 0);
             (
                if num_variants > u32::MAX as usize {
                   "64"
@@ -2005,12 +2017,12 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
 }
 
 fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext, interner: &mut Interner) {
-   if sizeof_type_values(val_type, generation_context.struct_size_info) == 0 {
+   if sizeof_type_values(val_type, generation_context.enum_info, generation_context.struct_size_info) == 0 {
       // drop the placement address
       generation_context.out.emit_constant_instruction("drop");
-   } else if sizeof_type_values(val_type, generation_context.struct_size_info) == 1 {
+   } else if sizeof_type_values(val_type, generation_context.enum_info, generation_context.struct_size_info) == 1 {
       simple_store(val_type, generation_context);
-   } else if sizeof_type_values(val_type, generation_context.struct_size_info) > 1 {
+   } else if sizeof_type_values(val_type, generation_context.enum_info, generation_context.struct_size_info) > 1 {
       let (store_fcn_index, _) = generation_context.needed_store_fns.insert_full(val_type.clone());
       generation_context
          .out
@@ -2027,7 +2039,7 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
          // Find the first non-zero-sized struct field and store that
          // (there should only be one if we're in simple_store)
          for (_, field_type) in si.field_types.iter() {
-            match sizeof_type_values(field_type, generation_context.struct_size_info) {
+            match sizeof_type_values(field_type, generation_context.enum_info, generation_context.struct_size_info) {
                0 => continue,
                1 => return simple_store(field_type, generation_context),
                _ => unreachable!(),
@@ -2066,6 +2078,7 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
          },
          ExpressionType::Value(ValueType::Enum(x)) => {
             let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
+            debug_assert!(num_variants != 0);
             if num_variants > u32::MAX as usize {
                "64"
             } else if num_variants > u16::MAX as usize {

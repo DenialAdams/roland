@@ -895,7 +895,6 @@ enum Literal {
    Float32(f32),
    Bool(bool),
    Enum(StrId, StrId),
-   Unit,
 }
 
 impl Literal {
@@ -1590,7 +1589,8 @@ fn extract_literal(expr_node: &ExpressionNode) -> Option<Literal> {
       },
       Expression::BoolLiteral(x) => Some(Literal::Bool(*x)),
       Expression::EnumLiteral(x, y) => Some(Literal::Enum(x.identifier, y.identifier)),
-      Expression::UnitLiteral => Some(Literal::Unit),
+      // Do NOT extract unit literals. We can't do any meaningful operations on them and things like transmuting unit literals are just ugh
+      Expression::UnitLiteral => None,
       _ => None,
    }
 }
