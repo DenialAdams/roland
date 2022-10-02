@@ -111,10 +111,6 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
 
          let outer_representative = validation_context.type_variables.find(my_tv);
 
-         debug_assert!(!validation_context
-            .type_variable_definitions
-            .contains_key(&outer_representative));
-
          if e_type.is_concrete() {
             validation_context
                .type_variable_definitions
@@ -123,7 +119,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             // Update existing variables immediately, so that future uses can't change the inferred type
             // (Is this a performance problem? It's obviously awkward, but straightforward)
             for var_in_scope in validation_context.variable_types.values_mut() {
-               let my_tv = match var_in_scope.var_type {
+               let inner_tv = match var_in_scope.var_type {
                   ExpressionType::Value(ValueType::UnknownFloat(x)) => x,
                   ExpressionType::Value(ValueType::UnknownInt(x)) => x,
                   ExpressionType::Pointer(_, ValueType::UnknownFloat(x)) => x,
@@ -131,7 +127,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
                   _ => continue,
                };
 
-               let representative = validation_context.type_variables.find(my_tv);
+               let representative = validation_context.type_variables.find(inner_tv);
 
                if representative == outer_representative {
                   *var_in_scope.var_type.get_value_type_or_value_being_pointed_to_mut() =
