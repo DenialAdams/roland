@@ -112,9 +112,10 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          let outer_representative = validation_context.type_variables.find(my_tv);
 
          if e_type.is_concrete() {
-            validation_context
+            let old_value = validation_context
                .type_variable_definitions
                .insert(outer_representative, e_type.clone());
+            debug_assert!(old_value.map_or(true, |ov| ov == *e_type));
 
             // Update existing variables immediately, so that future uses can't change the inferred type
             // (Is this a performance problem? It's obviously awkward, but straightforward)
