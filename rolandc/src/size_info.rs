@@ -12,6 +12,7 @@ pub struct SizeInfo {
    pub mem_size: u32,
    pub strictest_alignment: u32,
    pub field_offsets: HashMap<StrId, u32>,
+   pub contains_never_type: bool,
 }
 
 pub fn aligned_address(v: u32, a: u32) -> u32 {
@@ -33,6 +34,7 @@ pub fn calculate_struct_size_info(
    let mut sum_values = 0;
    let mut strictest_alignment = 1;
    let mut field_offsets = HashMap::with_capacity(struct_info.get(&name).unwrap().field_types.len());
+   let mut contains_never_type = false;
    for ((field_name, field_t), next_field_t) in struct_info
       .get(&name)
       .unwrap()
@@ -44,6 +46,7 @@ pub fn calculate_struct_size_info(
          if !struct_size_info.contains_key(s) {
             calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
          }
+         contains_never_type |= struct_size_info.get(s).unwrap().contains_never_type;
       }
 
       if let ExpressionType::Value(ValueType::Struct(s)) = next_field_t {
@@ -63,6 +66,8 @@ pub fn calculate_struct_size_info(
       sum_values += sizeof_type_values(field_t, enum_info, struct_size_info);
 
       strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(field_t, enum_info, struct_size_info));
+
+      contains_never_type |= field_t.is_never();
    }
 
    if let Some((last_field_name, last_field_t)) = struct_info.get(&name).unwrap().field_types.iter().last() {
@@ -70,6 +75,7 @@ pub fn calculate_struct_size_info(
          if !struct_size_info.contains_key(s) {
             calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
          }
+         contains_never_type |= struct_size_info.get(s).unwrap().contains_never_type;
       }
 
       field_offsets.insert(*last_field_name, sum_mem);
@@ -80,6 +86,7 @@ pub fn calculate_struct_size_info(
          strictest_alignment,
          mem_alignment(last_field_t, enum_info, struct_size_info),
       );
+      contains_never_type |= last_field_t.is_never();
    }
 
    struct_size_info.insert(
@@ -89,6 +96,7 @@ pub fn calculate_struct_size_info(
          values_size: sum_values,
          strictest_alignment,
          field_offsets,
+         contains_never_type
       },
    );
 }

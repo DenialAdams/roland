@@ -913,6 +913,13 @@ fn get_type(
                      "Transmuting to or from enum types isn't currently supported due to the unspecified size of enums",
                   );
                   ExpressionType::Value(ValueType::CompileError)
+               } else if target_type.get_value_type_or_value_being_pointed_to().is_or_contains_never(&validation_context.struct_size_info) {
+                  rolandc_error_w_details!(
+                     err_manager,
+                     &[(expr_location, "transmute"), (e.location, "operand")],
+                     "Transmuting to the never type, a pointer to the never type, or a struct containing the never type isn't supported",
+                  );
+                  ExpressionType::Value(ValueType::CompileError)
                } else if size_source == size_target {
                   let alignment_source = value_type_mem_alignment(
                      e_type.get_value_type_or_value_being_pointed_to(),

@@ -1,7 +1,8 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashMap};
 use std::cmp::Ordering;
 
 use crate::interner::{Interner, StrId};
+use crate::size_info::SizeInfo;
 
 pub const U8_TYPE: ValueType = ValueType::Int(IntType {
    signed: false,
@@ -251,6 +252,7 @@ impl ExpressionType {
 }
 
 impl ValueType {
+   #[must_use]
    fn is_concrete_type(&self) -> bool {
       match self {
          ValueType::UnknownInt(_) | ValueType::UnknownFloat(_) | ValueType::CompileError | ValueType::Unresolved(_) => {
@@ -267,6 +269,7 @@ impl ValueType {
       }
    }
 
+   #[must_use]
    fn is_error_type(&self) -> bool {
       match self {
          ValueType::CompileError => true,
@@ -275,6 +278,16 @@ impl ValueType {
       }
    }
 
+   #[must_use]
+   pub fn is_or_contains_never(&self, struct_size_info: &HashMap<StrId, SizeInfo>) -> bool {
+      match self {
+         ValueType::Never => true,
+         ValueType::Struct(s) => struct_size_info.get(s).unwrap().contains_never_type,
+         _ => false,
+      }
+   }
+
+   #[must_use]
    fn as_roland_type_info<'i>(&self, interner: &'i Interner) -> Cow<'i, str> {
       match self {
          ValueType::UnknownFloat(_) => Cow::Borrowed("?? Float"),
