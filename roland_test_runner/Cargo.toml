@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 pico-args = { version = "0.5", default-features=false, features=[] }
-similar = "2"
+similar-asserts = "1"
 os_pipe = "1"
 rayon = "1"
 termcolor = "1"

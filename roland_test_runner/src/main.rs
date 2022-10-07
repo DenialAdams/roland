@@ -10,7 +10,7 @@ use std::sync::Mutex;
 
 use os_pipe::pipe;
 use rayon::prelude::*;
-use similar::{ChangeTag, TextDiff};
+use similar_asserts::SimpleDiff;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 enum TestFailureReason {
@@ -180,34 +180,7 @@ fn main() -> Result<(), &'static str> {
 }
 
 fn print_diff<W: WriteColor>(t: &mut W, expected: &str, actual: &str) {
-   if expected.ends_with("\r\n") {
-      writeln!(t, "<expected value ends with \\r\\n!>").unwrap();
-   }
-
-   let diff = TextDiff::from_lines(expected, actual);
-   let ops = diff.ops();
-
-   writeln!(t, "```").unwrap();
-   for op in ops {
-      for change in diff.iter_changes(op) {
-         match change.tag() {
-            ChangeTag::Equal => {
-               let _ = t.set_color(ColorSpec::new().set_fg(None).set_intense(false));
-               write!(t, "{}", change.value()).unwrap();
-            }
-            ChangeTag::Insert => {
-               let _ = t.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_intense(false));
-               write!(t, "+{}", change.value()).unwrap();
-            }
-            ChangeTag::Delete => {
-               let _ = t.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_intense(false));
-               write!(t, "-{}", change.value()).unwrap();
-            }
-         }
-      }
-   }
-   let _ = t.set_color(ColorSpec::new().set_fg(None).set_intense(false));
-   writeln!(t, "```").unwrap();
+   writeln!(t, "{}", SimpleDiff::from_str(expected, actual, "expected", "actual")).unwrap();
 }
 
 fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Result<(), TestFailureReason> {
