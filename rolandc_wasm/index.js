@@ -62,7 +62,12 @@ window.compileUpdateAll = async function compileUpdateAll() {
       let result = await WebAssembly.instantiateStreaming(response, { wasi_unstable: wasi_polyfill });
       instance = result.instance;
       output_frame.textContent = '';
-      instance.exports._start();
+      try {
+         instance.exports._start();
+      } catch(e) {
+         output_frame.textContent += "!!! Runtime panic:\n";
+         output_frame.textContent += e.toString();
+      }
    }
 };
 
