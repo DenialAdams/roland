@@ -1,5 +1,6 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::borrow::Cow;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 use crate::interner::{Interner, StrId};
 use crate::size_info::SizeInfo;
@@ -80,8 +81,8 @@ pub enum ValueType {
    Array(Box<ExpressionType>, u32),
    CompileError,
    Enum(StrId),
-   FunctionItem(StrId, Box<[ExpressionType]>),
-   FunctionPointer {
+   ProcedureItem(StrId, Box<[ExpressionType]>),
+   ProcedurePointer {
       parameters: Vec<ExpressionType>,
       ret_val: Box<ExpressionType>,
    },
@@ -154,16 +155,16 @@ impl ExpressionType {
    #[must_use]
    pub fn is_concrete(&self) -> bool {
       match self {
-         ExpressionType::Value(x) => x.is_concrete_type(),
-         ExpressionType::Pointer(_, x) => x.is_concrete_type(),
+         ExpressionType::Value(x) => x.is_concrete(),
+         ExpressionType::Pointer(_, x) => x.is_concrete(),
       }
    }
 
    #[must_use]
    pub fn is_error(&self) -> bool {
       match self {
-         ExpressionType::Value(x) => x.is_error_type(),
-         ExpressionType::Pointer(_, x) => x.is_error_type(),
+         ExpressionType::Value(x) => x.is_error(),
+         ExpressionType::Pointer(_, x) => x.is_error(),
       }
    }
 
@@ -226,6 +227,22 @@ impl ExpressionType {
       }
    }
 
+   #[must_use]
+   pub fn as_roland_type_info_like_source(&self, interner: &Interner) -> String {
+      match self {
+         ExpressionType::Value(x) => x.as_roland_type_info_like_source(interner).into(),
+         ExpressionType::Pointer(x, y) => {
+            let base_type = y.as_roland_type_info_like_source(interner);
+            let mut s: String = String::with_capacity(x + base_type.len());
+            for _ in 0..*x {
+               s.push('&');
+            }
+            s.push_str(&base_type);
+            s
+         }
+      }
+   }
+
    pub fn increment_indirection_count(&mut self) {
       match self {
          ExpressionType::Value(v) => {
@@ -258,7 +275,7 @@ impl ExpressionType {
 
 impl ValueType {
    #[must_use]
-   fn is_concrete_type(&self) -> bool {
+   fn is_concrete(&self) -> bool {
       match self {
          ValueType::UnknownInt(_) | ValueType::UnknownFloat(_) | ValueType::CompileError | ValueType::Unresolved(_) => {
             false
@@ -269,15 +286,15 @@ impl ValueType {
          | ValueType::Unit
          | ValueType::Never
          | ValueType::Struct(_)
-         | ValueType::FunctionItem(_, _)
-         | ValueType::FunctionPointer { .. } //nocheckin this has to always be concrete, right? hm
+         | ValueType::ProcedureItem(_, _)
+         | ValueType::ProcedurePointer { .. }
          | ValueType::Enum(_) => true,
          ValueType::Array(exp, _) => exp.is_concrete(),
       }
    }
 
    #[must_use]
-   fn is_error_type(&self) -> bool {
+   fn is_error(&self) -> bool {
       match self {
          ValueType::CompileError => true,
          ValueType::Array(exp, _) => exp.is_error(),
@@ -328,15 +345,76 @@ impl ValueType {
             Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info(interner), length))
          }
          ValueType::Unresolved(x) => Cow::Borrowed(interner.lookup(*x)),
-         ValueType::FunctionPointer { parameters, ret_val } => {
-            let params: String = parameters.iter().map(|x| x.as_roland_type_info(interner)).collect::<Vec<_>>().join(", ");
+         ValueType::ProcedurePointer { parameters, ret_val } => {
+            let params: String = parameters
+               .iter()
+               .map(|x| x.as_roland_type_info(interner))
+               .collect::<Vec<_>>()
+               .join(", ");
             Cow::Owned(format!("proc({}) -> {}", params, ret_val.as_roland_type_info(interner)))
          }
-         ValueType::FunctionItem(proc_name, type_arguments) => {
-            // nocheckin I'd like to print something better here
-            let type_argument_string = type_arguments.iter().map(|x| x.as_roland_type_info(interner)).collect::<Vec<_>>().join("$"); //nocheckin we want a new kind of string representation
-            Cow::Owned(format!("proc() {{{}${}}}", interner.lookup(*proc_name), type_argument_string))
+         ValueType::ProcedureItem(proc_name, type_arguments) => {
+            if type_arguments.is_empty() {
+               Cow::Owned(format!(
+                  "proc() {{{}}}",
+                  interner.lookup(*proc_name),
+               ))
+            } else {
+               let type_argument_string = type_arguments
+                  .iter()
+                  .map(|x| x.as_roland_type_info_like_source(interner))
+                  .collect::<Vec<_>>()
+                  .join("$");
+               Cow::Owned(format!(
+                  "proc() {{{}${}}}",
+                  interner.lookup(*proc_name),
+                  type_argument_string
+               ))
+            }
          }
+      }
+   }
+
+   #[must_use]
+   fn as_roland_type_info_like_source<'i>(&self, interner: &'i Interner) -> Cow<'i, str> {
+      match self {
+         ValueType::UnknownFloat(_) => unreachable!(),
+         ValueType::UnknownInt(_) => unreachable!(),
+         ValueType::Int(x) => match (x.signed, &x.width) {
+            (true, IntWidth::Pointer) => Cow::Borrowed("isize"),
+            (true, IntWidth::Eight) => Cow::Borrowed("i64"),
+            (true, IntWidth::Four) => Cow::Borrowed("i32"),
+            (true, IntWidth::Two) => Cow::Borrowed("i16"),
+            (true, IntWidth::One) => Cow::Borrowed("i8"),
+            (false, IntWidth::Pointer) => Cow::Borrowed("usize"),
+            (false, IntWidth::Eight) => Cow::Borrowed("u64"),
+            (false, IntWidth::Four) => Cow::Borrowed("u32"),
+            (false, IntWidth::Two) => Cow::Borrowed("u16"),
+            (false, IntWidth::One) => Cow::Borrowed("u8"),
+         },
+         ValueType::Float(x) => match x.width {
+            FloatWidth::Eight => Cow::Borrowed("f64"),
+            FloatWidth::Four => Cow::Borrowed("f32"),
+         },
+         ValueType::Bool => Cow::Borrowed("bool"),
+         ValueType::Unit => Cow::Borrowed("()"),
+         ValueType::Never => Cow::Borrowed("!"),
+         ValueType::CompileError => Cow::Borrowed("ERROR"),
+         ValueType::Struct(x) => Cow::Borrowed(interner.lookup(*x)),
+         ValueType::Enum(x) => Cow::Borrowed(interner.lookup(*x)),
+         ValueType::Array(i_type, length) => {
+            Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info_like_source(interner), length))
+         }
+         ValueType::Unresolved(x) => Cow::Borrowed(interner.lookup(*x)),
+         ValueType::ProcedurePointer { parameters, ret_val } => {
+            let params: String = parameters
+               .iter()
+               .map(|x| x.as_roland_type_info(interner))
+               .collect::<Vec<_>>()
+               .join(", ");
+            Cow::Owned(format!("proc({}) -> {}", params, ret_val.as_roland_type_info(interner)))
+         }
+         ValueType::ProcedureItem(_, _) => unreachable!(),
       }
    }
 }

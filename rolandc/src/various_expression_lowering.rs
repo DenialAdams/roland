@@ -25,12 +25,9 @@ pub fn lower_single_expression(
          }
       }
       Expression::UnresolvedVariable(_) => unreachable!(),
-      Expression::ProcedureCall {
-         proc_expr,
-         args: _args,
-      } => {
+      Expression::ProcedureCall { proc_expr, args: _args } => {
          let (proc_name, generic_args) = match &expressions[*proc_expr].exp_type.as_ref().unwrap() {
-            ExpressionType::Value(ValueType::FunctionItem(x, type_arguments)) => (*x, type_arguments),
+            ExpressionType::Value(ValueType::ProcedureItem(x, type_arguments)) => (*x, type_arguments),
             _ => return,
          };
 

@@ -237,7 +237,7 @@ fn write_value_type_as_result(
          FloatWidth::Four => write!(out, "(result f32)").unwrap(),
       },
       ValueType::Bool => write!(out, "(result i32)").unwrap(),
-      ValueType::Unit | ValueType::Never | ValueType::FunctionItem(_, _) => (),
+      ValueType::Unit | ValueType::Never | ValueType::ProcedureItem(_, _) => (),
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
@@ -258,7 +258,7 @@ fn write_value_type_as_result(
             let _ = out.pop();
          }
       }
-      ValueType::FunctionPointer { parameters, ret_val } => todo!(), //nocheckin
+      ValueType::ProcedurePointer { parameters, ret_val } => todo!(),
    }
 }
 
@@ -298,7 +298,7 @@ fn write_value_type_as_params(
          FloatWidth::Four => write!(out, "(param f32)").unwrap(),
       },
       ValueType::Bool => write!(out, "(param i32)").unwrap(),
-      ValueType::Unit | ValueType::Never | ValueType::FunctionItem(_, _) => (),
+      ValueType::Unit | ValueType::Never | ValueType::ProcedureItem(_, _) => (),
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
@@ -319,7 +319,7 @@ fn write_value_type_as_params(
             let _ = out.pop();
          }
       }
-      ValueType::FunctionPointer { parameters, ret_val } => todo!(), //nocheckin
+      ValueType::ProcedurePointer { parameters, ret_val } => todo!(),
    }
 }
 
@@ -344,7 +344,7 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumIn
          FloatWidth::Four => write!(out, "f32").unwrap(),
       },
       ValueType::Bool => write!(out, "i32").unwrap(),
-      ValueType::Unit | ValueType::Never | ValueType::FunctionItem(_, _) => unreachable!(),
+      ValueType::Unit | ValueType::Never | ValueType::ProcedureItem(_, _) => unreachable!(),
       ValueType::CompileError => unreachable!(),
       ValueType::Enum(x) => {
          let num_variants = ei.get(x).unwrap().variants.len();
@@ -375,7 +375,7 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumIn
             let _ = out.pop();
          }
       }
-      ValueType::FunctionPointer { parameters, ret_val } => todo!(), //nocheckin
+      ValueType::ProcedurePointer { parameters, ret_val } => todo!(),
    }
 }
 
@@ -724,7 +724,12 @@ pub fn emit_wasm(
             interner,
          );
 
-         let offset_end = offset_begin + sizeof_type_values(field.1, generation_context.enum_info, generation_context.struct_size_info);
+         let offset_end = offset_begin
+            + sizeof_type_values(
+               field.1,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            );
 
          for i in offset_begin..offset_end {
             generation_context.out.emit_get_local(i);
@@ -789,7 +794,13 @@ pub fn emit_wasm(
       // Copy parameters to stack memory so we can take pointers
       let mut values_index = 0;
       for param in &procedure.definition.parameters {
-         match sizeof_type_values(&param.p_type.e_type, generation_context.enum_info, generation_context.struct_size_info).cmp(&1) {
+         match sizeof_type_values(
+            &param.p_type.e_type,
+            generation_context.enum_info,
+            generation_context.struct_size_info,
+         )
+         .cmp(&1)
+         {
             std::cmp::Ordering::Less => (),
             std::cmp::Ordering::Equal => {
                get_stack_address_of_local(param.var_id, &mut generation_context);
@@ -1619,12 +1630,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
       Expression::UnresolvedVariable(_) => {
          unreachable!()
       }
-      Expression::ProcedureCall {
-         proc_expr,
-         args,
-      } => {
+      Expression::ProcedureCall { proc_expr, args } => {
          do_emit_and_load_lval(*proc_expr, generation_context, interner);
-         // nocheckin if this produced a fcn pointer value, need to use vv to save it and for after the arguments
+         // TODO if this produced a fcn pointer value, need to use vv to save it and for after the arguments
 
          // Output the non-named parameters
          let mut first_named_arg = None;
@@ -1677,14 +1685,16 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          }
 
          match generation_context.expressions[*proc_expr].exp_type.as_ref().unwrap() {
-            ExpressionType::Value(ValueType::FunctionItem(proc_name, _)) => generation_context.out.emit_call(*proc_name, interner),
-            ExpressionType::Value(ValueType::FunctionPointer { .. }) => {
-               // nocheckin
+            ExpressionType::Value(ValueType::ProcedureItem(proc_name, _)) => {
+               generation_context.out.emit_call(*proc_name, interner);
+            }
+            ExpressionType::Value(ValueType::ProcedurePointer { .. }) => {
+               // TODO
                // 1. table id
                // 2. load vv for fcn ptr id
                // 3. emit indirect call
                todo!()
-            },
+            }
             _ => unreachable!(),
          };
       }
@@ -1893,7 +1903,12 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
 }
 
 fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   if sizeof_type_values(val_type, generation_context.enum_info, generation_context.struct_size_info) > 1 {
+   if sizeof_type_values(
+      val_type,
+      generation_context.enum_info,
+      generation_context.struct_size_info,
+   ) > 1
+   {
       generation_context.out.emit_set_global("mem_address");
       complex_load(0, val_type, generation_context);
    } else {
@@ -1925,7 +1940,13 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
       }
       ExpressionType::Value(ValueType::Array(a_type, len)) => {
          for _ in 0..*len {
-            match sizeof_type_values(a_type, generation_context.enum_info, generation_context.struct_size_info).cmp(&1) {
+            match sizeof_type_values(
+               a_type,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            )
+            .cmp(&1)
+            {
                std::cmp::Ordering::Less => (),
                std::cmp::Ordering::Equal => {
                   generation_context.out.emit_get_global("mem_address");
@@ -1956,7 +1977,11 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
          // Find the first non-zero-sized struct field and load that
          // (there should only be one if we're in simple_load)
          for (_, field_type) in si.field_types.iter() {
-            match sizeof_type_values(field_type, generation_context.enum_info, generation_context.struct_size_info) {
+            match sizeof_type_values(
+               field_type,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            ) {
                0 => continue,
                1 => return simple_load(field_type, generation_context),
                _ => unreachable!(),
@@ -1968,7 +1993,12 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
       }
       _ => (),
    }
-   if sizeof_type_values(val_type, generation_context.enum_info, generation_context.struct_size_info) == 0 {
+   if sizeof_type_values(
+      val_type,
+      generation_context.enum_info,
+      generation_context.struct_size_info,
+   ) == 0
+   {
       // Drop the load address; nothing to load
       generation_context.out.emit_constant_instruction("drop");
    } else if sizeof_type_mem(
@@ -2032,12 +2062,27 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
 }
 
 fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext, interner: &mut Interner) {
-   if sizeof_type_values(val_type, generation_context.enum_info, generation_context.struct_size_info) == 0 {
+   if sizeof_type_values(
+      val_type,
+      generation_context.enum_info,
+      generation_context.struct_size_info,
+   ) == 0
+   {
       // drop the placement address
       generation_context.out.emit_constant_instruction("drop");
-   } else if sizeof_type_values(val_type, generation_context.enum_info, generation_context.struct_size_info) == 1 {
+   } else if sizeof_type_values(
+      val_type,
+      generation_context.enum_info,
+      generation_context.struct_size_info,
+   ) == 1
+   {
       simple_store(val_type, generation_context);
-   } else if sizeof_type_values(val_type, generation_context.enum_info, generation_context.struct_size_info) > 1 {
+   } else if sizeof_type_values(
+      val_type,
+      generation_context.enum_info,
+      generation_context.struct_size_info,
+   ) > 1
+   {
       let (store_fcn_index, _) = generation_context.needed_store_fns.insert_full(val_type.clone());
       generation_context
          .out
@@ -2054,7 +2099,11 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
          // Find the first non-zero-sized struct field and store that
          // (there should only be one if we're in simple_store)
          for (_, field_type) in si.field_types.iter() {
-            match sizeof_type_values(field_type, generation_context.enum_info, generation_context.struct_size_info) {
+            match sizeof_type_values(
+               field_type,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            ) {
                0 => continue,
                1 => return simple_store(field_type, generation_context),
                _ => unreachable!(),

@@ -82,12 +82,7 @@ pub fn fold_statement(
          try_fold_and_replace_expr(*expr_id, err_manager, folding_context, interner);
 
          let expression = &folding_context.expressions[*expr_id];
-         if !matches!(
-            expression.expression,
-            Expression::ProcedureCall {
-               ..
-            }
-         ) {
+         if !matches!(expression.expression, Expression::ProcedureCall { .. }) {
             rolandc_warn!(
                err_manager,
                expression.location,

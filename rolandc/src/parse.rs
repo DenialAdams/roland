@@ -1134,12 +1134,18 @@ fn pratt(
       Token::Identifier(s) => {
          if l.peek_token() == Token::Dollar {
             let generic_args = parse_generic_arguments(l, parse_context)?;
-            let combined_location = merge_locations(expr_begin_token.source_info, generic_args.last().as_ref().unwrap().location);
+            let combined_location = merge_locations(
+               expr_begin_token.source_info,
+               generic_args.last().as_ref().unwrap().location,
+            );
             wrap(
-               Expression::BoundFcnLiteral(IdentifierNode {
-                  identifier: s,
-                  location: expr_begin_token.source_info,
-               }, generic_args.into_boxed_slice()),
+               Expression::BoundFcnLiteral(
+                  IdentifierNode {
+                     identifier: s,
+                     location: expr_begin_token.source_info,
+                  },
+                  generic_args.into_boxed_slice(),
+               ),
                combined_location,
                expressions,
             )

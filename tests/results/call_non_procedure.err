@@ -1,0 +1,3 @@
+Attempting to invoke a procedure on a non-procedure type `?? Int`
+↳ line 2, column 5 [call_non_procedure.rol]
+There were 1 semantic errors, bailing
