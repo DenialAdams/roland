@@ -80,6 +80,11 @@ pub enum ValueType {
    Array(Box<ExpressionType>, u32),
    CompileError,
    Enum(StrId),
+   FunctionItem(StrId),
+   FunctionPointer {
+      parameters: Vec<ExpressionType>,
+      ret_val: Box<ExpressionType>,
+   },
    Unresolved(StrId), // Could be a struct, enum, generic parameter, or fail to resolve (compilation error)
    Never,
 }
@@ -264,6 +269,8 @@ impl ValueType {
          | ValueType::Unit
          | ValueType::Never
          | ValueType::Struct(_)
+         | ValueType::FunctionItem(_)
+         | ValueType::FunctionPointer { .. } //nocheckin this has to always be concrete, right? hm
          | ValueType::Enum(_) => true,
          ValueType::Array(exp, _) => exp.is_concrete(),
       }
@@ -321,6 +328,14 @@ impl ValueType {
             Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info(interner), length))
          }
          ValueType::Unresolved(x) => Cow::Borrowed(interner.lookup(*x)),
+         ValueType::FunctionPointer { parameters, ret_val } => {
+            let params: String = parameters.iter().map(|x| x.as_roland_type_info(interner)).collect::<Vec<_>>().join(", ");
+            Cow::Owned(format!("proc({}) -> {}", params, ret_val.as_roland_type_info(interner)))
+         }
+         ValueType::FunctionItem(proc_name) => {
+            // nocheckin I'd like to print something better here
+            Cow::Owned(format!("proc `{}`", interner.lookup(*proc_name)))
+         }
       }
    }
 }

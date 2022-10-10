@@ -100,6 +100,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             .get_value_type_or_value_being_pointed_to_mut() = e_type.get_value_type_or_value_being_pointed_to().clone();
       }
       Expression::UnitLiteral => unreachable!(),
+      Expression::ProcedureNameLiteral => unreachable!(),
       Expression::Variable(_) => {
          let my_tv = match validation_context.expressions[expr_index].exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::UnknownFloat(x)) => *x,

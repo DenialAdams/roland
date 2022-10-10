@@ -104,7 +104,7 @@ pub fn calculate_struct_size_info(
 pub fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ExpressionType::Value(x) => value_type_mem_alignment(x, ei, si),
-      ExpressionType::Pointer(_, _) => 4,
+      ExpressionType::Pointer(_, _) => 4, // @FixedPointerWidth
    }
 }
 
@@ -139,6 +139,8 @@ pub fn value_type_mem_alignment(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, s
       ValueType::Bool => 1,
       ValueType::Unit => 1,
       ValueType::Never => 1,
+      ValueType::FunctionPointer { .. } => 4, // @FixedPointerWidth
+      ValueType::FunctionItem(_) => 1,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().strictest_alignment,
       ValueType::Array(a_type, _len) => mem_alignment(a_type, ei, si),
@@ -167,6 +169,8 @@ fn sizeof_value_type_values(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().values_size,
       ValueType::Array(a_type, len) => sizeof_type_values(a_type, ei, si) * (*len as u32),
+      ValueType::FunctionPointer { .. } => 1,
+      ValueType::FunctionItem(_) => 0,
    }
 }
 
@@ -183,7 +187,7 @@ pub fn sizeof_type_wasm(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: 
 pub fn sizeof_type_mem(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ExpressionType::Value(x) => sizeof_value_type_mem(x, ei, si),
-      ExpressionType::Pointer(_, _) => 4,
+      ExpressionType::Pointer(_, _) => 4, // @FixedPointerWidth
    }
 }
 
@@ -217,6 +221,8 @@ fn sizeof_value_type_mem(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &Has
       ValueType::Bool => 1,
       ValueType::Unit => 0,
       ValueType::Never => 0,
+      ValueType::FunctionPointer { .. } => 4, // @FixedPointerWidth
+      ValueType::FunctionItem(_) => 0,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().mem_size,
       ValueType::Array(a_type, len) => sizeof_type_mem(a_type, ei, si) * (*len as u32),

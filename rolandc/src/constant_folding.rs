@@ -85,9 +85,7 @@ pub fn fold_statement(
          if !matches!(
             expression.expression,
             Expression::ProcedureCall {
-               proc_name: _,
-               generic_args: _,
-               args: _
+               ..
             }
          ) {
             rolandc_warn!(
@@ -255,6 +253,7 @@ fn fold_expr(
       }
       Expression::FloatLiteral(_) => None,
       Expression::UnitLiteral => None,
+      Expression::ProcedureNameLiteral => None,
       Expression::BinaryOperator {
          operator,
          lhs: lhs_id,
@@ -1631,5 +1630,6 @@ fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &Expre
       Expression::FieldAccess(_, expr) => expression_could_have_side_effects(*expr, expressions),
       Expression::Cast { expr, .. } => expression_could_have_side_effects(*expr, expressions),
       Expression::EnumLiteral(_, _) => false,
+      Expression::ProcedureNameLiteral => false,
    }
 }

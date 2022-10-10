@@ -237,7 +237,7 @@ fn write_value_type_as_result(
          FloatWidth::Four => write!(out, "(result f32)").unwrap(),
       },
       ValueType::Bool => write!(out, "(result i32)").unwrap(),
-      ValueType::Unit | ValueType::Never => (),
+      ValueType::Unit | ValueType::Never | ValueType::FunctionItem(_) => (),
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
@@ -258,6 +258,7 @@ fn write_value_type_as_result(
             let _ = out.pop();
          }
       }
+      ValueType::FunctionPointer { parameters, ret_val } => todo!(), //nocheckin
    }
 }
 
@@ -297,7 +298,7 @@ fn write_value_type_as_params(
          FloatWidth::Four => write!(out, "(param f32)").unwrap(),
       },
       ValueType::Bool => write!(out, "(param i32)").unwrap(),
-      ValueType::Unit | ValueType::Never => (),
+      ValueType::Unit | ValueType::Never | ValueType::FunctionItem(_) => (),
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
@@ -318,6 +319,7 @@ fn write_value_type_as_params(
             let _ = out.pop();
          }
       }
+      ValueType::FunctionPointer { parameters, ret_val } => todo!(), //nocheckin
    }
 }
 
@@ -342,7 +344,7 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumIn
          FloatWidth::Four => write!(out, "f32").unwrap(),
       },
       ValueType::Bool => write!(out, "i32").unwrap(),
-      ValueType::Unit | ValueType::Never => unreachable!(),
+      ValueType::Unit | ValueType::Never | ValueType::FunctionItem(_) => unreachable!(),
       ValueType::CompileError => unreachable!(),
       ValueType::Enum(x) => {
          let num_variants = ei.get(x).unwrap().variants.len();
@@ -373,6 +375,7 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumIn
             let _ = out.pop();
          }
       }
+      ValueType::FunctionPointer { parameters, ret_val } => todo!(), //nocheckin
    }
 }
 
@@ -1043,6 +1046,7 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
    let expr_node = &generation_context.expressions[expr_index];
    match &expr_node.expression {
       Expression::UnitLiteral => (),
+      Expression::ProcedureNameLiteral => (),
       Expression::BoolLiteral(x) => {
          write!(generation_context.out.out, "\\{:02x}", u8::from(*x)).unwrap();
       }
@@ -1171,6 +1175,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
    let expr_node = &generation_context.expressions[expr_index];
    match &expr_node.expression {
       Expression::UnitLiteral => (),
+      Expression::ProcedureNameLiteral => (),
       Expression::BoolLiteral(x) => {
          generation_context.out.emit_const_i32(u32::from(*x));
       }
@@ -1617,7 +1622,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          unreachable!()
       }
       Expression::ProcedureCall {
-         proc_name,
+         proc_expr,
          args,
          generic_args: _generic_args,
       } => {
@@ -1671,7 +1676,13 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             }
          }
 
-         generation_context.out.emit_call(proc_name.identifier, interner);
+         let proc_name = match generation_context.expressions[*proc_expr].exp_type.as_ref().unwrap() {
+            ExpressionType::Value(ValueType::FunctionItem(x)) => *x,
+            ExpressionType::Value(ValueType::FunctionPointer { .. }) => todo!(),
+            _ => unreachable!(),
+         };
+
+         generation_context.out.emit_call(proc_name, interner);
       }
       Expression::StructLiteral(s_name, fields) => {
          // First we emit the expressions *in the order they were written*,

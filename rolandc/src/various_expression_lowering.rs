@@ -26,25 +26,30 @@ pub fn lower_single_expression(
       }
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::ProcedureCall {
-         proc_name,
+         proc_expr,
          generic_args,
          args: _args,
       } => {
-         if interner.lookup(proc_name.identifier) == "sizeof" {
+         let proc_name = match &expressions[*proc_expr].exp_type.as_ref().unwrap() {
+            ExpressionType::Value(ValueType::FunctionItem(x)) => *x,
+            _ => return,
+         };
+
+         if interner.lookup(proc_name) == "sizeof" {
             let type_size = crate::size_info::sizeof_type_mem(&generic_args[0].gtype, enum_info, struct_size_info);
 
             expressions[expression_id].expression = Expression::IntLiteral {
                val: u64::from(type_size),
                synthetic: true,
             };
-         } else if interner.lookup(proc_name.identifier) == "alignof" {
+         } else if interner.lookup(proc_name) == "alignof" {
             let type_size = crate::size_info::mem_alignment(&generic_args[0].gtype, enum_info, struct_size_info);
 
             expressions[expression_id].expression = Expression::IntLiteral {
                val: u64::from(type_size),
                synthetic: true,
             };
-         } else if interner.lookup(proc_name.identifier) == "num_variants" {
+         } else if interner.lookup(proc_name) == "num_variants" {
             let num_variants = match generic_args[0].gtype {
                ExpressionType::Value(ValueType::Enum(enum_name)) => enum_info.get(&enum_name).unwrap().variants.len(),
                _ => unreachable!(),

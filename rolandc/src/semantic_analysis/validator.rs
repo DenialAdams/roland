@@ -141,6 +141,19 @@ pub fn resolve_value_type(
       ValueType::Array(exp, _) => resolve_type(exp, ei, si),
       ValueType::CompileError => Ok(()),
       ValueType::Enum(_) => Ok(()),
+      ValueType::FunctionPointer { parameters, ret_val } => {
+         let mut failed_to_resolve = false;
+         for parameter in parameters {
+            failed_to_resolve |= resolve_type(parameter, ei, si).is_err();
+         }
+         failed_to_resolve |= resolve_type(ret_val, ei, si).is_err();
+         if failed_to_resolve {
+            Err(())
+         } else {
+            Ok(())
+         }
+      },
+      ValueType::FunctionItem(_) => Ok(()),
       ValueType::Unresolved(x) => {
          if ei.contains_key(x) {
             *v_type = ValueType::Enum(*x);
@@ -1165,34 +1178,56 @@ fn get_type(
             node_type
          }
       }
-      Expression::UnresolvedVariable(id) => match validation_context.variable_types.get_mut(&id.identifier) {
-         Some(var_info) => {
-            var_info.used = true;
-            validation_context
-               .source_to_definition
-               .insert(expr_location, var_info.declaration_location);
-            validation_context.expressions[expr_index].expression = Expression::Variable(var_info.var_id);
-            var_info.var_type.clone()
+      Expression::UnresolvedVariable(id) => {
+         match validation_context.variable_types.get_mut(&id.identifier) {
+            Some(var_info) => {
+               var_info.used = true;
+               validation_context
+                  .source_to_definition
+                  .insert(expr_location, var_info.declaration_location);
+               validation_context.expressions[expr_index].expression = Expression::Variable(var_info.var_id);
+               var_info.var_type.clone()
+            }
+            None if validation_context.procedure_info.contains_key(&id.identifier) => {
+               validation_context.expressions[expr_index].expression = Expression::ProcedureNameLiteral;
+               ExpressionType::Value(ValueType::FunctionItem(id.identifier))
+            }
+            None => {
+               rolandc_error!(
+                  err_manager,
+                  expr_location,
+                  "Encountered undefined variable `{}`",
+                  interner.lookup(id.identifier)
+               );
+               ExpressionType::Value(ValueType::CompileError)
+            }
          }
-         None => {
-            rolandc_error!(
-               err_manager,
-               expr_location,
-               "Encountered undefined variable `{}`",
-               interner.lookup(id.identifier)
-            );
-            ExpressionType::Value(ValueType::CompileError)
-         }
-      },
-      Expression::Variable(_) => unreachable!(),
+      }
+      Expression::Variable(_) | Expression::ProcedureNameLiteral => unreachable!(),
       Expression::ProcedureCall {
-         proc_name,
+         proc_expr,
          args,
          generic_args,
       } => {
+         type_expression(err_manager, *proc_expr, validation_context, interner);
          for arg in args.iter() {
             type_expression(err_manager, arg.expr, validation_context, interner);
          }
+
+         let (proc_name, proc_name_location) = match validation_context.expressions[*proc_expr].exp_type.as_ref().unwrap() {
+            ExpressionType::Value(ValueType::FunctionItem(proc_name)) => (*proc_name, validation_context.expressions[*proc_expr].location),
+            ExpressionType::Value(ValueType::FunctionPointer { .. }) => todo!(),
+            bad_type => {
+               rolandc_error!(
+                  err_manager,
+                  validation_context.expressions[*proc_expr].location,
+                  "Attempting to invoke a function on a non-function type `{}`",
+                  bad_type.as_roland_type_info(interner),
+               );
+               return ExpressionType::Value(ValueType::CompileError);
+            }
+         };
+
 
          for g_arg in generic_args.iter_mut() {
             if resolve_type(
@@ -1208,16 +1243,16 @@ fn get_type(
                   &[(expr_location, "call")],
                   "Undeclared type `{}` given as a type argument to `{}`",
                   etype_str,
-                  interner.lookup(proc_name.identifier),
+                  interner.lookup(proc_name),
                );
             }
          }
 
-         match validation_context.procedure_info.get(&proc_name.identifier) {
+         match validation_context.procedure_info.get(&proc_name) {
             Some(procedure_info) => {
                validation_context
                   .source_to_definition
-                  .insert(proc_name.location, procedure_info.location);
+                  .insert(proc_name_location, procedure_info.location);
 
                // Validate that there are no non-named arguments after named arguments, then reorder the argument list
                let first_named_arg = args.iter().enumerate().find(|(_, arg)| arg.name.is_some()).map(|x| x.0);
@@ -1235,7 +1270,7 @@ fn get_type(
                      err_manager,
                      expr_location,
                      "Call to `{}` has named argument(s) which come before non-named argument(s)",
-                     interner.lookup(proc_name.identifier),
+                     interner.lookup(proc_name),
                   );
                }
 
@@ -1244,7 +1279,7 @@ fn get_type(
                      err_manager,
                      expr_location,
                      "In call to `{}`, mismatched arity. Expected {} type arguments but got {}",
-                     interner.lookup(proc_name.identifier),
+                     interner.lookup(proc_name),
                      procedure_info.type_parameters.len(),
                      generic_args.len()
                   );
@@ -1255,7 +1290,7 @@ fn get_type(
                      err_manager,
                      expr_location,
                      "In call to `{}`, mismatched arity. Expected {} arguments but got {}",
-                     interner.lookup(proc_name.identifier),
+                     interner.lookup(proc_name),
                      procedure_info.parameters.len(),
                      args.len()
                   );
@@ -1280,7 +1315,7 @@ fn get_type(
                            err_manager,
                            actual_expr.location,
                            "In call to `{}`, argument at position {} is of type {} when we expected {}",
-                           interner.lookup(proc_name.identifier),
+                           interner.lookup(proc_name),
                            i,
                            actual_type_str,
                            expected_type_str,
@@ -1296,7 +1331,7 @@ fn get_type(
                            err_manager,
                            expr_location,
                            "In call to `{}`, encountered named argument `{}` that does not correspond to any named parameter",
-                           interner.lookup(proc_name.identifier),
+                           interner.lookup(proc_name),
                            interner.lookup(arg.name.unwrap()),
                         );
                         continue;
@@ -1316,7 +1351,7 @@ fn get_type(
                            err_manager,
                            expr_location,
                            "In call to `{}`, encountered argument of type {} when we expected {} for named parameter {}",
-                           interner.lookup(proc_name.identifier),
+                           interner.lookup(proc_name),
                            actual_type_str,
                            expected_type_str,
                            interner.lookup(arg.name.unwrap())
@@ -1339,7 +1374,7 @@ fn get_type(
                                        err_manager,
                                        g_arg.location,
                                        "In call to `{}`, encountered generic argument of type {} which does not meet the constraint `Enum`",
-                                       interner.lookup(proc_name.identifier),
+                                       interner.lookup(proc_name),
                                        g_arg.gtype.as_roland_type_info(interner),
                                     );
                                  }
@@ -1358,7 +1393,7 @@ fn get_type(
                   err_manager,
                   expr_location,
                   "Encountered call to undefined procedure `{}`",
-                  interner.lookup(proc_name.identifier),
+                  interner.lookup(proc_name),
                );
                ExpressionType::Value(ValueType::CompileError)
             }

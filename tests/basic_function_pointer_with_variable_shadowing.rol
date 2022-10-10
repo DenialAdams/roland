@@ -1,0 +1,13 @@
+proc foo() {
+   println("foo");
+}
+
+proc bar() {
+   println("bar");
+}
+
+
+proc main() {
+   let foo = bar;
+   foo();
+}
