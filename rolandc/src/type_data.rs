@@ -80,7 +80,7 @@ pub enum ValueType {
    Array(Box<ExpressionType>, u32),
    CompileError,
    Enum(StrId),
-   FunctionItem(StrId),
+   FunctionItem(StrId, Box<[ExpressionType]>),
    FunctionPointer {
       parameters: Vec<ExpressionType>,
       ret_val: Box<ExpressionType>,
@@ -269,7 +269,7 @@ impl ValueType {
          | ValueType::Unit
          | ValueType::Never
          | ValueType::Struct(_)
-         | ValueType::FunctionItem(_)
+         | ValueType::FunctionItem(_, _)
          | ValueType::FunctionPointer { .. } //nocheckin this has to always be concrete, right? hm
          | ValueType::Enum(_) => true,
          ValueType::Array(exp, _) => exp.is_concrete(),
@@ -332,9 +332,10 @@ impl ValueType {
             let params: String = parameters.iter().map(|x| x.as_roland_type_info(interner)).collect::<Vec<_>>().join(", ");
             Cow::Owned(format!("proc({}) -> {}", params, ret_val.as_roland_type_info(interner)))
          }
-         ValueType::FunctionItem(proc_name) => {
+         ValueType::FunctionItem(proc_name, type_arguments) => {
             // nocheckin I'd like to print something better here
-            Cow::Owned(format!("proc `{}`", interner.lookup(*proc_name)))
+            let type_argument_string = type_arguments.iter().map(|x| x.as_roland_type_info(interner)).collect::<Vec<_>>().join("$"); //nocheckin we want a new kind of string representation
+            Cow::Owned(format!("proc() {{{}${}}}", interner.lookup(*proc_name), type_argument_string))
          }
       }
    }

@@ -177,9 +177,9 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
       Expression::StringLiteral(_) => (),
       Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
+      Expression::BoundFcnLiteral(_, _) => (),
       Expression::UnitLiteral => (),
       Expression::UnresolvedVariable(_) => unreachable!(),
-      Expression::ProcedureNameLiteral => (),
       Expression::Variable(_) => (),
    }
 }

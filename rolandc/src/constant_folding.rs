@@ -252,8 +252,7 @@ fn fold_expr(
          None
       }
       Expression::FloatLiteral(_) => None,
-      Expression::UnitLiteral => None,
-      Expression::ProcedureNameLiteral => None,
+      Expression::UnitLiteral | Expression::BoundFcnLiteral(_, _) => None,
       Expression::BinaryOperator {
          operator,
          lhs: lhs_id,
@@ -1617,7 +1616,7 @@ fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &Expre
       Expression::StringLiteral(_) => false,
       Expression::IntLiteral { .. } => false,
       Expression::FloatLiteral(_) => false,
-      Expression::UnitLiteral => false,
+      Expression::UnitLiteral | Expression::BoundFcnLiteral(_, _) => false,
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::Variable(_) => false,
       Expression::BinaryOperator { lhs, rhs, .. } => {
@@ -1630,6 +1629,5 @@ fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &Expre
       Expression::FieldAccess(_, expr) => expression_could_have_side_effects(*expr, expressions),
       Expression::Cast { expr, .. } => expression_could_have_side_effects(*expr, expressions),
       Expression::EnumLiteral(_, _) => false,
-      Expression::ProcedureNameLiteral => false,
    }
 }

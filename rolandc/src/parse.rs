@@ -201,7 +201,6 @@ impl VariableId {
 pub enum Expression {
    ProcedureCall {
       proc_expr: ExpressionId,
-      generic_args: Box<[GenericArgumentNode]>,
       args: Box<[ArgumentNode]>,
    },
    ArrayLiteral(Box<[ExpressionId]>),
@@ -217,7 +216,6 @@ pub enum Expression {
    },
    FloatLiteral(f64),
    UnitLiteral,
-   ProcedureNameLiteral,
    UnresolvedVariable(IdentifierNode),
    Variable(VariableId),
    BinaryOperator {
@@ -234,6 +232,7 @@ pub enum Expression {
       expr: ExpressionId,
    },
    EnumLiteral(IdentifierNode, IdentifierNode),
+   BoundFcnLiteral(IdentifierNode, Box<[GenericArgumentNode]>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1133,7 +1132,18 @@ fn pratt(
       Token::FloatLiteral(x) => wrap(Expression::FloatLiteral(x), expr_begin_token.source_info, expressions),
       Token::StringLiteral(x) => wrap(Expression::StringLiteral(x), expr_begin_token.source_info, expressions),
       Token::Identifier(s) => {
-         if l.peek_token() == Token::DoubleColon {
+         if l.peek_token() == Token::Dollar {
+            let generic_args = parse_generic_arguments(l, parse_context)?;
+            let combined_location = merge_locations(expr_begin_token.source_info, generic_args.last().as_ref().unwrap().location);
+            wrap(
+               Expression::BoundFcnLiteral(IdentifierNode {
+                  identifier: s,
+                  location: expr_begin_token.source_info,
+               }, generic_args.into_boxed_slice()),
+               combined_location,
+               expressions,
+            )
+         } else if l.peek_token() == Token::DoubleColon {
             let _ = l.next();
             let variant = parse_identifier(l, parse_context)?;
             let combined_location = merge_locations(expr_begin_token.source_info, variant.location);
@@ -1297,11 +1307,9 @@ fn pratt(
          | Token::Deref
          | Token::OpenSquareBracket
          | Token::OpenParen
-         | Token::Dollar
          | Token::ShiftLeft
          | Token::ShiftRight) => x,
          Token::Period => {
-            // nocheckin should I move this to postfix operator?
             let mut fields = vec![];
             let mut last_location;
             loop {
@@ -1325,34 +1333,16 @@ fn pratt(
             break;
          }
 
-         let op = l.peek_token();
+         let op = l.next();
 
-         lhs = match op {
-            Token::Dollar => {
-               let generic_args = parse_generic_arguments(l, parse_context)?;
-               expect(l, parse_context, Token::OpenParen)?;
-               let args = parse_arguments(l, parse_context, expressions)?;
-               let close_token = expect(l, parse_context, Token::CloseParen)?;
-               let combined_location = merge_locations(expr_begin_token.source_info, close_token.source_info);
-               wrap(
-                  Expression::ProcedureCall {
-                     proc_expr: lhs,
-                     generic_args: generic_args.into_boxed_slice(),
-                     args: args.into_boxed_slice(),
-                  },
-                  combined_location,
-                  expressions,
-               )
-            }
+         lhs = match op.token {
             Token::OpenParen => {
-               let _ = l.next();
                let args = parse_arguments(l, parse_context, expressions)?;
                let close_token = expect(l, parse_context, Token::CloseParen)?;
                let combined_location = merge_locations(expr_begin_token.source_info, close_token.source_info);
                wrap(
                   Expression::ProcedureCall {
                      proc_expr: lhs,
-                     generic_args: vec![].into_boxed_slice(),
                      args: args.into_boxed_slice(),
                   },
                   combined_location,
@@ -1360,7 +1350,6 @@ fn pratt(
                )
             }
             Token::OpenSquareBracket => {
-               let _ = l.next();
                let inner = parse_expression(l, parse_context, false, expressions)?;
                let close_token = expect(l, parse_context, Token::CloseSquareBracket)?;
                let combined_location = merge_locations(expr_begin_token.source_info, close_token.source_info);
@@ -1374,7 +1363,6 @@ fn pratt(
                )
             }
             Token::KeywordExtend => {
-               let _ = l.next();
                let a_type = parse_type(l, parse_context)?;
                let combined_location = merge_locations(expr_begin_token.source_info, a_type.location);
                wrap(
@@ -1388,7 +1376,6 @@ fn pratt(
                )
             }
             Token::KeywordTruncate => {
-               let _ = l.next();
                let a_type = parse_type(l, parse_context)?;
                let combined_location = merge_locations(expr_begin_token.source_info, a_type.location);
                wrap(
@@ -1402,7 +1389,6 @@ fn pratt(
                )
             }
             Token::KeywordTransmute => {
-               let _ = l.next();
                let a_type = parse_type(l, parse_context)?;
                let combined_location = merge_locations(expr_begin_token.source_info, a_type.location);
                wrap(
@@ -1416,7 +1402,6 @@ fn pratt(
                )
             }
             Token::Deref => {
-               let op = l.next();
                let combined_location = merge_locations(expr_begin_token.source_info, op.source_info);
                wrap(
                   Expression::UnaryOperator(UnOp::Dereference, lhs),
@@ -1487,7 +1472,6 @@ fn prefix_binding_power(op: &Token) -> ((), u8) {
 
 fn postfix_binding_power(op: Token) -> Option<(u8, ())> {
    match &op {
-      Token::Dollar => Some((21, ())),
       Token::OpenParen => Some((21, ())),
       Token::OpenSquareBracket => Some((21, ())),
       Token::KeywordExtend => Some((18, ())),

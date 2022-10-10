@@ -153,7 +153,7 @@ pub fn resolve_value_type(
             Ok(())
          }
       },
-      ValueType::FunctionItem(_) => Ok(()),
+      ValueType::FunctionItem(_, _) => Ok(()), // This type contains other types, but this type itself can never be written down. It should always be valid
       ValueType::Unresolved(x) => {
          if ei.contains_key(x) {
             *v_type = ValueType::Enum(*x);
@@ -1178,6 +1178,77 @@ fn get_type(
             node_type
          }
       }
+      Expression::BoundFcnLiteral(id, type_arguments) => {
+         for g_arg in type_arguments.iter_mut() {
+            if resolve_type(
+               &mut g_arg.gtype,
+               validation_context.enum_info,
+               validation_context.struct_info,
+            )
+            .is_err()
+            {
+               let etype_str = g_arg.gtype.as_roland_type_info(interner);
+               rolandc_error!(
+                  err_manager,
+                  g_arg.location,
+                  "Undeclared type `{}`",
+                  etype_str,
+               );
+            }
+         }
+
+         match validation_context.procedure_info.get(&id.identifier) {
+            Some(proc_info) => {
+               if proc_info.type_parameters.len() == type_arguments.len() {
+                  for (g_arg, constraints) in type_arguments.iter().zip(proc_info.type_parameters.iter()) {
+                     if matches!(g_arg.gtype, ExpressionType::Value(ValueType::Unresolved(_))) {
+                        // We have already errored on this argument
+                        continue;
+                     }
+
+                     for constraint in constraints {
+                        match interner.lookup(*constraint) {
+                           "Enum" => {
+                              if !matches!(g_arg.gtype, ExpressionType::Value(ValueType::Enum(_))) {
+                                 rolandc_error!(
+                                    err_manager,
+                                    g_arg.location,
+                                    "In call to `{}`, encountered generic argument of type {} which does not meet the constraint `Enum`",
+                                    interner.lookup(id.identifier),
+                                    g_arg.gtype.as_roland_type_info(interner),
+                                 );
+                                 // nocheckin set some flag and set type of compile error?
+                              }
+                           }
+                           _ => unreachable!(),
+                        }
+                     }
+                  }
+                  //nocheckin drain to avoid the clone?
+                  ExpressionType::Value(ValueType::FunctionItem(id.identifier, type_arguments.iter().map(|x| x.gtype.clone()).collect::<Vec<_>>().into_boxed_slice()))
+               } else {
+                  rolandc_error!(
+                     err_manager,
+                     expr_location,
+                     "Mismatched arity for procedure '{}'. Expected {} type arguments but got {}",
+                     interner.lookup(id.identifier),
+                     proc_info.type_parameters.len(),
+                     type_arguments.len()
+                  );
+                  ExpressionType::Value(ValueType::CompileError)
+               }
+            }
+            None => {
+               rolandc_error!(
+                  err_manager,
+                  expr_location,
+                  "Encountered undefined symbol `{}`",
+                  interner.lookup(id.identifier)
+               );
+               ExpressionType::Value(ValueType::CompileError)
+            }
+         }
+      }
       Expression::UnresolvedVariable(id) => {
          match validation_context.variable_types.get_mut(&id.identifier) {
             Some(var_info) => {
@@ -1189,34 +1260,38 @@ fn get_type(
                var_info.var_type.clone()
             }
             None if validation_context.procedure_info.contains_key(&id.identifier) => {
-               validation_context.expressions[expr_index].expression = Expression::ProcedureNameLiteral;
-               ExpressionType::Value(ValueType::FunctionItem(id.identifier))
+               validation_context
+               .source_to_definition
+               .insert(expr_location, validation_context.procedure_info.get(&id.identifier).unwrap().location); //nocheckin
+               validation_context.expressions[expr_index].expression = Expression::UnitLiteral;
+               // nocheckin need to add a check that required generic arguments for this procedure is 0!!
+               ExpressionType::Value(ValueType::FunctionItem(id.identifier, vec![].into_boxed_slice()))
             }
             None => {
                rolandc_error!(
                   err_manager,
                   expr_location,
-                  "Encountered undefined variable `{}`",
+                  "Encountered undefined symbol `{}`",
                   interner.lookup(id.identifier)
                );
                ExpressionType::Value(ValueType::CompileError)
             }
          }
       }
-      Expression::Variable(_) | Expression::ProcedureNameLiteral => unreachable!(),
+      Expression::Variable(_) => unreachable!(),
       Expression::ProcedureCall {
          proc_expr,
          args,
-         generic_args,
       } => {
          type_expression(err_manager, *proc_expr, validation_context, interner);
          for arg in args.iter() {
             type_expression(err_manager, arg.expr, validation_context, interner);
          }
 
-         let (proc_name, proc_name_location) = match validation_context.expressions[*proc_expr].exp_type.as_ref().unwrap() {
-            ExpressionType::Value(ValueType::FunctionItem(proc_name)) => (*proc_name, validation_context.expressions[*proc_expr].location),
+         let proc_name = match validation_context.expressions[*proc_expr].exp_type.as_ref().unwrap() {
+            ExpressionType::Value(ValueType::FunctionItem(proc_name, _bound_type_parameters)) => *proc_name,
             ExpressionType::Value(ValueType::FunctionPointer { .. }) => todo!(),
+            ExpressionType::Value(ValueType::CompileError) => return ExpressionType::Value(ValueType::CompileError),
             bad_type => {
                rolandc_error!(
                   err_manager,
@@ -1228,32 +1303,8 @@ fn get_type(
             }
          };
 
-
-         for g_arg in generic_args.iter_mut() {
-            if resolve_type(
-               &mut g_arg.gtype,
-               validation_context.enum_info,
-               validation_context.struct_info,
-            )
-            .is_err()
-            {
-               let etype_str = g_arg.gtype.as_roland_type_info(interner);
-               rolandc_error_w_details!(
-                  err_manager,
-                  &[(expr_location, "call")],
-                  "Undeclared type `{}` given as a type argument to `{}`",
-                  etype_str,
-                  interner.lookup(proc_name),
-               );
-            }
-         }
-
          match validation_context.procedure_info.get(&proc_name) {
             Some(procedure_info) => {
-               validation_context
-                  .source_to_definition
-                  .insert(proc_name_location, procedure_info.location);
-
                // Validate that there are no non-named arguments after named arguments, then reorder the argument list
                let first_named_arg = args.iter().enumerate().find(|(_, arg)| arg.name.is_some()).map(|x| x.0);
                let last_normal_arg = args
@@ -1271,17 +1322,6 @@ fn get_type(
                      expr_location,
                      "Call to `{}` has named argument(s) which come before non-named argument(s)",
                      interner.lookup(proc_name),
-                  );
-               }
-
-               if procedure_info.type_parameters.len() != generic_args.len() {
-                  rolandc_error!(
-                     err_manager,
-                     expr_location,
-                     "In call to `{}`, mismatched arity. Expected {} type arguments but got {}",
-                     interner.lookup(proc_name),
-                     procedure_info.type_parameters.len(),
-                     generic_args.len()
                   );
                }
 
@@ -1356,32 +1396,6 @@ fn get_type(
                            expected_type_str,
                            interner.lookup(arg.name.unwrap())
                         );
-                     }
-                  }
-
-                  if generic_args.len() == procedure_info.type_parameters.len() {
-                     for (g_arg, constraints) in generic_args.iter().zip(procedure_info.type_parameters.iter()) {
-                        if matches!(g_arg.gtype, ExpressionType::Value(ValueType::Unresolved(_))) {
-                           // We have already errored on this argument
-                           continue;
-                        }
-
-                        for constraint in constraints {
-                           match interner.lookup(*constraint) {
-                              "Enum" => {
-                                 if !matches!(g_arg.gtype, ExpressionType::Value(ValueType::Enum(_))) {
-                                    rolandc_error!(
-                                       err_manager,
-                                       g_arg.location,
-                                       "In call to `{}`, encountered generic argument of type {} which does not meet the constraint `Enum`",
-                                       interner.lookup(proc_name),
-                                       g_arg.gtype.as_roland_type_info(interner),
-                                    );
-                                 }
-                              }
-                              _ => unreachable!(),
-                           }
-                        }
                      }
                   }
                }

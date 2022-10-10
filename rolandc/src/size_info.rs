@@ -140,7 +140,7 @@ pub fn value_type_mem_alignment(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, s
       ValueType::Unit => 1,
       ValueType::Never => 1,
       ValueType::FunctionPointer { .. } => 4, // @FixedPointerWidth
-      ValueType::FunctionItem(_) => 1,
+      ValueType::FunctionItem(_, _) => 1,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().strictest_alignment,
       ValueType::Array(a_type, _len) => mem_alignment(a_type, ei, si),
@@ -168,9 +168,9 @@ fn sizeof_value_type_values(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &
       ValueType::Never => 0,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().values_size,
-      ValueType::Array(a_type, len) => sizeof_type_values(a_type, ei, si) * (*len as u32),
+      ValueType::Array(a_type, len) => sizeof_type_values(a_type, ei, si) * (*len),
       ValueType::FunctionPointer { .. } => 1,
-      ValueType::FunctionItem(_) => 0,
+      ValueType::FunctionItem(_, _) => 0,
    }
 }
 
@@ -222,9 +222,9 @@ fn sizeof_value_type_mem(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &Has
       ValueType::Unit => 0,
       ValueType::Never => 0,
       ValueType::FunctionPointer { .. } => 4, // @FixedPointerWidth
-      ValueType::FunctionItem(_) => 0,
+      ValueType::FunctionItem(_, _) => 0,
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => si.get(x).unwrap().mem_size,
-      ValueType::Array(a_type, len) => sizeof_type_mem(a_type, ei, si) * (*len as u32),
+      ValueType::Array(a_type, len) => sizeof_type_mem(a_type, ei, si) * (*len),
    }
 }

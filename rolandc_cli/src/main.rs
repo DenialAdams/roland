@@ -1,4 +1,5 @@
 #![warn(clippy::pedantic)]
+#![allow(clippy::uninlined_format_args)] // I'm an old man and I like the way it was before
 #![allow(clippy::match_same_arms)] // Sometimes I find this more clear (when it's just calling something)
 #![allow(clippy::unnecessary_wraps)] // False positives
 
