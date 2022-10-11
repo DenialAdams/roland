@@ -12,8 +12,8 @@ use crate::error_handling::error_handling_macros::{
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, GenericArgumentNode, IdentifierNode, Program,
-   Statement, StatementNode, UnOp, VariableId,
+   ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, GenericArgumentNode,
+   IdentifierNode, Program, Statement, StatementNode, UnOp, VariableId,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, value_type_mem_alignment};
@@ -142,9 +142,12 @@ pub fn resolve_value_type(
       ValueType::Array(exp, _) => resolve_type(exp, ei, si),
       ValueType::CompileError => Ok(()),
       ValueType::Enum(_) => Ok(()),
-      ValueType::ProcedurePointer { parameters, ret_val } => {
+      ValueType::ProcedurePointer {
+         parameters,
+         ret_type: ret_val,
+      } => {
          let mut failed_to_resolve = false;
-         for parameter in parameters {
+         for parameter in parameters.iter_mut() {
             failed_to_resolve |= resolve_type(parameter, ei, si).is_err();
          }
          failed_to_resolve |= resolve_type(ret_val, ei, si).is_err();
@@ -300,8 +303,11 @@ pub fn type_and_check_validity(
 
       let p_const_expr = &validation_context.expressions[p_const.value];
 
-      if p_const.const_type != *p_const_expr.exp_type.as_ref().unwrap()
-         && !p_const_expr.exp_type.as_ref().unwrap().is_error()
+      if !types_compatible(
+         &p_const.const_type,
+         p_const_expr.exp_type.as_ref().unwrap(),
+         &validation_context,
+      ) && !p_const_expr.exp_type.as_ref().unwrap().is_error()
       {
          let actual_type_str = p_const_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
          rolandc_error_w_details!(
@@ -322,8 +328,11 @@ pub fn type_and_check_validity(
 
       let p_static_expr = &validation_context.expressions[p_static.value.unwrap()];
 
-      if p_static.static_type != *p_static_expr.exp_type.as_ref().unwrap()
-         && !p_static_expr.exp_type.as_ref().unwrap().is_error()
+      if !types_compatible(
+         &p_static.static_type,
+         p_static_expr.exp_type.as_ref().unwrap(),
+         &validation_context,
+      ) && !p_static_expr.exp_type.as_ref().unwrap().is_error()
       {
          let actual_type_str = p_static_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
          rolandc_error_w_details!(
@@ -633,7 +642,11 @@ fn type_statement(
 
          if !en.exp_type.as_ref().unwrap().is_error()
             && !en.exp_type.as_ref().unwrap().is_never()
-            && en.exp_type.as_ref().unwrap() != &cur_procedure_info.ret_type
+            && !types_compatible(
+               en.exp_type.as_ref().unwrap(),
+               &cur_procedure_info.ret_type,
+               validation_context,
+            )
          {
             rolandc_error!(
                err_manager,
@@ -655,7 +668,10 @@ fn type_statement(
 
          let en = &validation_context.expressions[*en];
 
-         let result_type = if dt.is_some() && *dt != en.exp_type && !en.exp_type.as_ref().unwrap().is_error() {
+         let result_type = if dt.is_some()
+            && !types_compatible(dt.as_ref().unwrap(), en.exp_type.as_ref().unwrap(), validation_context)
+            && !en.exp_type.as_ref().unwrap().is_error()
+         {
             rolandc_error_w_details!(
                err_manager,
                &[(statement.location, "declaration"), (en.location, "expression")],
@@ -672,11 +688,14 @@ fn type_statement(
             rolandc_error_w_details!(
                err_manager,
                &[(statement.location, "declaration")],
-               "Variable `{}` is declared with undefined type `{}`",
+               "Variable `{}` is declared with undefined type {}",
                interner.lookup(id.identifier),
                dt_str,
             );
             ExpressionType::Value(ValueType::CompileError)
+         } else if let Some(t) = dt {
+            // Prefer the declared type for coercion situations
+            t.clone()
          } else {
             en.exp_type.clone().unwrap()
          };
@@ -804,7 +823,7 @@ fn get_type(
             rolandc_error!(
                err_manager,
                expr_location,
-               "Undeclared type `{}`",
+               "Undeclared type {}",
                target_type.as_roland_type_info(interner),
             );
 
@@ -1052,7 +1071,7 @@ fn get_type(
                   (lhs_expr.location, "left hand side"),
                   (rhs_expr.location, "right hand side")
                ],
-               "Binary operator {:?} requires LHS and RHS to have identical type; instead got {} and {}",
+               "Binary operator {:?} requires LHS and RHS to have identical types; instead got {} and {}",
                operator,
                lhs_type.as_roland_type_info(interner),
                rhs_type.as_roland_type_info(interner)
@@ -1192,7 +1211,7 @@ fn get_type(
             .is_err()
             {
                let etype_str = g_arg.gtype.as_roland_type_info(interner);
-               rolandc_error!(err_manager, g_arg.location, "Undeclared type `{}`", etype_str,);
+               rolandc_error!(err_manager, g_arg.location, "Undeclared type {}", etype_str,);
             }
          }
 
@@ -1213,7 +1232,7 @@ fn get_type(
             None => {
                rolandc_error!(
                   err_manager,
-                  expr_location,
+                  id.location,
                   "Encountered undefined symbol `{}`",
                   interner.lookup(id.identifier)
                );
@@ -1256,126 +1275,40 @@ fn get_type(
             type_expression(err_manager, arg.expr, validation_context, interner);
          }
 
-         let proc_name = match validation_context.expressions[*proc_expr].exp_type.as_ref().unwrap() {
-            ExpressionType::Value(ValueType::ProcedureItem(proc_name, _bound_type_parameters)) => *proc_name,
-            ExpressionType::Value(ValueType::ProcedurePointer { .. }) => todo!(),
-            ExpressionType::Value(ValueType::CompileError) => return ExpressionType::Value(ValueType::CompileError),
+         // sad clone :(
+         match validation_context.expressions[*proc_expr].exp_type.clone().unwrap() {
+            ExpressionType::Value(ValueType::ProcedureItem(proc_name, _)) => {
+               let procedure_info = validation_context.procedure_info.get(&proc_name).unwrap();
+               check_procedure_call(
+                  args,
+                  &procedure_info.parameters,
+                  &procedure_info.named_parameters,
+                  expr_location,
+                  interner,
+                  validation_context,
+                  err_manager,
+               );
+               procedure_info.ret_type.clone()
+            }
+            ExpressionType::Value(ValueType::ProcedurePointer { parameters, ret_type }) => {
+               check_procedure_call(
+                  args,
+                  &parameters,
+                  &HashMap::new(),
+                  expr_location,
+                  interner,
+                  validation_context,
+                  err_manager,
+               );
+               ret_type.deref().clone()
+            }
+            ExpressionType::Value(ValueType::CompileError) => ExpressionType::Value(ValueType::CompileError),
             bad_type => {
                rolandc_error!(
                   err_manager,
                   validation_context.expressions[*proc_expr].location,
-                  "Attempting to invoke a procedure on a non-procedure type `{}`",
+                  "Attempting to invoke a procedure on non-procedure type {}",
                   bad_type.as_roland_type_info(interner),
-               );
-               return ExpressionType::Value(ValueType::CompileError);
-            }
-         };
-
-         match validation_context.procedure_info.get(&proc_name) {
-            Some(procedure_info) => {
-               // Validate that there are no non-named arguments after named arguments, then reorder the argument list
-               let first_named_arg = args.iter().enumerate().find(|(_, arg)| arg.name.is_some()).map(|x| x.0);
-               let last_normal_arg = args
-                  .iter()
-                  .enumerate()
-                  .rfind(|(_, arg)| arg.name.is_none())
-                  .map(|x| x.0);
-               let args_in_order = first_named_arg
-                  .and_then(|x| last_normal_arg.map(|y| x > y))
-                  .unwrap_or(true);
-
-               if !args_in_order {
-                  rolandc_error!(
-                     err_manager,
-                     expr_location,
-                     "Call to `{}` has named argument(s) which come before non-named argument(s)",
-                     interner.lookup(proc_name),
-                  );
-               }
-
-               if args_in_order && procedure_info.parameters.len() != args.len() {
-                  rolandc_error!(
-                     err_manager,
-                     expr_location,
-                     "In call to `{}`, mismatched arity. Expected {} arguments but got {}",
-                     interner.lookup(proc_name),
-                     procedure_info.parameters.len(),
-                     args.len()
-                  );
-                  // We shortcircuit here, because there will likely be lots of mismatched types if an arg was forgotten
-               } else if args_in_order {
-                  let expected_types = procedure_info.parameters.iter();
-                  for (i, (actual, expected)) in args.iter().zip(expected_types).enumerate() {
-                     // These should be at the end by now, so we've checked everything we needed to
-                     if actual.name.is_some() {
-                        break;
-                     }
-
-                     try_set_inferred_type(expected, actual.expr, validation_context);
-
-                     let actual_expr = &validation_context.expressions[actual.expr];
-                     let actual_type = actual_expr.exp_type.as_ref().unwrap();
-
-                     if actual_type != expected && !actual_type.is_error() {
-                        let actual_type_str = actual_type.as_roland_type_info(interner);
-                        let expected_type_str = expected.as_roland_type_info(interner);
-                        rolandc_error!(
-                           err_manager,
-                           actual_expr.location,
-                           "In call to `{}`, argument at position {} is of type {} when we expected {}",
-                           interner.lookup(proc_name),
-                           i,
-                           actual_type_str,
-                           expected_type_str,
-                        );
-                     }
-                  }
-
-                  for arg in args.iter().filter(|x| x.name.is_some()) {
-                     let expected = procedure_info.named_parameters.get(&arg.name.unwrap());
-
-                     if expected.is_none() {
-                        rolandc_error!(
-                           err_manager,
-                           expr_location,
-                           "In call to `{}`, encountered named argument `{}` that does not correspond to any named parameter",
-                           interner.lookup(proc_name),
-                           interner.lookup(arg.name.unwrap()),
-                        );
-                        continue;
-                     }
-
-                     let expected = expected.unwrap();
-
-                     try_set_inferred_type(expected, arg.expr, validation_context);
-
-                     let arg_expr = &validation_context.expressions[arg.expr];
-
-                     let actual_type = arg_expr.exp_type.as_ref().unwrap();
-                     if actual_type != expected && !actual_type.is_error() {
-                        let actual_type_str = actual_type.as_roland_type_info(interner);
-                        let expected_type_str = expected.as_roland_type_info(interner);
-                        rolandc_error!(
-                           err_manager,
-                           expr_location,
-                           "In call to `{}`, encountered argument of type {} when we expected {} for named parameter {}",
-                           interner.lookup(proc_name),
-                           actual_type_str,
-                           expected_type_str,
-                           interner.lookup(arg.name.unwrap())
-                        );
-                     }
-                  }
-               }
-
-               procedure_info.ret_type.clone()
-            }
-            None => {
-               rolandc_error!(
-                  err_manager,
-                  expr_location,
-                  "Encountered call to undefined procedure `{}`",
-                  interner.lookup(proc_name),
                );
                ExpressionType::Value(ValueType::CompileError)
             }
@@ -1561,7 +1494,11 @@ fn get_type(
                || this_elem_expr.exp_type.as_ref().unwrap().is_error()
             {
                // avoid cascading errors
-            } else if last_elem_expr.exp_type.as_ref().unwrap() != this_elem_expr.exp_type.as_ref().unwrap() {
+            } else if !types_compatible(
+               last_elem_expr.exp_type.as_ref().unwrap(),
+               this_elem_expr.exp_type.as_ref().unwrap(),
+               validation_context,
+            ) {
                rolandc_error_w_details!(
                   err_manager,
                   &[
@@ -1739,6 +1676,106 @@ fn error_on_unknown_literals(err_manager: &mut ErrorManager, validation_context:
    }
 }
 
+fn check_procedure_call(
+   args: &[ArgumentNode],
+   parameters: &[ExpressionType],
+   named_parameters: &HashMap<StrId, ExpressionType>,
+   call_location: SourceInfo,
+   interner: &Interner,
+   validation_context: &mut ValidationContext,
+   err_manager: &mut ErrorManager,
+) {
+   // Validate that there are no positional arguments after named arguments
+   let first_named_arg = args.iter().enumerate().find(|(_, arg)| arg.name.is_some()).map(|x| x.0);
+   let last_normal_arg = args
+      .iter()
+      .enumerate()
+      .rfind(|(_, arg)| arg.name.is_none())
+      .map(|x| x.0);
+   let args_in_order = first_named_arg
+      .and_then(|x| last_normal_arg.map(|y| x > y))
+      .unwrap_or(true);
+
+   if !args_in_order {
+      rolandc_error!(
+         err_manager,
+         call_location,
+         "Procedure call has named argument(s) which come before non-named argument(s)",
+      );
+   }
+
+   if args_in_order && parameters.len() != args.len() {
+      rolandc_error!(
+         err_manager,
+         call_location,
+         "Mismatched arity for procedure call. Expected {} arguments but got {}",
+         parameters.len(),
+         args.len()
+      );
+      // We shortcircuit here, because there will likely be lots of mismatched types if an arg was forgotten
+   } else if args_in_order {
+      let expected_types = parameters.iter();
+      for (i, (actual, expected)) in args.iter().zip(expected_types).enumerate() {
+         // These should be at the end by now, so we've checked everything we needed to
+         if actual.name.is_some() {
+            break;
+         }
+
+         try_set_inferred_type(expected, actual.expr, validation_context);
+
+         let actual_expr = &validation_context.expressions[actual.expr];
+         let actual_type = actual_expr.exp_type.as_ref().unwrap();
+
+         if !types_compatible(actual_type, expected, validation_context) && !actual_type.is_error() {
+            let actual_type_str = actual_type.as_roland_type_info(interner);
+            let expected_type_str = expected.as_roland_type_info(interner);
+            rolandc_error!(
+               err_manager,
+               actual_expr.location,
+               "Argument at position {} is of type {} when we expected {}",
+               i,
+               actual_type_str,
+               expected_type_str,
+            );
+         }
+      }
+
+      for arg in args.iter().filter(|x| x.name.is_some()) {
+         let expected = named_parameters.get(&arg.name.unwrap());
+
+         if expected.is_none() {
+            rolandc_error!(
+               err_manager,
+               call_location,
+               "Encountered named argument `{}` that does not correspond to any named parameter",
+               interner.lookup(arg.name.unwrap()),
+            );
+            continue;
+         }
+
+         let expected = expected.unwrap();
+
+         try_set_inferred_type(expected, arg.expr, validation_context);
+
+         let arg_expr = &validation_context.expressions[arg.expr];
+
+         let actual_type = arg_expr.exp_type.as_ref().unwrap();
+         if actual_type != expected && !actual_type.is_error() {
+            let actual_type_str = actual_type.as_roland_type_info(interner);
+            let expected_type_str = expected.as_roland_type_info(interner);
+            rolandc_error!(
+               err_manager,
+               arg_expr.location,
+               "Encountered argument of type {} when we expected {} for named parameter {}",
+               actual_type_str,
+               expected_type_str,
+               interner.lookup(arg.name.unwrap())
+            );
+         }
+      }
+   }
+}
+
 fn check_procedure_item(
    proc_name: StrId,
    proc_info: &ProcedureInfo,
@@ -1789,5 +1826,27 @@ fn check_procedure_item(
          type_arguments.len()
       );
       ExpressionType::Value(ValueType::CompileError)
+   }
+}
+
+fn types_compatible(t1: &ExpressionType, t2: &ExpressionType, validation_context: &ValidationContext) -> bool {
+   match (t1, t2) {
+      (
+         ExpressionType::Value(ValueType::ProcedurePointer { parameters, ret_type }),
+         ExpressionType::Value(ValueType::ProcedureItem(proc_name, _bound_type_params)),
+      )
+      | (
+         ExpressionType::Value(ValueType::ProcedureItem(proc_name, _bound_type_params)),
+         ExpressionType::Value(ValueType::ProcedurePointer { parameters, ret_type }),
+      ) => {
+         let procedure_info = validation_context.procedure_info.get(proc_name).unwrap();
+
+         if !procedure_info.named_parameters.is_empty() {
+            return false;
+         }
+
+         return procedure_info.parameters.as_slice() == &**parameters && procedure_info.ret_type == **ret_type;
+      }
+      _ => t1 == t2,
    }
 }

@@ -258,7 +258,7 @@ fn write_value_type_as_result(
             let _ = out.pop();
          }
       }
-      ValueType::ProcedurePointer { parameters, ret_val } => todo!(),
+      ValueType::ProcedurePointer { .. } => write!(out, "(result i32)").unwrap(),
    }
 }
 
@@ -319,7 +319,7 @@ fn write_value_type_as_params(
             let _ = out.pop();
          }
       }
-      ValueType::ProcedurePointer { parameters, ret_val } => todo!(),
+      ValueType::ProcedurePointer { .. } => write!(out, "(param i32)").unwrap(),
    }
 }
 
@@ -375,7 +375,7 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumIn
             let _ = out.pop();
          }
       }
-      ValueType::ProcedurePointer { parameters, ret_val } => todo!(),
+      ValueType::ProcedurePointer { .. } => write!(out, "i32").unwrap(),
    }
 }
 

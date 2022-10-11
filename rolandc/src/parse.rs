@@ -425,7 +425,7 @@ pub fn astify(
       match peeked_token {
          Token::KeywordExtern => {
             let extern_kw = lexer.next();
-            expect(&mut lexer, &mut parse_context, Token::KeywordProcedureDef)?;
+            expect(&mut lexer, &mut parse_context, Token::KeywordProc)?;
             let p = parse_external_procedure(
                &mut lexer,
                &mut parse_context,
@@ -436,7 +436,7 @@ pub fn astify(
          }
          Token::KeywordBuiltin => {
             let builtin_kw = lexer.next();
-            expect(&mut lexer, &mut parse_context, Token::KeywordProcedureDef)?;
+            expect(&mut lexer, &mut parse_context, Token::KeywordProc)?;
             let p = parse_external_procedure(
                &mut lexer,
                &mut parse_context,
@@ -445,7 +445,7 @@ pub fn astify(
             )?;
             external_procedures.push(p);
          }
-         Token::KeywordProcedureDef => {
+         Token::KeywordProc => {
             let def = lexer.next();
             let p = parse_procedure(&mut lexer, &mut parse_context, def.source_info, expressions)?;
             procedures.push(p);
@@ -1068,6 +1068,36 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
       Token::Exclam => {
          let token = l.next();
          (token.source_info, ValueType::Never)
+      }
+      Token::KeywordProc => {
+         let _ = l.next();
+         expect(l, parse_context, Token::OpenParen)?;
+         let mut parameters = vec![];
+         loop {
+            if l.peek_token() == Token::CloseParen {
+               break;
+            }
+            parameters.push(parse_type(l, parse_context)?.e_type);
+            if l.peek_token() == Token::CloseParen {
+               break;
+            }
+            expect(l, parse_context, Token::Comma)?;
+         }
+         let close_paren = expect(l, parse_context, Token::CloseParen)?;
+         let (return_type, last_location) = if l.peek_token() == Token::Arrow {
+            let _ = l.next();
+            let return_type_p = parse_type(l, parse_context)?;
+            (return_type_p.e_type, return_type_p.location)
+         } else {
+            (ExpressionType::Value(ValueType::Unit), close_paren.source_info)
+         };
+         (
+            last_location,
+            ValueType::ProcedurePointer {
+               parameters: parameters.into_boxed_slice(),
+               ret_type: Box::new(return_type),
+            },
+         )
       }
       _ => {
          let type_token = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;

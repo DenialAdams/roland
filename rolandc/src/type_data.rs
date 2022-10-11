@@ -83,8 +83,8 @@ pub enum ValueType {
    Enum(StrId),
    ProcedureItem(StrId, Box<[ExpressionType]>),
    ProcedurePointer {
-      parameters: Vec<ExpressionType>,
-      ret_val: Box<ExpressionType>,
+      parameters: Box<[ExpressionType]>,
+      ret_type: Box<ExpressionType>,
    },
    Unresolved(StrId), // Could be a struct, enum, generic parameter, or fail to resolve (compilation error)
    Never,
@@ -345,7 +345,10 @@ impl ValueType {
             Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info(interner), length))
          }
          ValueType::Unresolved(x) => Cow::Borrowed(interner.lookup(*x)),
-         ValueType::ProcedurePointer { parameters, ret_val } => {
+         ValueType::ProcedurePointer {
+            parameters,
+            ret_type: ret_val,
+         } => {
             let params: String = parameters
                .iter()
                .map(|x| x.as_roland_type_info(interner))
@@ -355,10 +358,7 @@ impl ValueType {
          }
          ValueType::ProcedureItem(proc_name, type_arguments) => {
             if type_arguments.is_empty() {
-               Cow::Owned(format!(
-                  "proc() {{{}}}",
-                  interner.lookup(*proc_name),
-               ))
+               Cow::Owned(format!("proc() {{{}}}", interner.lookup(*proc_name),))
             } else {
                let type_argument_string = type_arguments
                   .iter()
@@ -402,11 +402,16 @@ impl ValueType {
          ValueType::CompileError => Cow::Borrowed("ERROR"),
          ValueType::Struct(x) => Cow::Borrowed(interner.lookup(*x)),
          ValueType::Enum(x) => Cow::Borrowed(interner.lookup(*x)),
-         ValueType::Array(i_type, length) => {
-            Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info_like_source(interner), length))
-         }
+         ValueType::Array(i_type, length) => Cow::Owned(format!(
+            "[{}; {}]",
+            i_type.as_roland_type_info_like_source(interner),
+            length
+         )),
          ValueType::Unresolved(x) => Cow::Borrowed(interner.lookup(*x)),
-         ValueType::ProcedurePointer { parameters, ret_val } => {
+         ValueType::ProcedurePointer {
+            parameters,
+            ret_type: ret_val,
+         } => {
             let params: String = parameters
                .iter()
                .map(|x| x.as_roland_type_info(interner))
