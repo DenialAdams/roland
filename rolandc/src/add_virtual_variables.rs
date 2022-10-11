@@ -120,13 +120,21 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
             vv_context.declare_vv(*array);
          }
       }
-      Expression::ProcedureCall { args, .. } => {
+      Expression::ProcedureCall { args, proc_expr } => {
+         vv_expr(*proc_expr, vv_context);
          for arg in args.iter() {
             vv_expr(arg.expr, vv_context);
 
             if arg.name.is_some() {
                vv_context.declare_vv(arg.expr);
             }
+         }
+
+         if matches!(
+            vv_context.expressions[*proc_expr].exp_type.as_ref().unwrap(),
+            ExpressionType::Value(ValueType::ProcedurePointer { .. })
+         ) {
+            vv_context.declare_vv(*proc_expr);
          }
       }
       Expression::BinaryOperator {

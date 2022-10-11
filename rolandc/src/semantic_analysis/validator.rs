@@ -1840,7 +1840,7 @@ fn types_compatible(t1: &ExpressionType, t2: &ExpressionType, validation_context
          if !procedure_info.named_parameters.is_empty() {
             return false;
          }
-         
+
          if procedure_info.is_compiler_builtin {
             return false;
          }

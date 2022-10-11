@@ -162,7 +162,8 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
          cg_expr(*array, cg_context, err_manager);
          cg_expr(*index, cg_context, err_manager);
       }
-      Expression::ProcedureCall { args, .. } => {
+      Expression::ProcedureCall { args, proc_expr } => {
+         cg_expr(*proc_expr, cg_context, err_manager);
          for arg in args.iter() {
             cg_expr(arg.expr, cg_context, err_manager);
          }

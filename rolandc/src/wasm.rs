@@ -30,6 +30,7 @@ struct GenerationContext<'a> {
    sum_sizeof_locals_mem: u32,
    expressions: &'a ExpressionPool,
    procedure_virtual_vars: &'a IndexMap<ExpressionId, VariableId>,
+   procedure_to_table_index: IndexMap<StrId, u32>,
 }
 
 struct PrettyWasmWriter {
@@ -177,6 +178,11 @@ impl PrettyWasmWriter {
    fn emit_call(&mut self, func_name: StrId, interner: &Interner) {
       self.emit_spaces();
       writeln!(self.out, "call ${}", interner.lookup(func_name)).unwrap();
+   }
+
+   fn emit_indirect_call(&mut self) {
+      self.emit_spaces();
+      writeln!(self.out, "call_indirect 0").unwrap();
    }
 
    fn emit_const_i32(&mut self, value: u32) {
@@ -486,6 +492,7 @@ pub fn emit_wasm(
       sum_sizeof_locals_mem: 0,
       expressions,
       procedure_virtual_vars: &IndexMap::new(),
+      procedure_to_table_index: IndexMap::new(),
    };
 
    for external_procedure in program
@@ -848,6 +855,17 @@ pub fn emit_wasm(
       generation_context.out.close();
    }
 
+   if !generation_context.procedure_to_table_index.is_empty() {
+      generation_context.out.emit_spaces();
+      writeln!(generation_context.out.out, "(table {} funcref)", generation_context.procedure_to_table_index.len()).unwrap();
+      generation_context.out.emit_spaces();
+      write!(generation_context.out.out, "(elem (i32.const 0) ").unwrap();
+      for (key, _) in generation_context.procedure_to_table_index.iter() {
+         write!(generation_context.out.out, "${} ", interner.lookup(*key)).unwrap();
+      }
+      writeln!(generation_context.out.out, ")").unwrap();
+   }
+
    generation_context.out.out
 }
 
@@ -1184,7 +1202,17 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
 fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext, interner: &mut Interner) {
    let expr_node = &generation_context.expressions[expr_index];
    match &expr_node.expression {
-      Expression::UnitLiteral | Expression::BoundFcnLiteral(_, _) => (),
+      Expression::UnitLiteral => (),
+      Expression::BoundFcnLiteral(proc_name, _bound_type_arguments) => {
+         // Type arguments will have to be part fo the key eventually, but it's fine(TM) for now to skip them since
+         // only builtins can use type arguments and builtins can't become function pointers
+         if let ExpressionType::Value(ValueType::ProcedurePointer { .. }) = expr_node.exp_type.as_ref().unwrap() {
+            // TODO truncation here? eh
+            let next_index = generation_context.procedure_to_table_index.len() as u32;
+            let my_index = *generation_context.procedure_to_table_index.entry(proc_name.identifier).or_insert(next_index);
+            generation_context.out.emit_const_i32(my_index);
+         }
+      }
       Expression::BoolLiteral(x) => {
          generation_context.out.emit_const_i32(u32::from(*x));
       }
@@ -1631,8 +1659,26 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          unreachable!()
       }
       Expression::ProcedureCall { proc_expr, args } => {
-         do_emit_and_load_lval(*proc_expr, generation_context, interner);
-         // TODO if this produced a fcn pointer value, need to use vv to save it and for after the arguments
+         if matches!(
+            generation_context.expressions[*proc_expr].exp_type,
+            Some(ExpressionType::Value(ValueType::ProcedurePointer { .. }))
+         ) {
+            let proc_expr_vv = generation_context
+               .procedure_virtual_vars
+               .get(proc_expr)
+               .copied()
+               .unwrap();
+            get_stack_address_of_local(proc_expr_vv, generation_context);
+            do_emit_and_load_lval(*proc_expr, generation_context, interner);
+            store(
+               generation_context.expressions[*proc_expr].exp_type.as_ref().unwrap(),
+               generation_context,
+               interner,
+            );
+         } else {
+            // shouldn't place anything on the stack
+            do_emit_and_load_lval(*proc_expr, generation_context, interner);
+         }
 
          // Output the non-named parameters
          let mut first_named_arg = None;
@@ -1689,11 +1735,17 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                generation_context.out.emit_call(*proc_name, interner);
             }
             ExpressionType::Value(ValueType::ProcedurePointer { .. }) => {
-               // TODO
-               // 1. table id
-               // 2. load vv for fcn ptr id
-               // 3. emit indirect call
-               todo!()
+               let proc_expr_vv = generation_context
+                  .procedure_virtual_vars
+                  .get(proc_expr)
+                  .copied()
+                  .unwrap();
+               get_stack_address_of_local(proc_expr_vv, generation_context);
+               load(
+                  generation_context.expressions[*proc_expr].exp_type.as_ref().unwrap(),
+                  generation_context,
+               );
+               generation_context.out.emit_indirect_call();
             }
             _ => unreachable!(),
          };

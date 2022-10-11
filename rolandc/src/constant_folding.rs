@@ -170,7 +170,8 @@ fn fold_expr(
       }
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::Variable(_) => None,
-      Expression::ProcedureCall { args, .. } => {
+      Expression::ProcedureCall { args, proc_expr } => {
+         try_fold_and_replace_expr(*proc_expr, err_manager, folding_context, interner);
          for arg in args.iter().map(|x| x.expr) {
             try_fold_and_replace_expr(arg, err_manager, folding_context, interner);
          }
