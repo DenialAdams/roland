@@ -482,6 +482,7 @@ pub fn populate_type_and_procedure_info(
                .collect(),
             ret_type: definition.ret_type.e_type.clone(),
             location: source_location,
+            is_compiler_builtin: extern_impl_source == Some(std::mem::discriminant(&ProcImplSource::Builtin)),
          },
       ) {
          let procedure_name_str = interner.lookup(definition.name);

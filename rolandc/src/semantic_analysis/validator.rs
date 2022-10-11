@@ -1494,11 +1494,7 @@ fn get_type(
                || this_elem_expr.exp_type.as_ref().unwrap().is_error()
             {
                // avoid cascading errors
-            } else if !types_compatible(
-               last_elem_expr.exp_type.as_ref().unwrap(),
-               this_elem_expr.exp_type.as_ref().unwrap(),
-               validation_context,
-            ) {
+            } else if last_elem_expr.exp_type.as_ref().unwrap() != this_elem_expr.exp_type.as_ref().unwrap() {
                rolandc_error_w_details!(
                   err_manager,
                   &[
@@ -1842,6 +1838,10 @@ fn types_compatible(t1: &ExpressionType, t2: &ExpressionType, validation_context
          let procedure_info = validation_context.procedure_info.get(proc_name).unwrap();
 
          if !procedure_info.named_parameters.is_empty() {
+            return false;
+         }
+         
+         if procedure_info.is_compiler_builtin {
             return false;
          }
 
