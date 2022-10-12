@@ -163,7 +163,7 @@ pub struct ExpressionNode {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ExpressionId(usize);
+pub struct ExpressionId(pub usize);
 
 impl Handle for ExpressionId {
    fn new(x: usize) -> Self {

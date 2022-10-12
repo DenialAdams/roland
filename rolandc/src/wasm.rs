@@ -30,7 +30,8 @@ struct GenerationContext<'a> {
    sum_sizeof_locals_mem: u32,
    expressions: &'a ExpressionPool,
    procedure_virtual_vars: &'a IndexMap<ExpressionId, VariableId>,
-   procedure_to_table_index: IndexMap<StrId, u32>,
+   procedure_to_table_index: IndexSet<StrId>,
+   indirect_callees: Vec<ExpressionId>,
 }
 
 struct PrettyWasmWriter {
@@ -72,6 +73,30 @@ impl PrettyWasmWriter {
       }
       self.out.push(b' ');
       write_type_as_result(result_type, &mut self.out, ei, si);
+      self.out.push(b'\n');
+      self.depth += 1;
+   }
+
+   fn emit_function_type<'a, I>(
+      &mut self,
+      name: ExpressionId,
+      params: I,
+      result_type: &ExpressionType,
+      ei: &IndexMap<StrId, EnumInfo>,
+      si: &IndexMap<StrId, StructInfo>,
+   ) where
+      I: IntoIterator<Item = &'a ExpressionType>,
+   {
+      self.emit_spaces();
+      write!(self.out, "(type $::{} (func", name.0).unwrap();
+      for param in params {
+         self.out.push(b' ');
+         write_type_as_params(param, &mut self.out, ei, si);
+      }
+      self.out.push(b' ');
+      write_type_as_result(result_type, &mut self.out, ei, si);
+      self.out.push(b')');
+      self.out.push(b')');
       self.out.push(b'\n');
       self.depth += 1;
    }
@@ -178,11 +203,6 @@ impl PrettyWasmWriter {
    fn emit_call(&mut self, func_name: StrId, interner: &Interner) {
       self.emit_spaces();
       writeln!(self.out, "call ${}", interner.lookup(func_name)).unwrap();
-   }
-
-   fn emit_indirect_call(&mut self) {
-      self.emit_spaces();
-      writeln!(self.out, "call_indirect 0").unwrap();
    }
 
    fn emit_const_i32(&mut self, value: u32) {
@@ -492,7 +512,8 @@ pub fn emit_wasm(
       sum_sizeof_locals_mem: 0,
       expressions,
       procedure_virtual_vars: &IndexMap::new(),
-      procedure_to_table_index: IndexMap::new(),
+      procedure_to_table_index: IndexSet::new(),
+      indirect_callees: Vec::new(),
    };
 
    for external_procedure in program
@@ -860,10 +881,20 @@ pub fn emit_wasm(
       writeln!(generation_context.out.out, "(table {} funcref)", generation_context.procedure_to_table_index.len()).unwrap();
       generation_context.out.emit_spaces();
       write!(generation_context.out.out, "(elem (i32.const 0) ").unwrap();
-      for (key, _) in generation_context.procedure_to_table_index.iter() {
+      for key in generation_context.procedure_to_table_index.iter() {
          write!(generation_context.out.out, "${} ", interner.lookup(*key)).unwrap();
       }
       writeln!(generation_context.out.out, ")").unwrap();
+   }
+
+   for indirect_callee_id in generation_context.indirect_callees.iter() {
+      let pp_type = generation_context.expressions[*indirect_callee_id].exp_type.as_ref().unwrap();
+      match pp_type {
+         ExpressionType::Value(ValueType::ProcedurePointer { parameters, ret_type }) => {
+            generation_context.out.emit_function_type(*indirect_callee_id, parameters.iter(), ret_type, generation_context.enum_info, generation_context.struct_info);
+         }
+         _ => unreachable!(),
+      }
    }
 
    generation_context.out.out
@@ -1204,13 +1235,12 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
    match &expr_node.expression {
       Expression::UnitLiteral => (),
       Expression::BoundFcnLiteral(proc_name, _bound_type_arguments) => {
-         // Type arguments will have to be part fo the key eventually, but it's fine(TM) for now to skip them since
+         // Type arguments will have to be part of the key eventually, but it's fine(TM) for now to skip them since
          // only builtins can use type arguments and builtins can't become function pointers
          if let ExpressionType::Value(ValueType::ProcedurePointer { .. }) = expr_node.exp_type.as_ref().unwrap() {
-            // TODO truncation here? eh
-            let next_index = generation_context.procedure_to_table_index.len() as u32;
-            let my_index = *generation_context.procedure_to_table_index.entry(proc_name.identifier).or_insert(next_index);
-            generation_context.out.emit_const_i32(my_index);
+            let (my_index, _) = generation_context.procedure_to_table_index.insert_full(proc_name.identifier);
+            // todo: truncation
+            generation_context.out.emit_const_i32(my_index as u32);
          }
       }
       Expression::BoolLiteral(x) => {
@@ -1745,7 +1775,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                   generation_context.expressions[*proc_expr].exp_type.as_ref().unwrap(),
                   generation_context,
                );
-               generation_context.out.emit_indirect_call();
+               writeln!(generation_context.out.out, "call_indirect 0 (type $::{})", proc_expr.0).unwrap();
+               generation_context.indirect_callees.push(*proc_expr);
             }
             _ => unreachable!(),
          };

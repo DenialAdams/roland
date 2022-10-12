@@ -657,16 +657,16 @@ fn type_statement(
             );
          }
       }
-      Statement::VariableDeclaration(id, en, dt, var_id) => {
-         type_expression(err_manager, *en, validation_context, interner);
+      Statement::VariableDeclaration(id, enid, dt, var_id) => {
+         type_expression(err_manager, *enid, validation_context, interner);
 
          if let Some(v) = dt.as_mut() {
             // Failure to resolve is handled below
             let _ = resolve_type(v, validation_context.enum_info, validation_context.struct_info);
-            try_set_inferred_type(v, *en, validation_context);
+            try_set_inferred_type(v, *enid, validation_context);
          }
 
-         let en = &validation_context.expressions[*en];
+         let en = &validation_context.expressions[*enid];
 
          let result_type = if dt.is_some()
             && !types_compatible(dt.as_ref().unwrap(), en.exp_type.as_ref().unwrap(), validation_context)
@@ -695,6 +695,7 @@ fn type_statement(
             ExpressionType::Value(ValueType::CompileError)
          } else if let Some(t) = dt {
             // Prefer the declared type for coercion situations
+            validation_context.expressions[*enid].exp_type = Some(t.clone());
             t.clone()
          } else {
             en.exp_type.clone().unwrap()
