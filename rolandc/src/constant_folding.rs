@@ -780,6 +780,12 @@ fn fold_expr(
                // nothing to do
                UnOp::AddressOf | UnOp::Dereference => None,
             }
+         } else if matches!(expr.expression, Expression::BoundFcnLiteral(_, _)) {
+            Some(ExpressionNode {
+               expression: expr.expression.clone(),
+               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
+               location: expr_to_fold_location,
+            })
          } else {
             None
          }
