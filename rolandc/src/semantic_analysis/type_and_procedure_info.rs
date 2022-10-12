@@ -85,7 +85,11 @@ fn resolve_to_type_or_generic_parameter(
 
    let param_type_name = match the_type.get_value_type_or_value_being_pointed_to() {
       ValueType::Unresolved(x) => *x,
-      _ => unreachable!(),
+      _ => {
+         // Any type that contains other types i.e. an array, procedure pointer... can be unresolved while itself not being Unresolved
+         // We'll just bail here. There will be more sophisticated stuff needed in the future to make this work.
+         return Err(());
+      },
    };
 
    // This could be a generic type parameter

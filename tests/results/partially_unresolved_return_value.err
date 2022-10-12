@@ -1,0 +1,3 @@
+Return type of procedure `foo` is of undeclared type `proc(S) -> ()`
+↳ line 1, column 15 [partially_unresolved_return_value.rol]
+There were 1 semantic errors, bailing
