@@ -1248,17 +1248,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
    let expr_node = &generation_context.expressions[expr_index];
    match &expr_node.expression {
       Expression::UnitLiteral => (),
-      Expression::BoundFcnLiteral(proc_name, _bound_type_arguments) => {
-         // Type arguments will have to be part of the key eventually, but it's fine(TM) for now to skip them since
-         // only builtins can use type arguments and builtins can't become function pointers
-         if let ExpressionType::Value(ValueType::ProcedurePointer { .. }) = expr_node.exp_type.as_ref().unwrap() {
-            let (my_index, _) = generation_context
-               .procedure_to_table_index
-               .insert_full(proc_name.identifier);
-            // todo: truncation
-            generation_context.out.emit_const_i32(my_index as u32);
-         }
-      }
+      Expression::BoundFcnLiteral(_, _) => (),
       Expression::BoolLiteral(x) => {
          generation_context.out.emit_const_i32(u32::from(*x));
       }
@@ -1464,6 +1454,17 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          };
 
          let e = &generation_context.expressions[*e_index];
+
+         if let ExpressionType::Value(ValueType::ProcedureItem(proc_name, _bound_type_params)) =
+            e.exp_type.as_ref().unwrap()
+         {
+            // Type arguments will have to be part of the key eventually, but it's fine(TM) for now to skip them since
+            // only builtins can use type arguments and builtins can't become function pointers
+            let (my_index, _) = generation_context.procedure_to_table_index.insert_full(*proc_name);
+            // todo: truncation
+            generation_context.out.emit_const_i32(my_index as u32);
+            return;
+         }
 
          match un_op {
             UnOp::AddressOf => {

@@ -858,6 +858,7 @@ fn fold_expr(
 
 pub fn is_const(expr: &Expression, expressions: &ExpressionPool) -> bool {
    match expr {
+      Expression::BoundFcnLiteral(_, _) => true,
       Expression::UnitLiteral => true,
       Expression::EnumLiteral(_, _) => true,
       Expression::IntLiteral { .. } => true,

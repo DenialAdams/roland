@@ -1092,6 +1092,38 @@ fn get_type(
 
          let e = &validation_context.expressions[*e];
 
+         if *un_op == UnOp::AddressOf {
+            if let ExpressionType::Value(ValueType::ProcedureItem(proc_name, _bound_type_params)) =
+               e.exp_type.as_ref().unwrap()
+            {
+               // special case
+               let procedure_info = validation_context.procedure_info.get(proc_name).unwrap();
+
+               if procedure_info.is_compiler_builtin {
+                  rolandc_error!(
+                     err_manager,
+                     expr_location,
+                     "Procedure pointers can't be taken to compiler builtins"
+                  );
+                  return ExpressionType::Value(ValueType::CompileError);
+               }
+
+               if !procedure_info.named_parameters.is_empty() {
+                  rolandc_error!(
+                     err_manager,
+                     expr_location,
+                     "Procedure pointers can't be taken to procedures with named arguments"
+                  );
+                  return ExpressionType::Value(ValueType::CompileError);
+               }
+
+               return ExpressionType::Value(ValueType::ProcedurePointer {
+                  parameters: procedure_info.parameters.clone().into_boxed_slice(),
+                  ret_type: Box::new(procedure_info.ret_type.clone()),
+               });
+            }
+         }
+
          let (correct_type, node_type): (&[TypeValidator], _) = match un_op {
             UnOp::Dereference => {
                let mut new_type = e.exp_type.clone().unwrap();
