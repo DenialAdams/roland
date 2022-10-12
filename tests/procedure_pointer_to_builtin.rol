@@ -1,0 +1,3 @@
+proc main() {
+   let y = &sizeof$u64;
+}
