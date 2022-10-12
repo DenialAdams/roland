@@ -303,11 +303,8 @@ pub fn type_and_check_validity(
 
       let p_const_expr = &validation_context.expressions[p_const.value];
 
-      if !types_compatible(
-         &p_const.const_type,
-         p_const_expr.exp_type.as_ref().unwrap(),
-         &validation_context,
-      ) && !p_const_expr.exp_type.as_ref().unwrap().is_error()
+      if p_const.const_type != *p_const_expr.exp_type.as_ref().unwrap()
+         && !p_const_expr.exp_type.as_ref().unwrap().is_error()
       {
          let actual_type_str = p_const_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
          rolandc_error_w_details!(
@@ -328,11 +325,8 @@ pub fn type_and_check_validity(
 
       let p_static_expr = &validation_context.expressions[p_static.value.unwrap()];
 
-      if !types_compatible(
-         &p_static.static_type,
-         p_static_expr.exp_type.as_ref().unwrap(),
-         &validation_context,
-      ) && !p_static_expr.exp_type.as_ref().unwrap().is_error()
+      if p_static.static_type != *p_static_expr.exp_type.as_ref().unwrap()
+         && !p_static_expr.exp_type.as_ref().unwrap().is_error()
       {
          let actual_type_str = p_static_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
          rolandc_error_w_details!(
@@ -642,11 +636,7 @@ fn type_statement(
 
          if !en.exp_type.as_ref().unwrap().is_error()
             && !en.exp_type.as_ref().unwrap().is_never()
-            && !types_compatible(
-               en.exp_type.as_ref().unwrap(),
-               &cur_procedure_info.ret_type,
-               validation_context,
-            )
+            && *en.exp_type.as_ref().unwrap() != cur_procedure_info.ret_type
          {
             rolandc_error!(
                err_manager,
@@ -669,7 +659,7 @@ fn type_statement(
          let en = &validation_context.expressions[*enid];
 
          let result_type = if dt.is_some()
-            && !types_compatible(dt.as_ref().unwrap(), en.exp_type.as_ref().unwrap(), validation_context)
+            && dt.as_ref().unwrap() != en.exp_type.as_ref().unwrap()
             && !en.exp_type.as_ref().unwrap().is_error()
          {
             rolandc_error_w_details!(
@@ -693,10 +683,6 @@ fn type_statement(
                dt_str,
             );
             ExpressionType::Value(ValueType::CompileError)
-         } else if let Some(t) = dt {
-            // Prefer the declared type for coercion situations
-            validation_context.expressions[*enid].exp_type = Some(t.clone());
-            t.clone()
          } else {
             en.exp_type.clone().unwrap()
          };
@@ -1723,7 +1709,7 @@ fn check_procedure_call(
          let actual_expr = &validation_context.expressions[actual.expr];
          let actual_type = actual_expr.exp_type.as_ref().unwrap();
 
-         if !types_compatible(actual_type, expected, validation_context) && !actual_type.is_error() {
+         if actual_type != expected && !actual_type.is_error() {
             let actual_type_str = actual_type.as_roland_type_info(interner);
             let expected_type_str = expected.as_roland_type_info(interner);
             rolandc_error!(
@@ -1823,31 +1809,5 @@ fn check_procedure_item(
          type_arguments.len()
       );
       ExpressionType::Value(ValueType::CompileError)
-   }
-}
-
-fn types_compatible(t1: &ExpressionType, t2: &ExpressionType, validation_context: &ValidationContext) -> bool {
-   match (t1, t2) {
-      (
-         ExpressionType::Value(ValueType::ProcedurePointer { parameters, ret_type }),
-         ExpressionType::Value(ValueType::ProcedureItem(proc_name, _bound_type_params)),
-      )
-      | (
-         ExpressionType::Value(ValueType::ProcedureItem(proc_name, _bound_type_params)),
-         ExpressionType::Value(ValueType::ProcedurePointer { parameters, ret_type }),
-      ) => {
-         let procedure_info = validation_context.procedure_info.get(proc_name).unwrap();
-
-         if !procedure_info.named_parameters.is_empty() {
-            return false;
-         }
-
-         if procedure_info.is_compiler_builtin {
-            return false;
-         }
-
-         return procedure_info.parameters.as_slice() == &**parameters && procedure_info.ret_type == **ret_type;
-      }
-      _ => t1 == t2,
    }
 }

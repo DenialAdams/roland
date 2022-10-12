@@ -878,7 +878,12 @@ pub fn emit_wasm(
 
    if !generation_context.procedure_to_table_index.is_empty() {
       generation_context.out.emit_spaces();
-      writeln!(generation_context.out.out, "(table {} funcref)", generation_context.procedure_to_table_index.len()).unwrap();
+      writeln!(
+         generation_context.out.out,
+         "(table {} funcref)",
+         generation_context.procedure_to_table_index.len()
+      )
+      .unwrap();
       generation_context.out.emit_spaces();
       write!(generation_context.out.out, "(elem (i32.const 0) ").unwrap();
       for key in generation_context.procedure_to_table_index.iter() {
@@ -888,10 +893,19 @@ pub fn emit_wasm(
    }
 
    for indirect_callee_id in generation_context.indirect_callees.iter() {
-      let pp_type = generation_context.expressions[*indirect_callee_id].exp_type.as_ref().unwrap();
+      let pp_type = generation_context.expressions[*indirect_callee_id]
+         .exp_type
+         .as_ref()
+         .unwrap();
       match pp_type {
          ExpressionType::Value(ValueType::ProcedurePointer { parameters, ret_type }) => {
-            generation_context.out.emit_function_type(*indirect_callee_id, parameters.iter(), ret_type, generation_context.enum_info, generation_context.struct_info);
+            generation_context.out.emit_function_type(
+               *indirect_callee_id,
+               parameters.iter(),
+               ret_type,
+               generation_context.enum_info,
+               generation_context.struct_info,
+            );
          }
          _ => unreachable!(),
       }
@@ -1238,7 +1252,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          // Type arguments will have to be part of the key eventually, but it's fine(TM) for now to skip them since
          // only builtins can use type arguments and builtins can't become function pointers
          if let ExpressionType::Value(ValueType::ProcedurePointer { .. }) = expr_node.exp_type.as_ref().unwrap() {
-            let (my_index, _) = generation_context.procedure_to_table_index.insert_full(proc_name.identifier);
+            let (my_index, _) = generation_context
+               .procedure_to_table_index
+               .insert_full(proc_name.identifier);
             // todo: truncation
             generation_context.out.emit_const_i32(my_index as u32);
          }
