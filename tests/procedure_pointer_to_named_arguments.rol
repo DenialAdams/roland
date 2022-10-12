@@ -1,0 +1,7 @@
+proc foo(named x: u64) {
+
+}
+
+proc main() {
+   let y = &foo;
+}

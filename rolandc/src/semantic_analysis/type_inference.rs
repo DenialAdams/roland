@@ -47,6 +47,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
    let inferring_expr = std::ptr::addr_of_mut!(validation_context.expressions[expr_index]);
 
    match unsafe { &(*inferring_expr).expression } {
+      Expression::BoundFcnLiteral(_, _) => unreachable!(),
       Expression::Cast { .. } => unreachable!(),
       Expression::BoolLiteral(_) => unreachable!(),
       Expression::IntLiteral { .. } => {

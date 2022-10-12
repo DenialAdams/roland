@@ -102,12 +102,23 @@ fn main() -> Result<(), &'static str> {
             let _ = out_handle.set_color(&reset_color);
             match reason {
                TestFailureReason::TestingNothing => {
-                  writeln!(out_handle, "There was no test specified for this input.").unwrap();
+                  if !opts.overwrite_error_files {
+                     writeln!(out_handle, "There was no test specified for this input.").unwrap();
+                  }
+
+                  let actual = String::from_utf8_lossy(&tc_output.stderr);
 
                   writeln!(out_handle, "\ncompilation output:").unwrap();
                   writeln!(out_handle, "```").unwrap();
-                  writeln!(out_handle, "{}", String::from_utf8_lossy(&tc_output.stderr)).unwrap();
+                  writeln!(out_handle, "{}", actual).unwrap();
                   writeln!(out_handle, "```").unwrap();
+
+                  if opts.overwrite_error_files {
+                     let mut err_file_handle = open_result_file(&result_dir, entry, "err", true).unwrap();
+                     err_file_handle.write_all(actual.as_bytes()).unwrap();
+                     err_file_handle.set_len(actual.as_bytes().len() as u64).unwrap();
+                     writeln!(out_handle, "Created test compilation error output.").unwrap();
+                  }
                }
                TestFailureReason::ExpectedCompilationFailure => {
                   writeln!(out_handle, "Compilation was supposed to fail, but it succeeded.").unwrap();
@@ -187,7 +198,7 @@ fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Res
    let mut expected_comptime_output = String::new();
    let mut err_handle: Option<File> = None;
    {
-      let err_file = open_result_file(result_dir, t_file_path, "err");
+      let err_file = open_result_file(result_dir, t_file_path, "err", false);
 
       match err_file {
          Ok(mut f) => {
@@ -201,7 +212,7 @@ fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Res
 
    let mut expected_runtime_output: Option<String> = None;
    {
-      let out_file = open_result_file(result_dir, t_file_path, "out");
+      let out_file = open_result_file(result_dir, t_file_path, "out", false);
 
       match out_file {
          Ok(mut f) => {
@@ -278,10 +289,10 @@ fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Res
    Ok(())
 }
 
-fn open_result_file(result_dir: &Path, entry: &Path, extension: &'static str) -> io::Result<File> {
+fn open_result_file(result_dir: &Path, entry: &Path, extension: &'static str, create_new: bool) -> io::Result<File> {
    let mut out_name = entry.to_path_buf();
    out_name.set_extension(extension);
    let mut out_path = result_dir.to_path_buf();
    out_path.push(out_name.file_name().unwrap());
-   OpenOptions::new().read(true).write(true).append(false).open(out_path)
+   OpenOptions::new().read(true).write(true).append(false).create_new(create_new).open(out_path)
 }

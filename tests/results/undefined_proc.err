@@ -1,3 +1,3 @@
-Encountered call to undefined procedure `something_undefined`
+Encountered undefined symbol `something_undefined`
 ↳ line 2, column 4 [undefined_proc.rol]
 There were 1 semantic errors, bailing

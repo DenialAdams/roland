@@ -163,7 +163,7 @@ pub struct ExpressionNode {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ExpressionId(usize);
+pub struct ExpressionId(pub usize);
 
 impl Handle for ExpressionId {
    fn new(x: usize) -> Self {
@@ -200,8 +200,7 @@ impl VariableId {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expression {
    ProcedureCall {
-      proc_name: IdentifierNode,
-      generic_args: Box<[GenericArgumentNode]>,
+      proc_expr: ExpressionId,
       args: Box<[ArgumentNode]>,
    },
    ArrayLiteral(Box<[ExpressionId]>),
@@ -233,6 +232,7 @@ pub enum Expression {
       expr: ExpressionId,
    },
    EnumLiteral(IdentifierNode, IdentifierNode),
+   BoundFcnLiteral(IdentifierNode, Box<[GenericArgumentNode]>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -425,7 +425,7 @@ pub fn astify(
       match peeked_token {
          Token::KeywordExtern => {
             let extern_kw = lexer.next();
-            expect(&mut lexer, &mut parse_context, Token::KeywordProcedureDef)?;
+            expect(&mut lexer, &mut parse_context, Token::KeywordProc)?;
             let p = parse_external_procedure(
                &mut lexer,
                &mut parse_context,
@@ -436,7 +436,7 @@ pub fn astify(
          }
          Token::KeywordBuiltin => {
             let builtin_kw = lexer.next();
-            expect(&mut lexer, &mut parse_context, Token::KeywordProcedureDef)?;
+            expect(&mut lexer, &mut parse_context, Token::KeywordProc)?;
             let p = parse_external_procedure(
                &mut lexer,
                &mut parse_context,
@@ -445,7 +445,7 @@ pub fn astify(
             )?;
             external_procedures.push(p);
          }
-         Token::KeywordProcedureDef => {
+         Token::KeywordProc => {
             let def = lexer.next();
             let p = parse_procedure(&mut lexer, &mut parse_context, def.source_info, expressions)?;
             procedures.push(p);
@@ -1069,6 +1069,36 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
          let token = l.next();
          (token.source_info, ValueType::Never)
       }
+      Token::KeywordProc => {
+         let _ = l.next();
+         expect(l, parse_context, Token::OpenParen)?;
+         let mut parameters = vec![];
+         loop {
+            if l.peek_token() == Token::CloseParen {
+               break;
+            }
+            parameters.push(parse_type(l, parse_context)?.e_type);
+            if l.peek_token() == Token::CloseParen {
+               break;
+            }
+            expect(l, parse_context, Token::Comma)?;
+         }
+         let close_paren = expect(l, parse_context, Token::CloseParen)?;
+         let (return_type, last_location) = if l.peek_token() == Token::Arrow {
+            let _ = l.next();
+            let return_type_p = parse_type(l, parse_context)?;
+            (return_type_p.e_type, return_type_p.location)
+         } else {
+            (ExpressionType::Value(ValueType::Unit), close_paren.source_info)
+         };
+         (
+            last_location,
+            ValueType::ProcedurePointer {
+               parameters: parameters.into_boxed_slice(),
+               ret_type: Box::new(return_type),
+            },
+         )
+      }
       _ => {
          let type_token = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
          let type_s = extract_identifier(type_token.token);
@@ -1134,36 +1164,18 @@ fn pratt(
       Token::Identifier(s) => {
          if l.peek_token() == Token::Dollar {
             let generic_args = parse_generic_arguments(l, parse_context)?;
-            expect(l, parse_context, Token::OpenParen)?;
-            let args = parse_arguments(l, parse_context, expressions)?;
-            let close_token = expect(l, parse_context, Token::CloseParen)?;
-            let combined_location = merge_locations(expr_begin_token.source_info, close_token.source_info);
+            let combined_location = merge_locations(
+               expr_begin_token.source_info,
+               generic_args.last().as_ref().unwrap().location,
+            );
             wrap(
-               Expression::ProcedureCall {
-                  proc_name: IdentifierNode {
+               Expression::BoundFcnLiteral(
+                  IdentifierNode {
                      identifier: s,
                      location: expr_begin_token.source_info,
                   },
-                  generic_args: generic_args.into_boxed_slice(),
-                  args: args.into_boxed_slice(),
-               },
-               combined_location,
-               expressions,
-            )
-         } else if l.peek_token() == Token::OpenParen {
-            let _ = l.next();
-            let args = parse_arguments(l, parse_context, expressions)?;
-            let close_token = expect(l, parse_context, Token::CloseParen)?;
-            let combined_location = merge_locations(expr_begin_token.source_info, close_token.source_info);
-            wrap(
-               Expression::ProcedureCall {
-                  proc_name: IdentifierNode {
-                     identifier: s,
-                     location: expr_begin_token.source_info,
-                  },
-                  generic_args: vec![].into_boxed_slice(),
-                  args: args.into_boxed_slice(),
-               },
+                  generic_args.into_boxed_slice(),
+               ),
                combined_location,
                expressions,
             )
@@ -1330,6 +1342,7 @@ fn pratt(
          | Token::KeywordTransmute
          | Token::Deref
          | Token::OpenSquareBracket
+         | Token::OpenParen
          | Token::ShiftLeft
          | Token::ShiftRight) => x,
          Token::Period => {
@@ -1359,6 +1372,19 @@ fn pratt(
          let op = l.next();
 
          lhs = match op.token {
+            Token::OpenParen => {
+               let args = parse_arguments(l, parse_context, expressions)?;
+               let close_token = expect(l, parse_context, Token::CloseParen)?;
+               let combined_location = merge_locations(expr_begin_token.source_info, close_token.source_info);
+               wrap(
+                  Expression::ProcedureCall {
+                     proc_expr: lhs,
+                     args: args.into_boxed_slice(),
+                  },
+                  combined_location,
+                  expressions,
+               )
+            }
             Token::OpenSquareBracket => {
                let inner = parse_expression(l, parse_context, false, expressions)?;
                let close_token = expect(l, parse_context, Token::CloseSquareBracket)?;
@@ -1482,6 +1508,7 @@ fn prefix_binding_power(op: &Token) -> ((), u8) {
 
 fn postfix_binding_power(op: Token) -> Option<(u8, ())> {
    match &op {
+      Token::OpenParen => Some((21, ())),
       Token::OpenSquareBracket => Some((21, ())),
       Token::KeywordExtend => Some((18, ())),
       Token::KeywordTruncate => Some((18, ())),

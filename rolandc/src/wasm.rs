@@ -30,6 +30,8 @@ struct GenerationContext<'a> {
    sum_sizeof_locals_mem: u32,
    expressions: &'a ExpressionPool,
    procedure_virtual_vars: &'a IndexMap<ExpressionId, VariableId>,
+   procedure_to_table_index: IndexSet<StrId>,
+   indirect_callees: Vec<ExpressionId>,
 }
 
 struct PrettyWasmWriter {
@@ -71,6 +73,30 @@ impl PrettyWasmWriter {
       }
       self.out.push(b' ');
       write_type_as_result(result_type, &mut self.out, ei, si);
+      self.out.push(b'\n');
+      self.depth += 1;
+   }
+
+   fn emit_function_type<'a, I>(
+      &mut self,
+      name: ExpressionId,
+      params: I,
+      result_type: &ExpressionType,
+      ei: &IndexMap<StrId, EnumInfo>,
+      si: &IndexMap<StrId, StructInfo>,
+   ) where
+      I: IntoIterator<Item = &'a ExpressionType>,
+   {
+      self.emit_spaces();
+      write!(self.out, "(type $::{} (func", name.0).unwrap();
+      for param in params {
+         self.out.push(b' ');
+         write_type_as_params(param, &mut self.out, ei, si);
+      }
+      self.out.push(b' ');
+      write_type_as_result(result_type, &mut self.out, ei, si);
+      self.out.push(b')');
+      self.out.push(b')');
       self.out.push(b'\n');
       self.depth += 1;
    }
@@ -237,7 +263,7 @@ fn write_value_type_as_result(
          FloatWidth::Four => write!(out, "(result f32)").unwrap(),
       },
       ValueType::Bool => write!(out, "(result i32)").unwrap(),
-      ValueType::Unit | ValueType::Never => (),
+      ValueType::Unit | ValueType::Never | ValueType::ProcedureItem(_, _) => (),
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
@@ -258,6 +284,7 @@ fn write_value_type_as_result(
             let _ = out.pop();
          }
       }
+      ValueType::ProcedurePointer { .. } => write!(out, "(result i32)").unwrap(),
    }
 }
 
@@ -297,7 +324,7 @@ fn write_value_type_as_params(
          FloatWidth::Four => write!(out, "(param f32)").unwrap(),
       },
       ValueType::Bool => write!(out, "(param i32)").unwrap(),
-      ValueType::Unit | ValueType::Never => (),
+      ValueType::Unit | ValueType::Never | ValueType::ProcedureItem(_, _) => (),
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
@@ -318,6 +345,7 @@ fn write_value_type_as_params(
             let _ = out.pop();
          }
       }
+      ValueType::ProcedurePointer { .. } => write!(out, "(param i32)").unwrap(),
    }
 }
 
@@ -342,7 +370,7 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumIn
          FloatWidth::Four => write!(out, "f32").unwrap(),
       },
       ValueType::Bool => write!(out, "i32").unwrap(),
-      ValueType::Unit | ValueType::Never => unreachable!(),
+      ValueType::Unit | ValueType::Never | ValueType::ProcedureItem(_, _) => unreachable!(),
       ValueType::CompileError => unreachable!(),
       ValueType::Enum(x) => {
          let num_variants = ei.get(x).unwrap().variants.len();
@@ -373,6 +401,7 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumIn
             let _ = out.pop();
          }
       }
+      ValueType::ProcedurePointer { .. } => write!(out, "i32").unwrap(),
    }
 }
 
@@ -483,6 +512,8 @@ pub fn emit_wasm(
       sum_sizeof_locals_mem: 0,
       expressions,
       procedure_virtual_vars: &IndexMap::new(),
+      procedure_to_table_index: IndexSet::new(),
+      indirect_callees: Vec::new(),
    };
 
    for external_procedure in program
@@ -721,7 +752,12 @@ pub fn emit_wasm(
             interner,
          );
 
-         let offset_end = offset_begin + sizeof_type_values(field.1, generation_context.enum_info, generation_context.struct_size_info);
+         let offset_end = offset_begin
+            + sizeof_type_values(
+               field.1,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            );
 
          for i in offset_begin..offset_end {
             generation_context.out.emit_get_local(i);
@@ -786,7 +822,13 @@ pub fn emit_wasm(
       // Copy parameters to stack memory so we can take pointers
       let mut values_index = 0;
       for param in &procedure.definition.parameters {
-         match sizeof_type_values(&param.p_type.e_type, generation_context.enum_info, generation_context.struct_size_info).cmp(&1) {
+         match sizeof_type_values(
+            &param.p_type.e_type,
+            generation_context.enum_info,
+            generation_context.struct_size_info,
+         )
+         .cmp(&1)
+         {
             std::cmp::Ordering::Less => (),
             std::cmp::Ordering::Equal => {
                get_stack_address_of_local(param.var_id, &mut generation_context);
@@ -832,6 +874,41 @@ pub fn emit_wasm(
       );
       dynamic_move_locals_of_type_to_dest("local.get 0", &mut 0, &mut 1, e_type, &mut generation_context);
       generation_context.out.close();
+   }
+
+   if !generation_context.procedure_to_table_index.is_empty() {
+      generation_context.out.emit_spaces();
+      writeln!(
+         generation_context.out.out,
+         "(table {} funcref)",
+         generation_context.procedure_to_table_index.len()
+      )
+      .unwrap();
+      generation_context.out.emit_spaces();
+      write!(generation_context.out.out, "(elem (i32.const 0) ").unwrap();
+      for key in generation_context.procedure_to_table_index.iter() {
+         write!(generation_context.out.out, "${} ", interner.lookup(*key)).unwrap();
+      }
+      writeln!(generation_context.out.out, ")").unwrap();
+   }
+
+   for indirect_callee_id in generation_context.indirect_callees.iter() {
+      let pp_type = generation_context.expressions[*indirect_callee_id]
+         .exp_type
+         .as_ref()
+         .unwrap();
+      match pp_type {
+         ExpressionType::Value(ValueType::ProcedurePointer { parameters, ret_type }) => {
+            generation_context.out.emit_function_type(
+               *indirect_callee_id,
+               parameters.iter(),
+               ret_type,
+               generation_context.enum_info,
+               generation_context.struct_info,
+            );
+         }
+         _ => unreachable!(),
+      }
    }
 
    generation_context.out.out
@@ -1171,6 +1248,13 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
    let expr_node = &generation_context.expressions[expr_index];
    match &expr_node.expression {
       Expression::UnitLiteral => (),
+      Expression::BoundFcnLiteral(proc_name, _bound_type_params) => {
+         if let ExpressionType::Value(ValueType::ProcedurePointer{ .. }) =
+            expr_node.exp_type.as_ref().unwrap()
+         {
+            emit_procedure_pointer_index(proc_name.identifier, generation_context);
+         }
+      },
       Expression::BoolLiteral(x) => {
          generation_context.out.emit_const_i32(u32::from(*x));
       }
@@ -1376,6 +1460,13 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          };
 
          let e = &generation_context.expressions[*e_index];
+
+         if let ExpressionType::Value(ValueType::ProcedureItem(proc_name, _bound_type_params)) =
+            e.exp_type.as_ref().unwrap()
+         {
+            emit_procedure_pointer_index(*proc_name, generation_context);
+            return;
+         }
 
          match un_op {
             UnOp::AddressOf => {
@@ -1616,11 +1707,28 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
       Expression::UnresolvedVariable(_) => {
          unreachable!()
       }
-      Expression::ProcedureCall {
-         proc_name,
-         args,
-         generic_args: _generic_args,
-      } => {
+      Expression::ProcedureCall { proc_expr, args } => {
+         if matches!(
+            generation_context.expressions[*proc_expr].exp_type,
+            Some(ExpressionType::Value(ValueType::ProcedurePointer { .. }))
+         ) {
+            let proc_expr_vv = generation_context
+               .procedure_virtual_vars
+               .get(proc_expr)
+               .copied()
+               .unwrap();
+            get_stack_address_of_local(proc_expr_vv, generation_context);
+            do_emit_and_load_lval(*proc_expr, generation_context, interner);
+            store(
+               generation_context.expressions[*proc_expr].exp_type.as_ref().unwrap(),
+               generation_context,
+               interner,
+            );
+         } else {
+            // shouldn't place anything on the stack
+            do_emit_and_load_lval(*proc_expr, generation_context, interner);
+         }
+
          // Output the non-named parameters
          let mut first_named_arg = None;
          for (i, arg) in args.iter().enumerate() {
@@ -1671,7 +1779,26 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             }
          }
 
-         generation_context.out.emit_call(proc_name.identifier, interner);
+         match generation_context.expressions[*proc_expr].exp_type.as_ref().unwrap() {
+            ExpressionType::Value(ValueType::ProcedureItem(proc_name, _)) => {
+               generation_context.out.emit_call(*proc_name, interner);
+            }
+            ExpressionType::Value(ValueType::ProcedurePointer { .. }) => {
+               let proc_expr_vv = generation_context
+                  .procedure_virtual_vars
+                  .get(proc_expr)
+                  .copied()
+                  .unwrap();
+               get_stack_address_of_local(proc_expr_vv, generation_context);
+               load(
+                  generation_context.expressions[*proc_expr].exp_type.as_ref().unwrap(),
+                  generation_context,
+               );
+               writeln!(generation_context.out.out, "call_indirect 0 (type $::{})", proc_expr.0).unwrap();
+               generation_context.indirect_callees.push(*proc_expr);
+            }
+            _ => unreachable!(),
+         };
       }
       Expression::StructLiteral(s_name, fields) => {
          // First we emit the expressions *in the order they were written*,
@@ -1878,7 +2005,12 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
 }
 
 fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   if sizeof_type_values(val_type, generation_context.enum_info, generation_context.struct_size_info) > 1 {
+   if sizeof_type_values(
+      val_type,
+      generation_context.enum_info,
+      generation_context.struct_size_info,
+   ) > 1
+   {
       generation_context.out.emit_set_global("mem_address");
       complex_load(0, val_type, generation_context);
    } else {
@@ -1910,7 +2042,13 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
       }
       ExpressionType::Value(ValueType::Array(a_type, len)) => {
          for _ in 0..*len {
-            match sizeof_type_values(a_type, generation_context.enum_info, generation_context.struct_size_info).cmp(&1) {
+            match sizeof_type_values(
+               a_type,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            )
+            .cmp(&1)
+            {
                std::cmp::Ordering::Less => (),
                std::cmp::Ordering::Equal => {
                   generation_context.out.emit_get_global("mem_address");
@@ -1941,7 +2079,11 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
          // Find the first non-zero-sized struct field and load that
          // (there should only be one if we're in simple_load)
          for (_, field_type) in si.field_types.iter() {
-            match sizeof_type_values(field_type, generation_context.enum_info, generation_context.struct_size_info) {
+            match sizeof_type_values(
+               field_type,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            ) {
                0 => continue,
                1 => return simple_load(field_type, generation_context),
                _ => unreachable!(),
@@ -1953,7 +2095,12 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
       }
       _ => (),
    }
-   if sizeof_type_values(val_type, generation_context.enum_info, generation_context.struct_size_info) == 0 {
+   if sizeof_type_values(
+      val_type,
+      generation_context.enum_info,
+      generation_context.struct_size_info,
+   ) == 0
+   {
       // Drop the load address; nothing to load
       generation_context.out.emit_constant_instruction("drop");
    } else if sizeof_type_mem(
@@ -2017,12 +2164,27 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
 }
 
 fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext, interner: &mut Interner) {
-   if sizeof_type_values(val_type, generation_context.enum_info, generation_context.struct_size_info) == 0 {
+   if sizeof_type_values(
+      val_type,
+      generation_context.enum_info,
+      generation_context.struct_size_info,
+   ) == 0
+   {
       // drop the placement address
       generation_context.out.emit_constant_instruction("drop");
-   } else if sizeof_type_values(val_type, generation_context.enum_info, generation_context.struct_size_info) == 1 {
+   } else if sizeof_type_values(
+      val_type,
+      generation_context.enum_info,
+      generation_context.struct_size_info,
+   ) == 1
+   {
       simple_store(val_type, generation_context);
-   } else if sizeof_type_values(val_type, generation_context.enum_info, generation_context.struct_size_info) > 1 {
+   } else if sizeof_type_values(
+      val_type,
+      generation_context.enum_info,
+      generation_context.struct_size_info,
+   ) > 1
+   {
       let (store_fcn_index, _) = generation_context.needed_store_fns.insert_full(val_type.clone());
       generation_context
          .out
@@ -2039,7 +2201,11 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
          // Find the first non-zero-sized struct field and store that
          // (there should only be one if we're in simple_store)
          for (_, field_type) in si.field_types.iter() {
-            match sizeof_type_values(field_type, generation_context.enum_info, generation_context.struct_size_info) {
+            match sizeof_type_values(
+               field_type,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            ) {
                0 => continue,
                1 => return simple_store(field_type, generation_context),
                _ => unreachable!(),
@@ -2138,4 +2304,12 @@ fn adjust_stack(generation_context: &mut GenerationContext, instr: &str) {
    generation_context.out.emit_spaces();
    writeln!(generation_context.out.out, "i32.{}", instr).unwrap();
    generation_context.out.emit_set_global("sp");
+}
+
+fn emit_procedure_pointer_index(proc_name: StrId, generation_context: &mut GenerationContext) {
+   // Type arguments will have to be part of the key eventually, but it's fine(TM) for now to skip them since
+   // only builtins can use type arguments and builtins can't become function pointers
+   let (my_index, _) = generation_context.procedure_to_table_index.insert_full(proc_name);
+   // todo: truncation
+   generation_context.out.emit_const_i32(my_index as u32);
 }

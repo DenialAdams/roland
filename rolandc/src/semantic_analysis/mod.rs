@@ -22,6 +22,7 @@ pub struct ProcedureInfo {
    pub type_parameters: Vec<IndexSet<StrId>>,
    pub ret_type: ExpressionType,
    pub location: SourceInfo,
+   pub is_compiler_builtin: bool,
 }
 
 #[derive(Clone)]

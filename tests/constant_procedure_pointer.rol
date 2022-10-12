@@ -1,0 +1,9 @@
+proc foo() {
+   println("okay");
+}
+
+const X: proc() = &foo;
+
+proc main() {
+   X();
+}

@@ -82,14 +82,7 @@ pub fn fold_statement(
          try_fold_and_replace_expr(*expr_id, err_manager, folding_context, interner);
 
          let expression = &folding_context.expressions[*expr_id];
-         if !matches!(
-            expression.expression,
-            Expression::ProcedureCall {
-               proc_name: _,
-               generic_args: _,
-               args: _
-            }
-         ) {
+         if !matches!(expression.expression, Expression::ProcedureCall { .. }) {
             rolandc_warn!(
                err_manager,
                expression.location,
@@ -177,7 +170,8 @@ fn fold_expr(
       }
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::Variable(_) => None,
-      Expression::ProcedureCall { args, .. } => {
+      Expression::ProcedureCall { args, proc_expr } => {
+         try_fold_and_replace_expr(*proc_expr, err_manager, folding_context, interner);
          for arg in args.iter().map(|x| x.expr) {
             try_fold_and_replace_expr(arg, err_manager, folding_context, interner);
          }
@@ -254,7 +248,7 @@ fn fold_expr(
          None
       }
       Expression::FloatLiteral(_) => None,
-      Expression::UnitLiteral => None,
+      Expression::UnitLiteral | Expression::BoundFcnLiteral(_, _) => None,
       Expression::BinaryOperator {
          operator,
          lhs: lhs_id,
@@ -786,6 +780,12 @@ fn fold_expr(
                // nothing to do
                UnOp::AddressOf | UnOp::Dereference => None,
             }
+         } else if matches!(expr.expression, Expression::BoundFcnLiteral(_, _)) {
+            Some(ExpressionNode {
+               expression: expr.expression.clone(),
+               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
+               location: expr_to_fold_location,
+            })
          } else {
             None
          }
@@ -864,6 +864,7 @@ fn fold_expr(
 
 pub fn is_const(expr: &Expression, expressions: &ExpressionPool) -> bool {
    match expr {
+      Expression::BoundFcnLiteral(_, _) => true,
       Expression::UnitLiteral => true,
       Expression::EnumLiteral(_, _) => true,
       Expression::IntLiteral { .. } => true,
@@ -1618,7 +1619,7 @@ fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &Expre
       Expression::StringLiteral(_) => false,
       Expression::IntLiteral { .. } => false,
       Expression::FloatLiteral(_) => false,
-      Expression::UnitLiteral => false,
+      Expression::UnitLiteral | Expression::BoundFcnLiteral(_, _) => false,
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::Variable(_) => false,
       Expression::BinaryOperator { lhs, rhs, .. } => {
