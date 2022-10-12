@@ -1,0 +1,13 @@
+proc main() {
+   let x = &fd_write;
+   let data = [
+      ciovec {
+         buf: ".".pointer,
+         buf_len: ".".length,
+      },
+   ];
+
+   let written: usize = 0;
+   x(1, &data[0], data.length, &written);
+   print("\n");
+}

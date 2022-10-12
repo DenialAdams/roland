@@ -1,0 +1,9 @@
+proc foo(x: u64) -> bool {
+   return x > 10;
+}
+
+proc main() {
+   let x: proc(u64) -> bool = &foo;
+   let result = x(11);
+   println_bool(result);
+}

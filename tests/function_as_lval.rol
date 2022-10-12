@@ -1,0 +1,5 @@
+proc foo() {}
+
+proc main() {
+   foo = foo;
+}
