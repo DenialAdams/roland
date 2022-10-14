@@ -19,7 +19,7 @@ use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, value_type_mem_alignment};
 use crate::source_info::SourceInfo;
 use crate::type_data::{
-   ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, I32_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE,
+   ExpressionType, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, I32_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE, U8_TYPE, U16_TYPE,
 };
 use crate::typed_index_vec::Handle;
 use crate::Target;
@@ -823,6 +823,15 @@ fn get_type(
             try_set_inferred_type(&ExpressionType::Value(U64_TYPE), *expr_id, validation_context);
          } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Value(F32_TYPE)) {
             try_set_inferred_type(&ExpressionType::Value(U32_TYPE), *expr_id, validation_context);
+         } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Value(ValueType::Enum(_))) {
+            let matching_int = match sizeof_type_mem(target_type, validation_context.enum_info, &validation_context.struct_size_info) {
+               8 => ExpressionType::Value(U64_TYPE),
+               4 => ExpressionType::Value(U32_TYPE),
+               2 => ExpressionType::Value(U16_TYPE),
+               1 => ExpressionType::Value(U8_TYPE),
+               _ => unreachable!(),
+            };
+            try_set_inferred_type(&matching_int, *expr_id, validation_context);
          }
 
          let e = &validation_context.expressions[*expr_id];
@@ -926,14 +935,7 @@ fn get_type(
                   &validation_context.struct_size_info,
                );
 
-               if target_type.is_enum() || e_type.is_enum() {
-                  rolandc_error_w_details!(
-                     err_manager,
-                     &[(expr_location, "transmute"), (e.location, "operand")],
-                     "Transmuting to or from enum types isn't currently supported due to the unspecified size of enums",
-                  );
-                  ExpressionType::Value(ValueType::CompileError)
-               } else if target_type
+               if target_type
                   .get_value_type_or_value_being_pointed_to()
                   .is_or_contains_never(&validation_context.struct_size_info)
                {

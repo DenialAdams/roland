@@ -1,7 +1,0 @@
-Transmuting to or from enum types isn't currently supported due to the unspecified size of enums
-↳ transmute @ line 8, column 12 [enum_transmute.rol]
-↳ operand @ line 8, column 12 [enum_transmute.rol]
-Transmuting to or from enum types isn't currently supported due to the unspecified size of enums
-↳ transmute @ line 9, column 12 [enum_transmute.rol]
-↳ operand @ line 9, column 12 [enum_transmute.rol]
-There were 2 semantic errors, bailing

@@ -7,4 +7,7 @@ proc main() {
    let num: u8 = 0;
    let x = num transmute A;
    let y = A::Foo transmute u8;
+   println_bool(x transmute u8 == y);
+   println_bool(x == A::Foo);
+   println_bool(1 transmute A == A::Bar);
 }

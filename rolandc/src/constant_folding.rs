@@ -844,11 +844,15 @@ fn fold_expr(
 
          if let Some(literal) = extract_literal(expr) {
             let transmuted = literal.transmute(folding_context.expressions[expr_index].exp_type.as_ref().unwrap());
-            Some(ExpressionNode {
-               expression: transmuted,
-               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            })
+            if let Some(t_val) = transmuted {
+               Some(ExpressionNode {
+                  expression: t_val,
+                  exp_type: folding_context.expressions[expr_index].exp_type.clone(),
+                  location: expr_to_fold_location,
+               })
+            } else {
+               None
+            }
          } else {
             None
          }
@@ -969,8 +973,8 @@ impl Literal {
       )
    }
 
-   fn transmute(self, target_type: &ExpressionType) -> Expression {
-      match (self, target_type) {
+   fn transmute(self, target_type: &ExpressionType) -> Option<Expression> {
+      Some(match (self, target_type) {
          // Transmute int to float
          (Literal::Int32(i), ExpressionType::Value(F32_TYPE)) => {
             Expression::FloatLiteral(f64::from(f32::from_bits(i as u32)))
@@ -1070,8 +1074,8 @@ impl Literal {
             val: u64::from(i),
             synthetic: true,
          },
-         _ => unreachable!(),
-      }
+         _ => return None,
+      })
    }
 
    fn checked_add(self, other: Self) -> Option<Expression> {
