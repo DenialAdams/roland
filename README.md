@@ -64,6 +64,20 @@ Pointer types are an `&` followed by a type. For instance, `&u8` is a pointer to
 
 Array types are composed of a type and an element count. This means that the element count must be known at compile time, as it's part of the type. For instance, `[f32; 10]` is an array of 10 32-bit floating point numbers.
 
+#### Procedure Pointers
+
+Procedure pointers are created by using the addressof operator on a procedure, although calling them doesn't require a dereference.
+
+```roland
+let x = &foo_proc;
+foo_proc();
+``` 
+
+The written type looks just like a procedure definition, but without any parameter names:
+```roland
+proc sort_ints(x: &[u32; 100], comparator: proc(u32, u32) -> i8);
+```
+
 #### User-defined types
 
 There are two ways to define new types in Roland: `enum`s and `struct`s.
@@ -156,7 +170,7 @@ Roland currently supports compiling to two different flavors of WebAssembly.
 ### WASI
 This is the default target. A `.wat` file is emitted that can be run directly with `wasmtime`.
 
-The only WASI API we support at the moment is printing text to stdout, through the function `print`.
+The only WASI API we support at the moment is printing text to stdout, through the procedure `print`.
 
 ### WASM-4
 By providing the `--wasm4` flag to the roland compiler, you'll instead compile for [WASM-4](https://wasm4.org/). A `.wasm` file is emitted that can be directly provided to `w4 run`.
