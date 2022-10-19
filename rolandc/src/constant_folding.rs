@@ -881,10 +881,29 @@ fn fold_expr(
             None
          }
       }
-      Expression::Cast { expr, .. } => {
+      Expression::Cast {
+         cast_type: CastType::Truncate,
+         expr,
+         ..
+      } => {
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
 
-         None
+         let expr = &folding_context.expressions[*expr];
+
+         if let Some(literal) = extract_literal(expr) {
+            let truncated = literal.truncate(folding_context.expressions[expr_index].exp_type.as_ref().unwrap());
+            if let Some(t_val) = truncated {
+               Some(ExpressionNode {
+                  expression: t_val,
+                  exp_type: folding_context.expressions[expr_index].exp_type.clone(),
+                  location: expr_to_fold_location,
+               })
+            } else {
+               None
+            }
+         } else {
+            None
+         }
       }
       Expression::EnumLiteral(_, _) => None,
    }
@@ -1137,6 +1156,37 @@ impl Literal {
          },
          (Literal::Uint8(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
             val: u64::from(i),
+            synthetic: true,
+         },
+         _ => return None,
+      })
+   }
+
+   fn truncate(self, target_type: &ExpressionType) -> Option<Expression> {
+      Some(match (self, target_type) {
+         (Literal::Float64(f), ExpressionType::Value(F32_TYPE)) => Expression::FloatLiteral(f64::from(f as f32)),
+         (Literal::Uint64(i), ExpressionType::Value(U32_TYPE)) => Expression::IntLiteral {
+            val: u64::from(i as u32),
+            synthetic: true,
+         },
+         (Literal::Uint64(i), ExpressionType::Value(U16_TYPE)) => Expression::IntLiteral {
+            val: u64::from(i as u16),
+            synthetic: true,
+         },
+         (Literal::Uint64(i), ExpressionType::Value(U8_TYPE)) => Expression::IntLiteral {
+            val: u64::from(i as u8),
+            synthetic: true,
+         },
+         (Literal::Uint32(i), ExpressionType::Value(U16_TYPE)) => Expression::IntLiteral {
+            val: u64::from(i as u16),
+            synthetic: true,
+         },
+         (Literal::Uint32(i), ExpressionType::Value(U8_TYPE)) => Expression::IntLiteral {
+            val: u64::from(i as u8),
+            synthetic: true,
+         },
+         (Literal::Uint16(i), ExpressionType::Value(U8_TYPE)) => Expression::IntLiteral {
+            val: u64::from(i as u8),
             synthetic: true,
          },
          _ => return None,
