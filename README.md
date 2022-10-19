@@ -71,7 +71,7 @@ Procedure pointers are created by using the addressof operator on a procedure, a
 ```roland
 let x = &foo_proc;
 foo_proc();
-``` 
+```
 
 The written type looks just like a procedure definition, but without any parameter names:
 ```roland
@@ -169,7 +169,7 @@ Casts come in three flavors, all of which are postfix keywords.
 #### Extend
 `extend` is used for casts that have no risk of data loss and are guaranteed to resolve to a valid representation. In the future,`extend` may be inserted implicitly.
 
-Examples: 
+Examples:
 - `f32` to `f64`
 - `u8` to `u64`
 - `u8` to `i16`
@@ -177,17 +177,19 @@ Examples:
 #### Transmute
 `transmute` is used for casts that have no risk of data loss but may not resolve to a valid representation. It carries the restriction that the source and destination type must be the same size.
 
-Examples: 
+Examples:
 - `f32` to `u32`
 - `usize` to `&T`
 - `i32` to `u32`
 
 #### Truncate
-`truncate` is used for casts that have a risk of data loss and are guaranteed to resolve to a valid representation.
+`truncate` is used for casts that have a risk of data loss.
 
-Examples: 
+Examples:
 - `f64` to `f32`
-- `i16` to `i8`
+- `u64` to `u32`
+- `f32` to `u32`
+- `u32` to `f32`
 
 ## Compilation Targets
 
