@@ -1,0 +1,10 @@
+struct Foo {
+   x: !
+}
+
+proc main() {
+   () transmute Foo;
+   () transmute !;
+   () transmute [!; 1];
+   0xCAFEBABE transmute &!;
+}
