@@ -307,6 +307,7 @@ impl ValueType {
       match self {
          ValueType::Never => true,
          ValueType::Struct(s) => struct_size_info.get(s).unwrap().contains_never_type,
+         ValueType::Array(inner_t, _) => inner_t.get_value_type_or_value_being_pointed_to().is_or_contains_never(struct_size_info),
          _ => false,
       }
    }
