@@ -1018,7 +1018,6 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             emit_statement(statement, generation_context, interner);
          }
          generation_context.out.emit_end(); // end block bi
-         generation_context.out.emit_spaces();
          // Increment
          {
             get_stack_address_of_local(*start_var_id, generation_context);
