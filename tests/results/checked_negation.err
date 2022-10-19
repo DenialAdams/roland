@@ -1,3 +1,2 @@
 During constant folding, tried to negate the minimum value of a signed integer
 ↳ line 2, column 16 [checked_negation.rol]
-There were 1 semantic errors, bailing

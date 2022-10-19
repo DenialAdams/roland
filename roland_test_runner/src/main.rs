@@ -1,15 +1,28 @@
 #![allow(clippy::unwrap_or_else_default)] // I want to know exactly what is being called
 
+
+
+struct CliFileResolver {}
+// todo: unpasta?
+impl<'a> FileResolver<'a> for CliFileResolver {
+   fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'a, str>> {
+      std::fs::read_to_string(path).map(Cow::Owned)
+   }
+}
+
+use std::borrow::Cow;
 use std::env;
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, ExitStatus};
 use std::sync::Mutex;
 
 use os_pipe::pipe;
 use rayon::prelude::*;
+use rolandc::{CompilationContext, CompilationEntryPoint, FileResolver};
 use similar_asserts::SimpleDiff;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
@@ -22,10 +35,16 @@ enum TestFailureReason {
    MismatchedCompilationErrorOutput(String, String, File),
 }
 
+enum ExecutionMode {
+   Cli,
+   Lib,
+}
+
 struct Opts {
    test_path: PathBuf,
    tc_path: PathBuf,
    overwrite_error_files: bool,
+   execution_mode: ExecutionMode,
 }
 
 fn parse_path(s: &std::ffi::OsStr) -> Result<std::path::PathBuf, &'static str> {
@@ -39,6 +58,11 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
       test_path: pargs.free_from_os_str(parse_path)?,
       tc_path: pargs.free_from_os_str(parse_path)?,
       overwrite_error_files: pargs.contains("--overwrite-error-files"),
+      execution_mode: if pargs.contains("--cli") {
+         ExecutionMode::Cli
+      } else {
+         ExecutionMode::Lib
+      }
    };
 
    Ok(opts)
@@ -73,10 +97,44 @@ fn main() -> Result<(), &'static str> {
       .collect();
 
    entries.par_iter().for_each(|entry| {
-      let tc_output = Command::new(&opts.tc_path)
-         .arg(entry.file_name().unwrap())
-         .output()
-         .unwrap();
+      let tc_output = match opts.execution_mode {
+        ExecutionMode::Cli => {
+         Command::new(&opts.tc_path)
+            .arg(entry.file_name().unwrap())
+            .output()
+            .unwrap()
+        }
+        ExecutionMode::Lib => {
+         let mut ctx = CompilationContext::new();
+         let compile_result = rolandc::compile::<CliFileResolver>(
+            &mut ctx,
+            CompilationEntryPoint::PathResolving(entry.file_name().unwrap().into(), CliFileResolver {}),
+            rolandc::Target::Wasi,
+         );
+
+         let mut stderr = Vec::new();
+
+         ctx.err_manager.write_out_errors(&mut stderr, &ctx.interner);
+
+         let status = match compile_result {
+            Ok(bytes) => {
+               let mut wat_file = entry.clone();
+               wat_file.set_extension("wat");
+               std::fs::write(wat_file, bytes).unwrap();
+               ExitStatus::from_raw(0)
+            }
+            Err(_) => {
+               ExitStatus::from_raw(1)
+            }
+         };
+
+         Output {
+            status,
+            stdout: vec![],
+            stderr,
+         }
+        },
+      };
       let test_ok = test_result(&tc_output, entry, &result_dir);
       let mut lock = output_mutex.lock().unwrap();
       match test_ok {

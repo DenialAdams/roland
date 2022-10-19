@@ -10,3 +10,4 @@ similar-asserts = "1"
 os_pipe = "1"
 rayon = "1"
 termcolor = "1"
+rolandc = { path = "../rolandc" }

@@ -10,4 +10,3 @@ Transmuting to the never type, a pointer to the never type, or a struct containi
 Transmuting to the never type, a pointer to the never type, or a struct containing the never type isn't supported
 ↳ transmute @ line 9, column 4 [transmutes_to_never.rol]
 ↳ operand @ line 9, column 4 [transmutes_to_never.rol]
-There were 4 semantic errors, bailing

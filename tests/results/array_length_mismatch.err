@@ -1,4 +1,3 @@
 Declared type [bool; 3] does not match actual expression type [bool; 1]
 ↳ declaration @ line 2, column 4 [array_length_mismatch.rol]
 ↳ expression @ line 2, column 23 [array_length_mismatch.rol]
-There were 1 semantic errors, bailing

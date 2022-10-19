@@ -1,3 +1,2 @@
 Procedure pointers can't be taken to compiler builtins
 ↳ line 2, column 12 [procedure_pointer_to_builtin.rol]
-There were 1 semantic errors, bailing

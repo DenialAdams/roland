@@ -2,4 +2,3 @@ Mismatched arity for procedure 'sizeof'. Expected 1 type arguments but got 0
 ↳ line 2, column 12 [arity_generics.rol]
 Mismatched arity for procedure 'sizeof'. Expected 1 type arguments but got 2
 ↳ line 3, column 12 [arity_generics.rol]
-There were 2 semantic errors, bailing

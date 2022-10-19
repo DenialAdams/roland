@@ -1,3 +1,2 @@
 Static `X` is of undeclared type `fooble`
 ↳ static defined @ line 1, column 1 [static_undefined_type.rol]
-There were 1 semantic errors, bailing
