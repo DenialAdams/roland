@@ -857,6 +857,30 @@ fn fold_expr(
             None
          }
       }
+      Expression::Cast {
+         cast_type: CastType::Extend,
+         expr,
+         ..
+      } => {
+         try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
+
+         let expr = &folding_context.expressions[*expr];
+
+         if let Some(literal) = extract_literal(expr) {
+            let extended = literal.extend(folding_context.expressions[expr_index].exp_type.as_ref().unwrap());
+            if let Some(t_val) = extended {
+               Some(ExpressionNode {
+                  expression: t_val,
+                  exp_type: folding_context.expressions[expr_index].exp_type.clone(),
+                  location: expr_to_fold_location,
+               })
+            } else {
+               None
+            }
+         } else {
+            None
+         }
+      }
       Expression::Cast { expr, .. } => {
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
 
@@ -900,6 +924,7 @@ enum Literal {
    Float32(f32),
    Bool(bool),
    Enum(StrId, StrId),
+   Unit,
 }
 
 impl Literal {
@@ -1042,6 +1067,46 @@ impl Literal {
          },
 
          // Noop
+         (Literal::Int64(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+            val: i as u64,
+            synthetic: true,
+         },
+         (Literal::Int32(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+            val: i64::from(i) as u64,
+            synthetic: true,
+         },
+         (Literal::Int16(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+            val: i64::from(i) as u64,
+            synthetic: true,
+         },
+         (Literal::Int8(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+            val: i64::from(i) as u64,
+            synthetic: true,
+         },
+         (Literal::Uint64(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+            val: i,
+            synthetic: true,
+         },
+         (Literal::Uint32(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+            val: u64::from(i),
+            synthetic: true,
+         },
+         (Literal::Uint16(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+            val: u64::from(i),
+            synthetic: true,
+         },
+         (Literal::Uint8(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+            val: u64::from(i),
+            synthetic: true,
+         },
+         _ => return None,
+      })
+   }
+
+   fn extend(self, target_type: &ExpressionType) -> Option<Expression> {
+      Some(match (self, target_type) {
+         (Literal::Float64(f), ExpressionType::Value(ValueType::Float(_))) => Expression::FloatLiteral(f),
+         (Literal::Float32(f), ExpressionType::Value(ValueType::Float(_))) => Expression::FloatLiteral(f64::from(f)),
          (Literal::Int64(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
             val: i as u64,
             synthetic: true,
@@ -1594,8 +1659,7 @@ fn extract_literal(expr_node: &ExpressionNode) -> Option<Literal> {
       },
       Expression::BoolLiteral(x) => Some(Literal::Bool(*x)),
       Expression::EnumLiteral(x, y) => Some(Literal::Enum(x.identifier, y.identifier)),
-      // Do NOT extract unit literals. We can't do any meaningful operations on them and things like transmuting unit literals are just ugh
-      Expression::UnitLiteral => None,
+      Expression::UnitLiteral => Some(Literal::Unit),
       _ => None,
    }
 }

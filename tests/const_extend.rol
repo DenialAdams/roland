@@ -1,0 +1,6 @@
+const X: u32 = 10;
+const Y: u64 = X extend u64;
+
+proc main() {
+
+}
