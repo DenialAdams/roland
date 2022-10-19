@@ -2,3 +2,4 @@ Encountered construction of undefined struct `Y`
 ↳ line 2, column 15 [undeclared_type_decl.rol]
 Variable `x` is declared with undefined type Y
 ↳ declaration @ line 2, column 4 [undeclared_type_decl.rol]
+There were 2 semantic errors, bailing

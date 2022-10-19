@@ -1,2 +1,3 @@
 Argument at position 0 is of type bool when we expected String
 ↳ line 2, column 12 [calling_proc_wrong_type.rol]
+There were 1 semantic errors, bailing

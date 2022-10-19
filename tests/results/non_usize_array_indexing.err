@@ -1,2 +1,3 @@
 Attempted to index an array with a value of type i32, which is not usize
 ↳ index @ line 3, column 25 [non_usize_array_indexing.rol]
+There were 1 semantic errors, bailing

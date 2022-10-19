@@ -4,7 +4,6 @@
 #![allow(clippy::unnecessary_wraps)] // False positives
 
 use std::borrow::Cow;
-use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -143,6 +142,5 @@ fn main() {
       output_path
    };
 
-   let mut wasm_out = File::create(output_path).unwrap();
-   wasm_out.write_all(&out_bytes).unwrap();
+   std::fs::write(output_path, out_bytes).unwrap();
 }

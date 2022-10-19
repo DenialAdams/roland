@@ -1,3 +1,4 @@
 Declared type u8 does not match actual expression type u32
 ↳ declaration @ line 4, column 4 [bad_inference_across_locals.rol]
 ↳ expression @ line 4, column 16 [bad_inference_across_locals.rol]
+There were 1 semantic errors, bailing

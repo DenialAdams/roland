@@ -1,2 +1,3 @@
 For procedure `num_variants`, encountered generic argument of type String which does not meet the constraint `Enum`
 ↳ line 2, column 24 [enum_num_variants_non_enum.rol]
+There were 1 semantic errors, bailing

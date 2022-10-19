@@ -1,3 +1,4 @@
 Declared type i32 does not match actual expression type usize
 ↳ declaration @ line 7, column 4 [type_inference_pointer.rol]
 ↳ expression @ line 7, column 17 [type_inference_pointer.rol]
+There were 1 semantic errors, bailing

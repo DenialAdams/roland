@@ -1,2 +1,3 @@
 Undeclared type foo
 ↳ line 2, column 18 [unresolved_generic_type.rol]
+There were 1 semantic errors, bailing

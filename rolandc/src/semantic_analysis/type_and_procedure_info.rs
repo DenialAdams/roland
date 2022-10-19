@@ -89,7 +89,7 @@ fn resolve_to_type_or_generic_parameter(
          // Any type that contains other types i.e. an array, procedure pointer... can be unresolved while itself not being Unresolved
          // We'll just bail here. There will be more sophisticated stuff needed in the future to make this work.
          return Err(());
-      },
+      }
    };
 
    // This could be a generic type parameter

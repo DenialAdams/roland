@@ -1,2 +1,3 @@
 Procedure call has named argument(s) which come before non-named argument(s)
 ↳ line 8, column 4 [named_args_wrong_place.rol]
+There were 1 semantic errors, bailing

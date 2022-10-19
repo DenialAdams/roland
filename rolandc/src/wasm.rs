@@ -1018,7 +1018,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             emit_statement(statement, generation_context, interner);
          }
          generation_context.out.emit_end(); // end block bi
-         // Increment
+                                            // Increment
          {
             get_stack_address_of_local(*start_var_id, generation_context);
             get_stack_address_of_local(*start_var_id, generation_context);
@@ -1248,12 +1248,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
    match &expr_node.expression {
       Expression::UnitLiteral => (),
       Expression::BoundFcnLiteral(proc_name, _bound_type_params) => {
-         if let ExpressionType::Value(ValueType::ProcedurePointer{ .. }) =
-            expr_node.exp_type.as_ref().unwrap()
-         {
+         if let ExpressionType::Value(ValueType::ProcedurePointer { .. }) = expr_node.exp_type.as_ref().unwrap() {
             emit_procedure_pointer_index(proc_name.identifier, generation_context);
          }
-      },
+      }
       Expression::BoolLiteral(x) => {
          generation_context.out.emit_const_i32(u32::from(*x));
       }

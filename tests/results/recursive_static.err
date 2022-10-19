@@ -4,3 +4,4 @@ Value of static `X` can't be constant folded. Hint: Either simplify the expressi
 Value of static `Y` can't be constant folded. Hint: Either simplify the expression, or initialize it yourself on program start.
 ↳ static @ line 2, column 1 [recursive_static.rol]
 ↳ expression @ line 2, column 17 [recursive_static.rol]
+There were 2 semantic errors, bailing

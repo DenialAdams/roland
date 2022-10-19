@@ -1,3 +1,4 @@
 Declared type i8 does not match actual expression type bool
 ↳ declaration @ line 2, column 4 [mismatched_variable_decl_type.rol]
 ↳ expression @ line 2, column 16 [mismatched_variable_decl_type.rol]
+There were 1 semantic errors, bailing

@@ -1,2 +1,3 @@
 Encountered undefined symbol `x`
 ↳ line 2, column 17 [undefined_variable.rol]
+There were 1 semantic errors, bailing
