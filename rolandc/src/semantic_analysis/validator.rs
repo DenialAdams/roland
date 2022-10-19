@@ -479,6 +479,12 @@ fn type_statement(
             validation_context,
          );
 
+         try_set_inferred_type(
+            &validation_context.expressions[*rhs].exp_type.clone().unwrap(),
+            *lhs,
+            validation_context,
+         );
+
          let len = &validation_context.expressions[*lhs];
          let en = &validation_context.expressions[*rhs];
 
