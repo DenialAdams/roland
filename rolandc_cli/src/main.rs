@@ -66,6 +66,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
       let remaining_args_unicode: Vec<_> = remaining_args.iter().map(|x| x.to_string_lossy()).collect();
       eprintln!("Unrecognized arugments: '{}'", remaining_args_unicode.join("', '"));
       eprintln!("{}", HELP);
+      std::process::exit(1);
    }
 
    Ok(opts)

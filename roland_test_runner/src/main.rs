@@ -57,6 +57,15 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
       overwrite_error_files: pargs.contains("--overwrite-error-files"),
    };
 
+   let remaining_args = pargs.finish();
+
+   if !remaining_args.is_empty() {
+      let remaining_args_unicode: Vec<_> = remaining_args.iter().map(|x| x.to_string_lossy()).collect();
+      eprintln!("Unrecognized arugments: '{}'", remaining_args_unicode.join("', '"));
+      std::process::exit(1);
+   }
+
+
    Ok(opts)
 }
 
