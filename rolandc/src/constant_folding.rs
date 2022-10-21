@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::ops::{BitAnd, BitOr, BitXor};
 
-use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details, rolandc_warn};
+use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_warn};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -139,9 +139,9 @@ fn fold_expr(
          // TODO @FixedPointerWidth
          if let Some(Literal::Uint32(v)) = extract_literal(index) {
             if v >= len {
-               rolandc_error_w_details!(
+               rolandc_error!(
                   err_manager,
-                  &[(array.location, "array"), (index.location, "index")],
+                  expr_to_fold_location,
                   "At runtime, index will be {}, which is out of bounds for the array of length {}",
                   v,
                   len,
@@ -346,13 +346,9 @@ fn fold_expr(
             // First we handle the non-commutative cases
             match (rhs, *operator) {
                (Some(x), BinOp::Divide) if x.is_int_zero() => {
-                  rolandc_error_w_details!(
+                  rolandc_error!(
                      err_manager,
-                     &[
-                        (expr_to_fold_location, "division"),
-                        (lhs_expr.location, "LHS"),
-                        (rhs_expr.location, "RHS")
-                     ],
+                     expr_to_fold_location,
                      "During constant folding, got a divide by zero",
                   );
                   return None;
@@ -534,13 +530,9 @@ fn fold_expr(
                      location: expr_to_fold_location,
                   })
                } else {
-                  rolandc_error_w_details!(
+                  rolandc_error!(
                      err_manager,
-                     &[
-                        (expr_to_fold_location, "addition"),
-                        (lhs_expr.location, "LHS"),
-                        (rhs_expr.location, "RHS")
-                     ],
+                     expr_to_fold_location,
                      "During constant folding, got overflow while adding",
                   );
                   None
@@ -554,13 +546,9 @@ fn fold_expr(
                      location: expr_to_fold_location,
                   })
                } else {
-                  rolandc_error_w_details!(
+                  rolandc_error!(
                      err_manager,
-                     &[
-                        (expr_to_fold_location, "subtraction"),
-                        (lhs_expr.location, "LHS"),
-                        (rhs_expr.location, "RHS")
-                     ],
+                     expr_to_fold_location,
                      "During constant folding, got overflow while subtracting",
                   );
                   None
@@ -574,13 +562,9 @@ fn fold_expr(
                      location: expr_to_fold_location,
                   })
                } else {
-                  rolandc_error_w_details!(
+                  rolandc_error!(
                      err_manager,
-                     &[
-                        (expr_to_fold_location, "multiplication"),
-                        (lhs_expr.location, "LHS"),
-                        (rhs_expr.location, "RHS")
-                     ],
+                     expr_to_fold_location,
                      "During constant folding, got overflow while multiplying",
                   );
                   None
@@ -606,13 +590,9 @@ fn fold_expr(
                      location: expr_to_fold_location,
                   })
                } else {
-                  rolandc_error_w_details!(
+                  rolandc_error!(
                      err_manager,
-                     &[
-                        (expr_to_fold_location, "remainder"),
-                        (lhs_expr.location, "LHS"),
-                        (rhs_expr.location, "RHS")
-                     ],
+                     expr_to_fold_location,
                      "During constant folding, got a divide by zero",
                   );
                   None
@@ -663,13 +643,9 @@ fn fold_expr(
                      location: expr_to_fold_location,
                   })
                } else {
-                  rolandc_error_w_details!(
+                  rolandc_error!(
                      err_manager,
-                     &[
-                        (expr_to_fold_location, "left shift"),
-                        (lhs_expr.location, "LHS"),
-                        (rhs_expr.location, "RHS")
-                     ],
+                     expr_to_fold_location,
                      "During constant folding, got a bad left shift",
                   );
                   None
@@ -683,13 +659,9 @@ fn fold_expr(
                      location: expr_to_fold_location,
                   })
                } else {
-                  rolandc_error_w_details!(
+                  rolandc_error!(
                      err_manager,
-                     &[
-                        (expr_to_fold_location, "right shift"),
-                        (lhs_expr.location, "LHS"),
-                        (rhs_expr.location, "RHS")
-                     ],
+                     expr_to_fold_location,
                      "During constant folding, got a bad right shift",
                   );
                   None
