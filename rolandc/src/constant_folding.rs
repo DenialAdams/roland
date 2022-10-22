@@ -1161,6 +1161,30 @@ impl Literal {
             val: u64::from(i as u8),
             synthetic: true,
          },
+         (Literal::Uint64(i), ExpressionType::Value(I32_TYPE)) => Expression::IntLiteral {
+            val: i64::from(i as i32) as u64,
+            synthetic: true,
+         },
+         (Literal::Uint64(i), ExpressionType::Value(I16_TYPE)) => Expression::IntLiteral {
+            val: i64::from(i as i16) as u64,
+            synthetic: true,
+         },
+         (Literal::Uint64(i), ExpressionType::Value(I8_TYPE)) => Expression::IntLiteral {
+            val: i64::from(i as i8) as u64,
+            synthetic: true,
+         },
+         (Literal::Uint32(i), ExpressionType::Value(I16_TYPE)) => Expression::IntLiteral {
+            val: i64::from(i as i16) as u64,
+            synthetic: true,
+         },
+         (Literal::Uint32(i), ExpressionType::Value(I8_TYPE)) => Expression::IntLiteral {
+            val: i64::from(i as i8) as u64,
+            synthetic: true,
+         },
+         (Literal::Uint16(i), ExpressionType::Value(I8_TYPE)) => Expression::IntLiteral {
+            val: i64::from(i as i8) as u64,
+            synthetic: true,
+         },
          (Literal::Int64(i), ExpressionType::Value(U32_TYPE)) => Expression::IntLiteral {
             val: u64::from(i as u32),
             synthetic: true,
