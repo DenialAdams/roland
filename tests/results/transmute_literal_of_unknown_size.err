@@ -1,4 +1,3 @@
 Transmute encountered an operand whose size is not yet known
 ↳ transmute @ line 2, column 12 [transmute_literal_of_unknown_size.rol]
 ↳ operand @ line 2, column 12 [transmute_literal_of_unknown_size.rol]
-There were 1 semantic errors, bailing

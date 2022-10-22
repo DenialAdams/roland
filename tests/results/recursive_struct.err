@@ -2,4 +2,3 @@ Struct `X` contains itself, which isn't allowed as it would result in an infinit
 ↳ struct defined @ line 1, column 1 [recursive_struct.rol]
 Struct `Y` contains itself, which isn't allowed as it would result in an infinitely large struct
 ↳ struct defined @ line 5, column 1 [recursive_struct.rol]
-There were 2 semantic errors, bailing

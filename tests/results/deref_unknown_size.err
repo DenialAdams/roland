@@ -1,3 +1,2 @@
 Expected type [AnyPointer] for expression Dereference; instead got ?? Int
 ↳ line 5, column 12 [deref_unknown_size.rol]
-There were 1 semantic errors, bailing

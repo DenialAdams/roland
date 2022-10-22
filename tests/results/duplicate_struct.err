@@ -1,4 +1,3 @@
 Encountered duplicate structs with the same name `Foo`
 ↳ first struct defined @ line 5, column 1 [duplicate_struct.rol]
 ↳ second struct defined @ line 7, column 1 [duplicate_struct.rol]
-There were 1 semantic errors, bailing

@@ -1,3 +1,2 @@
 Variable shadowing is not supported at this time (`x`)
 ↳ declaration @ line 3, column 8 [shadowing.rol]
-There were 1 semantic errors, bailing

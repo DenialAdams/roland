@@ -6,4 +6,3 @@ Struct `X` does not have a field `baz`
 ↳ line 24, column 12 [bad_field_access.rol]
 Struct `Y` does not have a field `other`
 ↳ line 26, column 12 [bad_field_access.rol]
-There were 4 semantic errors, bailing

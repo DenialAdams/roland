@@ -1,3 +1,2 @@
 Parameter `x` of procedure `foo` is of undeclared type `Y`
 ↳ line 1, column 13 [undeclared_type_parameter.rol]
-There were 1 semantic errors, bailing

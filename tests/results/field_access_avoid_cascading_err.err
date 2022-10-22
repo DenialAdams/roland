@@ -1,3 +1,2 @@
 Encountered undefined symbol `FOO`
 ↳ line 2, column 17 [field_access_avoid_cascading_err.rol]
-There were 1 semantic errors, bailing
