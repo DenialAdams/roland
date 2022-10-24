@@ -11,21 +11,4 @@ then
   RELEASE=""
 fi
 
-cargo build $RELEASE --bin rolandc_cli --bin roland_test_runner
-
-if [[ $DEBUG == "true" ]];
-then
-   if [ $OSTYPE == "cygwin" ];
-   then
-      ./target/debug/roland_test_runner.exe tests/ $OVERWRITE_PARAMS
-   else
-      ./target/debug/roland_test_runner tests/ $OVERWRITE_PARAMS
-   fi
-else
-   if [ $OSTYPE == "cygwin" ];
-   then
-      ./target/release/roland_test_runner.exe tests/ $OVERWRITE_PARAMS
-   else
-      ./target/release/roland_test_runner tests/ $OVERWRITE_PARAMS
-   fi
-fi
+cargo run $RELEASE --bin roland_test_runner -- tests/ $OVERWRITE_PARAMS
