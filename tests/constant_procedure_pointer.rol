@@ -3,7 +3,9 @@ proc foo() {
 }
 
 const X: proc() = &foo;
+static Y: proc() = &foo;
 
 proc main() {
    X();
+   Y();
 }

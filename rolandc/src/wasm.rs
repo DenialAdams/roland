@@ -1112,6 +1112,15 @@ fn do_emit_and_load_lval(
 fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut GenerationContext) {
    let expr_node = &generation_context.expressions[expr_index];
    match &expr_node.expression {
+      Expression::BoundFcnLiteral(proc_name, _) => {
+         // again, eventually use type arguments
+         let (my_index, _) = generation_context.procedure_to_table_index.insert_full(proc_name.identifier);
+         // todo: truncation
+         for w in 0..4 {
+            let val = (my_index >> (8 * w)) & 0xff;
+            write!(generation_context.out.out, "\\{:02x}", val).unwrap();
+         }
+      }
       Expression::UnitLiteral => (),
       Expression::BoolLiteral(x) => {
          write!(generation_context.out.out, "\\{:02x}", u8::from(*x)).unwrap();
