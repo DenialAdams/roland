@@ -1,3 +1,5 @@
+#![allow(clippy::uninlined_format_args)] // I'm an old man and I like the way it was before
+
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::DerefMut;

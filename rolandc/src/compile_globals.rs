@@ -51,7 +51,7 @@ pub fn ensure_statics_const(
             &[(p_static.location, "static"), (p_static_expr.location, "expression")],
             "Declared type {} of static `{}` does not match actual expression type {}",
             p_static.static_type.as_roland_type_info(interner),
-            interner.lookup(p_static.name.identifier),
+            interner.lookup(p_static.name.str),
             actual_type_str
          );
       }
@@ -64,7 +64,7 @@ pub fn ensure_statics_const(
                err_manager,
                &[(p_static.location, "static"), (v.location, "expression")],
                "Value of static `{}` can't be constant folded. Hint: Either simplify the expression, or initialize it yourself on program start.",
-               interner.lookup(p_static.name.identifier),
+               interner.lookup(p_static.name.str),
             );
          }
       }
@@ -87,7 +87,7 @@ pub fn compile_globals(
    let all_consts: HashMap<VariableId, (SourceInfo, ExpressionId, StrId)> = program
       .consts
       .iter()
-      .map(|x| (x.var_id, (x.location, x.value, x.name.identifier)))
+      .map(|x| (x.var_id, (x.location, x.value, x.name.str)))
       .collect();
    let mut consts_being_processed: HashSet<VariableId> = HashSet::new();
    let mut const_replacements: HashMap<VariableId, ExpressionId> = HashMap::new();

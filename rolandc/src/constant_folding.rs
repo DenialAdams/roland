@@ -1752,7 +1752,7 @@ fn extract_literal(expr_node: &ExpressionNode) -> Option<Literal> {
          _ => unreachable!(),
       },
       Expression::BoolLiteral(x) => Some(Literal::Bool(*x)),
-      Expression::EnumLiteral(x, y) => Some(Literal::Enum(x.identifier, y.identifier)),
+      Expression::EnumLiteral(x, y) => Some(Literal::Enum(x.str, y.str)),
       Expression::UnitLiteral => Some(Literal::Unit),
       _ => None,
    }

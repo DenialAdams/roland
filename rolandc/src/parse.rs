@@ -43,7 +43,7 @@ fn expect(l: &mut Lexer, parse_context: &mut ParseContext, token: Token) -> Resu
 #[derive(Clone)]
 pub struct ProcedureDefinition {
    pub name: StrId,
-   pub generic_parameters: Vec<IdentifierNode>,
+   pub generic_parameters: Vec<StrNode>,
    pub constraints: IndexMap<StrId, IndexSet<StrId>>,
    pub parameters: Vec<ParameterNode>,
    pub ret_type: ExpressionTypeNode,
@@ -93,13 +93,13 @@ pub struct StructNode {
 pub struct EnumNode {
    pub name: StrId,
    pub requested_size: Option<ExpressionTypeNode>,
-   pub variants: Vec<IdentifierNode>,
+   pub variants: Vec<StrNode>,
    pub location: SourceInfo,
 }
 
 #[derive(Clone, Debug)]
 pub struct ConstNode {
-   pub name: IdentifierNode,
+   pub name: StrNode,
    pub var_id: VariableId,
    pub const_type: ExpressionType,
    pub value: ExpressionId,
@@ -108,7 +108,7 @@ pub struct ConstNode {
 
 #[derive(Clone, Debug)]
 pub struct StaticNode {
-   pub name: IdentifierNode,
+   pub name: StrNode,
    pub static_type: ExpressionType,
    pub value: Option<ExpressionId>,
    pub location: SourceInfo,
@@ -122,7 +122,7 @@ pub struct ExpressionTypeNode {
 
 #[derive(Clone, Debug)]
 pub struct TraitNode {
-   pub name: IdentifierNode,
+   pub name: StrNode,
    pub location: SourceInfo,
 }
 
@@ -217,7 +217,7 @@ pub enum Expression {
    },
    FloatLiteral(f64),
    UnitLiteral,
-   UnresolvedVariable(IdentifierNode),
+   UnresolvedVariable(StrNode),
    Variable(VariableId),
    BinaryOperator {
       operator: BinOp,
@@ -225,15 +225,15 @@ pub enum Expression {
       rhs: ExpressionId,
    },
    UnaryOperator(UnOp, ExpressionId),
-   StructLiteral(IdentifierNode, Box<[(StrId, ExpressionId)]>),
+   StructLiteral(StrNode, Box<[(StrId, ExpressionId)]>),
    FieldAccess(Vec<StrId>, ExpressionId),
    Cast {
       cast_type: CastType,
       target_type: ExpressionType,
       expr: ExpressionId,
    },
-   EnumLiteral(IdentifierNode, IdentifierNode),
-   BoundFcnLiteral(IdentifierNode, Box<[GenericArgumentNode]>),
+   EnumLiteral(StrNode, StrNode),
+   BoundFcnLiteral(StrNode, Box<[GenericArgumentNode]>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -286,7 +286,7 @@ pub enum Statement {
    Assignment(ExpressionId, ExpressionId),
    Block(BlockNode),
    Loop(BlockNode),
-   For(IdentifierNode, ExpressionId, ExpressionId, BlockNode, bool, VariableId),
+   For(StrNode, ExpressionId, ExpressionId, BlockNode, bool, VariableId),
    Continue,
    Break,
    Expression(ExpressionId),
@@ -294,18 +294,18 @@ pub enum Statement {
    // so we should try to rectify that too.
    IfElse(ExpressionId, BlockNode, Box<StatementNode>),
    Return(ExpressionId),
-   VariableDeclaration(IdentifierNode, ExpressionId, Option<ExpressionType>, VariableId),
+   VariableDeclaration(StrNode, ExpressionId, Option<ExpressionType>, VariableId),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct IdentifierNode {
-   pub identifier: StrId,
+pub struct StrNode {
+   pub str: StrId,
    pub location: SourceInfo,
 }
 
 #[derive(Clone, Debug)]
 pub struct ImportNode {
-   pub import_path: StrId,
+   pub import_path: StrNode,
    pub location: SourceInfo,
 }
 
@@ -325,7 +325,9 @@ pub struct Program {
    pub consts: Vec<ConstNode>,
    pub statics: Vec<StaticNode>,
 
-   pub parsed_types: Vec<ExpressionTypeNode>, // (only read by the language server)
+   // (only read by the language server)
+   pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
+   pub parsed_types: Vec<ExpressionTypeNode>,
 
    // These fields are populated during semantic analysis
    pub literals: IndexSet<StrId>,
@@ -334,7 +336,6 @@ pub struct Program {
    pub global_info: IndexMap<VariableId, GlobalInfo>,
    pub procedure_info: IndexMap<StrId, ProcedureInfo>,
    pub struct_size_info: HashMap<StrId, SizeInfo>,
-   pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
    pub next_variable: VariableId,
 }
 
@@ -453,10 +454,10 @@ pub fn astify(
          }
          Token::KeywordImport => {
             let kw = lexer.next();
-            let import_token = expect(&mut lexer, &mut parse_context, Token::StringLiteral(DUMMY_STR_TOKEN))?;
+            let import_path = parse_string(&mut lexer, &mut parse_context)?;
             let sc = expect(&mut lexer, &mut parse_context, Token::Semicolon)?;
             imports.push(ImportNode {
-               import_path: extract_str_literal(import_token.token),
+               import_path,
                location: merge_locations(kw.source_info, sc.source_info),
             });
          }
@@ -563,11 +564,19 @@ fn extract_int_literal(t: Token) -> u64 {
    }
 }
 
-fn parse_identifier(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<IdentifierNode, ()> {
+fn parse_identifier(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<StrNode, ()> {
    let ident = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
-   Ok(IdentifierNode {
-      identifier: extract_identifier(ident.token),
+   Ok(StrNode {
+      str: extract_identifier(ident.token),
       location: ident.source_info,
+   })
+}
+
+fn parse_string(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<StrNode, ()> {
+   let string = expect(l, parse_context, Token::StringLiteral(DUMMY_STR_TOKEN))?;
+   Ok(StrNode {
+      str: extract_str_literal(string.token),
+      location: string.source_info,
    })
 }
 
@@ -600,9 +609,9 @@ fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -
          expect(l, parse_context, Token::Colon)?;
          let trait_constraint = parse_identifier(l, parse_context)?;
          constraints
-            .entry(corresponding_generic_param.identifier)
+            .entry(corresponding_generic_param.str)
             .or_insert_with(IndexSet::new)
-            .insert(trait_constraint.identifier);
+            .insert(trait_constraint.str);
          if l.peek_token() == Token::Comma {
             let _ = l.next();
          } else {
@@ -1178,8 +1187,8 @@ fn pratt(
             );
             wrap(
                Expression::BoundFcnLiteral(
-                  IdentifierNode {
-                     identifier: s,
+                  StrNode {
+                     str: s,
                      location: expr_begin_token.source_info,
                   },
                   generic_args.into_boxed_slice(),
@@ -1193,8 +1202,8 @@ fn pratt(
             let combined_location = merge_locations(expr_begin_token.source_info, variant.location);
             wrap(
                Expression::EnumLiteral(
-                  IdentifierNode {
-                     identifier: s,
+                  StrNode {
+                     str: s,
                      location: expr_begin_token.source_info,
                   },
                   variant,
@@ -1232,8 +1241,8 @@ fn pratt(
             let combined_location = merge_locations(expr_begin_token.source_info, close_brace.source_info);
             wrap(
                Expression::StructLiteral(
-                  IdentifierNode {
-                     identifier: s,
+                  StrNode {
+                     str: s,
                      location: expr_begin_token.source_info,
                   },
                   fields.into_boxed_slice(),
@@ -1243,8 +1252,8 @@ fn pratt(
             )
          } else {
             wrap(
-               Expression::UnresolvedVariable(IdentifierNode {
-                  identifier: s,
+               Expression::UnresolvedVariable(StrNode {
+                  str: s,
                   location: expr_begin_token.source_info,
                }),
                expr_begin_token.source_info,

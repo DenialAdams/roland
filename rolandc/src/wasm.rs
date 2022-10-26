@@ -644,7 +644,7 @@ pub fn emit_wasm(
 
    for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
       let static_address = static_addresses_by_name
-         .get(&p_static.name.identifier)
+         .get(&p_static.name.str)
          .copied()
          .unwrap();
 
@@ -1114,7 +1114,7 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
    match &expr_node.expression {
       Expression::BoundFcnLiteral(proc_name, _) => {
          // again, eventually use type arguments
-         let (my_index, _) = generation_context.procedure_to_table_index.insert_full(proc_name.identifier);
+         let (my_index, _) = generation_context.procedure_to_table_index.insert_full(proc_name.str);
          // todo: truncation
          for w in 0..4 {
             let val = (my_index >> (8 * w)) & 0xff;
@@ -1129,10 +1129,10 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
          let width = sizeof_type_mem(expr_node.exp_type.as_ref().unwrap(), generation_context.enum_info, generation_context.struct_size_info);
          let index = generation_context
             .enum_info
-            .get(&name.identifier)
+            .get(&name.str)
             .unwrap()
             .variants
-            .get_index_of(&variant.identifier)
+            .get_index_of(&variant.str)
             .unwrap();
          generation_context.out.emit_spaces();
          for w in 0..width {
@@ -1188,8 +1188,8 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
       Expression::StructLiteral(s_name, fields) => {
          // We need to emit this in the proper order!!
          let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
-         let si = generation_context.struct_info.get(&s_name.identifier).unwrap();
-         let ssi = generation_context.struct_size_info.get(&s_name.identifier).unwrap();
+         let si = generation_context.struct_info.get(&s_name.str).unwrap();
+         let ssi = generation_context.struct_size_info.get(&s_name.str).unwrap();
          for (field, next_field) in si.field_types.iter().zip(si.field_types.keys().skip(1)) {
             let value_of_field = map.get(field.0).copied().unwrap();
             emit_literal_bytes(value_of_field, generation_context);
@@ -1238,7 +1238,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
       Expression::UnitLiteral => (),
       Expression::BoundFcnLiteral(proc_name, _bound_type_params) => {
          if let ExpressionType::Value(ValueType::ProcedurePointer { .. }) = expr_node.exp_type.as_ref().unwrap() {
-            emit_procedure_pointer_index(proc_name.identifier, generation_context);
+            emit_procedure_pointer_index(proc_name.str, generation_context);
          }
       }
       Expression::BoolLiteral(x) => {
@@ -1259,10 +1259,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          };
          let index = generation_context
             .enum_info
-            .get(&name.identifier)
+            .get(&name.str)
             .unwrap()
             .variants
-            .get_index_of(&variant.identifier)
+            .get_index_of(&variant.str)
             .unwrap();
          generation_context.out.emit_spaces();
          writeln!(generation_context.out.out, "{}.const {}", wasm_type, index).unwrap();
@@ -1806,7 +1806,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
 
          // Then we load from the temps in the order the struct is laid out
          let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
-         let si = generation_context.struct_info.get(&s_name.identifier).unwrap();
+         let si = generation_context.struct_info.get(&s_name.str).unwrap();
          for field in si.field_types.iter() {
             let value_of_field = map.get(field.0).copied().unwrap();
             let field_virtual_var = generation_context

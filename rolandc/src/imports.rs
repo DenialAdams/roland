@@ -5,7 +5,8 @@ use std::path::PathBuf;
 use include_dir::{include_dir, Dir};
 
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
-use crate::source_info::{SourceInfo, SourcePath};
+use crate::parse::ImportNode;
+use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
 use crate::{lex_and_parse, merge_program, CompilationContext, CompilationError, FileResolver};
 
 static STDLIB_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../lib");
@@ -35,22 +36,22 @@ pub fn import_program<'a, FR: FileResolver<'a>>(
    path: PathBuf,
    mut resolver: FR,
 ) -> Result<(), CompilationError> {
-   let mut import_queue: Vec<(PathBuf, Option<SourceInfo>)> = vec![(path, None)];
+   let mut import_queue: Vec<(PathBuf, Option<ImportNode>)> = vec![(path, None)];
 
    let mut imported_files = HashSet::new();
    while let Some(pair) = import_queue.pop() {
       let mut base_path = pair.0;
-      let location = pair.1;
+      let import_location = pair.1;
       let canonical_path = if FR::IS_STD {
          base_path.clone()
       } else {
          match std::fs::canonicalize(&base_path) {
             Ok(p) => p,
             Err(e) => {
-               if let Some(l) = location {
+               if let Some(l) = import_location {
                   rolandc_error!(
                      ctx.err_manager,
-                     l,
+                     l.import_path.location,
                      "Failed to canonicalize path '{}': {}",
                      base_path.as_os_str().to_string_lossy(),
                      e
@@ -74,10 +75,10 @@ pub fn import_program<'a, FR: FileResolver<'a>>(
       let program_s = match resolver.resolve_path(&base_path) {
          Ok(s) => s,
          Err(e) => {
-            if let Some(l) = location {
+            if let Some(l) = import_location {
                rolandc_error!(
                   ctx.err_manager,
-                  l,
+                  l.import_path.location,
                   "Failed to read imported file '{}': {}",
                   base_path.as_os_str().to_string_lossy(),
                   e
@@ -100,6 +101,14 @@ pub fn import_program<'a, FR: FileResolver<'a>>(
          SourcePath::File(ctx.interner.intern(&base_path.as_os_str().to_string_lossy()))
       };
 
+      if let Some(il) = import_location {
+         let dummy_sp = SourcePosition {
+            line: 0,
+            col: 0,
+         };
+         ctx.program.source_to_definition.insert(il.import_path.location, SourceInfo { begin: dummy_sp, end: dummy_sp, file: source_path});
+      }
+
       let mut parsed = lex_and_parse(
          &program_s,
          source_path,
@@ -111,14 +120,14 @@ pub fn import_program<'a, FR: FileResolver<'a>>(
 
       base_path.pop(); // /foo/bar/main.rol -> /foo/bar
       for file in parsed.0.iter() {
-         let file_str = ctx.interner.lookup(file.import_path);
+         let file_str = ctx.interner.lookup(file.import_path.str);
          if let Some(std_path) = file_str.strip_prefix("std:") {
             import_program(ctx, std_path.into(), StdFileResolver)?;
             continue;
          }
          let mut new_path = base_path.clone();
          new_path.push(file_str);
-         import_queue.push((new_path, Some(file.location)));
+         import_queue.push((new_path, Some(file.clone())));
       }
    }
 

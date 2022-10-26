@@ -13,7 +13,7 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, GenericArgumentNode,
-   IdentifierNode, Program, Statement, StatementNode, UnOp, VariableId,
+   StrNode, Program, Statement, StatementNode, UnOp, VariableId,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, value_type_mem_alignment};
@@ -198,7 +198,7 @@ pub fn type_and_check_validity(
       type_variables: DisjointSet::new(),
       type_variable_definitions: HashMap::new(),
       cur_procedure_locals: IndexMap::new(),
-      source_to_definition: IndexMap::new(),
+      source_to_definition: std::mem::replace(&mut program.source_to_definition, IndexMap::new()),
       next_var_dont_access: program.next_variable,
    };
 
@@ -313,7 +313,7 @@ pub fn type_and_check_validity(
             &[(p_const.location, "const"), (p_const_expr.location, "expression")],
             "Declared type {} of const `{}` does not match actual expression type {}",
             p_const.const_type.as_roland_type_info(interner),
-            interner.lookup(p_const.name.identifier),
+            interner.lookup(p_const.name.str),
             actual_type_str,
          );
       }
@@ -335,7 +335,7 @@ pub fn type_and_check_validity(
             &[(p_static.location, "static"), (p_static_expr.location, "expression")],
             "Declared type {} of static `{}` does not match actual expression type {}",
             p_static.static_type.as_roland_type_info(interner),
-            interner.lookup(p_static.name.identifier),
+            interner.lookup(p_static.name.str),
             actual_type_str,
          );
       }
@@ -686,7 +686,7 @@ fn type_statement(
                err_manager,
                &[(statement.location, "declaration")],
                "Variable `{}` is declared with undefined type {}",
-               interner.lookup(id.identifier),
+               interner.lookup(id.str),
                dt_str,
             );
             ExpressionType::Value(ValueType::CompileError)
@@ -702,22 +702,22 @@ fn type_statement(
 #[must_use]
 fn declare_variable(
    err_manager: &mut ErrorManager,
-   id: &IdentifierNode,
+   id: &StrNode,
    var_type: ExpressionType,
    validation_context: &mut ValidationContext,
    interner: &mut Interner,
 ) -> VariableId {
    let next_var = validation_context.next_var();
-   if validation_context.variable_types.contains_key(&id.identifier) {
+   if validation_context.variable_types.contains_key(&id.str) {
       rolandc_error_w_details!(
          err_manager,
          &[(id.location, "declaration")],
          "Variable shadowing is not supported at this time (`{}`)",
-         interner.lookup(id.identifier)
+         interner.lookup(id.str)
       );
    } else {
       validation_context.variable_types.insert(
-         id.identifier,
+         id.str,
          VariableDetails {
             var_type: var_type.clone(),
             depth: validation_context.block_depth,
@@ -1248,13 +1248,13 @@ fn get_type(
             }
          }
 
-         match validation_context.procedure_info.get(&id.identifier) {
+         match validation_context.procedure_info.get(&id.str) {
             Some(proc_info) => {
                validation_context
                   .source_to_definition
                   .insert(id.location, proc_info.location);
                check_procedure_item(
-                  id.identifier,
+                  id.str,
                   proc_info,
                   expr_location,
                   type_arguments,
@@ -1267,13 +1267,13 @@ fn get_type(
                   err_manager,
                   id.location,
                   "Encountered undefined symbol `{}`",
-                  interner.lookup(id.identifier)
+                  interner.lookup(id.str)
                );
                ExpressionType::Value(ValueType::CompileError)
             }
          }
       }
-      Expression::UnresolvedVariable(id) => match validation_context.variable_types.get_mut(&id.identifier) {
+      Expression::UnresolvedVariable(id) => match validation_context.variable_types.get_mut(&id.str) {
          Some(var_info) => {
             var_info.used = true;
             validation_context
@@ -1283,19 +1283,19 @@ fn get_type(
             var_info.var_type.clone()
          }
          None => {
-            if let Some(proc_info) = validation_context.procedure_info.get(&id.identifier) {
+            if let Some(proc_info) = validation_context.procedure_info.get(&id.str) {
                validation_context
                   .source_to_definition
                   .insert(id.location, proc_info.location);
                validation_context.expressions[expr_index].expression =
                   Expression::BoundFcnLiteral(id.clone(), vec![].into_boxed_slice());
-               check_procedure_item(id.identifier, proc_info, expr_location, &[], interner, err_manager)
+               check_procedure_item(id.str, proc_info, expr_location, &[], interner, err_manager)
             } else {
                rolandc_error!(
                   err_manager,
                   expr_location,
                   "Encountered undefined symbol `{}`",
-                  interner.lookup(id.identifier)
+                  interner.lookup(id.str)
                );
                ExpressionType::Value(ValueType::CompileError)
             }
@@ -1352,7 +1352,7 @@ fn get_type(
             type_expression(err_manager, field.1, validation_context, interner);
          }
 
-         match validation_context.struct_info.get(&struct_name.identifier) {
+         match validation_context.struct_info.get(&struct_name.str) {
             Some(defined_struct) => {
                validation_context
                   .source_to_definition
@@ -1373,7 +1373,7 @@ fn get_type(
                            ],
                            "`{}` is not a known field of struct `{}`",
                            interner.lookup(field.0),
-                           interner.lookup(struct_name.identifier),
+                           interner.lookup(struct_name.str),
                         );
                         continue;
                      }
@@ -1389,7 +1389,7 @@ fn get_type(
                         ],
                         "`{}` is a valid field of struct `{}`, but is duplicated",
                         interner.lookup(field.0),
-                        interner.lookup(struct_name.identifier),
+                        interner.lookup(struct_name.str),
                      );
                   }
 
@@ -1410,7 +1410,7 @@ fn get_type(
                         ],
                         "For field `{}` of struct `{}`, encountered value of type {} when we expected {}",
                         interner.lookup(field.0),
-                        interner.lookup(struct_name.identifier),
+                        interner.lookup(struct_name.str),
                         field_1_type_str,
                         defined_type_str,
                      );
@@ -1427,19 +1427,19 @@ fn get_type(
                         (defined_struct.location, "struct defined"),
                      ],
                      "Literal of struct `{}` is missing fields [{}]",
-                     interner.lookup(struct_name.identifier),
+                     interner.lookup(struct_name.str),
                      unmatched_fields_str.join(", "),
                   );
                }
 
-               ExpressionType::Value(ValueType::Struct(struct_name.identifier))
+               ExpressionType::Value(ValueType::Struct(struct_name.str))
             }
             None => {
                rolandc_error!(
                   err_manager,
                   expr_location,
                   "Encountered construction of undefined struct `{}`",
-                  interner.lookup(struct_name.identifier)
+                  interner.lookup(struct_name.str)
                );
                ExpressionType::Value(ValueType::CompileError)
             }
@@ -1625,22 +1625,22 @@ fn get_type(
          }
       }
       Expression::EnumLiteral(x, v) => {
-         if let Some(enum_info) = validation_context.enum_info.get(&x.identifier) {
+         if let Some(enum_info) = validation_context.enum_info.get(&x.str) {
             validation_context
                .source_to_definition
                .insert(x.location, enum_info.location);
-            if let Some(variant_location) = enum_info.variants.get(&v.identifier) {
+            if let Some(variant_location) = enum_info.variants.get(&v.str) {
                validation_context
                   .source_to_definition
                   .insert(v.location, *variant_location);
-               ExpressionType::Value(ValueType::Enum(x.identifier))
+               ExpressionType::Value(ValueType::Enum(x.str))
             } else {
                rolandc_error!(
                   err_manager,
                   expr_location,
                   "Attempted to instantiate unknown variant `{}` of enum `{}`",
-                  interner.lookup(v.identifier),
-                  interner.lookup(x.identifier),
+                  interner.lookup(v.str),
+                  interner.lookup(x.str),
                );
 
                ExpressionType::Value(ValueType::CompileError)
@@ -1650,7 +1650,7 @@ fn get_type(
                err_manager,
                expr_location,
                "Attempted to instantiate enum `{}`, which does not exist",
-               interner.lookup(x.identifier),
+               interner.lookup(x.str),
             );
 
             ExpressionType::Value(ValueType::CompileError)

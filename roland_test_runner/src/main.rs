@@ -1,4 +1,6 @@
 #![feature(local_key_cell_methods)]
+
+#![allow(clippy::uninlined_format_args)] // I'm an old man and I like the way it was before
 #![allow(clippy::unwrap_or_else_default)] // I want to know exactly what is being called
 
 struct CliFileResolver {}

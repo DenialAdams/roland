@@ -7,7 +7,7 @@ use super::{EnumInfo, GlobalInfo, ProcedureInfo, StructInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{IdentifierNode, ProcImplSource};
+use crate::parse::{StrNode, ProcImplSource};
 use crate::semantic_analysis::validator::resolve_type;
 use crate::source_info::SourcePath;
 use crate::type_data::{ExpressionType, ValueType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
@@ -74,7 +74,7 @@ fn recursive_struct_check(
 }
 
 fn resolve_to_type_or_generic_parameter(
-   generic_parameters: &[IdentifierNode],
+   generic_parameters: &[StrNode],
    the_type: &mut ExpressionType,
    enum_info: &IndexMap<StrId, EnumInfo>,
    struct_info: &IndexMap<StrId, StructInfo>,
@@ -94,7 +94,7 @@ fn resolve_to_type_or_generic_parameter(
 
    // This could be a generic type parameter
    for generic_parameter in generic_parameters.iter() {
-      if generic_parameter.identifier == param_type_name {
+      if generic_parameter.str == param_type_name {
          return Ok(());
       }
    }
@@ -113,13 +113,13 @@ pub fn populate_type_and_procedure_info(
       dupe_check.clear();
       dupe_check.reserve(a_enum.variants.len());
       for variant in a_enum.variants.iter() {
-         if !dupe_check.insert(variant.identifier) {
+         if !dupe_check.insert(variant.str) {
             rolandc_error!(
                err_manager,
                a_enum.location,
                "Enum `{}` has a duplicate variant `{}`",
                interner.lookup(a_enum.name),
-               interner.lookup(variant.identifier),
+               interner.lookup(variant.str),
             );
          }
       }
@@ -197,7 +197,7 @@ pub fn populate_type_and_procedure_info(
       if let Some(old_enum) = program.enum_info.insert(
          a_enum.name,
          EnumInfo {
-            variants: a_enum.variants.iter().map(|x| (x.identifier, x.location)).collect(),
+            variants: a_enum.variants.iter().map(|x| (x.str, x.location)).collect(),
             location: a_enum.location,
             base_type,
          },
@@ -310,7 +310,7 @@ pub fn populate_type_and_procedure_info(
             err_manager,
             &[(*si, "const defined")],
             "Const `{}` is of undeclared type `{}`",
-            interner.lookup(const_node.name.identifier),
+            interner.lookup(const_node.name.str),
             static_type_str,
          );
       }
@@ -321,7 +321,7 @@ pub fn populate_type_and_procedure_info(
             expr_type: const_node.const_type.clone(),
             location: const_node.location,
             is_const: true,
-            name: const_node.name.identifier,
+            name: const_node.name.str,
          },
       ) {
          rolandc_error_w_details!(
@@ -331,7 +331,7 @@ pub fn populate_type_and_procedure_info(
                (*si, "second static/const defined"),
             ],
             "Encountered duplicate static/const with the same name `{}`",
-            interner.lookup(const_node.name.identifier),
+            interner.lookup(const_node.name.str),
          );
       }
       const_node.var_id = program.next_variable;
@@ -348,7 +348,7 @@ pub fn populate_type_and_procedure_info(
             err_manager,
             &[(*si, "static defined")],
             "Static `{}` is of undeclared type `{}`",
-            interner.lookup(static_node.name.identifier),
+            interner.lookup(static_node.name.str),
             static_type_str,
          );
       }
@@ -359,7 +359,7 @@ pub fn populate_type_and_procedure_info(
             expr_type: static_node.static_type.clone(),
             location: static_node.location,
             is_const: false,
-            name: static_node.name.identifier,
+            name: static_node.name.str,
          },
       ) {
          rolandc_error_w_details!(
@@ -369,7 +369,7 @@ pub fn populate_type_and_procedure_info(
                (static_node.location, "second static/const defined")
             ],
             "Encountered duplicate static/const with the same name `{}`",
-            interner.lookup(static_node.name.identifier),
+            interner.lookup(static_node.name.str),
          );
       }
       program.next_variable = program.next_variable.next();
@@ -503,9 +503,9 @@ pub fn populate_type_and_procedure_info(
          let matching_generic_param = match definition
             .generic_parameters
             .iter()
-            .find(|x| x.identifier == *constraint.0)
+            .find(|x| x.str == *constraint.0)
          {
-            Some(x) => x.identifier,
+            Some(x) => x.str,
             None => {
                rolandc_error!(
                   err_manager,
@@ -539,7 +539,7 @@ pub fn populate_type_and_procedure_info(
          .map(|x| {
             definition
                .constraints
-               .get_mut(&x.identifier)
+               .get_mut(&x.str)
                .map_or_else(IndexSet::new, |x| std::mem::replace(x, IndexSet::new()))
          })
          .collect();
