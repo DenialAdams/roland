@@ -210,7 +210,9 @@ An example WASM-4 game can be viewed here: https://github.com/DenialAdams/roland
 ## Tooling
 
 ### Visual Studio Code Extension
-There is a VS Code extension for Roland - search for "Roland" on the vscode marketplace, and it's the extension published by "brick.codes".
+There is a VS Code extension for Roland - it's "Roland" on the [vscode marketplace](https://marketplace.visualstudio.com/items?itemName=brickcodes.roland), published by "brick.codes".
+
+`code --install-extension brickcodes.roland`
 
 It should provide the following features:
 - Syntax Highlighting
