@@ -264,6 +264,11 @@ _255,
 _256,
 }
 
+// invalid base
+enum Baz : proc(u8) {
+
+}
+
 proc main() {
 
 }
