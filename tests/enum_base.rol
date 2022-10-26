@@ -1,0 +1,7 @@
+enum Foo : u32 {
+   A
+}
+
+proc main() {
+   println(int_to_string(sizeof$Foo() extend u64));
+}

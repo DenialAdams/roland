@@ -128,40 +128,40 @@ pub fn populate_type_and_procedure_info(
          let base_type = match etn.e_type {
             ExpressionType::Value(U64_TYPE) => U64_TYPE,
             ExpressionType::Value(U32_TYPE) => {
-               if a_enum.variants.len() > u32::MAX as usize {
+               if a_enum.variants.len() > (u64::from(u32::MAX) + 1) as usize {
                   rolandc_error!(
                      err_manager,
                      etn.location,
-                     "Enum `{}` has {} variants, which exceeds the max value of the specified base type ({})",
+                     "Enum `{}` has {} variants, which exceeds the maximum capacity of the specified base type ({})",
                      interner.lookup(a_enum.name),
                      a_enum.variants.len(),
-                     u32::MAX
+                     u64::from(u32::MAX) + 1
                   );
                }
                U32_TYPE
             }
             ExpressionType::Value(U16_TYPE) => {
-               if a_enum.variants.len() > u16::MAX as usize {
+               if a_enum.variants.len() > (u32::from(u16::MAX) + 1) as usize {
                   rolandc_error!(
                      err_manager,
                      etn.location,
-                     "Enum `{}` has {} variants, which exceeds the max value of the specified base type ({})",
+                     "Enum `{}` has {} variants, which exceeds the maximum capacity of the specified base type ({})",
                      interner.lookup(a_enum.name),
                      a_enum.variants.len(),
-                     u16::MAX
+                     u32::from(u16::MAX) + 1
                   );
                }
                U16_TYPE
             }
             ExpressionType::Value(U8_TYPE) => {
-               if a_enum.variants.len() > u8::MAX as usize {
+               if a_enum.variants.len() > (u16::from(u8::MAX) + 1) as usize {
                   rolandc_error!(
                      err_manager,
                      etn.location,
-                     "Enum `{}` has {} variants, which exceeds the max value of the specified base type ({})",
+                     "Enum `{}` has {} variants, which exceeds the maximum capacity of the specified base type ({})",
                      interner.lookup(a_enum.name),
                      a_enum.variants.len(),
-                     u8::MAX
+                     u16::from(u8::MAX) + 1,
                   );
                }
                U8_TYPE
@@ -182,11 +182,11 @@ pub fn populate_type_and_procedure_info(
             );
          }
          base_type
-      } else if a_enum.variants.len() > u32::MAX as usize {
+      } else if a_enum.variants.len() > (u64::from(u32::MAX) + 1) as usize {
          U64_TYPE
-      } else if a_enum.variants.len() > u16::MAX as usize {
+      } else if a_enum.variants.len() > (u32::from(u16::MAX) + 1) as usize {
          U32_TYPE
-      } else if a_enum.variants.len() > u8::MAX as usize {
+      } else if a_enum.variants.len() > (u16::from(u8::MAX) + 1) as usize {
          U16_TYPE
       } else if !a_enum.variants.is_empty() {
          U8_TYPE
