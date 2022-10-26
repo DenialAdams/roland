@@ -1,4 +1,4 @@
-builtin proc num_variants$T() -> usize where T: Enum;
+builtin proc num_variants$T() -> u64 where T: Enum;
 
 builtin proc sqrt(x: f64) -> f64;
 builtin proc sqrt_32(x: f32) -> f32;
