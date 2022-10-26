@@ -10,7 +10,7 @@ use crate::interner::{Interner, StrId};
 use crate::parse::{IdentifierNode, ProcImplSource};
 use crate::semantic_analysis::validator::resolve_type;
 use crate::source_info::SourcePath;
-use crate::type_data::{ExpressionType, ValueType};
+use crate::type_data::{ExpressionType, ValueType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
 use crate::Program;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -114,9 +114,9 @@ pub fn populate_type_and_procedure_info(
       dupe_check.reserve(a_enum.variants.len());
       for variant in a_enum.variants.iter() {
          if !dupe_check.insert(variant.identifier) {
-            rolandc_error_w_details!(
+            rolandc_error!(
                err_manager,
-               &[(a_enum.location, "enum defined")],
+               a_enum.location,
                "Enum `{}` has a duplicate variant `{}`",
                interner.lookup(a_enum.name),
                interner.lookup(variant.identifier),
@@ -124,11 +124,82 @@ pub fn populate_type_and_procedure_info(
          }
       }
 
+      let base_type = if let Some(etn) = a_enum.requested_size.as_ref() {
+         let base_type = match etn.e_type {
+            ExpressionType::Value(U64_TYPE) => U64_TYPE,
+            ExpressionType::Value(U32_TYPE) => {
+               if a_enum.variants.len() > u32::MAX as usize {
+                  rolandc_error!(
+                     err_manager,
+                     etn.location,
+                     "Enum `{}` has {} variants, which exceeds the max value of the specified base type ({})",
+                     interner.lookup(a_enum.name),
+                     a_enum.variants.len(),
+                     u32::MAX
+                  );
+               }
+               U32_TYPE
+            }
+            ExpressionType::Value(U16_TYPE) => {
+               if a_enum.variants.len() > u16::MAX as usize {
+                  rolandc_error!(
+                     err_manager,
+                     etn.location,
+                     "Enum `{}` has {} variants, which exceeds the max value of the specified base type ({})",
+                     interner.lookup(a_enum.name),
+                     a_enum.variants.len(),
+                     u16::MAX
+                  );
+               }
+               U16_TYPE
+            }
+            ExpressionType::Value(U8_TYPE) => {
+               if a_enum.variants.len() > u8::MAX as usize {
+                  rolandc_error!(
+                     err_manager,
+                     etn.location,
+                     "Enum `{}` has {} variants, which exceeds the max value of the specified base type ({})",
+                     interner.lookup(a_enum.name),
+                     a_enum.variants.len(),
+                     u8::MAX
+                  );
+               }
+               U8_TYPE
+            }
+            _ => {
+               rolandc_error!(err_manager, etn.location, "Enum base type must be an unsigned integer");
+               // We're opting to continue without defining the enum instead of setting a bogus size.
+               // I'm not sure what's better for error behavior, but I just don't like assuming a size
+               continue;
+            }
+         };
+         if a_enum.variants.is_empty() {
+            rolandc_error!(
+               err_manager,
+               etn.location,
+               "Enum `{}` has no variants, so it must be zero sized and can't have a base type",
+               interner.lookup(a_enum.name),
+            );
+         }
+         base_type
+      } else if a_enum.variants.len() > u32::MAX as usize {
+         U64_TYPE
+      } else if a_enum.variants.len() > u16::MAX as usize {
+         U32_TYPE
+      } else if a_enum.variants.len() > u8::MAX as usize {
+         U16_TYPE
+      } else if !a_enum.variants.is_empty() {
+         U8_TYPE
+      } else {
+         ValueType::Unit
+      };
+
       if let Some(old_enum) = program.enum_info.insert(
          a_enum.name,
          EnumInfo {
             variants: a_enum.variants.iter().map(|x| (x.identifier, x.location)).collect(),
             location: a_enum.location,
+            base_type,
          },
       ) {
          rolandc_error_w_details!(

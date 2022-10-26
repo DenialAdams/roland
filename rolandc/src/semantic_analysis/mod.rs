@@ -7,7 +7,7 @@ use crate::interner::StrId;
 use crate::parse::{ExpressionId, ExpressionPool, VariableId};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
-use crate::type_data::ExpressionType;
+use crate::type_data::{ExpressionType, ValueType};
 use crate::Target;
 
 pub mod type_and_procedure_info;
@@ -29,6 +29,7 @@ pub struct ProcedureInfo {
 pub struct EnumInfo {
    pub variants: IndexMap<StrId, SourceInfo>,
    pub location: SourceInfo,
+   pub base_type: ValueType,
 }
 
 #[derive(Clone)]

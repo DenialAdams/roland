@@ -92,6 +92,7 @@ pub struct StructNode {
 #[derive(Clone)]
 pub struct EnumNode {
    pub name: StrId,
+   pub requested_size: Option<ExpressionTypeNode>,
    pub variants: Vec<IdentifierNode>,
    pub location: SourceInfo,
 }
@@ -686,6 +687,12 @@ fn parse_struct(l: &mut Lexer, parse_context: &mut ParseContext, source_info: So
 
 fn parse_enum(l: &mut Lexer, parse_context: &mut ParseContext, source_info: SourceInfo) -> Result<EnumNode, ()> {
    let enum_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
+   let requested_size = if l.peek_token() == Token::Colon {
+      let _ = l.next();
+      Some(parse_type(l, parse_context)?)
+   } else {
+      None
+   };
    expect(l, parse_context, Token::OpenBrace)?;
    let mut variants = vec![];
    let close_brace = loop {
@@ -711,6 +718,7 @@ fn parse_enum(l: &mut Lexer, parse_context: &mut ParseContext, source_info: Sour
    Ok(EnumNode {
       name: enum_name,
       variants,
+      requested_size,
       location: merge_locations(source_info, close_brace.source_info),
    })
 }

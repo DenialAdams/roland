@@ -1,2 +1,2 @@
 Enum `Foo` has a duplicate variant `X`
-↳ enum defined @ line 1, column 1 [enum_duplicate_variants.rol]
+↳ line 1, column 1 [enum_duplicate_variants.rol]

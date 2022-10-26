@@ -13,7 +13,7 @@ use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
 };
-use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE};
+use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, U64_TYPE, U32_TYPE, U16_TYPE, U8_TYPE};
 use crate::Target;
 
 const MINIMUM_STACK_FRAME_SIZE: u32 = 4;
@@ -373,14 +373,8 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumIn
       ValueType::Unit | ValueType::Never | ValueType::ProcedureItem(_, _) => unreachable!(),
       ValueType::CompileError => unreachable!(),
       ValueType::Enum(x) => {
-         let num_variants = ei.get(x).unwrap().variants.len();
-         if num_variants > u32::MAX as usize {
-            write!(out, "i64").unwrap();
-         } else {
-            write!(out, "i32").unwrap();
-         }
-         // If the num variants is 0, enum should be a ZST and this function shouldn't have been called
-         debug_assert!(num_variants != 0);
+         let base_type = &ei.get(x).unwrap().base_type;
+         value_type_to_s(base_type, out, ei, si);
       }
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
@@ -1123,21 +1117,7 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
          write!(generation_context.out.out, "\\{:02x}", u8::from(*x)).unwrap();
       }
       Expression::EnumLiteral(name, variant) => {
-         let width: u8 = match expr_node.exp_type.as_ref().unwrap() {
-            ExpressionType::Value(ValueType::Enum(x)) => {
-               let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
-               if num_variants > u32::MAX as usize {
-                  8
-               } else if num_variants > u16::MAX as usize {
-                  4
-               } else if num_variants > u8::MAX as usize {
-                  2
-               } else {
-                  u8::from(num_variants != 0)
-               }
-            }
-            _ => unreachable!(),
-         };
+         let width = sizeof_type_mem(expr_node.exp_type.as_ref().unwrap(), generation_context.enum_info, generation_context.struct_size_info);
          let index = generation_context
             .enum_info
             .get(&name.identifier)
@@ -1258,13 +1238,12 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
       Expression::EnumLiteral(name, variant) => {
          let wasm_type = match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Enum(x)) => {
-               let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
-               if num_variants > u32::MAX as usize {
-                  "i64"
-               } else if num_variants > 0 {
-                  "i32"
-               } else {
-                  return;
+               let base = &generation_context.enum_info.get(x).unwrap().base_type;
+               match *base {
+                  U64_TYPE => "i64",
+                  U32_TYPE | U16_TYPE | U8_TYPE => "i32",
+                  ValueType::Unit => return,
+                  _ => unreachable!(),
                }
             }
             _ => unreachable!(),
@@ -1376,10 +1355,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          let (wasm_type, suffix) = match generation_context.expressions[*lhs].exp_type.as_ref().unwrap() {
             ExpressionType::Value(ValueType::Int(x)) => int_to_wasm_runtime_and_suffix(*x),
             ExpressionType::Value(ValueType::Enum(x)) => {
-               let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
-               // There should be no way that we are doing a binary option on nothing
-               debug_assert!(num_variants > 0);
-               (if num_variants > u32::MAX as usize { "i64" } else { "i32" }, "_u")
+               let base_type = &generation_context.enum_info.get(x).unwrap().base_type;
+               match base_type {
+                  ValueType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
+                  _ => unreachable!(),
+               }
             }
             ExpressionType::Value(ValueType::Float(x)) => match x.width {
                FloatWidth::Eight => ("f64", ""),
@@ -2130,20 +2110,14 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
             (load_suffx, sign_suffix)
          }
          ExpressionType::Value(ValueType::Enum(x)) => {
-            let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
-            debug_assert!(num_variants != 0);
-            (
-               if num_variants > u32::MAX as usize {
-                  "64"
-               } else if num_variants > u16::MAX as usize {
-                  "32"
-               } else if num_variants > u8::MAX as usize {
-                  "16"
-               } else {
-                  "8"
-               },
-               "_u",
-            )
+            let base = &generation_context.enum_info.get(x).unwrap().base_type;
+            (match *base {
+               U64_TYPE => "64",
+               U32_TYPE => "32",
+               U16_TYPE => "16",
+               U8_TYPE => "8",
+               _ => unreachable!(),
+            }, "_u")
          }
          ExpressionType::Value(ValueType::Float(_)) => ("", ""),
          ExpressionType::Value(ValueType::Bool) => ("8", "_u"),
@@ -2240,16 +2214,13 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
             IntWidth::One => "8",
          },
          ExpressionType::Value(ValueType::Enum(x)) => {
-            let num_variants = generation_context.enum_info.get(x).unwrap().variants.len();
-            debug_assert!(num_variants != 0);
-            if num_variants > u32::MAX as usize {
-               "64"
-            } else if num_variants > u16::MAX as usize {
-               "32"
-            } else if num_variants > u8::MAX as usize {
-               "16"
-            } else {
-               "8"
+            let base = &generation_context.enum_info.get(x).unwrap().base_type;
+            match *base {
+               U64_TYPE => "64",
+               U32_TYPE => "32",
+               U16_TYPE => "16",
+               U8_TYPE => "8",
+               _ => unreachable!(),
             }
          }
          ExpressionType::Value(ValueType::Float(_)) => "",

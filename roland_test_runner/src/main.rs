@@ -1,5 +1,4 @@
 #![feature(local_key_cell_methods)]
-
 #![allow(clippy::unwrap_or_else_default)] // I want to know exactly what is being called
 
 struct CliFileResolver {}
@@ -65,7 +64,6 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
       std::process::exit(1);
    }
 
-
    Ok(opts)
 }
 
@@ -130,7 +128,7 @@ fn main() -> Result<(), &'static str> {
                stdout: vec![],
                stderr,
             }
-         })
+         }),
       };
       let test_ok = test_result(&tc_output, entry, &result_dir);
       let mut lock = output_mutex.lock().unwrap();

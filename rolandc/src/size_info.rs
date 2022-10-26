@@ -114,16 +114,8 @@ pub fn value_type_mem_alignment(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, s
       ValueType::UnknownInt(_) => unreachable!(),
       ValueType::UnknownFloat(_) => unreachable!(),
       ValueType::Enum(x) => {
-         let num_variants = ei.get(x).unwrap().variants.len();
-         if num_variants > u32::MAX as usize {
-            8
-         } else if num_variants > u16::MAX as usize {
-            4
-         } else if num_variants > u8::MAX as usize {
-            2
-         } else {
-            1
-         }
+         let base_type = &ei.get(x).unwrap().base_type;
+         value_type_mem_alignment(base_type, ei, si)
       }
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => 8,
@@ -160,7 +152,10 @@ fn sizeof_value_type_values(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &
       ValueType::Unresolved(_) => unreachable!(),
       ValueType::UnknownInt(_) => unreachable!(),
       ValueType::UnknownFloat(_) => unreachable!(),
-      ValueType::Enum(x) => u32::from(!ei.get(x).unwrap().variants.is_empty()),
+      ValueType::Enum(x) => {
+         let base_type = &ei.get(x).unwrap().base_type;
+         sizeof_value_type_values(base_type, ei, si)
+      }
       ValueType::Int(_) => 1,
       ValueType::Float(_) => 1,
       ValueType::Bool => 1,
@@ -197,16 +192,8 @@ fn sizeof_value_type_mem(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &Has
       ValueType::UnknownInt(_) => unreachable!(),
       ValueType::UnknownFloat(_) => unreachable!(),
       ValueType::Enum(x) => {
-         let num_variants = ei.get(x).unwrap().variants.len();
-         if num_variants > u32::MAX as usize {
-            8
-         } else if num_variants > u16::MAX as usize {
-            4
-         } else if num_variants > u8::MAX as usize {
-            2
-         } else {
-            u32::from(num_variants != 0)
-         }
+         let base_type = &ei.get(x).unwrap().base_type;
+         sizeof_value_type_mem(base_type, ei, si)
       }
       ValueType::Int(x) => match x.width {
          IntWidth::Eight => 8,
