@@ -86,20 +86,26 @@ fn main() -> Result<(), &'static str> {
 
    let opts = parse_args().unwrap();
 
-   env::set_current_dir(&opts.test_path).unwrap();
+   let entries: Vec<PathBuf> = if opts.test_path.is_dir() {
+      env::set_current_dir(&opts.test_path).unwrap();
 
-   let current_dir = env::current_dir().unwrap();
-   let mut result_dir = current_dir.clone();
+      env::current_dir()
+         .unwrap()
+         .read_dir()
+         .unwrap()
+         .map(|x| x.unwrap().path())
+         .filter(|e| e.extension().and_then(OsStr::to_str) == Some("rol"))
+         .collect()
+   } else {
+      let canon_path = opts.test_path.canonicalize().unwrap();
+      env::set_current_dir(canon_path.parent().unwrap()).unwrap();
+      vec![canon_path]
+   };
+
+   let mut result_dir = env::current_dir().unwrap();
    result_dir.push("results");
 
    let output_mutex: Mutex<(u64, u64)> = Mutex::new((0, 0));
-
-   let entries: Vec<PathBuf> = current_dir
-      .read_dir()
-      .unwrap()
-      .map(|x| x.unwrap().path())
-      .filter(|e| e.extension().and_then(OsStr::to_str) == Some("rol"))
-      .collect();
 
    entries.par_iter().for_each(|entry| {
       let tc_output = match &opts.tc_path {

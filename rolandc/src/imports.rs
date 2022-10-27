@@ -102,11 +102,15 @@ pub fn import_program<'a, FR: FileResolver<'a>>(
       };
 
       if let Some(il) = import_location {
-         let dummy_sp = SourcePosition {
-            line: 0,
-            col: 0,
-         };
-         ctx.program.source_to_definition.insert(il.import_path.location, SourceInfo { begin: dummy_sp, end: dummy_sp, file: source_path});
+         let dummy_sp = SourcePosition { line: 0, col: 0 };
+         ctx.program.source_to_definition.insert(
+            il.import_path.location,
+            SourceInfo {
+               begin: dummy_sp,
+               end: dummy_sp,
+               file: source_path,
+            },
+         );
       }
 
       let mut parsed = lex_and_parse(

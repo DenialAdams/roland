@@ -7,7 +7,7 @@ use super::{EnumInfo, GlobalInfo, ProcedureInfo, StructInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{StrNode, ProcImplSource};
+use crate::parse::{ProcImplSource, StrNode};
 use crate::semantic_analysis::validator::resolve_type;
 use crate::source_info::SourcePath;
 use crate::type_data::{ExpressionType, ValueType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
@@ -500,11 +500,7 @@ pub fn populate_type_and_procedure_info(
       }
 
       for constraint in definition.constraints.iter() {
-         let matching_generic_param = match definition
-            .generic_parameters
-            .iter()
-            .find(|x| x.str == *constraint.0)
-         {
+         let matching_generic_param = match definition.generic_parameters.iter().find(|x| x.str == *constraint.0) {
             Some(x) => x.str,
             None => {
                rolandc_error!(

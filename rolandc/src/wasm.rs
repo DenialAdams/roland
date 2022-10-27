@@ -13,7 +13,9 @@ use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
 };
-use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, U64_TYPE, U32_TYPE, U16_TYPE, U8_TYPE};
+use crate::type_data::{
+   ExpressionType, FloatWidth, IntType, IntWidth, ValueType, F32_TYPE, F64_TYPE, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE,
+};
 use crate::Target;
 
 const MINIMUM_STACK_FRAME_SIZE: u32 = 4;
@@ -643,10 +645,7 @@ pub fn emit_wasm(
    }
 
    for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
-      let static_address = static_addresses_by_name
-         .get(&p_static.name.str)
-         .copied()
-         .unwrap();
+      let static_address = static_addresses_by_name.get(&p_static.name.str).copied().unwrap();
 
       generation_context.out.emit_spaces();
       write!(generation_context.out.out, "(data 0 (i32.const {}) \"", static_address).unwrap();
@@ -1126,7 +1125,11 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
          write!(generation_context.out.out, "\\{:02x}", u8::from(*x)).unwrap();
       }
       Expression::EnumLiteral(name, variant) => {
-         let width = sizeof_type_mem(expr_node.exp_type.as_ref().unwrap(), generation_context.enum_info, generation_context.struct_size_info);
+         let width = sizeof_type_mem(
+            expr_node.exp_type.as_ref().unwrap(),
+            generation_context.enum_info,
+            generation_context.struct_size_info,
+         );
          let index = generation_context
             .enum_info
             .get(&name.str)
@@ -2120,13 +2123,16 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
          }
          ExpressionType::Value(ValueType::Enum(x)) => {
             let base = &generation_context.enum_info.get(x).unwrap().base_type;
-            (match *base {
-               U64_TYPE => "64",
-               U32_TYPE => "32",
-               U16_TYPE => "16",
-               U8_TYPE => "8",
-               _ => unreachable!(),
-            }, "_u")
+            (
+               match *base {
+                  U64_TYPE => "64",
+                  U32_TYPE => "32",
+                  U16_TYPE => "16",
+                  U8_TYPE => "8",
+                  _ => unreachable!(),
+               },
+               "_u",
+            )
          }
          ExpressionType::Value(ValueType::Float(_)) => ("", ""),
          ExpressionType::Value(ValueType::Bool) => ("8", "_u"),

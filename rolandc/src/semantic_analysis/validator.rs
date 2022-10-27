@@ -12,8 +12,8 @@ use crate::error_handling::error_handling_macros::{
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, GenericArgumentNode,
-   StrNode, Program, Statement, StatementNode, UnOp, VariableId,
+   ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, GenericArgumentNode, Program,
+   Statement, StatementNode, StrNode, UnOp, VariableId,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, value_type_mem_alignment};
@@ -1253,14 +1253,7 @@ fn get_type(
                validation_context
                   .source_to_definition
                   .insert(id.location, proc_info.location);
-               check_procedure_item(
-                  id.str,
-                  proc_info,
-                  expr_location,
-                  type_arguments,
-                  interner,
-                  err_manager,
-               )
+               check_procedure_item(id.str, proc_info, expr_location, type_arguments, interner, err_manager)
             }
             None => {
                rolandc_error!(
