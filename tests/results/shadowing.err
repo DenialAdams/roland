@@ -1,2 +1,2 @@
 Variable shadowing is not supported at this time (`x`)
-↳ declaration @ line 3, column 8 [shadowing.rol]
+↳ line 3, column 8 [shadowing.rol]

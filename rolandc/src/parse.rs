@@ -294,7 +294,7 @@ pub enum Statement {
    // so we should try to rectify that too.
    IfElse(ExpressionId, BlockNode, Box<StatementNode>),
    Return(ExpressionId),
-   VariableDeclaration(StrNode, ExpressionId, Option<ExpressionType>, VariableId),
+   VariableDeclaration(StrNode, ExpressionId, Option<ExpressionTypeNode>, VariableId),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -833,7 +833,7 @@ fn parse_block(
                statement: Statement::VariableDeclaration(
                   variable_name,
                   e,
-                  declared_type.map(|x| x.e_type),
+                  declared_type,
                   VariableId::first(),
                ),
                location: statement_location,

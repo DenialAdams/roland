@@ -60,9 +60,9 @@ pub fn ensure_statics_const(
          fold_expr_id(*v, expressions, interner, err_manager);
          let v = &expressions[*v];
          if !crate::constant_folding::is_const(&v.expression, expressions) {
-            rolandc_error_w_details!(
+            rolandc_error!(
                err_manager,
-               &[(p_static.location, "static"), (v.location, "expression")],
+               v.location,
                "Value of static `{}` can't be constant folded. Hint: Either simplify the expression, or initialize it yourself on program start.",
                interner.lookup(p_static.name.str),
             );

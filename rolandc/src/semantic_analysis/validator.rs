@@ -659,32 +659,32 @@ fn type_statement(
 
          if let Some(v) = dt.as_mut() {
             // Failure to resolve is handled below
-            let _ = resolve_type(v, validation_context.enum_info, validation_context.struct_info);
-            try_set_inferred_type(v, *enid, validation_context);
+            let _ = resolve_type(&mut v.e_type, validation_context.enum_info, validation_context.struct_info);
+            try_set_inferred_type(&v.e_type, *enid, validation_context);
          }
 
          let en = &validation_context.expressions[*enid];
 
          let result_type = if dt.is_some()
-            && dt.as_ref().unwrap() != en.exp_type.as_ref().unwrap()
+            && dt.as_ref().unwrap().e_type != *en.exp_type.as_ref().unwrap()
             && !en.exp_type.as_ref().unwrap().is_error()
          {
             rolandc_error_w_details!(
                err_manager,
-               &[(statement.location, "declaration"), (en.location, "expression")],
+               &[(dt.as_ref().unwrap().location, "declared type"), (en.location, "expression")],
                "Declared type {} does not match actual expression type {}",
-               dt.as_ref().unwrap().as_roland_type_info(interner),
+               dt.as_ref().unwrap().e_type.as_roland_type_info(interner),
                en.exp_type.as_ref().unwrap().as_roland_type_info(interner)
             );
             ExpressionType::Value(ValueType::CompileError)
          } else if dt
             .as_ref()
-            .map_or(false, |x| matches!(x, ExpressionType::Value(ValueType::Unresolved(_))))
+            .map_or(false, |x| matches!(x.e_type, ExpressionType::Value(ValueType::Unresolved(_))))
          {
-            let dt_str = dt.as_ref().unwrap().as_roland_type_info(interner);
-            rolandc_error_w_details!(
+            let dt_str = dt.as_ref().unwrap().e_type.as_roland_type_info(interner);
+            rolandc_error!(
                err_manager,
-               &[(statement.location, "declaration")],
+               dt.as_ref().unwrap().location,
                "Variable `{}` is declared with undefined type {}",
                interner.lookup(id.str),
                dt_str,
@@ -709,9 +709,9 @@ fn declare_variable(
 ) -> VariableId {
    let next_var = validation_context.next_var();
    if validation_context.variable_types.contains_key(&id.str) {
-      rolandc_error_w_details!(
+      rolandc_error!(
          err_manager,
-         &[(id.location, "declaration")],
+         id.location,
          "Variable shadowing is not supported at this time (`{}`)",
          interner.lookup(id.str)
       );
@@ -928,9 +928,9 @@ fn get_type(
             }
             CastType::Transmute => {
                if !e_type.is_concrete() {
-                  rolandc_error_w_details!(
+                  rolandc_error!(
                      err_manager,
-                     &[(expr_location, "transmute"), (e.location, "operand")],
+                     e.location,
                      "Transmute encountered an operand whose size is not yet known",
                   );
                   return ExpressionType::Value(ValueType::CompileError);
@@ -951,9 +951,9 @@ fn get_type(
                   .get_value_type_or_value_being_pointed_to()
                   .is_or_contains_never(&validation_context.struct_size_info)
                {
-                  rolandc_error_w_details!(
+                  rolandc_error!(
                      err_manager,
-                     &[(expr_location, "transmute"), (e.location, "operand")],
+                     expr_location,
                      "Transmuting to the never type, a pointer to the never type, or a struct containing the never type isn't supported",
                   );
                   ExpressionType::Value(ValueType::CompileError)
@@ -973,9 +973,9 @@ fn get_type(
                      e_type.is_pointer() && target_type.is_pointer() && (alignment_source < alignment_target);
 
                   if alignment_error {
-                     rolandc_error_w_details!(
+                     rolandc_error!(
                         err_manager,
-                        &[(expr_location, "transmute"), (e.location, "operand")],
+                        e.location,
                         "Transmute encountered an operand of type {}, which can't be transmuted to type {} as the alignment requirements would not be met ({} vs {})",
                         e_type.as_roland_type_info(interner),
                         target_type.as_roland_type_info(interner),
@@ -987,9 +987,9 @@ fn get_type(
                      target_type.clone()
                   }
                } else {
-                  rolandc_error_w_details!(
+                  rolandc_error!(
                      err_manager,
-                     &[(expr_location, "transmute"), (e.location, "operand")],
+                     e.location,
                      "Transmute encountered an operand of type {} which can't be transmuted to type {} as the sizes do not match ({} vs {})",
                      e_type.as_roland_type_info(interner),
                      target_type.as_roland_type_info(interner),
@@ -1573,9 +1573,9 @@ fn get_type(
          if index_expression.exp_type.as_ref().unwrap().is_error() {
             // avoid cascading errors
          } else if index_expression.exp_type.as_ref().unwrap() != &ExpressionType::Value(USIZE_TYPE) {
-            rolandc_error_w_details!(
+            rolandc_error!(
                err_manager,
-               &[(index_expression.location, "index")],
+               index_expression.location,
                "Attempted to index an array with a value of type {}, which is not usize",
                index_expression
                   .exp_type
@@ -1589,12 +1589,9 @@ fn get_type(
             Some(x) if x.is_error() => ExpressionType::Value(ValueType::CompileError),
             Some(ExpressionType::Value(ValueType::Array(b, _))) => b.deref().clone(),
             Some(x @ ExpressionType::Pointer(1, ValueType::Array(_, _))) => {
-               rolandc_error_w_details!(
+               rolandc_error!(
                   err_manager,
-                  &[
-                     (array_expression.location, "expression"),
-                     (index_expression.location, "index")
-                  ],
+                  expr_location,
                   "Attempted to index expression of type {}, which is not an array type. Hint: Dereference this pointer with ~",
                   x.as_roland_type_info(interner),
                );
@@ -1602,12 +1599,9 @@ fn get_type(
                ExpressionType::Value(ValueType::CompileError)
             }
             Some(x) => {
-               rolandc_error_w_details!(
+               rolandc_error!(
                   err_manager,
-                  &[
-                     (array_expression.location, "expression"),
-                     (index_expression.location, "index")
-                  ],
+                  expr_location,
                   "Attempted to index expression of type {}, which is not an array type",
                   x.as_roland_type_info(interner),
                );

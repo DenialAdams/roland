@@ -218,9 +218,9 @@ pub fn populate_type_and_procedure_info(
       let mut field_map = IndexMap::with_capacity(a_struct.fields.len());
       for field in a_struct.fields.iter() {
          if field_map.insert(field.0, field.1.clone()).is_some() {
-            rolandc_error_w_details!(
+            rolandc_error!(
                err_manager,
-               &[(a_struct.location, "struct defined")],
+               a_struct.location,
                "Struct `{}` has a duplicate field `{}`",
                interner.lookup(a_struct.name),
                interner.lookup(field.0),
@@ -291,9 +291,9 @@ pub fn populate_type_and_procedure_info(
          &program.struct_info,
       ) == RecursiveStructCheckResult::ContainsSelf
       {
-         rolandc_error_w_details!(
+         rolandc_error!(
             err_manager,
-            &[(struct_i.1.location, "struct defined")],
+            struct_i.1.location,
             "Struct `{}` contains itself, which isn't allowed as it would result in an infinitely large struct",
             interner.lookup(*struct_i.0),
          );
@@ -409,9 +409,9 @@ pub fn populate_type_and_procedure_info(
       let mut reported_named_error = false;
       for (i, param) in definition.parameters.iter().enumerate() {
          if !dupe_check.insert(param.name) {
-            rolandc_error_w_details!(
+            rolandc_error!(
                err_manager,
-               &[(source_location, "procedure declared")],
+               source_location,
                "Procedure `{}` has a duplicate parameter `{}`",
                interner.lookup(definition.name),
                interner.lookup(param.name),
@@ -423,9 +423,9 @@ pub fn populate_type_and_procedure_info(
 
             if extern_impl_source == Some(std::mem::discriminant(&ProcImplSource::External)) {
                reported_named_error = true;
-               rolandc_error_w_details!(
+               rolandc_error!(
                   err_manager,
-                  &[(source_location, "procedure declared")],
+                  source_location,
                   "External procedure `{}` has named parameter(s), which isn't supported",
                   interner.lookup(definition.name),
                );
@@ -434,9 +434,9 @@ pub fn populate_type_and_procedure_info(
 
          if !param.named && first_named_param.is_some() && !reported_named_error {
             reported_named_error = true;
-            rolandc_error_w_details!(
+            rolandc_error!(
                err_manager,
-               &[(source_location, "procedure declared")],
+               source_location,
                "Procedure `{}` has named parameter(s) which come before non-named parameter(s)",
                interner.lookup(definition.name),
             );

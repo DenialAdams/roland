@@ -1,2 +1,2 @@
 Struct `Foo` has a duplicate field `x`
-↳ struct defined @ line 1, column 1 [struct_duplicate_fields.rol]
+↳ line 1, column 1 [struct_duplicate_fields.rol]
