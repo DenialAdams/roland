@@ -301,14 +301,14 @@ pub fn populate_type_and_procedure_info(
    }
 
    for const_node in program.consts.iter_mut() {
-      let const_type = &mut const_node.const_type;
+      let const_type = &mut const_node.const_type.e_type;
       let si = &const_node.location;
 
       if resolve_type(const_type, &program.enum_info, &program.struct_info).is_err() {
          let static_type_str = const_type.as_roland_type_info(interner);
-         rolandc_error_w_details!(
+         rolandc_error!(
             err_manager,
-            &[(*si, "const defined")],
+            const_node.const_type.location,
             "Const `{}` is of undeclared type `{}`",
             interner.lookup(const_node.name.str),
             static_type_str,
@@ -318,7 +318,7 @@ pub fn populate_type_and_procedure_info(
       if let Some(old_value) = program.global_info.insert(
          program.next_variable,
          GlobalInfo {
-            expr_type: const_node.const_type.clone(),
+            expr_type: const_node.const_type.e_type.clone(),
             location: const_node.location,
             is_const: true,
             name: const_node.name.str,
@@ -339,14 +339,13 @@ pub fn populate_type_and_procedure_info(
    }
 
    for static_node in program.statics.iter_mut() {
-      let static_type = &mut static_node.static_type;
-      let si = &static_node.location;
+      let static_e_type = &mut static_node.static_type.e_type;
 
-      if resolve_type(static_type, &program.enum_info, &program.struct_info).is_err() {
-         let static_type_str = static_type.as_roland_type_info(interner);
-         rolandc_error_w_details!(
+      if resolve_type(static_e_type, &program.enum_info, &program.struct_info).is_err() {
+         let static_type_str = static_e_type.as_roland_type_info(interner);
+         rolandc_error!(
             err_manager,
-            &[(*si, "static defined")],
+            static_node.static_type.location,
             "Static `{}` is of undeclared type `{}`",
             interner.lookup(static_node.name.str),
             static_type_str,
@@ -356,7 +355,7 @@ pub fn populate_type_and_procedure_info(
       if let Some(old_value) = program.global_info.insert(
          program.next_variable,
          GlobalInfo {
-            expr_type: static_node.static_type.clone(),
+            expr_type: static_node.static_type.e_type.clone(),
             location: static_node.location,
             is_const: false,
             name: static_node.name.str,

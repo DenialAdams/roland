@@ -300,19 +300,19 @@ pub fn type_and_check_validity(
    for p_const in program.consts.iter_mut() {
       // p_const.const_type is guaranteed to be resolved at this point
       type_expression(err_manager, p_const.value, &mut validation_context, interner);
-      try_set_inferred_type(&p_const.const_type, p_const.value, &mut validation_context);
+      try_set_inferred_type(&p_const.const_type.e_type, p_const.value, &mut validation_context);
 
       let p_const_expr = &validation_context.expressions[p_const.value];
 
-      if p_const.const_type != *p_const_expr.exp_type.as_ref().unwrap()
+      if p_const.const_type.e_type != *p_const_expr.exp_type.as_ref().unwrap()
          && !p_const_expr.exp_type.as_ref().unwrap().is_error()
       {
          let actual_type_str = p_const_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
          rolandc_error_w_details!(
             err_manager,
-            &[(p_const.location, "const"), (p_const_expr.location, "expression")],
+            &[(p_const.const_type.location, "declared type"), (p_const_expr.location, "expression")],
             "Declared type {} of const `{}` does not match actual expression type {}",
-            p_const.const_type.as_roland_type_info(interner),
+            p_const.const_type.e_type.as_roland_type_info(interner),
             interner.lookup(p_const.name.str),
             actual_type_str,
          );
@@ -322,19 +322,19 @@ pub fn type_and_check_validity(
    for p_static in program.statics.iter_mut().filter(|x| x.value.is_some()) {
       // p_static.static_type is guaranteed to be resolved at this point
       type_expression(err_manager, p_static.value.unwrap(), &mut validation_context, interner);
-      try_set_inferred_type(&p_static.static_type, p_static.value.unwrap(), &mut validation_context);
+      try_set_inferred_type(&p_static.static_type.e_type, p_static.value.unwrap(), &mut validation_context);
 
       let p_static_expr = &validation_context.expressions[p_static.value.unwrap()];
 
-      if p_static.static_type != *p_static_expr.exp_type.as_ref().unwrap()
+      if p_static.static_type.e_type != *p_static_expr.exp_type.as_ref().unwrap()
          && !p_static_expr.exp_type.as_ref().unwrap().is_error()
       {
          let actual_type_str = p_static_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
          rolandc_error_w_details!(
             err_manager,
-            &[(p_static.location, "static"), (p_static_expr.location, "expression")],
+            &[(p_static.static_type.location, "declared type"), (p_static_expr.location, "expression")],
             "Declared type {} of static `{}` does not match actual expression type {}",
-            p_static.static_type.as_roland_type_info(interner),
+            p_static.static_type.e_type.as_roland_type_info(interner),
             interner.lookup(p_static.name.str),
             actual_type_str,
          );

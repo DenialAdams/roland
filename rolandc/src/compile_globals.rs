@@ -42,15 +42,15 @@ pub fn ensure_statics_const(
    for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
       let p_static_expr = &expressions[p_static.value.unwrap()];
 
-      if p_static.static_type != *p_static_expr.exp_type.as_ref().unwrap()
+      if p_static.static_type.e_type != *p_static_expr.exp_type.as_ref().unwrap()
          && !p_static_expr.exp_type.as_ref().unwrap().is_error()
       {
          let actual_type_str = p_static_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
          rolandc_error_w_details!(
             err_manager,
-            &[(p_static.location, "static"), (p_static_expr.location, "expression")],
+            &[(p_static.static_type.location, "declared type"), (p_static_expr.location, "expression")],
             "Declared type {} of static `{}` does not match actual expression type {}",
-            p_static.static_type.as_roland_type_info(interner),
+            p_static.static_type.e_type.as_roland_type_info(interner),
             interner.lookup(p_static.name.str),
             actual_type_str
          );

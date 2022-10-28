@@ -101,7 +101,7 @@ pub struct EnumNode {
 pub struct ConstNode {
    pub name: StrNode,
    pub var_id: VariableId,
-   pub const_type: ExpressionType,
+   pub const_type: ExpressionTypeNode,
    pub value: ExpressionId,
    pub location: SourceInfo,
 }
@@ -109,7 +109,7 @@ pub struct ConstNode {
 #[derive(Clone, Debug)]
 pub struct StaticNode {
    pub name: StrNode,
-   pub static_type: ExpressionType,
+   pub static_type: ExpressionTypeNode,
    pub value: Option<ExpressionId>,
    pub location: SourceInfo,
 }
@@ -475,13 +475,13 @@ pub fn astify(
             let a_const = lexer.next();
             let variable_name = parse_identifier(&mut lexer, &mut parse_context)?;
             expect(&mut lexer, &mut parse_context, Token::Colon)?;
-            let t_type = parse_type(&mut lexer, &mut parse_context)?;
+            let const_type = parse_type(&mut lexer, &mut parse_context)?;
             expect(&mut lexer, &mut parse_context, Token::Assignment)?;
             let exp = parse_expression(&mut lexer, &mut parse_context, false, expressions)?;
             let end_token = expect(&mut lexer, &mut parse_context, Token::Semicolon)?;
             consts.push(ConstNode {
                name: variable_name,
-               const_type: t_type.e_type,
+               const_type,
                location: merge_locations(a_const.source_info, end_token.source_info),
                value: exp,
                var_id: VariableId::first(),
@@ -491,7 +491,7 @@ pub fn astify(
             let a_static = lexer.next();
             let variable_name = parse_identifier(&mut lexer, &mut parse_context)?;
             expect(&mut lexer, &mut parse_context, Token::Colon)?;
-            let t_type = parse_type(&mut lexer, &mut parse_context)?;
+            let static_type = parse_type(&mut lexer, &mut parse_context)?;
             let exp = if lexer.peek_token() == Token::Assignment {
                let _ = lexer.next();
                Some(parse_expression(&mut lexer, &mut parse_context, false, expressions)?)
@@ -501,7 +501,7 @@ pub fn astify(
             let end_token = expect(&mut lexer, &mut parse_context, Token::Semicolon)?;
             statics.push(StaticNode {
                name: variable_name,
-               static_type: t_type.e_type,
+               static_type,
                location: merge_locations(a_static.source_info, end_token.source_info),
                value: exp,
             });
