@@ -17,7 +17,6 @@ use std::env;
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::ops::ControlFlow;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Output};
@@ -35,7 +34,7 @@ enum TestFailureReason {
    ExpectedCompilationSuccess,
    FailedToRunExecutable,
    MismatchedExecutionOutput(String, String),
-   MismatchedCompilationErrorOutput(String, String, File),
+   MismatchedCompilationErrorOutput(String, TestDetails),
 }
 
 struct Opts {
@@ -204,12 +203,16 @@ fn main() -> Result<(), &'static str> {
                   .unwrap();
                   print_diff(&mut out_handle, &expected, &actual);
                }
-               TestFailureReason::MismatchedCompilationErrorOutput(expected, actual, mut err_file_handle) => {
+               TestFailureReason::MismatchedCompilationErrorOutput(actual, mut test_details) => {
                   if opts.overwrite_error_files {
-                     err_file_handle.seek(SeekFrom::Start(0)).unwrap();
-                     err_file_handle.write_all(actual.as_bytes()).unwrap();
-                     err_file_handle.set_len(actual.as_bytes().len() as u64).unwrap();
-                     print_diff(&mut out_handle, &expected, &actual);
+                     // file should have been sunk to the correct point
+                     test_details.file.write_all(b"\ncompile:").unwrap();
+                     test_details.file.write_all(actual.as_bytes()).unwrap();
+                     if let Some(r) = test_details.result.run_output {
+                        test_details.file.write_all(b"\nrun:").unwrap();
+                        test_details.file.write_all(r.as_bytes()).unwrap();
+                     }
+                     print_diff(&mut out_handle, &test_details.result.compile_output, &actual);
                      writeln!(out_handle, "Updated test compilation error output.").unwrap();
                   } else {
                      writeln!(
@@ -217,7 +220,7 @@ fn main() -> Result<(), &'static str> {
                         "Failed to compile, but the compilation error was different than expected:"
                      )
                      .unwrap();
-                     print_diff(&mut out_handle, &expected, &actual);
+                     print_diff(&mut out_handle, &test_details.result.compile_output, &actual);
                   }
                }
             }
@@ -255,29 +258,25 @@ fn print_diff<W: WriteColor>(t: &mut W, expected: &str, actual: &str) {
 }
 
 fn test_result(tc_output: &Output, t_file_path: &Path) -> Result<(), TestFailureReason> {
-   let expected_result = extract_test_data(t_file_path);
+   let td = extract_test_data(t_file_path);
 
-   let expected_comptime_output = expected_result.0.compile_output.unwrap_or_else(String::new);
-   let expected_runtime_output = expected_result.0.run_output;
-
-   if expected_comptime_output.is_empty() && expected_runtime_output.is_none() {
+   if td.result.compile_output.is_empty() && td.result.run_output.is_none() {
       return Err(TestFailureReason::TestingNothing);
    }
 
    let stderr_text = String::from_utf8_lossy(&tc_output.stderr);
 
    if tc_output.status.success() {
-      if !expected_comptime_output.is_empty() && stderr_text.is_empty() {
+      if !td.result.compile_output.is_empty() && stderr_text.is_empty() {
          return Err(TestFailureReason::ExpectedCompilationFailure);
-      } else if !expected_comptime_output.is_empty() && stderr_text != expected_comptime_output {
+      } else if !td.result.compile_output.is_empty() && stderr_text != td.result.compile_output {
          return Err(TestFailureReason::MismatchedCompilationErrorOutput(
-            expected_comptime_output,
             stderr_text.into_owned(),
-            expected_result.1,
+            td,
          ));
       }
 
-      let ero = expected_runtime_output.unwrap_or_else(String::new);
+      let ero = td.result.run_output.unwrap_or_else(String::new);
 
       // Execute the program
       let mut prog_path = t_file_path.to_path_buf();
@@ -311,25 +310,29 @@ fn test_result(tc_output: &Output, t_file_path: &Path) -> Result<(), TestFailure
       }
 
       std::fs::remove_file(prog_path).unwrap();
-   } else if expected_runtime_output.is_some() {
+   } else if td.result.run_output.is_some() {
       return Err(TestFailureReason::ExpectedCompilationSuccess);
-   } else if !expected_comptime_output.is_empty() && stderr_text != expected_comptime_output {
+   } else if !td.result.compile_output.is_empty() && stderr_text != td.result.compile_output {
       return Err(TestFailureReason::MismatchedCompilationErrorOutput(
-         expected_comptime_output,
          stderr_text.into_owned(),
-         expected_result.1,
+         td,
       ));
    }
 
    Ok(())
 }
 
+struct TestDetails {
+   file: File,
+   result: ExpectedTestResult,
+}
+
 struct ExpectedTestResult {
-   compile_output: Option<String>,
+   compile_output: String,
    run_output: Option<String>,
 }
 
-fn extract_test_data(entry: &Path) -> (ExpectedTestResult, File) {
+fn extract_test_data(entry: &Path) -> TestDetails {
    let mut opened = OpenOptions::new()
       .read(true)
       .write(true)
@@ -358,7 +361,7 @@ fn extract_test_data(entry: &Path) -> (ExpectedTestResult, File) {
       parse_test_content(&s)
    };
 
-   (test_output, opened)
+   TestDetails { file: opened, result: test_output }
 }
 
 fn parse_test_content(mut content: &str) -> ExpectedTestResult {
@@ -366,14 +369,14 @@ fn parse_test_content(mut content: &str) -> ExpectedTestResult {
 
    let run_anchor = "run:\n";
 
-   let mut expected_compile_output = None;
+   let mut expected_compile_output = String::new();
    if let Some(after_compile) = content.strip_prefix("compile:\n") {
       let mut until_run = after_compile;
       if let Some(start_of_run) = after_compile.rfind(run_anchor) {
          until_run = &until_run[..start_of_run];
          content = &content[start_of_run..];
       }
-      expected_compile_output = Some(until_run.to_string());
+      expected_compile_output.push_str(until_run);
    }
    
    let mut expected_run_output = None;
