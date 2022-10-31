@@ -17,3 +17,7 @@ proc main() {
    process_data(ReticulateSplines::Sometimes);
    process_data(ReticulateSplines::Never);
 }
+__END__
+run:
+Reticulating splines...
+Maybe reticulating splines...

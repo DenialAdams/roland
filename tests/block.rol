@@ -7,3 +7,6 @@ proc main() {
       }
    }
 }
+__END__
+run:
+Hello world, I'm in a block!

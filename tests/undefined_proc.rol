@@ -1,3 +1,7 @@
 proc main() {
    something_undefined();
 }
+__END__
+compile:
+Encountered undefined symbol `something_undefined`
+↳ line 2, column 4 [undefined_proc.rol]

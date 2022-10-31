@@ -11,3 +11,6 @@ proc main() {
    }
    println("ok");
 }
+__END__
+run:
+ok

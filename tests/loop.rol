@@ -14,3 +14,7 @@ proc main() {
    println_bool(x == 10);
    println_bool(y == 8);
 }
+__END__
+run:
+true
+true

@@ -1,2 +1,0 @@
-Left hand side of assignment is not a valid memory location; i.e. a variable, field, or array index
-↳ line 4, column 4 [function_as_lval.rol]

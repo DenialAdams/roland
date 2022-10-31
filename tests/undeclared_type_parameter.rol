@@ -5,3 +5,7 @@ proc foo(x: Y) {
 proc main() {
    foo();
 }
+__END__
+compile:
+Parameter `x` of procedure `foo` is of undeclared type `Y`
+↳ line 1, column 13 [undeclared_type_parameter.rol]

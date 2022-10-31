@@ -2,3 +2,9 @@ proc main() {
    break;
    continue;
 }
+__END__
+compile:
+Break statement can only be used in a loop
+↳ line 2, column 4 [break_continue_no_loop.rol]
+Continue statement can only be used in a loop
+↳ line 3, column 4 [break_continue_no_loop.rol]

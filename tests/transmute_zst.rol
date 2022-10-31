@@ -3,3 +3,5 @@ struct Bar{}
 proc main() {
 	let x: Bar = () transmute Bar;
 }
+__END__
+run:

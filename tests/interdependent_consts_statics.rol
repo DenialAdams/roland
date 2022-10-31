@@ -9,3 +9,8 @@ proc main () {
    println_bool(Y == 10);
    println_bool(A == 10);
 }
+__END__
+run:
+true
+true
+true

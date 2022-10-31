@@ -1,2 +1,0 @@
-Procedure `foo` has a duplicate parameter `x`
-↳ line 1, column 1 [procedure_duplicate_args.rol]

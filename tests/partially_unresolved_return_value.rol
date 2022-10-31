@@ -3,3 +3,7 @@ proc foo() -> proc(S) {
 
 proc main() {
 }
+__END__
+compile:
+Return type of procedure `foo` is of undeclared type `proc(S) -> ()`
+↳ line 1, column 15 [partially_unresolved_return_value.rol]

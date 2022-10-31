@@ -5,3 +5,6 @@ proc main() {
    let empty_thing = X{};
    println_bool(true);
 }
+__END__
+run:
+true

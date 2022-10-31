@@ -3,3 +3,8 @@ proc main() {
    println_bool(wasm_memory_grow(2) == 1);
    println_bool(wasm_memory_size() == 3);
 }
+__END__
+run:
+true
+true
+true

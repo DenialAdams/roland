@@ -1,3 +1,7 @@
 proc main() {
    println_bool(x);
 }
+__END__
+compile:
+Encountered undefined symbol `x`
+↳ line 2, column 17 [undefined_variable.rol]

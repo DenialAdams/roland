@@ -16,3 +16,7 @@ proc main() {
       animal: "bee",
    });
 }
+__END__
+run:
+all good
+bee

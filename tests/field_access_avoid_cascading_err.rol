@@ -1,3 +1,7 @@
 proc main() {
    let y: u32 = FOO.x;
 }
+__END__
+compile:
+Encountered undefined symbol `FOO`
+↳ line 2, column 17 [field_access_avoid_cascading_err.rol]

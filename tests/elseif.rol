@@ -7,3 +7,6 @@ proc main() {
       println("very bad!");
    }
 }
+__END__
+run:
+good!

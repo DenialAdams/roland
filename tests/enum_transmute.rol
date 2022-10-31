@@ -11,3 +11,8 @@ proc main() {
    println_bool(x == A::Foo);
    println_bool(1 transmute A == A::Bar);
 }
+__END__
+run:
+true
+true
+true

@@ -7,3 +7,7 @@ proc main() {
    let x = 0 * fire_missiles();
    let y = 0 * (fire_missiles() + 1);
 }
+__END__
+run:
+Missiles fired
+Missiles fired

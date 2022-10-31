@@ -4,3 +4,6 @@ proc main() {
    }
    println("OK");
 }
+__END__
+run:
+OK

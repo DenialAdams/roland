@@ -4,3 +4,7 @@ enum Foo {
 }
 
 proc main() {}
+__END__
+compile:
+Enum `Foo` has a duplicate variant `X`
+↳ line 1, column 1 [enum_duplicate_variants.rol]

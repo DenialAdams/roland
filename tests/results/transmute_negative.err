@@ -1,2 +1,0 @@
-Transmute encountered an operand of type u8 which can't be transmuted to type u16 as the sizes do not match (1 vs 2)
-↳ line 3, column 12 [transmute_negative.rol]

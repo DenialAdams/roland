@@ -1,2 +1,0 @@
-Field `alpha` of struct `X` is of undeclared type `Y`
-↳ struct defined @ line 1, column 1 [undeclared_type_field.rol]

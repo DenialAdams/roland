@@ -1,3 +1,4 @@
+compile:
 Encountered EOF while parsing string literal. Hint: Are you missing a closing "?
 ↳ string literal @ line 2, column 12 [incomple_str.rol]
 ↳ EOF @ line 4, column 1 [incomple_str.rol]

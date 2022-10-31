@@ -3,3 +3,6 @@ proc main() {
    x = false;
    println_bool(x);
 }
+__END__
+run:
+false

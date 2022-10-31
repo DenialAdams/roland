@@ -5,3 +5,6 @@ proc main() {
    let a: u64 = y~ + z~;
    println(int_to_string(a));
 }
+__END__
+run:
+20

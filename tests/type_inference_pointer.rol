@@ -6,3 +6,8 @@ proc main() {
    // This should be a compilation error
    let q: i32 = y~ + 1;
 }
+__END__
+compile:
+Declared type i32 does not match actual expression type usize
+↳ declared type @ line 7, column 11 [type_inference_pointer.rol]
+↳ expression @ line 7, column 17 [type_inference_pointer.rol]

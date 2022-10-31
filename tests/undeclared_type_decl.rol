@@ -3,3 +3,9 @@ proc main() {
 
    };
 }
+__END__
+compile:
+Encountered construction of undefined struct `Y`
+↳ line 2, column 15 [undeclared_type_decl.rol]
+Variable `x` is declared with undefined type Y
+↳ line 2, column 11 [undeclared_type_decl.rol]

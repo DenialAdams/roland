@@ -1,4 +1,0 @@
-Literal of type i64 has value `-9223372036854775809` which would immediately underflow
-↳ line 9, column 17 [negated_big_literal.rol]
-During constant folding, tried to negate the minimum value of a signed integer
-↳ line 12, column 21 [negated_big_literal.rol]

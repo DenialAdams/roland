@@ -5,3 +5,9 @@ proc main() {
       println(int_to_string(x[i]));
    }
 }
+__END__
+run:
+123
+456
+789
+0

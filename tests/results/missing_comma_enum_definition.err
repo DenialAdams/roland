@@ -1,2 +1,0 @@
-While parsing definition of enum `X`, encountered an unexpected identifier `Bar`. Hint: Are you missing a comma?
-↳ line 3, column 4 [missing_comma_enum_definition.rol]

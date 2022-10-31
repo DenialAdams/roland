@@ -1,2 +1,0 @@
-Value of static `X` can't be constant folded. Hint: Either simplify the expression, or initialize it yourself on program start.
-↳ line 1, column 17 [static_referencing_another_static.rol]

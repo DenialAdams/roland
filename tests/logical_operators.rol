@@ -15,3 +15,10 @@ proc main() {
     result = f_false() and f_true();
     println_bool(result);
 }
+__END__
+run:
+f_true
+true
+---
+f_false
+false

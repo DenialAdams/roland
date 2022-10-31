@@ -7,3 +7,6 @@ proc a() -> u8 {
    println("hello");
    return 10;
 }
+__END__
+run:
+hello

@@ -4,3 +4,8 @@ enum Foo {}
 proc main() {
    println("Nothing to see here, officer");
 }
+__END__
+compile:
+Enum and struct share the same name `Foo`
+↳ enum defined @ line 2, column 1 [enum_struct_same_name.rol]
+↳ struct defined @ line 1, column 1 [enum_struct_same_name.rol]

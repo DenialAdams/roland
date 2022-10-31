@@ -2,7 +2,7 @@ use std::num::IntErrorKind;
 
 use unicode_ident::{is_xid_continue, is_xid_start};
 
-use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
+use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
@@ -896,14 +896,9 @@ pub fn lex_for_tokens(
             end: cur_position,
             file: source_path,
          };
-         let eof_loc = SourceInfo {
-            begin: cur_position,
-            end: cur_position,
-            file: source_path,
-         };
-         rolandc_error_w_details!(
+         rolandc_error!(
             err_manager,
-            &[(str_lit_loc, "string literal"), (eof_loc, "EOF")],
+            str_lit_loc,
             "Encountered EOF while parsing string literal. Hint: Are you missing a closing \"?"
          );
          Err(())

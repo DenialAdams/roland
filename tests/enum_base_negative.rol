@@ -272,3 +272,11 @@ enum Baz : proc(u8) {
 proc main() {
 
 }
+__END__
+compile:
+Enum `Foo` has no variants, so it must be zero sized and can't have a base type
+↳ line 2, column 12 [enum_base_negative.rol]
+Enum `Bar` has 257 variants, which exceeds the maximum capacity of the specified base type (256)
+↳ line 7, column 12 [enum_base_negative.rol]
+Enum base type must be an unsigned integer
+↳ line 268, column 12 [enum_base_negative.rol]

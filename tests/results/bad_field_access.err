@@ -1,8 +1,0 @@
-Encountered field access on type bool; only structs and arrays have fields
-↳ line 20, column 12 [bad_field_access.rol]
-Encountered field access on type u8; only structs and arrays have fields
-↳ line 22, column 12 [bad_field_access.rol]
-Struct `X` does not have a field `baz`
-↳ line 24, column 12 [bad_field_access.rol]
-Struct `Y` does not have a field `other`
-↳ line 26, column 12 [bad_field_access.rol]

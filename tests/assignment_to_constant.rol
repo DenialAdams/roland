@@ -3,3 +3,7 @@ const FOO: u64 = 10;
 proc main() {
    FOO = 1;
 }
+__END__
+compile:
+Left hand side of assignment is a constant, which does not have a memory location and can't be reassigned
+↳ line 4, column 4 [assignment_to_constant.rol]

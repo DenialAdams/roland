@@ -5,3 +5,7 @@ proc main() {
    println_bool(x == y);
    println_bool(y == z);
 }
+__END__
+run:
+true
+true

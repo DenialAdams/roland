@@ -26,3 +26,8 @@ proc main() {
       y: y(),
    };
 }
+__END__
+run:
+z
+x
+y

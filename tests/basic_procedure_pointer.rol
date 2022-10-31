@@ -7,3 +7,6 @@ proc main() {
    let result = x(11);
    println_bool(result);
 }
+__END__
+run:
+true

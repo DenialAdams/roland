@@ -1,2 +1,0 @@
-Return type of procedure `foo` is of undeclared type `Y`
-↳ line 1, column 15 [undeclared_type_return.rol]

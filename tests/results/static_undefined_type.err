@@ -1,2 +1,0 @@
-Static `X` is of undeclared type `fooble`
-↳ line 1, column 11 [static_undefined_type.rol]

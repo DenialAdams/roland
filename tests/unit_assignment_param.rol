@@ -7,3 +7,6 @@ proc main() {
 proc foo(x: ()) {
 
 }
+__END__
+run:
+hello

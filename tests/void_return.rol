@@ -15,3 +15,6 @@ proc b() {
    return ();
    println("also never reached");
 }
+__END__
+run:
+finished

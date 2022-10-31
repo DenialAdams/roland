@@ -4,3 +4,6 @@ proc main() {
    let z = [false, true][y];
    println_bool(z);
 }
+__END__
+run:
+true

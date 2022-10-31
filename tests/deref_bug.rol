@@ -3,3 +3,6 @@ proc main() {
    ((buf transmute usize) transmute &u8)~ = 123;
    println_bool(buf~ == 123);
 }
+__END__
+run:
+true

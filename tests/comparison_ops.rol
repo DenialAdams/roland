@@ -18,3 +18,17 @@ proc main() {
    println_bool(y == z);
    println_bool(y != z);
 }
+__END__
+run:
+false
+false
+true
+true
+false
+true
+false
+true
+false
+true
+true
+false

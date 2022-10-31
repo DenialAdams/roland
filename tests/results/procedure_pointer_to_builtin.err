@@ -1,2 +1,0 @@
-Procedure pointers can't be taken to compiler builtins
-↳ line 2, column 12 [procedure_pointer_to_builtin.rol]

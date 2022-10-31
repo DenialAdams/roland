@@ -5,3 +5,9 @@ proc main() {
    // This excercises validation in type inference
    let other: u64 = -10;
 }
+__END__
+compile:
+Expected type [AnySignedInt, AnyFloat] for expression Negate; instead got u64
+↳ line 4, column 13 [negate_unsigned.rol]
+Unsigned integers (i.e. u64) can't be negated. Hint: Should this be a signed integer?
+↳ line 6, column 21 [negate_unsigned.rol]

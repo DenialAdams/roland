@@ -3,3 +3,6 @@ proc main() {
    let y: u64 = 20;
    println(int_to_string([x, y][1]));
 }
+__END__
+run:
+20

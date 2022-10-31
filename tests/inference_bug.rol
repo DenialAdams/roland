@@ -16,3 +16,6 @@ proc main() {
    target_position.x;
    println("OK");
 }
+__END__
+run:
+OK

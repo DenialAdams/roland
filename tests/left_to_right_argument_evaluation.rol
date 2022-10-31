@@ -10,3 +10,10 @@ proc aux(x: bool, y: bool, named a: bool, named b: bool) {
 proc main() {
    aux(eval("x"), eval("y"), b: eval("b"), a: eval("a"));
 }
+__END__
+run:
+x
+y
+b
+a
+done

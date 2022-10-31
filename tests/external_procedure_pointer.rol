@@ -11,3 +11,6 @@ proc main() {
    x(1, &data[0], data.length, &written);
    print("\n");
 }
+__END__
+run:
+.

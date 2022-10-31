@@ -7,3 +7,6 @@ proc main() {
    let x = num_variants$Foo();
    println_bool(x == 3);
 }
+__END__
+run:
+true

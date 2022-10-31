@@ -9,3 +9,7 @@ proc main() {
 proc mutato(arg: &u8) {
    arg~ = 3;
 }
+__END__
+run:
+true
+true

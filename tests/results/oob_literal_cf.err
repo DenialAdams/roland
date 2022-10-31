@@ -1,2 +1,0 @@
-Literal of type i8 has value `-129` which would immediately over/underflow
-↳ line 3, column 17 [oob_literal_cf.rol]

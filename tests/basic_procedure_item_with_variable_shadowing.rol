@@ -11,3 +11,6 @@ proc main() {
    let foo = bar;
    foo();
 }
+__END__
+run:
+bar

@@ -1,2 +1,0 @@
-Procedure `alacadabra` is declared to be builtin, but only the compiler can declare builtin procedures
-↳ line 1, column 1 [user_code_builtin.rol]

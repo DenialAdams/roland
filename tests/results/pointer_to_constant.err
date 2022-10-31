@@ -1,2 +1,0 @@
-Attempting to take a pointer to a const, which can't be done as they don't reside in memory
-↳ line 4, column 12 [pointer_to_constant.rol]

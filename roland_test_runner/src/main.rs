@@ -16,7 +16,8 @@ use std::cell::RefCell;
 use std::env;
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::ops::ControlFlow;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Output};
@@ -102,9 +103,6 @@ fn main() -> Result<(), &'static str> {
       vec![canon_path]
    };
 
-   let mut result_dir = env::current_dir().unwrap();
-   result_dir.push("results");
-
    let output_mutex: Mutex<(u64, u64)> = Mutex::new((0, 0));
 
    entries.par_iter().for_each(|entry| {
@@ -138,7 +136,7 @@ fn main() -> Result<(), &'static str> {
             }
          }),
       };
-      let test_ok = test_result(&tc_output, entry, &result_dir);
+      let test_ok = test_result(&tc_output, entry);
       let mut lock = output_mutex.lock().unwrap();
       match test_ok {
          Ok(()) => {
@@ -175,9 +173,10 @@ fn main() -> Result<(), &'static str> {
                   writeln!(out_handle, "```").unwrap();
 
                   if opts.overwrite_error_files {
-                     let mut err_file_handle = open_result_file(&result_dir, entry, "err", true).unwrap();
-                     err_file_handle.write_all(actual.as_bytes()).unwrap();
-                     err_file_handle.set_len(actual.as_bytes().len() as u64).unwrap();
+                     todo!();
+                     //let mut err_file_handle = open_result_file(&result_dir, entry, "err", true).unwrap();
+                     //err_file_handle.write_all(actual.as_bytes()).unwrap();
+                     //err_file_handle.set_len(actual.as_bytes().len() as u64).unwrap();
                      writeln!(out_handle, "Created test compilation error output.").unwrap();
                   }
                }
@@ -255,36 +254,11 @@ fn print_diff<W: WriteColor>(t: &mut W, expected: &str, actual: &str) {
    writeln!(t, "{}", SimpleDiff::from_str(expected, actual, "expected", "actual")).unwrap();
 }
 
-fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Result<(), TestFailureReason> {
-   let mut expected_comptime_output = String::new();
-   let mut err_handle: Option<File> = None;
-   {
-      let err_file = open_result_file(result_dir, t_file_path, "err", false);
+fn test_result(tc_output: &Output, t_file_path: &Path) -> Result<(), TestFailureReason> {
+   let expected_result = extract_test_data(t_file_path);
 
-      match err_file {
-         Ok(mut f) => {
-            f.read_to_string(&mut expected_comptime_output).unwrap();
-            err_handle = Some(f);
-         }
-         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-         Err(e) => panic!("{}", e),
-      }
-   }
-
-   let mut expected_runtime_output: Option<String> = None;
-   {
-      let out_file = open_result_file(result_dir, t_file_path, "out", false);
-
-      match out_file {
-         Ok(mut f) => {
-            let mut s = String::new();
-            f.read_to_string(&mut s).unwrap();
-            expected_runtime_output = Some(s);
-         }
-         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-         Err(e) => panic!("{}", e),
-      }
-   }
+   let expected_comptime_output = expected_result.0.compile_output.unwrap_or_else(String::new);
+   let expected_runtime_output = expected_result.0.run_output;
 
    if expected_comptime_output.is_empty() && expected_runtime_output.is_none() {
       return Err(TestFailureReason::TestingNothing);
@@ -299,7 +273,7 @@ fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Res
          return Err(TestFailureReason::MismatchedCompilationErrorOutput(
             expected_comptime_output,
             stderr_text.into_owned(),
-            err_handle.unwrap(),
+            expected_result.1,
          ));
       }
 
@@ -343,22 +317,69 @@ fn test_result(tc_output: &Output, t_file_path: &Path, result_dir: &Path) -> Res
       return Err(TestFailureReason::MismatchedCompilationErrorOutput(
          expected_comptime_output,
          stderr_text.into_owned(),
-         err_handle.unwrap(),
+         expected_result.1,
       ));
    }
 
    Ok(())
 }
 
-fn open_result_file(result_dir: &Path, entry: &Path, extension: &'static str, create_new: bool) -> io::Result<File> {
-   let mut out_name = entry.to_path_buf();
-   out_name.set_extension(extension);
-   let mut out_path = result_dir.to_path_buf();
-   out_path.push(out_name.file_name().unwrap());
-   OpenOptions::new()
+struct ExpectedTestResult {
+   compile_output: Option<String>,
+   run_output: Option<String>,
+}
+
+fn extract_test_data(entry: &Path) -> (ExpectedTestResult, File) {
+   let mut opened = OpenOptions::new()
       .read(true)
       .write(true)
-      .append(false)
-      .create_new(create_new)
-      .open(out_path)
+      .open(entry).unwrap();
+
+   let mut s = String::new();
+   opened.read_to_string(&mut s).unwrap();
+
+   let anchor = "__END__";
+   let anchor_location = s.rfind(anchor);
+   let test_output = if let Some(loc) = anchor_location {
+      opened.seek(SeekFrom::Start((loc + anchor.len()) as u64)).unwrap();
+      parse_test_content(&s[loc + anchor.len()..])
+   } else {
+      // This file doesn't seem to have any test content.
+      // We'll see if there is an adjacent .result file
+      let mut result_name = entry.to_path_buf();
+      result_name.set_extension("result");
+      opened = OpenOptions::new()
+         .read(true)
+         .write(true)
+         .open(result_name).unwrap(); // todo let's not just unwrap;
+      s.clear();
+      opened.read_to_string(&mut s).unwrap();
+
+      parse_test_content(&s)
+   };
+
+   (test_output, opened)
+}
+
+fn parse_test_content(mut content: &str) -> ExpectedTestResult {
+   content = content.trim_start();
+
+   let run_anchor = "run:\n";
+
+   let mut expected_compile_output = None;
+   if let Some(after_compile) = content.strip_prefix("compile:\n") {
+      let mut until_run = after_compile;
+      if let Some(start_of_run) = after_compile.rfind(run_anchor) {
+         until_run = &until_run[..start_of_run];
+         content = &content[start_of_run..];
+      }
+      expected_compile_output = Some(until_run.to_string());
+   }
+   
+   let mut expected_run_output = None;
+   if let Some(after_run) = content.strip_prefix(run_anchor) {
+      expected_run_output = Some(after_run.to_string());
+   }
+
+   ExpectedTestResult { compile_output: expected_compile_output, run_output: expected_run_output }
 }

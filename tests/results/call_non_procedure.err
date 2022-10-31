@@ -1,2 +1,0 @@
-Attempting to invoke a procedure on non-procedure type ?? Int
-↳ line 2, column 5 [call_non_procedure.rol]

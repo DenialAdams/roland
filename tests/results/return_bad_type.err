@@ -1,2 +1,0 @@
-Value of return statement must match declared return type String; got bool
-↳ line 6, column 11 [return_bad_type.rol]

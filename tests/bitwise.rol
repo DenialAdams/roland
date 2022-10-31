@@ -18,3 +18,20 @@ proc main() {
    let z: u8 = 2;
    println_bool(!z == 253);
 }
+__END__
+run:
+true
+true
+false
+true
+true
+false
+true
+true
+true
+true
+true
+true
+true
+true
+true

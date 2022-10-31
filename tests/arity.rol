@@ -1,3 +1,7 @@
 proc main() {
    println("Hello, world!", "And again!");
 }
+__END__
+compile:
+Mismatched arity for procedure call. Expected 1 arguments but got 2
+↳ line 2, column 4 [arity.rol]

@@ -1,3 +1,6 @@
 proc main() {
     let my_str = "i like to eat \cake";
-}
+}__END__
+compile:
+Encountered unknown escape sequence `\c`
+↳ line 2, column 33 [unknown_escape.rol]

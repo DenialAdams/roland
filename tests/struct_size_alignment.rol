@@ -10,3 +10,7 @@ proc main() {
   println(int_to_string(addr2 extend u64 - addr1 extend u64));
   println(int_to_string(sizeof$X() extend u64));
 }
+__END__
+run:
+16
+16

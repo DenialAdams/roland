@@ -2,3 +2,6 @@ proc main() {
    let x: i8 = -128;
    println("ok");
 }
+__END__
+run:
+ok

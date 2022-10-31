@@ -1,2 +1,0 @@
-Procedure pointers can't be taken to procedures with named arguments
-↳ line 6, column 12 [procedure_pointer_to_named_arguments.rol]

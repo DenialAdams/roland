@@ -6,3 +6,7 @@ proc main() {
    println_bool(x~ == 123);
    println_bool(y~ == 213);
 }
+__END__
+run:
+true
+true

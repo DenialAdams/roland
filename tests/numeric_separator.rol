@@ -6,3 +6,7 @@ proc main() {
    println_bool(x1 == x2);
    println_bool(y1 == y2);
 }
+__END__
+run:
+true
+true

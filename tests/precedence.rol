@@ -4,3 +4,7 @@ proc main() {
    println_bool(x == 15);
    println_bool(y == 11);
 }
+__END__
+run:
+true
+true

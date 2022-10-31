@@ -5,3 +5,14 @@ proc main() {
    let z = x extend u16;
    let q = foo extend u64;
 }
+__END__
+compile:
+Extend encountered an operand of type u32 which can not be extended to type &String
+↳ extend @ line 4, column 12 [bad_extend.rol]
+↳ operand @ line 4, column 12 [bad_extend.rol]
+Extend encountered an operand of type u32 which can not be extended to type u16
+↳ extend @ line 5, column 12 [bad_extend.rol]
+↳ operand @ line 5, column 12 [bad_extend.rol]
+Extend encountered an operand of type String which can not be extended to type u64
+↳ extend @ line 6, column 12 [bad_extend.rol]
+↳ operand @ line 6, column 12 [bad_extend.rol]

@@ -9,3 +9,7 @@ proc main() {
    X();
    Y();
 }
+__END__
+run:
+okay
+okay

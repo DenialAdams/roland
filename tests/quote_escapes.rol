@@ -1,3 +1,6 @@
 proc main() {
     println("Hello, \"world\"!");
 }
+__END__
+run:
+Hello, "world"!

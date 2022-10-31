@@ -4,3 +4,7 @@ proc main() {
    }
    println(y);
 }
+__END__
+compile:
+Encountered undefined symbol `y`
+↳ line 5, column 12 [variable_scope.rol]

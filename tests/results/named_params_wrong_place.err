@@ -1,2 +1,0 @@
-Procedure `foo` has named parameter(s) which come before non-named parameter(s)
-↳ line 1, column 1 [named_params_wrong_place.rol]

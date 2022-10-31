@@ -8,3 +8,7 @@ proc main() {
       println("Hello from the loop");
    }
 }
+__END__
+run:
+Hello from the loop
+Hello from the loop

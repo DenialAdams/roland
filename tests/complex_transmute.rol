@@ -32,3 +32,13 @@ proc main() {
    println_bool(bar2.x3 == 0xdc);
    println_bool(bar2.x4 == 0xfe);
 }
+__END__
+run:
+true
+true
+true
+true
+true
+true
+true
+true

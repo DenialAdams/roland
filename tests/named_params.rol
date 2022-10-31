@@ -8,3 +8,7 @@ proc main() {
    dual_custody_lock(param_1: true, param_2: 5);
    dual_custody_lock(param_2: 3, param_1: true);
 } 
+__END__
+run:
+Nuclear missiles launched
+Nuclear missiles launched

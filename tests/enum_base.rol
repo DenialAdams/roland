@@ -5,3 +5,6 @@ enum Foo : u32 {
 proc main() {
    println(int_to_string(sizeof$Foo() extend u64));
 }
+__END__
+run:
+4

@@ -3,3 +3,7 @@ proc main() {
    println_bool(x == 8);
    println_bool(alignof$i64() == 8);
 }
+__END__
+run:
+true
+true

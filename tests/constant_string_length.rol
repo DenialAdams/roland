@@ -2,3 +2,6 @@ const X: usize = "foo".length;
 proc main() {
     println(int_to_string(X extend u64));
 }
+__END__
+run:
+3

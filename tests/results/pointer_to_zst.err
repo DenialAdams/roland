@@ -1,2 +1,0 @@
-Taking a pointer to a zero sized type is disallowed, as they don't reside in memory.
-↳ line 3, column 12 [pointer_to_zst.rol]

@@ -3,3 +3,6 @@ proc main() {
    let y: usize = x.length;
    println_bool(y == 2);
 }
+__END__
+run:
+true

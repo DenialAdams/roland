@@ -4,3 +4,7 @@ proc main() {
    alacadabra();
    println("Everything is ok");
 }
+__END__
+compile:
+Procedure `alacadabra` is declared to be builtin, but only the compiler can declare builtin procedures
+↳ line 1, column 1 [user_code_builtin.rol]

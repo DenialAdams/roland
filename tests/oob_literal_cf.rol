@@ -2,3 +2,7 @@ proc main() {
    // The fact that -129 is not a valid i8 should not cause constant folding to crash
    let x: i8 = -129 - 1;
 }
+__END__
+compile:
+Literal of type i8 has value `-129` which would immediately over/underflow
+↳ line 3, column 17 [oob_literal_cf.rol]

@@ -36,3 +36,7 @@ proc fast_fib(n: u64) -> u64 {
    }
    return sum;
 }
+__END__
+run:
+true
+true

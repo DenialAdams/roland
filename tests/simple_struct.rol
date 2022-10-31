@@ -39,3 +39,12 @@ proc main() {
 struct Y {
    another_field: u64,
 }
+__END__
+run:
+true
+true
+true
+true
+true
+true
+true

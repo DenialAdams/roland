@@ -3,3 +3,6 @@ proc main() {
    let y: &u64 = &x;
    println("ok");
 }
+__END__
+run:
+ok

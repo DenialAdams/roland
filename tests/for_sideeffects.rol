@@ -12,3 +12,10 @@ proc main() {
       println("Loop body");
    }
 }
+__END__
+run:
+Start expr
+End expr
+Loop body
+Loop body
+Loop body

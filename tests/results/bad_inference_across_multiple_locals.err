@@ -1,3 +1,0 @@
-Declared type i8 does not match actual expression type i32
-↳ declared type @ line 5, column 11 [bad_inference_across_multiple_locals.rol]
-↳ expression @ line 5, column 16 [bad_inference_across_multiple_locals.rol]

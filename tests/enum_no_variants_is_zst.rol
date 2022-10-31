@@ -5,3 +5,7 @@ proc main() {
    println(int_to_string(sizeof$Foo() extend u64));
    println(int_to_string(sizeof$Bar() extend u64));
 }
+__END__
+run:
+0
+0

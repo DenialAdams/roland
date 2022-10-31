@@ -4,3 +4,6 @@ proc main() {
    let z = x + 4;
    println("Compiled succesfully");
 }
+__END__
+run:
+Compiled succesfully

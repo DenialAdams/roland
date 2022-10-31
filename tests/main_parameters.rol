@@ -1,3 +1,9 @@
 proc main(named foo: u32) {
 
 }
+__END__
+compile:
+`main` is a special procedure for this target (WASI) and is not allowed to have named parameters
+↳ line 1, column 1 [main_parameters.rol]
+`main` is a special procedure for this target (WASI) and is not allowed to have parameters
+↳ line 1, column 1 [main_parameters.rol]

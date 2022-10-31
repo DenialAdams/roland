@@ -9,3 +9,8 @@ proc main() {
    println_bool(bint_true == 1);
    println_bool(bint_false == 0);
 }
+__END__
+run:
+true
+true
+true

@@ -10,3 +10,7 @@ struct Y {
 // We should also emit an error only for struct X, and not Y
 
 proc main() {}
+__END__
+compile:
+Struct `X` contains itself, which isn't allowed as it would result in an infinitely large struct
+↳ line 1, column 1 [good_struct_containing_recursive_struct.rol]

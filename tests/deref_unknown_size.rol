@@ -4,3 +4,7 @@ proc main() {
    let x = 10;
    let y = x~;
 }
+__END__
+compile:
+Expected type [AnyPointer] for expression Dereference; instead got ?? Int
+↳ line 5, column 12 [deref_unknown_size.rol]

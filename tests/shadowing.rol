@@ -2,3 +2,7 @@ proc main() {
    let x = "hello";
    let x = false;
 }
+__END__
+compile:
+Variable shadowing is not supported at this time (`x`)
+↳ line 3, column 8 [shadowing.rol]

@@ -4,3 +4,7 @@ proc foo(x: u8, x: u8) -> u8 {
 
 proc main() {
 }
+__END__
+compile:
+Procedure `foo` has a duplicate parameter `x`
+↳ line 1, column 1 [procedure_duplicate_args.rol]

@@ -1,3 +1,6 @@
 proc main() {
    println(int_to_string(123));
 }
+__END__
+run:
+123

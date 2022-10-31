@@ -9,3 +9,6 @@ proc main() {
    let z = FOO;
    println("ok");
 }
+__END__
+run:
+ok

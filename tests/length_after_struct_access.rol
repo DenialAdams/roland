@@ -10,3 +10,6 @@ proc main() {
    let len =  y.x.length;
    println("ok");
 }
+__END__
+run:
+ok

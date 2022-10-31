@@ -17,3 +17,7 @@ proc main() {
    println_bool(aligned);
    println(int_to_string(sizeof$BadAlignment() extend u64));
 }
+__END__
+run:
+true
+32

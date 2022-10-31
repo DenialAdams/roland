@@ -5,3 +5,5 @@ proc main() {
    let b = &a;
    let c: u64 = a;
 }
+__END__
+run:

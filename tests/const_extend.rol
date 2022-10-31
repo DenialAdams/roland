@@ -4,3 +4,5 @@ const Y: u64 = X extend u64;
 proc main() {
 
 }
+__END__
+run:
