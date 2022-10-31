@@ -666,6 +666,11 @@ pub fn lex_for_tokens(
             if is_xid_continue(c) {
                str_buf.push(c);
                let _ = chars.next().unwrap();
+               if str_buf.buf == "__END__" {
+                  // reset the lexing mode so we don't push __END__ as a token
+                  mode = LexMode::Normal;
+                  break;
+               }
             } else {
                let resulting_token = extract_keyword_or_ident(&str_buf.buf, interner);
                tokens.push(SourceToken {
