@@ -29,7 +29,7 @@ use similar_asserts::SimpleDiff;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 enum TestFailureReason {
-   TestingNothing,
+   TestingNothing(File),
    ExpectedCompilationFailure,
    ExpectedCompilationSuccess,
    FailedToRunExecutable,
@@ -159,7 +159,7 @@ fn main() -> Result<(), &'static str> {
             writeln!(out_handle, "FAILED").unwrap();
             let _ = out_handle.set_color(&reset_color);
             match reason {
-               TestFailureReason::TestingNothing => {
+               TestFailureReason::TestingNothing(mut file) => {
                   if !opts.overwrite_error_files {
                      writeln!(out_handle, "There was no test specified for this input.").unwrap();
                   }
@@ -172,10 +172,11 @@ fn main() -> Result<(), &'static str> {
                   writeln!(out_handle, "```").unwrap();
 
                   if opts.overwrite_error_files {
-                     todo!();
-                     //let mut err_file_handle = open_result_file(&result_dir, entry, "err", true).unwrap();
-                     //err_file_handle.write_all(actual.as_bytes()).unwrap();
-                     //err_file_handle.set_len(actual.as_bytes().len() as u64).unwrap();
+                     file.write_all(b"__END__\n").unwrap();
+                     file.write_all(b"compile:\n").unwrap();
+                     file.write_all(actual.as_bytes()).unwrap();
+                     let current_position = file.seek(SeekFrom::Current(0)).unwrap();
+                     file.set_len(current_position).unwrap();
                      writeln!(out_handle, "Created test compilation error output.").unwrap();
                   }
                }
@@ -206,12 +207,14 @@ fn main() -> Result<(), &'static str> {
                TestFailureReason::MismatchedCompilationErrorOutput(actual, mut test_details) => {
                   if opts.overwrite_error_files {
                      // file should have been sunk to the correct point
-                     test_details.file.write_all(b"\ncompile:").unwrap();
+                     test_details.file.write_all(b"compile:\n").unwrap();
                      test_details.file.write_all(actual.as_bytes()).unwrap();
                      if let Some(r) = test_details.result.run_output {
-                        test_details.file.write_all(b"\nrun:").unwrap();
+                        test_details.file.write_all(b"\nrun:\n").unwrap();
                         test_details.file.write_all(r.as_bytes()).unwrap();
                      }
+                     let current_position = test_details.file.seek(SeekFrom::Current(0)).unwrap();
+                     test_details.file.set_len(current_position).unwrap();
                      print_diff(&mut out_handle, &test_details.result.compile_output, &actual);
                      writeln!(out_handle, "Updated test compilation error output.").unwrap();
                   } else {
@@ -261,7 +264,7 @@ fn test_result(tc_output: &Output, t_file_path: &Path) -> Result<(), TestFailure
    let td = extract_test_data(t_file_path);
 
    if td.result.compile_output.is_empty() && td.result.run_output.is_none() {
-      return Err(TestFailureReason::TestingNothing);
+      return Err(TestFailureReason::TestingNothing(td.file));
    }
 
    let stderr_text = String::from_utf8_lossy(&tc_output.stderr);
@@ -341,7 +344,7 @@ fn extract_test_data(entry: &Path) -> TestDetails {
    let mut s = String::new();
    opened.read_to_string(&mut s).unwrap();
 
-   let anchor = "__END__";
+   let anchor = "__END__\n";
    let anchor_location = s.rfind(anchor);
    let test_output = if let Some(loc) = anchor_location {
       opened.seek(SeekFrom::Start((loc + anchor.len()) as u64)).unwrap();
@@ -351,13 +354,18 @@ fn extract_test_data(entry: &Path) -> TestDetails {
       // We'll see if there is an adjacent .result file
       let mut result_name = entry.to_path_buf();
       result_name.set_extension("result");
+      if !result_name.exists() {
+         // Alright, this file just has no test specified
+         return TestDetails { file: opened, result: ExpectedTestResult { compile_output: String::new(), run_output: None } };
+      }
       opened = OpenOptions::new()
          .read(true)
          .write(true)
-         .open(result_name).unwrap(); // todo let's not just unwrap;
+         .open(result_name).unwrap();
       s.clear();
       opened.read_to_string(&mut s).unwrap();
 
+      opened.seek(SeekFrom::Start(0)).unwrap();
       parse_test_content(&s)
    };
 
