@@ -4,4 +4,4 @@ proc main() {
 __END__
 compile:
 Transmute encountered an operand whose size is not yet known
-↳ line 2, column 12 [transmute_literal_of_unknown_size.rol]
+↳ line 2, column 12 [tests/transmute_literal_of_unknown_size.rol]

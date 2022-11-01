@@ -8,5 +8,5 @@ struct Foo{}
 __END__
 compile:
 Encountered duplicate structs with the same name `Foo`
-↳ first struct defined @ line 5, column 1 [duplicate_struct.rol]
-↳ second struct defined @ line 7, column 1 [duplicate_struct.rol]
+↳ first struct defined @ line 5, column 1 [tests/duplicate_struct.rol]
+↳ second struct defined @ line 7, column 1 [tests/duplicate_struct.rol]

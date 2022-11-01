@@ -4,5 +4,5 @@ proc main() {}
 __END__
 compile:
 Declared type i64 of const `X` does not match actual expression type bool
-↳ declared type @ line 1, column 10 [const_mismatching_type.rol]
-↳ expression @ line 1, column 16 [const_mismatching_type.rol]
+↳ declared type @ line 1, column 10 [tests/const_mismatching_type.rol]
+↳ expression @ line 1, column 16 [tests/const_mismatching_type.rol]

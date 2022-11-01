@@ -13,7 +13,6 @@ impl<'a> FileResolver<'a> for CliFileResolver {
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::env;
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -87,30 +86,25 @@ fn main() -> Result<(), &'static str> {
    let opts = parse_args().unwrap();
 
    let entries: Vec<PathBuf> = if opts.test_path.is_dir() {
-      env::set_current_dir(&opts.test_path).unwrap();
-
-      env::current_dir()
-         .unwrap()
+      opts.test_path
          .read_dir()
          .unwrap()
          .map(|x| x.unwrap().path())
          .filter(|e| e.extension().and_then(OsStr::to_str) == Some("rol"))
          .collect()
    } else {
-      let canon_path = opts.test_path.canonicalize().unwrap();
-      env::set_current_dir(canon_path.parent().unwrap()).unwrap();
-      vec![canon_path]
+      vec![opts.test_path]
    };
 
    let output_mutex: Mutex<(u64, u64)> = Mutex::new((0, 0));
 
    entries.par_iter().for_each(|entry| {
       let tc_output = match &opts.tc_path {
-         Some(tc_path) => Command::new(tc_path).arg(entry.file_name().unwrap()).output().unwrap(),
+         Some(tc_path) => Command::new(tc_path).arg(entry.clone()).output().unwrap(),
          None => COMPILATION_CTX.with_borrow_mut(|ctx| {
             let compile_result = rolandc::compile::<CliFileResolver>(
                ctx,
-               CompilationEntryPoint::PathResolving(entry.file_name().unwrap().into(), CliFileResolver {}),
+               CompilationEntryPoint::PathResolving(entry.clone(), CliFileResolver {}),
                rolandc::Target::Wasi,
             );
 

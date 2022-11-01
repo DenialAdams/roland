@@ -8,4 +8,4 @@ proc main() {
 __END__
 compile:
 Procedure pointers can't be taken to procedures with named arguments
-↳ line 6, column 12 [procedure_pointer_to_named_arguments.rol]
+↳ line 6, column 12 [tests/procedure_pointer_to_named_arguments.rol]

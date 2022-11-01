@@ -7,4 +7,4 @@ proc main() {
 __END__
 compile:
 Procedure `alacadabra` is declared to be builtin, but only the compiler can declare builtin procedures
-↳ line 1, column 1 [user_code_builtin.rol]
+↳ line 1, column 1 [tests/user_code_builtin.rol]

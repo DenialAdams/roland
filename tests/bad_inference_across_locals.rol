@@ -6,5 +6,5 @@ proc main() {
 __END__
 compile:
 Declared type u8 does not match actual expression type u32
-↳ declared type @ line 4, column 11 [bad_inference_across_locals.rol]
-↳ expression @ line 4, column 16 [bad_inference_across_locals.rol]
+↳ declared type @ line 4, column 11 [tests/bad_inference_across_locals.rol]
+↳ expression @ line 4, column 16 [tests/bad_inference_across_locals.rol]

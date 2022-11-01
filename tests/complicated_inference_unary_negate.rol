@@ -7,4 +7,4 @@ proc main() {
 __END__
 compile:
 Unsigned integers (i.e. usize) can't be negated. Hint: Should this be a signed integer?
-↳ line 3, column 12 [complicated_inference_unary_negate.rol]
+↳ line 3, column 12 [tests/complicated_inference_unary_negate.rol]

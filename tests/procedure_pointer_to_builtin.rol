@@ -4,4 +4,4 @@ proc main() {
 __END__
 compile:
 Procedure pointers can't be taken to compiler builtins
-↳ line 2, column 12 [procedure_pointer_to_builtin.rol]
+↳ line 2, column 12 [tests/procedure_pointer_to_builtin.rol]

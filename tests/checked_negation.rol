@@ -4,4 +4,4 @@ proc main() {
 __END__
 compile:
 During constant folding, tried to negate the minimum value of a signed integer
-↳ line 2, column 16 [checked_negation.rol]
+↳ line 2, column 16 [tests/checked_negation.rol]

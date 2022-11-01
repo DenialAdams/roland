@@ -7,5 +7,5 @@ proc main() {
 __END__
 compile:
 Enum and struct share the same name `Foo`
-↳ enum defined @ line 2, column 1 [enum_struct_same_name.rol]
-↳ struct defined @ line 1, column 1 [enum_struct_same_name.rol]
+↳ enum defined @ line 2, column 1 [tests/enum_struct_same_name.rol]
+↳ struct defined @ line 1, column 1 [tests/enum_struct_same_name.rol]

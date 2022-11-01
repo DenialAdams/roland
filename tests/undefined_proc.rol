@@ -4,4 +4,4 @@ proc main() {
 __END__
 compile:
 Encountered undefined symbol `something_undefined`
-↳ line 2, column 4 [undefined_proc.rol]
+↳ line 2, column 4 [tests/undefined_proc.rol]

@@ -6,4 +6,4 @@ proc main() {
 __END__
 compile:
 Attempted to index expression of type &[bool; 2], which is not an array type. Hint: Dereference this pointer with ~
-↳ line 4, column 12 [indexing_pointer_to_array.rol]
+↳ line 4, column 12 [tests/indexing_pointer_to_array.rol]

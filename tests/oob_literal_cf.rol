@@ -5,4 +5,4 @@ proc main() {
 __END__
 compile:
 Literal of type i8 has value `-129` which would immediately over/underflow
-↳ line 3, column 17 [oob_literal_cf.rol]
+↳ line 3, column 17 [tests/oob_literal_cf.rol]

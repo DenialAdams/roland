@@ -4,4 +4,4 @@ proc main() {
 __END__
 compile:
 Encountered undefined symbol `FOO`
-↳ line 2, column 17 [field_access_avoid_cascading_err.rol]
+↳ line 2, column 17 [tests/field_access_avoid_cascading_err.rol]

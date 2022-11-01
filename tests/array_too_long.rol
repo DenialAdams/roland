@@ -6,4 +6,4 @@ proc main() {
 __END__
 compile:
 While parsing array type, encountered an overly big integer 4294967296. The maximum length of an array is 4294967295.
-↳ line 1, column 41 [array_too_long.rol]
+↳ line 1, column 41 [tests/array_too_long.rol]

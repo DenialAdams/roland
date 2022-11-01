@@ -9,4 +9,4 @@ proc main() {
 __END__
 compile:
 While parsing definition of struct `X`, encountered an unexpected identifier `bar`. Hint: Are you missing a comma?
-↳ line 3, column 4 [missing_comma_struct_definition.rol]
+↳ line 3, column 4 [tests/missing_comma_struct_definition.rol]

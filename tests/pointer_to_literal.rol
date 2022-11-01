@@ -4,4 +4,4 @@ proc main() {
 __END__
 compile:
 A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter
-↳ line 2, column 12 [pointer_to_literal.rol]
+↳ line 2, column 12 [tests/pointer_to_literal.rol]

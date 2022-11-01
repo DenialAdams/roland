@@ -8,4 +8,4 @@ proc get_a_cool_string() -> String {
 __END__
 compile:
 Value of return statement must match declared return type String; got bool
-↳ line 6, column 11 [return_bad_type.rol]
+↳ line 6, column 11 [tests/return_bad_type.rol]

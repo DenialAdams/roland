@@ -4,4 +4,4 @@ proc main() {
 __END__
 compile:
 Undeclared type foo
-↳ line 2, column 18 [unresolved_generic_type.rol]
+↳ line 2, column 18 [tests/unresolved_generic_type.rol]

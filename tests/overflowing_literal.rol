@@ -4,4 +4,4 @@ proc main() {
 __END__
 compile:
 Encountered overly big integer
-↳ line 2, column 4 [overflowing_literal.rol]
+↳ line 2, column 4 [tests/overflowing_literal.rol]

@@ -5,6 +5,6 @@ proc main() {
 __END__
 compile:
 Break statement can only be used in a loop
-↳ line 2, column 4 [break_continue_no_loop.rol]
+↳ line 2, column 4 [tests/break_continue_no_loop.rol]
 Continue statement can only be used in a loop
-↳ line 3, column 4 [break_continue_no_loop.rol]
+↳ line 3, column 4 [tests/break_continue_no_loop.rol]

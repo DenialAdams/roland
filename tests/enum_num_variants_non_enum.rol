@@ -4,4 +4,4 @@ proc main() {
 __END__
 compile:
 For procedure `num_variants`, encountered generic argument of type String which does not meet the constraint `Enum`
-↳ line 2, column 24 [enum_num_variants_non_enum.rol]
+↳ line 2, column 24 [tests/enum_num_variants_non_enum.rol]

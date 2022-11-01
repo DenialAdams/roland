@@ -5,4 +5,4 @@ proc main() {
 __END__
 compile:
 At runtime, index will be 10, which is out of bounds for the array of length 2
-↳ line 3, column 4 [constant_folding_array_index_oob.rol]
+↳ line 3, column 4 [tests/constant_folding_array_index_oob.rol]

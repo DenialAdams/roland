@@ -6,4 +6,4 @@ proc main() {
 __END__
 compile:
 Inclusive ranges are not currently supported.
-↳ line 3, column 4 [for_inclusive.rol]
+↳ line 3, column 4 [tests/for_inclusive.rol]

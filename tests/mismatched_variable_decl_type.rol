@@ -4,5 +4,5 @@ proc main() {
 __END__
 compile:
 Declared type i8 does not match actual expression type bool
-↳ declared type @ line 2, column 11 [mismatched_variable_decl_type.rol]
-↳ expression @ line 2, column 16 [mismatched_variable_decl_type.rol]
+↳ declared type @ line 2, column 11 [tests/mismatched_variable_decl_type.rol]
+↳ expression @ line 2, column 16 [tests/mismatched_variable_decl_type.rol]

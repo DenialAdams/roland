@@ -4,4 +4,4 @@ proc main() {
 __END__
 compile:
 Mismatched arity for procedure call. Expected 1 arguments but got 2
-↳ line 2, column 4 [arity.rol]
+↳ line 2, column 4 [tests/arity.rol]

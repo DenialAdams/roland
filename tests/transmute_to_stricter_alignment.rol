@@ -18,4 +18,4 @@ proc main() {
 __END__
 compile:
 Transmute encountered an operand of type &Struct Foo, which can't be transmuted to type &Struct Bar as the alignment requirements would not be met (1 vs 2)
-↳ line 16, column 14 [transmute_to_stricter_alignment.rol]
+↳ line 16, column 14 [tests/transmute_to_stricter_alignment.rol]

@@ -5,4 +5,4 @@ proc main() {
 __END__
 compile:
 Attempted to index an array with a value of type i32, which is not usize
-↳ line 3, column 25 [non_usize_array_indexing.rol]
+↳ line 3, column 25 [tests/non_usize_array_indexing.rol]
