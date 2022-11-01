@@ -25,7 +25,6 @@ use os_pipe::pipe;
 use rayon::prelude::*;
 use rolandc::{CompilationContext, CompilationEntryPoint, FileResolver};
 use similar_asserts::SimpleDiff;
-use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 enum TestFailureReason {
    TestingNothing(File),
@@ -72,17 +71,19 @@ thread_local! {
    pub static COMPILATION_CTX: RefCell<CompilationContext> = RefCell::new(CompilationContext::new());
 }
 
-fn main() -> Result<(), &'static str> {
-   let mut err_color = ColorSpec::new();
-   err_color.set_fg(Some(Color::Red));
-   err_color.set_intense(true);
-   let mut pass_color = ColorSpec::new();
-   pass_color.set_fg(Some(Color::Green));
-   pass_color.set_intense(true);
-   let mut reset_color = ColorSpec::new();
-   reset_color.set_fg(None);
-   reset_color.set_intense(false);
+fn bold_green<W: Write>(w: &mut W) -> std::io::Result<()> {
+   write!(w, "\x1b[1;32m")
+}
 
+fn bold_red<W: Write>(w: &mut W) -> std::io::Result<()> {
+   write!(w, "\x1b[1;31m")
+}
+
+fn color_reset<W: Write>(w: &mut W) -> std::io::Result<()> {
+   write!(w, "\x1b[0m")
+}
+
+fn main() -> Result<(), &'static str> {
    let opts = parse_args().unwrap();
 
    let entries: Vec<PathBuf> = if opts.test_path.is_dir() {
@@ -134,24 +135,22 @@ fn main() -> Result<(), &'static str> {
       match test_ok {
          Ok(()) => {
             successes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let stdout = StandardStream::stdout(ColorChoice::Auto);
-            let mut out_handle = stdout.lock();
-            let _ = out_handle.set_color(&reset_color);
+            let mut out_handle = std::io::stdout().lock();
+            color_reset(&mut out_handle).unwrap();
             write!(out_handle, "{}: ", entry.file_name().unwrap().to_str().unwrap()).unwrap();
-            let _ = out_handle.set_color(&pass_color);
+            bold_green(&mut out_handle).unwrap();
             writeln!(out_handle, "ok").unwrap();
-            let _ = out_handle.set_color(&reset_color);
+            color_reset(&mut out_handle).unwrap();
          }
          Err(reason) => {
             failures.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let stderr = StandardStream::stderr(ColorChoice::Auto);
-            let mut out_handle = stderr.lock();
-            let _ = out_handle.set_color(&reset_color);
+            let mut out_handle = std::io::stderr().lock();
+            color_reset(&mut out_handle).unwrap();
             writeln!(out_handle, "--------------------").unwrap();
             write!(out_handle, "{}: ", entry.file_name().unwrap().to_str().unwrap()).unwrap();
-            let _ = out_handle.set_color(&err_color);
+            bold_red(&mut out_handle).unwrap();
             writeln!(out_handle, "FAILED").unwrap();
-            let _ = out_handle.set_color(&reset_color);
+            color_reset(&mut out_handle).unwrap();
             match reason {
                TestFailureReason::TestingNothing(mut file) => {
                   if !opts.overwrite_error_files {
@@ -229,20 +228,19 @@ fn main() -> Result<(), &'static str> {
    let successes = successes.load(Ordering::Relaxed);
    let failures = failures.load(Ordering::Relaxed);
 
-   let stdout = StandardStream::stdout(ColorChoice::Auto);
-   let mut out_handle = stdout.lock();
+   let mut out_handle = std::io::stdout().lock();
 
-   let _ = out_handle.set_color(&pass_color);
+   bold_green(&mut out_handle).unwrap();
    write!(out_handle, "{} ", successes).unwrap();
-   let _ = out_handle.set_color(&reset_color);
+   color_reset(&mut out_handle).unwrap();
    if successes == 1 {
       write!(out_handle, "success, ").unwrap();
    } else {
       write!(out_handle, "successes, ").unwrap();
    }
-   let _ = out_handle.set_color(&err_color);
+   bold_red(&mut out_handle).unwrap();
    write!(out_handle, "{} ", failures).unwrap();
-   let _ = out_handle.set_color(&reset_color);
+   color_reset(&mut out_handle).unwrap();
    if failures == 1 {
       writeln!(out_handle, "failure").unwrap();
    } else {
@@ -251,7 +249,7 @@ fn main() -> Result<(), &'static str> {
    Ok(())
 }
 
-fn print_diff<W: WriteColor>(t: &mut W, expected: &str, actual: &str) {
+fn print_diff<W: Write>(t: &mut W, expected: &str, actual: &str) {
    writeln!(t, "{}", SimpleDiff::from_str(expected, actual, "expected", "actual")).unwrap();
 }
 
