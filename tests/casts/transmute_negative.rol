@@ -1,0 +1,8 @@
+proc main() {
+   let x: u8 = 10;
+   let y = x transmute u16;
+}
+__END__
+compile:
+Transmute encountered an operand of type u8 which can't be transmuted to type u16 as the sizes do not match (1 vs 2)
+↳ line 3, column 12 [tests/casts/transmute_negative.rol]

@@ -1,0 +1,7 @@
+proc main() {
+   let z = 10 transmute u64;
+}
+__END__
+compile:
+Transmute encountered an operand whose size is not yet known
+↳ line 2, column 12 [tests/casts/transmute_literal_of_unknown_size.rol]

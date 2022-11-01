@@ -1,0 +1,9 @@
+extern proc foo(x: u64, named my_flag: bool);
+
+proc main() {
+    
+}
+__END__
+compile:
+External procedure `foo` has named parameter(s), which isn't supported
+↳ line 1, column 1 [tests/external_procedures/external_procedure_named.rol]

@@ -1,6 +1,0 @@
-proc main() {}
-proc foo$T() {}
-__END__
-compile:
-Generic parameters are unstable and currently unsupported in user code
-↳ line 2, column 1 [tests/generic_params_in_user_code.rol]

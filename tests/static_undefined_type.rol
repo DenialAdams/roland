@@ -1,9 +1,0 @@
-static X: fooble;
-
-proc main() {
-   println("everything a ok");
-}
-__END__
-compile:
-Static `X` is of undeclared type `fooble`
-↳ line 1, column 11 [tests/static_undefined_type.rol]

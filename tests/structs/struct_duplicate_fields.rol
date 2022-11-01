@@ -1,0 +1,10 @@
+struct Foo {
+   x: u8,
+   x: u8,
+}
+
+proc main() {}
+__END__
+compile:
+Struct `Foo` has a duplicate field `x`
+↳ line 1, column 1 [tests/structs/struct_duplicate_fields.rol]

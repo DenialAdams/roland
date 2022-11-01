@@ -1,8 +1,0 @@
-proc main() {
-   let a: [bool; 3] = [false];
-}
-__END__
-compile:
-Declared type [bool; 3] does not match actual expression type [bool; 1]
-↳ declared type @ line 2, column 11 [tests/array_length_mismatch.rol]
-↳ expression @ line 2, column 23 [tests/array_length_mismatch.rol]

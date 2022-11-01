@@ -1,0 +1,9 @@
+proc main() {
+   let x = ["abc", false];
+}
+__END__
+compile:
+Element at array index 0 has type of String, but element at array index 1 has mismatching type of bool
+↳ array literal @ line 2, column 12 [tests/arrays/heterogenous_array_literal.rol]
+↳ element 0 @ line 2, column 13 [tests/arrays/heterogenous_array_literal.rol]
+↳ element 1 @ line 2, column 20 [tests/arrays/heterogenous_array_literal.rol]

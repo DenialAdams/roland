@@ -19,6 +19,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Output};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use os_pipe::pipe;
@@ -83,22 +84,31 @@ fn color_reset<W: Write>(w: &mut W) -> std::io::Result<()> {
    write!(w, "\x1b[0m")
 }
 
+fn recursive_push_test_files(p: &Path, buf: &mut Vec<PathBuf>) {
+   for sub_p in p.read_dir().unwrap() {
+      let sub_p = sub_p.unwrap().path();
+      if sub_p.extension().and_then(OsStr::to_str) == Some("rol") {
+         buf.push(sub_p);
+      } else if sub_p.is_dir() {
+         recursive_push_test_files(&sub_p, buf);
+      }
+   }
+}
+
 fn main() -> Result<(), &'static str> {
    let opts = parse_args().unwrap();
 
    let entries: Vec<PathBuf> = if opts.test_path.is_dir() {
-      opts.test_path
-         .read_dir()
-         .unwrap()
-         .map(|x| x.unwrap().path())
-         .filter(|e| e.extension().and_then(OsStr::to_str) == Some("rol"))
-         .collect()
+      let mut entries = vec![];
+      recursive_push_test_files(&opts.test_path, &mut entries);
+      entries
    } else {
       vec![opts.test_path]
    };
 
    let successes = AtomicU64::new(0);
    let failures = AtomicU64::new(0);
+   let output_lock = Mutex::new(());
 
    entries.par_iter().for_each(|entry| {
       let tc_output = match &opts.tc_path {
@@ -132,6 +142,8 @@ fn main() -> Result<(), &'static str> {
          }),
       };
       let test_ok = test_result(&tc_output, entry);
+      // prevents stdout and stderr from mixing
+      let _ol = output_lock.lock();
       match test_ok {
          Ok(()) => {
             successes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

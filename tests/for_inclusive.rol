@@ -1,9 +1,0 @@
-proc main() {
-   let x:usize = 10;
-   for y in 0..=x {
-   }
-}
-__END__
-compile:
-Inclusive ranges are not currently supported.
-↳ line 3, column 4 [tests/for_inclusive.rol]

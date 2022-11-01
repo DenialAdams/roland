@@ -1,0 +1,3 @@
+compile:
+Encountered EOF while parsing string literal. Hint: Are you missing a closing "?
+↳ line 2, column 12 [tests/strings/incomple_str.rol]

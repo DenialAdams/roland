@@ -1,0 +1,37 @@
+struct X {
+   foo: u8,
+   bar: Y,
+}
+
+struct Y {
+   baz: u8,
+}
+
+proc main() {
+   let a = X {
+      foo: 10,
+      bar: Y {
+         baz: 10,
+      }
+   };
+
+   let b = true;
+
+   let c = b.foo;
+
+   let d = a.foo.baz;
+
+   let e = a.baz;
+
+   let f = a.bar.other.other;
+}
+__END__
+compile:
+Encountered field access on type bool; only structs and arrays have fields
+↳ line 20, column 12 [tests/structs/bad_field_access.rol]
+Encountered field access on type u8; only structs and arrays have fields
+↳ line 22, column 12 [tests/structs/bad_field_access.rol]
+Struct `X` does not have a field `baz`
+↳ line 24, column 12 [tests/structs/bad_field_access.rol]
+Struct `Y` does not have a field `other`
+↳ line 26, column 12 [tests/structs/bad_field_access.rol]

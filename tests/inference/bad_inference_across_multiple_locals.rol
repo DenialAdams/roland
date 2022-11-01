@@ -1,0 +1,11 @@
+proc main() {
+   let x = 10;
+   let y = x - 9;
+   let a: i32 = x;
+   let b: i8 = y;
+}
+__END__
+compile:
+Declared type i8 does not match actual expression type i32
+↳ declared type @ line 5, column 11 [tests/inference/bad_inference_across_multiple_locals.rol]
+↳ expression @ line 5, column 16 [tests/inference/bad_inference_across_multiple_locals.rol]

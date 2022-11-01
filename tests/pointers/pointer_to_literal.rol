@@ -1,0 +1,7 @@
+proc main() {
+   let x = &5;
+}
+__END__
+compile:
+A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter
+↳ line 2, column 12 [tests/pointers/pointer_to_literal.rol]

@@ -1,0 +1,9 @@
+proc main() {
+   let x = [false, true];
+   let y = &x;
+   let z = y[0];
+}
+__END__
+compile:
+Attempted to index expression of type &[bool; 2], which is not an array type. Hint: Dereference this pointer with ~
+↳ line 4, column 12 [tests/pointers/indexing_pointer_to_array.rol]

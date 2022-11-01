@@ -1,0 +1,12 @@
+proc main() {
+   let x: u32 = 0;
+   let y: usize = 64; 
+   for i in x..y {
+      println(int_to_string(i));
+   }
+}
+__END__
+compile:
+Start and end of range must be integer types of the same kind; got types `u32` and `usize`
+↳ start of range @ line 4, column 13 [tests/loops/for_bad_types.rol]
+↳ end of range @ line 4, column 16 [tests/loops/for_bad_types.rol]

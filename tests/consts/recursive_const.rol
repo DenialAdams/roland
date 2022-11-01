@@ -1,0 +1,19 @@
+const X: u64 = Y;
+const Y: u64 = X;
+
+const Z: u64 = X;
+
+proc main() {}
+__END__
+compile:
+const `X` has a cyclic dependency
+↳ line 1, column 1 [tests/consts/recursive_const.rol]
+Value of const `Y` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static and initialize it on program start.
+↳ const @ line 2, column 1 [tests/consts/recursive_const.rol]
+↳ expression @ line 2, column 16 [tests/consts/recursive_const.rol]
+Value of const `X` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static and initialize it on program start.
+↳ const @ line 1, column 1 [tests/consts/recursive_const.rol]
+↳ expression @ line 1, column 16 [tests/consts/recursive_const.rol]
+Value of const `Z` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static and initialize it on program start.
+↳ const @ line 4, column 1 [tests/consts/recursive_const.rol]
+↳ expression @ line 4, column 16 [tests/consts/recursive_const.rol]

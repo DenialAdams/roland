@@ -1,8 +1,0 @@
-proc main() {
-   let my_zst = ();
-   let x = &my_zst;
-}
-__END__
-compile:
-Taking a pointer to a zero sized type is disallowed, as they don't reside in memory.
-↳ line 3, column 12 [tests/pointer_to_zst.rol]

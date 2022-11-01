@@ -1,9 +1,0 @@
-proc main() {
-
-}
-
-extern proc foo(x: u64) where x: Enum;
-__END__
-compile:
-A constraint was declared on x, but there is no matching generic parameter by that name
-↳ line 5, column 1 [tests/where_clause_no_matching_param.rol]

@@ -1,0 +1,41 @@
+struct X {
+   foo: u8,
+   bar: u8,
+}
+
+proc main() {
+   let a = X {
+      foo: 10,
+      foo: 10,
+      bar: 10,
+   };
+
+   let b = X {
+      foo: 10,
+   };
+
+   let c = X {
+      foo: 10,
+      bar: 10,
+      baz: true,
+   };
+
+   let d = X {
+      foo: true,
+      bar: 10,
+   };
+}
+__END__
+compile:
+`foo` is a valid field of struct `X`, but is duplicated
+↳ struct instantiated @ line 7, column 12 [tests/structs/bad_struct_literals.rol]
+↳ struct defined @ line 1, column 1 [tests/structs/bad_struct_literals.rol]
+Literal of struct `X` is missing fields [bar]
+↳ struct instantiated @ line 13, column 12 [tests/structs/bad_struct_literals.rol]
+↳ struct defined @ line 1, column 1 [tests/structs/bad_struct_literals.rol]
+`baz` is not a known field of struct `X`
+↳ struct instantiated @ line 17, column 12 [tests/structs/bad_struct_literals.rol]
+↳ struct defined @ line 1, column 1 [tests/structs/bad_struct_literals.rol]
+For field `foo` of struct `X`, encountered value of type bool when we expected u8
+↳ field value @ line 24, column 12 [tests/structs/bad_struct_literals.rol]
+↳ struct defined @ line 1, column 1 [tests/structs/bad_struct_literals.rol]

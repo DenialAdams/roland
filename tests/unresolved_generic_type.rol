@@ -1,7 +1,0 @@
-proc main() {
-   let x = sizeof$foo();
-}
-__END__
-compile:
-Undeclared type foo
-↳ line 2, column 18 [tests/unresolved_generic_type.rol]

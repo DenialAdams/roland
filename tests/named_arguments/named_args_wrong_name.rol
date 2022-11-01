@@ -1,0 +1,13 @@
+proc dual_custody_lock(param_1: bool, named param_2: u8) {
+   if param_1 & (param_2 < 10) {
+      println("Nuclear missiles launched");
+   }
+}
+
+proc main() {
+   dual_custody_lock(true, param_1: 10);
+} 
+__END__
+compile:
+Encountered named argument `param_1` that does not correspond to any named parameter
+↳ line 8, column 4 [tests/named_arguments/named_args_wrong_name.rol]

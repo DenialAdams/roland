@@ -1,8 +1,0 @@
-proc main() {
-   let a = [true, false];
-   let b = a.fooble;
-}
-__END__
-compile:
-Array does not have a field `fooble`. Hint: Array types have a single field `length`
-↳ line 3, column 12 [tests/bad_field_access_array.rol]
