@@ -19,7 +19,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Output};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use os_pipe::pipe;
 use rayon::prelude::*;
@@ -96,7 +96,8 @@ fn main() -> Result<(), &'static str> {
       vec![opts.test_path]
    };
 
-   let output_mutex: Mutex<(u64, u64)> = Mutex::new((0, 0));
+   let successes = AtomicU64::new(0);
+   let failures = AtomicU64::new(0);
 
    entries.par_iter().for_each(|entry| {
       let tc_output = match &opts.tc_path {
@@ -130,10 +131,9 @@ fn main() -> Result<(), &'static str> {
          }),
       };
       let test_ok = test_result(&tc_output, entry);
-      let mut lock = output_mutex.lock().unwrap();
       match test_ok {
          Ok(()) => {
-            lock.0 += 1;
+            successes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let stdout = StandardStream::stdout(ColorChoice::Auto);
             let mut out_handle = stdout.lock();
             let _ = out_handle.set_color(&reset_color);
@@ -143,7 +143,7 @@ fn main() -> Result<(), &'static str> {
             let _ = out_handle.set_color(&reset_color);
          }
          Err(reason) => {
-            lock.1 += 1;
+            failures.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let stderr = StandardStream::stderr(ColorChoice::Auto);
             let mut out_handle = stderr.lock();
             let _ = out_handle.set_color(&reset_color);
@@ -226,23 +226,24 @@ fn main() -> Result<(), &'static str> {
       }
    });
 
+   let successes = successes.load(Ordering::Relaxed);
+   let failures = failures.load(Ordering::Relaxed);
+
    let stdout = StandardStream::stdout(ColorChoice::Auto);
    let mut out_handle = stdout.lock();
 
-   let lock = output_mutex.lock().unwrap();
-
    let _ = out_handle.set_color(&pass_color);
-   write!(out_handle, "{} ", lock.0).unwrap();
+   write!(out_handle, "{} ", successes).unwrap();
    let _ = out_handle.set_color(&reset_color);
-   if lock.0 == 1 {
+   if successes == 1 {
       write!(out_handle, "success, ").unwrap();
    } else {
       write!(out_handle, "successes, ").unwrap();
    }
    let _ = out_handle.set_color(&err_color);
-   write!(out_handle, "{} ", lock.1).unwrap();
+   write!(out_handle, "{} ", failures).unwrap();
    let _ = out_handle.set_color(&reset_color);
-   if lock.1 == 1 {
+   if failures == 1 {
       writeln!(out_handle, "failure").unwrap();
    } else {
       writeln!(out_handle, "failures").unwrap();
