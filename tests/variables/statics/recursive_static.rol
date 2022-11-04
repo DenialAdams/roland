@@ -5,6 +5,6 @@ proc main() {}
 __END__
 compile:
 Value of static `X` can't be constant folded. Hint: Either simplify the expression, or initialize it yourself on program start.
-↳ line 1, column 17 [tests/statics/recursive_static.rol]
+↳ line 1, column 17 [tests/variables/statics/recursive_static.rol]
 Value of static `Y` can't be constant folded. Hint: Either simplify the expression, or initialize it yourself on program start.
-↳ line 2, column 17 [tests/statics/recursive_static.rol]
+↳ line 2, column 17 [tests/variables/statics/recursive_static.rol]

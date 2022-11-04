@@ -4,4 +4,4 @@ proc main() -> String {
 __END__
 compile:
 `main` is a special procedure for this target (WASI) and must not return a value
-↳ line 1, column 1 [tests/main_return.rol]
+↳ line 1, column 1 [tests/special_procedures/main_return.rol]

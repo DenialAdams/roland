@@ -6,4 +6,4 @@ proc main() {
 __END__
 compile:
 Left hand side of assignment is a constant, which does not have a memory location and can't be reassigned
-↳ line 4, column 4 [tests/assignment_to_constant.rol]
+↳ line 4, column 4 [tests/variables/assignment_to_constant.rol]

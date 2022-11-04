@@ -5,4 +5,4 @@ proc main() {
 __END__
 compile:
 Variable shadowing is not supported at this time (`x`)
-↳ line 3, column 8 [tests/shadowing.rol]
+↳ line 3, column 8 [tests/variables/shadowing.rol]

@@ -4,4 +4,4 @@ proc main() {
 __END__
 compile:
 Encountered undefined symbol `x`
-↳ line 2, column 17 [tests/undefined_variable.rol]
+↳ line 2, column 17 [tests/variables/undefined_variable.rol]
