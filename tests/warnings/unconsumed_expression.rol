@@ -1,0 +1,7 @@
+proc main() {
+   true;
+}
+__END__
+compile:
+The result of this expression is not conumed
+↳ line 2, column 4 [tests/warnings/unconsumed_expression.rol]

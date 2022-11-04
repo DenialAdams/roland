@@ -6,4 +6,4 @@ proc main() {
 __END__
 compile:
 Return type of procedure `foo` is of undeclared type `proc(S) -> ()`
-↳ line 1, column 15 [tests/partially_unresolved_return_value.rol]
+↳ line 1, column 15 [tests/type_resolution/partially_unresolved_return_value.rol]

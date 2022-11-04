@@ -8,4 +8,4 @@ proc main() {
 __END__
 compile:
 Return type of procedure `foo` is of undeclared type `Y`
-↳ line 1, column 15 [tests/undeclared_type_return.rol]
+↳ line 1, column 15 [tests/type_resolution/undeclared_type_return.rol]

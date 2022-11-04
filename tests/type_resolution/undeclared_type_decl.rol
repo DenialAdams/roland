@@ -6,6 +6,6 @@ proc main() {
 __END__
 compile:
 Encountered construction of undefined struct `Y`
-↳ line 2, column 15 [tests/undeclared_type_decl.rol]
+↳ line 2, column 15 [tests/type_resolution/undeclared_type_decl.rol]
 Variable `x` is declared with undefined type Y
-↳ line 2, column 11 [tests/undeclared_type_decl.rol]
+↳ line 2, column 11 [tests/type_resolution/undeclared_type_decl.rol]

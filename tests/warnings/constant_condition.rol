@@ -1,0 +1,15 @@
+proc main() {
+   if true {
+      // ...
+   }
+
+   if false {
+      // ...
+   }
+}
+__END__
+compile:
+This condition will always be true
+↳ line 2, column 7 [tests/warnings/constant_condition.rol]
+This condition will always be false
+↳ line 6, column 7 [tests/warnings/constant_condition.rol]
