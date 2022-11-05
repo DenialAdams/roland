@@ -35,6 +35,7 @@ impl VvContext<'_, '_> {
       self
          .cur_procedure_locals
          .insert(var_id, self.expressions[expr_id].exp_type.clone().unwrap());
+      debug_assert!(!self.virtual_vars.contains_key(&expr_id));
       self.virtual_vars.insert(expr_id, var_id);
    }
 }
@@ -156,6 +157,13 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
       }
       Expression::FieldAccess(_field_names, expr) => {
          vv_expr(*expr, vv_context);
+
+         if !vv_context.expressions[*expr]
+            .expression
+            .is_lvalue_disregard_consts(vv_context.expressions)
+         {
+            vv_context.declare_vv(*expr);
+         }
       }
       Expression::Cast {
          cast_type: CastType::Transmute,

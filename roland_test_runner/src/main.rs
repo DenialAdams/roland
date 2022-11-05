@@ -1,5 +1,4 @@
 #![feature(local_key_cell_methods)]
-
 #![allow(clippy::uninlined_format_args)] // I'm an old man and I like the way it was before
 #![allow(clippy::unwrap_or_else_default)] // I want to know exactly what is being called
 
@@ -19,8 +18,8 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Output};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
 use os_pipe::pipe;
 use rayon::prelude::*;
@@ -216,7 +215,11 @@ fn main() -> Result<(), &'static str> {
                      }
                      let current_position = test_details.file.seek(SeekFrom::Current(0)).unwrap();
                      test_details.file.set_len(current_position).unwrap();
-                     print_diff(&mut out_handle, test_details.result.compile_output.as_ref().map_or("", |x| x.as_str()), &actual);
+                     print_diff(
+                        &mut out_handle,
+                        test_details.result.compile_output.as_ref().map_or("", |x| x.as_str()),
+                        &actual,
+                     );
                      writeln!(out_handle, "Updated test compilation error output.").unwrap();
                   } else {
                      writeln!(
@@ -224,7 +227,11 @@ fn main() -> Result<(), &'static str> {
                         "Failed to compile, but the compilation error was different than expected:"
                      )
                      .unwrap();
-                     print_diff(&mut out_handle, test_details.result.compile_output.as_ref().map_or("", |x| x.as_str()), &actual);
+                     print_diff(
+                        &mut out_handle,
+                        test_details.result.compile_output.as_ref().map_or("", |x| x.as_str()),
+                        &actual,
+                     );
                   }
                }
             }
@@ -271,7 +278,12 @@ fn test_result(tc_output: &Output, t_file_path: &Path) -> Result<(), TestFailure
    let stderr_text = String::from_utf8_lossy(&tc_output.stderr);
 
    if tc_output.status.success() {
-      if td.result.compile_output.as_ref().map_or(false, |x| x.as_str() != stderr_text) {
+      if td
+         .result
+         .compile_output
+         .as_ref()
+         .map_or(false, |x| x.as_str() != stderr_text)
+      {
          return Err(TestFailureReason::MismatchedCompilationErrorOutput(
             stderr_text.into_owned(),
             td,
@@ -314,7 +326,12 @@ fn test_result(tc_output: &Output, t_file_path: &Path) -> Result<(), TestFailure
       std::fs::remove_file(prog_path).unwrap();
    } else if td.result.run_output.is_some() {
       return Err(TestFailureReason::ExpectedCompilationSuccess);
-   } else if td.result.compile_output.as_ref().map_or(false, |x| x.as_str() != stderr_text) {
+   } else if td
+      .result
+      .compile_output
+      .as_ref()
+      .map_or(false, |x| x.as_str() != stderr_text)
+   {
       return Err(TestFailureReason::MismatchedCompilationErrorOutput(
          stderr_text.into_owned(),
          td,
@@ -335,10 +352,7 @@ struct ExpectedTestResult {
 }
 
 fn extract_test_data(entry: &Path) -> TestDetails {
-   let mut opened = OpenOptions::new()
-      .read(true)
-      .write(true)
-      .open(entry).unwrap();
+   let mut opened = OpenOptions::new().read(true).write(true).open(entry).unwrap();
 
    let mut s = String::new();
    opened.read_to_string(&mut s).unwrap();
@@ -355,12 +369,15 @@ fn extract_test_data(entry: &Path) -> TestDetails {
       result_name.set_extension("result");
       if !result_name.exists() {
          // Alright, this file just has no test specified
-         return TestDetails { file: opened, result: ExpectedTestResult { compile_output: None, run_output: None } };
+         return TestDetails {
+            file: opened,
+            result: ExpectedTestResult {
+               compile_output: None,
+               run_output: None,
+            },
+         };
       }
-      opened = OpenOptions::new()
-         .read(true)
-         .write(true)
-         .open(result_name).unwrap();
+      opened = OpenOptions::new().read(true).write(true).open(result_name).unwrap();
       s.clear();
       opened.read_to_string(&mut s).unwrap();
 
@@ -368,7 +385,10 @@ fn extract_test_data(entry: &Path) -> TestDetails {
       parse_test_content(&s)
    };
 
-   TestDetails { file: opened, result: test_output }
+   TestDetails {
+      file: opened,
+      result: test_output,
+   }
 }
 
 fn parse_test_content(mut content: &str) -> ExpectedTestResult {
@@ -391,5 +411,8 @@ fn parse_test_content(mut content: &str) -> ExpectedTestResult {
       expected_run_output = Some(after_run.to_string());
    }
 
-   ExpectedTestResult { compile_output: expected_compile_output, run_output: expected_run_output }
+   ExpectedTestResult {
+      compile_output: expected_compile_output,
+      run_output: expected_run_output,
+   }
 }

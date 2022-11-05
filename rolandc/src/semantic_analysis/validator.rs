@@ -310,7 +310,10 @@ pub fn type_and_check_validity(
          let actual_type_str = p_const_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
          rolandc_error_w_details!(
             err_manager,
-            &[(p_const.const_type.location, "declared type"), (p_const_expr.location, "expression")],
+            &[
+               (p_const.const_type.location, "declared type"),
+               (p_const_expr.location, "expression")
+            ],
             "Declared type {} of const `{}` does not match actual expression type {}",
             p_const.const_type.e_type.as_roland_type_info(interner),
             interner.lookup(p_const.name.str),
@@ -322,7 +325,11 @@ pub fn type_and_check_validity(
    for p_static in program.statics.iter_mut().filter(|x| x.value.is_some()) {
       // p_static.static_type is guaranteed to be resolved at this point
       type_expression(err_manager, p_static.value.unwrap(), &mut validation_context, interner);
-      try_set_inferred_type(&p_static.static_type.e_type, p_static.value.unwrap(), &mut validation_context);
+      try_set_inferred_type(
+         &p_static.static_type.e_type,
+         p_static.value.unwrap(),
+         &mut validation_context,
+      );
 
       let p_static_expr = &validation_context.expressions[p_static.value.unwrap()];
 
@@ -332,7 +339,10 @@ pub fn type_and_check_validity(
          let actual_type_str = p_static_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
          rolandc_error_w_details!(
             err_manager,
-            &[(p_static.static_type.location, "declared type"), (p_static_expr.location, "expression")],
+            &[
+               (p_static.static_type.location, "declared type"),
+               (p_static_expr.location, "expression")
+            ],
             "Declared type {} of static `{}` does not match actual expression type {}",
             p_static.static_type.e_type.as_roland_type_info(interner),
             interner.lookup(p_static.name.str),
@@ -659,7 +669,11 @@ fn type_statement(
 
          if let Some(v) = dt.as_mut() {
             // Failure to resolve is handled below
-            let _ = resolve_type(&mut v.e_type, validation_context.enum_info, validation_context.struct_info);
+            let _ = resolve_type(
+               &mut v.e_type,
+               validation_context.enum_info,
+               validation_context.struct_info,
+            );
             try_set_inferred_type(&v.e_type, *enid, validation_context);
          }
 
@@ -671,16 +685,18 @@ fn type_statement(
          {
             rolandc_error_w_details!(
                err_manager,
-               &[(dt.as_ref().unwrap().location, "declared type"), (en.location, "expression")],
+               &[
+                  (dt.as_ref().unwrap().location, "declared type"),
+                  (en.location, "expression")
+               ],
                "Declared type {} does not match actual expression type {}",
                dt.as_ref().unwrap().e_type.as_roland_type_info(interner),
                en.exp_type.as_ref().unwrap().as_roland_type_info(interner)
             );
             ExpressionType::Value(ValueType::CompileError)
-         } else if dt
-            .as_ref()
-            .map_or(false, |x| matches!(x.e_type, ExpressionType::Value(ValueType::Unresolved(_))))
-         {
+         } else if dt.as_ref().map_or(false, |x| {
+            matches!(x.e_type, ExpressionType::Value(ValueType::Unresolved(_)))
+         }) {
             let dt_str = dt.as_ref().unwrap().e_type.as_roland_type_info(interner);
             rolandc_error!(
                err_manager,

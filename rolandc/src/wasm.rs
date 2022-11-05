@@ -727,41 +727,6 @@ pub fn emit_wasm(
       generation_context.out.close();
    }
 
-   for s in program.struct_info.iter() {
-      let mut offset_begin = 0;
-      for field in s.1.field_types.iter() {
-         // todo: we can avoid this allocation by re-examaning the emit_function_start abstraction (we could push directly into the underlying buffer?)
-         let full_name = interner.intern(&format!(
-            "::struct::{}::{}",
-            interner.lookup(*s.0),
-            interner.lookup(*field.0)
-         ));
-         generation_context.out.emit_function_start(
-            full_name,
-            &[ExpressionType::Value(ValueType::Struct(*s.0))],
-            field.1,
-            &program.enum_info,
-            &program.struct_info,
-            interner,
-         );
-
-         let offset_end = offset_begin
-            + sizeof_type_values(
-               field.1,
-               generation_context.enum_info,
-               generation_context.struct_size_info,
-            );
-
-         for i in offset_begin..offset_end {
-            generation_context.out.emit_get_local(i);
-         }
-
-         generation_context.out.close();
-
-         offset_begin = offset_end;
-      }
-   }
-
    for procedure in program.procedures.iter_mut() {
       generation_context.procedure_virtual_vars = &procedure.virtual_locals;
       generation_context.local_offsets_mem.clear();
@@ -1821,17 +1786,14 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             load(field.1, generation_context);
          }
       }
-      Expression::FieldAccess(field_names, lhs) => {
-         do_emit(*lhs, generation_context, interner);
-
-         let lhs = &generation_context.expressions[*lhs];
-
-         if lhs
-            .expression
-            .is_lvalue_disregard_consts(generation_context.expressions)
-         {
-            let mut struct_name = match lhs.exp_type.as_ref() {
-               Some(ExpressionType::Value(ValueType::Struct(x))) => x,
+      Expression::FieldAccess(field_names, lhs_id) => {
+         fn calculate_offset(
+            lhs_type: &ExpressionType,
+            field_names: &[StrId],
+            generation_context: &mut GenerationContext,
+         ) {
+            let mut struct_name = match lhs_type {
+               ExpressionType::Value(ValueType::Struct(x)) => x,
                _ => unreachable!(),
             };
             let mut mem_offset = 0;
@@ -1866,41 +1828,29 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                .unwrap();
 
             generation_context.out.emit_const_add_i32(mem_offset);
+         }
+
+         let lhs = &generation_context.expressions[*lhs_id];
+
+         if lhs
+            .expression
+            .is_lvalue_disregard_consts(generation_context.expressions)
+         {
+            do_emit(*lhs_id, generation_context, interner);
+            calculate_offset(lhs.exp_type.as_ref().unwrap(), field_names, generation_context);
          } else {
-            let mut current_struct_name = match lhs.exp_type.as_ref() {
-               Some(ExpressionType::Value(ValueType::Struct(x))) => x,
-               _ => unreachable!(),
-            };
+            // spill to the virtual variable
+            let lhs_vv = generation_context.procedure_virtual_vars.get(lhs_id).copied().unwrap();
+            get_stack_address_of_local(lhs_vv, generation_context);
+            do_emit(*lhs_id, generation_context, interner);
+            store(lhs.exp_type.as_ref().unwrap(), generation_context, interner);
 
-            // We have the entire struct sitting on the value stack
-            // -- there's no "pick" operation in wasm so we can't just choose the fields we want
-            // instead we call these special functions which basically convert the struct fields into locals so we can select them easier
-            // yeah, this is a pretty big hack
-            for field_name in field_names.iter().take(field_names.len() - 1) {
-               let func_name = interner.intern(&format!(
-                  "::struct::{}::{}",
-                  interner.lookup(*current_struct_name),
-                  interner.lookup(*field_name)
-               ));
-               generation_context.out.emit_call(func_name, interner);
-               current_struct_name = match generation_context
-                  .struct_info
-                  .get(current_struct_name)
-                  .unwrap()
-                  .field_types
-                  .get(field_name)
-               {
-                  Some(ExpressionType::Value(ValueType::Struct(x))) => x,
-                  _ => unreachable!(),
-               };
-            }
+            // Now that we've spilled, we can proceed to compute the offset like normal
+            get_stack_address_of_local(lhs_vv, generation_context);
+            calculate_offset(lhs.exp_type.as_ref().unwrap(), field_names, generation_context);
 
-            let func_name = interner.intern(&format!(
-               "::struct::{}::{}",
-               interner.lookup(*current_struct_name),
-               interner.lookup(*field_names.last().unwrap())
-            ));
-            generation_context.out.emit_call(func_name, interner);
+            // ...but we're an rvalue, so we have to load
+            load(expr_node.exp_type.as_ref().unwrap(), generation_context);
          }
       }
       Expression::ArrayLiteral(exprs) => {
