@@ -1,0 +1,7 @@
+proc main() {
+   let x = Foo::Bar;
+}
+__END__
+compile:
+Attempted to instantiate enum `Foo`, which does not exist
+↳ line 2, column 12 [tests/enums/entire_enum_not_extent.rol]

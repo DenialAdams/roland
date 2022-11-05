@@ -3,6 +3,6 @@ const X: i64 = false;
 proc main() {}
 __END__
 compile:
-Declared type i64 of const `X` does not match actual expression type bool
-↳ declared type @ line 1, column 10 [tests/variables/consts/const_mismatching_type.rol]
+Declared type i64 does not match actual expression type bool
 ↳ expression @ line 1, column 16 [tests/variables/consts/const_mismatching_type.rol]
+↳ declared type @ line 1, column 10 [tests/variables/consts/const_mismatching_type.rol]

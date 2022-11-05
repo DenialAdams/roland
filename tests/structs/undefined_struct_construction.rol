@@ -1,0 +1,7 @@
+proc main() {
+   let x = Y {};
+}
+__END__
+compile:
+Encountered construction of undefined struct `Y`
+↳ line 2, column 12 [tests/structs/undefined_struct_construction.rol]

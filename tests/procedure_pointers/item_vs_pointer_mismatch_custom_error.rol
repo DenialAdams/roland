@@ -1,0 +1,12 @@
+proc foo() -> u8 {
+   return 10;
+}
+
+proc main() {
+   let x: proc() -> u8 = foo;
+}
+__END__
+compile:
+Declared type proc() -> u8 does not match actual expression type proc() {foo}. Hint: Procedures must be cast to procedure pointers using &
+↳ expression @ line 6, column 26 [tests/procedure_pointers/item_vs_pointer_mismatch_custom_error.rol]
+↳ declared type @ line 6, column 11 [tests/procedure_pointers/item_vs_pointer_mismatch_custom_error.rol]

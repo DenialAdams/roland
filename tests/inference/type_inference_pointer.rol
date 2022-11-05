@@ -9,5 +9,5 @@ proc main() {
 __END__
 compile:
 Declared type i32 does not match actual expression type usize
-↳ declared type @ line 7, column 11 [tests/inference/type_inference_pointer.rol]
 ↳ expression @ line 7, column 17 [tests/inference/type_inference_pointer.rol]
+↳ declared type @ line 7, column 11 [tests/inference/type_inference_pointer.rol]

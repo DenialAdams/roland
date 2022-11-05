@@ -1,11 +1,7 @@
 proc main() {
-   let x: Y = Y {
-
-   };
+   let foo: Y = true; 
 }
 __END__
 compile:
-Encountered construction of undefined struct `Y`
-↳ line 2, column 15 [tests/type_resolution/undeclared_type_decl.rol]
-Variable `x` is declared with undefined type Y
-↳ line 2, column 11 [tests/type_resolution/undeclared_type_decl.rol]
+Variable `foo` is declared with undefined type Y
+↳ line 2, column 13 [tests/type_resolution/undeclared_type_decl.rol]

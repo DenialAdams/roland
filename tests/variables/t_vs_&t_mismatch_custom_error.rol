@@ -1,0 +1,8 @@
+proc main() {
+   let x: &bool = true;
+}
+__END__
+compile:
+Declared type &bool does not match actual expression type bool. Hint: Take the address of this expression using &
+↳ expression @ line 2, column 19 [tests/variables/t_vs_&t_mismatch_custom_error.rol]
+↳ declared type @ line 2, column 11 [tests/variables/t_vs_&t_mismatch_custom_error.rol]

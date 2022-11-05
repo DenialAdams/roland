@@ -1,0 +1,8 @@
+static X: i64 = false;
+
+proc main() {}
+__END__
+compile:
+Declared type i64 does not match actual expression type bool
+↳ expression @ line 1, column 17 [tests/variables/statics/static_mismatching_type.rol]
+↳ declared type @ line 1, column 11 [tests/variables/statics/static_mismatching_type.rol]

@@ -1,0 +1,8 @@
+enum Foo {}
+proc main() {
+   let x = Foo::Bar;
+}
+__END__
+compile:
+Attempted to instantiate unknown variant `Bar` of enum `Foo`
+↳ line 3, column 17 [tests/enums/enum_variant_not_extant.rol]

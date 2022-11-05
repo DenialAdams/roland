@@ -12,8 +12,8 @@ use crate::error_handling::error_handling_macros::{
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, GenericArgumentNode, Program,
-   Statement, StatementNode, StrNode, UnOp, VariableId,
+   ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool,
+   ExpressionTypeNode, GenericArgumentNode, Program, Statement, StatementNode, StrNode, UnOp, VariableId,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, sizeof_type_mem, value_type_mem_alignment};
@@ -304,22 +304,7 @@ pub fn type_and_check_validity(
 
       let p_const_expr = &validation_context.expressions[p_const.value];
 
-      if p_const.const_type.e_type != *p_const_expr.exp_type.as_ref().unwrap()
-         && !p_const_expr.exp_type.as_ref().unwrap().is_error()
-      {
-         let actual_type_str = p_const_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
-         rolandc_error_w_details!(
-            err_manager,
-            &[
-               (p_const.const_type.location, "declared type"),
-               (p_const_expr.location, "expression")
-            ],
-            "Declared type {} of const `{}` does not match actual expression type {}",
-            p_const.const_type.e_type.as_roland_type_info(interner),
-            interner.lookup(p_const.name.str),
-            actual_type_str,
-         );
-      }
+      check_type_declared_vs_actual(&p_const.const_type, p_const_expr, interner, err_manager);
    }
 
    for p_static in program.statics.iter_mut().filter(|x| x.value.is_some()) {
@@ -333,22 +318,7 @@ pub fn type_and_check_validity(
 
       let p_static_expr = &validation_context.expressions[p_static.value.unwrap()];
 
-      if p_static.static_type.e_type != *p_static_expr.exp_type.as_ref().unwrap()
-         && !p_static_expr.exp_type.as_ref().unwrap().is_error()
-      {
-         let actual_type_str = p_static_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner);
-         rolandc_error_w_details!(
-            err_manager,
-            &[
-               (p_static.static_type.location, "declared type"),
-               (p_static_expr.location, "expression")
-            ],
-            "Declared type {} of static `{}` does not match actual expression type {}",
-            p_static.static_type.e_type.as_roland_type_info(interner),
-            interner.lookup(p_static.name.str),
-            actual_type_str,
-         );
-      }
+      check_type_declared_vs_actual(&p_static.static_type, p_static_expr, interner, err_manager);
    }
 
    for procedure in program.procedures.iter_mut() {
@@ -679,22 +649,7 @@ fn type_statement(
 
          let en = &validation_context.expressions[*enid];
 
-         let result_type = if dt.is_some()
-            && dt.as_ref().unwrap().e_type != *en.exp_type.as_ref().unwrap()
-            && !en.exp_type.as_ref().unwrap().is_error()
-         {
-            rolandc_error_w_details!(
-               err_manager,
-               &[
-                  (dt.as_ref().unwrap().location, "declared type"),
-                  (en.location, "expression")
-               ],
-               "Declared type {} does not match actual expression type {}",
-               dt.as_ref().unwrap().e_type.as_roland_type_info(interner),
-               en.exp_type.as_ref().unwrap().as_roland_type_info(interner)
-            );
-            ExpressionType::Value(ValueType::CompileError)
-         } else if dt.as_ref().map_or(false, |x| {
+         let result_type = if dt.as_ref().map_or(false, |x| {
             matches!(x.e_type, ExpressionType::Value(ValueType::Unresolved(_)))
          }) {
             let dt_str = dt.as_ref().unwrap().e_type.as_roland_type_info(interner);
@@ -706,6 +661,10 @@ fn type_statement(
                dt_str,
             );
             ExpressionType::Value(ValueType::CompileError)
+         } else if dt.is_some() {
+            check_type_declared_vs_actual(dt.as_ref().unwrap(), en, interner, err_manager);
+
+            dt.clone().map(|x| x.e_type).unwrap()
          } else {
             en.exp_type.clone().unwrap()
          };
@@ -1219,6 +1178,7 @@ fn get_type(
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::AddressOf && is_zst {
             // Allowing this wouldn't cause any clear bug (as far as I know), but it just seems whack
+            // In the future, we should allow this for generic programming. TODO!
             rolandc_error!(
                err_manager,
                expr_location,
@@ -1226,6 +1186,7 @@ fn get_type(
             );
             ExpressionType::Value(ValueType::CompileError)
          } else if *un_op == UnOp::Dereference && is_zst {
+            // In the future, we should allow this for generic programming. TODO!
             rolandc_error!(
                err_manager,
                expr_location,
@@ -1640,7 +1601,7 @@ fn get_type(
             } else {
                rolandc_error!(
                   err_manager,
-                  expr_location,
+                  v.location,
                   "Attempted to instantiate unknown variant `{}` of enum `{}`",
                   interner.lookup(v.str),
                   interner.lookup(x.str),
@@ -1651,7 +1612,7 @@ fn get_type(
          } else {
             rolandc_error!(
                err_manager,
-               expr_location,
+               x.location,
                "Attempted to instantiate enum `{}`, which does not exist",
                interner.lookup(x.str),
             );
@@ -1858,5 +1819,67 @@ fn check_procedure_item(
          type_arguments.len()
       );
       ExpressionType::Value(ValueType::CompileError)
+   }
+}
+
+fn check_type_declared_vs_actual(
+   declared: &ExpressionTypeNode,
+   actual: &ExpressionNode,
+   interner: &Interner,
+   err_manager: &mut ErrorManager,
+) {
+   fn address_of_actual_matches_dt(actual_type: &ExpressionType, declared_type: &ExpressionType) -> bool {
+      let mut actual_type_ref = actual_type.clone();
+      actual_type_ref.increment_indirection_count();
+
+      actual_type_ref == *declared_type
+   }
+   fn deref_of_actual_matches_dt(actual_type: &ExpressionType, declared_type: &ExpressionType) -> bool {
+      let mut actual_type_deref = actual_type.clone();
+      let actual_deref_exists = actual_type_deref.decrement_indirection_count().is_ok();
+
+      actual_type_deref == *declared_type && actual_deref_exists
+   }
+
+   let actual_type = actual.exp_type.as_ref().unwrap();
+   let declared_type = &declared.e_type;
+   if declared_type != actual_type && !actual_type.is_error() {
+      let actual_type_str = actual_type.as_roland_type_info(interner);
+      let declared_type_str = declared.e_type.as_roland_type_info(interner);
+      let locations = &[(actual.location, "expression"), (declared.location, "declared type")];
+
+      if address_of_actual_matches_dt(actual_type, declared_type) {
+         rolandc_error_w_details!(
+            err_manager,
+            locations,
+            "Declared type {} does not match actual expression type {}. Hint: Take the address of this expression using &",
+            declared_type_str,
+            actual_type_str,
+         );
+      } else if deref_of_actual_matches_dt(actual_type, declared_type) {
+         rolandc_error_w_details!(
+            err_manager,
+            locations,
+            "Declared type {} does not match actual expression type {}. Hint: Dereference this expression using ~",
+            declared_type_str,
+            actual_type_str,
+         );
+      } else if matches!(declared_type, ExpressionType::Value(ValueType::ProcedurePointer {..} )) && matches!(actual_type, ExpressionType::Value(ValueType::ProcedureItem(_, _))) {
+         rolandc_error_w_details!(
+            err_manager,
+            locations,
+            "Declared type {} does not match actual expression type {}. Hint: Procedures must be cast to procedure pointers using &",
+            declared_type_str,
+            actual_type_str,
+         );
+      } else {
+         rolandc_error_w_details!(
+            err_manager,
+            locations,
+            "Declared type {} does not match actual expression type {}",
+            declared_type_str,
+            actual_type_str,
+         );
+      }
    }
 }
