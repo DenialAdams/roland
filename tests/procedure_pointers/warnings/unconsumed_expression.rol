@@ -4,4 +4,4 @@ proc main() {
 __END__
 compile:
 The result of this expression is not conumed
-↳ line 2, column 4 [tests/warnings/unconsumed_expression.rol]
+↳ line 2, column 4 [tests/procedure_pointers/warnings/unconsumed_expression.rol]

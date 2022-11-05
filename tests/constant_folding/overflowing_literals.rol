@@ -4,4 +4,4 @@ proc main() {
 __END__
 compile:
 Literal of type u8 has value `256` which would immediately over/underflow
-↳ line 2, column 16 [tests/overflowing_literals.rol]
+↳ line 2, column 16 [tests/constant_folding/overflowing_literals.rol]

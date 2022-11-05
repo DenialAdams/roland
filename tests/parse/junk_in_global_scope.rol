@@ -5,4 +5,4 @@ proc main() {
 __END__
 compile:
 While parsing top level, encountered unexpected string literal; was expecting a procedure, const, static, enum, or struct declaration
-↳ line 4, column 1 [tests/junk_in_global_scope.rol]
+↳ line 4, column 1 [tests/parse/junk_in_global_scope.rol]

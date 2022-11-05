@@ -10,6 +10,6 @@ proc main() {
 __END__
 compile:
 This condition will always be true
-↳ line 2, column 7 [tests/warnings/constant_condition.rol]
+↳ line 2, column 7 [tests/procedure_pointers/warnings/constant_condition.rol]
 This condition will always be false
-↳ line 6, column 7 [tests/warnings/constant_condition.rol]
+↳ line 6, column 7 [tests/procedure_pointers/warnings/constant_condition.rol]
