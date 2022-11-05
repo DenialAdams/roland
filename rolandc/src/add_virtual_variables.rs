@@ -97,8 +97,10 @@ fn vv_statement(statement: &mut Statement, vv_context: &mut VvContext) {
       Statement::Return(expr) => {
          vv_expr(*expr, vv_context);
       }
-      Statement::VariableDeclaration(_, expr, _, _) => {
-         vv_expr(*expr, vv_context);
+      Statement::VariableDeclaration(_, opt_expr, _, _) => {
+         if let Some(expr) = opt_expr {
+            vv_expr(*expr, vv_context);
+         }
       }
    }
 }

@@ -42,8 +42,8 @@ struct _ryu_floating_decimal_64 {
 }
 
 proc _ryu_d2d(ieeeMantissa: u64, ieeeExponent: u32) -> _ryu_floating_decimal_64 {
-   let e2: i32 = 0; // @uninit
-   let m2: u64 = 0; // @uninit
+   let e2: i32 = ___;
+   let m2: u64 = ___;
    if (ieeeExponent == 0) {
       // We subtract 2 so that the bounds computation has 2 additional bits.
       e2 = 1 - _RYU_DOUBLE_BIAS transmute i32 - _RYU_DOUBLE_MANTISSA_BITS transmute i32 - 2;
@@ -64,10 +64,10 @@ proc _ryu_d2d(ieeeMantissa: u64, ieeeExponent: u32) -> _ryu_floating_decimal_64 
    // uint64_t mm = mv - 1 - mmShift;
 
    // Step 3: Convert to a decimal power base using 128-bit arithmetic.
-   let vr: u64 = 0; // @uninit
-   let vp: u64 = 0; // @uninit
-   let vm: u64 = 0; // @uninit
-   let e10: i32 = 0; // @uninit
+   let vr: u64 = ___;
+   let vp: u64 = ___;
+   let vm: u64 = ___;
+   let e10: i32 = ___;
    let vmIsTrailingZeros = false;
    let vrIsTrailingZeros = false;
    if (e2 >= 0) {
@@ -126,7 +126,7 @@ proc _ryu_d2d(ieeeMantissa: u64, ieeeExponent: u32) -> _ryu_floating_decimal_64 
    // Step 4: Find the shortest decimal representation in the interval of valid representations.
    let removed: i32 = 0;
    let lastRemovedDigit: u8 = 0;
-   let output: u64 = 0; // @uninit
+   let output: u64 = ___;
    // On average, we remove ~2 digits.
    if (vmIsTrailingZeros or vrIsTrailingZeros) {
       // General case, which happens rarely (~0.7%).
@@ -363,10 +363,7 @@ proc _ryu_d2s_buffered_n(f: f64, result: &u8) -> usize {
       return _ryu_copy_special_str(result, ieeeSign, ieeeExponent > 0, ieeeMantissa > 0);
    }
 
-   let v = _ryu_floating_decimal_64 {
-      mantissa: 0,
-      exponent: 0,
-   }; // @uninit
+   let v: _ryu_floating_decimal_64 = ___;
    let isSmallInt: bool = _ryu_d2d_small_int(ieeeMantissa, ieeeExponent, &v);
    if (isSmallInt) {
       // For small integers in the range [1, 2^53), v.mantissa might contain trailing (decimal) zeros.

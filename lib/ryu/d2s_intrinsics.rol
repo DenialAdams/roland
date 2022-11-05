@@ -127,9 +127,9 @@ proc _ryu_multipleOfPowerOf2(value: u64, p: u32) -> bool {
 //       results are not perfectly aligned.
 proc _ryu_mulShift64(m: u64, mul: &[u64; 2], j: i32) -> u64 {
    // m is maximum 55 bits
-   let high1: u64 = 0; // @uninit                    // 128
+   let high1: u64 = ___;                                   // 128
    let low1: u64 = _ryu_umul128(m, mul~[1], &high1);       // 64
-   let high0: u64 = 0; // @uninit                    // 64
+   let high0: u64 = ___;                                   // 64
    _ryu_umul128(m, mul~[0], &high0);                       // 0
    let sum: u64 = high0 + low1;
    if (sum < high0) {
@@ -142,9 +142,9 @@ proc _ryu_mulShift64(m: u64, mul: &[u64; 2], j: i32) -> u64 {
 proc _ryu_mulShiftAll64(m: u64, mul: &[u64; 2], j: i32, vp: &u64, vm: &u64, mmShift: u32) -> u64{
    m = m << 1;
    // m is maximum 55 bits
-   let tmp: u64 = 0; // @uninit
+   let tmp: u64 = ___;
    let lo: u64 = _ryu_umul128(m, mul~[0], &tmp);
-   let hi: u64 = 0; // @uninit
+   let hi: u64 = ___;
    let mid: u64 = tmp + _ryu_umul128(m, mul~[1], &hi);
    hi = hi + (mid < tmp) extend u64; // overflow into hi
 

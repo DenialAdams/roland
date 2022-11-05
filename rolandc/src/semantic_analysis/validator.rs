@@ -634,8 +634,10 @@ fn type_statement(
             );
          }
       }
-      Statement::VariableDeclaration(id, enid, dt, var_id) => {
-         type_expression(err_manager, *enid, validation_context, interner);
+      Statement::VariableDeclaration(id, opt_enid, dt, var_id) => {
+         if let Some(enid) = opt_enid {
+            type_expression(err_manager, *enid, validation_context, interner);
+         }
 
          if let Some(v) = dt.as_mut() {
             // Failure to resolve is handled below
@@ -644,10 +646,12 @@ fn type_statement(
                validation_context.enum_info,
                validation_context.struct_info,
             );
-            try_set_inferred_type(&v.e_type, *enid, validation_context);
+            if let Some(enid) = opt_enid {
+               try_set_inferred_type(&v.e_type, *enid, validation_context);
+            }
          }
 
-         let en = &validation_context.expressions[*enid];
+         let opt_en = opt_enid.map(|enid| &validation_context.expressions[enid]);
 
          let result_type = if dt.as_ref().map_or(false, |x| {
             matches!(x.e_type, ExpressionType::Value(ValueType::Unresolved(_)))
@@ -662,11 +666,20 @@ fn type_statement(
             );
             ExpressionType::Value(ValueType::CompileError)
          } else if dt.is_some() {
-            check_type_declared_vs_actual(dt.as_ref().unwrap(), en, interner, err_manager);
+            if let Some(en) = opt_en {
+               check_type_declared_vs_actual(dt.as_ref().unwrap(), en, interner, err_manager);
+            }
 
             dt.clone().map(|x| x.e_type).unwrap()
-         } else {
+         } else if let Some(en) = opt_en {
             en.exp_type.clone().unwrap()
+         } else {
+            rolandc_error!(
+               err_manager,
+               id.location,
+               "Uninitialized variables must be declared with a type",
+            );
+            ExpressionType::Value(ValueType::CompileError)
          };
 
          *var_id = declare_variable(err_manager, id, result_type, validation_context, interner);

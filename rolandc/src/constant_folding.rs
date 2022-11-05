@@ -93,8 +93,10 @@ pub fn fold_statement(
       Statement::Return(expr) => {
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
       }
-      Statement::VariableDeclaration(_, expr, _, _) => {
-         try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
+      Statement::VariableDeclaration(_, opt_expr, _, _) => {
+         if let Some(expr) = opt_expr {
+            try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
+         }
       }
    }
 }

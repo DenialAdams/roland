@@ -294,7 +294,7 @@ pub enum Statement {
    // so we should try to rectify that too.
    IfElse(ExpressionId, BlockNode, Box<StatementNode>),
    Return(ExpressionId),
-   VariableDeclaration(StrNode, ExpressionId, Option<ExpressionTypeNode>, VariableId),
+   VariableDeclaration(StrNode, Option<ExpressionId>, Option<ExpressionTypeNode>, VariableId),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -826,7 +826,12 @@ fn parse_block(
                declared_type = Some(parse_type(l, parse_context)?);
             }
             expect(l, parse_context, Token::Assignment)?;
-            let e = parse_expression(l, parse_context, false, expressions)?;
+            let e = if l.peek_token() == Token::TripleUnderscore {
+               let _ = l.next();
+               None
+            } else {
+               Some(parse_expression(l, parse_context, false, expressions)?)
+            };
             let sc = expect(l, parse_context, Token::Semicolon)?;
             let statement_location = merge_locations(let_token.source_info, sc.source_info);
             statements.push(StatementNode {

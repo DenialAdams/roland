@@ -15,8 +15,8 @@ struct _ryu_floating_decimal_32 {
 }
 
 proc _ryu_f2d(ieeeMantissa: u32, ieeeExponent: u32) -> _ryu_floating_decimal_32 {
-   let e2: i32 = 0; // @uninit
-   let m2: u32 = 0; // @uninit
+   let e2: i32 = ___;
+   let m2: u32 = ___;
    if (ieeeExponent == 0) {
       // We subtract 2 so that the bounds computation has 2 additional bits.
       e2 = 1 - _RYU_FLOAT_BIAS transmute i32 - _RYU_FLOAT_MANTISSA_BITS transmute i32 - 2;
@@ -36,10 +36,10 @@ proc _ryu_f2d(ieeeMantissa: u32, ieeeExponent: u32) -> _ryu_floating_decimal_32 
    let mm: u32 = 4 * m2 - 1 - mmShift;
 
    // Step 3: Convert to a decimal power base using 64-bit arithmetic.
-   let vr: u32 = 0; // @uninit
-   let vp: u32 = 0; // @uninit
-   let vm: u32 = 0; // @uninit
-   let e10: i32 = 0; // @uninit
+   let vr: u32 = ___;
+   let vp: u32 = ___;
+   let vm: u32 = ___;
+   let e10: i32 = ___;
    let vmIsTrailingZeros = false;
    let vrIsTrailingZeros = false;
    let lastRemovedDigit: u8 = 0;
@@ -101,7 +101,7 @@ proc _ryu_f2d(ieeeMantissa: u32, ieeeExponent: u32) -> _ryu_floating_decimal_32 
 
   // Step 4: Find the shortest decimal representation in the interval of valid representations.
   let removed: i32 = 0;
-  let output: u32 = 0; // @uninit
+  let output: u32 = ___;
   if (vmIsTrailingZeros or vrIsTrailingZeros) {
     // General case, which happens rarely (~4.0%).
     loop {

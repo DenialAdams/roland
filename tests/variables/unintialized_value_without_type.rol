@@ -1,0 +1,8 @@
+proc main() {
+   let x = ___;
+   x = false; // we could infer the type of x from this assignment, if we want to do that eventually?
+}
+__END__
+compile:
+Uninitialized variables must be declared with a type
+↳ line 2, column 8 [tests/variables/unintialized_value_without_type.rol]

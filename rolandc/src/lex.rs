@@ -72,6 +72,7 @@ pub enum Token {
    Dollar,
    Deref,
    Eof,
+   TripleUnderscore,
 }
 
 impl Token {
@@ -140,6 +141,7 @@ impl Token {
          Token::KeywordIn => "keyword 'in'",
          Token::Dollar => "token '$'",
          Token::Deref => "token '~'",
+         Token::TripleUnderscore => "token '___'",
          Token::Eof => "EOF",
       }
    }
@@ -670,6 +672,21 @@ pub fn lex_for_tokens(
                   // reset the lexing mode so we don't push __END__ as a token
                   mode = LexMode::Normal;
                   break;
+               } else if str_buf.buf == "___" {
+                  // Looking for this token in identifier lexing is pretty hacky,
+                  // but we do it for n-lookahead (in this case, n=2.)
+                  // It would be nice if we had arbitrary lookahead, perhaps by
+                  // manually keeping track of the byte index.
+                  tokens.push(SourceToken {
+                     source_info: SourceInfo {
+                        begin: cur_position,
+                        end: cur_position.col_plus(str_buf.length_in_chars),
+                        file: source_path,
+                     },
+                     token: Token::TripleUnderscore,
+                  });
+                  cur_position.col += str_buf.clear();
+                  mode = LexMode::Normal;
                }
             } else {
                let resulting_token = extract_keyword_or_ident(&str_buf.buf, interner);

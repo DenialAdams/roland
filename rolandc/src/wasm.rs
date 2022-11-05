@@ -912,11 +912,13 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          let val_type = generation_context.expressions[*en].exp_type.as_ref().unwrap();
          store(val_type, generation_context, interner);
       }
-      Statement::VariableDeclaration(_, en, _, var_id) => {
-         get_stack_address_of_local(*var_id, generation_context);
-         do_emit_and_load_lval(*en, generation_context, interner);
-         let val_type = generation_context.expressions[*en].exp_type.as_ref().unwrap();
-         store(val_type, generation_context, interner);
+      Statement::VariableDeclaration(_, opt_en, _, var_id) => {
+         if let Some(en) = opt_en {
+            get_stack_address_of_local(*var_id, generation_context);
+            do_emit_and_load_lval(*en, generation_context, interner);
+            let val_type = generation_context.expressions[*en].exp_type.as_ref().unwrap();
+            store(val_type, generation_context, interner);
+         }
       }
       Statement::Block(bn) => {
          for statement in &bn.statements {
