@@ -492,11 +492,12 @@ pub fn astify(
             let variable_name = parse_identifier(&mut lexer, &mut parse_context)?;
             expect(&mut lexer, &mut parse_context, Token::Colon)?;
             let static_type = parse_type(&mut lexer, &mut parse_context)?;
-            let exp = if lexer.peek_token() == Token::Assignment {
+            expect(&mut lexer, &mut parse_context, Token::Assignment)?;
+            let exp = if lexer.peek_token() == Token::TripleUnderscore {
                let _ = lexer.next();
-               Some(parse_expression(&mut lexer, &mut parse_context, false, expressions)?)
-            } else {
                None
+            } else {
+               Some(parse_expression(&mut lexer, &mut parse_context, false, expressions)?)
             };
             let end_token = expect(&mut lexer, &mut parse_context, Token::Semicolon)?;
             statics.push(StaticNode {

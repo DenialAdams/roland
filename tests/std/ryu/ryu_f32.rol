@@ -1,4 +1,4 @@
-static BUF: [u8; 16];
+static BUF: [u8; 16] = ___;
 
 proc main() {
    // Basic

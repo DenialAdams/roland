@@ -1,6 +1,6 @@
-static X: u64;
+static X: u64 = ___;
 
-static COMPOUND: [u64; 10];
+static COMPOUND: [u64; 10] = ___;
 
 proc main() {
    X = 10;

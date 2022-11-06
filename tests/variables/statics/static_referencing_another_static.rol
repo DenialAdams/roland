@@ -1,5 +1,5 @@
 static X: u64 = Y;
-static Y: u64;
+static Y: u64 = ___;
 
 proc main() {
 

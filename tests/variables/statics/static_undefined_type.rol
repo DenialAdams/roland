@@ -1,4 +1,4 @@
-static X: fooble;
+static X: fooble = ___;
 
 proc main() {
    println("everything a ok");

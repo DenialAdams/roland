@@ -1,11 +1,11 @@
 // Guaranteed to have left-right exits.
-static HALLWAY_ROOMS: [[Tile; 100]; 5];
+static HALLWAY_ROOMS: [[Tile; 100]; 5] = ___;
 // Guaranteed to have top entry and left-right exit.
-static LANDING_ROOMS: [[Tile; 100]; 5];
+static LANDING_ROOMS: [[Tile; 100]; 5] = ___;
 // Guaranteed to have a downward exit and left-right exit.
-static DROP_ROOMS: [[Tile; 100]; 7];
+static DROP_ROOMS: [[Tile; 100]; 7] = ___;
 // No guarantees on exit.
-static BONUS_ROOMS: [[Tile; 100]; 1];
+static BONUS_ROOMS: [[Tile; 100]; 1] = ___;
 
 proc make_maps() {
    let w = Tile::Wall;

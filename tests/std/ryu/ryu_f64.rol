@@ -1,4 +1,4 @@
-static BUF: [u8; 25];
+static BUF: [u8; 25] = ___;
 
 proc ieeeParts2Double(sign: bool, ieeeExponent: u32, ieeeMantissa: u64) -> f64 {
   assert(ieeeExponent <= 2047);

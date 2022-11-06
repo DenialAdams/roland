@@ -1529,6 +1529,7 @@ fn get_type(
          }
 
          // @FixedPointerWidth
+         // todo: i think this should be u32::MAX+1
          if elems.len() > std::u32::MAX as usize {
             any_error = true;
             rolandc_error!(

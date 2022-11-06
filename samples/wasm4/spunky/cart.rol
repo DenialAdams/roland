@@ -3,33 +3,33 @@ import "levelgen.rol";
 import "random.rol";
 import "sprites.rol";
 
-static GAME_OVER: bool;
-static STARTED_FALLING_FRAMES: [usize; 4];
-static PLAYERS_ALIVE: [bool; 4];
-static PLAYER_POSITIONS: [Position; 4];
+static GAME_OVER: bool = ___;
+static STARTED_FALLING_FRAMES: [usize; 4] = ___;
+static PLAYERS_ALIVE: [bool; 4] = ___;
+static PLAYER_POSITIONS: [Position; 4] = ___;
 const PLAYER_WIDTH: f64 = 16.0;
 const PLAYER_HEIGHT: f64 = 16.0;
-static PLAYERS_FACING_LEFT: [bool; 4];
-static PLAYERS_MOVED_ON_LAST_FRAME: [bool; 4];
+static PLAYERS_FACING_LEFT: [bool; 4] = ___;
+static PLAYERS_MOVED_ON_LAST_FRAME: [bool; 4] = ___;
 const TILE_WIDTH: f64 = 16.0;
 const TILE_HEIGHT: f64 = 16.0;
-static JUMP_SPEEDS: [f64; 4];
+static JUMP_SPEEDS: [f64; 4] = ___;
 const TERMINAL_VELOCITY: f64 = 3.5;
-static JUMP_STATES: [JumpState; 4];
-static SCORE_BUF: [u8; 10];
-static SCORE: u32;
+static JUMP_STATES: [JumpState; 4] = ___;
+static SCORE_BUF: [u8; 10] = ___;
+static SCORE: u32 = ___;
 static ACTIVE_PLAYERS: usize = 1;
 
 static DOING_DOOR: bool = false;
 
 // Timers
-static TIME_ALIVE: u64;
-static TIME_DEAD: u64;
-static TIME_DOING_DOOR: u64;
+static TIME_ALIVE: u64 = ___;
+static TIME_DEAD: u64 = ___;
+static TIME_DOING_DOOR: u64 = ___;
 
-static LAST_GAMEPADS: [u8; 4];
+static LAST_GAMEPADS: [u8; 4] = ___;
 
-static TILES: [Tile; 1600];
+static TILES: [Tile; 1600] = ___;
 
 struct Position {
    x: f64,
@@ -579,9 +579,9 @@ proc draw_player(player_x: i32, player_y: i32, player_index: usize) {
 }
 
 const GHOST_SPAWN_TIME: u64 = 60*25; // Number of frames after which the ghost should spawn.
-static GHOST_IS_PRESENT: bool;
-static GHOST_FACING_LEFT: bool;
-static GHOST_POSITION: Position;
+static GHOST_IS_PRESENT: bool = ___;
+static GHOST_FACING_LEFT: bool = ___;
+static GHOST_POSITION: Position = ___;
 const GHOST_HEIGHT: u32 = 30;
 const GHOST_WIDTH: u32 = 30;
 const GHOST_SPEED: u64 = 1;

@@ -1,13 +1,13 @@
-static GAME_OVER: bool;
-static PLAYER_X: f64;
-static PLAYER_Y: f64;
-static FORWARD_SPEED: f64;
-static JUMP_SPEED: f64;
-static JUMP_STATE: JumpState;
-static RNG: u64;
-static OBSTACLES: [Obstacle; 2];
-static SCORE_BUF: [u8; 10];
-static TIME_DEAD: u64;
+static GAME_OVER: bool = ___;
+static PLAYER_X: f64 = ___;
+static PLAYER_Y: f64 = ___;
+static FORWARD_SPEED: f64 = ___;
+static JUMP_SPEED: f64 = ___;
+static JUMP_STATE: JumpState = ___;
+static RNG: u64 = ___;
+static OBSTACLES: [Obstacle; 2] = ___;
+static SCORE_BUF: [u8; 10] = ___;
+static TIME_DEAD: u64 = ___;
 
 const OBSTACLE_COUNT: usize = 2;
 
