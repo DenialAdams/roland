@@ -34,6 +34,7 @@ struct SpecialProcedure {
 
 fn get_special_procedures(target: Target, interner: &mut Interner) -> Vec<SpecialProcedure> {
    match target {
+      Target::Lib => vec![],
       Target::Wasm4 => vec![
          SpecialProcedure {
             name: interner.intern("start"),

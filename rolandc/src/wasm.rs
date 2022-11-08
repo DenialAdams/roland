@@ -518,6 +518,7 @@ pub fn emit_wasm(
       .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ProcImplSource::External))
    {
       match target {
+         Target::Lib => (),
          Target::Wasm4 | Target::Microw8 => {
             writeln!(
                generation_context.out.out,
@@ -556,6 +557,7 @@ pub fn emit_wasm(
    }
 
    match target {
+      Target::Lib => (),
       Target::Wasm4 => {
          generation_context
             .out
@@ -598,7 +600,7 @@ pub fn emit_wasm(
    // the base memory offset varies per platform;
    // on wasm-4/microw8, we don't own all of the memory!
    let mut offset: u32 = match target {
-      Target::Wasi => 0x0,
+      Target::Wasi | Target::Lib => 0x0,
       Target::Wasm4 => 0x19a0,
       Target::Microw8 => 0x14000,
    };

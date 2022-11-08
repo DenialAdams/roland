@@ -138,7 +138,7 @@ fn main() {
       let mut output_path = opts.source_file.clone();
       match target {
          Target::Wasm4 | Target::Microw8 => output_path.set_extension("wasm"),
-         Target::Wasi => output_path.set_extension("wat"),
+         Target::Wasi | Target::Lib => output_path.set_extension("wat"),
       };
       output_path
    };

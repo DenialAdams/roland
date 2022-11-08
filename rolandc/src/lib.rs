@@ -53,6 +53,7 @@ pub enum Target {
    Wasi,
    Wasm4,
    Microw8,
+   Lib,
 }
 
 impl Display for Target {
@@ -61,6 +62,7 @@ impl Display for Target {
          Target::Wasi => write!(f, "WASI"),
          Target::Wasm4 => write!(f, "WASM-4"),
          Target::Microw8 => write!(f, "Microw8"),
+         Target::Lib => write!(f, "lib"),
       }
    }
 }
@@ -117,6 +119,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       Target::Wasi => "wasi.rol",
       Target::Wasm4 => "wasm4.rol",
       Target::Microw8 => "microw8.rol",
+      Target::Lib => "shared.rol",
    }
    .into();
 
@@ -216,7 +219,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    add_virtual_variables::add_virtual_vars(&mut ctx.program, &ctx.expressions);
    match target {
-      Target::Wasi => Ok(wasm::emit_wasm(
+      Target::Wasi | Target::Lib => Ok(wasm::emit_wasm(
          &mut ctx.program,
          &mut ctx.interner,
          &ctx.expressions,
