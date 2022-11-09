@@ -1879,7 +1879,9 @@ fn check_type_declared_vs_actual(
             declared_type_str,
             actual_type_str,
          );
-      } else if matches!(declared_type, ExpressionType::Value(ValueType::ProcedurePointer {..} )) && matches!(actual_type, ExpressionType::Value(ValueType::ProcedureItem(_, _))) {
+      } else if matches!(declared_type, ExpressionType::Value(ValueType::ProcedurePointer { .. }))
+         && matches!(actual_type, ExpressionType::Value(ValueType::ProcedureItem(_, _)))
+      {
          rolandc_error_w_details!(
             err_manager,
             locations,

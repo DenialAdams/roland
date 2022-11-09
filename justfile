@@ -20,3 +20,7 @@ coverage:
    cargo tarpaulin --skip-clean --implicit-test-threads --command build --bin roland_test_runner -o html -- tests/
    mv roland_test_runner/tests/ tests/
    {{env_var_or_default("BROWSER", "firefox")}} "file://`readlink -f tarpaulin-report.html`#rolandc/src"
+rolandc *args:
+   cargo run {{release_flag}} --bin rolandc_cli -- {{args}}
+rolandc_dhat *args:
+   cargo run --profile dhat --bin rolandc_cli --features dhat-heap -- {{args}}

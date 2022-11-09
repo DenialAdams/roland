@@ -108,6 +108,12 @@ fn main() -> Result<(), &'static str> {
    let failures = AtomicU64::new(0);
    let output_lock = Mutex::new(());
 
+   let config = rolandc::CompilationConfig {
+      target: rolandc::Target::Wasi,
+      include_std: true,
+      i_am_std: false,
+   };
+
    entries.par_iter().for_each(|entry| {
       let tc_output = match &opts.tc_path {
          Some(tc_path) => Command::new(tc_path).arg(entry.clone()).output().unwrap(),
@@ -115,7 +121,7 @@ fn main() -> Result<(), &'static str> {
             let compile_result = rolandc::compile::<CliFileResolver>(
                ctx,
                CompilationEntryPoint::PathResolving(entry.clone(), CliFileResolver {}),
-               rolandc::Target::Wasi,
+               &config,
             );
 
             let mut stderr = Vec::new();

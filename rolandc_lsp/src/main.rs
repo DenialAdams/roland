@@ -21,6 +21,7 @@ enum WorkspaceMode {
    LooseFiles,
    Wasm4EntryPoint(PathBuf),
    WasiEntryPoint(PathBuf),
+   StdLib,
 }
 
 struct LSPFileResolver<'a> {
@@ -150,10 +151,20 @@ fn rolandc_detail_to_diagnostic_detail(
 
 impl Backend {
    async fn compile_and_publish_diagnostics(&self, doc_uri: &Url, doc_version: i32) {
-      let (root_file_path, target) = match &*self.mode.read() {
-         WorkspaceMode::LooseFiles => (doc_uri.to_file_path().unwrap(), Target::Wasi),
-         WorkspaceMode::Wasm4EntryPoint(x) => (x.clone(), Target::Wasm4),
-         WorkspaceMode::WasiEntryPoint(x) => (x.clone(), Target::Wasi),
+      let (root_file_path, config) = {
+         let mode = &*self.mode.read();
+         let (root_file_path, target) = match mode {
+            WorkspaceMode::LooseFiles => (doc_uri.to_file_path().unwrap(), Target::Wasi),
+            WorkspaceMode::StdLib => (doc_uri.to_file_path().unwrap(), Target::Lib),
+            WorkspaceMode::Wasm4EntryPoint(x) => (x.clone(), Target::Wasm4),
+            WorkspaceMode::WasiEntryPoint(x) => (x.clone(), Target::Wasi),
+         };
+         let config = rolandc::CompilationConfig {
+            target,
+            include_std: !matches!(mode, WorkspaceMode::StdLib),
+            i_am_std: matches!(mode, WorkspaceMode::StdLib),
+         };
+         (root_file_path, config)
       };
       let (opened_versions, diagnostic_buckets) = {
          let mut ctx_ref = self.ctx.lock();
@@ -167,7 +178,7 @@ impl Backend {
             let _ = rolandc::compile_for_errors(
                &mut ctx_ref,
                CompilationEntryPoint::PathResolving(root_file_path, resolver),
-               target,
+               &config,
             );
             (
                opened_files_l
@@ -227,26 +238,27 @@ impl Backend {
 impl LanguageServer for Backend {
    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
       let workspace_root = params.root_uri;
-      let mode = if let Some(mut root_path) = workspace_root.and_then(|x| x.to_file_path().ok()) {
-         root_path.push("cart.rol");
-         if root_path.exists() {
+      let mode = if let Some(root_path) = workspace_root.and_then(|x| x.to_file_path().ok()) {
+         if root_path.join("cart.rol").exists() {
             self
                .client
                .log_message(MessageType::INFO, "detected wasm4 project")
                .await;
             WorkspaceMode::Wasm4EntryPoint(root_path)
+         } else if root_path.join("main.rol").exists() {
+            self
+               .client
+               .log_message(MessageType::INFO, "detected wasi project")
+               .await;
+            WorkspaceMode::WasiEntryPoint(root_path)
+         } else if root_path.join(".i_assure_you_we're_std").exists() {
+            self
+               .client
+               .log_message(MessageType::INFO, "detected stdlib")
+               .await;
+            WorkspaceMode::StdLib
          } else {
-            let _ = root_path.pop();
-            root_path.push("main.rol");
-            if root_path.exists() {
-               self
-                  .client
-                  .log_message(MessageType::INFO, "detected wasi project")
-                  .await;
-               WorkspaceMode::WasiEntryPoint(root_path)
-            } else {
-               WorkspaceMode::LooseFiles
-            }
+            WorkspaceMode::LooseFiles
          }
       } else {
          WorkspaceMode::LooseFiles

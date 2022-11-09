@@ -108,14 +108,14 @@ impl CompilationContext {
 pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    ctx: &mut CompilationContext,
    user_program_ep: CompilationEntryPoint<'a, FR>,
-   target: Target,
+   config: &CompilationConfig,
 ) -> Result<(), CompilationError> {
    ctx.program.clear();
    ctx.expressions.clear();
    ctx.err_manager.clear();
    // We don't have to clear the interner - assumption is that the context is coming from a recent version of the same source, so symbols should be relevant
 
-   let std_lib_start_path: PathBuf = match target {
+   let std_lib_start_path: PathBuf = match config.target {
       Target::Wasi => "wasi.rol",
       Target::Wasm4 => "wasm4.rol",
       Target::Microw8 => "microw8.rol",
@@ -123,7 +123,9 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    }
    .into();
 
-   imports::import_program(ctx, std_lib_start_path, imports::StdFileResolver)?;
+   if config.include_std {
+      imports::import_program(ctx, std_lib_start_path, imports::StdFileResolver)?;
+   }
 
    match user_program_ep {
       CompilationEntryPoint::PathResolving(ep_path, resolver) => {
@@ -153,6 +155,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       &mut ctx.program,
       &mut ctx.err_manager,
       &mut ctx.interner,
+      config,
    );
 
    if !ctx.err_manager.errors.is_empty() {
@@ -164,7 +167,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       &mut ctx.err_manager,
       &mut ctx.interner,
       &mut ctx.expressions,
-      target,
+      config.target,
    );
 
    if !ctx.err_manager.errors.is_empty() {
@@ -210,23 +213,29 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    Ok(())
 }
 
+pub struct CompilationConfig {
+   pub target: Target,
+   pub include_std: bool,
+   pub i_am_std: bool,
+}
+
 pub fn compile<'a, FR: FileResolver<'a>>(
    ctx: &mut CompilationContext,
    user_program_ep: CompilationEntryPoint<'a, FR>,
-   target: Target,
+   config: &CompilationConfig,
 ) -> Result<Vec<u8>, CompilationError> {
-   compile_for_errors(ctx, user_program_ep, target)?;
+   compile_for_errors(ctx, user_program_ep, config)?;
 
    add_virtual_variables::add_virtual_vars(&mut ctx.program, &ctx.expressions);
-   match target {
+   match config.target {
       Target::Wasi | Target::Lib => Ok(wasm::emit_wasm(
          &mut ctx.program,
          &mut ctx.interner,
          &ctx.expressions,
-         target,
+         config.target,
       )),
       Target::Wasm4 | Target::Microw8 => {
-         let wat = wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, &ctx.expressions, target);
+         let wat = wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, &ctx.expressions, config.target);
          let wasm = match wat::parse_bytes(&wat) {
             Ok(wasm_bytes) => wasm_bytes.into_owned(),
             Err(_) => return Err(CompilationError::Internal),

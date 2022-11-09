@@ -9,9 +9,9 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{ProcImplSource, StrNode};
 use crate::semantic_analysis::validator::resolve_type;
-use crate::source_info::SourcePath;
+use crate::source_info::{SourceInfo, SourcePath};
 use crate::type_data::{ExpressionType, ValueType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
-use crate::Program;
+use crate::{CompilationConfig, Program};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum RecursiveStructCheckResult {
@@ -106,6 +106,7 @@ pub fn populate_type_and_procedure_info(
    program: &mut Program,
    err_manager: &mut ErrorManager,
    interner: &mut Interner,
+   config: &CompilationConfig,
 ) {
    let mut dupe_check = HashSet::new();
 
@@ -395,7 +396,7 @@ pub fn populate_type_and_procedure_info(
       dupe_check.reserve(definition.parameters.len());
 
       if extern_impl_source == Some(std::mem::discriminant(&ProcImplSource::Builtin))
-         && !matches!(source_location.file, SourcePath::Std(_))
+         && !source_is_std(source_location, config)
       {
          rolandc_error!(
             err_manager,
@@ -490,7 +491,7 @@ pub fn populate_type_and_procedure_info(
          );
       }
 
-      if !definition.generic_parameters.is_empty() && !matches!(source_location.file, SourcePath::Std(_)) {
+      if !definition.generic_parameters.is_empty() && !source_is_std(source_location, config) {
          rolandc_error!(
             err_manager,
             source_location,
@@ -567,4 +568,8 @@ pub fn populate_type_and_procedure_info(
          );
       }
    }
+}
+
+fn source_is_std(source_location: SourceInfo, config: &CompilationConfig) -> bool {
+   matches!(source_location.file, SourcePath::Std(_)) || config.i_am_std
 }

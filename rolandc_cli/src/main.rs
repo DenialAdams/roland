@@ -108,10 +108,16 @@ fn main() {
    };
 
    let mut ctx = CompilationContext::new();
+   let config = rolandc::CompilationConfig {
+      target: rolandc::Target::Wasi,
+      include_std: true,
+      i_am_std: false,
+   };
+
    let compile_result = rolandc::compile::<CliFileResolver>(
       &mut ctx,
       CompilationEntryPoint::PathResolving(opts.source_file.clone(), CliFileResolver {}),
-      target,
+      &config,
    );
 
    ctx.err_manager.write_out_errors(&mut err_stream_l, &ctx.interner);

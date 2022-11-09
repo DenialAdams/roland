@@ -5,7 +5,7 @@
 
 use std::io::Write;
 
-use rolandc::{CompilationContext, CompilationError, FileResolver, Target};
+use rolandc::{CompilationContext, CompilationError, FileResolver};
 use wasm_bindgen::prelude::*;
 
 static mut COMPILATION_CTX: Option<CompilationContext> = None;
@@ -36,11 +36,14 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
 
    let mut err_out = Vec::new();
 
-   let compile_result = rolandc::compile::<PlaygroundFileResolver>(
-      ctx,
-      rolandc::CompilationEntryPoint::Playground(source_code),
-      Target::Wasi,
-   );
+   let config = rolandc::CompilationConfig {
+      target: rolandc::Target::Wasi,
+      include_std: true,
+      i_am_std: false,
+   };
+
+   let compile_result =
+      rolandc::compile::<PlaygroundFileResolver>(ctx, rolandc::CompilationEntryPoint::Playground(source_code), &config);
 
    ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner);
 
