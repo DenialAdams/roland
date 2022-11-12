@@ -636,6 +636,7 @@ pub fn emit_wasm(
    // what ridiculous crap. we need to get rid of this map.
    let mut static_addresses_by_name = HashMap::new();
    for (static_var, static_details) in program.global_info.iter() {
+      debug_assert!(!static_details.is_const);
       generation_context.static_addresses.insert(*static_var, offset);
       static_addresses_by_name.insert(static_details.name, offset);
 
