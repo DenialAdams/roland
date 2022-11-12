@@ -417,10 +417,10 @@ impl ValueType {
          } => {
             let params: String = parameters
                .iter()
-               .map(|x| x.as_roland_type_info(interner))
+               .map(|x| x.as_roland_type_info_like_source(interner))
                .collect::<Vec<_>>()
                .join(", ");
-            Cow::Owned(format!("proc({}) -> {}", params, ret_val.as_roland_type_info(interner)))
+            Cow::Owned(format!("proc({}) -> {}", params, ret_val.as_roland_type_info_like_source(interner)))
          }
          ValueType::ProcedureItem(_, _) => unreachable!(),
       }

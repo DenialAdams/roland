@@ -250,7 +250,7 @@ pub fn type_and_check_validity(
                   special_proc
                      .input_types
                      .iter()
-                     .map(|x| x.as_roland_type_info(interner))
+                     .map(|x| x.as_roland_type_info_like_source(interner))
                      .collect::<Vec<String>>()
                      .join(", ")
                );
@@ -272,7 +272,7 @@ pub fn type_and_check_validity(
                   "`{}` is a special procedure for this target ({}) and must return {}",
                   interner.lookup(special_proc.name),
                   validation_context.target,
-                  special_proc.return_type.as_roland_type_info(interner),
+                  special_proc.return_type.as_roland_type_info_like_source(interner),
                );
             }
          }
