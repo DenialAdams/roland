@@ -109,7 +109,7 @@ fn main() {
 
    let mut ctx = CompilationContext::new();
    let config = rolandc::CompilationConfig {
-      target: rolandc::Target::Wasi,
+      target,
       include_std: true,
       i_am_std: false,
    };
