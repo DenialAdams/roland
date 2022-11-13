@@ -9,7 +9,7 @@ samples:
    cargo run {{release_flag}} --bin rolandc_cli -- --wasm4 samples/wasm4/endless-runner/cart.rol
    cargo run {{release_flag}} --bin rolandc_cli -- --microw8 samples/microw8/tunnel/tunnel.rol
    @echo "Samples OK!"
-update-deps:
+bump-deps:
    cargo update
    cd roland-vscode && npm update
 scratch:
@@ -24,3 +24,5 @@ rolandc *args:
    cargo run {{release_flag}} --bin rolandc_cli -- {{args}}
 rolandc_dhat *args:
    cargo run --profile dhat --bin rolandc_cli --features dhat-heap -- {{args}}
+prepare-release kind="patch":
+   cd roland-vscode && npm version {{kind}}
