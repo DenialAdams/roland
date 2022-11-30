@@ -252,10 +252,7 @@ impl LanguageServer for Backend {
                .await;
             WorkspaceMode::WasiEntryPoint(root_path)
          } else if root_path.join(".i_assure_you_we're_std").exists() {
-            self
-               .client
-               .log_message(MessageType::INFO, "detected stdlib")
-               .await;
+            self.client.log_message(MessageType::INFO, "detected stdlib").await;
             WorkspaceMode::StdLib
          } else {
             WorkspaceMode::LooseFiles

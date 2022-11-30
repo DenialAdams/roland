@@ -767,12 +767,65 @@ fn get_type(
 ) -> ExpressionType {
    let expr_location = validation_context.expressions[expr_index].location;
 
+   // For borrow checking reasons, we resolve types and names first
+   // (which requires mutable access to the expression)
+   match &mut validation_context.expressions[expr_index].expression {
+      Expression::Cast { target_type, .. } => {
+         if resolve_type(
+            target_type,
+            validation_context.enum_info,
+            validation_context.struct_info,
+         )
+         .is_err()
+         {
+            rolandc_error!(
+               err_manager,
+               expr_location,
+               "Undeclared type `{}`",
+               target_type.as_roland_type_info(interner),
+            );
+            *target_type = ExpressionType::Value(ValueType::CompileError);
+         }
+      }
+      Expression::BoundFcnLiteral(_, generic_args) => {
+         for g_arg in generic_args.iter_mut() {
+            if resolve_type(
+               &mut g_arg.gtype,
+               validation_context.enum_info,
+               validation_context.struct_info,
+            )
+            .is_err()
+            {
+               let etype_str = g_arg.gtype.as_roland_type_info(interner);
+               rolandc_error!(err_manager, g_arg.location, "Undeclared type {}", etype_str,);
+            }
+         }
+      }
+      Expression::UnresolvedVariable(id) => match validation_context.variable_types.get_mut(&id.str) {
+         Some(var_info) => {
+            var_info.used = true;
+            validation_context
+               .source_to_definition
+               .insert(expr_location, var_info.declaration_location);
+            validation_context.expressions[expr_index].expression = Expression::Variable(var_info.var_id);
+            return var_info.var_type.clone();
+         }
+         None => {
+            if validation_context.procedure_info.contains_key(&id.str) {
+               validation_context.expressions[expr_index].expression =
+                  Expression::BoundFcnLiteral(id.clone(), vec![].into_boxed_slice());
+            }
+         }
+      },
+      _ => (),
+   }
+
    // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
    // while this pointer is alive. We don't do this, because we update this expression in place and don't
    // add new expressions during validation.
    let expr_node = std::ptr::addr_of_mut!(validation_context.expressions[expr_index]);
 
-   match unsafe { &mut (*expr_node).expression } {
+   match unsafe { &(*expr_node).expression } {
       Expression::UnitLiteral => ExpressionType::Value(ValueType::Unit),
       Expression::BoolLiteral(_) => ExpressionType::Value(ValueType::Bool),
       Expression::IntLiteral { .. } => {
@@ -796,20 +849,7 @@ fn get_type(
       } => {
          type_expression(err_manager, *expr_id, validation_context, interner);
 
-         if resolve_type(
-            target_type,
-            validation_context.enum_info,
-            validation_context.struct_info,
-         )
-         .is_err()
-         {
-            rolandc_error!(
-               err_manager,
-               expr_location,
-               "Undeclared type {}",
-               target_type.as_roland_type_info(interner),
-            );
-
+         if target_type.is_error() {
             return ExpressionType::Value(ValueType::CompileError);
          }
 
@@ -1225,66 +1265,32 @@ fn get_type(
             node_type
          }
       }
-      Expression::BoundFcnLiteral(id, type_arguments) => {
-         for g_arg in type_arguments.iter_mut() {
-            if resolve_type(
-               &mut g_arg.gtype,
-               validation_context.enum_info,
-               validation_context.struct_info,
-            )
-            .is_err()
-            {
-               let etype_str = g_arg.gtype.as_roland_type_info(interner);
-               rolandc_error!(err_manager, g_arg.location, "Undeclared type {}", etype_str,);
-            }
-         }
-
-         match validation_context.procedure_info.get(&id.str) {
-            Some(proc_info) => {
-               validation_context
-                  .source_to_definition
-                  .insert(id.location, proc_info.location);
-               check_procedure_item(id.str, proc_info, expr_location, type_arguments, interner, err_manager)
-            }
-            None => {
-               rolandc_error!(
-                  err_manager,
-                  id.location,
-                  "Encountered undefined symbol `{}`",
-                  interner.lookup(id.str)
-               );
-               ExpressionType::Value(ValueType::CompileError)
-            }
-         }
-      }
-      Expression::UnresolvedVariable(id) => match validation_context.variable_types.get_mut(&id.str) {
-         Some(var_info) => {
-            var_info.used = true;
+      Expression::BoundFcnLiteral(id, type_arguments) => match validation_context.procedure_info.get(&id.str) {
+         Some(proc_info) => {
             validation_context
                .source_to_definition
-               .insert(expr_location, var_info.declaration_location);
-            validation_context.expressions[expr_index].expression = Expression::Variable(var_info.var_id);
-            var_info.var_type.clone()
+               .insert(id.location, proc_info.location);
+            check_procedure_item(id.str, proc_info, expr_location, type_arguments, interner, err_manager)
          }
          None => {
-            if let Some(proc_info) = validation_context.procedure_info.get(&id.str) {
-               validation_context
-                  .source_to_definition
-                  .insert(id.location, proc_info.location);
-               validation_context.expressions[expr_index].expression =
-                  Expression::BoundFcnLiteral(id.clone(), vec![].into_boxed_slice());
-               check_procedure_item(id.str, proc_info, expr_location, &[], interner, err_manager)
-            } else {
-               rolandc_error!(
-                  err_manager,
-                  expr_location,
-                  "Encountered undefined symbol `{}`",
-                  interner.lookup(id.str)
-               );
-               ExpressionType::Value(ValueType::CompileError)
-            }
+            rolandc_error!(
+               err_manager,
+               id.location,
+               "Encountered undefined symbol `{}`",
+               interner.lookup(id.str)
+            );
+            ExpressionType::Value(ValueType::CompileError)
          }
       },
+      Expression::UnresolvedVariable(id) => {
+         rolandc_error!(
+            err_manager,
+            expr_location,
+            "Encountered undefined symbol `{}`",
+            interner.lookup(id.str)
+         );
+         ExpressionType::Value(ValueType::CompileError)
+      }
       Expression::Variable(_) => unreachable!(),
       Expression::ProcedureCall { proc_expr, args } => {
          type_expression(err_manager, *proc_expr, validation_context, interner);

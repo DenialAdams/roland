@@ -420,7 +420,11 @@ impl ValueType {
                .map(|x| x.as_roland_type_info_like_source(interner))
                .collect::<Vec<_>>()
                .join(", ");
-            Cow::Owned(format!("proc({}) -> {}", params, ret_val.as_roland_type_info_like_source(interner)))
+            Cow::Owned(format!(
+               "proc({}) -> {}",
+               params,
+               ret_val.as_roland_type_info_like_source(interner)
+            ))
          }
          ValueType::ProcedureItem(_, _) => unreachable!(),
       }
