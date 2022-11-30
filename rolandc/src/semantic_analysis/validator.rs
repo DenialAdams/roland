@@ -823,7 +823,7 @@ fn get_type(
    // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
    // while this pointer is alive. We don't do this, because we update this expression in place and don't
    // add new expressions during validation.
-   let expr_node = std::ptr::addr_of_mut!(validation_context.expressions[expr_index]);
+   let expr_node = std::ptr::addr_of!(validation_context.expressions[expr_index]);
 
    match unsafe { &(*expr_node).expression } {
       Expression::UnitLiteral => ExpressionType::Value(ValueType::Unit),
