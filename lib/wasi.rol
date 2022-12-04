@@ -59,11 +59,7 @@ proc println(s: String) {
 }
 
 proc println_bool(value: bool) {
-   if value {
-      println("true");
-   } else {
-      println("false");
-   }
+   println(bool_to_string(value));
 }
 
 proc count_digits(value: u64) -> u8 {

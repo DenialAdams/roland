@@ -51,3 +51,10 @@ proc assert(condition: bool) {
       unreachable();
    }
 }
+
+proc bool_to_string(b: bool) -> String {
+   if b {
+      return "true";
+   }
+   return "false";
+}
