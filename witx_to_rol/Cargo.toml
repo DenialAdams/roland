@@ -1,0 +1,8 @@
+[package]
+name = "witx_to_rol"
+version = "0.1.0"
+authors = ["Richard McCormack <brick@brick.codes>"]
+edition = "2021"
+
+[dependencies]
+witx = "0.9"

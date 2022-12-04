@@ -6,6 +6,7 @@ members = [
    "rolandc_cli",
    "rolandc_wasm",
    "rolandc_lsp",
+   "witx_to_rol",
 ]
 
 [profile.release]
