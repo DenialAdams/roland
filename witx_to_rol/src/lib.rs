@@ -50,7 +50,7 @@ pub fn witx_to_rol<P: AsRef<Path>>(input: P) -> Result<String, WitxError> {
          if func.noreturn {
             ctx.output.push_str(" -> !");
          } else if !func.results.is_empty() {
-            ctx.output.push_str("-> ");
+            ctx.output.push_str(" -> ");
          }
          if func.results.len() > 1 {
             unimplemented!();
@@ -87,19 +87,34 @@ fn emit_type(name: &str, e_type: &TypeRef, ctx: &mut Ctx) {
                   ctx.output.push_str(str);
                } else {
                   writeln!(ctx.output, "struct __wasi_{} {{", name).unwrap();
-                  ctx.indentation_level += 1;
                   for member in record_details.members.iter() {
-                     ctx.indent();
-                     write!(ctx.output, "{}: ", member.name.as_str()).unwrap();
+                     write!(ctx.output, "   {}: ", member.name.as_str()).unwrap();
                      emit_type("", &member.tref, ctx);
                      ctx.output.push_str("\n");
                   }
-                  ctx.indentation_level -= 1;
                   ctx.output.push_str("}");
                }
             }
-            witx::Type::Variant(_) => {
-               write!(ctx.output, "// skipping variant type {}", name).unwrap();
+            witx::Type::Variant(v) => {
+               if v.is_bool() {
+                  ctx.output.push_str("bool");
+               } else if v.is_enum() {
+                  let base_str = match v.tag_repr {
+                     witx::IntRepr::U8 => "u8",
+                     witx::IntRepr::U16 => "u16",
+                     witx::IntRepr::U32 => "u32",
+                     witx::IntRepr::U64 => "u64",
+                  };
+                  writeln!(ctx.output, "enum __wasi_{} : {} {{", name, base_str).unwrap();
+                  for case in v.cases.iter() {
+                     writeln!(ctx.output, "   {}", case.name.as_str()).unwrap();
+                  }
+                  ctx.output.push_str("}");
+               } else if let Some((o, e)) = v.as_expected() {
+                  write!(ctx.output, "// skipping error variant type").unwrap();
+               } else {
+                  write!(ctx.output, "// skipping variant type {}", name).unwrap();
+               }
             }
             witx::Type::Handle(_) => {
                write!(ctx.output, "// skipping handle type {}", name).unwrap();
