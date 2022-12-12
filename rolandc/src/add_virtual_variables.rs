@@ -4,24 +4,20 @@ use crate::parse::{BlockNode, CastType, Expression, ExpressionId, ExpressionPool
 use crate::type_data::{ExpressionType, ValueType};
 
 pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
-   matches!(
-      (source_type, &target_type),
-      (ExpressionType::Pointer(_, _), ExpressionType::Pointer(_, _))
-         | (ExpressionType::Value(ValueType::Int(_)), ExpressionType::Pointer(_, _))
-         | (ExpressionType::Pointer(_, _), ExpressionType::Value(ValueType::Int(_)))
-         | (
-            ExpressionType::Value(ValueType::Int(_)),
+   source_type == target_type
+      || matches!(
+         (source_type, &target_type),
+         (
+            ExpressionType::Value(ValueType::Int(_)) | ExpressionType::Pointer(_, _),
+            ExpressionType::Pointer(_, _)
+         ) | (
+            ExpressionType::Value(ValueType::Int(_) | ValueType::Float(_)) | ExpressionType::Pointer(_, _),
             ExpressionType::Value(ValueType::Int(_))
-         )
-         | (
-            ExpressionType::Value(ValueType::Float(_)),
-            ExpressionType::Value(ValueType::Int(_))
-         )
-         | (
+         ) | (
             ExpressionType::Value(ValueType::Int(_)),
             ExpressionType::Value(ValueType::Float(_))
          )
-   )
+      )
 }
 struct VvContext<'a, 'b> {
    expressions: &'a ExpressionPool,
