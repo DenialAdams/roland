@@ -6,8 +6,8 @@ use crate::type_data::{ExpressionType, IntWidth, ValueType};
 pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
    match (source_type, &target_type) {
       (ExpressionType::Pointer(_, _), ExpressionType::Pointer(_, _)) => true,
-      (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Pointer(_, _)) if x.width == IntWidth::Pointer => true,
-      (ExpressionType::Pointer(_, _), ExpressionType::Value(ValueType::Int(x))) if x.width == IntWidth::Pointer => true,
+      (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Pointer(_, _)) => true,
+      (ExpressionType::Pointer(_, _), ExpressionType::Value(ValueType::Int(x))) => true,
       (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
          x.width.as_num_bytes() == y.width.as_num_bytes()
       }
@@ -20,7 +20,6 @@ pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_ty
       _ => false,
    }
 }
-
 struct VvContext<'a, 'b> {
    expressions: &'a ExpressionPool,
    virtual_vars: IndexMap<ExpressionId, VariableId>,
