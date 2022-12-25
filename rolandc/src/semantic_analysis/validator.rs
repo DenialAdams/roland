@@ -1536,16 +1536,15 @@ fn get_type(
          }
 
          // @FixedPointerWidth
-         // todo: i think this should be u32::MAX+1
-         if elems.len() > std::u32::MAX as usize {
+         let max_elems = std::u32::MAX as usize + 1;
+         if elems.len() > max_elems {
             any_error = true;
             rolandc_error!(
                err_manager,
                expr_location,
                "Array literal has {} elements, which is more than the maximum {} elements",
                elems.len(),
-               // FixedPointerWidth
-               std::u32::MAX,
+               max_elems,
             );
          }
 
