@@ -1,0 +1,7 @@
+proc main() {
+	let x = [5]; // x is t1
+	let y = [10]; // y is t2
+	let rando = y; // rando is t2
+   	let blarg: u8 = rando[0];
+   	let foo: u16 = x[0];
+}

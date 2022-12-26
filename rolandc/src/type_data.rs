@@ -191,6 +191,19 @@ impl ExpressionType {
    }
 
    #[must_use]
+   pub fn get_type_variable_of_unknown_type(&self) -> Option<usize> {
+      match self {
+         ExpressionType::Value(ValueType::UnknownFloat(x)) => Some(*x),
+         ExpressionType::Value(ValueType::UnknownInt(x)) => Some(*x),
+         ExpressionType::Pointer(_, ValueType::UnknownFloat(x)) => Some(*x),
+         ExpressionType::Pointer(_, ValueType::UnknownInt(x)) => Some(*x),
+         ExpressionType::Value(ValueType::Array(v, _)) => v.get_type_variable_of_unknown_type(),
+         // other types can't contain unknown values, at least right now
+         _ => None,
+      }
+   }
+
+   #[must_use]
    pub fn get_value_type_or_value_being_pointed_to(&self) -> &ValueType {
       match self {
          ExpressionType::Value(vt) => vt,

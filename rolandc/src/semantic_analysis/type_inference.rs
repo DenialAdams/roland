@@ -102,13 +102,12 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
       }
       Expression::UnitLiteral => unreachable!(),
       Expression::Variable(_) => {
-         let my_tv = match validation_context.expressions[expr_index].exp_type.as_ref().unwrap() {
-            ExpressionType::Value(ValueType::UnknownFloat(x)) => *x,
-            ExpressionType::Value(ValueType::UnknownInt(x)) => *x,
-            ExpressionType::Pointer(_, ValueType::UnknownFloat(x)) => *x,
-            ExpressionType::Pointer(_, ValueType::UnknownInt(x)) => *x,
-            _ => unreachable!(),
-         };
+         let my_tv = validation_context.expressions[expr_index]
+            .exp_type
+            .as_ref()
+            .unwrap()
+            .get_type_variable_of_unknown_type()
+            .unwrap();
 
          let outer_representative = validation_context.type_variables.find(my_tv);
 
@@ -121,12 +120,9 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             // Update existing variables immediately, so that future uses can't change the inferred type
             // (Is this a performance problem? It's obviously awkward, but straightforward)
             for var_in_scope in validation_context.variable_types.values_mut() {
-               let inner_tv = match var_in_scope.var_type {
-                  ExpressionType::Value(ValueType::UnknownFloat(x)) => x,
-                  ExpressionType::Value(ValueType::UnknownInt(x)) => x,
-                  ExpressionType::Pointer(_, ValueType::UnknownFloat(x)) => x,
-                  ExpressionType::Pointer(_, ValueType::UnknownInt(x)) => x,
-                  _ => continue,
+               let inner_tv = match var_in_scope.var_type.get_type_variable_of_unknown_type() {
+                  Some(x) => x,
+                  None => continue,
                };
 
                let representative = validation_context.type_variables.find(inner_tv);
@@ -137,13 +133,9 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
                }
             }
          } else {
-            match e_type {
-               ExpressionType::Pointer(_, ValueType::UnknownInt(e_tv) | ValueType::UnknownFloat(e_tv))
-               | ExpressionType::Value(ValueType::UnknownInt(e_tv) | ValueType::UnknownFloat(e_tv)) => {
-                  validation_context.type_variables.union(my_tv, *e_tv);
-               }
-               _ => unreachable!(),
-            }
+            validation_context
+               .type_variables
+               .union(my_tv, e_type.get_type_variable_of_unknown_type().unwrap());
          }
 
          *validation_context.expressions[expr_index]
