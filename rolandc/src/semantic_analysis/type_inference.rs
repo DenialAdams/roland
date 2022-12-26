@@ -133,11 +133,9 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
                }
             }
 
-            let old_value = validation_context
+            validation_context
                .type_variable_definitions
-               .insert(outer_representative, incoming_definition.clone());
-            //nocheckin: remove this assert and above clone
-            debug_assert!(old_value.map_or(true, |ov| ov == incoming_definition));
+               .insert(outer_representative, incoming_definition);
          } else {
             validation_context
                .type_variables
