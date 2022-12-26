@@ -1,6 +1,6 @@
 /target
 rolandc/target
-/tests/*.wat
+/tests/**/*.wat
 **/*.wasm
 roland-vscode/node_modules
 roland-vscode/out
