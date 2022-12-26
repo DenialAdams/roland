@@ -77,7 +77,7 @@ pub struct ValidationContext<'a> {
    pub expressions: &'a mut ExpressionPool,
    pub struct_size_info: HashMap<StrId, SizeInfo>,
    pub type_variables: DisjointSet,
-   pub type_variable_definitions: HashMap<usize, ExpressionType>,
+   pub type_variable_definitions: HashMap<usize, ValueType>,
    pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,
    pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
    next_var_dont_access: VariableId,

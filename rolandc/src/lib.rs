@@ -252,9 +252,8 @@ fn lex_and_parse(
    interner: &mut Interner,
    expressions: &mut ExpressionPool,
 ) -> Result<(Vec<ImportNode>, Program), CompilationError> {
-   let tokens = match lex::lex(s, source_path, err_manager, interner) {
-      Err(()) => return Err(CompilationError::Lex),
-      Ok(v) => v,
+   let Ok(tokens) = lex::lex(s, source_path, err_manager, interner) else {
+      return Err(CompilationError::Lex)
    };
    match parse::astify(tokens, err_manager, interner, expressions) {
       Err(()) => Err(CompilationError::Parse),

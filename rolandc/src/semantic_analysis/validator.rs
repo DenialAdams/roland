@@ -376,17 +376,13 @@ pub fn type_and_check_validity(
    // lower type variables
    {
       for (i, e) in validation_context.expressions.values.iter_mut().enumerate() {
-         let opt_tv = match e.exp_type.as_ref().unwrap() {
-            ExpressionType::Value(ValueType::UnknownInt(x)) => Some(*x),
-            ExpressionType::Value(ValueType::UnknownFloat(x)) => Some(*x),
-            _ => None,
-         };
+         let opt_tv = e.exp_type.as_ref().unwrap().get_type_variable_of_unknown_type();
 
          if let Some(mut tv) = opt_tv {
             tv = validation_context.type_variables.find(tv);
             let the_type = validation_context.type_variable_definitions.get(&tv);
             if let Some(t) = the_type {
-               e.exp_type = Some(t.clone());
+               *e.exp_type.as_mut().unwrap().get_unknown_portion_of_type().unwrap() = t.clone();
                validation_context.unknown_ints.remove(&ExpressionId::new(i));
                validation_context.unknown_floats.remove(&ExpressionId::new(i));
             }
@@ -415,18 +411,12 @@ pub fn type_and_check_validity(
 
       for proc in program.procedures.iter_mut() {
          for lt in proc.locals.values_mut() {
-            let tv = match lt {
-               ExpressionType::Value(ValueType::UnknownInt(x)) => *x,
-               ExpressionType::Value(ValueType::UnknownFloat(x)) => *x,
-               ExpressionType::Pointer(_, ValueType::UnknownFloat(x)) => *x,
-               ExpressionType::Pointer(_, ValueType::UnknownInt(x)) => *x,
-               _ => continue,
-            };
+            let Some(tv) = lt.get_type_variable_of_unknown_type() else { continue; };
 
             let rep = validation_context.type_variables.find(tv);
             if let Some(et) = validation_context.type_variable_definitions.get(&rep) {
-               *lt.get_value_type_or_value_being_pointed_to_mut() =
-                  et.get_value_type_or_value_being_pointed_to().clone();
+               *lt.get_unknown_portion_of_type().unwrap() =
+                  et.clone();
             } else {
                debug_assert!(!err_manager.errors.is_empty());
             };
@@ -1352,21 +1342,18 @@ fn get_type(
                let mut unmatched_fields: HashSet<StrId> = defined_fields.keys().copied().collect();
                for field in fields.iter() {
                   // Extraneous field check
-                  let defined_type = match defined_fields.get(&field.0) {
-                     Some(x) => x,
-                     None => {
-                        rolandc_error_w_details!(
-                           err_manager,
-                           &[
-                              (expr_location, "struct instantiated"),
-                              (defined_struct.location, "struct defined"),
-                           ],
-                           "`{}` is not a known field of struct `{}`",
-                           interner.lookup(field.0),
-                           interner.lookup(struct_name.str),
-                        );
-                        continue;
-                     }
+                  let Some(defined_type) = defined_fields.get(&field.0) else {
+                     rolandc_error_w_details!(
+                        err_manager,
+                        &[
+                           (expr_location, "struct instantiated"),
+                           (defined_struct.location, "struct defined"),
+                        ],
+                        "`{}` is not a known field of struct `{}`",
+                        interner.lookup(field.0),
+                        interner.lookup(struct_name.str),
+                     );
+                     continue;
                   };
 
                   // Duplicate field check

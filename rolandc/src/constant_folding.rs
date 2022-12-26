@@ -133,10 +133,7 @@ fn fold_expr(
          let array = &folding_context.expressions[*array];
          let index = &folding_context.expressions[*index];
 
-         let len = match array.exp_type {
-            Some(ExpressionType::Value(ValueType::Array(_, len))) => len,
-            _ => unreachable!(),
-         };
+         let Some(ExpressionType::Value(ValueType::Array(_, len))) = array.exp_type else { unreachable!() };
 
          // TODO @FixedPointerWidth
          if let Some(Literal::Uint32(v)) = extract_literal(index) {
@@ -149,9 +146,8 @@ fn fold_expr(
                   len,
                );
             } else if is_const(&array.expression, folding_context.expressions) {
-               let array_elems = match &array.expression {
-                  Expression::ArrayLiteral(exprs) => exprs,
-                  _ => unreachable!(),
+               let Expression::ArrayLiteral(array_elems) = &array.expression else {
+                  unreachable!();
                };
 
                let chosen_elem = folding_context

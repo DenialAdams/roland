@@ -204,6 +204,18 @@ impl ExpressionType {
    }
 
    #[must_use]
+   pub fn get_unknown_portion_of_type(&mut self) -> Option<&mut ValueType> {
+      match self {
+         ExpressionType::Value(x @ ValueType::UnknownFloat(_)) => Some(x),
+         ExpressionType::Value(x @ ValueType::UnknownInt(_)) => Some(x),
+         ExpressionType::Pointer(_, x @ ValueType::UnknownFloat(_)) => Some(x),
+         ExpressionType::Pointer(_, x @ ValueType::UnknownInt(_)) => Some(x),
+         ExpressionType::Value(ValueType::Array(v, _)) => v.get_unknown_portion_of_type(),
+         _ => None,
+      }
+   }
+
+   #[must_use]
    pub fn get_value_type_or_value_being_pointed_to(&self) -> &ValueType {
       match self {
          ExpressionType::Value(vt) => vt,

@@ -184,7 +184,7 @@ fn main() -> Result<(), &'static str> {
                      file.write_all(b"__END__\n").unwrap();
                      file.write_all(b"compile:\n").unwrap();
                      file.write_all(actual.as_bytes()).unwrap();
-                     let current_position = file.seek(SeekFrom::Current(0)).unwrap();
+                     let current_position = file.stream_position().unwrap();
                      file.set_len(current_position).unwrap();
                      writeln!(out_handle, "Created test compilation error output.").unwrap();
                   }
@@ -219,7 +219,7 @@ fn main() -> Result<(), &'static str> {
                         test_details.file.write_all(b"\nrun:\n").unwrap();
                         test_details.file.write_all(r.as_bytes()).unwrap();
                      }
-                     let current_position = test_details.file.seek(SeekFrom::Current(0)).unwrap();
+                     let current_position = test_details.file.stream_position().unwrap();
                      test_details.file.set_len(current_position).unwrap();
                      print_diff(
                         &mut out_handle,

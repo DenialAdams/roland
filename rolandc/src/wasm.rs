@@ -1797,28 +1797,25 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             field_names: &[StrId],
             generation_context: &mut GenerationContext,
          ) {
-            let mut struct_name = match lhs_type {
-               ExpressionType::Value(ValueType::Struct(x)) => x,
-               _ => unreachable!(),
-            };
+            let ExpressionType::Value(ValueType::Struct(mut struct_name)) = lhs_type else { unreachable!() };
             let mut mem_offset = 0;
 
             for field_name in field_names.iter().take(field_names.len() - 1) {
                mem_offset += generation_context
                   .struct_size_info
-                  .get(struct_name)
+                  .get(&struct_name)
                   .unwrap()
                   .field_offsets
                   .get(field_name)
                   .unwrap();
                struct_name = match generation_context
                   .struct_info
-                  .get(struct_name)
+                  .get(&struct_name)
                   .unwrap()
                   .field_types
                   .get(field_name)
                {
-                  Some(ExpressionType::Value(ValueType::Struct(x))) => x,
+                  Some(ExpressionType::Value(ValueType::Struct(x))) => *x,
                   _ => unreachable!(),
                };
             }
@@ -1826,7 +1823,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             let last_field_name = field_names.last().unwrap();
             mem_offset += generation_context
                .struct_size_info
-               .get(struct_name)
+               .get(&struct_name)
                .unwrap()
                .field_offsets
                .get(last_field_name)

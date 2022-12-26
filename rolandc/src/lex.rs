@@ -930,16 +930,13 @@ fn finish_numeric_literal(
    is_float: bool,
 ) -> Result<SourceToken, ()> {
    let resulting_token = if is_float {
-      let float_value = match s.parse::<f64>() {
-         Ok(v) => v,
-         Err(_) => {
-            rolandc_error!(
-               err_manager,
-               source_info,
-               "Encountered number that can't be parsed as a float"
-            );
-            return Err(());
-         }
+      let Ok(float_value) = s.parse::<f64>() else {
+         rolandc_error!(
+            err_manager,
+            source_info,
+            "Encountered number that can't be parsed as a float"
+         );
+         return Err(());
       };
       Token::FloatLiteral(float_value)
    } else if let Some(rest_of_s) = s.strip_prefix("0x") {
