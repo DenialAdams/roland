@@ -1523,7 +1523,7 @@ fn get_type(
          }
 
          // @FixedPointerWidth
-         let max_elems = std::u32::MAX as usize + 1;
+         let max_elems = std::u32::MAX;
          if elems.len() > max_elems {
             any_error = true;
             rolandc_error!(
