@@ -13,6 +13,7 @@ pipeline {
             dir('rolandc_wasm') {
                sh 'cargo build --release --target wasm32-unknown-unknown'
                sh 'wasm-bindgen --target web ../target/wasm32-unknown-unknown/release/rolandc_wasm.wasm --out-dir ./pkg'
+               sh 'wasm-bindgen --target bundler ../target/wasm32-unknown-unknown/release/rolandc_wasm.wasm --out-dir ./npm'
             }
          }
       }
@@ -69,6 +70,20 @@ pipeline {
                sh 'cp ../target/x86_64-unknown-linux-musl/release/rolandc_lsp .'
                withCredentials([string(credentialsId: 'vsce', variable: 'VSCE_PAT')]) {
                   sh 'vsce publish || true'
+               }
+            }
+         }
+      }
+
+      stage('Publish NPM') {
+         when {
+            expression { env.BRANCH_NAME == "master" }
+         }
+         steps {
+            dir('rolandc_wasm') {
+               dir('pkg') {
+                  sh 'npm pack'
+                  sh 'npm publish || true'
                }
             }
          }

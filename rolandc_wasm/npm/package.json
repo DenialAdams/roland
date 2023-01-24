@@ -1,0 +1,15 @@
+{
+  "name": "rolandc_wasm",
+  "collaborators": [
+    "Richard McCormack <brick@brick.codes>"
+  ],
+  "version": "0.1.0",
+  "files": [
+    "rolandc_wasm_bg.wasm",
+    "rolandc_wasm.js",
+    "rolandc_wasm.d.ts"
+  ],
+  "module": "rolandc_wasm.js",
+  "types": "rolandc_wasm.d.ts",
+  "sideEffects": false
+}
