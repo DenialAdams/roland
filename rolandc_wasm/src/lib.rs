@@ -2,6 +2,7 @@
 #![allow(clippy::uninlined_format_args)] // I'm an old man and I like the way it was before
 #![allow(clippy::single_match_else)] // Not always an improvement in my opinion
 #![allow(clippy::missing_panics_doc)] // We don't have any documentation
+#![allow(clippy::missing_errors_doc)] // We don't have any documentation
 
 use std::io::Write;
 
@@ -24,6 +25,26 @@ impl<'a> FileResolver<'a> for PlaygroundFileResolver {
    fn resolve_path(&mut self, _path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'a, str>> {
       unreachable!()
    }
+}
+
+#[wasm_bindgen]
+pub fn compile_wasm4(source_code: &str) -> Result<Vec<u8>, String> {
+   let ctx = unsafe { COMPILATION_CTX.as_mut().unwrap() };
+
+   let mut err_out = Vec::new();
+
+   let config = rolandc::CompilationConfig {
+      target: rolandc::Target::Wasm4,
+      include_std: true,
+      i_am_std: false,
+   };
+
+   let compile_result =
+      rolandc::compile::<PlaygroundFileResolver>(ctx, rolandc::CompilationEntryPoint::Playground(source_code), &config);
+
+   ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner);
+
+   compile_result.map_err(|_| String::from_utf8_lossy(&err_out).into_owned())
 }
 
 #[wasm_bindgen]
