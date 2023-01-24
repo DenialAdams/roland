@@ -15,11 +15,15 @@ use std::cell::RefCell;
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::ExitStatusExt;
+#[cfg(not(target_os = "windows"))]
+use std::os::unix::process::ExitStatusExt;
 
 use os_pipe::pipe;
 use rayon::prelude::*;
