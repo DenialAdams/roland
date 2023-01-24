@@ -1,0 +1,10 @@
+proc main() {
+   let x = true;
+   let y = &x;
+   let z: bool = y;
+}
+__END__
+compile:
+Declared type bool does not match actual expression type &bool. Hint: Dereference this expression using ~
+↳ expression @ line 4, column 18 [tests/variables/t_vs_&t_mismatch_custom_error_with_inference.rol]
+↳ declared type @ line 4, column 11 [tests/variables/t_vs_&t_mismatch_custom_error_with_inference.rol]
