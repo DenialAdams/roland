@@ -3,10 +3,9 @@
   "collaborators": [
     "Richard McCormack <brick@brick.codes>"
   ],
-  "version": "0.1.0",
+  "version": "0.1.1",
   "files": [
     "rolandc_wasm_bg.wasm",
-    "rolandc_wasm_bg.js",
     "rolandc_wasm.js",
     "rolandc_wasm.d.ts"
   ],
