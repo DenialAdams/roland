@@ -415,8 +415,7 @@ pub fn type_and_check_validity(
 
             let rep = validation_context.type_variables.find(tv);
             if let Some(et) = validation_context.type_variable_definitions.get(&rep) {
-               *lt.get_unknown_portion_of_type().unwrap() =
-                  et.clone();
+               *lt.get_unknown_portion_of_type().unwrap() = et.clone();
             } else {
                debug_assert!(!err_manager.errors.is_empty());
             };
@@ -988,10 +987,15 @@ fn get_type(
                      &validation_context.struct_size_info,
                   );
 
+                  let e_is_pointer_to_unit =
+                     e_type.is_pointer() && *e_type.get_value_type_or_value_being_pointed_to() == ValueType::Unit;
+                  let target_is_pointer_to_unit = target_type.is_pointer()
+                     && *target_type.get_value_type_or_value_being_pointed_to() == ValueType::Unit;
+
                   let alignment_error =
                      e_type.is_pointer() && target_type.is_pointer() && (alignment_source < alignment_target);
 
-                  if alignment_error {
+                  if alignment_error && !e_is_pointer_to_unit && !target_is_pointer_to_unit {
                      rolandc_error!(
                         err_manager,
                         e.location,

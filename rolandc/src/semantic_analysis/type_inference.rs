@@ -42,7 +42,10 @@ pub fn try_set_inferred_type(
 }
 
 fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validation_context: &mut ValidationContext) {
-   debug_assert!(inference_is_possible(validation_context.expressions[expr_index].exp_type.as_ref().unwrap(), e_type));
+   debug_assert!(inference_is_possible(
+      validation_context.expressions[expr_index].exp_type.as_ref().unwrap(),
+      e_type
+   ));
 
    // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
    // while this pointer is alive. We don't do this, because we update this expression in place.
@@ -84,20 +87,21 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
       }
       Expression::UnaryOperator(unop, e) => {
          match unop {
-            crate::parse::UnOp::Negate |
-            crate::parse::UnOp::Complement => set_inferred_type(e_type, *e, validation_context),
+            crate::parse::UnOp::Negate | crate::parse::UnOp::Complement => {
+               set_inferred_type(e_type, *e, validation_context)
+            }
             crate::parse::UnOp::AddressOf => {
                // reverse the indirection
                let mut reversed = e_type.clone();
                reversed.decrement_indirection_count().unwrap();
                set_inferred_type(&reversed, *e, validation_context);
-            },
+            }
             crate::parse::UnOp::Dereference => {
                let mut reversed = e_type.clone();
                reversed.increment_indirection_count();
                set_inferred_type(&reversed, *e, validation_context);
-            },
-        }
+            }
+         }
          *validation_context.expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
       }
       Expression::UnitLiteral => unreachable!(),
@@ -109,7 +113,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          // (and recursive variants: an array of arrays of pointers to an unknown type...)
          // We must take care to preserve the existing type structure.
 
-        // dbg!(validation_context.expressions[expr_index].exp_type.as_ref().unwrap(), e_type);
+         // dbg!(validation_context.expressions[expr_index].exp_type.as_ref().unwrap(), e_type);
          let (my_tv, incoming_definition) = get_type_variable_of_unknown_type_and_associated_e_type(
             validation_context.expressions[expr_index].exp_type.as_ref().unwrap(),
             e_type,
@@ -181,12 +185,8 @@ fn get_type_variable_of_unknown_type_and_associated_e_type(
    match (unknown_type, type_coming_in) {
       (ExpressionType::Value(ValueType::UnknownFloat(x)), ExpressionType::Value(y)) => Some((*x, y.clone())),
       (ExpressionType::Value(ValueType::UnknownInt(x)), ExpressionType::Value(y)) => Some((*x, y.clone())),
-      (ExpressionType::Pointer(_, ValueType::UnknownFloat(x)), ExpressionType::Pointer(_, y)) => {
-         Some((*x, y.clone()))
-      }
-      (ExpressionType::Pointer(_, ValueType::UnknownInt(x)), ExpressionType::Pointer(_, y)) => {
-         Some((*x, y.clone()))
-      }
+      (ExpressionType::Pointer(_, ValueType::UnknownFloat(x)), ExpressionType::Pointer(_, y)) => Some((*x, y.clone())),
+      (ExpressionType::Pointer(_, ValueType::UnknownInt(x)), ExpressionType::Pointer(_, y)) => Some((*x, y.clone())),
       (
          ExpressionType::Value(ValueType::Array(unknown_type_inner, _)),
          ExpressionType::Value(ValueType::Array(type_coming_in_inner, _)),
