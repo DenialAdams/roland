@@ -53,6 +53,21 @@ pub fn ensure_statics_const(
          }
       }
    }
+
+   for si in program.struct_info.iter() {
+      for field_with_default in si.1.default_values.iter() {
+         fold_expr_id(*field_with_default.1, expressions, interner, err_manager);
+         let v = &expressions[*field_with_default.1];
+         if !crate::constant_folding::is_const(&v.expression, expressions) {
+            rolandc_error!(
+               err_manager,
+               v.location,
+               "Default value of struct field `{}` can't be constant folded.",
+               interner.lookup(*field_with_default.0),
+            )
+         }
+      }
+   }
 }
 
 pub fn compile_globals(

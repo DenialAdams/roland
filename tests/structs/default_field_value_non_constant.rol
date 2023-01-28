@@ -1,0 +1,12 @@
+static A: u8 = 10;
+
+struct Foo {
+    a: u8 = A,
+}
+
+proc main() {
+}
+
+__END__
+compile:
+some_error_here

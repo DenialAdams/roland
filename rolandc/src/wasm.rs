@@ -1781,14 +1781,19 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
          let si = generation_context.struct_info.get(&s_name.str).unwrap();
          for field in si.field_types.iter() {
-            let value_of_field = map.get(field.0).copied().unwrap();
-            let field_virtual_var = generation_context
-               .procedure_virtual_vars
-               .get(&value_of_field)
-               .copied()
-               .unwrap();
-            get_stack_address_of_local(field_virtual_var, generation_context);
-            load(field.1, generation_context);
+            if let Some(value_of_field) = map.get(field.0).copied() {
+               let field_virtual_var = generation_context
+                  .procedure_virtual_vars
+                  .get(&value_of_field)
+                  .copied()
+                  .unwrap();
+               get_stack_address_of_local(field_virtual_var, generation_context);
+               load(field.1, generation_context);
+            } else {
+               // Must be a default value
+               let default_value = si.default_values.get(field.0).copied().unwrap();
+               do_emit(default_value, generation_context, interner);
+            }
          }
       }
       Expression::FieldAccess(field_names, lhs_id) => {

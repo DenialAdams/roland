@@ -1,0 +1,10 @@
+struct Foo {
+    a: u8 = true,
+}
+
+proc main() {
+}
+
+__END__
+compile:
+some_error_here

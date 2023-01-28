@@ -217,8 +217,10 @@ pub fn populate_type_and_procedure_info(
 
    for a_struct in program.structs.iter() {
       let mut field_map = IndexMap::with_capacity(a_struct.fields.len());
+      let mut default_value_map = IndexMap::with_capacity(a_struct.fields.len());
+
       for field in a_struct.fields.iter() {
-         if field_map.insert(field.0, field.1.clone()).is_some() {
+         if field_map.insert(field.0, field.1.e_type.clone()).is_some() {
             rolandc_error!(
                err_manager,
                a_struct.location,
@@ -227,12 +229,17 @@ pub fn populate_type_and_procedure_info(
                interner.lookup(field.0),
             );
          }
+
+         if let Some(expr_id) = field.2 {
+            default_value_map.insert(field.0, expr_id);
+         }
       }
 
       if let Some(old_struct) = program.struct_info.insert(
          a_struct.name,
          StructInfo {
             field_types: field_map,
+            default_values: default_value_map,
             location: a_struct.location,
          },
       ) {

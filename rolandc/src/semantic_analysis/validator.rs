@@ -296,6 +296,16 @@ pub fn type_and_check_validity(
          validation_context.struct_info,
          &mut validation_context.struct_size_info,
       );
+
+      for (field_name, &default_expr) in s.1.default_values.iter() {
+         type_expression(err_manager, default_expr, &mut validation_context, interner);
+         
+         let declared_type = s.1.field_types.get(field_name).unwrap();
+         try_set_inferred_type(declared_type, default_expr, &mut validation_context);
+
+         let etn = ExpressionTypeNode { e_type: declared_type.clone(), location: s.1.location };
+         check_type_declared_vs_actual(&etn, &validation_context.expressions[default_expr], interner, err_manager);
+      }
    }
 
    for p_const in program.consts.iter_mut() {
@@ -1399,6 +1409,7 @@ fn get_type(
                }
 
                // Missing field check
+               unmatched_fields.drain_filter(|x| defined_struct.default_values.contains_key(x));
                if !unmatched_fields.is_empty() {
                   let unmatched_fields_str: Vec<&str> = unmatched_fields.iter().map(|x| interner.lookup(*x)).collect();
                   rolandc_error_w_details!(
