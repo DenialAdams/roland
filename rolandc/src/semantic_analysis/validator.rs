@@ -999,13 +999,11 @@ fn get_type(
 
                   let e_is_pointer_to_unit =
                      e_type.is_pointer() && *e_type.get_value_type_or_value_being_pointed_to() == ValueType::Unit;
-                  let target_is_pointer_to_unit = target_type.is_pointer()
-                     && *target_type.get_value_type_or_value_being_pointed_to() == ValueType::Unit;
 
                   let alignment_error =
                      e_type.is_pointer() && target_type.is_pointer() && (alignment_source < alignment_target);
 
-                  if alignment_error && !e_is_pointer_to_unit && !target_is_pointer_to_unit {
+                  if alignment_error && !e_is_pointer_to_unit {
                      rolandc_error!(
                         err_manager,
                         e.location,
