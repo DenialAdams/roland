@@ -269,8 +269,8 @@ fn write_value_type_as_result(
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
-         for e_type in field_types.values() {
-            write_type_as_result(e_type, out, ei, si);
+         for e_type_node in field_types.values() {
+            write_type_as_result(&e_type_node.e_type, out, ei, si);
             out.push(b' ');
          }
          if !field_types.is_empty() {
@@ -330,8 +330,8 @@ fn write_value_type_as_params(
       ValueType::CompileError => unreachable!(),
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
-         for e_type in field_types.values() {
-            write_type_as_params(e_type, out, ei, si);
+         for e_type_node in field_types.values() {
+            write_type_as_params(&e_type_node.e_type, out, ei, si);
             out.push(b' ');
          }
          if !field_types.is_empty() {
@@ -380,8 +380,8 @@ fn value_type_to_s(e: &ValueType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumIn
       }
       ValueType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
-         for e_type in field_types.values() {
-            type_to_s(e_type, out, ei, si);
+         for e_type_node in field_types.values() {
+            type_to_s(&e_type_node.e_type, out, ei, si);
             out.push(b' ');
          }
          if !field_types.is_empty() {
@@ -433,14 +433,14 @@ fn dynamic_move_locals_of_type_to_dest(
                .values()
                .skip(1),
          ) {
-            dynamic_move_locals_of_type_to_dest(memory_lookup, offset, local_index, sub_field, generation_context);
+            dynamic_move_locals_of_type_to_dest(memory_lookup, offset, local_index, &sub_field.e_type, generation_context);
             let alignment_of_next = mem_alignment(
-               next_sub_field,
+               &next_sub_field.e_type,
                generation_context.enum_info,
                generation_context.struct_size_info,
             );
             let this_size = sizeof_type_mem(
-               sub_field,
+               &sub_field.e_type,
                generation_context.enum_info,
                generation_context.struct_size_info,
             );
@@ -456,10 +456,10 @@ fn dynamic_move_locals_of_type_to_dest(
             .values()
             .last()
          {
-            dynamic_move_locals_of_type_to_dest(memory_lookup, offset, local_index, last_sub_field, generation_context);
+            dynamic_move_locals_of_type_to_dest(memory_lookup, offset, local_index, &last_sub_field.e_type, generation_context);
             let alignment_of_next = generation_context.struct_size_info.get(x).unwrap().strictest_alignment;
             let this_size = sizeof_type_mem(
-               last_sub_field,
+               &last_sub_field.e_type,
                generation_context.enum_info,
                generation_context.struct_size_info,
             );
@@ -1171,7 +1171,7 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
             let padding_bytes = next_offset
                - this_offset
                - sizeof_type_mem(
-                  field.1,
+                  &field.1.e_type,
                   generation_context.enum_info,
                   generation_context.struct_size_info,
                );
@@ -1187,7 +1187,7 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
             let padding_bytes = next_offset
                - this_offset
                - sizeof_type_mem(
-                  last_field.1,
+                  &last_field.1.e_type,
                   generation_context.enum_info,
                   generation_context.struct_size_info,
                );
@@ -1788,7 +1788,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                   .copied()
                   .unwrap();
                get_stack_address_of_local(field_virtual_var, generation_context);
-               load(field.1, generation_context);
+               load(&field.1.e_type, generation_context);
             } else {
                // Must be a default value
                let default_value = si.default_values.get(field.0).copied().unwrap();
@@ -1818,7 +1818,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                   .get(&struct_name)
                   .unwrap()
                   .field_types
-                  .get(field_name)
+                  .get(field_name).map(|x| &x.e_type)
                {
                   Some(ExpressionType::Value(ValueType::Struct(x))) => *x,
                   _ => unreachable!(),
@@ -1975,14 +1975,14 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
                .field_offsets
                .get(field_name)
                .unwrap();
-            match sizeof_type_values(field, generation_context.enum_info, generation_context.struct_size_info).cmp(&1) {
+            match sizeof_type_values(&field.e_type, generation_context.enum_info, generation_context.struct_size_info).cmp(&1) {
                std::cmp::Ordering::Less => (),
                std::cmp::Ordering::Equal => {
                   generation_context.out.emit_get_global("mem_address");
                   generation_context.out.emit_const_add_i32(offset + field_offset);
-                  simple_load(field, generation_context);
+                  simple_load(&field.e_type, generation_context);
                }
-               std::cmp::Ordering::Greater => complex_load(offset + field_offset, field, generation_context),
+               std::cmp::Ordering::Greater => complex_load(offset + field_offset, &field.e_type, generation_context),
             }
          }
       }
@@ -2024,7 +2024,8 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
          let si = generation_context.struct_info.get(x).unwrap();
          // Find the first non-zero-sized struct field and load that
          // (there should only be one if we're in simple_load)
-         for (_, field_type) in si.field_types.iter() {
+         for (_, field_type_node) in si.field_types.iter() {
+            let field_type = &field_type_node.e_type;
             match sizeof_type_values(
                field_type,
                generation_context.enum_info,
@@ -2143,7 +2144,8 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
          let si = generation_context.struct_info.get(x).unwrap();
          // Find the first non-zero-sized struct field and store that
          // (there should only be one if we're in simple_store)
-         for (_, field_type) in si.field_types.iter() {
+         for (_, field_type_node) in si.field_types.iter() {
+            let field_type = &field_type_node.e_type;
             match sizeof_type_values(
                field_type,
                generation_context.enum_info,

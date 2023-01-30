@@ -4,7 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::disjoint_set::DisjointSet;
 use crate::interner::StrId;
-use crate::parse::{ExpressionId, ExpressionPool, VariableId};
+use crate::parse::{ExpressionId, ExpressionPool, VariableId, ExpressionTypeNode};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, ValueType};
@@ -34,7 +34,7 @@ pub struct EnumInfo {
 
 #[derive(Clone)]
 pub struct StructInfo {
-   pub field_types: IndexMap<StrId, ExpressionType>,
+   pub field_types: IndexMap<StrId, ExpressionTypeNode>,
    pub default_values: IndexMap<StrId, ExpressionId>,
    pub location: SourceInfo,
 }

@@ -9,4 +9,5 @@ proc main() {
 
 __END__
 compile:
-some_error_here
+Default value of struct field `a` can't be constant folded.
+↳ line 4, column 13 [tests/structs/default_field_value_non_constant.rol]

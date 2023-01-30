@@ -301,10 +301,9 @@ pub fn type_and_check_validity(
          type_expression(err_manager, default_expr, &mut validation_context, interner);
          
          let declared_type = s.1.field_types.get(field_name).unwrap();
-         try_set_inferred_type(declared_type, default_expr, &mut validation_context);
+         try_set_inferred_type(&declared_type.e_type, default_expr, &mut validation_context);
 
-         let etn = ExpressionTypeNode { e_type: declared_type.clone(), location: s.1.location };
-         check_type_declared_vs_actual(&etn, &validation_context.expressions[default_expr], interner, err_manager);
+         check_type_declared_vs_actual(&declared_type, &validation_context.expressions[default_expr], interner, err_manager);
       }
    }
 
@@ -1354,7 +1353,7 @@ fn get_type(
                let mut unmatched_fields: HashSet<StrId> = defined_fields.keys().copied().collect();
                for field in fields.iter() {
                   // Extraneous field check
-                  let Some(defined_type) = defined_fields.get(&field.0) else {
+                  let Some(defined_type_node) = defined_fields.get(&field.0) else {
                      rolandc_error_w_details!(
                         err_manager,
                         &[
@@ -1367,6 +1366,7 @@ fn get_type(
                      );
                      continue;
                   };
+                  let defined_type = &defined_type_node.e_type;
 
                   // Duplicate field check
                   if !unmatched_fields.remove(&field.0) {
@@ -1449,8 +1449,8 @@ fn get_type(
             match lhs_type {
                ExpressionType::Value(ValueType::Struct(struct_name)) => {
                   let struct_fields = &validation_context.struct_info.get(&struct_name).unwrap().field_types;
-                  if let Some(new_t) = struct_fields.get(&field) {
-                     lhs_type = new_t.clone();
+                  if let Some(new_t_node) = struct_fields.get(&field) {
+                     lhs_type = new_t_node.e_type.clone();
                   } else {
                      rolandc_error!(
                         err_manager,

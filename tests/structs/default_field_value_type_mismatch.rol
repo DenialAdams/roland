@@ -7,4 +7,6 @@ proc main() {
 
 __END__
 compile:
-some_error_here
+Declared type u8 does not match actual expression type bool
+↳ expression @ line 2, column 13 [tests/structs/default_field_value_type_mismatch.rol]
+↳ declared type @ line 2, column 8 [tests/structs/default_field_value_type_mismatch.rol]

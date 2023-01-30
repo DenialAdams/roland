@@ -42,6 +42,9 @@ pub fn calculate_struct_size_info(
       .iter()
       .zip(struct_info.get(&name).unwrap().field_types.values().skip(1))
    {
+      let field_t = &field_t.e_type;
+      let next_field_t = &next_field_t.e_type;
+
       if let ExpressionType::Value(ValueType::Struct(s)) = field_t {
          if !struct_size_info.contains_key(s) {
             calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
@@ -70,7 +73,9 @@ pub fn calculate_struct_size_info(
       contains_never_type |= field_t.is_never();
    }
 
-   if let Some((last_field_name, last_field_t)) = struct_info.get(&name).unwrap().field_types.iter().last() {
+   if let Some((last_field_name, last_field_t_node)) = struct_info.get(&name).unwrap().field_types.iter().last() {
+      let last_field_t = &last_field_t_node.e_type;
+
       if let ExpressionType::Value(ValueType::Struct(s)) = last_field_t {
          if !struct_size_info.contains_key(s) {
             calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);

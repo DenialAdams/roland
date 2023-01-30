@@ -7,7 +7,7 @@ use super::{EnumInfo, GlobalInfo, ProcedureInfo, StructInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{ProcImplSource, StrNode};
+use crate::parse::{ProcImplSource, StrNode, ExpressionTypeNode};
 use crate::semantic_analysis::validator::resolve_type;
 use crate::source_info::{SourceInfo, SourcePath};
 use crate::type_data::{ExpressionType, ValueType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
@@ -39,12 +39,12 @@ impl BitOrAssign for RecursiveStructCheckResult {
 fn recursive_struct_check(
    base_name: StrId,
    seen_structs: &mut HashSet<StrId>,
-   struct_fields: &IndexMap<StrId, ExpressionType>,
+   struct_fields: &IndexMap<StrId, ExpressionTypeNode>,
    struct_info: &IndexMap<StrId, StructInfo>,
 ) -> RecursiveStructCheckResult {
    let mut is_recursive = RecursiveStructCheckResult::NotRecursive;
 
-   for struct_field in struct_fields.iter().flat_map(|x| match &x.1 {
+   for struct_field in struct_fields.iter().flat_map(|x| match &x.1.e_type {
       ExpressionType::Value(ValueType::Struct(x)) => Some(*x),
       // Types should be fully resolved at this point, but may not be if there is an error in the program
       // (in that case, it's fine to ignore it as we'll already error out)
@@ -220,7 +220,7 @@ pub fn populate_type_and_procedure_info(
       let mut default_value_map = IndexMap::with_capacity(a_struct.fields.len());
 
       for field in a_struct.fields.iter() {
-         if field_map.insert(field.0, field.1.e_type.clone()).is_some() {
+         if field_map.insert(field.0, field.1.clone()).is_some() {
             rolandc_error!(
                err_manager,
                a_struct.location,
@@ -271,12 +271,12 @@ pub fn populate_type_and_procedure_info(
          );
       }
 
-      for (field, e_type) in struct_i.1.field_types.iter_mut() {
-         if resolve_type(e_type, &program.enum_info, &cloned_struct_info).is_ok() {
+      for (field, etn) in struct_i.1.field_types.iter_mut() {
+         if resolve_type(&mut etn.e_type, &program.enum_info, &cloned_struct_info).is_ok() {
             continue;
          }
 
-         let etype_str = e_type.as_roland_type_info(interner);
+         let etype_str = etn.e_type.as_roland_type_info(interner);
          rolandc_error_w_details!(
             err_manager,
             &[(struct_i.1.location, "struct defined")],

@@ -80,7 +80,7 @@ pub fn lower_single_expression(
             match lhs_type {
                ExpressionType::Value(ValueType::Struct(struct_name)) => {
                   let struct_fields = &struct_info.get(struct_name).unwrap().field_types;
-                  lhs_type = struct_fields.get(&field).unwrap();
+                  lhs_type = &struct_fields.get(&field).unwrap().e_type;
                }
                ExpressionType::Value(ValueType::Array(_, _)) => {
                   break;
