@@ -3,7 +3,7 @@
   "collaborators": [
     "Richard McCormack <brick@brick.codes>"
   ],
-  "version": "0.1.1",
+  "version": "0.1.2",
   "files": [
     "rolandc_wasm_bg.wasm",
     "rolandc_wasm.js",
