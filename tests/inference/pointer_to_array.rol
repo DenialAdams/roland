@@ -1,0 +1,10 @@
+proc main() {
+   let x = [1, 2, 3];
+   let y = &x;
+   let z: u8 = 10;
+   y~[0] = z;
+   println("Compiled succesfully");
+}
+__END__
+run:
+Compiled succesfully

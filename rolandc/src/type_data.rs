@@ -211,6 +211,7 @@ impl ExpressionType {
          ExpressionType::Pointer(_, x @ ValueType::UnknownFloat(_)) => Some(x),
          ExpressionType::Pointer(_, x @ ValueType::UnknownInt(_)) => Some(x),
          ExpressionType::Value(ValueType::Array(v, _)) => v.get_unknown_portion_of_type(),
+         ExpressionType::Pointer(_, ValueType::Array(v, _)) => v.get_unknown_portion_of_type(),
          _ => None,
       }
    }

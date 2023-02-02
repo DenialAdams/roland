@@ -133,7 +133,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
                let representative = validation_context.type_variables.find(inner_tv);
 
                if representative == outer_representative {
-                  *get_unknown_portion_of_type(&mut var_in_scope.var_type).unwrap() = incoming_definition.clone();
+                  *var_in_scope.var_type.get_unknown_portion_of_type().unwrap() = incoming_definition.clone();
                }
             }
 
@@ -191,18 +191,11 @@ fn get_type_variable_of_unknown_type_and_associated_e_type(
          ExpressionType::Value(ValueType::Array(unknown_type_inner, _)),
          ExpressionType::Value(ValueType::Array(type_coming_in_inner, _)),
       ) => get_type_variable_of_unknown_type_and_associated_e_type(unknown_type_inner, type_coming_in_inner),
+      (
+         ExpressionType::Pointer(_, ValueType::Array(unknown_type_inner, _)),
+         ExpressionType::Pointer(_, ValueType::Array(type_coming_in_inner, _)),
+      ) => get_type_variable_of_unknown_type_and_associated_e_type(unknown_type_inner, type_coming_in_inner),
       // other types can't contain unknown values, at least right now
-      _ => None,
-   }
-}
-
-fn get_unknown_portion_of_type(et: &mut ExpressionType) -> Option<&mut ValueType> {
-   match et {
-      ExpressionType::Value(x @ ValueType::UnknownFloat(_)) => Some(x),
-      ExpressionType::Value(x @ ValueType::UnknownInt(_)) => Some(x),
-      ExpressionType::Pointer(_, x @ ValueType::UnknownFloat(_)) => Some(x),
-      ExpressionType::Pointer(_, x @ ValueType::UnknownInt(_)) => Some(x),
-      ExpressionType::Value(ValueType::Array(v, _)) => get_unknown_portion_of_type(v),
       _ => None,
    }
 }
