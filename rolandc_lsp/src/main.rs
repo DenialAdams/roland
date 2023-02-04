@@ -244,13 +244,13 @@ impl LanguageServer for Backend {
                .client
                .log_message(MessageType::INFO, "detected wasm4 project")
                .await;
-            WorkspaceMode::Wasm4EntryPoint(root_path)
+            WorkspaceMode::Wasm4EntryPoint(root_path.join("cart.rol"))
          } else if root_path.join("main.rol").exists() {
             self
                .client
                .log_message(MessageType::INFO, "detected wasi project")
                .await;
-            WorkspaceMode::WasiEntryPoint(root_path)
+            WorkspaceMode::WasiEntryPoint(root_path.join("main.rol"))
          } else if root_path.join(".i_assure_you_we're_std").exists() {
             self.client.log_message(MessageType::INFO, "detected stdlib").await;
             WorkspaceMode::StdLib
