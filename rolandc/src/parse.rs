@@ -402,6 +402,124 @@ struct ParseContext<'a> {
    parsed_types: Vec<ExpressionTypeNode>,
 }
 
+fn parse_top_level_item(
+   lexer: &mut Lexer,
+   parse_context: &mut ParseContext,
+   expressions: &mut ExpressionPool,
+   top: &mut TopLevelItems,
+) -> Result<(), ()> {
+   loop {
+      let peeked_token = lexer.peek_token();
+      match peeked_token {
+         Token::KeywordExtern => {
+            let extern_kw = lexer.next();
+            expect(lexer, parse_context, Token::KeywordProc)?;
+            let p = parse_external_procedure(
+               lexer,
+               parse_context,
+               extern_kw.source_info,
+               ProcImplSource::External,
+            )?;
+            top.external_procedures.push(p);
+         }
+         Token::KeywordBuiltin => {
+            let builtin_kw = lexer.next();
+            expect(lexer, parse_context, Token::KeywordProc)?;
+            let p = parse_external_procedure(
+               lexer,
+               parse_context,
+               builtin_kw.source_info,
+               ProcImplSource::Builtin,
+            )?;
+            top.external_procedures.push(p);
+         }
+         Token::KeywordProc => {
+            let def = lexer.next();
+            let p = parse_procedure(lexer, parse_context, def.source_info, expressions)?;
+            top.procedures.push(p);
+         }
+         Token::KeywordImport => {
+            let kw = lexer.next();
+            let import_path = parse_string(lexer, parse_context)?;
+            let sc = expect(lexer, parse_context, Token::Semicolon)?;
+            top.imports.push(ImportNode {
+               import_path,
+               location: merge_locations(kw.source_info, sc.source_info),
+            });
+         }
+         Token::KeywordStructDef => {
+            let def = lexer.next();
+            let s = parse_struct(lexer, parse_context, def.source_info, expressions)?;
+            top.structs.push(s);
+         }
+         Token::KeywordEnumDef => {
+            let def = lexer.next();
+            let s = parse_enum(lexer, parse_context, def.source_info)?;
+            top.enums.push(s);
+         }
+         Token::KeywordConst => {
+            let a_const = lexer.next();
+            let variable_name = parse_identifier(lexer, parse_context)?;
+            expect(lexer, parse_context, Token::Colon)?;
+            let const_type = parse_type(lexer, parse_context)?;
+            expect(lexer, parse_context, Token::Assignment)?;
+            let exp = parse_expression(lexer, parse_context, false, expressions)?;
+            let end_token = expect(lexer, parse_context, Token::Semicolon)?;
+            top.consts.push(ConstNode {
+               name: variable_name,
+               const_type,
+               location: merge_locations(a_const.source_info, end_token.source_info),
+               value: exp,
+               var_id: VariableId::first(),
+            });
+         }
+         Token::KeywordStatic => {
+            let a_static = lexer.next();
+            let variable_name = parse_identifier(lexer, parse_context)?;
+            expect(lexer, parse_context, Token::Colon)?;
+            let static_type = parse_type(lexer, parse_context)?;
+            expect(lexer, parse_context, Token::Assignment)?;
+            let exp = if lexer.peek_token() == Token::TripleUnderscore {
+               let _ = lexer.next();
+               None
+            } else {
+               Some(parse_expression(lexer, parse_context, false, expressions)?)
+            };
+            let end_token = expect(lexer, parse_context, Token::Semicolon)?;
+            top.statics.push(StaticNode {
+               name: variable_name,
+               static_type,
+               location: merge_locations(a_static.source_info, end_token.source_info),
+               value: exp,
+            });
+         }
+         Token::Eof => {
+            break;
+         }
+         x => {
+            rolandc_error!(
+            parse_context.err_manager,
+            lexer.peek_source(),
+            "While parsing top level, encountered unexpected {}; was expecting a procedure, const, static, enum, or struct declaration",
+            x.for_parse_err()
+         );
+            return Err(());
+         }
+      }
+   }
+   Ok(())
+}
+
+struct TopLevelItems {
+   external_procedures: Vec<ExternalProcedureNode>,
+   procedures: Vec<ProcedureNode>,
+   structs: Vec<StructNode>,
+   enums: Vec<EnumNode>,
+   consts: Vec<ConstNode>,
+   statics: Vec<StaticNode>,
+   imports: Vec<ImportNode>,
+}
+
 pub fn astify(
    mut lexer: Lexer,
    err_manager: &mut ErrorManager,
@@ -414,123 +532,51 @@ pub fn astify(
       parsed_types: Vec::new(),
    };
 
-   let mut external_procedures = vec![];
-   let mut procedures = vec![];
-   let mut structs = vec![];
-   let mut enums = vec![];
-   let mut consts = vec![];
-   let mut statics = vec![];
-   let mut imports = vec![];
+   let mut top = TopLevelItems {
+      external_procedures: vec![],
+      procedures: vec![],
+      structs: vec![],
+      enums: vec![],
+      consts: vec![],
+      statics: vec![],
+      imports: vec![],
+   };
 
    loop {
-      let peeked_token = lexer.peek_token();
-      match peeked_token {
-         Token::KeywordExtern => {
-            let extern_kw = lexer.next();
-            expect(&mut lexer, &mut parse_context, Token::KeywordProc)?;
-            let p = parse_external_procedure(
-               &mut lexer,
-               &mut parse_context,
-               extern_kw.source_info,
-               ProcImplSource::External,
-            )?;
-            external_procedures.push(p);
-         }
-         Token::KeywordBuiltin => {
-            let builtin_kw = lexer.next();
-            expect(&mut lexer, &mut parse_context, Token::KeywordProc)?;
-            let p = parse_external_procedure(
-               &mut lexer,
-               &mut parse_context,
-               builtin_kw.source_info,
-               ProcImplSource::Builtin,
-            )?;
-            external_procedures.push(p);
-         }
-         Token::KeywordProc => {
-            let def = lexer.next();
-            let p = parse_procedure(&mut lexer, &mut parse_context, def.source_info, expressions)?;
-            procedures.push(p);
-         }
-         Token::KeywordImport => {
-            let kw = lexer.next();
-            let import_path = parse_string(&mut lexer, &mut parse_context)?;
-            let sc = expect(&mut lexer, &mut parse_context, Token::Semicolon)?;
-            imports.push(ImportNode {
-               import_path,
-               location: merge_locations(kw.source_info, sc.source_info),
-            });
-         }
-         Token::KeywordStructDef => {
-            let def = lexer.next();
-            let s = parse_struct(&mut lexer, &mut parse_context, def.source_info, expressions)?;
-            structs.push(s);
-         }
-         Token::KeywordEnumDef => {
-            let def = lexer.next();
-            let s = parse_enum(&mut lexer, &mut parse_context, def.source_info)?;
-            enums.push(s);
-         }
-         Token::KeywordConst => {
-            let a_const = lexer.next();
-            let variable_name = parse_identifier(&mut lexer, &mut parse_context)?;
-            expect(&mut lexer, &mut parse_context, Token::Colon)?;
-            let const_type = parse_type(&mut lexer, &mut parse_context)?;
-            expect(&mut lexer, &mut parse_context, Token::Assignment)?;
-            let exp = parse_expression(&mut lexer, &mut parse_context, false, expressions)?;
-            let end_token = expect(&mut lexer, &mut parse_context, Token::Semicolon)?;
-            consts.push(ConstNode {
-               name: variable_name,
-               const_type,
-               location: merge_locations(a_const.source_info, end_token.source_info),
-               value: exp,
-               var_id: VariableId::first(),
-            });
-         }
-         Token::KeywordStatic => {
-            let a_static = lexer.next();
-            let variable_name = parse_identifier(&mut lexer, &mut parse_context)?;
-            expect(&mut lexer, &mut parse_context, Token::Colon)?;
-            let static_type = parse_type(&mut lexer, &mut parse_context)?;
-            expect(&mut lexer, &mut parse_context, Token::Assignment)?;
-            let exp = if lexer.peek_token() == Token::TripleUnderscore {
-               let _ = lexer.next();
-               None
-            } else {
-               Some(parse_expression(&mut lexer, &mut parse_context, false, expressions)?)
-            };
-            let end_token = expect(&mut lexer, &mut parse_context, Token::Semicolon)?;
-            statics.push(StaticNode {
-               name: variable_name,
-               static_type,
-               location: merge_locations(a_static.source_info, end_token.source_info),
-               value: exp,
-            });
-         }
-         Token::Eof => {
-            break;
-         }
-         x => {
-            rolandc_error!(
-               err_manager,
-               lexer.peek_source(),
-               "While parsing top level, encountered unexpected {}; was expecting a procedure, const, static, enum, or struct declaration",
-               x.for_parse_err()
-            );
-            return Err(());
+      if let Ok(()) = parse_top_level_item(&mut lexer, &mut parse_context, expressions, &mut top) {
+         break;
+      } else {
+         // skip tokens until we get to a token that must be at the top level and continue parsing
+         // in order to give the user more valid errors
+         loop {
+            match lexer.peek_token() {
+               Token::KeywordProc
+               | Token::KeywordConst
+               | Token::KeywordStatic
+               | Token::KeywordImport
+               | Token::KeywordStructDef
+               | Token::KeywordEnumDef
+               | Token::KeywordBuiltin
+               | Token::KeywordExtern => break,
+               Token::Eof => break,
+               _ => {
+                  let _ = lexer.next();
+                  continue;
+               }
+            }
          }
       }
    }
 
    Ok((
-      imports,
+      top.imports,
       Program {
-         external_procedures,
-         procedures,
-         enums,
-         structs,
-         consts,
-         statics,
+         external_procedures: top.external_procedures,
+         procedures: top.procedures,
+         enums: top.enums,
+         structs : top.structs,
+         consts : top.consts,
+         statics : top.statics,
          parsed_types: parse_context.parsed_types,
          literals: IndexSet::new(),
          struct_info: IndexMap::new(),
@@ -662,7 +708,12 @@ fn parse_external_procedure(
    })
 }
 
-fn parse_struct(l: &mut Lexer, parse_context: &mut ParseContext, source_info: SourceInfo, expressions: &mut ExpressionPool) -> Result<StructNode, ()> {
+fn parse_struct(
+   l: &mut Lexer,
+   parse_context: &mut ParseContext,
+   source_info: SourceInfo,
+   expressions: &mut ExpressionPool,
+) -> Result<StructNode, ()> {
    let struct_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
    expect(l, parse_context, Token::OpenBrace)?;
    let mut fields: Vec<(StrId, ExpressionTypeNode, Option<ExpressionId>)> = vec![];
@@ -673,7 +724,7 @@ fn parse_struct(l: &mut Lexer, parse_context: &mut ParseContext, source_info: So
       let identifier = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
       let _ = expect(l, parse_context, Token::Colon)?;
       let f_type = parse_type(l, parse_context)?;
-   
+
       let default_value = if l.peek_token() == Token::Assignment {
          let _ = l.next();
          Some(parse_expression(l, parse_context, false, expressions)?)
@@ -682,7 +733,7 @@ fn parse_struct(l: &mut Lexer, parse_context: &mut ParseContext, source_info: So
       };
 
       fields.push((extract_identifier(identifier.token), f_type, default_value));
-   
+
       if l.peek_token() == Token::CloseBrace {
          break l.next();
       } else if let Token::Identifier(x) = l.peek_token() {

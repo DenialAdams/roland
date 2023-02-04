@@ -299,11 +299,16 @@ pub fn type_and_check_validity(
 
       for (field_name, &default_expr) in s.1.default_values.iter() {
          type_expression(err_manager, default_expr, &mut validation_context, interner);
-         
+
          let declared_type = s.1.field_types.get(field_name).unwrap();
          try_set_inferred_type(&declared_type.e_type, default_expr, &mut validation_context);
 
-         check_type_declared_vs_actual(&declared_type, &validation_context.expressions[default_expr], interner, err_manager);
+         check_type_declared_vs_actual(
+            &declared_type,
+            &validation_context.expressions[default_expr],
+            interner,
+            err_manager,
+         );
       }
    }
 

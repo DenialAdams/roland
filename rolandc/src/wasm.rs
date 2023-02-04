@@ -433,7 +433,13 @@ fn dynamic_move_locals_of_type_to_dest(
                .values()
                .skip(1),
          ) {
-            dynamic_move_locals_of_type_to_dest(memory_lookup, offset, local_index, &sub_field.e_type, generation_context);
+            dynamic_move_locals_of_type_to_dest(
+               memory_lookup,
+               offset,
+               local_index,
+               &sub_field.e_type,
+               generation_context,
+            );
             let alignment_of_next = mem_alignment(
                &next_sub_field.e_type,
                generation_context.enum_info,
@@ -456,7 +462,13 @@ fn dynamic_move_locals_of_type_to_dest(
             .values()
             .last()
          {
-            dynamic_move_locals_of_type_to_dest(memory_lookup, offset, local_index, &last_sub_field.e_type, generation_context);
+            dynamic_move_locals_of_type_to_dest(
+               memory_lookup,
+               offset,
+               local_index,
+               &last_sub_field.e_type,
+               generation_context,
+            );
             let alignment_of_next = generation_context.struct_size_info.get(x).unwrap().strictest_alignment;
             let this_size = sizeof_type_mem(
                &last_sub_field.e_type,
@@ -1818,7 +1830,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                   .get(&struct_name)
                   .unwrap()
                   .field_types
-                  .get(field_name).map(|x| &x.e_type)
+                  .get(field_name)
+                  .map(|x| &x.e_type)
                {
                   Some(ExpressionType::Value(ValueType::Struct(x))) => *x,
                   _ => unreachable!(),
@@ -1975,7 +1988,13 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
                .field_offsets
                .get(field_name)
                .unwrap();
-            match sizeof_type_values(&field.e_type, generation_context.enum_info, generation_context.struct_size_info).cmp(&1) {
+            match sizeof_type_values(
+               &field.e_type,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            )
+            .cmp(&1)
+            {
                std::cmp::Ordering::Less => (),
                std::cmp::Ordering::Equal => {
                   generation_context.out.emit_get_global("mem_address");
