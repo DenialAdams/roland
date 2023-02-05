@@ -10,8 +10,8 @@ use crate::parse::{
    StatementNode, UnOp,
 };
 use crate::type_data::{
-   ExpressionType, ValueType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE,
-   U32_TYPE, U64_TYPE, U8_TYPE, USIZE_TYPE,
+   ExpressionType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
+   U8_TYPE, USIZE_TYPE,
 };
 
 pub struct FoldingContext<'a> {
@@ -133,7 +133,7 @@ fn fold_expr(
          let array = &folding_context.expressions[*array];
          let index = &folding_context.expressions[*index];
 
-         let Some(ExpressionType::Value(ValueType::Array(_, len))) = array.exp_type else { unreachable!() };
+         let Some(ExpressionType::Array(_, len)) = array.exp_type else { unreachable!() };
 
          // TODO @FixedPointerWidth
          if let Some(Literal::Uint32(v)) = extract_literal(index) {
@@ -187,32 +187,24 @@ fn fold_expr(
       Expression::StringLiteral(_) => None,
       Expression::IntLiteral { val, .. } => {
          let overflowing_literal = match folding_context.expressions[expr_index].exp_type.as_ref().unwrap() {
-            ExpressionType::Value(I8_TYPE) => (*val as i64) > i64::from(i8::MAX) || (*val as i64) < i64::from(i8::MIN),
-            ExpressionType::Value(I16_TYPE) => {
-               (*val as i64) > i64::from(i16::MAX) || (*val as i64) < i64::from(i16::MIN)
-            }
-            ExpressionType::Value(I32_TYPE) => {
-               (*val as i64) > i64::from(i32::MAX) || (*val as i64) < i64::from(i32::MIN)
-            }
+            &I8_TYPE => (*val as i64) > i64::from(i8::MAX) || (*val as i64) < i64::from(i8::MIN),
+            &I16_TYPE => (*val as i64) > i64::from(i16::MAX) || (*val as i64) < i64::from(i16::MIN),
+            &I32_TYPE => (*val as i64) > i64::from(i32::MAX) || (*val as i64) < i64::from(i32::MIN),
             // @FixedPointerWidth
-            ExpressionType::Value(ISIZE_TYPE) => {
-               (*val as i64) > i64::from(i32::MAX) || (*val as i64) < i64::from(i32::MIN)
-            }
-            ExpressionType::Value(I64_TYPE) => false,
-            ExpressionType::Value(U8_TYPE) => *val > u64::from(u8::MAX) || *val < u64::from(u8::MIN),
-            ExpressionType::Value(U16_TYPE) => *val > u64::from(u16::MAX) || *val < u64::from(u16::MIN),
-            ExpressionType::Value(U32_TYPE) => *val > u64::from(u32::MAX) || *val < u64::from(u32::MIN),
+            &ISIZE_TYPE => (*val as i64) > i64::from(i32::MAX) || (*val as i64) < i64::from(i32::MIN),
+            &I64_TYPE => false,
+            &U8_TYPE => *val > u64::from(u8::MAX) || *val < u64::from(u8::MIN),
+            &U16_TYPE => *val > u64::from(u16::MAX) || *val < u64::from(u16::MIN),
+            &U32_TYPE => *val > u64::from(u32::MAX) || *val < u64::from(u32::MIN),
             // @FixedPointerWidth
-            ExpressionType::Value(USIZE_TYPE) | ExpressionType::Pointer(_, _) => {
-               *val > u64::from(u32::MAX) || *val < u64::from(u32::MIN)
-            }
-            ExpressionType::Value(U64_TYPE) => false,
+            &USIZE_TYPE | ExpressionType::Pointer(_) => *val > u64::from(u32::MAX) || *val < u64::from(u32::MIN),
+            &U64_TYPE => false,
             _ => unreachable!(),
          };
 
          if overflowing_literal {
             let signed = match folding_context.expressions[expr_index].exp_type.as_ref().unwrap() {
-               ExpressionType::Value(ValueType::Int(x)) => x.signed,
+               ExpressionType::Int(x) => x.signed,
                _ => unreachable!(),
             };
 
@@ -267,7 +259,7 @@ fn fold_expr(
                BinOp::Divide
                   if !matches!(
                      folding_context.expressions[expr_index].exp_type.as_ref(),
-                     Some(ExpressionType::Value(ValueType::Float(_)))
+                     Some(ExpressionType::Float(_))
                   ) =>
                {
                   return Some(ExpressionNode {
@@ -281,8 +273,8 @@ fn fold_expr(
                }
                BinOp::BitwiseXor => {
                   let expr = match folding_context.expressions[expr_index].exp_type.as_ref() {
-                     Some(ExpressionType::Value(ValueType::Bool)) => Expression::BoolLiteral(false),
-                     Some(ExpressionType::Value(ValueType::Int { .. })) => Expression::IntLiteral {
+                     Some(ExpressionType::Bool) => Expression::BoolLiteral(false),
+                     Some(ExpressionType::Int { .. }) => Expression::IntLiteral {
                         val: 0,
                         synthetic: true,
                      },
@@ -297,7 +289,7 @@ fn fold_expr(
                BinOp::GreaterThan | BinOp::LessThan
                   if !matches!(
                      folding_context.expressions[expr_index].exp_type.as_ref(),
-                     Some(ExpressionType::Value(ValueType::Float(_)))
+                     Some(ExpressionType::Float(_))
                   ) =>
                {
                   return Some(ExpressionNode {
@@ -309,7 +301,7 @@ fn fold_expr(
                BinOp::Equality | BinOp::GreaterThanOrEqualTo | BinOp::LessThanOrEqualTo
                   if !matches!(
                      folding_context.expressions[expr_index].exp_type.as_ref(),
-                     Some(ExpressionType::Value(ValueType::Float(_)))
+                     Some(ExpressionType::Float(_))
                   ) =>
                {
                   return Some(ExpressionNode {
@@ -990,101 +982,97 @@ impl Literal {
    fn transmute(self, target_type: &ExpressionType) -> Option<Expression> {
       Some(match (self, target_type) {
          // Transmute int to float
-         (Literal::Int32(i), ExpressionType::Value(F32_TYPE)) => {
-            Expression::FloatLiteral(f64::from(f32::from_bits(i as u32)))
-         }
-         (Literal::Uint32(i), ExpressionType::Value(F32_TYPE)) => {
-            Expression::FloatLiteral(f64::from(f32::from_bits(i)))
-         }
-         (Literal::Int64(i), ExpressionType::Value(F64_TYPE)) => Expression::FloatLiteral(f64::from_bits(i as u64)),
-         (Literal::Uint64(i), ExpressionType::Value(F64_TYPE)) => Expression::FloatLiteral(f64::from_bits(i)),
+         (Literal::Int32(i), &F32_TYPE) => Expression::FloatLiteral(f64::from(f32::from_bits(i as u32))),
+         (Literal::Uint32(i), &F32_TYPE) => Expression::FloatLiteral(f64::from(f32::from_bits(i))),
+         (Literal::Int64(i), &F64_TYPE) => Expression::FloatLiteral(f64::from_bits(i as u64)),
+         (Literal::Uint64(i), &F64_TYPE) => Expression::FloatLiteral(f64::from_bits(i)),
 
          // Transmute float to int
-         (Literal::Float32(f), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Float32(f), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: u64::from(f.to_bits()),
             synthetic: true,
          },
-         (Literal::Float64(f), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Float64(f), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: f.to_bits(),
             synthetic: true,
          },
 
          // Transmute to pointer @FixedPointerWidth
-         (Literal::Int32(i), ExpressionType::Pointer(_, _)) => Expression::IntLiteral {
+         (Literal::Int32(i), ExpressionType::Pointer(_)) => Expression::IntLiteral {
             val: u64::from(i as u32),
             synthetic: true,
          },
-         (Literal::Uint32(i), ExpressionType::Pointer(_, _)) => Expression::IntLiteral {
+         (Literal::Uint32(i), ExpressionType::Pointer(_)) => Expression::IntLiteral {
             val: u64::from(i),
             synthetic: true,
          },
 
          // Transmute signed -> unsigned
-         (Literal::Int64(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => Expression::IntLiteral {
+         (Literal::Int64(i), &ExpressionType::Int(it)) if !it.signed => Expression::IntLiteral {
             val: i as u64,
             synthetic: true,
          },
-         (Literal::Int32(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => Expression::IntLiteral {
+         (Literal::Int32(i), &ExpressionType::Int(it)) if !it.signed => Expression::IntLiteral {
             val: u64::from(i as u32),
             synthetic: true,
          },
-         (Literal::Int16(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => Expression::IntLiteral {
+         (Literal::Int16(i), &ExpressionType::Int(it)) if !it.signed => Expression::IntLiteral {
             val: u64::from(i as u16),
             synthetic: true,
          },
-         (Literal::Int8(i), ExpressionType::Value(ValueType::Int(it))) if !it.signed => Expression::IntLiteral {
+         (Literal::Int8(i), &ExpressionType::Int(it)) if !it.signed => Expression::IntLiteral {
             val: u64::from(i as u8),
             synthetic: true,
          },
 
          // Transmute unsigned -> signed
-         (Literal::Uint64(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => Expression::IntLiteral {
+         (Literal::Uint64(i), &ExpressionType::Int(it)) if it.signed => Expression::IntLiteral {
             val: i,
             synthetic: true,
          },
-         (Literal::Uint32(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => Expression::IntLiteral {
+         (Literal::Uint32(i), &ExpressionType::Int(it)) if it.signed => Expression::IntLiteral {
             val: u64::from(i),
             synthetic: true,
          },
-         (Literal::Uint16(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => Expression::IntLiteral {
+         (Literal::Uint16(i), &ExpressionType::Int(it)) if it.signed => Expression::IntLiteral {
             val: u64::from(i),
             synthetic: true,
          },
-         (Literal::Uint8(i), ExpressionType::Value(ValueType::Int(it))) if it.signed => Expression::IntLiteral {
+         (Literal::Uint8(i), &ExpressionType::Int(it)) if it.signed => Expression::IntLiteral {
             val: u64::from(i),
             synthetic: true,
          },
 
          // Noop
-         (Literal::Int64(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Int64(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: i as u64,
             synthetic: true,
          },
-         (Literal::Int32(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Int32(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: i64::from(i) as u64,
             synthetic: true,
          },
-         (Literal::Int16(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Int16(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: i64::from(i) as u64,
             synthetic: true,
          },
-         (Literal::Int8(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Int8(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: i64::from(i) as u64,
             synthetic: true,
          },
-         (Literal::Uint64(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Uint64(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: i,
             synthetic: true,
          },
-         (Literal::Uint32(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Uint32(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: u64::from(i),
             synthetic: true,
          },
-         (Literal::Uint16(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Uint16(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: u64::from(i),
             synthetic: true,
          },
-         (Literal::Uint8(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Uint8(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: u64::from(i),
             synthetic: true,
          },
@@ -1094,37 +1082,37 @@ impl Literal {
 
    fn extend(self, target_type: &ExpressionType) -> Option<Expression> {
       Some(match (self, target_type) {
-         (Literal::Float64(f), ExpressionType::Value(ValueType::Float(_))) => Expression::FloatLiteral(f),
-         (Literal::Float32(f), ExpressionType::Value(ValueType::Float(_))) => Expression::FloatLiteral(f64::from(f)),
-         (Literal::Int64(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Float64(f), &ExpressionType::Float(_)) => Expression::FloatLiteral(f),
+         (Literal::Float32(f), &ExpressionType::Float(_)) => Expression::FloatLiteral(f64::from(f)),
+         (Literal::Int64(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: i as u64,
             synthetic: true,
          },
-         (Literal::Int32(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Int32(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: i64::from(i) as u64,
             synthetic: true,
          },
-         (Literal::Int16(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Int16(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: i64::from(i) as u64,
             synthetic: true,
          },
-         (Literal::Int8(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Int8(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: i64::from(i) as u64,
             synthetic: true,
          },
-         (Literal::Uint64(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Uint64(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: i,
             synthetic: true,
          },
-         (Literal::Uint32(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Uint32(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: u64::from(i),
             synthetic: true,
          },
-         (Literal::Uint16(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Uint16(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: u64::from(i),
             synthetic: true,
          },
-         (Literal::Uint8(i), ExpressionType::Value(ValueType::Int(_))) => Expression::IntLiteral {
+         (Literal::Uint8(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: u64::from(i),
             synthetic: true,
          },
@@ -1134,100 +1122,100 @@ impl Literal {
 
    fn truncate(self, target_type: &ExpressionType) -> Option<Expression> {
       Some(match (self, target_type) {
-         (Literal::Float64(f), ExpressionType::Value(F32_TYPE)) => Expression::FloatLiteral(f64::from(f as f32)),
-         (Literal::Uint64(i), ExpressionType::Value(U32_TYPE)) => Expression::IntLiteral {
+         (Literal::Float64(f), &F32_TYPE) => Expression::FloatLiteral(f64::from(f as f32)),
+         (Literal::Uint64(i), &U32_TYPE) => Expression::IntLiteral {
             val: u64::from(i as u32),
             synthetic: true,
          },
-         (Literal::Uint64(i), ExpressionType::Value(U16_TYPE)) => Expression::IntLiteral {
+         (Literal::Uint64(i), &U16_TYPE) => Expression::IntLiteral {
             val: u64::from(i as u16),
             synthetic: true,
          },
-         (Literal::Uint64(i), ExpressionType::Value(U8_TYPE)) => Expression::IntLiteral {
+         (Literal::Uint64(i), &U8_TYPE) => Expression::IntLiteral {
             val: u64::from(i as u8),
             synthetic: true,
          },
-         (Literal::Uint32(i), ExpressionType::Value(U16_TYPE)) => Expression::IntLiteral {
+         (Literal::Uint32(i), &U16_TYPE) => Expression::IntLiteral {
             val: u64::from(i as u16),
             synthetic: true,
          },
-         (Literal::Uint32(i), ExpressionType::Value(U8_TYPE)) => Expression::IntLiteral {
+         (Literal::Uint32(i), &U8_TYPE) => Expression::IntLiteral {
             val: u64::from(i as u8),
             synthetic: true,
          },
-         (Literal::Uint16(i), ExpressionType::Value(U8_TYPE)) => Expression::IntLiteral {
+         (Literal::Uint16(i), &U8_TYPE) => Expression::IntLiteral {
             val: u64::from(i as u8),
             synthetic: true,
          },
-         (Literal::Uint64(i), ExpressionType::Value(I32_TYPE)) => Expression::IntLiteral {
+         (Literal::Uint64(i), &I32_TYPE) => Expression::IntLiteral {
             val: i64::from(i as i32) as u64,
             synthetic: true,
          },
-         (Literal::Uint64(i), ExpressionType::Value(I16_TYPE)) => Expression::IntLiteral {
+         (Literal::Uint64(i), &I16_TYPE) => Expression::IntLiteral {
             val: i64::from(i as i16) as u64,
             synthetic: true,
          },
-         (Literal::Uint64(i), ExpressionType::Value(I8_TYPE)) => Expression::IntLiteral {
+         (Literal::Uint64(i), &I8_TYPE) => Expression::IntLiteral {
             val: i64::from(i as i8) as u64,
             synthetic: true,
          },
-         (Literal::Uint32(i), ExpressionType::Value(I16_TYPE)) => Expression::IntLiteral {
+         (Literal::Uint32(i), &I16_TYPE) => Expression::IntLiteral {
             val: i64::from(i as i16) as u64,
             synthetic: true,
          },
-         (Literal::Uint32(i), ExpressionType::Value(I8_TYPE)) => Expression::IntLiteral {
+         (Literal::Uint32(i), &I8_TYPE) => Expression::IntLiteral {
             val: i64::from(i as i8) as u64,
             synthetic: true,
          },
-         (Literal::Uint16(i), ExpressionType::Value(I8_TYPE)) => Expression::IntLiteral {
+         (Literal::Uint16(i), &I8_TYPE) => Expression::IntLiteral {
             val: i64::from(i as i8) as u64,
             synthetic: true,
          },
-         (Literal::Int64(i), ExpressionType::Value(U32_TYPE)) => Expression::IntLiteral {
+         (Literal::Int64(i), &U32_TYPE) => Expression::IntLiteral {
             val: u64::from(i as u32),
             synthetic: true,
          },
-         (Literal::Int64(i), ExpressionType::Value(U16_TYPE)) => Expression::IntLiteral {
+         (Literal::Int64(i), &U16_TYPE) => Expression::IntLiteral {
             val: u64::from(i as u16),
             synthetic: true,
          },
-         (Literal::Int64(i), ExpressionType::Value(U8_TYPE)) => Expression::IntLiteral {
+         (Literal::Int64(i), &U8_TYPE) => Expression::IntLiteral {
             val: u64::from(i as u8),
             synthetic: true,
          },
-         (Literal::Int32(i), ExpressionType::Value(U16_TYPE)) => Expression::IntLiteral {
+         (Literal::Int32(i), &U16_TYPE) => Expression::IntLiteral {
             val: u64::from(i as u16),
             synthetic: true,
          },
-         (Literal::Int32(i), ExpressionType::Value(U8_TYPE)) => Expression::IntLiteral {
+         (Literal::Int32(i), &U8_TYPE) => Expression::IntLiteral {
             val: u64::from(i as u8),
             synthetic: true,
          },
-         (Literal::Int16(i), ExpressionType::Value(U8_TYPE)) => Expression::IntLiteral {
+         (Literal::Int16(i), &U8_TYPE) => Expression::IntLiteral {
             val: u64::from(i as u8),
             synthetic: true,
          },
-         (Literal::Int64(i), ExpressionType::Value(I32_TYPE)) => Expression::IntLiteral {
+         (Literal::Int64(i), &I32_TYPE) => Expression::IntLiteral {
             val: i64::from(i as i32) as u64,
             synthetic: true,
          },
-         (Literal::Int64(i), ExpressionType::Value(I16_TYPE)) => Expression::IntLiteral {
+         (Literal::Int64(i), &I16_TYPE) => Expression::IntLiteral {
             val: i64::from(i as i16) as u64,
             synthetic: true,
          },
-         (Literal::Int64(i), ExpressionType::Value(I8_TYPE)) => Expression::IntLiteral {
+         (Literal::Int64(i), &I8_TYPE) => Expression::IntLiteral {
             val: i64::from(i as i8) as u64,
             synthetic: true,
          },
-         (Literal::Int32(i), ExpressionType::Value(I16_TYPE)) => Expression::IntLiteral {
+         (Literal::Int32(i), &I16_TYPE) => Expression::IntLiteral {
             val: i64::from(i as i16) as u64,
             synthetic: true,
          },
-         (Literal::Int32(i), ExpressionType::Value(I8_TYPE)) => Expression::IntLiteral {
+         (Literal::Int32(i), &I8_TYPE) => Expression::IntLiteral {
             val: i64::from(i as i8) as u64,
             synthetic: true,
          },
-         (Literal::Int16(i), ExpressionType::Value(I8_TYPE)) => Expression::IntLiteral {
+         (Literal::Int16(i), &I8_TYPE) => Expression::IntLiteral {
             val: i64::from(i as i8) as u64,
             synthetic: true,
          },
@@ -1727,26 +1715,26 @@ fn extract_literal(expr_node: &ExpressionNode) -> Option<Literal> {
       Expression::IntLiteral { val: x, .. } => {
          let x = *x;
          match expr_node.exp_type.as_ref().unwrap() {
-            ExpressionType::Value(I64_TYPE) => Some(Literal::Int64(x as i64)),
-            ExpressionType::Value(I32_TYPE) => Some(Literal::Int32((x as i64).try_into().ok()?)),
-            ExpressionType::Value(I16_TYPE) => Some(Literal::Int16((x as i64).try_into().ok()?)),
-            ExpressionType::Value(I8_TYPE) => Some(Literal::Int8((x as i64).try_into().ok()?)),
+            &I64_TYPE => Some(Literal::Int64(x as i64)),
+            &I32_TYPE => Some(Literal::Int32((x as i64).try_into().ok()?)),
+            &I16_TYPE => Some(Literal::Int16((x as i64).try_into().ok()?)),
+            &I8_TYPE => Some(Literal::Int8((x as i64).try_into().ok()?)),
             // @FixedPointerWidth
-            ExpressionType::Value(ISIZE_TYPE) => Some(Literal::Int32(x.try_into().ok()?)),
-            ExpressionType::Value(U64_TYPE) => Some(Literal::Uint64(x)),
-            ExpressionType::Value(U32_TYPE) => Some(Literal::Uint32(x.try_into().ok()?)),
-            ExpressionType::Value(U16_TYPE) => Some(Literal::Uint16(x.try_into().ok()?)),
-            ExpressionType::Value(U8_TYPE) => Some(Literal::Uint8(x.try_into().ok()?)),
+            &ISIZE_TYPE => Some(Literal::Int32(x.try_into().ok()?)),
+            &U64_TYPE => Some(Literal::Uint64(x)),
+            &U32_TYPE => Some(Literal::Uint32(x.try_into().ok()?)),
+            &U16_TYPE => Some(Literal::Uint16(x.try_into().ok()?)),
+            &U8_TYPE => Some(Literal::Uint8(x.try_into().ok()?)),
             // @FixedPointerWidth
-            ExpressionType::Value(USIZE_TYPE) => Some(Literal::Uint32(x.try_into().ok()?)),
+            &USIZE_TYPE => Some(Literal::Uint32(x.try_into().ok()?)),
             // @FixedPointerWidth
-            ExpressionType::Pointer(_, _) => Some(Literal::Uint32(x.try_into().ok()?)),
+            ExpressionType::Pointer(_) => Some(Literal::Uint32(x.try_into().ok()?)),
             _ => unreachable!(),
          }
       }
       Expression::FloatLiteral(x) => match expr_node.exp_type.as_ref().unwrap() {
-         ExpressionType::Value(F64_TYPE) => Some(Literal::Float64(*x)),
-         ExpressionType::Value(F32_TYPE) => Some(Literal::Float32(*x as f32)),
+         &F64_TYPE => Some(Literal::Float64(*x)),
+         &F32_TYPE => Some(Literal::Float32(*x as f32)),
          _ => unreachable!(),
       },
       Expression::BoolLiteral(x) => Some(Literal::Bool(*x)),

@@ -6,7 +6,7 @@ use crate::interner::{Interner, StrId};
 use crate::parse::{Expression, ExpressionId, ExpressionPool, Program, VariableId};
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::SizeInfo;
-use crate::type_data::{ExpressionType, ValueType};
+use crate::type_data::ExpressionType;
 use crate::typed_index_vec::Handle;
 
 pub fn lower_single_expression(
@@ -27,7 +27,7 @@ pub fn lower_single_expression(
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::ProcedureCall { proc_expr, args: _args } => {
          let (proc_name, generic_args) = match &expressions[*proc_expr].exp_type.as_ref().unwrap() {
-            ExpressionType::Value(ValueType::ProcedureItem(x, type_arguments)) => (*x, type_arguments),
+            ExpressionType::ProcedureItem(x, type_arguments) => (*x, type_arguments),
             _ => return,
          };
 
@@ -47,7 +47,7 @@ pub fn lower_single_expression(
             };
          } else if interner.lookup(proc_name) == "num_variants" {
             let num_variants = match generic_args[0] {
-               ExpressionType::Value(ValueType::Enum(enum_name)) => enum_info.get(&enum_name).unwrap().variants.len(),
+               ExpressionType::Enum(enum_name) => enum_info.get(&enum_name).unwrap().variants.len(),
                _ => unreachable!(),
             };
 
@@ -78,11 +78,11 @@ pub fn lower_single_expression(
          while !remaining_fields.is_empty() {
             let field = remaining_fields[0];
             match lhs_type {
-               ExpressionType::Value(ValueType::Struct(struct_name)) => {
+               ExpressionType::Struct(struct_name) => {
                   let struct_fields = &struct_info.get(struct_name).unwrap().field_types;
                   lhs_type = &struct_fields.get(&field).unwrap().e_type;
                }
-               ExpressionType::Value(ValueType::Array(_, _)) => {
+               ExpressionType::Array(_, _) => {
                   break;
                }
                _ => unreachable!(),
@@ -95,7 +95,7 @@ pub fn lower_single_expression(
          }
 
          let length_of_array = match lhs_type {
-            ExpressionType::Value(ValueType::Array(_, len)) => *len,
+            ExpressionType::Array(_, len) => *len,
             _ => return,
          };
 

@@ -11,7 +11,7 @@ use crate::lex::Lexer;
 use crate::semantic_analysis::{EnumInfo, GlobalInfo, ProcedureInfo, StructInfo};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
-use crate::type_data::{ExpressionType, ValueType};
+use crate::type_data::ExpressionType;
 use crate::typed_index_vec::{Handle, HandleMap};
 
 pub type ExpressionPool = HandleMap<ExpressionId, ExpressionNode>;
@@ -414,23 +414,13 @@ fn parse_top_level_item(
          Token::KeywordExtern => {
             let extern_kw = lexer.next();
             expect(lexer, parse_context, Token::KeywordProc)?;
-            let p = parse_external_procedure(
-               lexer,
-               parse_context,
-               extern_kw.source_info,
-               ProcImplSource::External,
-            )?;
+            let p = parse_external_procedure(lexer, parse_context, extern_kw.source_info, ProcImplSource::External)?;
             top.external_procedures.push(p);
          }
          Token::KeywordBuiltin => {
             let builtin_kw = lexer.next();
             expect(lexer, parse_context, Token::KeywordProc)?;
-            let p = parse_external_procedure(
-               lexer,
-               parse_context,
-               builtin_kw.source_info,
-               ProcImplSource::Builtin,
-            )?;
+            let p = parse_external_procedure(lexer, parse_context, builtin_kw.source_info, ProcImplSource::Builtin)?;
             top.external_procedures.push(p);
          }
          Token::KeywordProc => {
@@ -574,9 +564,9 @@ pub fn astify(
          external_procedures: top.external_procedures,
          procedures: top.procedures,
          enums: top.enums,
-         structs : top.structs,
-         consts : top.consts,
-         statics : top.statics,
+         structs: top.structs,
+         consts: top.consts,
+         statics: top.statics,
          parsed_types: parse_context.parsed_types,
          literals: IndexSet::new(),
          struct_info: IndexMap::new(),
@@ -643,7 +633,7 @@ fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -
       parse_type(l, parse_context)?
    } else {
       ExpressionTypeNode {
-         e_type: ExpressionType::Value(ValueType::Unit),
+         e_type: ExpressionType::Unit,
          // this location is somewhat bogus. ok for now?
          location: merge_locations(procedure_name.source_info, close_paren.source_info),
       }
@@ -1113,7 +1103,7 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
       let _ = l.next();
    }
 
-   let (loc_end, value_type) = match l.peek_token() {
+   let (loc_end, mut value_type) = match l.peek_token() {
       Token::OpenSquareBracket => {
          let _ = l.next();
          let a_inner_type = parse_type(l, parse_context)?;
@@ -1126,7 +1116,7 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
          if let Ok(valid_arr_len) = arr_len_literal.try_into() {
             (
                t_close_token.source_info,
-               ValueType::Array(Box::new(a_inner_type.e_type), valid_arr_len),
+               ExpressionType::Array(Box::new(a_inner_type.e_type), valid_arr_len),
             )
          } else {
             rolandc_error!(
@@ -1141,11 +1131,11 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
       Token::OpenParen => {
          let _ = l.next();
          let close_token = expect(l, parse_context, Token::CloseParen)?;
-         (close_token.source_info, ValueType::Unit)
+         (close_token.source_info, ExpressionType::Unit)
       }
       Token::Exclam => {
          let token = l.next();
-         (token.source_info, ValueType::Never)
+         (token.source_info, ExpressionType::Never)
       }
       Token::KeywordProc => {
          let _ = l.next();
@@ -1167,11 +1157,11 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
             let return_type_p = parse_type(l, parse_context)?;
             (return_type_p.e_type, return_type_p.location)
          } else {
-            (ExpressionType::Value(ValueType::Unit), close_paren.source_info)
+            (ExpressionType::Unit, close_paren.source_info)
          };
          (
             last_location,
-            ValueType::ProcedurePointer {
+            ExpressionType::ProcedurePointer {
                parameters: parameters.into_boxed_slice(),
                ret_type: Box::new(return_type),
             },
@@ -1183,7 +1173,7 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
          (
             type_token.source_info,
             match parse_context.interner.lookup(type_s) {
-               "bool" => ValueType::Bool,
+               "bool" => ExpressionType::Bool,
                "isize" => crate::type_data::ISIZE_TYPE,
                "i64" => crate::type_data::I64_TYPE,
                "i32" => crate::type_data::I32_TYPE,
@@ -1196,22 +1186,20 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
                "u8" => crate::type_data::U8_TYPE,
                "f32" => crate::type_data::F32_TYPE,
                "f64" => crate::type_data::F64_TYPE,
-               _ => ValueType::Unresolved(type_s),
+               _ => ExpressionType::Unresolved(type_s),
             },
          )
       }
    };
 
-   let etn = if ptr_count > 0 {
-      ExpressionTypeNode {
-         e_type: ExpressionType::Pointer(ptr_count, value_type),
-         location: merge_locations(loc_start, loc_end),
-      }
-   } else {
-      ExpressionTypeNode {
-         e_type: ExpressionType::Value(value_type),
-         location: merge_locations(loc_start, loc_end),
-      }
+   while ptr_count > 0 {
+      value_type = ExpressionType::Pointer(Box::new(value_type));
+      ptr_count -= 1;
+   }
+
+   let etn = ExpressionTypeNode {
+      e_type: value_type,
+      location: merge_locations(loc_start, loc_end),
    };
 
    parse_context.parsed_types.push(etn.clone());

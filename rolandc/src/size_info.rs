@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 
 use crate::interner::StrId;
 use crate::semantic_analysis::{EnumInfo, StructInfo};
-use crate::type_data::{ExpressionType, FloatWidth, IntWidth, ValueType};
+use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
 
 #[derive(Clone)]
 pub struct SizeInfo {
@@ -45,14 +45,14 @@ pub fn calculate_struct_size_info(
       let field_t = &field_t.e_type;
       let next_field_t = &next_field_t.e_type;
 
-      if let ExpressionType::Value(ValueType::Struct(s)) = field_t {
+      if let ExpressionType::Struct(s) = field_t {
          if !struct_size_info.contains_key(s) {
             calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
          }
          contains_never_type |= struct_size_info.get(s).unwrap().contains_never_type;
       }
 
-      if let ExpressionType::Value(ValueType::Struct(s)) = next_field_t {
+      if let ExpressionType::Struct(s) = next_field_t {
          if !struct_size_info.contains_key(s) {
             calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
          }
@@ -76,7 +76,7 @@ pub fn calculate_struct_size_info(
    if let Some((last_field_name, last_field_t_node)) = struct_info.get(&name).unwrap().field_types.iter().last() {
       let last_field_t = &last_field_t_node.e_type;
 
-      if let ExpressionType::Value(ValueType::Struct(s)) = last_field_t {
+      if let ExpressionType::Struct(s) = last_field_t {
          if !struct_size_info.contains_key(s) {
             calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
          }
@@ -108,69 +108,57 @@ pub fn calculate_struct_size_info(
 
 pub fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
-      ExpressionType::Value(x) => value_type_mem_alignment(x, ei, si),
-      ExpressionType::Pointer(_, _) => 4, // @FixedPointerWidth
-   }
-}
-
-pub fn value_type_mem_alignment(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
-   match e {
-      ValueType::Unresolved(_) => unreachable!(),
-      ValueType::UnknownInt(_) => unreachable!(),
-      ValueType::UnknownFloat(_) => unreachable!(),
-      ValueType::Enum(x) => {
+      ExpressionType::Unresolved(_) => unreachable!(),
+      ExpressionType::UnknownInt(_) => unreachable!(),
+      ExpressionType::UnknownFloat(_) => unreachable!(),
+      ExpressionType::Enum(x) => {
          let base_type = &ei.get(x).unwrap().base_type;
-         value_type_mem_alignment(base_type, ei, si)
+         mem_alignment(base_type, ei, si)
       }
-      ValueType::Int(x) => match x.width {
+      ExpressionType::Int(x) => match x.width {
          IntWidth::Eight => 8,
          // @FixedPointerWidth
          IntWidth::Four | IntWidth::Pointer => 4,
          IntWidth::Two => 2,
          IntWidth::One => 1,
       },
-      ValueType::Float(x) => match x.width {
+      ExpressionType::Float(x) => match x.width {
          FloatWidth::Eight => 8,
          FloatWidth::Four => 4,
       },
-      ValueType::Bool => 1,
-      ValueType::Unit => 1,
-      ValueType::Never => 1,
-      ValueType::ProcedurePointer { .. } => 4, // @FixedPointerWidth
-      ValueType::ProcedureItem(_, _) => 1,
-      ValueType::CompileError => unreachable!(),
-      ValueType::Struct(x) => si.get(x).unwrap().strictest_alignment,
-      ValueType::Array(a_type, _len) => mem_alignment(a_type, ei, si),
+      ExpressionType::Pointer(_) => 4, // @FixedPointerWidth
+      ExpressionType::Bool => 1,
+      ExpressionType::Unit => 1,
+      ExpressionType::Never => 1,
+      ExpressionType::ProcedurePointer { .. } => 4, // @FixedPointerWidth
+      ExpressionType::ProcedureItem(_, _) => 1,
+      ExpressionType::CompileError => unreachable!(),
+      ExpressionType::Struct(x) => si.get(x).unwrap().strictest_alignment,
+      ExpressionType::Array(a_type, _len) => mem_alignment(a_type, ei, si),
    }
 }
 
 /// The size of a type, in number of WASM values
 pub fn sizeof_type_values(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
-      ExpressionType::Value(x) => sizeof_value_type_values(x, ei, si),
-      ExpressionType::Pointer(_, _) => 1,
-   }
-}
-
-fn sizeof_value_type_values(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
-   match e {
-      ValueType::Unresolved(_) => unreachable!(),
-      ValueType::UnknownInt(_) => unreachable!(),
-      ValueType::UnknownFloat(_) => unreachable!(),
-      ValueType::Enum(x) => {
+      ExpressionType::Unresolved(_) => unreachable!(),
+      ExpressionType::UnknownInt(_) => unreachable!(),
+      ExpressionType::UnknownFloat(_) => unreachable!(),
+      ExpressionType::Enum(x) => {
          let base_type = &ei.get(x).unwrap().base_type;
-         sizeof_value_type_values(base_type, ei, si)
+         sizeof_type_values(base_type, ei, si)
       }
-      ValueType::Int(_) => 1,
-      ValueType::Float(_) => 1,
-      ValueType::Bool => 1,
-      ValueType::Unit => 0,
-      ValueType::Never => 0,
-      ValueType::CompileError => unreachable!(),
-      ValueType::Struct(x) => si.get(x).unwrap().values_size,
-      ValueType::Array(a_type, len) => sizeof_type_values(a_type, ei, si) * (*len),
-      ValueType::ProcedurePointer { .. } => 1,
-      ValueType::ProcedureItem(_, _) => 0,
+      ExpressionType::Int(_) => 1,
+      ExpressionType::Float(_) => 1,
+      ExpressionType::Pointer(_) => 1,
+      ExpressionType::Bool => 1,
+      ExpressionType::Unit => 0,
+      ExpressionType::Never => 0,
+      ExpressionType::CompileError => unreachable!(),
+      ExpressionType::Struct(x) => si.get(x).unwrap().values_size,
+      ExpressionType::Array(a_type, len) => sizeof_type_values(a_type, ei, si) * (*len),
+      ExpressionType::ProcedurePointer { .. } => 1,
+      ExpressionType::ProcedureItem(_, _) => 0,
    }
 }
 
@@ -186,37 +174,31 @@ pub fn sizeof_type_wasm(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: 
 /// The size of a type as it's stored in memory
 pub fn sizeof_type_mem(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
-      ExpressionType::Value(x) => sizeof_value_type_mem(x, ei, si),
-      ExpressionType::Pointer(_, _) => 4, // @FixedPointerWidth
-   }
-}
-
-pub fn sizeof_value_type_mem(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
-   match e {
-      ValueType::Unresolved(_) => unreachable!(),
-      ValueType::UnknownInt(_) => unreachable!(),
-      ValueType::UnknownFloat(_) => unreachable!(),
-      ValueType::Enum(x) => {
+      ExpressionType::Unresolved(_) => unreachable!(),
+      ExpressionType::UnknownInt(_) => unreachable!(),
+      ExpressionType::UnknownFloat(_) => unreachable!(),
+      ExpressionType::Enum(x) => {
          let base_type = &ei.get(x).unwrap().base_type;
-         sizeof_value_type_mem(base_type, ei, si)
+         sizeof_type_mem(base_type, ei, si)
       }
-      ValueType::Int(x) => match x.width {
+      ExpressionType::Int(x) => match x.width {
          IntWidth::Eight => 8,
          IntWidth::Four | IntWidth::Pointer => 4,
          IntWidth::Two => 2,
          IntWidth::One => 1,
       },
-      ValueType::Float(x) => match x.width {
+      ExpressionType::Float(x) => match x.width {
          FloatWidth::Eight => 8,
          FloatWidth::Four => 4,
       },
-      ValueType::Bool => 1,
-      ValueType::Unit => 0,
-      ValueType::Never => 0,
-      ValueType::ProcedurePointer { .. } => 4, // @FixedPointerWidth
-      ValueType::ProcedureItem(_, _) => 0,
-      ValueType::CompileError => unreachable!(),
-      ValueType::Struct(x) => si.get(x).unwrap().mem_size,
-      ValueType::Array(a_type, len) => sizeof_type_mem(a_type, ei, si) * (*len),
+      ExpressionType::Pointer(_) => 4, // @FixedPointerWidth
+      ExpressionType::Bool => 1,
+      ExpressionType::Unit => 0,
+      ExpressionType::Never => 0,
+      ExpressionType::ProcedurePointer { .. } => 4, // @FixedPointerWidth
+      ExpressionType::ProcedureItem(_, _) => 0,
+      ExpressionType::CompileError => unreachable!(),
+      ExpressionType::Struct(x) => si.get(x).unwrap().mem_size,
+      ExpressionType::Array(a_type, len) => sizeof_type_mem(a_type, ei, si) * (*len),
    }
 }

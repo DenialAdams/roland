@@ -2,7 +2,7 @@ use std::path::Path;
 
 use rolandc::interner::Interner;
 use rolandc::source_info::{SourceInfo, SourcePosition};
-use rolandc::type_data::ValueType;
+use rolandc::type_data::ExpressionType;
 use rolandc::CompilationContext;
 
 use crate::roland_source_path_to_canon_path;
@@ -48,7 +48,7 @@ pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationCon
          continue;
       }
 
-      if let ValueType::Unresolved(id) = parsed_type.e_type.get_value_type_or_value_being_pointed_to() {
+      if let ExpressionType::Unresolved(id) = parsed_type.e_type.get_type_or_type_being_pointed_to() {
          // These nodes should never be resolved
          return ctx
             .program

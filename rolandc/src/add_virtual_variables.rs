@@ -1,22 +1,19 @@
 use indexmap::IndexMap;
 
 use crate::parse::{BlockNode, CastType, Expression, ExpressionId, ExpressionPool, Program, Statement, VariableId};
-use crate::type_data::{ExpressionType, ValueType};
+use crate::type_data::ExpressionType;
 
 pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
    source_type == target_type
       || matches!(
          (source_type, &target_type),
          (
-            ExpressionType::Value(ValueType::Int(_)) | ExpressionType::Pointer(_, _),
-            ExpressionType::Pointer(_, _)
+            ExpressionType::Int(_) | ExpressionType::Pointer(_),
+            ExpressionType::Pointer(_)
          ) | (
-            ExpressionType::Value(ValueType::Int(_) | ValueType::Float(_)) | ExpressionType::Pointer(_, _),
-            ExpressionType::Value(ValueType::Int(_))
-         ) | (
-            ExpressionType::Value(ValueType::Int(_)),
-            ExpressionType::Value(ValueType::Float(_))
-         )
+            ExpressionType::Int(_) | ExpressionType::Float(_) | ExpressionType::Pointer(_),
+            ExpressionType::Int(_)
+         ) | (ExpressionType::Int(_), ExpressionType::Float(_))
       )
 }
 struct VvContext<'a, 'b> {
@@ -133,7 +130,7 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
 
          if matches!(
             vv_context.expressions[*proc_expr].exp_type.as_ref().unwrap(),
-            ExpressionType::Value(ValueType::ProcedurePointer { .. })
+            ExpressionType::ProcedurePointer { .. }
          ) {
             vv_context.declare_vv(*proc_expr);
          }

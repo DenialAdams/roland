@@ -10,7 +10,7 @@ use crate::interner::{Interner, StrId};
 use crate::parse::{ExpressionTypeNode, ProcImplSource, StrNode};
 use crate::semantic_analysis::validator::resolve_type;
 use crate::source_info::{SourceInfo, SourcePath};
-use crate::type_data::{ExpressionType, ValueType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
+use crate::type_data::{ExpressionType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
 use crate::{CompilationConfig, Program};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -45,10 +45,10 @@ fn recursive_struct_check(
    let mut is_recursive = RecursiveStructCheckResult::NotRecursive;
 
    for struct_field in struct_fields.iter().flat_map(|x| match &x.1.e_type {
-      ExpressionType::Value(ValueType::Struct(x)) => Some(*x),
+      ExpressionType::Struct(x) => Some(*x),
       // Types should be fully resolved at this point, but may not be if there is an error in the program
       // (in that case, it's fine to ignore it as we'll already error out)
-      ExpressionType::Value(ValueType::Unresolved(x)) => Some(*x),
+      ExpressionType::Unresolved(x) => Some(*x),
       _ => None,
    }) {
       if struct_field == base_name {
@@ -83,10 +83,10 @@ fn resolve_to_type_or_generic_parameter(
       return Ok(());
    }
 
-   let param_type_name = match the_type.get_value_type_or_value_being_pointed_to() {
-      ValueType::Unresolved(x) => *x,
+   let param_type_name = match the_type {
+      ExpressionType::Unresolved(x) => *x,
       _ => {
-         // Any type that contains other types i.e. an array, procedure pointer... can be unresolved while itself not being Unresolved
+         // Any type that contains other types i.e. an array, pointer, procedure pointer... can be unresolved while itself not being Unresolved
          // We'll just bail here. There will be more sophisticated stuff needed in the future to make this work.
          return Err(());
       }
@@ -127,8 +127,8 @@ pub fn populate_type_and_procedure_info(
 
       let base_type = if let Some(etn) = a_enum.requested_size.as_ref() {
          let base_type = match etn.e_type {
-            ExpressionType::Value(U64_TYPE) => U64_TYPE,
-            ExpressionType::Value(U32_TYPE) => {
+            U64_TYPE => U64_TYPE,
+            U32_TYPE => {
                if a_enum.variants.len() > (u64::from(u32::MAX) + 1) as usize {
                   rolandc_error!(
                      err_manager,
@@ -141,7 +141,7 @@ pub fn populate_type_and_procedure_info(
                }
                U32_TYPE
             }
-            ExpressionType::Value(U16_TYPE) => {
+            U16_TYPE => {
                if a_enum.variants.len() > (u32::from(u16::MAX) + 1) as usize {
                   rolandc_error!(
                      err_manager,
@@ -154,7 +154,7 @@ pub fn populate_type_and_procedure_info(
                }
                U16_TYPE
             }
-            ExpressionType::Value(U8_TYPE) => {
+            U8_TYPE => {
                if a_enum.variants.len() > (u16::from(u8::MAX) + 1) as usize {
                   rolandc_error!(
                      err_manager,
@@ -192,7 +192,7 @@ pub fn populate_type_and_procedure_info(
       } else if !a_enum.variants.is_empty() {
          U8_TYPE
       } else {
-         ValueType::Unit
+         ExpressionType::Unit
       };
 
       if let Some(old_enum) = program.enum_info.insert(

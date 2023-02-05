@@ -7,7 +7,7 @@ use crate::interner::StrId;
 use crate::parse::{ExpressionId, ExpressionPool, ExpressionTypeNode, VariableId};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
-use crate::type_data::{ExpressionType, ValueType};
+use crate::type_data::ExpressionType;
 use crate::Target;
 
 pub mod type_and_procedure_info;
@@ -29,7 +29,7 @@ pub struct ProcedureInfo {
 pub struct EnumInfo {
    pub variants: IndexMap<StrId, SourceInfo>,
    pub location: SourceInfo,
-   pub base_type: ValueType,
+   pub base_type: ExpressionType,
 }
 
 #[derive(Clone)]
@@ -78,7 +78,7 @@ pub struct ValidationContext<'a> {
    pub expressions: &'a mut ExpressionPool,
    pub struct_size_info: HashMap<StrId, SizeInfo>,
    pub type_variables: DisjointSet,
-   pub type_variable_definitions: HashMap<usize, ValueType>,
+   pub type_variable_definitions: HashMap<usize, ExpressionType>,
    pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,
    pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
    next_var_dont_access: VariableId,
