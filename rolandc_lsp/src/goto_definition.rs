@@ -53,9 +53,9 @@ pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationCon
          return ctx
             .program
             .struct_info
-            .get(id)
+            .get(&id)
             .map(|x| x.location)
-            .or_else(|| ctx.program.enum_info.get(id).map(|x| x.location));
+            .or_else(|| ctx.program.enum_info.get(&id).map(|x| x.location));
       }
    }
 

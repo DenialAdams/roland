@@ -643,7 +643,7 @@ fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -
       parse_type(l, parse_context)?
    } else {
       ExpressionTypeNode {
-         e_type: ExpressionType::Value(ValueType::Unit),
+         e_type: ValueType::Unit,
          // this location is somewhat bogus. ok for now?
          location: merge_locations(procedure_name.source_info, close_paren.source_info),
       }
@@ -1113,7 +1113,7 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
       let _ = l.next();
    }
 
-   let (loc_end, value_type) = match l.peek_token() {
+   let (loc_end, mut value_type) = match l.peek_token() {
       Token::OpenSquareBracket => {
          let _ = l.next();
          let a_inner_type = parse_type(l, parse_context)?;
@@ -1167,7 +1167,7 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
             let return_type_p = parse_type(l, parse_context)?;
             (return_type_p.e_type, return_type_p.location)
          } else {
-            (ExpressionType::Value(ValueType::Unit), close_paren.source_info)
+            (ValueType::Unit, close_paren.source_info)
          };
          (
             last_location,
@@ -1202,16 +1202,14 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
       }
    };
 
-   let etn = if ptr_count > 0 {
-      ExpressionTypeNode {
-         e_type: ExpressionType::Pointer(ptr_count, value_type),
-         location: merge_locations(loc_start, loc_end),
-      }
-   } else {
-      ExpressionTypeNode {
-         e_type: ExpressionType::Value(value_type),
-         location: merge_locations(loc_start, loc_end),
-      }
+   while ptr_count > 0 {
+      value_type = ExpressionType::Pointer(Box::new(value_type));
+      ptr_count -= 1;
+   }
+
+   let etn = ExpressionTypeNode {
+      e_type: value_type,
+      location: merge_locations(loc_start, loc_end),
    };
 
    parse_context.parsed_types.push(etn.clone());

@@ -40,33 +40,33 @@ fn get_special_procedures(target: Target, interner: &mut Interner) -> Vec<Specia
             name: interner.intern("start"),
             required: false,
             input_types: vec![],
-            return_type: ExpressionType::Value(ValueType::Unit),
+            return_type: ValueType::Unit,
          },
          SpecialProcedure {
             name: interner.intern("update"),
             required: true,
             input_types: vec![],
-            return_type: ExpressionType::Value(ValueType::Unit),
+            return_type: ValueType::Unit,
          },
       ],
       Target::Wasi => vec![SpecialProcedure {
          name: interner.intern("main"),
          required: true,
          input_types: vec![],
-         return_type: ExpressionType::Value(ValueType::Unit),
+         return_type: ValueType::Unit,
       }],
       Target::Microw8 => vec![
          SpecialProcedure {
             name: interner.intern("upd"),
             required: true,
             input_types: vec![],
-            return_type: ExpressionType::Value(ValueType::Unit),
+            return_type: ValueType::Unit,
          },
          SpecialProcedure {
             name: interner.intern("snd"),
             required: false,
-            input_types: vec![ExpressionType::Value(I32_TYPE)],
-            return_type: ExpressionType::Value(F32_TYPE),
+            input_types: vec![I32_TYPE],
+            return_type: F32_TYPE,
          },
       ],
    }
@@ -86,25 +86,25 @@ enum TypeValidator {
 fn matches(type_validation: &TypeValidator, et: &ExpressionType) -> bool {
    matches!(
       (type_validation, et),
-      (_, ExpressionType::Value(ValueType::Never))
+      (_, ValueType::Never)
          | (TypeValidator::Any, _)
-         | (TypeValidator::AnyPointer, ExpressionType::Pointer(_, _))
-         | (TypeValidator::Bool, ExpressionType::Value(ValueType::Bool))
+         | (TypeValidator::AnyPointer, ExpressionType::Pointer(_))
+         | (TypeValidator::Bool, ValueType::Bool)
          | (
             TypeValidator::AnyInt,
-            ExpressionType::Value(ValueType::Int(_) | ValueType::UnknownInt(_))
+            ValueType::Int(_) | ValueType::UnknownInt(_)
          )
          | (
             TypeValidator::AnySignedInt,
             // Accepting unknown int looks weird (could be unsigned),
             // but the trick is that we double validate this for the pertinent nodes after we've inferred types
-            ExpressionType::Value(ValueType::Int(IntType { signed: true, .. }) | ValueType::UnknownInt(_))
+            ValueType::Int(IntType { signed: true, .. }) | ValueType::UnknownInt(_)
          )
          | (
             TypeValidator::AnyFloat,
-            ExpressionType::Value(ValueType::Float(_) | ValueType::UnknownFloat(_))
+            ValueType::Float(_) | ValueType::UnknownFloat(_)
          )
-         | (TypeValidator::AnyEnum, ExpressionType::Value(ValueType::Enum(_)))
+         | (TypeValidator::AnyEnum, ValueType::Enum(_))
    )
 }
 
@@ -121,10 +121,7 @@ pub fn resolve_type(
    ei: &IndexMap<StrId, EnumInfo>,
    si: &IndexMap<StrId, StructInfo>,
 ) -> Result<(), ()> {
-   match t_type {
-      ExpressionType::Value(vt) => resolve_value_type(vt, ei, si),
-      ExpressionType::Pointer(_, vt) => resolve_value_type(vt, ei, si),
-   }
+   resolve_value_type(t_type, ei, si)
 }
 
 pub fn resolve_value_type(
@@ -133,6 +130,7 @@ pub fn resolve_value_type(
    si: &IndexMap<StrId, StructInfo>,
 ) -> Result<(), ()> {
    match v_type {
+      ExpressionType::Pointer(vt) => resolve_value_type(vt, ei, si),
       ValueType::Never => Ok(()),
       ValueType::UnknownInt(_) => Ok(()),
       ValueType::UnknownFloat(_) => Ok(()),
@@ -251,13 +249,13 @@ pub fn type_and_check_validity(
                      .input_types
                      .iter()
                      .map(|x| x.as_roland_type_info_like_source(interner))
-                     .collect::<Vec<String>>()
+                     .collect::<Vec<_>>()
                      .join(", ")
                );
             }
          }
          if p.ret_type != special_proc.return_type {
-            if special_proc.return_type == ExpressionType::Value(ValueType::Unit) {
+            if special_proc.return_type == ValueType::Unit {
                rolandc_error!(
                   err_manager,
                   p.location,
@@ -368,7 +366,7 @@ pub fn type_and_check_validity(
          &procedure.definition.ret_type.e_type,
          procedure.block.statements.last().map(|x| &x.statement),
       ) {
-         (ExpressionType::Value(ValueType::Unit), _) => (),
+         (ValueType::Unit, _) => (),
          (_, Some(Statement::Return(_))) => (),
          (x, _) => {
             let x_str = x.as_roland_type_info(interner);
@@ -411,7 +409,7 @@ pub fn type_and_check_validity(
          if matches!(e.expression, Expression::UnaryOperator(UnOp::Negate, _))
             && matches!(
                e.exp_type.as_ref().unwrap(),
-               ExpressionType::Value(ValueType::Int(IntType { signed: false, .. }))
+               ValueType::Int(IntType { signed: false, .. })
             )
          {
             rolandc_error!(
@@ -446,6 +444,8 @@ pub fn type_and_check_validity(
    program.source_to_definition = validation_context.source_to_definition;
    program.next_variable = validation_context.next_var_dont_access;
 }
+
+// nocheckin: look at diff for get_value_type_or_type_pointed_to and maybe add that method back and use accordingly
 
 fn type_statement(
    err_manager: &mut ErrorManager,
@@ -551,14 +551,14 @@ fn type_statement(
             start_expr.exp_type.as_ref().unwrap(),
             end_expr.exp_type.as_ref().unwrap(),
          ) {
-            (lhs, _) if lhs.is_error() => ExpressionType::Value(ValueType::CompileError),
-            (_, rhs) if rhs.is_error() => ExpressionType::Value(ValueType::CompileError),
-            (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) if x == y => {
-               ExpressionType::Value(ValueType::Int(*x))
+            (lhs, _) if lhs.is_error() => ValueType::CompileError,
+            (_, rhs) if rhs.is_error() => ValueType::CompileError,
+            (ValueType::Int(x), ValueType::Int(y)) if x == y => {
+               ValueType::Int(*x)
             }
-            (ExpressionType::Value(ValueType::UnknownInt(x)), ExpressionType::Value(ValueType::UnknownInt(y))) => {
+            (ValueType::UnknownInt(x), ValueType::UnknownInt(y)) => {
                debug_assert!(x == y);
-               ExpressionType::Value(ValueType::UnknownInt(*x))
+               ValueType::UnknownInt(*x)
             }
             _ => {
                rolandc_error_w_details!(
@@ -571,7 +571,7 @@ fn type_statement(
                   start_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
                   end_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
                );
-               ExpressionType::Value(ValueType::CompileError)
+               ValueType::CompileError
             }
          };
 
@@ -607,7 +607,7 @@ fn type_statement(
 
          let en = &validation_context.expressions[*en];
          let if_exp_type = en.exp_type.as_ref().unwrap();
-         if if_exp_type != &ExpressionType::Value(ValueType::Bool) && !if_exp_type.is_error() {
+         if if_exp_type != &ValueType::Bool && !if_exp_type.is_error() {
             rolandc_error!(
                err_manager,
                en.location,
@@ -658,7 +658,7 @@ fn type_statement(
          let opt_en = opt_enid.map(|enid| &validation_context.expressions[enid]);
 
          let result_type = if dt.as_ref().map_or(false, |x| {
-            matches!(x.e_type, ExpressionType::Value(ValueType::Unresolved(_)))
+            matches!(x.e_type, ValueType::Unresolved(_))
          }) {
             let dt_str = dt.as_ref().unwrap().e_type.as_roland_type_info(interner);
             rolandc_error!(
@@ -668,7 +668,7 @@ fn type_statement(
                interner.lookup(id.str),
                dt_str,
             );
-            ExpressionType::Value(ValueType::CompileError)
+            ValueType::CompileError
          } else if dt.is_some() {
             if let Some(en) = opt_en {
                check_type_declared_vs_actual(dt.as_ref().unwrap(), en, interner, err_manager);
@@ -683,7 +683,7 @@ fn type_statement(
                id.location,
                "Uninitialized variables must be declared with a type",
             );
-            ExpressionType::Value(ValueType::CompileError)
+            ValueType::CompileError
          };
 
          *var_id = declare_variable(err_manager, id, result_type, validation_context, interner);
@@ -787,7 +787,7 @@ fn get_type(
                "Undeclared type `{}`",
                target_type.as_roland_type_info(interner),
             );
-            *target_type = ExpressionType::Value(ValueType::CompileError);
+            *target_type = ValueType::CompileError;
          }
       }
       Expression::BoundFcnLiteral(_, generic_args) => {
@@ -829,21 +829,21 @@ fn get_type(
    let expr_node = std::ptr::addr_of!(validation_context.expressions[expr_index]);
 
    match unsafe { &(*expr_node).expression } {
-      Expression::UnitLiteral => ExpressionType::Value(ValueType::Unit),
-      Expression::BoolLiteral(_) => ExpressionType::Value(ValueType::Bool),
+      Expression::UnitLiteral => ValueType::Unit,
+      Expression::BoolLiteral(_) => ValueType::Bool,
       Expression::IntLiteral { .. } => {
          validation_context.unknown_ints.insert(expr_index);
          let new_type_variable = validation_context.type_variables.add_new_set();
-         ExpressionType::Value(ValueType::UnknownInt(new_type_variable))
+         ValueType::UnknownInt(new_type_variable)
       }
       Expression::FloatLiteral(_) => {
          validation_context.unknown_floats.insert(expr_index);
          let new_type_variable = validation_context.type_variables.add_new_set();
-         ExpressionType::Value(ValueType::UnknownFloat(new_type_variable))
+         ValueType::UnknownFloat(new_type_variable)
       }
       Expression::StringLiteral(lit) => {
          validation_context.string_literals.insert(*lit);
-         ExpressionType::Value(ValueType::Struct(interner.intern("String")))
+         ValueType::Struct(interner.intern("String"))
       }
       Expression::Cast {
          cast_type,
@@ -853,26 +853,26 @@ fn get_type(
          type_expression(err_manager, *expr_id, validation_context, interner);
 
          if target_type.is_error() {
-            return ExpressionType::Value(ValueType::CompileError);
+            return ValueType::CompileError;
          }
 
          if *cast_type == CastType::Transmute && target_type.is_pointer() {
-            try_set_inferred_type(&ExpressionType::Value(USIZE_TYPE), *expr_id, validation_context);
-         } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Value(F64_TYPE)) {
-            try_set_inferred_type(&ExpressionType::Value(U64_TYPE), *expr_id, validation_context);
-         } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Value(F32_TYPE)) {
-            try_set_inferred_type(&ExpressionType::Value(U32_TYPE), *expr_id, validation_context);
-         } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Value(ValueType::Enum(_)))
+            try_set_inferred_type(&USIZE_TYPE, *expr_id, validation_context);
+         } else if *cast_type == CastType::Transmute && matches!(target_type, &F64_TYPE) {
+            try_set_inferred_type(&U64_TYPE, *expr_id, validation_context);
+         } else if *cast_type == CastType::Transmute && matches!(target_type, &F32_TYPE) {
+            try_set_inferred_type(&U32_TYPE, *expr_id, validation_context);
+         } else if *cast_type == CastType::Transmute && matches!(target_type, ValueType::Enum(_))
          {
             let matching_int = match sizeof_type_mem(
                target_type,
                validation_context.enum_info,
                &validation_context.struct_size_info,
             ) {
-               8 => ExpressionType::Value(U64_TYPE),
-               4 => ExpressionType::Value(U32_TYPE),
-               2 => ExpressionType::Value(U16_TYPE),
-               1 => ExpressionType::Value(U8_TYPE),
+               8 => U64_TYPE,
+               4 => U32_TYPE,
+               2 => U16_TYPE,
+               1 => U8_TYPE,
                _ => unreachable!(),
             };
             try_set_inferred_type(&matching_int, *expr_id, validation_context);
@@ -883,31 +883,31 @@ fn get_type(
 
          if e_type.is_error() {
             // Avoid cascading errors
-            return ExpressionType::Value(ValueType::CompileError);
+            return ValueType::CompileError;
          }
 
          match cast_type {
             CastType::Extend => {
-               let valid_cast = match (e_type, &target_type) {
-                  (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y)))
+               let valid_cast = match (e_type, target_type) {
+                  (ValueType::Int(x), ValueType::Int(y))
                      if x.width == IntWidth::Pointer =>
                   {
                      // going from unsigned -> signed is ok, but signed -> unsigned is not
                      let bad = x.signed & !y.signed;
                      (IntWidth::Pointer.as_num_bytes() <= y.width.as_num_bytes()) & !bad
                   }
-                  (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y)))
+                  (ValueType::Int(x), ValueType::Int(y))
                      if y.width == IntWidth::Pointer =>
                   {
                      let bad = x.signed & !y.signed;
                      (x.width.as_num_bytes() <= IntWidth::Pointer.as_num_bytes()) & !bad
                   }
-                  (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
+                  (ValueType::Int(x), ValueType::Int(y)) => {
                      let bad = x.signed & !y.signed;
                      (x.width.as_num_bytes() < y.width.as_num_bytes()) & !bad
                   }
-                  (ExpressionType::Value(F32_TYPE), ExpressionType::Value(F64_TYPE)) => true,
-                  (ExpressionType::Value(ValueType::Bool), ExpressionType::Value(ValueType::Int(_))) => true,
+                  (&F32_TYPE, &F64_TYPE) => true,
+                  (ValueType::Bool, ValueType::Int(_)) => true,
                   _ => false,
                };
 
@@ -921,27 +921,27 @@ fn get_type(
                      e_type.as_roland_type_info(interner),
                      target_type.as_roland_type_info(interner),
                   );
-                  ExpressionType::Value(ValueType::CompileError)
+                  ValueType::CompileError
                }
             }
             CastType::Truncate => {
-               let valid_cast = match (e_type, &target_type) {
-                  (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y)))
+               let valid_cast = match (e_type, target_type) {
+                  (ValueType::Int(x), ValueType::Int(y))
                      if x.width == IntWidth::Pointer =>
                   {
                      IntWidth::Pointer.as_num_bytes() >= y.width.as_num_bytes()
                   }
-                  (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y)))
+                  (ValueType::Int(x), ValueType::Int(y))
                      if y.width == IntWidth::Pointer =>
                   {
                      x.width.as_num_bytes() >= IntWidth::Pointer.as_num_bytes()
                   }
-                  (ExpressionType::Value(ValueType::Int(x)), ExpressionType::Value(ValueType::Int(y))) => {
+                  (ValueType::Int(x), ValueType::Int(y)) => {
                      x.width.as_num_bytes() > y.width.as_num_bytes()
                   }
-                  (ExpressionType::Value(F64_TYPE), ExpressionType::Value(F32_TYPE)) => true,
-                  (ExpressionType::Value(ValueType::Float(_)), ExpressionType::Value(ValueType::Int(_))) => true,
-                  (ExpressionType::Value(ValueType::Int(_)), ExpressionType::Value(ValueType::Float(_))) => true,
+                  (&F64_TYPE, &F32_TYPE) => true,
+                  (ValueType::Float(_), ValueType::Int(_)) => true,
+                  (ValueType::Int(_), ValueType::Float(_)) => true,
                   _ => false,
                };
 
@@ -955,7 +955,7 @@ fn get_type(
                      e_type.as_roland_type_info(interner),
                      target_type.as_roland_type_info(interner),
                   );
-                  ExpressionType::Value(ValueType::CompileError)
+                  ValueType::CompileError
                }
             }
             CastType::Transmute => {
@@ -965,7 +965,7 @@ fn get_type(
                      e.location,
                      "Transmute encountered an operand whose size is not yet known",
                   );
-                  return ExpressionType::Value(ValueType::CompileError);
+                  return ValueType::CompileError;
                }
 
                let size_source = sizeof_type_mem(
@@ -988,7 +988,7 @@ fn get_type(
                      expr_location,
                      "Transmuting to the never type, a pointer to the never type, or a struct containing the never type isn't supported",
                   );
-                  ExpressionType::Value(ValueType::CompileError)
+                  ValueType::CompileError
                } else if size_source == size_target {
                   let alignment_source = value_type_mem_alignment(
                      e_type.get_value_type_or_value_being_pointed_to(),
@@ -1017,7 +1017,7 @@ fn get_type(
                         alignment_source,
                         alignment_target,
                      );
-                     ExpressionType::Value(ValueType::CompileError)
+                     ValueType::CompileError
                   } else {
                      target_type.clone()
                   }
@@ -1031,7 +1031,7 @@ fn get_type(
                      size_source,
                      size_target,
                   );
-                  ExpressionType::Value(ValueType::CompileError)
+                  ValueType::CompileError
                }
             }
          }
@@ -1079,7 +1079,7 @@ fn get_type(
 
          if lhs_type.is_error() || rhs_type.is_error() {
             // Avoid cascading errors
-            ExpressionType::Value(ValueType::CompileError)
+            ValueType::CompileError
          } else if !any_match(correct_arg_types, lhs_type) {
             rolandc_error!(
                err_manager,
@@ -1089,7 +1089,7 @@ fn get_type(
                correct_arg_types,
                lhs_type.as_roland_type_info(interner)
             );
-            ExpressionType::Value(ValueType::CompileError)
+            ValueType::CompileError
          } else if !any_match(correct_arg_types, rhs_type) {
             rolandc_error!(
                err_manager,
@@ -1099,7 +1099,7 @@ fn get_type(
                correct_arg_types,
                rhs_type.as_roland_type_info(interner)
             );
-            ExpressionType::Value(ValueType::CompileError)
+            ValueType::CompileError
          } else if lhs_type != rhs_type {
             rolandc_error_w_details!(
                err_manager,
@@ -1112,7 +1112,7 @@ fn get_type(
                lhs_type.as_roland_type_info(interner),
                rhs_type.as_roland_type_info(interner)
             );
-            ExpressionType::Value(ValueType::CompileError)
+            ValueType::CompileError
          } else {
             match operator {
                BinOp::Add
@@ -1132,7 +1132,7 @@ fn get_type(
                | BinOp::LessThan
                | BinOp::LessThanOrEqualTo
                | BinOp::LogicalAnd
-               | BinOp::LogicalOr => ExpressionType::Value(ValueType::Bool),
+               | BinOp::LogicalOr => ValueType::Bool,
             }
          }
       }
@@ -1142,7 +1142,7 @@ fn get_type(
          let e = &validation_context.expressions[*e];
 
          if *un_op == UnOp::AddressOf {
-            if let ExpressionType::Value(ValueType::ProcedureItem(proc_name, _bound_type_params)) =
+            if let ValueType::ProcedureItem(proc_name, _bound_type_params) =
                e.exp_type.as_ref().unwrap()
             {
                // special case
@@ -1154,7 +1154,7 @@ fn get_type(
                      expr_location,
                      "Procedure pointers can't be taken to compiler builtins"
                   );
-                  return ExpressionType::Value(ValueType::CompileError);
+                  return ValueType::CompileError;
                }
 
                if !procedure_info.named_parameters.is_empty() {
@@ -1163,13 +1163,13 @@ fn get_type(
                      expr_location,
                      "Procedure pointers can't be taken to procedures with named arguments"
                   );
-                  return ExpressionType::Value(ValueType::CompileError);
+                  return ValueType::CompileError;
                }
 
-               return ExpressionType::Value(ValueType::ProcedurePointer {
+               return ValueType::ProcedurePointer {
                   parameters: procedure_info.parameters.clone().into_boxed_slice(),
                   ret_type: Box::new(procedure_info.ret_type.clone()),
-               });
+               };
             }
          }
 
@@ -1206,7 +1206,7 @@ fn get_type(
 
          if e.exp_type.as_ref().unwrap().is_error() {
             // Avoid cascading errors
-            ExpressionType::Value(ValueType::CompileError)
+            ValueType::CompileError
          } else if !any_match(correct_type, e.exp_type.as_ref().unwrap()) {
             rolandc_error!(
                err_manager,
@@ -1216,7 +1216,7 @@ fn get_type(
                un_op,
                e.exp_type.as_ref().unwrap().as_roland_type_info(interner)
             );
-            ExpressionType::Value(ValueType::CompileError)
+            ValueType::CompileError
          } else if *un_op == UnOp::AddressOf
             && !e
                .expression
@@ -1235,7 +1235,7 @@ fn get_type(
                   "A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter"
                );
             }
-            ExpressionType::Value(ValueType::CompileError)
+            ValueType::CompileError
          } else if *un_op == UnOp::AddressOf && is_zst {
             // Allowing this wouldn't cause any clear bug (as far as I know), but it just seems whack
             // In the future, we should allow this for generic programming. TODO!
@@ -1244,7 +1244,7 @@ fn get_type(
                expr_location,
                "Taking a pointer to a zero sized type is disallowed, as they don't reside in memory.",
             );
-            ExpressionType::Value(ValueType::CompileError)
+            ValueType::CompileError
          } else if *un_op == UnOp::Dereference && is_zst {
             // In the future, we should allow this for generic programming. TODO!
             rolandc_error!(
@@ -1252,7 +1252,7 @@ fn get_type(
                expr_location,
                "Dereferencing a pointer to a zero sized type is disallowed, as there is nothing to load.",
             );
-            ExpressionType::Value(ValueType::CompileError)
+            ValueType::CompileError
          } else if *un_op == UnOp::AddressOf {
             if let Expression::Variable(var) = &e.expression {
                if let Some(gi) = validation_context.global_info.get(var) {
@@ -1285,7 +1285,7 @@ fn get_type(
                "Encountered undefined symbol `{}`",
                interner.lookup(id.str)
             );
-            ExpressionType::Value(ValueType::CompileError)
+            ValueType::CompileError
          }
       },
       Expression::UnresolvedVariable(id) => {
@@ -1295,7 +1295,7 @@ fn get_type(
             "Encountered undefined symbol `{}`",
             interner.lookup(id.str)
          );
-         ExpressionType::Value(ValueType::CompileError)
+         ValueType::CompileError
       }
       Expression::Variable(_) => unreachable!(),
       Expression::ProcedureCall { proc_expr, args } => {
@@ -1306,7 +1306,7 @@ fn get_type(
 
          // sad clone :(
          match validation_context.expressions[*proc_expr].exp_type.clone().unwrap() {
-            ExpressionType::Value(ValueType::ProcedureItem(proc_name, _)) => {
+            ValueType::ProcedureItem(proc_name, _) => {
                let procedure_info = validation_context.procedure_info.get(&proc_name).unwrap();
                check_procedure_call(
                   args,
@@ -1319,7 +1319,7 @@ fn get_type(
                );
                procedure_info.ret_type.clone()
             }
-            ExpressionType::Value(ValueType::ProcedurePointer { parameters, ret_type }) => {
+            ValueType::ProcedurePointer { parameters, ret_type } => {
                check_procedure_call(
                   args,
                   &parameters,
@@ -1331,7 +1331,7 @@ fn get_type(
                );
                ret_type.deref().clone()
             }
-            ExpressionType::Value(ValueType::CompileError) => ExpressionType::Value(ValueType::CompileError),
+            ValueType::CompileError => ValueType::CompileError,
             bad_type => {
                rolandc_error!(
                   err_manager,
@@ -1339,7 +1339,7 @@ fn get_type(
                   "Attempting to invoke a procedure on non-procedure type {}",
                   bad_type.as_roland_type_info(interner),
                );
-               ExpressionType::Value(ValueType::CompileError)
+               ValueType::CompileError
             }
          }
       }
@@ -1427,7 +1427,7 @@ fn get_type(
                   );
                }
 
-               ExpressionType::Value(ValueType::Struct(struct_name.str))
+               ValueType::Struct(struct_name.str)
             }
             None => {
                rolandc_error!(
@@ -1436,7 +1436,7 @@ fn get_type(
                   "Encountered construction of undefined struct `{}`",
                   interner.lookup(struct_name.str)
                );
-               ExpressionType::Value(ValueType::CompileError)
+               ValueType::CompileError
             }
          }
       }
@@ -1452,7 +1452,7 @@ fn get_type(
          while !remaining_fields.is_empty() {
             let field = remaining_fields[0];
             match lhs_type {
-               ExpressionType::Value(ValueType::Struct(struct_name)) => {
+               ValueType::Struct(struct_name) => {
                   let struct_fields = &validation_context.struct_info.get(&struct_name).unwrap().field_types;
                   if let Some(new_t_node) = struct_fields.get(&field) {
                      lhs_type = new_t_node.e_type.clone();
@@ -1464,12 +1464,12 @@ fn get_type(
                         interner.lookup(struct_name),
                         interner.lookup(field),
                      );
-                     lhs_type = ExpressionType::Value(ValueType::CompileError);
+                     lhs_type = ValueType::CompileError;
                   }
                }
-               ExpressionType::Value(ValueType::Array(_, _)) => {
+               ValueType::Array(_, _) => {
                   if field == length_token {
-                     lhs_type = ExpressionType::Value(USIZE_TYPE);
+                     lhs_type = USIZE_TYPE;
                   } else {
                      rolandc_error!(
                         err_manager,
@@ -1477,11 +1477,11 @@ fn get_type(
                         "Array does not have a field `{}`. Hint: Array types have a single field `length`",
                         interner.lookup(*fields.first().unwrap()),
                      );
-                     lhs_type = ExpressionType::Value(ValueType::CompileError);
+                     lhs_type = ValueType::CompileError;
                   }
                }
-               ExpressionType::Value(ValueType::CompileError) => {
-                  lhs_type = ExpressionType::Value(ValueType::CompileError);
+               ValueType::CompileError => {
+                  lhs_type = ValueType::CompileError;
                }
                other_type => {
                   rolandc_error!(
@@ -1490,7 +1490,7 @@ fn get_type(
                      "Encountered field access on type {}; only structs and arrays have fields",
                      other_type.as_roland_type_info(interner)
                   );
-                  lhs_type = ExpressionType::Value(ValueType::CompileError);
+                  lhs_type = ValueType::CompileError;
                }
             }
             remaining_fields = if remaining_fields.is_empty() {
@@ -1554,27 +1554,27 @@ fn get_type(
          }
 
          if any_error {
-            ExpressionType::Value(ValueType::CompileError)
+            ValueType::CompileError
          } else if elems.is_empty() {
-            ExpressionType::Value(ValueType::Array(Box::new(ExpressionType::Value(ValueType::Unit)), 0))
+            ValueType::Array(Box::new(ValueType::Unit), 0)
          } else {
             let a_type = validation_context.expressions[elems[0]].exp_type.clone().unwrap();
             let t_len = elems.len().try_into().unwrap(); // unwrap should always succeed due to error check above
-            ExpressionType::Value(ValueType::Array(Box::new(a_type), t_len))
+            ValueType::Array(Box::new(a_type), t_len)
          }
       }
       Expression::ArrayIndex { array, index } => {
          type_expression(err_manager, *array, validation_context, interner);
          type_expression(err_manager, *index, validation_context, interner);
 
-         try_set_inferred_type(&ExpressionType::Value(USIZE_TYPE), *index, validation_context);
+         try_set_inferred_type(&USIZE_TYPE, *index, validation_context);
 
          let array_expression = &validation_context.expressions[*array];
          let index_expression = &validation_context.expressions[*index];
 
          if index_expression.exp_type.as_ref().unwrap().is_error() {
             // avoid cascading errors
-         } else if index_expression.exp_type.as_ref().unwrap() != &ExpressionType::Value(USIZE_TYPE) {
+         } else if index_expression.exp_type.as_ref().unwrap() != &USIZE_TYPE {
             rolandc_error!(
                err_manager,
                index_expression.location,
@@ -1588,9 +1588,9 @@ fn get_type(
          }
 
          match &array_expression.exp_type {
-            Some(x) if x.is_error() => ExpressionType::Value(ValueType::CompileError),
-            Some(ExpressionType::Value(ValueType::Array(b, _))) => b.deref().clone(),
-            Some(x @ ExpressionType::Pointer(1, ValueType::Array(_, _))) => {
+            Some(x) if x.is_error() => ValueType::CompileError,
+            Some(ValueType::Array(b, _)) => b.deref().clone(),
+            Some(x @ ExpressionType::Pointer(b)) if matches!(**b, ValueType::Array(_, _)) => {
                rolandc_error!(
                   err_manager,
                   expr_location,
@@ -1598,7 +1598,7 @@ fn get_type(
                   x.as_roland_type_info(interner),
                );
 
-               ExpressionType::Value(ValueType::CompileError)
+               ValueType::CompileError
             }
             Some(x) => {
                rolandc_error!(
@@ -1608,7 +1608,7 @@ fn get_type(
                   x.as_roland_type_info(interner),
                );
 
-               ExpressionType::Value(ValueType::CompileError)
+               ValueType::CompileError
             }
             None => unreachable!(),
          }
@@ -1622,7 +1622,7 @@ fn get_type(
                validation_context
                   .source_to_definition
                   .insert(v.location, *variant_location);
-               ExpressionType::Value(ValueType::Enum(x.str))
+               ValueType::Enum(x.str)
             } else {
                rolandc_error!(
                   err_manager,
@@ -1632,7 +1632,7 @@ fn get_type(
                   interner.lookup(x.str),
                );
 
-               ExpressionType::Value(ValueType::CompileError)
+               ValueType::CompileError
             }
          } else {
             rolandc_error!(
@@ -1642,7 +1642,7 @@ fn get_type(
                interner.lookup(x.str),
             );
 
-            ExpressionType::Value(ValueType::CompileError)
+            ValueType::CompileError
          }
       }
    }
@@ -1804,7 +1804,7 @@ fn check_procedure_item(
 ) -> ExpressionType {
    if proc_info.type_parameters.len() == type_arguments.len() {
       for (g_arg, constraints) in type_arguments.iter().zip(proc_info.type_parameters.iter()) {
-         if matches!(g_arg.gtype, ExpressionType::Value(ValueType::Unresolved(_))) {
+         if matches!(g_arg.gtype, ValueType::Unresolved(_)) {
             // We have already errored on this argument
             continue;
          }
@@ -1812,7 +1812,7 @@ fn check_procedure_item(
          for constraint in constraints {
             match interner.lookup(*constraint) {
                "Enum" => {
-                  if !matches!(g_arg.gtype, ExpressionType::Value(ValueType::Enum(_))) {
+                  if !matches!(g_arg.gtype, ValueType::Enum(_)) {
                      rolandc_error!(
                         err_manager,
                         g_arg.location,
@@ -1826,14 +1826,14 @@ fn check_procedure_item(
             }
          }
       }
-      ExpressionType::Value(ValueType::ProcedureItem(
+      ValueType::ProcedureItem(
          proc_name,
          type_arguments
             .iter()
             .map(|x| x.gtype.clone())
             .collect::<Vec<_>>()
             .into_boxed_slice(),
-      ))
+      )
    } else {
       rolandc_error!(
          err_manager,
@@ -1843,7 +1843,7 @@ fn check_procedure_item(
          proc_info.type_parameters.len(),
          type_arguments.len()
       );
-      ExpressionType::Value(ValueType::CompileError)
+      ValueType::CompileError
    }
 }
 
@@ -1889,8 +1889,8 @@ fn check_type_declared_vs_actual(
             declared_type_str,
             actual_type_str,
          );
-      } else if matches!(declared_type, ExpressionType::Value(ValueType::ProcedurePointer { .. }))
-         && matches!(actual_type, ExpressionType::Value(ValueType::ProcedureItem(_, _)))
+      } else if matches!(declared_type, ValueType::ProcedurePointer { .. })
+         && matches!(actual_type, ValueType::ProcedureItem(_, _))
       {
          rolandc_error_w_details!(
             err_manager,

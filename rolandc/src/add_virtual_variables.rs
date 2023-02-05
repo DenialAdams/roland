@@ -8,14 +8,14 @@ pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_ty
       || matches!(
          (source_type, &target_type),
          (
-            ExpressionType::Value(ValueType::Int(_)) | ExpressionType::Pointer(_, _),
-            ExpressionType::Pointer(_, _)
+            ValueType::Int(_) | ExpressionType::Pointer(_),
+            ExpressionType::Pointer(_)
          ) | (
-            ExpressionType::Value(ValueType::Int(_) | ValueType::Float(_)) | ExpressionType::Pointer(_, _),
-            ExpressionType::Value(ValueType::Int(_))
+            ValueType::Int(_) | ValueType::Float(_) | ExpressionType::Pointer(_),
+            ValueType::Int(_)
          ) | (
-            ExpressionType::Value(ValueType::Int(_)),
-            ExpressionType::Value(ValueType::Float(_))
+            ValueType::Int(_),
+            ValueType::Float(_)
          )
       )
 }
@@ -133,7 +133,7 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
 
          if matches!(
             vv_context.expressions[*proc_expr].exp_type.as_ref().unwrap(),
-            ExpressionType::Value(ValueType::ProcedurePointer { .. })
+            ValueType::ProcedurePointer { .. }
          ) {
             vv_context.declare_vv(*proc_expr);
          }

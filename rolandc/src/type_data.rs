@@ -63,11 +63,7 @@ pub const F64_TYPE: ValueType = ValueType::Float(FloatType {
    width: FloatWidth::Eight,
 });
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum ExpressionType {
-   Value(ValueType),
-   Pointer(usize, ValueType),
-}
+pub type ExpressionType = ValueType;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ValueType {
@@ -79,6 +75,7 @@ pub enum ValueType {
    Unit,
    Struct(StrId),
    Array(Box<ExpressionType>, u32),
+   Pointer(Box<ExpressionType>),
    CompileError,
    Enum(StrId),
    ProcedureItem(StrId, Box<[ExpressionType]>),
@@ -151,157 +148,9 @@ pub struct FloatType {
    pub width: FloatWidth,
 }
 
-impl ExpressionType {
-   #[must_use]
-   pub fn is_concrete(&self) -> bool {
-      match self {
-         ExpressionType::Value(x) => x.is_concrete(),
-         ExpressionType::Pointer(_, x) => x.is_concrete(),
-      }
-   }
-
-   #[must_use]
-   pub fn is_error(&self) -> bool {
-      match self {
-         ExpressionType::Value(x) => x.is_error(),
-         ExpressionType::Pointer(_, x) => x.is_error(),
-      }
-   }
-
-   #[must_use]
-   pub fn is_known_or_unknown_int(&self) -> bool {
-      matches!(self, ExpressionType::Value(ValueType::Int(_)))
-         | matches!(self, ExpressionType::Value(ValueType::UnknownInt(_)))
-   }
-
-   #[must_use]
-   pub fn is_known_or_unknown_float(&self) -> bool {
-      matches!(self, ExpressionType::Value(ValueType::Float(_)))
-         | matches!(self, ExpressionType::Value(ValueType::UnknownFloat(_)))
-   }
-
-   #[must_use]
-   pub fn is_pointer(&self) -> bool {
-      matches!(self, ExpressionType::Pointer(_, _))
-   }
-
-   #[must_use]
-   pub fn is_never(&self) -> bool {
-      matches!(self, ExpressionType::Value(ValueType::Never))
-   }
-
-   #[must_use]
-   pub fn get_type_variable_of_unknown_type(&self) -> Option<usize> {
-      match self {
-         ExpressionType::Value(ValueType::UnknownFloat(x)) => Some(*x),
-         ExpressionType::Value(ValueType::UnknownInt(x)) => Some(*x),
-         ExpressionType::Pointer(_, ValueType::UnknownFloat(x)) => Some(*x),
-         ExpressionType::Pointer(_, ValueType::UnknownInt(x)) => Some(*x),
-         ExpressionType::Value(ValueType::Array(v, _)) => v.get_type_variable_of_unknown_type(),
-         // other types can't contain unknown values, at least right now
-         _ => None,
-      }
-   }
-
-   #[must_use]
-   pub fn get_unknown_portion_of_type(&mut self) -> Option<&mut ValueType> {
-      match self {
-         ExpressionType::Value(x @ ValueType::UnknownFloat(_)) => Some(x),
-         ExpressionType::Value(x @ ValueType::UnknownInt(_)) => Some(x),
-         ExpressionType::Pointer(_, x @ ValueType::UnknownFloat(_)) => Some(x),
-         ExpressionType::Pointer(_, x @ ValueType::UnknownInt(_)) => Some(x),
-         ExpressionType::Value(ValueType::Array(v, _)) => v.get_unknown_portion_of_type(),
-         ExpressionType::Pointer(_, ValueType::Array(v, _)) => v.get_unknown_portion_of_type(),
-         _ => None,
-      }
-   }
-
-   #[must_use]
-   pub fn get_value_type_or_value_being_pointed_to(&self) -> &ValueType {
-      match self {
-         ExpressionType::Value(vt) => vt,
-         ExpressionType::Pointer(_, vt) => vt,
-      }
-   }
-
-   #[must_use]
-   pub fn get_value_type_or_value_being_pointed_to_mut(&mut self) -> &mut ValueType {
-      match self {
-         ExpressionType::Value(vt) => vt,
-         ExpressionType::Pointer(_, vt) => vt,
-      }
-   }
-
-   #[must_use]
-   pub fn is_enum(&self) -> bool {
-      matches!(self, ExpressionType::Value(ValueType::Enum(_)))
-   }
-
-   #[must_use]
-   pub fn as_roland_type_info(&self, interner: &Interner) -> String {
-      match self {
-         ExpressionType::Value(x) => x.as_roland_type_info(interner).into(),
-         ExpressionType::Pointer(x, y) => {
-            let base_type = y.as_roland_type_info(interner);
-            let mut s: String = String::with_capacity(x + base_type.len());
-            for _ in 0..*x {
-               s.push('&');
-            }
-            s.push_str(&base_type);
-            s
-         }
-      }
-   }
-
-   #[must_use]
-   pub fn as_roland_type_info_like_source(&self, interner: &Interner) -> String {
-      match self {
-         ExpressionType::Value(x) => x.as_roland_type_info_like_source(interner).into(),
-         ExpressionType::Pointer(x, y) => {
-            let base_type = y.as_roland_type_info_like_source(interner);
-            let mut s: String = String::with_capacity(x + base_type.len());
-            for _ in 0..*x {
-               s.push('&');
-            }
-            s.push_str(&base_type);
-            s
-         }
-      }
-   }
-
-   pub fn increment_indirection_count(&mut self) {
-      match self {
-         ExpressionType::Value(v) => {
-            // bool is just a dummy type here
-            let inner_value = std::mem::replace(v, ValueType::Bool);
-            *self = ExpressionType::Pointer(1, inner_value);
-         }
-         ExpressionType::Pointer(i, _) => {
-            *i += 1;
-         }
-      }
-   }
-
-   pub fn decrement_indirection_count(&mut self) -> Result<(), ()> {
-      match self {
-         ExpressionType::Value(_) => Err(()),
-         ExpressionType::Pointer(1, v) => {
-            // bool is just a dummy type here
-            let inner_value = std::mem::replace(v, ValueType::Bool);
-            *self = ExpressionType::Value(inner_value);
-            Ok(())
-         }
-         ExpressionType::Pointer(i, _) => {
-            *i -= 1;
-            Ok(())
-         }
-      }
-   }
-}
-
 impl ValueType {
    #[must_use]
-   fn is_concrete(&self) -> bool {
+   pub fn is_concrete(&self) -> bool {
       match self {
          ValueType::UnknownInt(_) | ValueType::UnknownFloat(_) | ValueType::CompileError | ValueType::Unresolved(_) => {
             false
@@ -316,11 +165,12 @@ impl ValueType {
          | ValueType::ProcedurePointer { .. }
          | ValueType::Enum(_) => true,
          ValueType::Array(exp, _) => exp.is_concrete(),
+         ValueType::Pointer(exp) => exp.is_concrete(),
       }
    }
 
    #[must_use]
-   fn is_error(&self) -> bool {
+   pub fn is_error(&self) -> bool {
       match self {
          ValueType::CompileError => true,
          ValueType::Array(exp, _) => exp.is_error(),
@@ -329,19 +179,29 @@ impl ValueType {
    }
 
    #[must_use]
+   pub fn is_pointer(&self) -> bool {
+      matches!(self, ValueType::Pointer(_))
+   }
+
+   #[must_use]
+   pub fn is_never(&self) -> bool {
+      matches!(self, ValueType::Never)
+   }
+
+   #[must_use]
    pub fn is_or_contains_never(&self, struct_size_info: &HashMap<StrId, SizeInfo>) -> bool {
       match self {
          ValueType::Never => true,
          ValueType::Struct(s) => struct_size_info.get(s).unwrap().contains_never_type,
          ValueType::Array(inner_t, _) => inner_t
-            .get_value_type_or_value_being_pointed_to()
             .is_or_contains_never(struct_size_info),
+         ValueType::Pointer(inner_t) => inner_t.is_or_contains_never(struct_size_info),
          _ => false,
       }
    }
 
    #[must_use]
-   fn as_roland_type_info<'i>(&self, interner: &'i Interner) -> Cow<'i, str> {
+   pub fn as_roland_type_info<'i>(&self, interner: &'i Interner) -> Cow<'i, str> {
       match self {
          ValueType::UnknownFloat(_) => Cow::Borrowed("?? Float"),
          ValueType::UnknownInt(_) => Cow::Borrowed("?? Int"),
@@ -372,6 +232,9 @@ impl ValueType {
          ValueType::Enum(x) => Cow::Owned(format!("Enum {}", interner.lookup(*x))),
          ValueType::Array(i_type, length) => {
             Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info(interner), length))
+         }
+         ValueType::Pointer(i_type) => {
+            Cow::Owned(format!("&{}", i_type.as_roland_type_info(interner)))
          }
          ValueType::Unresolved(x) => Cow::Borrowed(interner.lookup(*x)),
          ValueType::ProcedurePointer {
@@ -405,7 +268,7 @@ impl ValueType {
    }
 
    #[must_use]
-   fn as_roland_type_info_like_source<'i>(&self, interner: &'i Interner) -> Cow<'i, str> {
+   pub fn as_roland_type_info_like_source<'i>(&self, interner: &'i Interner) -> Cow<'i, str> {
       match self {
          ValueType::UnknownFloat(_) => unreachable!(),
          ValueType::UnknownInt(_) => unreachable!(),
@@ -436,6 +299,9 @@ impl ValueType {
             i_type.as_roland_type_info_like_source(interner),
             length
          )),
+         ValueType::Pointer(i_type) => {
+            Cow::Owned(format!("&{}", i_type.as_roland_type_info(interner)))
+         }
          ValueType::Unresolved(x) => Cow::Borrowed(interner.lookup(*x)),
          ValueType::ProcedurePointer {
             parameters,

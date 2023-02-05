@@ -45,14 +45,14 @@ pub fn calculate_struct_size_info(
       let field_t = &field_t.e_type;
       let next_field_t = &next_field_t.e_type;
 
-      if let ExpressionType::Value(ValueType::Struct(s)) = field_t {
+      if let ValueType::Struct(s) = field_t {
          if !struct_size_info.contains_key(s) {
             calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
          }
          contains_never_type |= struct_size_info.get(s).unwrap().contains_never_type;
       }
 
-      if let ExpressionType::Value(ValueType::Struct(s)) = next_field_t {
+      if let ValueType::Struct(s) = next_field_t {
          if !struct_size_info.contains_key(s) {
             calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
          }
@@ -76,7 +76,7 @@ pub fn calculate_struct_size_info(
    if let Some((last_field_name, last_field_t_node)) = struct_info.get(&name).unwrap().field_types.iter().last() {
       let last_field_t = &last_field_t_node.e_type;
 
-      if let ExpressionType::Value(ValueType::Struct(s)) = last_field_t {
+      if let ValueType::Struct(s) = last_field_t {
          if !struct_size_info.contains_key(s) {
             calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
          }
@@ -107,10 +107,7 @@ pub fn calculate_struct_size_info(
 }
 
 pub fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
-   match e {
-      ExpressionType::Value(x) => value_type_mem_alignment(x, ei, si),
-      ExpressionType::Pointer(_, _) => 4, // @FixedPointerWidth
-   }
+   value_type_mem_alignment(e, ei, si)
 }
 
 pub fn value_type_mem_alignment(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
@@ -133,6 +130,7 @@ pub fn value_type_mem_alignment(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, s
          FloatWidth::Eight => 8,
          FloatWidth::Four => 4,
       },
+      ExpressionType::Pointer(_) => 4, // @FixedPointerWidth
       ValueType::Bool => 1,
       ValueType::Unit => 1,
       ValueType::Never => 1,
@@ -146,10 +144,7 @@ pub fn value_type_mem_alignment(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, s
 
 /// The size of a type, in number of WASM values
 pub fn sizeof_type_values(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
-   match e {
-      ExpressionType::Value(x) => sizeof_value_type_values(x, ei, si),
-      ExpressionType::Pointer(_, _) => 1,
-   }
+   sizeof_type_values(e, ei, si)
 }
 
 fn sizeof_value_type_values(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
@@ -163,6 +158,7 @@ fn sizeof_value_type_values(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &
       }
       ValueType::Int(_) => 1,
       ValueType::Float(_) => 1,
+      ExpressionType::Pointer(_) => 1,
       ValueType::Bool => 1,
       ValueType::Unit => 0,
       ValueType::Never => 0,
@@ -185,10 +181,7 @@ pub fn sizeof_type_wasm(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: 
 
 /// The size of a type as it's stored in memory
 pub fn sizeof_type_mem(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
-   match e {
-      ExpressionType::Value(x) => sizeof_value_type_mem(x, ei, si),
-      ExpressionType::Pointer(_, _) => 4, // @FixedPointerWidth
-   }
+   sizeof_value_type_mem(e, ei, si)
 }
 
 pub fn sizeof_value_type_mem(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
@@ -210,6 +203,7 @@ pub fn sizeof_value_type_mem(e: &ValueType, ei: &IndexMap<StrId, EnumInfo>, si: 
          FloatWidth::Eight => 8,
          FloatWidth::Four => 4,
       },
+      ExpressionType::Pointer(_) => 4, // @FixedPointerWidth
       ValueType::Bool => 1,
       ValueType::Unit => 0,
       ValueType::Never => 0,
