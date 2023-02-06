@@ -11,7 +11,7 @@ use crate::parse::{
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{
-   aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_wasm, SizeInfo, sizeof_type_values,
+   aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
 };
 use crate::type_data::{
    ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE,
@@ -238,8 +238,7 @@ fn write_type_as_result(
    match e {
       ExpressionType::Pointer(_) => write!(out, "(result i32)").unwrap(),
       ExpressionType::Unresolved(_) => unreachable!(),
-      ExpressionType::UnknownInt(_) => unreachable!(),
-      ExpressionType::UnknownFloat(_) => unreachable!(),
+      ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Int(x) => match x.width {
          IntWidth::Eight => write!(out, "(result i64)").unwrap(),
          _ => write!(out, "(result i32)").unwrap(),
@@ -288,8 +287,7 @@ fn write_type_as_params(
    match e {
       ExpressionType::Pointer(_) => write!(out, "(param i32)").unwrap(),
       ExpressionType::Unresolved(_) => unreachable!(),
-      ExpressionType::UnknownInt(_) => unreachable!(),
-      ExpressionType::UnknownFloat(_) => unreachable!(),
+      ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Enum(_) => {
          write!(out, "(param ").unwrap();
          type_to_s(e, out, ei, si);
@@ -333,8 +331,7 @@ fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumInf
    match e {
       ExpressionType::Pointer(_) => write!(out, "i32").unwrap(),
       ExpressionType::Unresolved(_) => unreachable!(),
-      ExpressionType::UnknownInt(_) => unreachable!(),
-      ExpressionType::UnknownFloat(_) => unreachable!(),
+      ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Int(x) => match x.width {
          IntWidth::Eight => write!(out, "i64").unwrap(),
          _ => write!(out, "i32").unwrap(),

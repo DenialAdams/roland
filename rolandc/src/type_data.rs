@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use crate::interner::{Interner, StrId};
+use crate::semantic_analysis::type_variables::{TypeVariable, TypeVariableManager, TypeConstraint};
 use crate::size_info::SizeInfo;
 
 pub const U8_TYPE: ExpressionType = ExpressionType::Int(IntType {
@@ -65,8 +66,7 @@ pub const F64_TYPE: ExpressionType = ExpressionType::Float(FloatType {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ExpressionType {
-   UnknownInt(usize),
-   UnknownFloat(usize),
+   Unknown(TypeVariable),
    Int(IntType),
    Float(FloatType),
    Bool,
@@ -166,10 +166,9 @@ impl ExpressionType {
       }
    }
 
-   pub fn get_type_variable_of_unknown_type(&self) -> Option<usize> {
+   pub fn get_type_variable_of_unknown_type(&self) -> Option<TypeVariable> {
       match self {
-         ExpressionType::UnknownFloat(x) => Some(*x),
-         ExpressionType::UnknownInt(x) => Some(*x),
+         ExpressionType::Unknown(x) => Some(*x),
          ExpressionType::Pointer(v) => v.get_type_variable_of_unknown_type(),
          ExpressionType::Array(v, _) => v.get_type_variable_of_unknown_type(),
          // other types can't contain unknown values, at least right now
@@ -179,8 +178,7 @@ impl ExpressionType {
 
    pub fn get_unknown_portion_of_type(&mut self) -> Option<&mut ExpressionType> {
       match self {
-         x @ ExpressionType::UnknownFloat(_) => Some(x),
-         x @ ExpressionType::UnknownInt(_) => Some(x),
+         x @ ExpressionType::Unknown(_) => Some(x),
          ExpressionType::Pointer(x) => x.get_unknown_portion_of_type(),
          ExpressionType::Array(v, _) => v.get_unknown_portion_of_type(),
          _ => None,
@@ -190,8 +188,7 @@ impl ExpressionType {
    #[must_use]
    pub fn is_concrete(&self) -> bool {
       match self {
-         ExpressionType::UnknownInt(_)
-         | ExpressionType::UnknownFloat(_)
+         ExpressionType::Unknown(_) //nocheckin this seems sus.
          | ExpressionType::CompileError
          | ExpressionType::Unresolved(_) => false,
          ExpressionType::Int(_)
@@ -213,18 +210,9 @@ impl ExpressionType {
       match self {
          ExpressionType::CompileError => true,
          ExpressionType::Array(exp, _) => exp.is_error(),
+         // nocheckin why is this not pointer to error?
          _ => false,
       }
-   }
-
-   #[must_use]
-   pub fn is_known_or_unknown_int(&self) -> bool {
-      matches!(self, ExpressionType::Int(_) | ExpressionType::UnknownInt(_))
-   }
-
-   #[must_use]
-   pub fn is_known_or_unknown_float(&self) -> bool {
-      matches!(self, ExpressionType::Float(_) | ExpressionType::UnknownFloat(_))
    }
 
    #[must_use]
@@ -249,10 +237,25 @@ impl ExpressionType {
    }
 
    #[must_use]
-   pub fn as_roland_type_info<'i>(&self, interner: &'i Interner) -> Cow<'i, str> {
+   pub fn as_roland_type_info<'i>(&self, interner: &'i Interner, type_variable_info: &TypeVariableManager) -> Cow<'i, str> {
+      self.as_roland_type_info_inner(interner, Some(type_variable_info))
+   }
+
+   #[must_use]
+   fn as_roland_type_info_inner<'i>(&self, interner: &'i Interner, type_variable_info: Option<&TypeVariableManager>) -> Cow<'i, str> {
       match self {
-         ExpressionType::UnknownFloat(_) => Cow::Borrowed("?? Float"),
-         ExpressionType::UnknownInt(_) => Cow::Borrowed("?? Int"),
+         ExpressionType::Unknown(x) => {
+            if let Some(tvi) = type_variable_info {
+               match tvi.get_data(*x).constraint {
+                TypeConstraint::Int => Cow::Borrowed("?? Int"),
+                TypeConstraint::SignedInt => Cow::Borrowed("?? Signed Int"),
+                TypeConstraint::Float => Cow::Borrowed("?? Float"),
+                TypeConstraint::None => Cow::Borrowed("??"),
+               }
+            } else {
+               Cow::Borrowed("??")
+            }
+         }
          ExpressionType::Int(x) => match (x.signed, &x.width) {
             (true, IntWidth::Pointer) => Cow::Borrowed("isize"),
             (true, IntWidth::Eight) => Cow::Borrowed("i64"),
@@ -279,9 +282,9 @@ impl ExpressionType {
          ExpressionType::Struct(x) => Cow::Owned(format!("Struct {}", interner.lookup(*x))),
          ExpressionType::Enum(x) => Cow::Owned(format!("Enum {}", interner.lookup(*x))),
          ExpressionType::Array(i_type, length) => {
-            Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info(interner), length))
+            Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info_inner(interner, type_variable_info), length))
          }
-         ExpressionType::Pointer(i_type) => Cow::Owned(format!("&{}", i_type.as_roland_type_info(interner))),
+         ExpressionType::Pointer(i_type) => Cow::Owned(format!("&{}", i_type.as_roland_type_info_inner(interner, type_variable_info))),
          ExpressionType::Unresolved(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::ProcedurePointer {
             parameters,
@@ -289,10 +292,10 @@ impl ExpressionType {
          } => {
             let params: String = parameters
                .iter()
-               .map(|x| x.as_roland_type_info(interner))
+               .map(|x| x.as_roland_type_info_inner(interner, type_variable_info))
                .collect::<Vec<_>>()
                .join(", ");
-            Cow::Owned(format!("proc({}) -> {}", params, ret_val.as_roland_type_info(interner)))
+            Cow::Owned(format!("proc({}) -> {}", params, ret_val.as_roland_type_info_inner(interner, type_variable_info)))
          }
          ExpressionType::ProcedureItem(proc_name, type_arguments) => {
             if type_arguments.is_empty() {
@@ -314,10 +317,14 @@ impl ExpressionType {
    }
 
    #[must_use]
+   pub fn as_roland_type_info_notv<'i>(&self, interner: &'i Interner) -> Cow<'i, str> {
+      self.as_roland_type_info_inner(interner, None)
+   }
+
+   #[must_use]
    pub fn as_roland_type_info_like_source<'i>(&self, interner: &'i Interner) -> Cow<'i, str> {
       match self {
-         ExpressionType::UnknownFloat(_) => unreachable!(),
-         ExpressionType::UnknownInt(_) => unreachable!(),
+         ExpressionType::Unknown(_) => unreachable!(),
          ExpressionType::Int(x) => match (x.signed, &x.width) {
             (true, IntWidth::Pointer) => Cow::Borrowed("isize"),
             (true, IntWidth::Eight) => Cow::Borrowed("i64"),
@@ -345,7 +352,7 @@ impl ExpressionType {
             i_type.as_roland_type_info_like_source(interner),
             length
          )),
-         ExpressionType::Pointer(i_type) => Cow::Owned(format!("&{}", i_type.as_roland_type_info(interner))),
+         ExpressionType::Pointer(i_type) => Cow::Owned(format!("&{}", i_type.as_roland_type_info_notv(interner))),
          ExpressionType::Unresolved(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::ProcedurePointer {
             parameters,

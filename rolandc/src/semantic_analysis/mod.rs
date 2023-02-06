@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::disjoint_set::DisjointSet;
 use crate::interner::StrId;
 use crate::parse::{ExpressionId, ExpressionPool, ExpressionTypeNode, VariableId};
 use crate::size_info::SizeInfo;
@@ -10,8 +9,11 @@ use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 use crate::Target;
 
+use self::type_variables::TypeVariableManager;
+
 pub mod type_and_procedure_info;
 pub mod type_inference;
+pub mod type_variables;
 pub mod validator;
 
 #[derive(Clone)]
@@ -73,12 +75,10 @@ pub struct ValidationContext<'a> {
    pub variable_types: IndexMap<StrId, VariableDetails>,
    pub block_depth: u64,
    pub loop_depth: u64,
-   pub unknown_ints: IndexSet<ExpressionId>,
-   pub unknown_floats: IndexSet<ExpressionId>,
+   pub unknown_literals: IndexSet<ExpressionId>,
    pub expressions: &'a mut ExpressionPool,
    pub struct_size_info: HashMap<StrId, SizeInfo>,
-   pub type_variables: DisjointSet,
-   pub type_variable_definitions: HashMap<usize, ExpressionType>,
+   pub type_variables: TypeVariableManager,
    pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,
    pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
    next_var_dont_access: VariableId,

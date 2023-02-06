@@ -217,7 +217,7 @@ fn fold_expr(
                      .exp_type
                      .as_ref()
                      .unwrap()
-                     .as_roland_type_info(interner),
+                     .as_roland_type_info_notv(interner),
                   *val as i64
                );
             } else {
@@ -229,7 +229,7 @@ fn fold_expr(
                      .exp_type
                      .as_ref()
                      .unwrap()
-                     .as_roland_type_info(interner),
+                     .as_roland_type_info_notv(interner),
                   *val
                );
             }
@@ -691,7 +691,7 @@ fn fold_expr(
                      err_manager,
                      expr_to_fold_location,
                      "Literal of type {} has value `-{}` which would immediately underflow",
-                     f_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner),
+                     f_expr.exp_type.as_ref().unwrap().as_roland_type_info_notv(interner),
                      *x,
                   );
                   return None;

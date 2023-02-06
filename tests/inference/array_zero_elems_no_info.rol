@@ -1,0 +1,7 @@
+proc main() {
+   [];
+}
+__END__
+compile:
+We weren't able to determine the types of 1 literals
+↳ literal @ line 2, column 4 [tests/inference/array_zero_elems_no_info.rol]

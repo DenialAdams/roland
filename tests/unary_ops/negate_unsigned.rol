@@ -9,5 +9,6 @@ __END__
 compile:
 Expected type [AnySignedInt, AnyFloat] for expression Negate; instead got u64
 ↳ line 4, column 13 [tests/unary_ops/negate_unsigned.rol]
-Unsigned integers (i.e. u64) can't be negated. Hint: Should this be a signed integer?
-↳ line 6, column 21 [tests/unary_ops/negate_unsigned.rol]
+Declared type u64 does not match actual expression type ?? Signed Int
+↳ expression @ line 6, column 21 [tests/unary_ops/negate_unsigned.rol]
+↳ declared type @ line 6, column 15 [tests/unary_ops/negate_unsigned.rol]

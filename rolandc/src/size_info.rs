@@ -109,8 +109,7 @@ pub fn calculate_struct_size_info(
 pub fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ExpressionType::Unresolved(_) => unreachable!(),
-      ExpressionType::UnknownInt(_) => unreachable!(),
-      ExpressionType::UnknownFloat(_) => unreachable!(),
+      ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Enum(x) => {
          let base_type = &ei.get(x).unwrap().base_type;
          mem_alignment(base_type, ei, si)
@@ -142,8 +141,7 @@ pub fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &Ha
 pub fn sizeof_type_values(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ExpressionType::Unresolved(_) => unreachable!(),
-      ExpressionType::UnknownInt(_) => unreachable!(),
-      ExpressionType::UnknownFloat(_) => unreachable!(),
+      ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Enum(x) => {
          let base_type = &ei.get(x).unwrap().base_type;
          sizeof_type_values(base_type, ei, si)
@@ -175,8 +173,7 @@ pub fn sizeof_type_wasm(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: 
 pub fn sizeof_type_mem(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
    match e {
       ExpressionType::Unresolved(_) => unreachable!(),
-      ExpressionType::UnknownInt(_) => unreachable!(),
-      ExpressionType::UnknownFloat(_) => unreachable!(),
+      ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Enum(x) => {
          let base_type = &ei.get(x).unwrap().base_type;
          sizeof_type_mem(base_type, ei, si)

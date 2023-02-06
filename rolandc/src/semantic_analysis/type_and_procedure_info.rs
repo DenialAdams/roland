@@ -276,7 +276,7 @@ pub fn populate_type_and_procedure_info(
             continue;
          }
 
-         let etype_str = etn.e_type.as_roland_type_info(interner);
+         let etype_str = etn.e_type.as_roland_type_info_notv(interner);
          rolandc_error_w_details!(
             err_manager,
             &[(struct_i.1.location, "struct defined")],
@@ -313,7 +313,7 @@ pub fn populate_type_and_procedure_info(
       let si = &const_node.location;
 
       if resolve_type(const_type, &program.enum_info, &program.struct_info).is_err() {
-         let static_type_str = const_type.as_roland_type_info(interner);
+         let static_type_str = const_type.as_roland_type_info_notv(interner);
          rolandc_error!(
             err_manager,
             const_node.const_type.location,
@@ -350,7 +350,7 @@ pub fn populate_type_and_procedure_info(
       let static_e_type = &mut static_node.static_type.e_type;
 
       if resolve_type(static_e_type, &program.enum_info, &program.struct_info).is_err() {
-         let static_type_str = static_e_type.as_roland_type_info(interner);
+         let static_type_str = static_e_type.as_roland_type_info_notv(interner);
          rolandc_error!(
             err_manager,
             static_node.static_type.location,
@@ -468,7 +468,7 @@ pub fn populate_type_and_procedure_info(
          )
          .is_err()
          {
-            let etype_str = parameter.p_type.e_type.as_roland_type_info(interner);
+            let etype_str = parameter.p_type.e_type.as_roland_type_info_notv(interner);
             rolandc_error!(
                err_manager,
                parameter.p_type.location,
@@ -488,7 +488,7 @@ pub fn populate_type_and_procedure_info(
       )
       .is_err()
       {
-         let etype_str = definition.ret_type.e_type.as_roland_type_info(interner);
+         let etype_str = definition.ret_type.e_type.as_roland_type_info_notv(interner);
          rolandc_error!(
             err_manager,
             definition.ret_type.location,
