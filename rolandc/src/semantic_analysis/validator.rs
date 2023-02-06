@@ -82,7 +82,7 @@ enum TypeValidator {
    Any,
 }
 
-fn nocheckin_matches(type_validation: &TypeValidator, et: &ExpressionType, validation_context: &ValidationContext) -> bool {
+fn matches(type_validation: &TypeValidator, et: &ExpressionType, validation_context: &ValidationContext) -> bool {
    let normal_matches = matches!(
       (type_validation, et),
       (_, ExpressionType::Never)
@@ -122,7 +122,7 @@ fn nocheckin_matches(type_validation: &TypeValidator, et: &ExpressionType, valid
 fn any_match(type_validations: &[TypeValidator], et: &ExpressionType, validation_context: &ValidationContext) -> bool {
    let mut any_match = false;
    for type_validation in type_validations.iter() {
-      any_match |= nocheckin_matches(type_validation, et, validation_context);
+      any_match |= matches(type_validation, et, validation_context);
    }
    any_match
 }
@@ -518,7 +518,6 @@ fn type_statement(
          type_expression(err_manager, *end, validation_context, interner);
 
          for expr_id in [*start, *end] {
-            // nocheckin: definitely(?) factor this boi out
             if let Some(x) = validation_context.expressions[expr_id]
                .exp_type
                .as_ref()

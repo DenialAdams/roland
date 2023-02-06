@@ -188,7 +188,7 @@ impl ExpressionType {
    #[must_use]
    pub fn is_concrete(&self) -> bool {
       match self {
-         ExpressionType::Unknown(_) //nocheckin this seems sus.
+         ExpressionType::Unknown(_)
          | ExpressionType::CompileError
          | ExpressionType::Unresolved(_) => false,
          ExpressionType::Int(_)
@@ -210,7 +210,7 @@ impl ExpressionType {
       match self {
          ExpressionType::CompileError => true,
          ExpressionType::Array(exp, _) => exp.is_error(),
-         // nocheckin why is this not pointer to error?
+         ExpressionType::Pointer(exp) => exp.is_error(),
          _ => false,
       }
    }

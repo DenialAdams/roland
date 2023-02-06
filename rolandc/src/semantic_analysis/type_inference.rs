@@ -90,7 +90,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
                ExpressionType::Unknown(x) => *x,
                _ => unreachable!(),
             };
-            // nocheckin: we should debug_assert that unknowns_are_compatible when we union
+            debug_assert!(unknowns_are_compatible(my_tv, *e_tv, validation_context));
             validation_context.type_variables.union(my_tv, *e_tv);
          } else {
             validation_context.unknown_literals.remove(&expr_index);
@@ -159,9 +159,11 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
                .get_data_mut(outer_representative)
                .known_type = Some(incoming_definition);
          } else {
+            let e_tv = e_type.get_type_variable_of_unknown_type().unwrap();
+            debug_assert!(unknowns_are_compatible(my_tv, e_tv, validation_context));
             validation_context
                .type_variables
-               .union(my_tv, e_type.get_type_variable_of_unknown_type().unwrap());
+               .union(my_tv, e_tv);
          }
 
          *validation_context.expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
@@ -211,7 +213,6 @@ fn get_type_variable_of_unknown_type_and_associated_e_type(
          get_type_variable_of_unknown_type_and_associated_e_type(unknown_type_inner, type_coming_in_inner)
       }
       // other types can't contain unknown values, at least right now
-      // nocheckin?
       _ => None,
    }
 }
