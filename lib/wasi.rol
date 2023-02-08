@@ -74,7 +74,7 @@ proc count_digits(value: u64) -> u8 {
       value = value / 10;
    }
 
-   return unreachable();
+   unreachable();
 }
 
 proc f32_to_string(f: f32) -> String {

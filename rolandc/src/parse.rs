@@ -297,6 +297,24 @@ pub enum Statement {
    VariableDeclaration(StrNode, Option<ExpressionId>, Option<ExpressionTypeNode>, VariableId),
 }
 
+// For lack of a better place...
+pub fn statement_always_returns(stmt: &Statement, expressions: &ExpressionPool) -> bool {
+   match stmt {
+      Statement::Return(_) => true,
+      Statement::IfElse(_, then_block, else_if) => {
+         then_block.statements.last().map_or(false, |l| statement_always_returns(&l.statement, expressions)) &&
+         statement_always_returns(&else_if.statement, expressions)
+      }
+      Statement::Block(bn) => {
+         bn.statements.last().map_or(false, |l| statement_always_returns(&l.statement, expressions))
+      }
+      Statement::Expression(ex) => {
+         *expressions[*ex].exp_type.as_ref().unwrap() == ExpressionType::Never
+      }
+      _ => false,
+   }
+ }
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StrNode {
    pub str: StrId,

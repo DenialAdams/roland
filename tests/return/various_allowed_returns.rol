@@ -1,0 +1,54 @@
+proc main() {
+    a();
+    b();
+    //c();
+    //d();
+    e();
+    println("ok");
+}
+
+proc a() -> bool {
+    return true;
+}
+
+proc b() -> bool {
+    {
+        return true;
+    }
+}
+
+proc c() -> bool {
+    unreachable();
+}
+
+proc d() -> bool {
+    return unreachable();
+}
+
+proc e() -> bool {
+    if true {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+// Putting it all together
+proc f() -> bool {
+    if false {
+        return unreachable();
+    } else if false {
+        {
+            {
+                unreachable();
+            }
+        }
+    } else if false {
+        return false;
+    } else {
+        return true;
+    }
+}
+__END__
+run:
+ok

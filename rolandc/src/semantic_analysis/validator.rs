@@ -13,7 +13,7 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool,
-   ExpressionTypeNode, GenericArgumentNode, Program, Statement, StatementNode, StrNode, UnOp, VariableId,
+   ExpressionTypeNode, GenericArgumentNode, Program, Statement, StatementNode, StrNode, UnOp, VariableId, statement_always_returns,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, mem_alignment, sizeof_type_mem};
@@ -128,20 +128,12 @@ fn any_match(type_validations: &[TypeValidator], et: &ExpressionType, validation
 }
 
 pub fn resolve_type(
-   t_type: &mut ExpressionType,
-   ei: &IndexMap<StrId, EnumInfo>,
-   si: &IndexMap<StrId, StructInfo>,
-) -> Result<(), ()> {
-   resolve_value_type(t_type, ei, si)
-}
-
-pub fn resolve_value_type(
    v_type: &mut ExpressionType,
    ei: &IndexMap<StrId, EnumInfo>,
    si: &IndexMap<StrId, StructInfo>,
 ) -> Result<(), ()> {
    match v_type {
-      ExpressionType::Pointer(vt) => resolve_value_type(vt, ei, si),
+      ExpressionType::Pointer(vt) => resolve_type(vt, ei, si),
       ExpressionType::Never => Ok(()),
       ExpressionType::Unknown(_) => Ok(()),
       ExpressionType::Int(_) => Ok(()),
@@ -376,7 +368,7 @@ pub fn type_and_check_validity(
          procedure.block.statements.last().map(|x| &x.statement),
       ) {
          (ExpressionType::Unit, _) => (),
-         (_, Some(Statement::Return(_))) => (),
+         (_, Some(s)) if statement_always_returns(s, validation_context.expressions) => (),
          (x, _) => {
             let x_str = x.as_roland_type_info(interner, &validation_context.type_variables);
             let mut err_details = vec![(procedure.location, "procedure defined")];
