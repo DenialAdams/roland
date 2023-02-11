@@ -1,6 +1,11 @@
 
 proc main() {
    let x: [[&u64; 100]; 0] = [];
+   foo([]);
+}
+
+proc foo(x: [u8; 0]) -> [u8; 0] {
+   return x;
 }
 __END__
 compile:
