@@ -840,26 +840,38 @@ fn get_type(
             return ExpressionType::CompileError;
          }
 
-         if *cast_type == CastType::Transmute && target_type.is_pointer() {
-            try_set_inferred_type(&USIZE_TYPE, *expr_id, validation_context);
-         } else if *cast_type == CastType::Transmute && matches!(target_type, &F64_TYPE) {
-            try_set_inferred_type(&U64_TYPE, *expr_id, validation_context);
-         } else if *cast_type == CastType::Transmute && matches!(target_type, &F32_TYPE) {
-            try_set_inferred_type(&U32_TYPE, *expr_id, validation_context);
-         } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Enum(_)) {
-            let matching_int = match sizeof_type_mem(
-               target_type,
-               validation_context.enum_info,
-               &validation_context.struct_size_info,
-            ) {
-               8 => U64_TYPE,
-               4 => U32_TYPE,
-               2 => U16_TYPE,
-               1 => U8_TYPE,
-               _ => unreachable!(),
-            };
-            try_set_inferred_type(&matching_int, *expr_id, validation_context);
-         }
+         let from_type_is_unknown_int = {
+            let exp_type = validation_context.expressions[*expr_id].exp_type.as_ref().unwrap();
+            match exp_type {
+               ExpressionType::Unknown(v) => {
+                  matches!(validation_context.type_variables.get_data(*v).constraint, TypeConstraint::Int)
+               }
+               _ => false,
+            }
+         };
+
+         if from_type_is_unknown_int {
+            if *cast_type == CastType::Transmute && target_type.is_pointer() {
+               try_set_inferred_type(&USIZE_TYPE, *expr_id, validation_context);
+            } else if *cast_type == CastType::Transmute && matches!(target_type, &F64_TYPE) {
+               try_set_inferred_type(&U64_TYPE, *expr_id, validation_context);
+            } else if *cast_type == CastType::Transmute && matches!(target_type, &F32_TYPE) {
+               try_set_inferred_type(&U32_TYPE, *expr_id, validation_context);
+            } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Enum(_)) {
+               let matching_int = match sizeof_type_mem(
+                  target_type,
+                  validation_context.enum_info,
+                  &validation_context.struct_size_info,
+               ) {
+                  8 => U64_TYPE,
+                  4 => U32_TYPE,
+                  2 => U16_TYPE,
+                  1 => U8_TYPE,
+                  _ => unreachable!(),
+               };
+               try_set_inferred_type(&matching_int, *expr_id, validation_context);
+            }
+         };
 
          let e = &validation_context.expressions[*expr_id];
          let e_type = e.exp_type.as_ref().unwrap();
