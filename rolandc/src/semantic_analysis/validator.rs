@@ -837,6 +837,9 @@ fn get_type(
          type_expression(err_manager, *expr_id, validation_context, interner);
 
          if target_type.is_error() {
+            // this can occur when the target type is unresolved
+            // not only does this hide extraneous error messages from the user, this also prevents panicking when
+            // we check the size of an error type
             return ExpressionType::CompileError;
          }
 

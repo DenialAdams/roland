@@ -1,0 +1,8 @@
+proc main() {
+    let a: u64 = 10;
+    // note that this doesn't result in a transmute error or a panic
+    let b = a transmute Dingus;
+}__END__
+compile:
+Undeclared type `Dingus`
+↳ line 4, column 13 [tests/casts/transmute_to_unresolved.rol]
