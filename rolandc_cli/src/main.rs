@@ -126,11 +126,8 @@ fn main() {
       Ok(v) => v,
       Err(CompilationError::Lex) => std::process::exit(1),
       Err(CompilationError::Parse) => std::process::exit(1),
-      Err(CompilationError::Semantic) => {
-         let err_count = ctx.err_manager.errors.len();
-         writeln!(err_stream_l, "There were {} semantic errors, bailing", err_count).unwrap();
-         std::process::exit(1);
-      }
+      Err(CompilationError::Semantic) =>
+         std::process::exit(1),
       Err(CompilationError::Io) => std::process::exit(1),
       Err(CompilationError::Internal) => {
          writeln!(err_stream_l, "rolandc has encountered an internal error. *This is a bug in the compiler*, please file an issue on github with the problematic input.").unwrap();

@@ -1,9 +1,11 @@
 release_flag := if env_var_or_default("DEBUG", "false") == "true" { "" } else { "--release" }
 
 test path="tests/":
-   cargo run {{release_flag}} --bin roland_test_runner -- {{path}}
+   cargo build {{release_flag}} --bin rolandc_cli
+   cargo run {{release_flag}} --bin roland_test_runner -- --cli `readlink --canonicalize ./target/release/rolandc_cli` {{path}}
 test-overwrite:
-   cargo run {{release_flag}} --bin roland_test_runner -- tests/ --overwrite-error-files
+   cargo build {{release_flag}} --bin rolandc_cli
+   cargo run {{release_flag}} --bin roland_test_runner -- --cli `readlink --canonicalize ./target/release/rolandc_cli` tests/ --overwrite-error-files
 samples:
    cargo run {{release_flag}} --bin rolandc_cli -- --wasm4 samples/wasm4/spunky/cart.rol
    cargo run {{release_flag}} --bin rolandc_cli -- --wasm4 samples/wasm4/endless-runner/cart.rol

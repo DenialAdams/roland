@@ -2,31 +2,18 @@
 #![allow(clippy::uninlined_format_args)] // I'm an old man and I like the way it was before
 #![allow(clippy::unwrap_or_else_default)] // I want to know exactly what is being called
 
-struct CliFileResolver {}
-// todo: unpasta?
-impl<'a> FileResolver<'a> for CliFileResolver {
-   fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'a, str>> {
-      std::fs::read_to_string(path).map(Cow::Owned)
-   }
-}
-
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
-#[cfg(not(target_os = "windows"))]
-use std::os::unix::process::ExitStatusExt;
-#[cfg(target_os = "windows")]
-use std::os::windows::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Output};
+use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use os_pipe::pipe;
 use rayon::prelude::*;
-use rolandc::{CompilationContext, CompilationEntryPoint, FileResolver};
+use rolandc::{CompilationContext};
 use similar_asserts::SimpleDiff;
 
 enum TestFailureReason {
@@ -39,7 +26,7 @@ enum TestFailureReason {
 
 struct Opts {
    test_path: PathBuf,
-   tc_path: Option<PathBuf>,
+   tc_path: PathBuf,
    overwrite_error_files: bool,
 }
 
@@ -50,7 +37,7 @@ fn parse_path(s: &std::ffi::OsStr) -> Result<std::path::PathBuf, &'static str> {
 fn parse_args() -> Result<Opts, pico_args::Error> {
    let mut pargs = pico_args::Arguments::from_env();
 
-   let cli_path = pargs.opt_value_from_os_str("--cli", parse_path)?;
+   let cli_path = pargs.value_from_os_str("--cli", parse_path)?;
 
    let opts = Opts {
       test_path: pargs.free_from_os_str(parse_path)?,
@@ -111,43 +98,8 @@ fn main() -> Result<(), &'static str> {
    let failures = AtomicU64::new(0);
    let output_lock = Mutex::new(());
 
-   let config = rolandc::CompilationConfig {
-      target: rolandc::Target::Wasi,
-      include_std: true,
-      i_am_std: false,
-   };
-
    entries.par_iter().for_each(|entry| {
-      let tc_output = match &opts.tc_path {
-         Some(tc_path) => Command::new(tc_path).arg(entry.clone()).output().unwrap(),
-         None => COMPILATION_CTX.with_borrow_mut(|ctx| {
-            let compile_result = rolandc::compile::<CliFileResolver>(
-               ctx,
-               CompilationEntryPoint::PathResolving(entry.clone(), CliFileResolver {}),
-               &config,
-            );
-
-            let mut stderr = Vec::new();
-
-            ctx.err_manager.write_out_errors(&mut stderr, &ctx.interner);
-
-            let status = match compile_result {
-               Ok(bytes) => {
-                  let mut wat_file = entry.clone();
-                  wat_file.set_extension("wat");
-                  std::fs::write(wat_file, bytes).unwrap();
-                  ExitStatus::from_raw(0)
-               }
-               Err(_) => ExitStatus::from_raw(1),
-            };
-
-            Output {
-               status,
-               stdout: vec![],
-               stderr,
-            }
-         }),
-      };
+      let tc_output = Command::new(&opts.tc_path).arg(entry.clone()).output().unwrap();
       let test_ok = test_result(&tc_output, entry);
       // prevents stdout and stderr from mixing
       let _ol = output_lock.lock();

@@ -68,10 +68,7 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
 
    ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner);
 
-   if let Err(CompilationError::Semantic) = compile_result.as_ref() {
-      let err_count = ctx.err_manager.errors.len();
-      writeln!(err_out, "There were {} semantic errors, bailing", err_count).unwrap();
-   } else if let Err(CompilationError::Internal) = compile_result.as_ref() {
+   if let Err(CompilationError::Internal) = compile_result.as_ref() {
       writeln!(err_out, "rolandc has encountered an internal error. *This is a bug in the compiler*, please file an issue on github with the problematic input.").unwrap();
    }
 
