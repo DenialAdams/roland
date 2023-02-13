@@ -13,7 +13,7 @@ use std::sync::Mutex;
 
 use os_pipe::pipe;
 use rayon::prelude::*;
-use rolandc::{CompilationContext};
+use rolandc::CompilationContext;
 use similar_asserts::SimpleDiff;
 
 enum TestFailureReason {

@@ -12,8 +12,9 @@ use crate::error_handling::error_handling_macros::{
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool,
-   ExpressionTypeNode, GenericArgumentNode, Program, Statement, StatementNode, StrNode, UnOp, VariableId, statement_always_returns,
+   statement_always_returns, ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode,
+   ExpressionPool, ExpressionTypeNode, GenericArgumentNode, Program, Statement, StatementNode, StrNode, UnOp,
+   VariableId,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, mem_alignment, sizeof_type_mem};
@@ -88,28 +89,23 @@ fn matches(type_validation: &TypeValidator, et: &ExpressionType, validation_cont
       (TypeValidator::Any, _)
          | (TypeValidator::AnyPointer, ExpressionType::Pointer(_))
          | (TypeValidator::Bool, ExpressionType::Bool)
-         | (
-            TypeValidator::AnyInt,
-            ExpressionType::Int(_)
-         )
+         | (TypeValidator::AnyInt, ExpressionType::Int(_))
          | (
             TypeValidator::AnySignedInt,
             ExpressionType::Int(IntType { signed: true, .. })
          )
-         | (
-            TypeValidator::AnyFloat,
-            ExpressionType::Float(_)
-         )
+         | (TypeValidator::AnyFloat, ExpressionType::Float(_))
          | (TypeValidator::AnyEnum, ExpressionType::Enum(_))
    );
 
    let unknown_matches = if let ExpressionType::Unknown(x) = et {
       let type_constraint = validation_context.type_variables.get_data(*x).constraint;
-      matches!((type_validation, type_constraint),
+      matches!(
+         (type_validation, type_constraint),
          (TypeValidator::AnySignedInt, TypeConstraint::SignedInt)
-         | (TypeValidator::AnyInt, TypeConstraint::Int)
-         | (TypeValidator::AnyInt, TypeConstraint::SignedInt)
-         | (TypeValidator::AnyFloat, TypeConstraint::Float)
+            | (TypeValidator::AnyInt, TypeConstraint::Int)
+            | (TypeValidator::AnyInt, TypeConstraint::SignedInt)
+            | (TypeValidator::AnyFloat, TypeConstraint::Float)
       )
    } else {
       false
@@ -317,7 +313,13 @@ pub fn type_and_check_validity(
 
       let p_const_expr = &validation_context.expressions[p_const.value];
 
-      check_type_declared_vs_actual(&p_const.const_type, p_const_expr, interner, &validation_context.type_variables, err_manager);
+      check_type_declared_vs_actual(
+         &p_const.const_type,
+         p_const_expr,
+         interner,
+         &validation_context.type_variables,
+         err_manager,
+      );
    }
 
    for p_static in program.statics.iter_mut().filter(|x| x.value.is_some()) {
@@ -331,7 +333,13 @@ pub fn type_and_check_validity(
 
       let p_static_expr = &validation_context.expressions[p_static.value.unwrap()];
 
-      check_type_declared_vs_actual(&p_static.static_type, p_static_expr, interner, &validation_context.type_variables, err_manager);
+      check_type_declared_vs_actual(
+         &p_static.static_type,
+         p_static_expr,
+         interner,
+         &validation_context.type_variables,
+         err_manager,
+      );
    }
 
    for procedure in program.procedures.iter_mut() {
@@ -550,8 +558,16 @@ fn type_statement(
                      (end_expr.location, "end of range")
                   ],
                   "Start and end of range must be integer types of the same kind; got types `{}` and `{}`",
-                  start_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner, &validation_context.type_variables),
-                  end_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner, &validation_context.type_variables),
+                  start_expr
+                     .exp_type
+                     .as_ref()
+                     .unwrap()
+                     .as_roland_type_info(interner, &validation_context.type_variables),
+                  end_expr
+                     .exp_type
+                     .as_ref()
+                     .unwrap()
+                     .as_roland_type_info(interner, &validation_context.type_variables),
                );
                ExpressionType::CompileError
             }
@@ -594,7 +610,10 @@ fn type_statement(
                err_manager,
                en.location,
                "Value of if expression must be a bool; got {}",
-               en.exp_type.as_ref().unwrap().as_roland_type_info(interner, &validation_context.type_variables)
+               en.exp_type
+                  .as_ref()
+                  .unwrap()
+                  .as_roland_type_info(interner, &validation_context.type_variables)
             );
          }
       }
@@ -615,8 +634,13 @@ fn type_statement(
                err_manager,
                en.location,
                "Value of return statement must match declared return type {}; got {}",
-               cur_procedure_info.ret_type.as_roland_type_info(interner, &validation_context.type_variables),
-               en.exp_type.as_ref().unwrap().as_roland_type_info(interner, &validation_context.type_variables)
+               cur_procedure_info
+                  .ret_type
+                  .as_roland_type_info(interner, &validation_context.type_variables),
+               en.exp_type
+                  .as_ref()
+                  .unwrap()
+                  .as_roland_type_info(interner, &validation_context.type_variables)
             );
          }
       }
@@ -643,7 +667,11 @@ fn type_statement(
             .as_ref()
             .map_or(false, |x| matches!(x.e_type, ExpressionType::Unresolved(_)))
          {
-            let dt_str = dt.as_ref().unwrap().e_type.as_roland_type_info(interner, &validation_context.type_variables);
+            let dt_str = dt
+               .as_ref()
+               .unwrap()
+               .e_type
+               .as_roland_type_info(interner, &validation_context.type_variables);
             rolandc_error!(
                err_manager,
                dt.as_ref().unwrap().location,
@@ -654,7 +682,13 @@ fn type_statement(
             ExpressionType::CompileError
          } else if dt.is_some() {
             if let Some(en) = opt_en {
-               check_type_declared_vs_actual(dt.as_ref().unwrap(), en, interner, &validation_context.type_variables, err_manager);
+               check_type_declared_vs_actual(
+                  dt.as_ref().unwrap(),
+                  en,
+                  interner,
+                  &validation_context.type_variables,
+                  err_manager,
+               );
             }
 
             dt.clone().map(|x| x.e_type).unwrap()
@@ -782,7 +816,9 @@ fn get_type(
             )
             .is_err()
             {
-               let etype_str = g_arg.gtype.as_roland_type_info(interner, &validation_context.type_variables);
+               let etype_str = g_arg
+                  .gtype
+                  .as_roland_type_info(interner, &validation_context.type_variables);
                rolandc_error!(err_manager, g_arg.location, "Undeclared type {}", etype_str,);
             }
          }
@@ -821,7 +857,9 @@ fn get_type(
       }
       Expression::FloatLiteral(_) => {
          validation_context.unknown_literals.insert(expr_index);
-         let new_type_variable = validation_context.type_variables.new_type_variable(TypeConstraint::Float);
+         let new_type_variable = validation_context
+            .type_variables
+            .new_type_variable(TypeConstraint::Float);
          ExpressionType::Unknown(new_type_variable)
       }
       Expression::StringLiteral(lit) => {
@@ -846,7 +884,10 @@ fn get_type(
             let exp_type = validation_context.expressions[*expr_id].exp_type.as_ref().unwrap();
             match exp_type {
                ExpressionType::Unknown(v) => {
-                  matches!(validation_context.type_variables.get_data(*v).constraint, TypeConstraint::Int)
+                  matches!(
+                     validation_context.type_variables.get_data(*v).constraint,
+                     TypeConstraint::Int
+                  )
                }
                _ => false,
             }
@@ -1156,14 +1197,10 @@ fn get_type(
          }
 
          if *un_op == UnOp::Negate {
-            if let Some(x) = e
-               .exp_type
-               .as_ref()
-               .unwrap()
-               .get_type_variable_of_unknown_type()
-            {
+            if let Some(x) = e.exp_type.as_ref().unwrap().get_type_variable_of_unknown_type() {
                let tvd = validation_context.type_variables.get_data_mut(x);
-               if tvd.constraint == TypeConstraint::Int { // could be a float, or totally unknown
+               if tvd.constraint == TypeConstraint::Int {
+                  // could be a float, or totally unknown
                   tvd.add_constraint(TypeConstraint::SignedInt).unwrap();
                }
             }
@@ -1209,7 +1246,10 @@ fn get_type(
                "Expected type {:?} for expression {:?}; instead got {}",
                correct_type,
                un_op,
-               e.exp_type.as_ref().unwrap().as_roland_type_info(interner, &validation_context.type_variables)
+               e.exp_type
+                  .as_ref()
+                  .unwrap()
+                  .as_roland_type_info(interner, &validation_context.type_variables)
             );
             ExpressionType::CompileError
          } else if *un_op == UnOp::AddressOf
@@ -1389,8 +1429,13 @@ fn get_type(
                   if field_expr.exp_type.as_ref().unwrap() != defined_type
                      && !field_expr.exp_type.as_ref().unwrap().is_error()
                   {
-                     let field_1_type_str = field_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner, &validation_context.type_variables);
-                     let defined_type_str = defined_type.as_roland_type_info(interner, &validation_context.type_variables);
+                     let field_1_type_str = field_expr
+                        .exp_type
+                        .as_ref()
+                        .unwrap()
+                        .as_roland_type_info(interner, &validation_context.type_variables);
+                     let defined_type_str =
+                        defined_type.as_roland_type_info(interner, &validation_context.type_variables);
                      rolandc_error_w_details!(
                         err_manager,
                         &[
@@ -1527,9 +1572,17 @@ fn get_type(
                   ],
                   "Element at array index {} has type of {}, but element at array index {} has mismatching type of {}",
                   i - 1,
-                  last_elem_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner, &validation_context.type_variables),
+                  last_elem_expr
+                     .exp_type
+                     .as_ref()
+                     .unwrap()
+                     .as_roland_type_info(interner, &validation_context.type_variables),
                   i,
-                  this_elem_expr.exp_type.as_ref().unwrap().as_roland_type_info(interner, &validation_context.type_variables),
+                  this_elem_expr
+                     .exp_type
+                     .as_ref()
+                     .unwrap()
+                     .as_roland_type_info(interner, &validation_context.type_variables),
                );
                any_error = true;
             }
@@ -1551,7 +1604,9 @@ fn get_type(
          if any_error {
             ExpressionType::CompileError
          } else if elems.is_empty() {
-            let new_type_variable = validation_context.type_variables.new_type_variable(TypeConstraint::None);
+            let new_type_variable = validation_context
+               .type_variables
+               .new_type_variable(TypeConstraint::None);
             validation_context.unknown_literals.insert(expr_index);
             ExpressionType::Array(Box::new(ExpressionType::Unknown(new_type_variable)), 0)
          } else {

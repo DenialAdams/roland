@@ -6,8 +6,8 @@ use indexmap::{IndexMap, IndexSet};
 use crate::add_virtual_variables::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   BinOp, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, Program, Statement, StatementNode, UnOp,
-   VariableId, statement_always_returns,
+   statement_always_returns, BinOp, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, Program,
+   Statement, StatementNode, UnOp, VariableId,
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{
@@ -796,9 +796,14 @@ pub fn emit_wasm(
          emit_statement(statement, &mut generation_context, interner);
       }
 
-      if procedure.block.statements.last().map_or(false, |x| statement_always_returns(&x.statement, generation_context.expressions)) {
+      if procedure.block.statements.last().map_or(false, |x| {
+         statement_always_returns(&x.statement, generation_context.expressions)
+      }) {
          // No need to adjust stack; it was done in the return statement
-         if !matches!(procedure.block.statements.last().unwrap().statement, Statement::Return(_)) {
+         if !matches!(
+            procedure.block.statements.last().unwrap().statement,
+            Statement::Return(_)
+         ) {
             // Roland can be smarter than WASM permits, hence we make this explicit to avoid tripping stack violations
             generation_context.out.emit_constant_instruction("unreachable");
          }
@@ -1036,7 +1041,12 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
       Statement::Return(en) => {
          do_emit_and_load_lval(*en, generation_context, interner);
 
-         if generation_context.expressions[*en].exp_type.as_ref().unwrap().is_never() {
+         if generation_context.expressions[*en]
+            .exp_type
+            .as_ref()
+            .unwrap()
+            .is_never()
+         {
             // WASM has strict rules about the stack - we need a literal "unreachable" to bypass them
             generation_context.out.emit_constant_instruction("unreachable");
          } else {

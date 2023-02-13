@@ -28,7 +28,7 @@ impl DisjointSet {
    // find with path compression
    pub fn find(&self, x: usize) -> usize {
       let mut at_x = self.tree[x].get();
-   
+
       let current_parent = at_x.parent;
       if current_parent != x {
          at_x.parent = self.find(current_parent);

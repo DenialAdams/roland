@@ -2,14 +2,13 @@ use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
 
+use self::type_variables::TypeVariableManager;
 use crate::interner::StrId;
 use crate::parse::{ExpressionId, ExpressionPool, ExpressionTypeNode, VariableId};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 use crate::Target;
-
-use self::type_variables::TypeVariableManager;
 
 pub mod type_and_procedure_info;
 pub mod type_inference;

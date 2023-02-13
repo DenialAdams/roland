@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use crate::{type_data::ExpressionType, disjoint_set::DisjointSet};
+use crate::disjoint_set::DisjointSet;
+use crate::type_data::ExpressionType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TypeVariable(usize);
@@ -51,7 +52,13 @@ impl TypeVariableManager {
 
    pub fn new_type_variable(&mut self, constraint: TypeConstraint) -> TypeVariable {
       let new_tv = self.disjoint_set.add_new_set();
-      self.type_variable_data.insert(new_tv, TypeVariableData { constraint, known_type: None });
+      self.type_variable_data.insert(
+         new_tv,
+         TypeVariableData {
+            constraint,
+            known_type: None,
+         },
+      );
       TypeVariable(new_tv)
    }
 

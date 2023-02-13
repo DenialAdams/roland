@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use crate::interner::{Interner, StrId};
-use crate::semantic_analysis::type_variables::{TypeVariable, TypeVariableManager, TypeConstraint};
+use crate::semantic_analysis::type_variables::{TypeConstraint, TypeVariable, TypeVariableManager};
 use crate::size_info::SizeInfo;
 
 pub const U8_TYPE: ExpressionType = ExpressionType::Int(IntType {
@@ -188,9 +188,7 @@ impl ExpressionType {
    #[must_use]
    pub fn is_concrete(&self) -> bool {
       match self {
-         ExpressionType::Unknown(_)
-         | ExpressionType::CompileError
-         | ExpressionType::Unresolved(_) => false,
+         ExpressionType::Unknown(_) | ExpressionType::CompileError | ExpressionType::Unresolved(_) => false,
          ExpressionType::Int(_)
          | ExpressionType::Float(_)
          | ExpressionType::Bool
@@ -237,20 +235,28 @@ impl ExpressionType {
    }
 
    #[must_use]
-   pub fn as_roland_type_info<'i>(&self, interner: &'i Interner, type_variable_info: &TypeVariableManager) -> Cow<'i, str> {
+   pub fn as_roland_type_info<'i>(
+      &self,
+      interner: &'i Interner,
+      type_variable_info: &TypeVariableManager,
+   ) -> Cow<'i, str> {
       self.as_roland_type_info_inner(interner, Some(type_variable_info))
    }
 
    #[must_use]
-   fn as_roland_type_info_inner<'i>(&self, interner: &'i Interner, type_variable_info: Option<&TypeVariableManager>) -> Cow<'i, str> {
+   fn as_roland_type_info_inner<'i>(
+      &self,
+      interner: &'i Interner,
+      type_variable_info: Option<&TypeVariableManager>,
+   ) -> Cow<'i, str> {
       match self {
          ExpressionType::Unknown(x) => {
             if let Some(tvi) = type_variable_info {
                match tvi.get_data(*x).constraint {
-                TypeConstraint::Int => Cow::Borrowed("?? Int"),
-                TypeConstraint::SignedInt => Cow::Borrowed("?? Signed Int"),
-                TypeConstraint::Float => Cow::Borrowed("?? Float"),
-                TypeConstraint::None => Cow::Borrowed("??"),
+                  TypeConstraint::Int => Cow::Borrowed("?? Int"),
+                  TypeConstraint::SignedInt => Cow::Borrowed("?? Signed Int"),
+                  TypeConstraint::Float => Cow::Borrowed("?? Float"),
+                  TypeConstraint::None => Cow::Borrowed("??"),
                }
             } else {
                Cow::Borrowed("??")
@@ -281,10 +287,15 @@ impl ExpressionType {
          }
          ExpressionType::Struct(x) => Cow::Owned(format!("Struct {}", interner.lookup(*x))),
          ExpressionType::Enum(x) => Cow::Owned(format!("Enum {}", interner.lookup(*x))),
-         ExpressionType::Array(i_type, length) => {
-            Cow::Owned(format!("[{}; {}]", i_type.as_roland_type_info_inner(interner, type_variable_info), length))
-         }
-         ExpressionType::Pointer(i_type) => Cow::Owned(format!("&{}", i_type.as_roland_type_info_inner(interner, type_variable_info))),
+         ExpressionType::Array(i_type, length) => Cow::Owned(format!(
+            "[{}; {}]",
+            i_type.as_roland_type_info_inner(interner, type_variable_info),
+            length
+         )),
+         ExpressionType::Pointer(i_type) => Cow::Owned(format!(
+            "&{}",
+            i_type.as_roland_type_info_inner(interner, type_variable_info)
+         )),
          ExpressionType::Unresolved(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::ProcedurePointer {
             parameters,
@@ -295,7 +306,11 @@ impl ExpressionType {
                .map(|x| x.as_roland_type_info_inner(interner, type_variable_info))
                .collect::<Vec<_>>()
                .join(", ");
-            Cow::Owned(format!("proc({}) -> {}", params, ret_val.as_roland_type_info_inner(interner, type_variable_info)))
+            Cow::Owned(format!(
+               "proc({}) -> {}",
+               params,
+               ret_val.as_roland_type_info_inner(interner, type_variable_info)
+            ))
          }
          ExpressionType::ProcedureItem(proc_name, type_arguments) => {
             if type_arguments.is_empty() {

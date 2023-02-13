@@ -1,8 +1,7 @@
+use super::type_variables::{TypeConstraint, TypeVariable};
+use super::ValidationContext;
 use crate::parse::{Expression, ExpressionId};
 use crate::type_data::{ExpressionType, IntType};
-
-use super::ValidationContext;
-use super::type_variables::{TypeConstraint, TypeVariable};
 
 fn unknowns_are_compatible(x: TypeVariable, y: TypeVariable, validation_context: &ValidationContext) -> bool {
    let x = validation_context.type_variables.find(x);
@@ -38,9 +37,7 @@ fn inference_is_possible(
             return unknowns_are_compatible(*x, *y, validation_context);
          }
 
-         let data = validation_context
-            .type_variables
-            .get_data(*x);
+         let data = validation_context.type_variables.get_data(*x);
          match data.constraint {
             TypeConstraint::None => true,
             TypeConstraint::Float => matches!(potential_type, ExpressionType::Float(_)),
@@ -161,9 +158,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          } else {
             let e_tv = e_type.get_type_variable_of_unknown_type().unwrap();
             debug_assert!(unknowns_are_compatible(my_tv, e_tv, validation_context));
-            validation_context
-               .type_variables
-               .union(my_tv, e_tv);
+            validation_context.type_variables.union(my_tv, e_tv);
          }
 
          *validation_context.expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
