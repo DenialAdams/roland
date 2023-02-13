@@ -85,8 +85,7 @@ enum TypeValidator {
 fn matches(type_validation: &TypeValidator, et: &ExpressionType, validation_context: &ValidationContext) -> bool {
    let normal_matches = matches!(
       (type_validation, et),
-      (_, ExpressionType::Never)
-         | (TypeValidator::Any, _)
+      (TypeValidator::Any, _)
          | (TypeValidator::AnyPointer, ExpressionType::Pointer(_))
          | (TypeValidator::Bool, ExpressionType::Bool)
          | (

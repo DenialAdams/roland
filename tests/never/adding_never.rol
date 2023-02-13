@@ -1,0 +1,7 @@
+proc main() {
+   let x = unreachable() + unreachable();
+}
+__END__
+compile:
+Binary operator Add requires LHS to have type matching [AnyInt, AnyFloat]; instead got !
+↳ line 2, column 12 [tests/never/adding_never.rol]
