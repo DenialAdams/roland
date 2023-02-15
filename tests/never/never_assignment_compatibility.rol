@@ -1,0 +1,13 @@
+proc main() {
+   println("OK");
+   return;
+   let x: u8 = unreachable();
+   x = unreachable();
+   foo(x);
+}
+
+proc foo(x: u8) {
+}
+__END__
+run:
+OK
