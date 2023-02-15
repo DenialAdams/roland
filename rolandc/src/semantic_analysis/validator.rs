@@ -461,7 +461,7 @@ fn type_statement(
 
          if lhs_type.is_error() || rhs_type.is_error() {
             // avoid cascading errors
-         } else if lhs_type != rhs_type {
+         } else if lhs_type != rhs_type && !rhs_type.is_never() {
             rolandc_error_w_details!(
                err_manager,
                &[(len.location, "left hand side"), (en.location, "right hand side")],
@@ -1903,7 +1903,7 @@ fn check_type_declared_vs_actual(
 
    let actual_type = actual.exp_type.as_ref().unwrap();
    let declared_type = &declared.e_type;
-   if declared_type != actual_type && !actual_type.is_error() {
+   if declared_type != actual_type && !actual_type.is_error() && !actual_type.is_never() {
       let actual_type_str = actual_type.as_roland_type_info(interner, type_variable_info);
       let declared_type_str = declared.e_type.as_roland_type_info(interner, type_variable_info);
       let locations = &[(actual.location, "expression"), (declared.location, "declared type")];
