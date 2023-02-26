@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use indexmap::IndexMap;
 
 use crate::constant_folding::{self, FoldingContext};
-use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
+use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{Expression, ExpressionId, ExpressionPool, Program, VariableId};
@@ -122,9 +122,9 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
    let p_const_expr = &cg_context.expressions[c.1];
 
    if !crate::constant_folding::is_const(&p_const_expr.expression, cg_context.expressions) {
-      rolandc_error_w_details!(
+      rolandc_error!(
          err_manager,
-         &[(c.0, "const"), (p_const_expr.location, "expression")],
+         p_const_expr.location,
          "Value of const `{}` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static and initialize it on program start.",
          cg_context.interner.lookup(c.2)
       );
