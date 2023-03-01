@@ -998,12 +998,16 @@ impl Literal {
          },
 
          // Transmute to pointer @FixedPointerWidth
-         (Literal::Int32(i), ExpressionType::Pointer(_)) => Expression::IntLiteral {
+         (Literal::Int32(i), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
             val: u64::from(i as u32),
             synthetic: true,
          },
-         (Literal::Uint32(i), ExpressionType::Pointer(_)) => Expression::IntLiteral {
+         (Literal::Uint32(i), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
             val: u64::from(i),
+            synthetic: true,
+         },
+         (Literal::Float32(f), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
+            val: u64::from(f.to_bits()),
             synthetic: true,
          },
 
