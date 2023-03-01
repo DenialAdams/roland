@@ -1,6 +1,6 @@
 use indexmap::IndexMap;
 
-use crate::parse::{BlockNode, CastType, Expression, ExpressionId, ExpressionPool, Program, Statement, VariableId};
+use crate::parse::{BlockNode, CastType, Expression, ExpressionId, ExpressionPool, Program, Statement, VariableId, ExpressionNode, StatementNode};
 use crate::type_data::ExpressionType;
 
 pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
@@ -16,123 +16,159 @@ pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_ty
          ) | (ExpressionType::Int(_), ExpressionType::Float(_))
       )
 }
-struct VvContext<'a, 'b> {
-   expressions: &'a ExpressionPool,
-   virtual_vars: IndexMap<ExpressionId, VariableId>,
-   cur_procedure_locals: &'b mut IndexMap<VariableId, ExpressionType>,
-   next_variable: VariableId,
+
+struct VvStackItem {
+   virtual_vars: Vec<(ExpressionId, VariableId, usize)>,
+   current_stmt: usize,
 }
 
-impl VvContext<'_, '_> {
-   fn declare_vv(&mut self, expr_id: ExpressionId) {
+struct VvContext<'a> {
+   cur_procedure_locals: &'a mut IndexMap<VariableId, ExpressionType>,
+   next_variable: VariableId,
+   vv_stack: Vec<VvStackItem>,
+}
+
+impl VvContext<'_> {
+   fn declare_vv(&mut self, expr_id: ExpressionId, expressions: &ExpressionPool) {
       let var_id = self.next_variable;
       self.next_variable = self.next_variable.next();
       self
          .cur_procedure_locals
-         .insert(var_id, self.expressions[expr_id].exp_type.clone().unwrap());
-      debug_assert!(!self.virtual_vars.contains_key(&expr_id));
-      self.virtual_vars.insert(expr_id, var_id);
+         .insert(var_id, expressions[expr_id].exp_type.clone().unwrap());
+      let vv_stack_frame = self.vv_stack.last_mut().unwrap();
+      let current_stmt = vv_stack_frame.current_stmt;
+      vv_stack_frame.virtual_vars.push((expr_id, var_id, current_stmt));
    }
 }
 
-pub fn add_virtual_vars(program: &mut Program, expressions: &ExpressionPool) {
+pub fn add_virtual_vars(program: &mut Program, expressions: &mut ExpressionPool) {
    let mut vv_context = VvContext {
-      expressions,
-      virtual_vars: IndexMap::new(),
+      vv_stack: Vec::new(),
       cur_procedure_locals: &mut IndexMap::new(),
       next_variable: program.next_variable,
    };
 
    for procedure in program.procedures.iter_mut() {
       vv_context.cur_procedure_locals = &mut procedure.locals;
-      vv_block(&mut procedure.block, &mut vv_context);
-
-      debug_assert!(procedure.virtual_locals.is_empty());
-      std::mem::swap(&mut procedure.virtual_locals, &mut vv_context.virtual_vars);
+      vv_block(&mut procedure.block, &mut vv_context, expressions);
    }
 
    program.next_variable = vv_context.next_variable;
 }
 
-fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext) {
+fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, expressions: &mut ExpressionPool) {
+   vv_context.vv_stack.push(VvStackItem { virtual_vars: Vec::new(), current_stmt: 0 });
    for statement in block.statements.iter_mut() {
-      vv_statement(&mut statement.statement, vv_context);
+      vv_statement(&mut statement.statement, vv_context, expressions);
+      vv_context.vv_stack.last_mut().unwrap().current_stmt += 1;
+   }
+   let mut vv_frame = vv_context.vv_stack.pop().unwrap();
+
+   for vv in vv_frame.virtual_vars.drain(..).rev() {
+      let (vv_assignment_stmt, loc) = {
+         let et = expressions[vv.0].exp_type.clone();
+         let el = expressions[vv.0].location;
+         let lhs = expressions.push(ExpressionNode {
+            expression: Expression::Variable(vv.1),
+            exp_type: et,
+            location: el,
+         });
+         let rhs = expressions.push(expressions[vv.0].clone());
+         (Statement::Assignment(lhs, rhs), el)
+      };
+
+      block.statements.insert(vv.2, StatementNode {
+        statement: vv_assignment_stmt,
+        location: loc,
+      });
+      expressions[vv.0].expression = Expression::Variable(vv.1);
    }
 }
 
-fn vv_statement(statement: &mut Statement, vv_context: &mut VvContext) {
+fn vv_statement(statement: &mut Statement, vv_context: &mut VvContext, expressions: &mut ExpressionPool) {
    match statement {
       Statement::Assignment(lhs_expr, rhs_expr) => {
-         vv_expr(*lhs_expr, vv_context);
-         vv_expr(*rhs_expr, vv_context);
+         vv_expr(*lhs_expr, vv_context, expressions);
+         vv_expr(*rhs_expr, vv_context, expressions);
       }
       Statement::Block(block) => {
-         vv_block(block, vv_context);
+         vv_block(block, vv_context, expressions);
       }
       Statement::Break | Statement::Continue => (),
       Statement::IfElse(if_expr, if_block, else_statement) => {
-         vv_expr(*if_expr, vv_context);
-         vv_block(if_block, vv_context);
-         vv_statement(&mut else_statement.statement, vv_context);
+         vv_expr(*if_expr, vv_context, expressions);
+         vv_block(if_block, vv_context, expressions);
+         vv_statement(&mut else_statement.statement, vv_context, expressions);
       }
-      Statement::For(_var, start, end, block, _, _) => {
-         vv_expr(*start, vv_context);
-         vv_expr(*end, vv_context);
-         vv_block(block, vv_context);
+      Statement::For(_var, start, end, block, _inclusive, start_var_id) => {
+         vv_expr(*start, vv_context, expressions);
+         vv_expr(*end, vv_context, expressions);
+         vv_block(block, vv_context, expressions);
+
+         // there is a already a variable id for start, but we still want to hoist
+         let vv_stack_frame = vv_context.vv_stack.last_mut().unwrap();
+         let current_stmt = vv_stack_frame.current_stmt;
+         vv_stack_frame.virtual_vars.push((*start, *start_var_id, current_stmt));
 
          // This virtual variable will be used to hoist the end expression out of the loop
-         vv_context.declare_vv(*end);
+         vv_context.declare_vv(*end, expressions);
       }
       Statement::Loop(block) => {
-         vv_block(block, vv_context);
+         vv_block(block, vv_context, expressions);
       }
       Statement::Expression(expr) => {
-         vv_expr(*expr, vv_context);
+         vv_expr(*expr, vv_context, expressions);
       }
       Statement::Return(expr) => {
-         vv_expr(*expr, vv_context);
+         vv_expr(*expr, vv_context, expressions);
       }
       Statement::VariableDeclaration(_, opt_expr, _, _) => {
          if let Some(expr) = opt_expr {
-            vv_expr(*expr, vv_context);
+            vv_expr(*expr, vv_context, expressions);
          }
       }
    }
 }
 
-fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
-   match &vv_context.expressions[expr_index].expression {
+fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext, expressions: &ExpressionPool) {
+   match &expressions[expr_index].expression {
       Expression::ArrayIndex { array, index } => {
-         vv_expr(*array, vv_context);
-         vv_expr(*index, vv_context);
+         vv_expr(*array, vv_context, expressions);
+         vv_expr(*index, vv_context, expressions);
 
-         let array_expression = &vv_context.expressions[*array];
+         let array_expression = &expressions[*array];
 
          // If this is an rvalue, we need to store this array in memory to do the indexing
          // and hence declare a virtual variable here. It's important that this
          // runs after validation, because we need type inference to be complete
          if !array_expression
             .expression
-            .is_lvalue_disregard_consts(vv_context.expressions)
+            .is_lvalue_disregard_consts(expressions)
          {
-            vv_context.declare_vv(*array);
+            vv_context.declare_vv(*array, expressions);
          }
       }
       Expression::ProcedureCall { args, proc_expr } => {
-         vv_expr(*proc_expr, vv_context);
-         for arg in args.iter() {
-            vv_expr(arg.expr, vv_context);
+         vv_expr(*proc_expr, vv_context, expressions);
 
-            if arg.name.is_some() {
-               vv_context.declare_vv(arg.expr);
+         let mut any_named_arg = false;
+         for arg in args.iter() {
+            vv_expr(arg.expr, vv_context, expressions);
+
+            any_named_arg |= arg.name.is_some();
+         }
+
+         if any_named_arg {
+            for arg in args.iter() {
+               vv_context.declare_vv(arg.expr, expressions);
             }
          }
 
          if matches!(
-            vv_context.expressions[*proc_expr].exp_type.as_ref().unwrap(),
+            expressions[*proc_expr].exp_type.as_ref().unwrap(),
             ExpressionType::ProcedurePointer { .. }
          ) {
-            vv_context.declare_vv(*proc_expr);
+            vv_context.declare_vv(*proc_expr, expressions);
          }
       }
       Expression::BinaryOperator {
@@ -140,26 +176,26 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
          lhs,
          rhs,
       } => {
-         vv_expr(*lhs, vv_context);
-         vv_expr(*rhs, vv_context);
+         vv_expr(*lhs, vv_context, expressions);
+         vv_expr(*rhs, vv_context, expressions);
       }
       Expression::UnaryOperator(_op, expr) => {
-         vv_expr(*expr, vv_context);
+         vv_expr(*expr, vv_context, expressions);
       }
       Expression::StructLiteral(_, field_exprs) => {
          for (_, expr) in field_exprs.iter() {
-            vv_expr(*expr, vv_context);
-            vv_context.declare_vv(*expr);
+            vv_expr(*expr, vv_context, expressions);
+            vv_context.declare_vv(*expr, expressions);
          }
       }
       Expression::FieldAccess(_field_names, expr) => {
-         vv_expr(*expr, vv_context);
+         vv_expr(*expr, vv_context, expressions);
 
-         if !vv_context.expressions[*expr]
+         if !expressions[*expr]
             .expression
-            .is_lvalue_disregard_consts(vv_context.expressions)
+            .is_lvalue_disregard_consts(expressions)
          {
-            vv_context.declare_vv(*expr);
+            vv_context.declare_vv(*expr, expressions);
          }
       }
       Expression::Cast {
@@ -167,22 +203,22 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext) {
          target_type,
          expr,
       } => {
-         vv_expr(*expr, vv_context);
+         vv_expr(*expr, vv_context, expressions);
 
-         let e = &vv_context.expressions[*expr];
+         let e = &expressions[*expr];
 
-         if !e.expression.is_lvalue_disregard_consts(vv_context.expressions)
+         if !e.expression.is_lvalue_disregard_consts(expressions)
             && !is_wasm_compatible_rval_transmute(e.exp_type.as_ref().unwrap(), target_type)
          {
-            vv_context.declare_vv(*expr);
+            vv_context.declare_vv(*expr, expressions);
          }
       }
       Expression::Cast { expr, .. } => {
-         vv_expr(*expr, vv_context);
+         vv_expr(*expr, vv_context, expressions);
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
-            vv_expr(*expr, vv_context);
+            vv_expr(*expr, vv_context, expressions);
          }
       }
       Expression::EnumLiteral(_, _) => (),

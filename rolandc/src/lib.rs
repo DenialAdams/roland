@@ -226,7 +226,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 ) -> Result<Vec<u8>, CompilationError> {
    compile_for_errors(ctx, user_program_ep, config)?;
 
-   add_virtual_variables::add_virtual_vars(&mut ctx.program, &ctx.expressions);
+   add_virtual_variables::add_virtual_vars(&mut ctx.program, &mut ctx.expressions);
    match config.target {
       Target::Wasi | Target::Lib => Ok(wasm::emit_wasm(
          &mut ctx.program,
@@ -262,14 +262,14 @@ fn lex_and_parse(
 }
 
 fn merge_program(main_program: &mut Program, other_program: &mut Program) {
-   main_program.literals.extend(other_program.literals.drain(0..));
+   main_program.literals.extend(other_program.literals.drain(..));
    main_program
       .external_procedures
-      .extend(other_program.external_procedures.drain(0..));
-   main_program.procedures.extend(other_program.procedures.drain(0..));
-   main_program.structs.extend(other_program.structs.drain(0..));
-   main_program.statics.extend(other_program.statics.drain(0..));
-   main_program.enums.extend(other_program.enums.drain(0..));
-   main_program.consts.extend(other_program.consts.drain(0..));
-   main_program.parsed_types.extend(other_program.parsed_types.drain(0..));
+      .extend(other_program.external_procedures.drain(..));
+   main_program.procedures.extend(other_program.procedures.drain(..));
+   main_program.structs.extend(other_program.structs.drain(..));
+   main_program.statics.extend(other_program.statics.drain(..));
+   main_program.enums.extend(other_program.enums.drain(..));
+   main_program.consts.extend(other_program.consts.drain(..));
+   main_program.parsed_types.extend(other_program.parsed_types.drain(..));
 }

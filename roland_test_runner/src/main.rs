@@ -1,4 +1,3 @@
-#![feature(local_key_cell_methods)]
 #![allow(clippy::uninlined_format_args)] // I'm an old man and I like the way it was before
 #![allow(clippy::unwrap_or_else_default)] // I want to know exactly what is being called
 
@@ -102,13 +101,6 @@ fn main() -> Result<(), &'static str> {
    let output_lock = Mutex::new(());
 
    entries.par_iter().for_each(|entry| {
-      /*let mut tc_handle = Command::new(&opts.tc_path).arg(entry.clone()).spawn().unwrap();
-      let tc_output = match tc_handle.wait_timeout(Duration::from_secs(1)).unwrap() {
-        Some(status) => {
-         status
-        },
-        None => todo!(),
-      };*/
       let tc_output = Command::new(&opts.tc_path).arg(entry.clone()).output().unwrap();
       let test_ok = test_result(&tc_output, entry);
       // prevents stdout and stderr from mixing

@@ -31,7 +31,6 @@ struct GenerationContext<'a> {
    needed_store_fns: IndexSet<ExpressionType>,
    sum_sizeof_locals_mem: u32,
    expressions: &'a ExpressionPool,
-   procedure_virtual_vars: &'a IndexMap<ExpressionId, VariableId>,
    procedure_to_table_index: IndexSet<StrId>,
    indirect_callees: Vec<ExpressionId>,
 }
@@ -488,7 +487,6 @@ pub fn emit_wasm(
       enum_info: &program.enum_info,
       sum_sizeof_locals_mem: 0,
       expressions,
-      procedure_virtual_vars: &IndexMap::new(),
       procedure_to_table_index: IndexSet::new(),
       indirect_callees: Vec::new(),
    };
@@ -712,7 +710,6 @@ pub fn emit_wasm(
    }
 
    for procedure in program.procedures.iter_mut() {
-      generation_context.procedure_virtual_vars = &procedure.virtual_locals;
       generation_context.local_offsets_mem.clear();
 
       // 0-4 == value of previous frame base pointer
@@ -928,20 +925,6 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
 
          debug_assert!(!*inclusive); // unimplemented
 
-         let end_var_id = generation_context.procedure_virtual_vars.get(end).copied().unwrap();
-
-         // Set start var
-         {
-            get_stack_address_of_local(*start_var_id, generation_context);
-            do_emit_and_load_lval(*start, generation_context, interner);
-            store(start_expr.exp_type.as_ref().unwrap(), generation_context, interner);
-         }
-         // Set end var
-         {
-            get_stack_address_of_local(end_var_id, generation_context);
-            do_emit_and_load_lval(*end, generation_context, interner);
-            store(start_expr.exp_type.as_ref().unwrap(), generation_context, interner);
-         }
          generation_context.out.emit_block_start("b", 0);
          generation_context.out.emit_loop_start(0);
          generation_context.out.emit_block_start("bi", 0);
@@ -949,8 +932,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          {
             get_stack_address_of_local(*start_var_id, generation_context);
             load(start_expr.exp_type.as_ref().unwrap(), generation_context);
-            get_stack_address_of_local(end_var_id, generation_context);
-            load(start_expr.exp_type.as_ref().unwrap(), generation_context);
+            do_emit_and_load_lval(*end, generation_context, interner);
             generation_context.out.emit_spaces();
             writeln!(generation_context.out.out, "{}.ge{}", wasm_type, suffix).unwrap();
 
@@ -971,7 +953,8 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             emit_statement(statement, generation_context, interner);
          }
          generation_context.out.emit_end(); // end block bi
-                                            // Increment
+         
+         // Increment
          {
             get_stack_address_of_local(*start_var_id, generation_context);
             get_stack_address_of_local(*start_var_id, generation_context);
@@ -1505,7 +1488,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          if e.expression.is_lvalue_disregard_consts(generation_context.expressions) {
             do_emit(*e_id, generation_context, interner);
             load(target_type, generation_context);
-         } else if is_wasm_compatible_rval_transmute(e.exp_type.as_ref().unwrap(), target_type) {
+         } else {
+            debug_assert!(is_wasm_compatible_rval_transmute(e.exp_type.as_ref().unwrap(), target_type));
             do_emit(*e_id, generation_context, interner);
 
             if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Float(_))
@@ -1535,17 +1519,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                   _ => unreachable!(),
                }
             }
-         } else {
-            let transmutee_vv = generation_context.procedure_virtual_vars.get(e_id).copied().unwrap();
-
-            // store to VV as the original type
-            get_stack_address_of_local(transmutee_vv, generation_context);
-            do_emit(*e_id, generation_context, interner);
-            store(e.exp_type.as_ref().unwrap(), generation_context, interner);
-
-            // load as the target type
-            get_stack_address_of_local(transmutee_vv, generation_context);
-            load(target_type, generation_context);
          }
       }
       Expression::Cast {
@@ -1658,23 +1631,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          unreachable!()
       }
       Expression::ProcedureCall { proc_expr, args } => {
-         if matches!(
+         if !matches!(
             generation_context.expressions[*proc_expr].exp_type,
             Some(ExpressionType::ProcedurePointer { .. })
          ) {
-            let proc_expr_vv = generation_context
-               .procedure_virtual_vars
-               .get(proc_expr)
-               .copied()
-               .unwrap();
-            get_stack_address_of_local(proc_expr_vv, generation_context);
-            do_emit_and_load_lval(*proc_expr, generation_context, interner);
-            store(
-               generation_context.expressions[*proc_expr].exp_type.as_ref().unwrap(),
-               generation_context,
-               interner,
-            );
-         } else {
             // shouldn't place anything on the stack
             do_emit_and_load_lval(*proc_expr, generation_context, interner);
          }
@@ -1694,38 +1654,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             let mut named_args = vec![];
             named_args.extend_from_slice(&args[i..]);
 
-            // Store each named param as virtual variables, evaluating *in the order they were written*
-            for arg in named_args.iter() {
-               let arg_virtual_var = generation_context
-                  .procedure_virtual_vars
-                  .get(&arg.expr)
-                  .copied()
-                  .unwrap();
-               get_stack_address_of_local(arg_virtual_var, generation_context);
-               do_emit_and_load_lval(arg.expr, generation_context, interner);
-               store(
-                  generation_context.expressions[arg.expr].exp_type.as_ref().unwrap(),
-                  generation_context,
-                  interner,
-               );
-            }
-
             // Output each named parameter in canonical order
             named_args.sort_unstable_by_key(|x| x.name);
             for named_arg in named_args {
-               let arg_virtual_var = generation_context
-                  .procedure_virtual_vars
-                  .get(&named_arg.expr)
-                  .copied()
-                  .unwrap();
-               get_stack_address_of_local(arg_virtual_var, generation_context);
-               load(
-                  generation_context.expressions[named_arg.expr]
-                     .exp_type
-                     .as_ref()
-                     .unwrap(),
-                  generation_context,
-               );
+               do_emit_and_load_lval(named_arg.expr, generation_context, interner);
             }
          }
 
@@ -1734,16 +1666,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                generation_context.out.emit_call(*proc_name, interner);
             }
             ExpressionType::ProcedurePointer { .. } => {
-               let proc_expr_vv = generation_context
-                  .procedure_virtual_vars
-                  .get(proc_expr)
-                  .copied()
-                  .unwrap();
-               get_stack_address_of_local(proc_expr_vv, generation_context);
-               load(
-                  generation_context.expressions[*proc_expr].exp_type.as_ref().unwrap(),
-                  generation_context,
-               );
+               do_emit_and_load_lval(*proc_expr, generation_context, interner);
                writeln!(generation_context.out.out, "call_indirect 0 (type $::{})", proc_expr.0).unwrap();
                generation_context.indirect_callees.push(*proc_expr);
             }
@@ -1751,35 +1674,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          };
       }
       Expression::StructLiteral(s_name, fields) => {
-         // First we emit the expressions *in the order they were written*,
-         // storing them into temps
-         for field in fields.iter() {
-            let field_virtual_var = generation_context
-               .procedure_virtual_vars
-               .get(&field.1)
-               .copied()
-               .unwrap();
-            get_stack_address_of_local(field_virtual_var, generation_context);
-            do_emit_and_load_lval(field.1, generation_context, interner);
-            store(
-               generation_context.expressions[field.1].exp_type.as_ref().unwrap(),
-               generation_context,
-               interner,
-            );
-         }
-
-         // Then we load from the temps in the order the struct is laid out
          let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
          let si = generation_context.struct_info.get(&s_name.str).unwrap();
          for field in si.field_types.iter() {
             if let Some(value_of_field) = map.get(field.0).copied() {
-               let field_virtual_var = generation_context
-                  .procedure_virtual_vars
-                  .get(&value_of_field)
-                  .copied()
-                  .unwrap();
-               get_stack_address_of_local(field_virtual_var, generation_context);
-               load(&field.1.e_type, generation_context);
+               do_emit_and_load_lval(value_of_field, generation_context, interner);
             } else {
                // Must be a default value
                let default_value = si.default_values.get(field.0).copied().unwrap();
@@ -1831,26 +1730,12 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
 
          let lhs = &generation_context.expressions[*lhs_id];
 
-         if lhs
+         debug_assert!(lhs
             .expression
-            .is_lvalue_disregard_consts(generation_context.expressions)
-         {
-            do_emit(*lhs_id, generation_context, interner);
-            calculate_offset(lhs.exp_type.as_ref().unwrap(), field_names, generation_context);
-         } else {
-            // spill to the virtual variable
-            let lhs_vv = generation_context.procedure_virtual_vars.get(lhs_id).copied().unwrap();
-            get_stack_address_of_local(lhs_vv, generation_context);
-            do_emit(*lhs_id, generation_context, interner);
-            store(lhs.exp_type.as_ref().unwrap(), generation_context, interner);
+            .is_lvalue_disregard_consts(generation_context.expressions));
 
-            // Now that we've spilled, we can proceed to compute the offset like normal
-            get_stack_address_of_local(lhs_vv, generation_context);
-            calculate_offset(lhs.exp_type.as_ref().unwrap(), field_names, generation_context);
-
-            // ...but we're an rvalue, so we have to load
-            load(expr_node.exp_type.as_ref().unwrap(), generation_context);
-         }
+         do_emit(*lhs_id, generation_context, interner);
+         calculate_offset(lhs.exp_type.as_ref().unwrap(), field_names, generation_context);
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
@@ -1884,31 +1769,12 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             }
          }
 
-         if generation_context.expressions[*array]
+         debug_assert!(generation_context.expressions[*array]
             .expression
-            .is_lvalue_disregard_consts(generation_context.expressions)
-         {
-            do_emit(*array, generation_context, interner);
-            calculate_offset(*array, *index, generation_context, interner);
-         } else {
-            let array_var_id = generation_context.procedure_virtual_vars.get(array).copied().unwrap();
+            .is_lvalue_disregard_consts(generation_context.expressions));
 
-            // spill to the virtual variable
-            get_stack_address_of_local(array_var_id, generation_context);
-            do_emit(*array, generation_context, interner);
-            store(
-               generation_context.expressions[*array].exp_type.as_ref().unwrap(),
-               generation_context,
-               interner,
-            );
-
-            // Now that we've spilled, we can proceed to load like normal
-            get_stack_address_of_local(array_var_id, generation_context);
-            calculate_offset(*array, *index, generation_context, interner);
-
-            // ...but we're an rvalue, so we have to load
-            load(expr_node.exp_type.as_ref().unwrap(), generation_context);
-         }
+         do_emit(*array, generation_context, interner);
+         calculate_offset(*array, *index, generation_context, interner);
       }
    }
 }

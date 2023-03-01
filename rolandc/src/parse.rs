@@ -55,9 +55,7 @@ pub struct ProcedureNode {
    pub block: BlockNode,
    pub location: SourceInfo,
 
-   // TODO: if we use id-s for types (ala strings), we could use tinyset?
    pub locals: IndexMap<VariableId, ExpressionType>,
-   pub virtual_locals: IndexMap<ExpressionId, VariableId>,
 }
 
 #[derive(Clone)]
@@ -697,7 +695,6 @@ fn parse_procedure(
    Ok(ProcedureNode {
       definition,
       locals: IndexMap::new(),
-      virtual_locals: IndexMap::new(),
       block,
       location: combined_location,
    })

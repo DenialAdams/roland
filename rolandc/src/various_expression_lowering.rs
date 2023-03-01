@@ -111,7 +111,7 @@ pub fn lower_single_expression(
 pub fn lower_consts(program: &mut Program, expressions: &mut ExpressionPool, interner: &mut Interner) {
    let mut const_replacements: HashMap<VariableId, ExpressionId> = HashMap::new();
 
-   for p_const in program.consts.drain(0..) {
+   for p_const in program.consts.drain(..) {
       const_replacements.insert(p_const.var_id, p_const.value);
    }
    for i in 0..expressions.len() {
