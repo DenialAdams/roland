@@ -1496,10 +1496,14 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             do_emit(*e_id, generation_context, interner);
 
             if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Float(_))
-               && matches!(target_type, ExpressionType::Int(_))
+               && matches!(target_type, ExpressionType::Int(_) | ExpressionType::Pointer(_))
             {
                // float -> int
                match target_type {
+                  ExpressionType::Pointer(_) => {
+                     // @FixedPointerWidth
+                     generation_context.out.emit_constant_instruction("i32.reinterpret_f32");
+                  }
                   ExpressionType::Int(x) if x.width.as_num_bytes() == 4 => {
                      generation_context.out.emit_constant_instruction("i32.reinterpret_f32");
                   }
@@ -1508,7 +1512,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                   }
                   _ => unreachable!(),
                }
-            } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Int(_))
+            } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Int(_) | ExpressionType::Pointer(_))
                && matches!(target_type, ExpressionType::Float(_))
             {
                // int -> float

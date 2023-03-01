@@ -11,12 +11,9 @@ pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_ty
       || matches!(
          (source_type, &target_type),
          (
-            ExpressionType::Int(_) | ExpressionType::Pointer(_),
-            ExpressionType::Pointer(_)
-         ) | (
-            ExpressionType::Int(_) | ExpressionType::Float(_) | ExpressionType::Pointer(_),
-            ExpressionType::Int(_)
-         ) | (ExpressionType::Int(_), ExpressionType::Float(_))
+            ExpressionType::Int(_) | ExpressionType::Pointer(_) | ExpressionType::Float(_),
+            ExpressionType::Int(_) | ExpressionType::Pointer(_) | ExpressionType::Float(_)
+         )
       )
 }
 
