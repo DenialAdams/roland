@@ -5,6 +5,7 @@ authors = ["Richard McCormack <brick@brick.codes>"]
 edition = "2021"
 
 [dependencies]
+wait-timeout = "0.1.5"
 pico-args = { version = "0.5", default-features=false, features=[] }
 similar-asserts = "1"
 os_pipe = "1"

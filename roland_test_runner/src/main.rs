@@ -10,11 +10,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use os_pipe::pipe;
 use rayon::prelude::*;
 use rolandc::CompilationContext;
 use similar_asserts::SimpleDiff;
+use wait_timeout::ChildExt;
 
 enum TestFailureReason {
    TestingNothing(File),
@@ -22,6 +24,7 @@ enum TestFailureReason {
    FailedToRunExecutable,
    MismatchedExecutionOutput(String, String),
    MismatchedCompilationErrorOutput(String, TestDetails),
+   ExecutionTimeout,
 }
 
 struct Opts {
@@ -99,6 +102,13 @@ fn main() -> Result<(), &'static str> {
    let output_lock = Mutex::new(());
 
    entries.par_iter().for_each(|entry| {
+      /*let mut tc_handle = Command::new(&opts.tc_path).arg(entry.clone()).spawn().unwrap();
+      let tc_output = match tc_handle.wait_timeout(Duration::from_secs(1)).unwrap() {
+        Some(status) => {
+         status
+        },
+        None => todo!(),
+      };*/
       let tc_output = Command::new(&opts.tc_path).arg(entry.clone()).output().unwrap();
       let test_ok = test_result(&tc_output, entry);
       // prevents stdout and stderr from mixing
@@ -156,6 +166,13 @@ fn main() -> Result<(), &'static str> {
                      "Compilation seemingly succeeded, but the executable failed to run. Is wasmtime installed?"
                   )
                   .unwrap();
+               }
+               TestFailureReason::ExecutionTimeout => {
+                  writeln!(
+                     out_handle,
+                     "Compiled OK, but the executable failed to terminate."
+                  )
+                  .unwrap(); 
                }
                TestFailureReason::MismatchedExecutionOutput(expected, actual) => {
                   writeln!(
@@ -257,27 +274,36 @@ fn test_result(tc_output: &Output, t_file_path: &Path) -> Result<(), TestFailure
       let mut prog_path = t_file_path.to_path_buf();
       prog_path.set_extension("wat");
 
-      let mut prog_output = String::new();
-      {
-         let mut prog_command = Command::new("wasmtime");
-         prog_command.arg(prog_path.as_os_str());
-         // It's desirable to combine stdout and stderr, so an output test can test either or both
-         let mut prog_output_stream = {
-            let (reader, writer) = pipe().unwrap();
-            let writer_clone = writer.try_clone().unwrap();
-            prog_command.stdout(writer);
-            prog_command.stderr(writer_clone);
-            reader
+      let prog_output = {
+         let (mut handle, mut prog_output_stream) = {
+            let mut prog_command = Command::new("wasmtime");
+            prog_command.arg(prog_path.as_os_str());
+            // It's desirable to combine stdout and stderr, so an output test can test either or both
+            let prog_output_stream = {
+               let (reader, writer) = pipe().unwrap();
+               let writer_clone = writer.try_clone().unwrap();
+               prog_command.stdout(writer);
+               prog_command.stderr(writer_clone);
+               reader
+            };
+            let handle = match prog_command.spawn() {
+               Ok(v) => v,
+               Err(_) => {
+                  return Err(TestFailureReason::FailedToRunExecutable);
+               }
+            };
+            (handle, prog_output_stream)
          };
-         let mut handle = match prog_command.spawn() {
-            Ok(v) => v,
-            Err(_) => {
-               return Err(TestFailureReason::FailedToRunExecutable);
+         match handle.wait_timeout(Duration::from_secs(1)).unwrap() {
+            Some(_status) => (),
+            None => {
+               handle.kill().unwrap();
+               return Err(TestFailureReason::ExecutionTimeout);
             }
          };
-         drop(prog_command);
-         prog_output_stream.read_to_string(&mut prog_output).unwrap();
-         handle.wait().unwrap();
+         let mut prog_output: Vec<u8> = Vec::new();
+         prog_output_stream.read_to_end(&mut prog_output).unwrap();
+         String::from_utf8_lossy(&prog_output).into_owned()
       };
 
       if prog_output != ero {
