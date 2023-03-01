@@ -953,7 +953,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             emit_statement(statement, generation_context, interner);
          }
          generation_context.out.emit_end(); // end block bi
-         
+
          // Increment
          {
             get_stack_address_of_local(*start_var_id, generation_context);
@@ -1489,7 +1489,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             do_emit(*e_id, generation_context, interner);
             load(target_type, generation_context);
          } else {
-            debug_assert!(is_wasm_compatible_rval_transmute(e.exp_type.as_ref().unwrap(), target_type));
+            debug_assert!(is_wasm_compatible_rval_transmute(
+               e.exp_type.as_ref().unwrap(),
+               target_type
+            ));
             do_emit(*e_id, generation_context, interner);
 
             if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Float(_))

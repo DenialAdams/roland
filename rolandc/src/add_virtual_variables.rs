@@ -1,6 +1,9 @@
 use indexmap::IndexMap;
 
-use crate::parse::{BlockNode, CastType, Expression, ExpressionId, ExpressionPool, Program, Statement, VariableId, ExpressionNode, StatementNode};
+use crate::parse::{
+   BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement, StatementNode,
+   VariableId,
+};
 use crate::type_data::ExpressionType;
 
 pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
@@ -57,7 +60,10 @@ pub fn add_virtual_vars(program: &mut Program, expressions: &mut ExpressionPool)
 }
 
 fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, expressions: &mut ExpressionPool) {
-   vv_context.vv_stack.push(VvStackItem { virtual_vars: Vec::new(), current_stmt: 0 });
+   vv_context.vv_stack.push(VvStackItem {
+      virtual_vars: Vec::new(),
+      current_stmt: 0,
+   });
    for statement in block.statements.iter_mut() {
       vv_statement(&mut statement.statement, vv_context, expressions);
       vv_context.vv_stack.last_mut().unwrap().current_stmt += 1;
@@ -77,10 +83,13 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, expressions: &mut
          (Statement::Assignment(lhs, rhs), el)
       };
 
-      block.statements.insert(vv.2, StatementNode {
-        statement: vv_assignment_stmt,
-        location: loc,
-      });
+      block.statements.insert(
+         vv.2,
+         StatementNode {
+            statement: vv_assignment_stmt,
+            location: loc,
+         },
+      );
       expressions[vv.0].expression = Expression::Variable(vv.1);
    }
 }
@@ -141,10 +150,7 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext, expressions: &E
          // If this is an rvalue, we need to store this array in memory to do the indexing
          // and hence declare a virtual variable here. It's important that this
          // runs after validation, because we need type inference to be complete
-         if !array_expression
-            .expression
-            .is_lvalue_disregard_consts(expressions)
-         {
+         if !array_expression.expression.is_lvalue_disregard_consts(expressions) {
             vv_context.declare_vv(*array, expressions);
          }
       }
@@ -191,10 +197,7 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext, expressions: &E
       Expression::FieldAccess(_field_names, expr) => {
          vv_expr(*expr, vv_context, expressions);
 
-         if !expressions[*expr]
-            .expression
-            .is_lvalue_disregard_consts(expressions)
-         {
+         if !expressions[*expr].expression.is_lvalue_disregard_consts(expressions) {
             vv_context.declare_vv(*expr, expressions);
          }
       }

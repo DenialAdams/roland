@@ -160,11 +160,7 @@ fn main() -> Result<(), &'static str> {
                   .unwrap();
                }
                TestFailureReason::ExecutionTimeout => {
-                  writeln!(
-                     out_handle,
-                     "Compiled OK, but the executable failed to terminate."
-                  )
-                  .unwrap(); 
+                  writeln!(out_handle, "Compiled OK, but the executable failed to terminate.").unwrap();
                }
                TestFailureReason::MismatchedExecutionOutput(expected, actual) => {
                   writeln!(
