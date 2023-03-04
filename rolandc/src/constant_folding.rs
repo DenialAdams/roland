@@ -796,7 +796,7 @@ fn fold_expr(
          }
       }
       Expression::Cast {
-         cast_type: CastType::Transmute,
+         cast_type,
          expr,
          ..
       } => {
@@ -805,56 +805,18 @@ fn fold_expr(
          let expr = &folding_context.expressions[*expr];
 
          if let Some(literal) = extract_literal(expr) {
-            let transmuted = literal.transmute(folding_context.expressions[expr_index].exp_type.as_ref().unwrap());
-            if let Some(t_val) = transmuted {
-               Some(ExpressionNode {
-                  expression: t_val,
-                  exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                  location: expr_to_fold_location,
-               })
-            } else {
-               None
-            }
-         } else {
-            None
-         }
-      }
-      Expression::Cast {
-         cast_type: CastType::Extend,
-         expr,
-         ..
-      } => {
-         try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
-
-         let expr = &folding_context.expressions[*expr];
-
-         if let Some(literal) = extract_literal(expr) {
-            let extended = literal.extend(folding_context.expressions[expr_index].exp_type.as_ref().unwrap());
-            if let Some(t_val) = extended {
-               Some(ExpressionNode {
-                  expression: t_val,
-                  exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                  location: expr_to_fold_location,
-               })
-            } else {
-               None
-            }
-         } else {
-            None
-         }
-      }
-      Expression::Cast {
-         cast_type: CastType::Truncate,
-         expr,
-         ..
-      } => {
-         try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
-
-         let expr = &folding_context.expressions[*expr];
-
-         if let Some(literal) = extract_literal(expr) {
-            let truncated = literal.truncate(folding_context.expressions[expr_index].exp_type.as_ref().unwrap());
-            if let Some(t_val) = truncated {
+            let cast_val = match cast_type {
+               CastType::Transmute => {
+                  literal.transmute(folding_context.expressions[expr_index].exp_type.as_ref().unwrap())
+               }
+               CastType::Extend => {
+                  literal.extend(folding_context.expressions[expr_index].exp_type.as_ref().unwrap())
+               }
+               CastType::Truncate => {
+                  literal.truncate(folding_context.expressions[expr_index].exp_type.as_ref().unwrap())
+               }
+            };
+            if let Some(t_val) = cast_val {
                Some(ExpressionNode {
                   expression: t_val,
                   exp_type: folding_context.expressions[expr_index].exp_type.clone(),
