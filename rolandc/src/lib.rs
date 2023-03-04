@@ -23,6 +23,7 @@ mod add_virtual_variables;
 mod compile_globals;
 mod constant_folding;
 mod disjoint_set;
+mod enum_lowering;
 pub mod error_handling;
 mod imports;
 pub mod interner;
@@ -225,6 +226,8 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    config: &CompilationConfig,
 ) -> Result<Vec<u8>, CompilationError> {
    compile_for_errors(ctx, user_program_ep, config)?;
+
+   enum_lowering::lower_enums(&mut ctx.program, &mut ctx.expressions);
 
    add_virtual_variables::add_virtual_vars(&mut ctx.program, &mut ctx.expressions);
    match config.target {

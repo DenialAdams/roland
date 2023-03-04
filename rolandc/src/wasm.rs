@@ -13,9 +13,7 @@ use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
 };
-use crate::type_data::{
-   ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE,
-};
+use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE};
 use crate::Target;
 
 const MINIMUM_STACK_FRAME_SIZE: u32 = 4;
@@ -242,11 +240,7 @@ fn write_type_as_result(
          IntWidth::Eight => write!(out, "(result i64)").unwrap(),
          _ => write!(out, "(result i32)").unwrap(),
       },
-      ExpressionType::Enum(_) => {
-         write!(out, "(result ").unwrap();
-         type_to_s(e, out, ei, si);
-         write!(out, ")").unwrap();
-      }
+      ExpressionType::Enum(_) => unreachable!(),
       ExpressionType::Float(x) => match x.width {
          FloatWidth::Eight => write!(out, "(result f64)").unwrap(),
          FloatWidth::Four => write!(out, "(result f32)").unwrap(),
@@ -287,11 +281,7 @@ fn write_type_as_params(
       ExpressionType::Pointer(_) => write!(out, "(param i32)").unwrap(),
       ExpressionType::Unresolved(_) => unreachable!(),
       ExpressionType::Unknown(_) => unreachable!(),
-      ExpressionType::Enum(_) => {
-         write!(out, "(param ").unwrap();
-         type_to_s(e, out, ei, si);
-         write!(out, ")").unwrap();
-      }
+      ExpressionType::Enum(_) => unreachable!(),
       ExpressionType::Int(x) => match x.width {
          IntWidth::Eight => write!(out, "(param i64)").unwrap(),
          _ => write!(out, "(param i32)").unwrap(),
@@ -342,10 +332,7 @@ fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumInf
       ExpressionType::Bool => write!(out, "i32").unwrap(),
       ExpressionType::Unit | ExpressionType::Never | ExpressionType::ProcedureItem(_, _) => unreachable!(),
       ExpressionType::CompileError => unreachable!(),
-      ExpressionType::Enum(x) => {
-         let base_type = &ei.get(x).unwrap().base_type;
-         type_to_s(base_type, out, ei, si);
-      }
+      ExpressionType::Enum(_) => unreachable!(),
       ExpressionType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
          for e_type_node in field_types.values() {
@@ -1195,29 +1182,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
       Expression::BoolLiteral(x) => {
          generation_context.out.emit_const_i32(u32::from(*x));
       }
-      Expression::EnumLiteral(name, variant) => {
-         let wasm_type = match expr_node.exp_type.as_ref().unwrap() {
-            ExpressionType::Enum(x) => {
-               let base = &generation_context.enum_info.get(x).unwrap().base_type;
-               match *base {
-                  U64_TYPE => "i64",
-                  U32_TYPE | U16_TYPE | U8_TYPE => "i32",
-                  ExpressionType::Unit => return,
-                  _ => unreachable!(),
-               }
-            }
-            _ => unreachable!(),
-         };
-         let index = generation_context
-            .enum_info
-            .get(&name.str)
-            .unwrap()
-            .variants
-            .get_index_of(&variant.str)
-            .unwrap();
-         generation_context.out.emit_spaces();
-         writeln!(generation_context.out.out, "{}.const {}", wasm_type, index).unwrap();
-      }
+      Expression::EnumLiteral(_, _) => unreachable!(),
       Expression::IntLiteral { val: x, .. } => {
          let (signed, wasm_type) = match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => match x.width {
@@ -1314,13 +1279,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
 
          let (wasm_type, suffix) = match generation_context.expressions[*lhs].exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
-            ExpressionType::Enum(x) => {
-               let base_type = &generation_context.enum_info.get(x).unwrap().base_type;
-               match base_type {
-                  ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
-                  _ => unreachable!(),
-               }
-            }
+            ExpressionType::Enum(_) => unreachable!(),
             ExpressionType::Float(x) => match x.width {
                FloatWidth::Eight => ("f64", ""),
                FloatWidth::Four => ("f32", ""),
@@ -1512,8 +1471,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                   }
                   _ => unreachable!(),
                }
-            } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Int(_) | ExpressionType::Pointer(_))
-               && matches!(target_type, ExpressionType::Float(_))
+            } else if matches!(
+               e.exp_type.as_ref().unwrap(),
+               ExpressionType::Int(_) | ExpressionType::Pointer(_)
+            ) && matches!(target_type, ExpressionType::Float(_))
             {
                // int -> float
                match target_type {
@@ -1950,19 +1911,7 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
             let sign_suffix = if x.signed { "_s" } else { "_u" };
             (load_suffx, sign_suffix)
          }
-         ExpressionType::Enum(x) => {
-            let base = &generation_context.enum_info.get(x).unwrap().base_type;
-            (
-               match *base {
-                  U64_TYPE => "64",
-                  U32_TYPE => "32",
-                  U16_TYPE => "16",
-                  U8_TYPE => "8",
-                  _ => unreachable!(),
-               },
-               "_u",
-            )
-         }
+         ExpressionType::Enum(_) => unreachable!(),
          ExpressionType::Float(_) => ("", ""),
          ExpressionType::Bool => ("8", "_u"),
          _ => unreachable!(),
@@ -2058,16 +2007,7 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
             IntWidth::Two => "16",
             IntWidth::One => "8",
          },
-         ExpressionType::Enum(x) => {
-            let base = &generation_context.enum_info.get(x).unwrap().base_type;
-            match *base {
-               U64_TYPE => "64",
-               U32_TYPE => "32",
-               U16_TYPE => "16",
-               U8_TYPE => "8",
-               _ => unreachable!(),
-            }
-         }
+         ExpressionType::Enum(_) => unreachable!(),
          ExpressionType::Float(_) => "",
          ExpressionType::Bool => "8",
          _ => unreachable!(),
