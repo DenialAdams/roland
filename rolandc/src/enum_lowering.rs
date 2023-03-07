@@ -25,7 +25,7 @@ fn lower_enum_type(the_enum_type: &mut ExpressionType, enum_info: &IndexMap<StrI
       }
       ExpressionType::ProcedureItem(_, type_params) => {
          for type_param in type_params.iter_mut() {
-            lower_enum_type(type_param, enum_info)
+            lower_enum_type(type_param, enum_info);
          }
       }
       _ => (),

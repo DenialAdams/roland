@@ -103,7 +103,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
       Expression::UnaryOperator(unop, e) => {
          match unop {
             crate::parse::UnOp::Negate | crate::parse::UnOp::Complement => {
-               set_inferred_type(e_type, *e, validation_context)
+               set_inferred_type(e_type, *e, validation_context);
             }
             crate::parse::UnOp::AddressOf => {
                // reverse the indirection

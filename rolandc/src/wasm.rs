@@ -58,7 +58,6 @@ impl PrettyWasmWriter {
       name: StrId,
       params: I,
       result_type: &ExpressionType,
-      ei: &IndexMap<StrId, EnumInfo>,
       si: &IndexMap<StrId, StructInfo>,
       interner: &Interner,
    ) where
@@ -68,10 +67,10 @@ impl PrettyWasmWriter {
       write!(self.out, "(func ${}", interner.lookup(name)).unwrap();
       for param in params {
          self.out.push(b' ');
-         write_type_as_params(param, &mut self.out, ei, si);
+         write_type_as_params(param, &mut self.out, si);
       }
       self.out.push(b' ');
-      write_type_as_result(result_type, &mut self.out, ei, si);
+      write_type_as_result(result_type, &mut self.out, si);
       self.out.push(b'\n');
       self.depth += 1;
    }
@@ -81,7 +80,6 @@ impl PrettyWasmWriter {
       name: ExpressionId,
       params: I,
       result_type: &ExpressionType,
-      ei: &IndexMap<StrId, EnumInfo>,
       si: &IndexMap<StrId, StructInfo>,
    ) where
       I: IntoIterator<Item = &'a ExpressionType>,
@@ -90,10 +88,10 @@ impl PrettyWasmWriter {
       write!(self.out, "(type $::{} (func", name.0).unwrap();
       for param in params {
          self.out.push(b' ');
-         write_type_as_params(param, &mut self.out, ei, si);
+         write_type_as_params(param, &mut self.out, si);
       }
       self.out.push(b' ');
-      write_type_as_result(result_type, &mut self.out, ei, si);
+      write_type_as_result(result_type, &mut self.out, si);
       self.out.push(b')');
       self.out.push(b')');
       self.out.push(b'\n');
@@ -104,12 +102,11 @@ impl PrettyWasmWriter {
       &mut self,
       index: usize,
       param: &ExpressionType,
-      ei: &IndexMap<StrId, EnumInfo>,
       si: &IndexMap<StrId, StructInfo>,
    ) {
       self.emit_spaces();
       write!(self.out, "(func $::store::{} (param i32) ", index).unwrap();
-      write_type_as_params(param, &mut self.out, ei, si);
+      write_type_as_params(param, &mut self.out, si);
       self.out.push(b'\n');
       self.depth += 1;
    }
@@ -135,12 +132,11 @@ impl PrettyWasmWriter {
    fn emit_if_start(
       &mut self,
       result_type: &ExpressionType,
-      ei: &IndexMap<StrId, EnumInfo>,
       si: &IndexMap<StrId, StructInfo>,
    ) {
       self.emit_spaces();
       write!(self.out, "(if ").unwrap();
-      write_type_as_result(result_type, &mut self.out, ei, si);
+      write_type_as_result(result_type, &mut self.out, si);
       self.out.push(b'\n');
       self.depth += 1;
    }
@@ -229,7 +225,6 @@ impl PrettyWasmWriter {
 fn write_type_as_result(
    e: &ExpressionType,
    out: &mut Vec<u8>,
-   ei: &IndexMap<StrId, EnumInfo>,
    si: &IndexMap<StrId, StructInfo>,
 ) {
    match e {
@@ -251,7 +246,7 @@ fn write_type_as_result(
       ExpressionType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
          for e_type_node in field_types.values() {
-            write_type_as_result(&e_type_node.e_type, out, ei, si);
+            write_type_as_result(&e_type_node.e_type, out, si);
             out.push(b' ');
          }
          if !field_types.is_empty() {
@@ -260,7 +255,7 @@ fn write_type_as_result(
       }
       ExpressionType::Array(a_type, len) => {
          for _ in 0..*len {
-            write_type_as_result(a_type, out, ei, si);
+            write_type_as_result(a_type, out, si);
             out.push(b' ');
          }
          if *len > 0 {
@@ -274,7 +269,6 @@ fn write_type_as_result(
 fn write_type_as_params(
    e: &ExpressionType,
    out: &mut Vec<u8>,
-   ei: &IndexMap<StrId, EnumInfo>,
    si: &IndexMap<StrId, StructInfo>,
 ) {
    match e {
@@ -296,7 +290,7 @@ fn write_type_as_params(
       ExpressionType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
          for e_type_node in field_types.values() {
-            write_type_as_params(&e_type_node.e_type, out, ei, si);
+            write_type_as_params(&e_type_node.e_type, out, si);
             out.push(b' ');
          }
          if !field_types.is_empty() {
@@ -305,7 +299,7 @@ fn write_type_as_params(
       }
       ExpressionType::Array(a_type, len) => {
          for _ in 0..*len {
-            write_type_as_params(a_type, out, ei, si);
+            write_type_as_params(a_type, out, si);
             out.push(b' ');
          }
          if *len > 0 {
@@ -316,7 +310,7 @@ fn write_type_as_params(
    }
 }
 
-fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) {
+fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
    match e {
       ExpressionType::Pointer(_) => write!(out, "i32").unwrap(),
       ExpressionType::Unresolved(_) => unreachable!(),
@@ -336,7 +330,7 @@ fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumInf
       ExpressionType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
          for e_type_node in field_types.values() {
-            type_to_s(&e_type_node.e_type, out, ei, si);
+            type_to_s(&e_type_node.e_type, out, si);
             out.push(b' ');
          }
          if !field_types.is_empty() {
@@ -345,7 +339,7 @@ fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, ei: &IndexMap<StrId, EnumInf
       }
       ExpressionType::Array(a_type, len) => {
          for _ in 0..*len {
-            type_to_s(a_type, out, ei, si);
+            type_to_s(a_type, out, si);
             out.push(b' ');
          }
          if *len > 0 {
@@ -511,7 +505,6 @@ pub fn emit_wasm(
             .iter()
             .map(|x| &x.p_type.e_type),
          &external_procedure.definition.ret_type.e_type,
-         &program.enum_info,
          &program.struct_info,
          interner,
       );
@@ -665,7 +658,6 @@ pub fn emit_wasm(
             .iter()
             .map(|x| &x.p_type.e_type),
          &external_procedure.definition.ret_type.e_type,
-         &program.enum_info,
          &program.struct_info,
          interner,
       );
@@ -738,7 +730,6 @@ pub fn emit_wasm(
          procedure.definition.name,
          procedure.definition.parameters.iter().map(|x| &x.p_type.e_type),
          &procedure.definition.ret_type.e_type,
-         &program.enum_info,
          &program.struct_info,
          interner,
       );
@@ -804,7 +795,6 @@ pub fn emit_wasm(
       generation_context.out.emit_store_function_start(
          i,
          e_type,
-         generation_context.enum_info,
          generation_context.struct_info,
       );
       dynamic_move_locals_of_type_to_dest("local.get 0", &mut 0, &mut 1, e_type, &mut generation_context);
@@ -838,7 +828,6 @@ pub fn emit_wasm(
                *indirect_callee_id,
                parameters.iter(),
                ret_type,
-               generation_context.enum_info,
                generation_context.struct_info,
             );
          }
@@ -925,7 +914,6 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
 
             generation_context.out.emit_if_start(
                &ExpressionType::Unit,
-               generation_context.enum_info,
                generation_context.struct_info,
             );
             // then
@@ -992,7 +980,6 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          do_emit_and_load_lval(*en, generation_context, interner);
          generation_context.out.emit_if_start(
             &ExpressionType::Unit,
-            generation_context.enum_info,
             generation_context.struct_info,
          );
          // then
@@ -1236,7 +1223,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          do_emit_and_load_lval(*lhs, generation_context, interner);
          generation_context.out.emit_if_start(
             &ExpressionType::Bool,
-            generation_context.enum_info,
             generation_context.struct_info,
          );
          // then
@@ -1258,7 +1244,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          do_emit_and_load_lval(*lhs, generation_context, interner);
          generation_context.out.emit_if_start(
             &ExpressionType::Bool,
-            generation_context.enum_info,
             generation_context.struct_info,
          );
          // then
@@ -1477,11 +1462,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             ) && matches!(target_type, ExpressionType::Float(_))
             {
                // int -> float
-               match target_type {
-                  &F32_TYPE => {
+               match *target_type {
+                  F32_TYPE => {
                      generation_context.out.emit_constant_instruction("f32.reinterpret_i32");
                   }
-                  &F64_TYPE => {
+                  F64_TYPE => {
                      generation_context.out.emit_constant_instruction("f64.reinterpret_i64");
                   }
                   _ => unreachable!(),
@@ -1748,19 +1733,19 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
 }
 
 fn complement_val(t_type: &ExpressionType, wasm_type: &str, generation_context: &mut GenerationContext) {
-   let magic_const: u64 = match t_type {
-      &crate::type_data::U8_TYPE => u64::from(std::u8::MAX),
-      &crate::type_data::U16_TYPE => u64::from(std::u16::MAX),
-      &crate::type_data::U32_TYPE => u64::from(std::u32::MAX),
+   let magic_const: u64 = match *t_type {
+      crate::type_data::U8_TYPE => u64::from(std::u8::MAX),
+      crate::type_data::U16_TYPE => u64::from(std::u16::MAX),
+      crate::type_data::U32_TYPE => u64::from(std::u32::MAX),
       // @FixedPointerWidth
-      &crate::type_data::USIZE_TYPE => u64::from(std::u32::MAX),
-      &crate::type_data::U64_TYPE => std::u64::MAX,
-      &crate::type_data::I8_TYPE => u64::from(std::u32::MAX),
-      &crate::type_data::I16_TYPE => u64::from(std::u32::MAX),
-      &crate::type_data::I32_TYPE => u64::from(std::u32::MAX),
+      crate::type_data::USIZE_TYPE => u64::from(std::u32::MAX),
+      crate::type_data::U64_TYPE => std::u64::MAX,
+      crate::type_data::I8_TYPE => u64::from(std::u32::MAX),
+      crate::type_data::I16_TYPE => u64::from(std::u32::MAX),
+      crate::type_data::I32_TYPE => u64::from(std::u32::MAX),
       // @FixedPointerWidth
-      &crate::type_data::ISIZE_TYPE => u64::from(std::u32::MAX),
-      &crate::type_data::I64_TYPE => std::u64::MAX,
+      crate::type_data::ISIZE_TYPE => u64::from(std::u32::MAX),
+      crate::type_data::I64_TYPE => std::u64::MAX,
       _ => unreachable!(),
    };
    generation_context.out.emit_spaces();
@@ -1895,7 +1880,6 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
       type_to_s(
          val_type,
          &mut generation_context.out.out,
-         generation_context.enum_info,
          generation_context.struct_info,
       );
       writeln!(generation_context.out.out, ".load").unwrap();
@@ -1920,7 +1904,6 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
       type_to_s(
          val_type,
          &mut generation_context.out.out,
-         generation_context.enum_info,
          generation_context.struct_info,
       );
       writeln!(generation_context.out.out, ".load{}{}", load_suffx, sign_suffix).unwrap();
@@ -1995,7 +1978,6 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
       type_to_s(
          val_type,
          &mut generation_context.out.out,
-         generation_context.enum_info,
          generation_context.struct_info,
       );
       writeln!(generation_context.out.out, ".store").unwrap();
@@ -2016,7 +1998,6 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
       type_to_s(
          val_type,
          &mut generation_context.out.out,
-         generation_context.enum_info,
          generation_context.struct_info,
       );
       writeln!(generation_context.out.out, ".store{}", load_suffx,).unwrap();

@@ -17,6 +17,7 @@
 #![allow(clippy::new_without_default)] // I don't want dead code
 #![allow(clippy::result_unit_err)] // This is based on a notion of public that doesn't really apply for me
 #![allow(clippy::needless_bitwise_bool)] // Sometimes I just don't want branches, man
+#![allow(clippy::let_underscore_untyped)] // looks weird with no let
 #![feature(hash_drain_filter)]
 
 mod add_virtual_variables;
@@ -268,11 +269,11 @@ fn merge_program(main_program: &mut Program, other_program: &mut Program) {
    main_program.literals.extend(other_program.literals.drain(..));
    main_program
       .external_procedures
-      .extend(other_program.external_procedures.drain(..));
-   main_program.procedures.extend(other_program.procedures.drain(..));
-   main_program.structs.extend(other_program.structs.drain(..));
-   main_program.statics.extend(other_program.statics.drain(..));
-   main_program.enums.extend(other_program.enums.drain(..));
-   main_program.consts.extend(other_program.consts.drain(..));
-   main_program.parsed_types.extend(other_program.parsed_types.drain(..));
+      .append(&mut other_program.external_procedures);
+   main_program.procedures.append(&mut other_program.procedures);
+   main_program.structs.append(&mut other_program.structs);
+   main_program.statics.append(&mut other_program.statics);
+   main_program.enums.append(&mut other_program.enums);
+   main_program.consts.append(&mut other_program.consts);
+   main_program.parsed_types.append(&mut other_program.parsed_types);
 }

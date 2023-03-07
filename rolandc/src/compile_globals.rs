@@ -64,7 +64,7 @@ pub fn ensure_statics_const(
                v.location,
                "Default value of struct field `{}` can't be constant folded.",
                interner.lookup(*field_with_default.0),
-            )
+            );
          }
       }
    }

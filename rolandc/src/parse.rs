@@ -296,6 +296,7 @@ pub enum Statement {
 }
 
 // For lack of a better place...
+#[must_use]
 pub fn statement_always_returns(stmt: &Statement, expressions: &ExpressionPool) -> bool {
    match stmt {
       Statement::Return(_) => true,
@@ -553,24 +554,23 @@ pub fn astify(
    loop {
       if let Ok(()) = parse_top_level_item(&mut lexer, &mut parse_context, expressions, &mut top) {
          break;
-      } else {
-         // skip tokens until we get to a token that must be at the top level and continue parsing
-         // in order to give the user more valid errors
-         loop {
-            match lexer.peek_token() {
-               Token::KeywordProc
-               | Token::KeywordConst
-               | Token::KeywordStatic
-               | Token::KeywordImport
-               | Token::KeywordStructDef
-               | Token::KeywordEnumDef
-               | Token::KeywordBuiltin
-               | Token::KeywordExtern => break,
-               Token::Eof => break,
-               _ => {
-                  let _ = lexer.next();
-                  continue;
-               }
+      }
+      // skip tokens until we get to a token that must be at the top level and continue parsing
+      // in order to give the user more valid errors
+      loop {
+         match lexer.peek_token() {
+            Token::KeywordProc
+            | Token::KeywordConst
+            | Token::KeywordStatic
+            | Token::KeywordImport
+            | Token::KeywordStructDef
+            | Token::KeywordEnumDef
+            | Token::KeywordBuiltin
+            | Token::KeywordExtern => break,
+            Token::Eof => break,
+            _ => {
+               let _ = lexer.next();
+               continue;
             }
          }
       }

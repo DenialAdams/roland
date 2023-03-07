@@ -1698,9 +1698,9 @@ fn extract_literal(expr_node: &ExpressionNode) -> Option<Literal> {
             _ => unreachable!(),
          }
       }
-      Expression::FloatLiteral(x) => match expr_node.exp_type.as_ref().unwrap() {
-         &F64_TYPE => Some(Literal::Float64(*x)),
-         &F32_TYPE => Some(Literal::Float32(*x as f32)),
+      Expression::FloatLiteral(x) => match *expr_node.exp_type.as_ref().unwrap() {
+         F64_TYPE => Some(Literal::Float64(*x)),
+         F32_TYPE => Some(Literal::Float32(*x as f32)),
          _ => unreachable!(),
       },
       Expression::BoolLiteral(x) => Some(Literal::Bool(*x)),

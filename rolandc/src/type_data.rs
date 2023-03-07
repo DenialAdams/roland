@@ -159,13 +159,15 @@ impl ExpressionType {
       }
    }
 
+   #[must_use]
    pub fn get_type_or_type_being_pointed_to(&self) -> &ExpressionType {
       match self {
          ExpressionType::Pointer(b) => b,
-         _ => return self,
+         _ => self,
       }
    }
 
+   #[must_use]
    pub fn get_type_variable_of_unknown_type(&self) -> Option<TypeVariable> {
       match self {
          ExpressionType::Unknown(x) => Some(*x),
@@ -176,6 +178,7 @@ impl ExpressionType {
       }
    }
 
+   #[must_use]
    pub fn get_unknown_portion_of_type(&mut self) -> Option<&mut ExpressionType> {
       match self {
          x @ ExpressionType::Unknown(_) => Some(x),

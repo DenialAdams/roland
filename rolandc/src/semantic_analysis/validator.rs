@@ -103,8 +103,7 @@ fn matches(type_validation: &TypeValidator, et: &ExpressionType, validation_cont
       matches!(
          (type_validation, type_constraint),
          (TypeValidator::AnySignedInt, TypeConstraint::SignedInt)
-            | (TypeValidator::AnyInt, TypeConstraint::Int)
-            | (TypeValidator::AnyInt, TypeConstraint::SignedInt)
+            | (TypeValidator::AnyInt, TypeConstraint::Int | TypeConstraint::SignedInt)
             | (TypeValidator::AnyFloat, TypeConstraint::Float)
       )
    } else {
@@ -297,7 +296,7 @@ pub fn type_and_check_validity(
          try_set_inferred_type(&declared_type.e_type, default_expr, &mut validation_context);
 
          check_type_declared_vs_actual(
-            &declared_type,
+            declared_type,
             &validation_context.expressions[default_expr],
             interner,
             &validation_context.type_variables,
