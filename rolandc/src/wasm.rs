@@ -236,17 +236,6 @@ fn write_type_as_params(t: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<Str
    }
 }
 
-fn type_to_s(t: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
-   let mut type_buf = vec![];
-   type_to_wasm_type(t, &mut type_buf, si);
-   for wt in type_buf.iter() {
-      write!(out, "{} ", *wt).unwrap();
-   }
-   if !type_buf.is_empty() {
-      let _ = out.pop();
-   }
-}
-
 #[derive(Copy, Clone)]
 enum WasmType {
    Int64,
@@ -1790,12 +1779,7 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
       generation_context.struct_size_info,
    ) {
       generation_context.out.emit_spaces();
-      type_to_s(
-         val_type,
-         &mut generation_context.out.out,
-         generation_context.struct_info,
-      );
-      writeln!(generation_context.out.out, ".load").unwrap();
+      writeln!(generation_context.out.out, "{}.load", type_to_wasm_type_basic(val_type)).unwrap();
    } else {
       let (load_suffx, sign_suffix) = match val_type {
          ExpressionType::Int(x) => {
@@ -1814,12 +1798,14 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
          _ => unreachable!(),
       };
       generation_context.out.emit_spaces();
-      type_to_s(
-         val_type,
-         &mut generation_context.out.out,
-         generation_context.struct_info,
-      );
-      writeln!(generation_context.out.out, ".load{}{}", load_suffx, sign_suffix).unwrap();
+      writeln!(
+         generation_context.out.out,
+         "{}.load{}{}",
+         type_to_wasm_type_basic(val_type),
+         load_suffx,
+         sign_suffix
+      )
+      .unwrap();
    }
 }
 
@@ -1888,12 +1874,12 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
       generation_context.struct_size_info,
    ) {
       generation_context.out.emit_spaces();
-      type_to_s(
-         val_type,
-         &mut generation_context.out.out,
-         generation_context.struct_info,
-      );
-      writeln!(generation_context.out.out, ".store").unwrap();
+      writeln!(
+         generation_context.out.out,
+         "{}.store",
+         type_to_wasm_type_basic(val_type)
+      )
+      .unwrap();
    } else {
       let load_suffx = match val_type {
          ExpressionType::Int(x) => match x.width {
@@ -1908,12 +1894,13 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
          _ => unreachable!(),
       };
       generation_context.out.emit_spaces();
-      type_to_s(
-         val_type,
-         &mut generation_context.out.out,
-         generation_context.struct_info,
-      );
-      writeln!(generation_context.out.out, ".store{}", load_suffx,).unwrap();
+      writeln!(
+         generation_context.out.out,
+         "{}.store{}",
+         type_to_wasm_type_basic(val_type),
+         load_suffx,
+      )
+      .unwrap();
    }
 }
 
