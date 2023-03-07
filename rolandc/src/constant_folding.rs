@@ -795,11 +795,7 @@ fn fold_expr(
             None
          }
       }
-      Expression::Cast {
-         cast_type,
-         expr,
-         ..
-      } => {
+      Expression::Cast { cast_type, expr, .. } => {
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
 
          let expr = &folding_context.expressions[*expr];
@@ -809,9 +805,7 @@ fn fold_expr(
                CastType::Transmute => {
                   literal.transmute(folding_context.expressions[expr_index].exp_type.as_ref().unwrap())
                }
-               CastType::Extend => {
-                  literal.extend(folding_context.expressions[expr_index].exp_type.as_ref().unwrap())
-               }
+               CastType::Extend => literal.extend(folding_context.expressions[expr_index].exp_type.as_ref().unwrap()),
                CastType::Truncate => {
                   literal.truncate(folding_context.expressions[expr_index].exp_type.as_ref().unwrap())
                }

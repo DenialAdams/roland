@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::io::Write;
 
 use indexmap::{IndexMap, IndexSet};
@@ -98,12 +99,7 @@ impl PrettyWasmWriter {
       self.depth += 1;
    }
 
-   fn emit_store_function_start(
-      &mut self,
-      index: usize,
-      param: &ExpressionType,
-      si: &IndexMap<StrId, StructInfo>,
-   ) {
+   fn emit_store_function_start(&mut self, index: usize, param: &ExpressionType, si: &IndexMap<StrId, StructInfo>) {
       self.emit_spaces();
       write!(self.out, "(func $::store::{} (param i32) ", index).unwrap();
       write_type_as_params(param, &mut self.out, si);
@@ -129,11 +125,7 @@ impl PrettyWasmWriter {
       writeln!(self.out, "end").unwrap();
    }
 
-   fn emit_if_start(
-      &mut self,
-      result_type: &ExpressionType,
-      si: &IndexMap<StrId, StructInfo>,
-   ) {
+   fn emit_if_start(&mut self, result_type: &ExpressionType, si: &IndexMap<StrId, StructInfo>) {
       self.emit_spaces();
       write!(self.out, "(if ").unwrap();
       write_type_as_result(result_type, &mut self.out, si);
@@ -222,138 +214,97 @@ impl PrettyWasmWriter {
    }
 }
 
-fn write_type_as_result(
-   e: &ExpressionType,
-   out: &mut Vec<u8>,
-   si: &IndexMap<StrId, StructInfo>,
-) {
-   match e {
-      ExpressionType::Pointer(_) => write!(out, "(result i32)").unwrap(),
-      ExpressionType::Unresolved(_) => unreachable!(),
-      ExpressionType::Unknown(_) => unreachable!(),
-      ExpressionType::Int(x) => match x.width {
-         IntWidth::Eight => write!(out, "(result i64)").unwrap(),
-         _ => write!(out, "(result i32)").unwrap(),
-      },
-      ExpressionType::Enum(_) => unreachable!(),
-      ExpressionType::Float(x) => match x.width {
-         FloatWidth::Eight => write!(out, "(result f64)").unwrap(),
-         FloatWidth::Four => write!(out, "(result f32)").unwrap(),
-      },
-      ExpressionType::Bool => write!(out, "(result i32)").unwrap(),
+fn write_type_as_result(t: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
+   let mut type_buf = vec![];
+   type_to_wasm_type(t, &mut type_buf, si);
+   for wt in type_buf.iter() {
+      write!(out, "(result {}) ", *wt).unwrap();
+   }
+   if !type_buf.is_empty() {
+      let _ = out.pop();
+   }
+}
+
+fn write_type_as_params(t: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
+   let mut type_buf = vec![];
+   type_to_wasm_type(t, &mut type_buf, si);
+   for wt in type_buf.iter() {
+      write!(out, "(param {}) ", *wt).unwrap();
+   }
+   if !type_buf.is_empty() {
+      let _ = out.pop();
+   }
+}
+
+fn type_to_s(t: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
+   let mut type_buf = vec![];
+   type_to_wasm_type(t, &mut type_buf, si);
+   for wt in type_buf.iter() {
+      write!(out, "{} ", *wt).unwrap();
+   }
+   if !type_buf.is_empty() {
+      let _ = out.pop();
+   }
+}
+
+#[derive(Copy, Clone)]
+enum WasmType {
+   Int64,
+   Int32,
+   Float64,
+   Float32,
+}
+
+impl Display for WasmType {
+   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      f.write_str(match self {
+         WasmType::Int64 => "i64",
+         WasmType::Int32 => "i32",
+         WasmType::Float64 => "f64",
+         WasmType::Float32 => "f32",
+      })
+   }
+}
+
+fn type_to_wasm_type(t: &ExpressionType, buf: &mut Vec<WasmType>, si: &IndexMap<StrId, StructInfo>) {
+   match t {
       ExpressionType::Unit | ExpressionType::Never | ExpressionType::ProcedureItem(_, _) => (),
-      ExpressionType::CompileError => unreachable!(),
       ExpressionType::Struct(x) => {
          let field_types = &si.get(x).unwrap().field_types;
          for e_type_node in field_types.values() {
-            write_type_as_result(&e_type_node.e_type, out, si);
-            out.push(b' ');
-         }
-         if !field_types.is_empty() {
-            let _ = out.pop();
+            type_to_wasm_type(&e_type_node.e_type, buf, si);
          }
       }
       ExpressionType::Array(a_type, len) => {
          for _ in 0..*len {
-            write_type_as_result(a_type, out, si);
-            out.push(b' ');
-         }
-         if *len > 0 {
-            let _ = out.pop();
+            type_to_wasm_type(a_type, buf, si);
          }
       }
-      ExpressionType::ProcedurePointer { .. } => write!(out, "(result i32)").unwrap(),
+      _ => buf.push(type_to_wasm_type_basic(t)),
    }
 }
 
-fn write_type_as_params(
-   e: &ExpressionType,
-   out: &mut Vec<u8>,
-   si: &IndexMap<StrId, StructInfo>,
-) {
-   match e {
-      ExpressionType::Pointer(_) => write!(out, "(param i32)").unwrap(),
-      ExpressionType::Unresolved(_) => unreachable!(),
-      ExpressionType::Unknown(_) => unreachable!(),
-      ExpressionType::Enum(_) => unreachable!(),
+fn type_to_wasm_type_basic(t: &ExpressionType) -> WasmType {
+   match t {
+      ExpressionType::Pointer(_) => WasmType::Int32,
       ExpressionType::Int(x) => match x.width {
-         IntWidth::Eight => write!(out, "(param i64)").unwrap(),
-         _ => write!(out, "(param i32)").unwrap(),
+         IntWidth::Eight => WasmType::Int64,
+         _ => WasmType::Int32,
       },
       ExpressionType::Float(x) => match x.width {
-         FloatWidth::Eight => write!(out, "(param f64)").unwrap(),
-         FloatWidth::Four => write!(out, "(param f32)").unwrap(),
+         FloatWidth::Eight => WasmType::Float64,
+         FloatWidth::Four => WasmType::Float32,
       },
-      ExpressionType::Bool => write!(out, "(param i32)").unwrap(),
-      ExpressionType::Unit | ExpressionType::Never | ExpressionType::ProcedureItem(_, _) => (),
-      ExpressionType::CompileError => unreachable!(),
-      ExpressionType::Struct(x) => {
-         let field_types = &si.get(x).unwrap().field_types;
-         for e_type_node in field_types.values() {
-            write_type_as_params(&e_type_node.e_type, out, si);
-            out.push(b' ');
-         }
-         if !field_types.is_empty() {
-            let _ = out.pop();
-         }
-      }
-      ExpressionType::Array(a_type, len) => {
-         for _ in 0..*len {
-            write_type_as_params(a_type, out, si);
-            out.push(b' ');
-         }
-         if *len > 0 {
-            let _ = out.pop();
-         }
-      }
-      ExpressionType::ProcedurePointer { .. } => write!(out, "(param i32)").unwrap(),
+      ExpressionType::Bool => WasmType::Int32,
+      ExpressionType::ProcedurePointer { .. } => WasmType::Int32,
+      _ => unreachable!(),
    }
 }
 
-fn type_to_s(e: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
-   match e {
-      ExpressionType::Pointer(_) => write!(out, "i32").unwrap(),
-      ExpressionType::Unresolved(_) => unreachable!(),
-      ExpressionType::Unknown(_) => unreachable!(),
-      ExpressionType::Int(x) => match x.width {
-         IntWidth::Eight => write!(out, "i64").unwrap(),
-         _ => write!(out, "i32").unwrap(),
-      },
-      ExpressionType::Float(x) => match x.width {
-         FloatWidth::Eight => write!(out, "f64").unwrap(),
-         FloatWidth::Four => write!(out, "f32").unwrap(),
-      },
-      ExpressionType::Bool => write!(out, "i32").unwrap(),
-      ExpressionType::Unit | ExpressionType::Never | ExpressionType::ProcedureItem(_, _) => unreachable!(),
-      ExpressionType::CompileError => unreachable!(),
-      ExpressionType::Enum(_) => unreachable!(),
-      ExpressionType::Struct(x) => {
-         let field_types = &si.get(x).unwrap().field_types;
-         for e_type_node in field_types.values() {
-            type_to_s(&e_type_node.e_type, out, si);
-            out.push(b' ');
-         }
-         if !field_types.is_empty() {
-            let _ = out.pop();
-         }
-      }
-      ExpressionType::Array(a_type, len) => {
-         for _ in 0..*len {
-            type_to_s(a_type, out, si);
-            out.push(b' ');
-         }
-         if *len > 0 {
-            let _ = out.pop();
-         }
-      }
-      ExpressionType::ProcedurePointer { .. } => write!(out, "i32").unwrap(),
-   }
-}
-
-fn int_to_wasm_runtime_and_suffix(x: IntType) -> (&'static str, &'static str) {
+fn int_to_wasm_runtime_and_suffix(x: IntType) -> (WasmType, &'static str) {
    let wasm_type = match x.width {
-      IntWidth::Eight => "i64",
-      _ => "i32",
+      IntWidth::Eight => WasmType::Int64,
+      _ => WasmType::Int32,
    };
    let suffix = if x.signed { "_s" } else { "_u" };
    (wasm_type, suffix)
@@ -792,11 +743,9 @@ pub fn emit_wasm(
    let mut needed_store_fns = IndexSet::new();
    std::mem::swap(&mut needed_store_fns, &mut generation_context.needed_store_fns);
    for (i, e_type) in needed_store_fns.iter().enumerate() {
-      generation_context.out.emit_store_function_start(
-         i,
-         e_type,
-         generation_context.struct_info,
-      );
+      generation_context
+         .out
+         .emit_store_function_start(i, e_type, generation_context.struct_info);
       dynamic_move_locals_of_type_to_dest("local.get 0", &mut 0, &mut 1, e_type, &mut generation_context);
       generation_context.out.close();
    }
@@ -912,10 +861,9 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             generation_context.out.emit_spaces();
             writeln!(generation_context.out.out, "{}.ge{}", wasm_type, suffix).unwrap();
 
-            generation_context.out.emit_if_start(
-               &ExpressionType::Unit,
-               generation_context.struct_info,
-            );
+            generation_context
+               .out
+               .emit_if_start(&ExpressionType::Unit, generation_context.struct_info);
             // then
             generation_context.out.emit_then_start();
             generation_context.out.emit_spaces();
@@ -978,10 +926,9 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
       }
       Statement::IfElse(en, block_1, block_2) => {
          do_emit_and_load_lval(*en, generation_context, interner);
-         generation_context.out.emit_if_start(
-            &ExpressionType::Unit,
-            generation_context.struct_info,
-         );
+         generation_context
+            .out
+            .emit_if_start(&ExpressionType::Unit, generation_context.struct_info);
          // then
          generation_context.out.emit_then_start();
          for statement in &block_1.statements {
@@ -1173,11 +1120,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
       Expression::IntLiteral { val: x, .. } => {
          let (signed, wasm_type) = match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => match x.width {
-               IntWidth::Eight => (x.signed, "i64"),
-               _ => (x.signed, "i32"),
+               IntWidth::Eight => (x.signed, WasmType::Int64),
+               _ => (x.signed, WasmType::Int32),
             },
             // can occur when an int->ptr transmute is constant folded
-            ExpressionType::Pointer(_) => (false, "i32"),
+            ExpressionType::Pointer(_) => (false, WasmType::Int32),
             _ => unreachable!(),
          };
          generation_context.out.emit_spaces();
@@ -1188,13 +1135,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          }
       }
       Expression::FloatLiteral(x) => {
-         let wasm_type = match expr_node.exp_type.as_ref().unwrap() {
-            ExpressionType::Float(x) => match x.width {
-               FloatWidth::Eight => "f64",
-               FloatWidth::Four => "f32",
-            },
-            _ => unreachable!(),
-         };
+         let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
          generation_context.out.emit_spaces();
          if x.is_nan() {
             // It would be nice to support NaN payloads too, but it was kind of a pain when I tried.
@@ -1221,10 +1162,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          rhs,
       } => {
          do_emit_and_load_lval(*lhs, generation_context, interner);
-         generation_context.out.emit_if_start(
-            &ExpressionType::Bool,
-            generation_context.struct_info,
-         );
+         generation_context
+            .out
+            .emit_if_start(&ExpressionType::Bool, generation_context.struct_info);
          // then
          generation_context.out.emit_then_start();
          do_emit_and_load_lval(*rhs, generation_context, interner);
@@ -1242,10 +1182,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          rhs,
       } => {
          do_emit_and_load_lval(*lhs, generation_context, interner);
-         generation_context.out.emit_if_start(
-            &ExpressionType::Bool,
-            generation_context.struct_info,
-         );
+         generation_context
+            .out
+            .emit_if_start(&ExpressionType::Bool, generation_context.struct_info);
          // then
          generation_context.out.emit_then_start();
          generation_context.out.emit_const_i32(1);
@@ -1266,10 +1205,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
             ExpressionType::Enum(_) => unreachable!(),
             ExpressionType::Float(x) => match x.width {
-               FloatWidth::Eight => ("f64", ""),
-               FloatWidth::Four => ("f32", ""),
+               FloatWidth::Eight => (WasmType::Float64, ""),
+               FloatWidth::Four => (WasmType::Float32, ""),
             },
-            ExpressionType::Bool => ("i32", "_u"),
+            ExpressionType::Bool => (WasmType::Int32, "_u"),
             _ => unreachable!(),
          };
          generation_context.out.emit_spaces();
@@ -1326,20 +1265,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          }
       }
       Expression::UnaryOperator(un_op, e_index) => {
-         let get_wasm_type = || match expr_node.exp_type.as_ref().unwrap() {
-            ExpressionType::Int(x) => match x.width {
-               IntWidth::Eight => "i64",
-               _ => "i32",
-            },
-            ExpressionType::Float(x) => match x.width {
-               FloatWidth::Eight => "f64",
-               FloatWidth::Four => "f32",
-            },
-            ExpressionType::Bool => "i32",
-            ExpressionType::Pointer(_) => "i32",
-            _ => unreachable!(),
-         };
-
          let e = &generation_context.expressions[*e_index];
 
          if let ExpressionType::ProcedureItem(proc_name, _bound_type_params) = e.exp_type.as_ref().unwrap() {
@@ -1361,7 +1286,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                }
             }
             UnOp::Complement => {
-               let wasm_type = get_wasm_type();
+               let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
                do_emit_and_load_lval(*e_index, generation_context, interner);
 
                if *e.exp_type.as_ref().unwrap() == ExpressionType::Bool {
@@ -1372,7 +1297,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                }
             }
             UnOp::Negate => {
-               let wasm_type = get_wasm_type();
+               let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
                do_emit_and_load_lval(*e_index, generation_context, interner);
 
                match expr_node.exp_type.as_ref().unwrap() {
@@ -1520,31 +1445,19 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                }
                _ => unreachable!(),
             };
-            let dest_type_str = match e.exp_type.as_ref().unwrap() {
-               ExpressionType::Float(x) => match x.width {
-                  FloatWidth::Eight => "f64",
-                  FloatWidth::Four => "f32",
-               },
-               _ => unreachable!(),
-            };
+            let dest_type = type_to_wasm_type_basic(e.exp_type.as_ref().unwrap());
             generation_context.out.emit_spaces();
             writeln!(
                generation_context.out.out,
                "{}.trunc_sat_{}{}",
-               target_type_str, dest_type_str, suffix
+               target_type_str, dest_type, suffix
             )
             .unwrap();
          } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Int(_))
             && matches!(target_type, ExpressionType::Float(_))
          {
             // int -> float
-            let target_type_str = match target_type {
-               ExpressionType::Float(x) => match x.width {
-                  FloatWidth::Eight => "f64",
-                  FloatWidth::Four => "f32",
-               },
-               _ => unreachable!(),
-            };
+            let target_type_str = type_to_wasm_type_basic(target_type);
 
             let (dest_type_str, suffix) = match e.exp_type.as_ref().unwrap() {
                ExpressionType::Int(x) => {
@@ -1732,7 +1645,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
    }
 }
 
-fn complement_val(t_type: &ExpressionType, wasm_type: &str, generation_context: &mut GenerationContext) {
+fn complement_val(t_type: &ExpressionType, wasm_type: WasmType, generation_context: &mut GenerationContext) {
    let magic_const: u64 = match *t_type {
       crate::type_data::U8_TYPE => u64::from(std::u8::MAX),
       crate::type_data::U16_TYPE => u64::from(std::u16::MAX),
