@@ -1,5 +1,6 @@
 use indexmap::IndexMap;
 
+use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
    BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement, StatementNode,
    VariableId,
@@ -163,14 +164,17 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext, expressions: &E
 
          if any_named_arg {
             for arg in args.iter() {
-               vv_context.declare_vv(arg.expr, expressions);
+               if expression_could_have_side_effects(arg.expr, expressions) {
+                  vv_context.declare_vv(arg.expr, expressions);
+
+               }
             }
          }
 
          if matches!(
             expressions[*proc_expr].exp_type.as_ref().unwrap(),
             ExpressionType::ProcedurePointer { .. }
-         ) {
+         ) && expression_could_have_side_effects(*proc_expr, expressions) {
             vv_context.declare_vv(*proc_expr, expressions);
          }
       }
@@ -188,7 +192,9 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext, expressions: &E
       Expression::StructLiteral(_, field_exprs) => {
          for (_, expr) in field_exprs.iter() {
             vv_expr(*expr, vv_context, expressions);
-            vv_context.declare_vv(*expr, expressions);
+            if expression_could_have_side_effects(*expr, expressions) {
+               vv_context.declare_vv(*expr, expressions);
+            }
          }
       }
       Expression::FieldAccess(_field_names, expr) => {

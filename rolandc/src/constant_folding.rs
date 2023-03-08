@@ -1715,7 +1715,7 @@ fn is_commutative_noop(literal: Literal, op: BinOp) -> bool {
       || ((literal == Literal::Bool(true)) & (op == BinOp::LogicalAnd))
 }
 
-fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &ExpressionPool) -> bool {
+pub fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &ExpressionPool) -> bool {
    match &expressions[expr_id].expression {
       Expression::ProcedureCall { .. } => true,
       Expression::ArrayLiteral(arr) => arr.iter().any(|x| expression_could_have_side_effects(*x, expressions)),
