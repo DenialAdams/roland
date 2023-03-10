@@ -982,25 +982,7 @@ fn emit_literal_bytes(expr_index: ExpressionId, generation_context: &mut Generat
       Expression::BoolLiteral(x) => {
          write!(generation_context.out.out, "\\{:02x}", u8::from(*x)).unwrap();
       }
-      Expression::EnumLiteral(name, variant) => {
-         let width = sizeof_type_mem(
-            expr_node.exp_type.as_ref().unwrap(),
-            generation_context.enum_info,
-            generation_context.struct_size_info,
-         );
-         let index = generation_context
-            .enum_info
-            .get(&name.str)
-            .unwrap()
-            .variants
-            .get_index_of(&variant.str)
-            .unwrap();
-         generation_context.out.emit_spaces();
-         for w in 0..width {
-            let val = (index >> (8 * w)) & 0xff;
-            write!(generation_context.out.out, "\\{:02x}", val).unwrap();
-         }
-      }
+      Expression::EnumLiteral(_, _) => unreachable!(),
       Expression::IntLiteral { val: x, .. } => {
          let width = match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => x.width,
