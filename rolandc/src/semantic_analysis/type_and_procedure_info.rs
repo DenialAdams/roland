@@ -498,14 +498,6 @@ pub fn populate_type_and_procedure_info(
          );
       }
 
-      if !definition.generic_parameters.is_empty() && !source_is_std(source_location, config) {
-         rolandc_error!(
-            err_manager,
-            source_location,
-            "Generic parameters are unstable and currently unsupported in user code"
-         );
-      }
-
       for constraint in definition.constraints.iter() {
          let matching_generic_param = match definition.generic_parameters.iter().find(|x| x.str == *constraint.0) {
             Some(x) => x.str,
@@ -536,14 +528,14 @@ pub fn populate_type_and_procedure_info(
          }
       }
 
-      let type_parameters_with_constraints: Vec<IndexSet<StrId>> = definition
+      let type_parameters_with_constraints: IndexMap<StrId, IndexSet<StrId>> = definition
          .generic_parameters
          .iter()
          .map(|x| {
-            definition
+            (x.str, definition
                .constraints
                .get_mut(&x.str)
-               .map_or_else(IndexSet::new, |x| std::mem::replace(x, IndexSet::new()))
+               .map_or_else(IndexSet::new, |x| std::mem::replace(x, IndexSet::new())))
          })
          .collect();
 

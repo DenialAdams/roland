@@ -20,7 +20,7 @@ pub struct ProcedureInfo {
    // This includes named parameters
    pub parameters: Vec<ExpressionType>,
    pub named_parameters: HashMap<StrId, ExpressionType>,
-   pub type_parameters: Vec<IndexSet<StrId>>,
+   pub type_parameters: IndexMap<StrId, IndexSet<StrId>>,
    pub ret_type: ExpressionType,
    pub location: SourceInfo,
    pub is_compiler_builtin: bool,

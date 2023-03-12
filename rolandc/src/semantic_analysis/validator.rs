@@ -1307,24 +1307,30 @@ fn get_type(
 
          // sad clone :(
          match validation_context.expressions[*proc_expr].exp_type.clone().unwrap() {
-            ExpressionType::ProcedureItem(proc_name, _) => {
+            ExpressionType::ProcedureItem(proc_name, generic_args) => {
                let procedure_info = validation_context.procedure_info.get(&proc_name).unwrap();
                check_procedure_call(
                   args,
+                  &generic_args,
                   &procedure_info.parameters,
                   &procedure_info.named_parameters,
+                  &procedure_info.type_parameters,
                   expr_location,
                   interner,
                   validation_context,
                   err_manager,
                );
-               procedure_info.ret_type.clone()
+               resolved_generic_type(&procedure_info.ret_type, &generic_args, &procedure_info.type_parameters).clone()
             }
             ExpressionType::ProcedurePointer { parameters, ret_type } => {
+               // nocheckin: procedure pointer type should capture generic arguments and generic parameters
+               // and provide those here
                check_procedure_call(
                   args,
+                  &[],
                   &parameters,
                   &HashMap::new(),
+                  &IndexMap::new(),
                   expr_location,
                   interner,
                   validation_context,
@@ -1697,8 +1703,10 @@ fn error_on_unknown_literals(err_manager: &mut ErrorManager, validation_context:
 
 fn check_procedure_call(
    args: &[ArgumentNode],
+   generic_args: &[ExpressionType],
    parameters: &[ExpressionType],
    named_parameters: &HashMap<StrId, ExpressionType>,
+   generic_parameters: &IndexMap<StrId, IndexSet<StrId>>,
    call_location: SourceInfo,
    interner: &Interner,
    validation_context: &mut ValidationContext,
@@ -1740,6 +1748,8 @@ fn check_procedure_call(
             break;
          }
 
+         let expected = resolved_generic_type(expected, generic_args, generic_parameters);
+
          try_set_inferred_type(expected, actual.expr, validation_context);
 
          let actual_expr = &validation_context.expressions[actual.expr];
@@ -1772,7 +1782,7 @@ fn check_procedure_call(
             continue;
          }
 
-         let expected = expected.unwrap();
+         let expected = resolved_generic_type(expected.unwrap(), generic_args, generic_parameters);
 
          try_set_inferred_type(expected, arg.expr, validation_context);
 
@@ -1804,7 +1814,7 @@ fn check_procedure_item(
    err_manager: &mut ErrorManager,
 ) -> ExpressionType {
    if proc_info.type_parameters.len() == type_arguments.len() {
-      for (g_arg, constraints) in type_arguments.iter().zip(proc_info.type_parameters.iter()) {
+      for (g_arg, constraints) in type_arguments.iter().zip(proc_info.type_parameters.values()) {
          if matches!(g_arg.gtype, ExpressionType::Unresolved(_)) {
             // We have already errored on this argument
             continue;
@@ -1909,5 +1919,15 @@ fn check_type_declared_vs_actual(
             actual_type_str,
          );
       }
+   }
+}
+
+fn resolved_generic_type<'a>(param_type: &'a ExpressionType, generic_args: &'a [ExpressionType], generic_parameters: &IndexMap<StrId, IndexSet<StrId>>,) -> &'a ExpressionType {
+   match param_type {
+      ExpressionType::Unresolved(x) => {
+         let generic_param_index = generic_parameters.get_index_of(x).unwrap();
+         &generic_args[generic_param_index]
+      }
+      _ => param_type,
    }
 }
