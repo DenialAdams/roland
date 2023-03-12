@@ -1,0 +1,9 @@
+enum Bar{}
+
+proc main() {
+	let x: Bar = 10 transmute Bar;
+}
+__END__
+compile:
+Transmute encountered an operand whose size is not yet known
+↳ line 4, column 15 [tests/casts/transmute_int_to_empty_enum_no_crash.rol]
