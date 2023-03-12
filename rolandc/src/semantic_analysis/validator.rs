@@ -1167,7 +1167,7 @@ fn get_type(
          let e = &validation_context.expressions[*e];
 
          if *un_op == UnOp::AddressOf {
-            if let ExpressionType::ProcedureItem(proc_name, _bound_type_params) = e.exp_type.as_ref().unwrap() {
+            if let ExpressionType::ProcedureItem(proc_name, bound_type_params) = e.exp_type.as_ref().unwrap() {
                // special case
                let procedure_info = validation_context.procedure_info.get(proc_name).unwrap();
 
@@ -1189,18 +1189,18 @@ fn get_type(
                   return ExpressionType::CompileError;
                }
 
-               if !procedure_info.type_parameters.is_empty() {
-                  rolandc_error!(
-                     err_manager,
-                     expr_location,
-                     "Procedure pointers can't be taken to procedures with type arguments at this time"
-                  );
-                  return ExpressionType::CompileError;
+               let mut parameters = procedure_info.parameters.clone().into_boxed_slice();
+
+               for param in parameters.iter_mut() {
+                  map_generic_to_concrete(param, bound_type_params, &procedure_info.type_parameters);
                }
 
+               let mut ret_type = procedure_info.ret_type.clone();
+               map_generic_to_concrete(&mut ret_type, bound_type_params, &procedure_info.type_parameters);
+
                return ExpressionType::ProcedurePointer {
-                  parameters: procedure_info.parameters.clone().into_boxed_slice(),
-                  ret_type: Box::new(procedure_info.ret_type.clone()),
+                  parameters,
+                  ret_type: Box::new(ret_type),
                };
             }
          }
@@ -1342,8 +1342,6 @@ fn get_type(
                resulting_type
             }
             ExpressionType::ProcedurePointer { parameters, ret_type } => {
-               // nocheckin: procedure pointer type should capture generic arguments and generic parameters
-               // and provide those here
                check_procedure_call(
                   args,
                   &[],

@@ -1,11 +1,11 @@
-proc foo$T(x: T) {
-
+proc foo$T(x: T) -> T {
+   return x;
 }
 
 proc main() {
-   let y = &foo$u64;
+   let y: proc(bool) -> bool = &foo$bool;
+   println_bool(y(true));
 }
 __END__
-compile:
-Procedure pointers can't be taken to procedures with type arguments at this time
-↳ line 6, column 12 [tests/procedure_pointers/procedure_pointer_to_generic_procedure.rol]
+run:
+true
