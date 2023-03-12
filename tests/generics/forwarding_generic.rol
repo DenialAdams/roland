@@ -1,4 +1,8 @@
+enum Color {R,G,B}
+
 proc main() {
+   let x = foo$Color();
+   println_bool(x == 3);
 }
 
 proc foo$T() -> u64 where T: Enum {
@@ -6,6 +10,5 @@ proc foo$T() -> u64 where T: Enum {
 }
 
 __END__
-compile:
-For procedure `bar`, encountered generic argument of type T which does not meet the constraint `Enum`
-↳ line 5, column 14 [tests/generics/forwarding_generic_not_meeting_constraint.rol]
+run:
+true
