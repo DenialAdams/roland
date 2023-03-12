@@ -1,0 +1,11 @@
+proc foo$T(x: T) {
+
+}
+
+proc main() {
+   let y = &foo$u64;
+}
+__END__
+compile:
+Procedure pointers can't be taken to procedures with type arguments at this time
+↳ line 6, column 12 [tests/procedure_pointers/procedure_pointer_to_generic_procedure.rol]

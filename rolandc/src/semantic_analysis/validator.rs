@@ -1189,6 +1189,15 @@ fn get_type(
                   return ExpressionType::CompileError;
                }
 
+               if !procedure_info.type_parameters.is_empty() {
+                  rolandc_error!(
+                     err_manager,
+                     expr_location,
+                     "Procedure pointers can't be taken to procedures with type arguments at this time"
+                  );
+                  return ExpressionType::CompileError;
+               }
+
                return ExpressionType::ProcedurePointer {
                   parameters: procedure_info.parameters.clone().into_boxed_slice(),
                   ret_type: Box::new(procedure_info.ret_type.clone()),
