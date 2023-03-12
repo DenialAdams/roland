@@ -1226,15 +1226,6 @@ fn get_type(
             }
          };
 
-         // important that we check for concreteness first:
-         // an UnknownInt is not zero sized, but sizeof_type_mem asserts on it
-         let is_zst = e.exp_type.as_ref().unwrap().is_concrete()
-            && sizeof_type_mem(
-               e.exp_type.as_ref().unwrap(),
-               validation_context.enum_info,
-               &validation_context.struct_size_info,
-            ) == 0;
-
          if e.exp_type.as_ref().unwrap().is_error() {
             // Avoid cascading errors
             ExpressionType::CompileError
@@ -1269,23 +1260,6 @@ fn get_type(
                   "A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter"
                );
             }
-            ExpressionType::CompileError
-         } else if *un_op == UnOp::AddressOf && is_zst {
-            // Allowing this wouldn't cause any clear bug (as far as I know), but it just seems whack
-            // In the future, we should allow this for generic programming. TODO!
-            rolandc_error!(
-               err_manager,
-               expr_location,
-               "Taking a pointer to a zero sized type is disallowed, as they don't reside in memory.",
-            );
-            ExpressionType::CompileError
-         } else if *un_op == UnOp::Dereference && is_zst {
-            // In the future, we should allow this for generic programming. TODO!
-            rolandc_error!(
-               err_manager,
-               expr_location,
-               "Dereferencing a pointer to a zero sized type is disallowed, as there is nothing to load.",
-            );
             ExpressionType::CompileError
          } else if *un_op == UnOp::AddressOf {
             if let Expression::Variable(var) = &e.expression {
