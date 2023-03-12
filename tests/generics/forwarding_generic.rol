@@ -1,0 +1,11 @@
+proc main() {
+}
+
+proc foo$T() -> u64 where T: Enum {
+   return num_variants$T();
+}
+
+__END__
+compile:
+For procedure `bar`, encountered generic argument of type T which does not meet the constraint `Enum`
+↳ line 5, column 14 [tests/generics/forwarding_generic_not_meeting_constraint.rol]

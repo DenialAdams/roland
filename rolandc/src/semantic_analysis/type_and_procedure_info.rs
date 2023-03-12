@@ -7,7 +7,7 @@ use super::{EnumInfo, GlobalInfo, ProcedureInfo, StructInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{ExpressionTypeNode, ProcImplSource, StrNode};
+use crate::parse::{ExpressionTypeNode, ProcImplSource};
 use crate::semantic_analysis::validator::resolve_type;
 use crate::source_info::{SourceInfo, SourcePath};
 use crate::type_data::{ExpressionType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
@@ -71,35 +71,6 @@ fn recursive_struct_check(
    }
 
    is_recursive
-}
-
-fn resolve_to_type_or_generic_parameter(
-   generic_parameters: &[StrNode],
-   the_type: &mut ExpressionType,
-   enum_info: &IndexMap<StrId, EnumInfo>,
-   struct_info: &IndexMap<StrId, StructInfo>,
-) -> Result<(), ()> {
-   if resolve_type(the_type, enum_info, struct_info).is_ok() {
-      return Ok(());
-   }
-
-   let param_type_name = match the_type {
-      ExpressionType::Unresolved(x) => *x,
-      _ => {
-         // Any type that contains other types i.e. an array, pointer, procedure pointer... can be unresolved while itself not being Unresolved
-         // We'll just bail here. There will be more sophisticated stuff needed in the future to make this work.
-         return Err(());
-      }
-   };
-
-   // This could be a generic type parameter
-   for generic_parameter in generic_parameters.iter() {
-      if generic_parameter.str == param_type_name {
-         return Ok(());
-      }
-   }
-
-   Err(())
 }
 
 pub fn populate_type_and_procedure_info(
@@ -272,7 +243,7 @@ pub fn populate_type_and_procedure_info(
       }
 
       for (field, etn) in struct_i.1.field_types.iter_mut() {
-         if resolve_type(&mut etn.e_type, &program.enum_info, &cloned_struct_info).is_ok() {
+         if resolve_type(&mut etn.e_type, &program.enum_info, &cloned_struct_info, None).is_ok() {
             continue;
          }
 
@@ -312,7 +283,7 @@ pub fn populate_type_and_procedure_info(
       let const_type = &mut const_node.const_type.e_type;
       let si = &const_node.location;
 
-      if resolve_type(const_type, &program.enum_info, &program.struct_info).is_err() {
+      if resolve_type(const_type, &program.enum_info, &program.struct_info, None).is_err() {
          let static_type_str = const_type.as_roland_type_info_notv(interner);
          rolandc_error!(
             err_manager,
@@ -349,7 +320,7 @@ pub fn populate_type_and_procedure_info(
    for static_node in program.statics.iter_mut() {
       let static_e_type = &mut static_node.static_type.e_type;
 
-      if resolve_type(static_e_type, &program.enum_info, &program.struct_info).is_err() {
+      if resolve_type(static_e_type, &program.enum_info, &program.struct_info, None).is_err() {
          let static_type_str = static_e_type.as_roland_type_info_notv(interner);
          rolandc_error!(
             err_manager,
@@ -459,45 +430,6 @@ pub fn populate_type_and_procedure_info(
          }
       }
 
-      for parameter in definition.parameters.iter_mut() {
-         if resolve_to_type_or_generic_parameter(
-            &definition.generic_parameters,
-            &mut parameter.p_type.e_type,
-            &program.enum_info,
-            &program.struct_info,
-         )
-         .is_err()
-         {
-            let etype_str = parameter.p_type.e_type.as_roland_type_info_notv(interner);
-            rolandc_error!(
-               err_manager,
-               parameter.p_type.location,
-               "Parameter `{}` of procedure `{}` is of undeclared type `{}`",
-               interner.lookup(parameter.name),
-               interner.lookup(definition.name),
-               etype_str,
-            );
-         }
-      }
-
-      if resolve_to_type_or_generic_parameter(
-         &definition.generic_parameters,
-         &mut definition.ret_type.e_type,
-         &program.enum_info,
-         &program.struct_info,
-      )
-      .is_err()
-      {
-         let etype_str = definition.ret_type.e_type.as_roland_type_info_notv(interner);
-         rolandc_error!(
-            err_manager,
-            definition.ret_type.location,
-            "Return type of procedure `{}` is of undeclared type `{}`",
-            interner.lookup(definition.name),
-            etype_str,
-         );
-      }
-
       for constraint in definition.constraints.iter() {
          let matching_generic_param = match definition.generic_parameters.iter().find(|x| x.str == *constraint.0) {
             Some(x) => x.str,
@@ -538,6 +470,45 @@ pub fn populate_type_and_procedure_info(
                .map_or_else(IndexSet::new, |x| std::mem::replace(x, IndexSet::new())))
          })
          .collect();
+
+         for parameter in definition.parameters.iter_mut() {
+            if resolve_type(
+               &mut parameter.p_type.e_type,
+               &program.enum_info,
+               &program.struct_info,
+               Some(&type_parameters_with_constraints),
+            )
+            .is_err()
+            {
+               let etype_str = parameter.p_type.e_type.as_roland_type_info_notv(interner);
+               rolandc_error!(
+                  err_manager,
+                  parameter.p_type.location,
+                  "Parameter `{}` of procedure `{}` is of undeclared type `{}`",
+                  interner.lookup(parameter.name),
+                  interner.lookup(definition.name),
+                  etype_str,
+               );
+            }
+         }
+   
+         if resolve_type(
+            &mut definition.ret_type.e_type,
+            &program.enum_info,
+            &program.struct_info,
+            Some(&type_parameters_with_constraints),
+         )
+         .is_err()
+         {
+            let etype_str = definition.ret_type.e_type.as_roland_type_info_notv(interner);
+            rolandc_error!(
+               err_manager,
+               definition.ret_type.location,
+               "Return type of procedure `{}` is of undeclared type `{}`",
+               interner.lookup(definition.name),
+               etype_str,
+            );
+         }
 
       if let Some(old_procedure) = program.procedure_info.insert(
          definition.name,

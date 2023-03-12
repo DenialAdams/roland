@@ -1,0 +1,14 @@
+proc main() {
+}
+
+proc foo$T(x: T) -> T {
+   return bar$T(x);
+}
+
+proc bar$T(x: T) -> T where T: Enum {
+    return x;
+}
+__END__
+compile:
+For procedure `bar`, encountered generic argument of type T which does not meet the constraints `Enum`
+↳ line 5, column 14 [tests/generics/forwarding_generic_not_meeting_constraint.rol]

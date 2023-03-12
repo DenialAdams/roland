@@ -125,9 +125,10 @@ pub fn resolve_type(
    v_type: &mut ExpressionType,
    ei: &IndexMap<StrId, EnumInfo>,
    si: &IndexMap<StrId, StructInfo>,
+   type_params: Option<&IndexMap<StrId, IndexSet<StrId>>>,
 ) -> Result<(), ()> {
    match v_type {
-      ExpressionType::Pointer(vt) => resolve_type(vt, ei, si),
+      ExpressionType::Pointer(vt) => resolve_type(vt, ei, si, type_params),
       ExpressionType::Never => Ok(()),
       ExpressionType::Unknown(_) => Ok(()),
       ExpressionType::Int(_) => Ok(()),
@@ -135,7 +136,7 @@ pub fn resolve_type(
       ExpressionType::Bool => Ok(()),
       ExpressionType::Unit => Ok(()),
       ExpressionType::Struct(_) => Ok(()),
-      ExpressionType::Array(exp, _) => resolve_type(exp, ei, si),
+      ExpressionType::Array(exp, _) => resolve_type(exp, ei, si, type_params),
       ExpressionType::CompileError => Ok(()),
       ExpressionType::Enum(_) => Ok(()),
       ExpressionType::ProcedurePointer {
@@ -144,15 +145,16 @@ pub fn resolve_type(
       } => {
          let mut failed_to_resolve = false;
          for parameter in parameters.iter_mut() {
-            failed_to_resolve |= resolve_type(parameter, ei, si).is_err();
+            failed_to_resolve |= resolve_type(parameter, ei, si, type_params).is_err();
          }
-         failed_to_resolve |= resolve_type(ret_val, ei, si).is_err();
+         failed_to_resolve |= resolve_type(ret_val, ei, si, type_params).is_err();
          if failed_to_resolve {
             Err(())
          } else {
             Ok(())
          }
       }
+      ExpressionType::GenericParam(_) => Ok(()),
       ExpressionType::ProcedureItem(_, _) => Ok(()), // This type contains other types, but this type itself can never be written down. It should always be valid
       ExpressionType::Unresolved(x) => {
          if ei.contains_key(x) {
@@ -160,6 +162,9 @@ pub fn resolve_type(
             Ok(())
          } else if si.contains_key(x) {
             *v_type = ExpressionType::Struct(*x);
+            Ok(())
+         } else if type_params.map_or(false, |tp| tp.contains_key(x)) {
+            *v_type = ExpressionType::GenericParam(*x);
             Ok(())
          } else {
             Err(())
@@ -654,6 +659,7 @@ fn type_statement(
                &mut v.e_type,
                validation_context.enum_info,
                validation_context.struct_info,
+               validation_context.cur_procedure_info.map(|x| &x.type_parameters)
             );
             if let Some(enid) = opt_enid {
                try_set_inferred_type(&v.e_type, *enid, validation_context);
@@ -794,6 +800,7 @@ fn get_type(
             target_type,
             validation_context.enum_info,
             validation_context.struct_info,
+            validation_context.cur_procedure_info.map(|x| &x.type_parameters)
          )
          .is_err()
          {
@@ -812,6 +819,7 @@ fn get_type(
                &mut g_arg.gtype,
                validation_context.enum_info,
                validation_context.struct_info,
+               validation_context.cur_procedure_info.map(|x| &x.type_parameters)
             )
             .is_err()
             {
@@ -1277,7 +1285,7 @@ fn get_type(
             validation_context
                .source_to_definition
                .insert(id.location, proc_info.location);
-            check_procedure_item(id.str, proc_info, expr_location, type_arguments, interner, err_manager)
+            check_procedure_item(id.str, proc_info, validation_context.cur_procedure_info, expr_location, type_arguments, interner, err_manager)
          }
          None => {
             rolandc_error!(
@@ -1320,7 +1328,9 @@ fn get_type(
                   validation_context,
                   err_manager,
                );
-               resolved_generic_type(&procedure_info.ret_type, &generic_args, &procedure_info.type_parameters).clone()
+               let mut resulting_type = procedure_info.ret_type.clone();
+               map_generic_to_concrete(&mut resulting_type, &generic_args, &procedure_info.type_parameters);
+               resulting_type
             }
             ExpressionType::ProcedurePointer { parameters, ret_type } => {
                // nocheckin: procedure pointer type should capture generic arguments and generic parameters
@@ -1748,14 +1758,15 @@ fn check_procedure_call(
             break;
          }
 
-         let expected = resolved_generic_type(expected, generic_args, generic_parameters);
+         let mut expected = expected.clone();
+         map_generic_to_concrete(&mut expected, generic_args, generic_parameters);
 
-         try_set_inferred_type(expected, actual.expr, validation_context);
+         try_set_inferred_type(&expected, actual.expr, validation_context);
 
          let actual_expr = &validation_context.expressions[actual.expr];
          let actual_type = actual_expr.exp_type.as_ref().unwrap();
 
-         if actual_type != expected && !actual_type.is_error() {
+         if *actual_type != expected && !actual_type.is_error() {
             let actual_type_str = actual_type.as_roland_type_info(interner, &validation_context.type_variables);
             let expected_type_str = expected.as_roland_type_info(interner, &validation_context.type_variables);
             rolandc_error!(
@@ -1782,14 +1793,15 @@ fn check_procedure_call(
             continue;
          }
 
-         let expected = resolved_generic_type(expected.unwrap(), generic_args, generic_parameters);
+         let mut expected = expected.cloned().unwrap();
+         map_generic_to_concrete(&mut expected, generic_args, generic_parameters);
 
-         try_set_inferred_type(expected, arg.expr, validation_context);
+         try_set_inferred_type(&expected, arg.expr, validation_context);
 
          let arg_expr = &validation_context.expressions[arg.expr];
 
          let actual_type = arg_expr.exp_type.as_ref().unwrap();
-         if actual_type != expected && !actual_type.is_error() {
+         if *actual_type != expected && !actual_type.is_error() {
             let actual_type_str = actual_type.as_roland_type_info(interner, &validation_context.type_variables);
             let expected_type_str = expected.as_roland_type_info(interner, &validation_context.type_variables);
             rolandc_error!(
@@ -1806,39 +1818,57 @@ fn check_procedure_call(
 }
 
 fn check_procedure_item(
-   proc_name: StrId,
-   proc_info: &ProcedureInfo,
+   callee_proc_name: StrId,
+   callee_proc_info: &ProcedureInfo,
+   our_proc_info: Option<&ProcedureInfo>,
    location: SourceInfo,
    type_arguments: &[GenericArgumentNode],
    interner: &Interner,
    err_manager: &mut ErrorManager,
 ) -> ExpressionType {
-   if proc_info.type_parameters.len() == type_arguments.len() {
-      for (g_arg, constraints) in type_arguments.iter().zip(proc_info.type_parameters.values()) {
-         if matches!(g_arg.gtype, ExpressionType::Unresolved(_)) {
-            // We have already errored on this argument
-            continue;
-         }
-
-         for constraint in constraints {
-            match interner.lookup(*constraint) {
-               "Enum" => {
-                  if !matches!(g_arg.gtype, ExpressionType::Enum(_)) {
-                     rolandc_error!(
-                        err_manager,
-                        g_arg.location,
-                        "For procedure `{}`, encountered generic argument of type {} which does not meet the constraint `Enum`",
-                        interner.lookup(proc_name),
-                        g_arg.gtype.as_roland_type_info_notv(interner),
-                     );
+   if callee_proc_info.type_parameters.len() == type_arguments.len() {
+      for (g_arg, constraints) in type_arguments.iter().zip(callee_proc_info.type_parameters.values()) {
+         match g_arg.gtype {
+            ExpressionType::Unresolved(_) => {
+               // We have already errored on this argument
+            }
+            ExpressionType::GenericParam(gp) => {
+               // this unwrap is safe, because nothing should be resolved to a generic param if we're ot in a procedure body
+               let our_constraints = our_proc_info.and_then(|x| x.type_parameters.get(&gp)).unwrap();
+               if !our_constraints.is_superset(constraints) {
+                  let constraints_we_do_not_meet: Vec<String> = constraints.difference(our_constraints).map(|x| format!("`{}`", interner.lookup(*x))).collect();
+                  rolandc_error!(
+                     err_manager,
+                     g_arg.location,
+                     "For procedure `{}`, encountered generic argument of type {} which does not meet the constraints {}",
+                     interner.lookup(callee_proc_name),
+                     g_arg.gtype.as_roland_type_info_notv(interner),
+                     constraints_we_do_not_meet.join(", "),
+                  );
+               }
+            }
+            _ => {
+               for constraint in constraints {
+                  match interner.lookup(*constraint) {
+                     "Enum" => {
+                        if !matches!(g_arg.gtype, ExpressionType::Enum(_)) {
+                           rolandc_error!(
+                              err_manager,
+                              g_arg.location,
+                              "For procedure `{}`, encountered generic argument of type {} which does not meet the constraint `Enum`",
+                              interner.lookup(callee_proc_name),
+                              g_arg.gtype.as_roland_type_info_notv(interner),
+                           );
+                        }
+                     }
+                     _ => unreachable!(),
                   }
                }
-               _ => unreachable!(),
             }
          }
       }
       ExpressionType::ProcedureItem(
-         proc_name,
+         callee_proc_name,
          type_arguments
             .iter()
             .map(|x| x.gtype.clone())
@@ -1850,8 +1880,8 @@ fn check_procedure_item(
          err_manager,
          location,
          "Mismatched arity for procedure '{}'. Expected {} type arguments but got {}",
-         interner.lookup(proc_name),
-         proc_info.type_parameters.len(),
+         interner.lookup(callee_proc_name),
+         callee_proc_info.type_parameters.len(),
          type_arguments.len()
       );
       ExpressionType::CompileError
@@ -1922,12 +1952,29 @@ fn check_type_declared_vs_actual(
    }
 }
 
-fn resolved_generic_type<'a>(param_type: &'a ExpressionType, generic_args: &'a [ExpressionType], generic_parameters: &IndexMap<StrId, IndexSet<StrId>>,) -> &'a ExpressionType {
+fn map_generic_to_concrete(param_type: &mut ExpressionType, generic_args: &[ExpressionType], generic_parameters: &IndexMap<StrId, IndexSet<StrId>>,) {
    match param_type {
-      ExpressionType::Unresolved(x) => {
-         let generic_param_index = generic_parameters.get_index_of(x).unwrap();
-         &generic_args[generic_param_index]
+      ExpressionType::Array(inner_type, _) => {
+         map_generic_to_concrete(inner_type, generic_args, generic_parameters);
       }
-      _ => param_type,
+      ExpressionType::Pointer(inner_type) => {
+         map_generic_to_concrete(inner_type, generic_args, generic_parameters);
+      }
+      ExpressionType::ProcedurePointer { parameters, ret_type } => {
+         for param in parameters.iter_mut() {
+            map_generic_to_concrete(param, generic_args, generic_parameters);
+         }
+         map_generic_to_concrete(ret_type, generic_args, generic_parameters);
+      }
+      ExpressionType::ProcedureItem(_, type_params) => {
+         for type_param in type_params.iter_mut() {
+            map_generic_to_concrete(type_param, generic_args, generic_parameters);
+         }
+      }
+      ExpressionType::GenericParam(x) => {
+         let generic_param_index = generic_parameters.get_index_of(x).unwrap();
+         *param_type = generic_args[generic_param_index].clone();
+      }
+      _ => (),
    }
 }
