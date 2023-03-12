@@ -192,7 +192,10 @@ impl ExpressionType {
    #[must_use]
    pub fn is_concrete(&self) -> bool {
       match self {
-         ExpressionType::Unknown(_) | ExpressionType::CompileError | ExpressionType::Unresolved(_) | ExpressionType::GenericParam(_) => false,
+         ExpressionType::Unknown(_)
+         | ExpressionType::CompileError
+         | ExpressionType::Unresolved(_)
+         | ExpressionType::GenericParam(_) => false,
          ExpressionType::Int(_)
          | ExpressionType::Float(_)
          | ExpressionType::Bool

@@ -134,7 +134,7 @@ pub fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &Ha
       ExpressionType::CompileError => unreachable!(),
       ExpressionType::Struct(x) => si.get(x).unwrap().strictest_alignment,
       ExpressionType::Array(a_type, _len) => mem_alignment(a_type, ei, si),
-      ExpressionType::GenericParam(_) => unreachable!()
+      ExpressionType::GenericParam(_) => unreachable!(),
    }
 }
 

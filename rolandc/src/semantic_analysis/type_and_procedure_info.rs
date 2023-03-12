@@ -447,6 +447,7 @@ pub fn populate_type_and_procedure_info(
          for constraint_trait_name in constraint.1.iter() {
             match interner.lookup(*constraint_trait_name) {
                "Enum" => (),
+               "Float" => (),
                _ => {
                   rolandc_error!(
                      err_manager,
@@ -464,51 +465,54 @@ pub fn populate_type_and_procedure_info(
          .generic_parameters
          .iter()
          .map(|x| {
-            (x.str, definition
-               .constraints
-               .get_mut(&x.str)
-               .map_or_else(IndexSet::new, |x| std::mem::replace(x, IndexSet::new())))
+            (
+               x.str,
+               definition
+                  .constraints
+                  .get_mut(&x.str)
+                  .map_or_else(IndexSet::new, |x| std::mem::replace(x, IndexSet::new())),
+            )
          })
          .collect();
 
-         for parameter in definition.parameters.iter_mut() {
-            if resolve_type(
-               &mut parameter.p_type.e_type,
-               &program.enum_info,
-               &program.struct_info,
-               Some(&type_parameters_with_constraints),
-            )
-            .is_err()
-            {
-               let etype_str = parameter.p_type.e_type.as_roland_type_info_notv(interner);
-               rolandc_error!(
-                  err_manager,
-                  parameter.p_type.location,
-                  "Parameter `{}` of procedure `{}` is of undeclared type `{}`",
-                  interner.lookup(parameter.name),
-                  interner.lookup(definition.name),
-                  etype_str,
-               );
-            }
-         }
-   
+      for parameter in definition.parameters.iter_mut() {
          if resolve_type(
-            &mut definition.ret_type.e_type,
+            &mut parameter.p_type.e_type,
             &program.enum_info,
             &program.struct_info,
             Some(&type_parameters_with_constraints),
          )
          .is_err()
          {
-            let etype_str = definition.ret_type.e_type.as_roland_type_info_notv(interner);
+            let etype_str = parameter.p_type.e_type.as_roland_type_info_notv(interner);
             rolandc_error!(
                err_manager,
-               definition.ret_type.location,
-               "Return type of procedure `{}` is of undeclared type `{}`",
+               parameter.p_type.location,
+               "Parameter `{}` of procedure `{}` is of undeclared type `{}`",
+               interner.lookup(parameter.name),
                interner.lookup(definition.name),
                etype_str,
             );
          }
+      }
+
+      if resolve_type(
+         &mut definition.ret_type.e_type,
+         &program.enum_info,
+         &program.struct_info,
+         Some(&type_parameters_with_constraints),
+      )
+      .is_err()
+      {
+         let etype_str = definition.ret_type.e_type.as_roland_type_info_notv(interner);
+         rolandc_error!(
+            err_manager,
+            definition.ret_type.location,
+            "Return type of procedure `{}` is of undeclared type `{}`",
+            interner.lookup(definition.name),
+            etype_str,
+         );
+      }
 
       if let Some(old_procedure) = program.procedure_info.insert(
          definition.name,

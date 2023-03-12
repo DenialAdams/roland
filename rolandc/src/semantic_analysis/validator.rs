@@ -659,7 +659,7 @@ fn type_statement(
                &mut v.e_type,
                validation_context.enum_info,
                validation_context.struct_info,
-               validation_context.cur_procedure_info.map(|x| &x.type_parameters)
+               validation_context.cur_procedure_info.map(|x| &x.type_parameters),
             );
             if let Some(enid) = opt_enid {
                try_set_inferred_type(&v.e_type, *enid, validation_context);
@@ -800,7 +800,7 @@ fn get_type(
             target_type,
             validation_context.enum_info,
             validation_context.struct_info,
-            validation_context.cur_procedure_info.map(|x| &x.type_parameters)
+            validation_context.cur_procedure_info.map(|x| &x.type_parameters),
          )
          .is_err()
          {
@@ -819,7 +819,7 @@ fn get_type(
                &mut g_arg.gtype,
                validation_context.enum_info,
                validation_context.struct_info,
-               validation_context.cur_procedure_info.map(|x| &x.type_parameters)
+               validation_context.cur_procedure_info.map(|x| &x.type_parameters),
             )
             .is_err()
             {
@@ -1294,7 +1294,15 @@ fn get_type(
             validation_context
                .source_to_definition
                .insert(id.location, proc_info.location);
-            check_procedure_item(id.str, proc_info, validation_context.cur_procedure_info, expr_location, type_arguments, interner, err_manager)
+            check_procedure_item(
+               id.str,
+               proc_info,
+               validation_context.cur_procedure_info,
+               expr_location,
+               type_arguments,
+               interner,
+               err_manager,
+            )
          }
          None => {
             rolandc_error!(
@@ -1840,10 +1848,13 @@ fn check_procedure_item(
                // We have already errored on this argument
             }
             ExpressionType::GenericParam(gp) => {
-               // this unwrap is safe, because nothing should be resolved to a generic param if we're ot in a procedure body
+               // this unwrap is safe, because nothing should be resolved to a generic param if we're not in a procedure body
                let our_constraints = our_proc_info.and_then(|x| x.type_parameters.get(&gp)).unwrap();
                if !our_constraints.is_superset(constraints) {
-                  let constraints_we_do_not_meet: Vec<String> = constraints.difference(our_constraints).map(|x| format!("`{}`", interner.lookup(*x))).collect();
+                  let constraints_we_do_not_meet: Vec<String> = constraints
+                     .difference(our_constraints)
+                     .map(|x| format!("`{}`", interner.lookup(*x)))
+                     .collect();
                   rolandc_error!(
                      err_manager,
                      g_arg.location,
@@ -1856,19 +1867,20 @@ fn check_procedure_item(
             }
             _ => {
                for constraint in constraints {
-                  match interner.lookup(*constraint) {
-                     "Enum" => {
-                        if !matches!(g_arg.gtype, ExpressionType::Enum(_)) {
-                           rolandc_error!(
-                              err_manager,
-                              g_arg.location,
-                              "For procedure `{}`, encountered generic argument of type {} which does not meet the constraint `Enum`",
-                              interner.lookup(callee_proc_name),
-                              g_arg.gtype.as_roland_type_info_notv(interner),
-                           );
-                        }
-                     }
+                  let constraint_met = match interner.lookup(*constraint) {
+                     "Enum" => matches!(g_arg.gtype, ExpressionType::Enum(_)),
+                     "Float" => matches!(g_arg.gtype, ExpressionType::Float(_)),
                      _ => unreachable!(),
+                  };
+                  if !constraint_met {
+                     rolandc_error!(
+                                       err_manager,
+                                       g_arg.location,
+                                       "For procedure `{}`, encountered generic argument of type {} which does not meet the constraint `{}`",
+                                       interner.lookup(callee_proc_name),
+                                       g_arg.gtype.as_roland_type_info_notv(interner),
+                                       interner.lookup(*constraint),
+                                    );
                   }
                }
             }
@@ -1959,7 +1971,11 @@ fn check_type_declared_vs_actual(
    }
 }
 
-fn map_generic_to_concrete(param_type: &mut ExpressionType, generic_args: &[ExpressionType], generic_parameters: &IndexMap<StrId, IndexSet<StrId>>,) {
+fn map_generic_to_concrete(
+   param_type: &mut ExpressionType,
+   generic_args: &[ExpressionType],
+   generic_parameters: &IndexMap<StrId, IndexSet<StrId>>,
+) {
    match param_type {
       ExpressionType::Array(inner_type, _) => {
          map_generic_to_concrete(inner_type, generic_args, generic_parameters);
