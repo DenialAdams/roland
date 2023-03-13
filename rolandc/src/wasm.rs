@@ -629,6 +629,10 @@ pub fn emit_wasm(
    }
 
    for procedure in program.procedures.iter_mut() {
+      if !procedure.definition.generic_parameters.is_empty() {
+         continue;
+      }
+
       generation_context.local_offsets_mem.clear();
 
       // 0-4 == value of previous frame base pointer

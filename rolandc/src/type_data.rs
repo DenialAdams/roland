@@ -81,6 +81,7 @@ pub enum ExpressionType {
       parameters: Box<[ExpressionType]>,
       ret_type: Box<ExpressionType>,
    },
+   GenericParam(StrId),
    Unresolved(StrId), // Could be a struct, enum, generic parameter, or fail to resolve (compilation error)
    Never,
 }
@@ -191,7 +192,10 @@ impl ExpressionType {
    #[must_use]
    pub fn is_concrete(&self) -> bool {
       match self {
-         ExpressionType::Unknown(_) | ExpressionType::CompileError | ExpressionType::Unresolved(_) => false,
+         ExpressionType::Unknown(_)
+         | ExpressionType::CompileError
+         | ExpressionType::Unresolved(_)
+         | ExpressionType::GenericParam(_) => false,
          ExpressionType::Int(_)
          | ExpressionType::Float(_)
          | ExpressionType::Bool
@@ -299,7 +303,7 @@ impl ExpressionType {
             "&{}",
             i_type.as_roland_type_info_inner(interner, type_variable_info)
          )),
-         ExpressionType::Unresolved(x) => Cow::Borrowed(interner.lookup(*x)),
+         ExpressionType::Unresolved(x) | ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::ProcedurePointer {
             parameters,
             ret_type: ret_val,
@@ -371,7 +375,7 @@ impl ExpressionType {
             length
          )),
          ExpressionType::Pointer(i_type) => Cow::Owned(format!("&{}", i_type.as_roland_type_info_notv(interner))),
-         ExpressionType::Unresolved(x) => Cow::Borrowed(interner.lookup(*x)),
+         ExpressionType::Unresolved(x) | ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::ProcedurePointer {
             parameters,
             ret_type: ret_val,

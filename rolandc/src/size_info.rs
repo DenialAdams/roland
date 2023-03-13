@@ -134,6 +134,7 @@ pub fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &Ha
       ExpressionType::CompileError => unreachable!(),
       ExpressionType::Struct(x) => si.get(x).unwrap().strictest_alignment,
       ExpressionType::Array(a_type, _len) => mem_alignment(a_type, ei, si),
+      ExpressionType::GenericParam(_) => unreachable!(),
    }
 }
 
@@ -157,6 +158,7 @@ pub fn sizeof_type_values(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si
       ExpressionType::Array(a_type, len) => sizeof_type_values(a_type, ei, si) * (*len),
       ExpressionType::ProcedurePointer { .. } => 1,
       ExpressionType::ProcedureItem(_, _) => 0,
+      ExpressionType::GenericParam(_) => unreachable!(),
    }
 }
 
@@ -197,5 +199,6 @@ pub fn sizeof_type_mem(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &
       ExpressionType::CompileError => unreachable!(),
       ExpressionType::Struct(x) => si.get(x).unwrap().mem_size,
       ExpressionType::Array(a_type, len) => sizeof_type_mem(a_type, ei, si) * (*len),
+      ExpressionType::GenericParam(_) => unreachable!(),
    }
 }

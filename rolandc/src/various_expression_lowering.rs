@@ -48,7 +48,7 @@ pub fn lower_single_expression(
          } else if interner.lookup(proc_name) == "num_variants" {
             let num_variants = match generic_args[0] {
                ExpressionType::Enum(enum_name) => enum_info.get(&enum_name).unwrap().variants.len(),
-               _ => unreachable!(),
+               _ => return, // not unreachable; this could be a type parameter. we don't have a good way of filtering those out
             };
 
             expressions[expression_id].expression = Expression::IntLiteral {

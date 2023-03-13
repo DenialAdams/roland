@@ -166,7 +166,6 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext, expressions: &E
             for arg in args.iter() {
                if expression_could_have_side_effects(arg.expr, expressions) {
                   vv_context.declare_vv(arg.expr, expressions);
-
                }
             }
          }
@@ -174,7 +173,8 @@ fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext, expressions: &E
          if matches!(
             expressions[*proc_expr].exp_type.as_ref().unwrap(),
             ExpressionType::ProcedurePointer { .. }
-         ) && expression_could_have_side_effects(*proc_expr, expressions) {
+         ) && expression_could_have_side_effects(*proc_expr, expressions)
+         {
             vv_context.declare_vv(*proc_expr, expressions);
          }
       }
