@@ -5,7 +5,6 @@ proc main() {
 }
 
 proc bar$T(x: &[T; 2]) -> &T {
-    // (yes, this is a dangling pointer)
     return &x~[1];
 }
 __END__
