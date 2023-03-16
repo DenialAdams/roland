@@ -186,7 +186,7 @@ pub fn populate_type_and_procedure_info(
       }
    }
 
-   for a_struct in program.structs.iter() {
+   for a_struct in program.structs.drain(..) {
       let mut field_map = IndexMap::with_capacity(a_struct.fields.len());
       let mut default_value_map = IndexMap::with_capacity(a_struct.fields.len());
 
