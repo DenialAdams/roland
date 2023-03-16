@@ -228,6 +228,15 @@ pub fn type_and_check_validity(
                validation_context.target,
             );
          }
+         if !p.type_parameters.is_empty() {
+            rolandc_error!(
+               err_manager,
+               p.location,
+               "`{}` is a special procedure for this target ({}) and is not allowed to have type parameters",
+               interner.lookup(special_proc.name),
+               validation_context.target,
+            );
+         }
          if p.parameters != special_proc.input_types {
             if special_proc.input_types.is_empty() {
                rolandc_error!(

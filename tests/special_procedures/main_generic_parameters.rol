@@ -1,0 +1,7 @@
+proc main$T() {
+
+}
+__END__
+compile:
+`main` is a special procedure for this target (WASI) and is not allowed to have type parameters
+↳ line 1, column 1 [tests/special_procedures/main_generic_parameters.rol]
