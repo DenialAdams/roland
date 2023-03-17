@@ -4,7 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use self::type_variables::TypeVariableManager;
 use crate::interner::StrId;
-use crate::parse::{ExpressionId, ExpressionPool, ExpressionTypeNode, VariableId};
+use crate::parse::{ExpressionId, ExpressionPool, ExpressionTypeNode, ExternalProcImplSource, VariableId};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
@@ -15,6 +15,22 @@ pub mod type_inference;
 pub mod type_variables;
 pub mod validator;
 
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum ProcImplSource {
+   Builtin,
+   External,
+   ProcedureId(usize),
+}
+
+impl From<ExternalProcImplSource> for ProcImplSource {
+   fn from(value: ExternalProcImplSource) -> Self {
+      match value {
+         ExternalProcImplSource::Builtin => ProcImplSource::Builtin,
+         ExternalProcImplSource::External => ProcImplSource::External,
+      }
+   }
+}
+
 #[derive(Clone)]
 pub struct ProcedureInfo {
    // This includes named parameters
@@ -23,7 +39,7 @@ pub struct ProcedureInfo {
    pub type_parameters: IndexMap<StrId, IndexSet<StrId>>,
    pub ret_type: ExpressionType,
    pub location: SourceInfo,
-   pub is_compiler_builtin: bool,
+   pub proc_impl_source: ProcImplSource,
 }
 
 #[derive(Clone)]

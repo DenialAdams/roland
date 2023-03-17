@@ -1,0 +1,15 @@
+enum Empty{}
+
+proc main() {
+   foo$Empty();
+}
+
+proc foo$T() -> u64 where T: Enum {
+   // this is more of an oddity than anything.
+   // where should we report the error here? how to inform the user WTF is going on?
+   return 1 / num_variants$T();
+}
+__END__
+compile:
+During constant folding, got a divide by zero
+↳ line 10, column 11 [tests/generics/error_in_specialization.rol]

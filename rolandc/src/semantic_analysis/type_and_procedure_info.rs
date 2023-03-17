@@ -3,11 +3,11 @@ use std::ops::BitOrAssign;
 
 use indexmap::{IndexMap, IndexSet};
 
-use super::{EnumInfo, GlobalInfo, ProcedureInfo, StructInfo};
+use super::{EnumInfo, GlobalInfo, ProcImplSource, ProcedureInfo, StructInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{ExpressionTypeNode, ProcImplSource};
+use crate::parse::ExpressionTypeNode;
 use crate::semantic_analysis::validator::resolve_type;
 use crate::source_info::{SourceInfo, SourcePath};
 use crate::type_data::{ExpressionType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
@@ -353,29 +353,22 @@ pub fn populate_type_and_procedure_info(
       program.next_variable = program.next_variable.next();
    }
 
-   for (definition, source_location, extern_impl_source) in program
+   for (definition, source_location, proc_impl_source) in program
       .external_procedures
       .iter_mut()
-      .map(|x| {
-         (
-            &mut x.definition,
-            x.location,
-            Some(std::mem::discriminant(&x.impl_source)),
-         )
-      })
+      .map(|x| (&mut x.definition, x.location, x.impl_source.into()))
       .chain(
          program
             .procedures
             .iter_mut()
-            .map(|x| (&mut x.definition, x.location, None)),
+            .enumerate()
+            .map(|(i, x)| (&mut x.definition, x.location, ProcImplSource::ProcedureId(i))),
       )
    {
       dupe_check.clear();
       dupe_check.reserve(definition.parameters.len());
 
-      if extern_impl_source == Some(std::mem::discriminant(&ProcImplSource::Builtin))
-         && !source_is_std(source_location, config)
-      {
+      if proc_impl_source == ProcImplSource::Builtin && !source_is_std(source_location, config) {
          rolandc_error!(
             err_manager,
             source_location,
@@ -400,7 +393,7 @@ pub fn populate_type_and_procedure_info(
          if param.named && first_named_param.is_none() {
             first_named_param = Some(i);
 
-            if extern_impl_source == Some(std::mem::discriminant(&ProcImplSource::External)) {
+            if proc_impl_source == ProcImplSource::External {
                reported_named_error = true;
                rolandc_error!(
                   err_manager,
@@ -527,7 +520,7 @@ pub fn populate_type_and_procedure_info(
                .collect(),
             ret_type: definition.ret_type.e_type.clone(),
             location: source_location,
-            is_compiler_builtin: extern_impl_source == Some(std::mem::discriminant(&ProcImplSource::Builtin)),
+            proc_impl_source,
          },
       ) {
          let procedure_name_str = interner.lookup(definition.name);

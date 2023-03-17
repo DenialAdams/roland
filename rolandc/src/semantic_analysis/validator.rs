@@ -5,7 +5,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use super::type_inference::try_set_inferred_type;
 use super::type_variables::{TypeConstraint, TypeVariableManager};
-use super::{ProcedureInfo, StructInfo, ValidationContext, VariableDetails, VariableKind};
+use super::{ProcImplSource, ProcedureInfo, StructInfo, ValidationContext, VariableDetails, VariableKind};
 use crate::error_handling::error_handling_macros::{
    rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn,
 };
@@ -1180,7 +1180,7 @@ fn get_type(
                // special case
                let procedure_info = validation_context.procedure_info.get(proc_name).unwrap();
 
-               if procedure_info.is_compiler_builtin {
+               if procedure_info.proc_impl_source == ProcImplSource::Builtin {
                   rolandc_error!(
                      err_manager,
                      expr_location,
@@ -1980,7 +1980,7 @@ fn check_type_declared_vs_actual(
    }
 }
 
-fn map_generic_to_concrete(
+pub fn map_generic_to_concrete(
    param_type: &mut ExpressionType,
    generic_args: &[ExpressionType],
    generic_parameters: &IndexMap<StrId, IndexSet<StrId>>,

@@ -58,8 +58,8 @@ pub struct ProcedureNode {
    pub locals: IndexMap<VariableId, ExpressionType>,
 }
 
-#[derive(Clone)]
-pub enum ProcImplSource {
+#[derive(Clone, Copy)]
+pub enum ExternalProcImplSource {
    Builtin,
    External,
 }
@@ -68,7 +68,7 @@ pub enum ProcImplSource {
 pub struct ExternalProcedureNode {
    pub definition: ProcedureDefinition,
    pub location: SourceInfo,
-   pub impl_source: ProcImplSource,
+   pub impl_source: ExternalProcImplSource,
 }
 
 #[derive(Clone)]
@@ -433,13 +433,23 @@ fn parse_top_level_item(
          Token::KeywordExtern => {
             let extern_kw = lexer.next();
             expect(lexer, parse_context, Token::KeywordProc)?;
-            let p = parse_external_procedure(lexer, parse_context, extern_kw.source_info, ProcImplSource::External)?;
+            let p = parse_external_procedure(
+               lexer,
+               parse_context,
+               extern_kw.source_info,
+               ExternalProcImplSource::External,
+            )?;
             top.external_procedures.push(p);
          }
          Token::KeywordBuiltin => {
             let builtin_kw = lexer.next();
             expect(lexer, parse_context, Token::KeywordProc)?;
-            let p = parse_external_procedure(lexer, parse_context, builtin_kw.source_info, ProcImplSource::Builtin)?;
+            let p = parse_external_procedure(
+               lexer,
+               parse_context,
+               builtin_kw.source_info,
+               ExternalProcImplSource::Builtin,
+            )?;
             top.external_procedures.push(p);
          }
          Token::KeywordProc => {
@@ -704,7 +714,7 @@ fn parse_external_procedure(
    l: &mut Lexer,
    parse_context: &mut ParseContext,
    source_info: SourceInfo,
-   proc_impl_source: ProcImplSource,
+   proc_impl_source: ExternalProcImplSource,
 ) -> Result<ExternalProcedureNode, ()> {
    let definition = parse_procedure_definition(l, parse_context)?;
    let end_token = expect(l, parse_context, Token::Semicolon)?;

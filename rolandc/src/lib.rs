@@ -29,6 +29,7 @@ pub mod error_handling;
 mod imports;
 pub mod interner;
 mod lex;
+mod monomorphization;
 pub mod parse;
 mod semantic_analysis;
 mod size_info;
@@ -186,6 +187,8 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
+
+   monomorphization::monomorphize(&mut ctx.program, &mut ctx.expressions, &mut ctx.interner);
 
    various_expression_lowering::lower_consts(&mut ctx.program, &mut ctx.expressions, &mut ctx.interner);
    ctx.program.global_info.retain(|_, v| !v.is_const);

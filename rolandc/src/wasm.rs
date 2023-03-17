@@ -7,8 +7,8 @@ use indexmap::{IndexMap, IndexSet};
 use crate::add_virtual_variables::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   statement_always_returns, BinOp, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, Program,
-   Statement, StatementNode, UnOp, VariableId,
+   statement_always_returns, BinOp, CastType, Expression, ExpressionId, ExpressionPool, ExternalProcImplSource,
+   Program, Statement, StatementNode, UnOp, VariableId,
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{
@@ -415,7 +415,7 @@ pub fn emit_wasm(
    for external_procedure in program
       .external_procedures
       .iter()
-      .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ProcImplSource::External))
+      .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ExternalProcImplSource::External))
    {
       match target {
          Target::Lib => (),
@@ -582,7 +582,7 @@ pub fn emit_wasm(
    for external_procedure in program
       .external_procedures
       .iter()
-      .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ProcImplSource::Builtin))
+      .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ExternalProcImplSource::Builtin))
    {
       let proc_name = interner.lookup(external_procedure.definition.name);
       if proc_name == "sizeof" || proc_name == "alignof" || proc_name == "num_variants" {
@@ -1927,9 +1927,6 @@ fn adjust_stack(generation_context: &mut GenerationContext, instr: &str) {
 }
 
 fn emit_procedure_pointer_index(proc_name: StrId, generation_context: &mut GenerationContext) {
-   // Type arguments will have to be part of the key eventually, but it's fine(TM) for now to skip them since
-   // only builtins can use type arguments and builtins can't become function pointers
    let (my_index, _) = generation_context.procedure_to_table_index.insert_full(proc_name);
-   // todo: truncation
    generation_context.out.emit_const_i32(my_index as u32);
 }
