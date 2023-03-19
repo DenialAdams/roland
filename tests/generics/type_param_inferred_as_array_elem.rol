@@ -1,0 +1,13 @@
+proc main() {
+   foo$usize(10);
+}
+
+proc foo$T(x: T) {
+	let z = [];
+   // this gives an (expected) error, but doesn't crash
+   z[0] = x;
+}
+__END__
+compile:
+At runtime, index will be 0, which is out of bounds for the array of length 0
+↳ line 8, column 4 [tests/generics/type_param_inferred_as_array_elem.rol]

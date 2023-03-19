@@ -136,7 +136,10 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
 
          let outer_representative = validation_context.type_variables.find(my_tv);
 
-         if e_type.is_concrete() {
+         if let Some(e_tv) = e_type.get_type_variable_of_unknown_type() {
+            debug_assert!(unknowns_are_compatible(my_tv, e_tv, validation_context));
+            validation_context.type_variables.union(my_tv, e_tv);
+         } else {
             // Update existing variables immediately, so that future uses can't change the inferred type
             // (Is this a performance problem? It's obviously awkward, but straightforward)
             for var_in_scope in validation_context.variable_types.values_mut() {
@@ -155,10 +158,6 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
                .type_variables
                .get_data_mut(outer_representative)
                .known_type = Some(incoming_definition);
-         } else {
-            let e_tv = e_type.get_type_variable_of_unknown_type().unwrap();
-            debug_assert!(unknowns_are_compatible(my_tv, e_tv, validation_context));
-            validation_context.type_variables.union(my_tv, e_tv);
          }
 
          *validation_context.expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
