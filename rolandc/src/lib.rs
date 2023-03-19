@@ -38,6 +38,7 @@ pub mod type_data;
 mod typed_index_vec;
 mod various_expression_lowering;
 mod wasm;
+mod wasm2;
 
 use std::borrow::Cow;
 use std::fmt::Display;

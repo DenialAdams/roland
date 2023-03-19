@@ -659,6 +659,7 @@ dependencies = [
  "include_dir",
  "indexmap",
  "unicode-ident",
+ "wasm-encoder",
  "wat",
 ]
 
