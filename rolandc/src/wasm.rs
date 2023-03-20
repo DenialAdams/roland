@@ -1276,7 +1276,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                do_emit_and_load_lval(*e_index, generation_context, interner);
 
                match expr_node.exp_type.as_ref().unwrap() {
-                  ExpressionType::Int(_) | ExpressionType::Bool => {
+                  ExpressionType::Int(_) => {
                      complement_val(e.exp_type.as_ref().unwrap(), wasm_type, generation_context);
                      generation_context.out.emit_spaces();
                      writeln!(generation_context.out.out, "{}.const 1", wasm_type).unwrap();

@@ -4,8 +4,9 @@ use std::io::Write;
 
 use indexmap::{IndexMap, IndexSet};
 use wasm_encoder::{
-   ConstExpr, ElementSection, EntityType, ExportSection, FunctionSection, GlobalSection, GlobalType, ImportSection,
-   Instruction, MemArg, MemorySection, MemoryType, Module, RefType, TableSection, TableType, TypeSection, ValType, BlockType, DataSection,
+   BlockType, ConstExpr, DataSection, ElementSection, EntityType, ExportSection, Function, FunctionSection,
+   GlobalSection, GlobalType, ImportSection, Instruction, MemArg, MemorySection, MemoryType, Module, RefType,
+   TableSection, TableType, TypeSection, ValType, CodeSection,
 };
 
 use crate::add_virtual_variables::is_wasm_compatible_rval_transmute;
@@ -50,30 +51,6 @@ struct PrettyWasmWriter {
 }
 
 impl PrettyWasmWriter {
-   fn close(&mut self) {
-      writeln!(self.out, ")").unwrap();
-   }
-
-   fn emit_function_start<'a, I>(
-      &mut self,
-      name: StrId,
-      params: I,
-      result_type: &ExpressionType,
-      si: &IndexMap<StrId, StructInfo>,
-      interner: &Interner,
-   ) where
-      I: IntoIterator<Item = &'a ExpressionType>,
-   {
-      write!(self.out, "(func ${}", interner.lookup(name)).unwrap();
-      for param in params {
-         self.out.push(b' ');
-         write_type_as_params(param, &mut self.out, si);
-      }
-      self.out.push(b' ');
-      write_type_as_result(result_type, &mut self.out, si);
-      self.out.push(b'\n');
-   }
-
    fn emit_function_type<'a, I>(
       &mut self,
       name: ExpressionId,
@@ -378,10 +355,17 @@ struct TypeManager {
 
 impl TypeManager {
    fn new() -> TypeManager {
-      TypeManager { num_registered_types: 0 }
+      TypeManager {
+         num_registered_types: 0,
+      }
    }
 
-   fn register_or_find_type(&mut self, def: &ProcedureDefinition, si: &IndexMap<StrId, StructInfo>, type_section: &mut TypeSection) -> u32 {
+   fn register_or_find_type(
+      &mut self,
+      def: &ProcedureDefinition,
+      si: &IndexMap<StrId, StructInfo>,
+      type_section: &mut TypeSection,
+   ) -> u32 {
       definition_to_type(def, si);
       let old = self.num_registered_types;
       self.num_registered_types += 1;
@@ -423,14 +407,21 @@ pub fn emit_wasm(
    let mut function_section = FunctionSection::new();
    let mut memory_section = MemorySection::new();
    let mut data_section = DataSection::new();
+   let mut code_section = CodeSection::new();
 
+   let mut procedure_indices: HashMap<StrId, u32> = HashMap::new();
    let mut num_procedures: u32 = 0;
+
    for external_procedure in program
       .external_procedures
       .iter()
       .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ExternalProcImplSource::External))
    {
-      let type_index = generation_context.type_manager.register_or_find_type(&external_procedure.definition, generation_context.struct_info, &mut type_section);
+      let type_index = generation_context.type_manager.register_or_find_type(
+         &external_procedure.definition,
+         generation_context.struct_info,
+         &mut type_section,
+      );
       match target {
          Target::Lib => (),
          Target::Wasm4 | Target::Microw8 => {
@@ -448,6 +439,7 @@ pub fn emit_wasm(
             );
          }
       }
+      procedure_indices.insert(external_procedure.definition.name, num_procedures);
       num_procedures += 1;
    }
 
@@ -510,7 +502,11 @@ pub fn emit_wasm(
 
    for s in program.literals.iter() {
       let str_value = interner.lookup(*s);
-      data_section.active(0, &ConstExpr::i32_const(offset as i32), str_value.as_bytes().iter().copied());
+      data_section.active(
+         0,
+         &ConstExpr::i32_const(offset as i32),
+         str_value.as_bytes().iter().copied(),
+      );
       //TODO: and here truncation
       let s_len = str_value.len() as u32;
       generation_context.literal_offsets.insert(*s, (offset, s_len));
@@ -598,17 +594,7 @@ pub fn emit_wasm(
          continue;
       }
 
-      generation_context.out.emit_function_start(
-         external_procedure.definition.name,
-         external_procedure
-            .definition
-            .parameters
-            .iter()
-            .map(|x| &x.p_type.e_type),
-         &external_procedure.definition.ret_type.e_type,
-         &program.struct_info,
-         interner,
-      );
+      generation_context.active_fcn = Function::new_with_locals_types([]);
 
       match interner.lookup(external_procedure.definition.name) {
          "wasm_memory_size" => {
@@ -633,7 +619,30 @@ pub fn emit_wasm(
             panic!("Unimplemented builtin: {}", x);
          }
       }
-      generation_context.out.close();
+
+      function_section.function(generation_context.type_manager.register_or_find_type(
+         &external_procedure.definition,
+         generation_context.struct_info,
+         &mut type_section,
+      ));
+      procedure_indices.insert(external_procedure.definition.name, num_procedures);
+      code_section.function(&generation_context.active_fcn);
+      num_procedures += 1;
+   }
+
+   // One pass over all procedures first so that call expressions know what index to use
+   for procedure in program.procedures.iter() {
+      if !procedure.definition.generic_parameters.is_empty() {
+         continue;
+      }
+
+      function_section.function(generation_context.type_manager.register_or_find_type(
+         &procedure.definition,
+         generation_context.struct_info,
+         &mut type_section,
+      ));
+      procedure_indices.insert(procedure.definition.name, num_procedures);
+      num_procedures += 1;
    }
 
    for procedure in program.procedures.iter_mut() {
@@ -641,6 +650,7 @@ pub fn emit_wasm(
          continue;
       }
 
+      generation_context.active_fcn = Function::new_with_locals_types([]);
       generation_context.local_offsets_mem.clear();
 
       // 0-4 == value of previous frame base pointer
@@ -677,14 +687,6 @@ pub fn emit_wasm(
          // TODO: should we check for overflow on this value?
          generation_context.sum_sizeof_locals_mem += local.1 .1;
       }
-
-      generation_context.out.emit_function_start(
-         procedure.definition.name,
-         procedure.definition.parameters.iter().map(|x| &x.p_type.e_type),
-         &procedure.definition.ret_type.e_type,
-         &program.struct_info,
-         interner,
-      );
 
       adjust_stack_function_entry(&mut generation_context);
 
@@ -741,8 +743,6 @@ pub fn emit_wasm(
       } else {
          adjust_stack_function_exit(&mut generation_context);
       }
-
-      generation_context.out.close();
    }
 
    let mut needed_store_fns = IndexSet::new();
@@ -758,7 +758,6 @@ pub fn emit_wasm(
          e_type,
          &mut generation_context,
       );
-      generation_context.out.close();
    }
 
    let (table_section, element_section) = {
@@ -799,7 +798,7 @@ pub fn emit_wasm(
    let mut module = Module::new();
    module.section(&type_section);
    module.section(&import_section);
-   // function section
+   module.section(&function_section);
    module.section(&table_section);
    module.section(&memory_section);
    module.section(&global_section);
@@ -807,8 +806,8 @@ pub fn emit_wasm(
    // start section
    module.section(&element_section);
    // datacount section
-   // code section
-   // data section
+   module.section(&code_section);
+   module.section(&data_section);
 
    module.finish()
 }
@@ -876,17 +875,25 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
 
          debug_assert!(!*inclusive); // unimplemented
 
-         generation_context.active_fcn.instruction(&Instruction::Block(BlockType::Empty)); // b
-         generation_context.active_fcn.instruction(&Instruction::Loop(BlockType::Empty));
-         generation_context.active_fcn.instruction(&Instruction::Block(BlockType::Empty)); // bi
-         // Check and break if needed
+         generation_context
+            .active_fcn
+            .instruction(&Instruction::Block(BlockType::Empty)); // b
+         generation_context
+            .active_fcn
+            .instruction(&Instruction::Loop(BlockType::Empty));
+         generation_context
+            .active_fcn
+            .instruction(&Instruction::Block(BlockType::Empty)); // bi
+                                                                 // Check and break if needed
          {
             get_stack_address_of_local(*start_var_id, generation_context);
             load(start_expr.exp_type.as_ref().unwrap(), generation_context);
             do_emit_and_load_lval(*end, generation_context, interner);
             writeln!(generation_context.out.out, "{}.ge{}", wasm_type, suffix).unwrap();
 
-            generation_context.active_fcn.instruction(&Instruction::If(BlockType::Empty));
+            generation_context
+               .active_fcn
+               .instruction(&Instruction::If(BlockType::Empty));
             // then
             generation_context.active_fcn.instruction(&Instruction::Br(2));
             // finish if
@@ -913,9 +920,15 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
       Statement::Loop(bn) => {
          //generation_context.active_fcn.blo
          // nocheckin does it really have to be this complicated? seems like the innermost block is not necessary?
-         generation_context.active_fcn.instruction(&Instruction::Block(BlockType::Empty));
-         generation_context.active_fcn.instruction(&Instruction::Loop(BlockType::Empty));
-         generation_context.active_fcn.instruction(&Instruction::Block(BlockType::Empty));
+         generation_context
+            .active_fcn
+            .instruction(&Instruction::Block(BlockType::Empty));
+         generation_context
+            .active_fcn
+            .instruction(&Instruction::Loop(BlockType::Empty));
+         generation_context
+            .active_fcn
+            .instruction(&Instruction::Block(BlockType::Empty));
          for statement in &bn.statements {
             emit_statement(statement, generation_context, interner);
          }
@@ -942,7 +955,9 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
       }
       Statement::IfElse(en, block_1, block_2) => {
          do_emit_and_load_lval(*en, generation_context, interner);
-         generation_context.active_fcn.instruction(&Instruction::If(BlockType::Empty));
+         generation_context
+            .active_fcn
+            .instruction(&Instruction::If(BlockType::Empty));
          // then
          for statement in &block_1.statements {
             emit_statement(statement, generation_context, interner);
@@ -1142,18 +1157,15 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
       } => {
          do_emit_and_load_lval(*lhs, generation_context, interner);
          generation_context
-            .out
-            .emit_if_start(&ExpressionType::Bool, generation_context.struct_info);
+            .active_fcn
+            .instruction(&Instruction::If(BlockType::Empty));
          // then
-         generation_context.out.emit_then_start();
          do_emit_and_load_lval(*rhs, generation_context, interner);
-         generation_context.out.close();
          // else
-         generation_context.out.emit_else_start();
+         generation_context.active_fcn.instruction(&Instruction::Else);
          generation_context.active_fcn.instruction(&Instruction::I32Const(0));
-         generation_context.out.close();
          // finish if
-         generation_context.out.close();
+         generation_context.active_fcn.instruction(&Instruction::End);
       }
       Expression::BinaryOperator {
          operator: BinOp::LogicalOr,
@@ -1162,18 +1174,16 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
       } => {
          do_emit_and_load_lval(*lhs, generation_context, interner);
          generation_context
-            .out
-            .emit_if_start(&ExpressionType::Bool, generation_context.struct_info);
+            .active_fcn
+            .instruction(&Instruction::If(BlockType::Empty));
          // then
-         generation_context.out.emit_then_start();
          generation_context.active_fcn.instruction(&Instruction::I32Const(1));
-         generation_context.out.close();
          // else
          generation_context.out.emit_else_start();
          do_emit_and_load_lval(*rhs, generation_context, interner);
-         generation_context.out.close();
          // finish if
-         generation_context.out.close();
+         generation_context.active_fcn.instruction(&Instruction::End);
+
       }
       Expression::BinaryOperator { operator, lhs, rhs } => {
          do_emit_and_load_lval(*lhs, generation_context, interner);
@@ -1268,7 +1278,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                do_emit_and_load_lval(*e_index, generation_context, interner);
 
                if *e.exp_type.as_ref().unwrap() == ExpressionType::Bool {
-                  writeln!(generation_context.out.out, "{}.eqz", wasm_type).unwrap();
+                  generation_context.active_fcn.instruction(&Instruction::I32Eqz);
                } else {
                   complement_val(e.exp_type.as_ref().unwrap(), wasm_type, generation_context);
                }
@@ -1278,7 +1288,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                do_emit_and_load_lval(*e_index, generation_context, interner);
 
                match expr_node.exp_type.as_ref().unwrap() {
-                  ExpressionType::Int(_) | ExpressionType::Bool => {
+                  ExpressionType::Int(_) => {
                      complement_val(e.exp_type.as_ref().unwrap(), wasm_type, generation_context);
                      writeln!(generation_context.out.out, "{}.const 1", wasm_type).unwrap();
                      writeln!(generation_context.out.out, "{}.add", wasm_type).unwrap();
@@ -1651,9 +1661,7 @@ fn complement_val(t_type: &ExpressionType, wasm_type: WasmType, generation_conte
 /// Places the address of given local on the stack
 fn get_stack_address_of_local(id: VariableId, generation_context: &mut GenerationContext) {
    let offset = generation_context.local_offsets_mem.get(&id).copied().unwrap();
-   generation_context
-      .active_fcn
-      .instruction(&Instruction::GlobalGet(BP));
+   generation_context.active_fcn.instruction(&Instruction::GlobalGet(BP));
    generation_context.emit_const_add_i32(offset);
 }
 
@@ -1902,21 +1910,13 @@ fn adjust_stack_function_entry(generation_context: &mut GenerationContext) {
       return;
    }
 
-   generation_context
-      .active_fcn
-      .instruction(&Instruction::GlobalGet(SP));
-   generation_context
-      .active_fcn
-      .instruction(&Instruction::GlobalGet(BP));
+   generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
+   generation_context.active_fcn.instruction(&Instruction::GlobalGet(BP));
    generation_context
       .active_fcn
       .instruction(&Instruction::I32Store(null_mem_arg()));
-   generation_context
-      .active_fcn
-      .instruction(&Instruction::GlobalGet(SP));
-   generation_context
-      .active_fcn
-      .instruction(&Instruction::GlobalSet(BP));
+   generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
+   generation_context.active_fcn.instruction(&Instruction::GlobalSet(BP));
    adjust_stack(generation_context, &Instruction::I32Add);
 }
 
@@ -1926,30 +1926,22 @@ fn adjust_stack_function_exit(generation_context: &mut GenerationContext) {
    }
 
    adjust_stack(generation_context, &Instruction::I32Sub);
-   generation_context
-      .active_fcn
-      .instruction(&Instruction::GlobalGet(SP));
+   generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
    generation_context
       .active_fcn
       .instruction(&Instruction::I32Load(null_mem_arg()));
-   generation_context
-      .active_fcn
-      .instruction(&Instruction::GlobalSet(BP));
+   generation_context.active_fcn.instruction(&Instruction::GlobalSet(BP));
 }
 
 fn adjust_stack(generation_context: &mut GenerationContext, instr: &Instruction) {
-   generation_context
-      .active_fcn
-      .instruction(&Instruction::GlobalGet(SP));
+   generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
    // ensure that each stack frame is strictly aligned so that internal stack frame alignment is preserved
    let adjust_value = aligned_address(generation_context.sum_sizeof_locals_mem, 8);
    generation_context
       .active_fcn
       .instruction(&Instruction::I32Const(adjust_value as i32));
    generation_context.active_fcn.instruction(instr);
-   generation_context
-      .active_fcn
-      .instruction(&Instruction::GlobalSet(SP));
+   generation_context.active_fcn.instruction(&Instruction::GlobalSet(SP));
 }
 
 fn emit_procedure_pointer_index(proc_name: StrId, generation_context: &mut GenerationContext) {
