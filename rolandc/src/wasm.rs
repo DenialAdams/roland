@@ -42,7 +42,7 @@ struct GenerationContext<'a> {
    sum_sizeof_locals_mem: u32,
    expressions: &'a ExpressionPool,
    procedure_to_table_index: IndexSet<StrId>,
-   procedure_indices: HashMap<StrId, u32>,
+   procedure_indices: IndexSet<StrId>,
    stack_of_loop_jump_offsets: Vec<u32>,
 }
 
@@ -319,7 +319,7 @@ pub fn emit_wasm(
       sum_sizeof_locals_mem: 0,
       expressions,
       procedure_to_table_index: IndexSet::new(),
-      procedure_indices: HashMap::new(),
+      procedure_indices: IndexSet::new(),
       stack_of_loop_jump_offsets: Vec::new(),
    };
 
@@ -329,9 +329,6 @@ pub fn emit_wasm(
    let mut memory_section = MemorySection::new();
    let mut data_section = DataSection::new();
    let mut code_section = CodeSection::new();
-
-   // nocheckin this is implicit, right?
-   let mut num_procedures: u32 = 0;
 
    for external_procedure in program
       .external_procedures
@@ -360,8 +357,7 @@ pub fn emit_wasm(
       }
       generation_context
          .procedure_indices
-         .insert(external_procedure.definition.name, num_procedures);
-      num_procedures += 1;
+         .insert(external_procedure.definition.name);
    }
 
    // Data section
@@ -503,9 +499,8 @@ pub fn emit_wasm(
       );
       generation_context
          .procedure_indices
-         .insert(external_procedure.definition.name, num_procedures);
+         .insert(external_procedure.definition.name);
       code_section.function(&generation_context.active_fcn);
-      num_procedures += 1;
    }
 
    // One pass over all procedures first so that call expressions know what index to use
@@ -521,8 +516,7 @@ pub fn emit_wasm(
       );
       generation_context
          .procedure_indices
-         .insert(procedure.definition.name, num_procedures);
-      num_procedures += 1;
+         .insert(procedure.definition.name);
    }
 
    for procedure in program.procedures.iter_mut() {
@@ -650,7 +644,6 @@ pub fn emit_wasm(
          generation_context.struct_info,
       ));
       code_section.function(&generation_context.active_fcn);
-      num_procedures += 1;
    }
 
    let (table_section, element_section) = {
@@ -668,7 +661,7 @@ pub fn emit_wasm(
       let elements = generation_context
          .procedure_to_table_index
          .iter()
-         .map(|x| generation_context.procedure_indices[x])
+         .map(|x| generation_context.procedure_indices.get_index_of(x).unwrap() as u32)
          .collect::<Vec<_>>();
       elem.active(
          Some(0),
@@ -697,13 +690,13 @@ pub fn emit_wasm(
          export_section.export(
             "update",
             wasm_encoder::ExportKind::Func,
-            generation_context.procedure_indices[&interner.intern("update")],
+            generation_context.procedure_indices.get_index_of(&interner.intern("update")).unwrap() as u32,
          );
          if program.procedure_info.contains_key(&interner.intern("start")) {
             export_section.export(
                "start",
                wasm_encoder::ExportKind::Func,
-               generation_context.procedure_indices[&interner.intern("start")],
+               generation_context.procedure_indices.get_index_of(&interner.intern("start")).unwrap() as u32,
             );
          }
       }
@@ -721,13 +714,13 @@ pub fn emit_wasm(
          export_section.export(
             "upd",
             wasm_encoder::ExportKind::Func,
-            generation_context.procedure_indices[&interner.intern("upd")],
+            generation_context.procedure_indices.get_index_of(&interner.intern("upd")).unwrap() as u32,
          );
          if program.procedure_info.contains_key(&interner.intern("snd")) {
             export_section.export(
                "snd",
                wasm_encoder::ExportKind::Func,
-               generation_context.procedure_indices[&interner.intern("snd")],
+               generation_context.procedure_indices.get_index_of(&interner.intern("snd")).unwrap() as u32,
             );
          }
       }
@@ -742,7 +735,7 @@ pub fn emit_wasm(
          export_section.export(
             "_start",
             wasm_encoder::ExportKind::Func,
-            generation_context.procedure_indices[&interner.intern("main")],
+            generation_context.procedure_indices.get_index_of(&interner.intern("main")).unwrap() as u32,
          );
       }
    }
@@ -837,7 +830,8 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          generation_context
             .active_fcn
             .instruction(&Instruction::Block(BlockType::Empty)); // bi
-                                                                 // Check and break if needed
+         
+         // Check and break if needed
          {
             get_stack_address_of_local(*start_var_id, generation_context);
             load(start_expr.exp_type.as_ref().unwrap(), generation_context);
@@ -888,7 +882,6 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
       }
       Statement::Loop(bn) => {
          generation_context.stack_of_loop_jump_offsets.push(0);
-         // nocheckin does it really have to be this complicated? seems like the innermost block is not necessary?
          generation_context
             .active_fcn
             .instruction(&Instruction::Block(BlockType::Empty));
@@ -1108,7 +1101,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       }
       Expression::FloatLiteral(x) => {
          let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
-         // nocheckin: nans ok?
          match wasm_type {
             WasmType::Float32 => generation_context
                .active_fcn
@@ -1615,7 +1607,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
 
          match generation_context.expressions[*proc_expr].exp_type.as_ref().unwrap() {
             ExpressionType::ProcedureItem(proc_name, _) => {
-               let idx = generation_context.procedure_indices.get(proc_name).copied().unwrap();
+               let idx = generation_context.procedure_indices.get_index_of(proc_name).unwrap() as u32;
                generation_context.active_fcn.instruction(&Instruction::Call(idx));
             }
             ExpressionType::ProcedurePointer { parameters, ret_type } => {
