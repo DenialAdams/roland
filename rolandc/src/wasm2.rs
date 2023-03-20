@@ -127,10 +127,6 @@ impl PrettyWasmWriter {
       writeln!(self.out, "(else ").unwrap();
    }
 
-   fn emit_constant_sexp(&mut self, sexp: &str) {
-      writeln!(self.out, "{}", sexp).unwrap();
-   }
-
    fn emit_data(&mut self, mem_index: u32, offset: u32, literal: &str) {
       write!(self.out, "(data {} (i32.const {}) \"", mem_index, offset).unwrap();
       for byte in literal.as_bytes() {
@@ -554,11 +550,11 @@ pub fn emit_wasm(
       );
    }
 
+   let mut buf = vec![];
    for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
+      emit_literal_bytes(&mut buf, p_static.value.unwrap(), &mut generation_context);
       let static_address = static_addresses_by_name.get(&p_static.name.str).copied().unwrap();
-
-      data_section.active(0, &ConstExpr::i32_const(static_address as i32), str_value.as_bytes().iter().copied());
-      emit_literal_bytes(p_static.value.unwrap(), &mut generation_context);
+      data_section.active(0, &ConstExpr::i32_const(static_address as i32), buf.drain(..));
    }
 
    // keep stack aligned
@@ -774,6 +770,8 @@ pub fn emit_wasm(
          maximum: Some(generation_context.procedure_to_table_index.len() as u32),
       };
 
+      table.table(table_type);
+
       let mut elem = ElementSection::new();
       elem.active(Some(0), &ConstExpr::i32_const(0), RefType::FUNCREF, todo!());
 
@@ -812,7 +810,7 @@ pub fn emit_wasm(
    // code section
    // data section
 
-   generation_context.out.out
+   module.finish()
 }
 
 fn compare_alignment(alignment_1: u32, sizeof_1: u32, alignment_2: u32, sizeof_2: u32) -> std::cmp::Ordering {
