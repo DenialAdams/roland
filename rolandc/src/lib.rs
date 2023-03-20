@@ -236,18 +236,14 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    add_virtual_variables::add_virtual_vars(&mut ctx.program, &mut ctx.expressions);
    match config.target {
-      Target::Wasi | Target::Lib => Ok(wasm::emit_wasm(
+      Target::Wasi | Target::Lib => Ok(wasm2::emit_wasm(
          &mut ctx.program,
          &mut ctx.interner,
          &ctx.expressions,
          config.target,
       )),
       Target::Wasm4 | Target::Microw8 => {
-         let wat = wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, &ctx.expressions, config.target);
-         let wasm = match wat::parse_bytes(&wat) {
-            Ok(wasm_bytes) => wasm_bytes.into_owned(),
-            Err(_) => return Err(CompilationError::Internal),
-         };
+         let wasm = wasm2::emit_wasm(&mut ctx.program, &mut ctx.interner, &ctx.expressions, config.target);
          Ok(wasm)
       }
    }

@@ -1770,8 +1770,8 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
       let (load_suffx, sign_suffix) = match val_type {
          ExpressionType::Int(x) => {
             let load_suffx = match x.width {
-               IntWidth::Eight => "64",
-               IntWidth::Four | IntWidth::Pointer => "32",
+               IntWidth::Eight => unreachable!(),
+               IntWidth::Four | IntWidth::Pointer => unreachable!(),
                IntWidth::Two => "16",
                IntWidth::One => "8",
             };
@@ -1779,7 +1779,7 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
             (load_suffx, sign_suffix)
          }
          ExpressionType::Enum(_) => unreachable!(),
-         ExpressionType::Float(_) => ("", ""),
+         ExpressionType::Float(_) => unreachable!(),
          ExpressionType::Bool => ("8", "_u"),
          _ => unreachable!(),
       };
@@ -1869,13 +1869,11 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
    } else {
       let load_suffx = match val_type {
          ExpressionType::Int(x) => match x.width {
-            IntWidth::Eight => "64",
-            IntWidth::Four | IntWidth::Pointer => "32",
+            IntWidth::Eight => unreachable!(),
+            IntWidth::Four | IntWidth::Pointer => unreachable!(),
             IntWidth::Two => "16",
             IntWidth::One => "8",
          },
-         ExpressionType::Enum(_) => unreachable!(),
-         ExpressionType::Float(_) => "",
          ExpressionType::Bool => "8",
          _ => unreachable!(),
       };

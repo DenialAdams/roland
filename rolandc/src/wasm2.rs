@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::io::Write;
 
 use indexmap::{IndexMap, IndexSet};
 use wasm_encoder::{
-   BlockType, ConstExpr, DataSection, ElementSection, EntityType, ExportSection, Function, FunctionSection,
-   GlobalSection, GlobalType, ImportSection, Instruction, MemArg, MemorySection, MemoryType, Module, RefType,
-   TableSection, TableType, TypeSection, ValType, CodeSection,
+   BlockType, CodeSection, ConstExpr, DataSection, ElementSection, Elements, EntityType, ExportSection, Function,
+   FunctionSection, GlobalSection, GlobalType, ImportSection, Instruction, MemArg, MemorySection, MemoryType, Module,
+   RefType, TableSection, TableType, TypeSection, ValType,
 };
 
 use crate::add_virtual_variables::is_wasm_compatible_rval_transmute;
@@ -19,7 +18,7 @@ use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
 };
-use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE};
+use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I32_TYPE};
 use crate::Target;
 
 const MINIMUM_STACK_FRAME_SIZE: u32 = 4;
@@ -30,7 +29,6 @@ const BP: u32 = 1;
 const MEM_ADDRESS: u32 = 2;
 
 struct GenerationContext<'a> {
-   out: PrettyWasmWriter,
    active_fcn: wasm_encoder::Function,
    type_manager: TypeManager,
    literal_offsets: HashMap<StrId, (u32, u32)>,
@@ -39,90 +37,13 @@ struct GenerationContext<'a> {
    struct_info: &'a IndexMap<StrId, StructInfo>,
    struct_size_info: &'a HashMap<StrId, SizeInfo>,
    enum_info: &'a IndexMap<StrId, EnumInfo>,
+   // nocheckin this should not be ExpressionType, but Box<[WasmType]>
    needed_store_fns: IndexSet<ExpressionType>,
    sum_sizeof_locals_mem: u32,
    expressions: &'a ExpressionPool,
    procedure_to_table_index: IndexSet<StrId>,
-   indirect_callees: Vec<ExpressionId>,
-}
-
-struct PrettyWasmWriter {
-   out: Vec<u8>,
-}
-
-impl PrettyWasmWriter {
-   fn emit_function_type<'a, I>(
-      &mut self,
-      name: ExpressionId,
-      params: I,
-      result_type: &ExpressionType,
-      si: &IndexMap<StrId, StructInfo>,
-   ) where
-      I: IntoIterator<Item = &'a ExpressionType>,
-   {
-      write!(self.out, "(type $::{} (func", name.0).unwrap();
-      for param in params {
-         self.out.push(b' ');
-         write_type_as_params(param, &mut self.out, si);
-      }
-      self.out.push(b' ');
-      write_type_as_result(result_type, &mut self.out, si);
-      self.out.push(b')');
-      self.out.push(b')');
-      self.out.push(b'\n');
-   }
-
-   fn emit_store_function_start(&mut self, index: usize, param: &ExpressionType, si: &IndexMap<StrId, StructInfo>) {
-      write!(self.out, "(func $::store::{} (param i32) ", index).unwrap();
-      write_type_as_params(param, &mut self.out, si);
-      self.out.push(b'\n');
-   }
-
-   fn emit_block_start(&mut self, block_name: &'static str, label_val: u64) {
-      writeln!(self.out, "block ${}_{}", block_name, label_val).unwrap();
-   }
-
-   fn emit_loop_start(&mut self, label_val: u64) {
-      writeln!(self.out, "loop $l_{}", label_val).unwrap();
-   }
-
-   fn emit_end(&mut self) {
-      writeln!(self.out, "end").unwrap();
-   }
-
-   fn emit_if_start(&mut self, result_type: &ExpressionType, si: &IndexMap<StrId, StructInfo>) {
-      write!(self.out, "(if ").unwrap();
-      write_type_as_result(result_type, &mut self.out, si);
-      self.out.push(b'\n');
-   }
-
-   fn emit_then_start(&mut self) {
-      writeln!(self.out, "(then ").unwrap();
-   }
-
-   fn emit_else_start(&mut self) {
-      writeln!(self.out, "(else ").unwrap();
-   }
-
-   fn emit_data(&mut self, mem_index: u32, offset: u32, literal: &str) {
-      write!(self.out, "(data {} (i32.const {}) \"", mem_index, offset).unwrap();
-      for byte in literal.as_bytes() {
-         match byte {
-            b'\\' => write!(self.out, "\\").unwrap(),
-            b'\n' => write!(self.out, "\\n").unwrap(),
-            b'\r' => write!(self.out, "\\r").unwrap(),
-            b'\t' => write!(self.out, "\\t").unwrap(),
-            b'\0' => write!(self.out, "\\u{{0}}").unwrap(),
-            b'"' => write!(self.out, "\\\"").unwrap(),
-            _ => self.out.push(*byte),
-         }
-      }
-      writeln!(self.out, "\")").unwrap();
-   }
-
-   fn emit_call(&mut self, func_name: StrId, interner: &Interner) {
-      writeln!(self.out, "call ${}", interner.lookup(func_name)).unwrap();
-   }
+   procedure_indices: HashMap<StrId, u32>,
+   levels_of_if: u32,
 }
 
 impl GenerationContext<'_> {
@@ -141,17 +62,7 @@ impl GenerationContext<'_> {
    }
 }
 
-fn write_type_as_result(t: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
-   let mut type_buf = vec![];
-   type_to_wasm_type(t, &mut type_buf, si);
-   for wt in type_buf.iter() {
-      write!(out, "(result {}) ", *wt).unwrap();
-   }
-   if !type_buf.is_empty() {
-      let _ = out.pop();
-   }
-}
-
+#[must_use]
 fn definition_to_type(def: &ProcedureDefinition, si: &IndexMap<StrId, StructInfo>) -> (Vec<ValType>, Vec<ValType>) {
    let mut param_type_buf = vec![];
    for param in def.parameters.iter() {
@@ -163,17 +74,6 @@ fn definition_to_type(def: &ProcedureDefinition, si: &IndexMap<StrId, StructInfo
       param_type_buf.into_iter().map(|x| x.into()).collect(),
       return_type_buf.into_iter().map(|x| x.into()).collect(),
    )
-}
-
-fn write_type_as_params(t: &ExpressionType, out: &mut Vec<u8>, si: &IndexMap<StrId, StructInfo>) {
-   let mut type_buf = vec![];
-   type_to_wasm_type(t, &mut type_buf, si);
-   for wt in type_buf.iter() {
-      write!(out, "(param {}) ", *wt).unwrap();
-   }
-   if !type_buf.is_empty() {
-      let _ = out.pop();
-   }
 }
 
 #[derive(Copy, Clone)]
@@ -253,13 +153,12 @@ fn type_to_wasm_type_basic(t: &ExpressionType) -> WasmType {
    }
 }
 
-fn int_to_wasm_runtime_and_suffix(x: IntType) -> (WasmType, &'static str) {
+fn int_to_wasm_runtime_and_suffix(x: IntType) -> (WasmType, bool) {
    let wasm_type = match x.width {
       IntWidth::Eight => WasmType::Int64,
       _ => WasmType::Int32,
    };
-   let suffix = if x.signed { "_s" } else { "_u" };
-   (wasm_type, suffix)
+   (wasm_type, x.signed)
 }
 
 fn dynamic_move_locals_of_type_to_dest(
@@ -350,26 +249,48 @@ fn dynamic_move_locals_of_type_to_dest(
 }
 
 struct TypeManager {
-   num_registered_types: u32,
+   registered_types: IndexSet<(Vec<ValType>, Vec<ValType>)>,
+   type_section: TypeSection,
 }
 
 impl TypeManager {
    fn new() -> TypeManager {
       TypeManager {
-         num_registered_types: 0,
+         registered_types: IndexSet::new(),
+         type_section: TypeSection::new(),
       }
    }
 
-   fn register_or_find_type(
+   fn register_or_find_type(&mut self, def: &ProcedureDefinition, si: &IndexMap<StrId, StructInfo>) -> u32 {
+      let new_type = definition_to_type(def, si);
+      let (idx, is_new) = self.registered_types.insert_full(new_type.clone());
+      if is_new {
+         self.type_section.function(new_type.0, new_type.1);
+      }
+      idx as u32
+   }
+
+   fn register_or_find_type_nocheckin(
       &mut self,
-      def: &ProcedureDefinition,
+      parameters: &[ExpressionType],
+      ret_type: &ExpressionType,
       si: &IndexMap<StrId, StructInfo>,
-      type_section: &mut TypeSection,
    ) -> u32 {
-      definition_to_type(def, si);
-      let old = self.num_registered_types;
-      self.num_registered_types += 1;
-      old
+      let mut param_type_buf = vec![];
+      for param in parameters.iter() {
+         type_to_wasm_type(param, &mut param_type_buf, si);
+      }
+      let param_types_nocheckin: Vec<ValType> = param_type_buf.into_iter().map(|x| x.into()).collect();
+
+      let mut ret_type_buf = vec![];
+      type_to_wasm_type(ret_type, &mut ret_type_buf, si);
+      let ret_type_nocheckin: Vec<ValType> = ret_type_buf.into_iter().map(|x| x.into()).collect();
+
+      let (idx, is_new) = self.registered_types.insert_full((param_types_nocheckin.clone(), ret_type_nocheckin.clone()));
+      if is_new {
+         self.type_section.function(param_types_nocheckin, ret_type_nocheckin);
+      }
+      idx as u32
    }
 }
 
@@ -384,7 +305,6 @@ pub fn emit_wasm(
    target: Target,
 ) -> Vec<u8> {
    let mut generation_context = GenerationContext {
-      out: PrettyWasmWriter { out: Vec::new() },
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
       type_manager: TypeManager::new(),
       literal_offsets: HashMap::with_capacity(program.literals.len()),
@@ -397,10 +317,9 @@ pub fn emit_wasm(
       sum_sizeof_locals_mem: 0,
       expressions,
       procedure_to_table_index: IndexSet::new(),
-      indirect_callees: Vec::new(),
+      procedure_indices: HashMap::new(),
+      levels_of_if: 0,
    };
-
-   let mut type_section = TypeSection::new();
 
    let mut import_section = ImportSection::new();
    let mut export_section = ExportSection::new();
@@ -409,7 +328,7 @@ pub fn emit_wasm(
    let mut data_section = DataSection::new();
    let mut code_section = CodeSection::new();
 
-   let mut procedure_indices: HashMap<StrId, u32> = HashMap::new();
+   // nocheckin this is implicit, right?
    let mut num_procedures: u32 = 0;
 
    for external_procedure in program
@@ -417,11 +336,9 @@ pub fn emit_wasm(
       .iter()
       .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ExternalProcImplSource::External))
    {
-      let type_index = generation_context.type_manager.register_or_find_type(
-         &external_procedure.definition,
-         generation_context.struct_info,
-         &mut type_section,
-      );
+      let type_index = generation_context
+         .type_manager
+         .register_or_find_type(&external_procedure.definition, generation_context.struct_info);
       match target {
          Target::Lib => (),
          Target::Wasm4 | Target::Microw8 => {
@@ -439,55 +356,8 @@ pub fn emit_wasm(
             );
          }
       }
-      procedure_indices.insert(external_procedure.definition.name, num_procedures);
+      generation_context.procedure_indices.insert(external_procedure.definition.name, num_procedures);
       num_procedures += 1;
-   }
-
-   // target specific imports/exports
-   match target {
-      Target::Lib => (),
-      Target::Wasm4 => {
-         import_section.import(
-            "env",
-            "memory",
-            EntityType::Memory(MemoryType {
-               minimum: 1,
-               maximum: Some(1),
-               memory64: false,
-               shared: false,
-            }),
-         );
-         export_section.export("update", wasm_encoder::ExportKind::Func, todo!());
-         if program.procedure_info.contains_key(&interner.intern("start")) {
-            export_section.export("start", wasm_encoder::ExportKind::Func, todo!());
-         }
-      }
-      Target::Microw8 => {
-         import_section.import(
-            "env",
-            "memory",
-            EntityType::Memory(MemoryType {
-               minimum: 4,
-               maximum: Some(4),
-               memory64: false,
-               shared: false,
-            }),
-         );
-         export_section.export("upd", wasm_encoder::ExportKind::Func, todo!());
-         if program.procedure_info.contains_key(&interner.intern("snd")) {
-            export_section.export("snd", wasm_encoder::ExportKind::Func, todo!());
-         }
-      }
-      Target::Wasi => {
-         memory_section.memory(MemoryType {
-            minimum: 1,
-            maximum: None,
-            memory64: false,
-            shared: false,
-         });
-         export_section.export("memory", wasm_encoder::ExportKind::Memory, 0);
-         export_section.export("_start", wasm_encoder::ExportKind::Func, todo!());
-      }
    }
 
    // Data section
@@ -620,12 +490,14 @@ pub fn emit_wasm(
          }
       }
 
-      function_section.function(generation_context.type_manager.register_or_find_type(
-         &external_procedure.definition,
-         generation_context.struct_info,
-         &mut type_section,
-      ));
-      procedure_indices.insert(external_procedure.definition.name, num_procedures);
+      generation_context.active_fcn.instruction(&Instruction::End);
+
+      function_section.function(
+         generation_context
+            .type_manager
+            .register_or_find_type(&external_procedure.definition, generation_context.struct_info),
+      );
+      generation_context.procedure_indices.insert(external_procedure.definition.name, num_procedures);
       code_section.function(&generation_context.active_fcn);
       num_procedures += 1;
    }
@@ -636,12 +508,12 @@ pub fn emit_wasm(
          continue;
       }
 
-      function_section.function(generation_context.type_manager.register_or_find_type(
-         &procedure.definition,
-         generation_context.struct_info,
-         &mut type_section,
-      ));
-      procedure_indices.insert(procedure.definition.name, num_procedures);
+      function_section.function(
+         generation_context
+            .type_manager
+            .register_or_find_type(&procedure.definition, generation_context.struct_info),
+      );
+      generation_context.procedure_indices.insert(procedure.definition.name, num_procedures);
       num_procedures += 1;
    }
 
@@ -726,7 +598,7 @@ pub fn emit_wasm(
       }
 
       for statement in &procedure.block.statements {
-         emit_statement(statement, &mut generation_context, interner);
+         emit_statement(statement, &mut generation_context);
       }
 
       if procedure.block.statements.last().map_or(false, |x| {
@@ -743,21 +615,34 @@ pub fn emit_wasm(
       } else {
          adjust_stack_function_exit(&mut generation_context);
       }
+
+      generation_context.active_fcn.instruction(&Instruction::End);
+
+      code_section.function(&generation_context.active_fcn);
    }
 
    let mut needed_store_fns = IndexSet::new();
    std::mem::swap(&mut needed_store_fns, &mut generation_context.needed_store_fns);
-   for (i, e_type) in needed_store_fns.iter().enumerate() {
-      generation_context
-         .out
-         .emit_store_function_start(i, e_type, generation_context.struct_info);
+   for e_type in needed_store_fns {
+      generation_context.active_fcn = Function::new_with_locals_types([]);
+
       dynamic_move_locals_of_type_to_dest(
          &Instruction::LocalGet(0),
          &mut 0,
          &mut 1,
-         e_type,
+         &e_type,
          &mut generation_context,
       );
+
+      generation_context.active_fcn.instruction(&Instruction::End);
+
+      function_section.function(generation_context.type_manager.register_or_find_type_nocheckin(
+         &[I32_TYPE, e_type],
+         &ExpressionType::Unit,
+         generation_context.struct_info,
+      ));
+      code_section.function(&generation_context.active_fcn);
+      num_procedures += 1;
    }
 
    let (table_section, element_section) = {
@@ -772,31 +657,90 @@ pub fn emit_wasm(
       table.table(table_type);
 
       let mut elem = ElementSection::new();
-      elem.active(Some(0), &ConstExpr::i32_const(0), RefType::FUNCREF, todo!());
+      let elements = generation_context
+         .procedure_to_table_index
+         .iter()
+         .map(|x| generation_context.procedure_indices[x])
+         .collect::<Vec<_>>();
+      elem.active(
+         Some(0),
+         &ConstExpr::i32_const(0),
+         RefType::FUNCREF,
+         Elements::Functions(&elements),
+      );
 
       (table, elem)
    };
 
-   for indirect_callee_id in generation_context.indirect_callees.iter() {
-      let pp_type = generation_context.expressions[*indirect_callee_id]
-         .exp_type
-         .as_ref()
-         .unwrap();
-      match pp_type {
-         ExpressionType::ProcedurePointer { parameters, ret_type } => {
-            generation_context.out.emit_function_type(
-               *indirect_callee_id,
-               parameters.iter(),
-               ret_type,
-               generation_context.struct_info,
+   // target specific imports/exports
+   match target {
+      Target::Lib => (),
+      Target::Wasm4 => {
+         import_section.import(
+            "env",
+            "memory",
+            EntityType::Memory(MemoryType {
+               minimum: 1,
+               maximum: Some(1),
+               memory64: false,
+               shared: false,
+            }),
+         );
+         export_section.export(
+            "update",
+            wasm_encoder::ExportKind::Func,
+            generation_context.procedure_indices[&interner.intern("update")],
+         );
+         if program.procedure_info.contains_key(&interner.intern("start")) {
+            export_section.export(
+               "start",
+               wasm_encoder::ExportKind::Func,
+               generation_context.procedure_indices[&interner.intern("start")],
             );
          }
-         _ => unreachable!(),
+      }
+      Target::Microw8 => {
+         import_section.import(
+            "env",
+            "memory",
+            EntityType::Memory(MemoryType {
+               minimum: 4,
+               maximum: Some(4),
+               memory64: false,
+               shared: false,
+            }),
+         );
+         export_section.export(
+            "upd",
+            wasm_encoder::ExportKind::Func,
+            generation_context.procedure_indices[&interner.intern("upd")],
+         );
+         if program.procedure_info.contains_key(&interner.intern("snd")) {
+            export_section.export(
+               "snd",
+               wasm_encoder::ExportKind::Func,
+               generation_context.procedure_indices[&interner.intern("snd")],
+            );
+         }
+      }
+      Target::Wasi => {
+         memory_section.memory(MemoryType {
+            minimum: 1,
+            maximum: None,
+            memory64: false,
+            shared: false,
+         });
+         export_section.export("memory", wasm_encoder::ExportKind::Memory, 0);
+         export_section.export(
+            "_start",
+            wasm_encoder::ExportKind::Func,
+            generation_context.procedure_indices[&interner.intern("main")],
+         );
       }
    }
 
    let mut module = Module::new();
-   module.section(&type_section);
+   module.section(&generation_context.type_manager.type_section);
    module.section(&import_section);
    module.section(&function_section);
    module.section(&table_section);
@@ -844,31 +788,31 @@ fn compare_type_alignment(
    compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
 }
 
-fn emit_statement(statement: &StatementNode, generation_context: &mut GenerationContext, interner: &mut Interner) {
+fn emit_statement(statement: &StatementNode, generation_context: &mut GenerationContext) {
    match &statement.statement {
       Statement::Assignment(len, en) => {
-         do_emit(*len, generation_context, interner);
-         do_emit_and_load_lval(*en, generation_context, interner);
+         do_emit(*len, generation_context);
+         do_emit_and_load_lval(*en, generation_context);
          let val_type = generation_context.expressions[*en].exp_type.as_ref().unwrap();
-         store(val_type, generation_context, interner);
+         store(val_type, generation_context);
       }
       Statement::VariableDeclaration(_, opt_en, _, var_id) => {
          if let Some(en) = opt_en {
             get_stack_address_of_local(*var_id, generation_context);
-            do_emit_and_load_lval(*en, generation_context, interner);
+            do_emit_and_load_lval(*en, generation_context);
             let val_type = generation_context.expressions[*en].exp_type.as_ref().unwrap();
-            store(val_type, generation_context, interner);
+            store(val_type, generation_context);
          }
       }
       Statement::Block(bn) => {
          for statement in &bn.statements {
-            emit_statement(statement, generation_context, interner);
+            emit_statement(statement, generation_context);
          }
       }
       Statement::For(_, start, end, bn, inclusive, start_var_id) => {
          let start_expr = &generation_context.expressions[*start];
 
-         let (wasm_type, suffix) = match start_expr.exp_type.as_ref().unwrap() {
+         let (wasm_type, signed) = match start_expr.exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
             _ => unreachable!(),
          };
@@ -888,19 +832,25 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          {
             get_stack_address_of_local(*start_var_id, generation_context);
             load(start_expr.exp_type.as_ref().unwrap(), generation_context);
-            do_emit_and_load_lval(*end, generation_context, interner);
-            writeln!(generation_context.out.out, "{}.ge{}", wasm_type, suffix).unwrap();
+            do_emit_and_load_lval(*end, generation_context);
+            match (wasm_type, signed) {
+               (WasmType::Int64, true) => generation_context.active_fcn.instruction(&Instruction::I64GeS),
+               (WasmType::Int64, false) => generation_context.active_fcn.instruction(&Instruction::I64GeU),
+               (WasmType::Int32, true) => generation_context.active_fcn.instruction(&Instruction::I32GeS),
+               (WasmType::Int32, false) => generation_context.active_fcn.instruction(&Instruction::I32GeU),
+               _ => unreachable!(),
+            };
 
             generation_context
                .active_fcn
                .instruction(&Instruction::If(BlockType::Empty));
             // then
-            generation_context.active_fcn.instruction(&Instruction::Br(2));
+            generation_context.active_fcn.instruction(&Instruction::Br(3));
             // finish if
             generation_context.active_fcn.instruction(&Instruction::End);
          }
          for statement in &bn.statements {
-            emit_statement(statement, generation_context, interner);
+            emit_statement(statement, generation_context);
          }
          generation_context.active_fcn.instruction(&Instruction::End); // end block bi
 
@@ -909,16 +859,24 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             get_stack_address_of_local(*start_var_id, generation_context);
             get_stack_address_of_local(*start_var_id, generation_context);
             load(start_expr.exp_type.as_ref().unwrap(), generation_context);
-            writeln!(generation_context.out.out, "{}.const 1", wasm_type).unwrap();
-            writeln!(generation_context.out.out, "{}.add", wasm_type).unwrap();
-            store(start_expr.exp_type.as_ref().unwrap(), generation_context, interner);
+            match wasm_type {
+               WasmType::Int64 => {
+                  generation_context.active_fcn.instruction(&Instruction::I64Const(1));
+                  generation_context.active_fcn.instruction(&Instruction::I64Add);
+               }
+               WasmType::Int32 => {
+                  generation_context.active_fcn.instruction(&Instruction::I32Const(1));
+                  generation_context.active_fcn.instruction(&Instruction::I32Add);
+               }
+               _ => unreachable!(),
+            }
+            store(start_expr.exp_type.as_ref().unwrap(), generation_context);
          }
          generation_context.active_fcn.instruction(&Instruction::Br(0));
          generation_context.active_fcn.instruction(&Instruction::End);
          generation_context.active_fcn.instruction(&Instruction::End);
       }
       Statement::Loop(bn) => {
-         //generation_context.active_fcn.blo
          // nocheckin does it really have to be this complicated? seems like the innermost block is not necessary?
          generation_context
             .active_fcn
@@ -930,7 +888,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             .active_fcn
             .instruction(&Instruction::Block(BlockType::Empty));
          for statement in &bn.statements {
-            emit_statement(statement, generation_context, interner);
+            emit_statement(statement, generation_context);
          }
          generation_context.active_fcn.instruction(&Instruction::End); // end block bi
          generation_context.active_fcn.instruction(&Instruction::Br(0));
@@ -938,13 +896,13 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          generation_context.active_fcn.instruction(&Instruction::End); // end block b
       }
       Statement::Break => {
-         generation_context.active_fcn.instruction(&Instruction::Br(2));
+         generation_context.active_fcn.instruction(&Instruction::Br(2 + generation_context.levels_of_if));
       }
       Statement::Continue => {
-         generation_context.active_fcn.instruction(&Instruction::Br(0));
+         generation_context.active_fcn.instruction(&Instruction::Br(generation_context.levels_of_if));
       }
       Statement::Expression(en) => {
-         do_emit(*en, generation_context, interner);
+         do_emit(*en, generation_context);
          for _ in 0..sizeof_type_values(
             generation_context.expressions[*en].exp_type.as_ref().unwrap(),
             generation_context.enum_info,
@@ -954,22 +912,24 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          }
       }
       Statement::IfElse(en, block_1, block_2) => {
-         do_emit_and_load_lval(*en, generation_context, interner);
+         do_emit_and_load_lval(*en, generation_context);
+         generation_context.levels_of_if += 1;
          generation_context
             .active_fcn
             .instruction(&Instruction::If(BlockType::Empty));
          // then
          for statement in &block_1.statements {
-            emit_statement(statement, generation_context, interner);
+            emit_statement(statement, generation_context);
          }
          // else
          generation_context.active_fcn.instruction(&Instruction::Else);
-         emit_statement(block_2, generation_context, interner);
+         emit_statement(block_2, generation_context);
          // finish if
          generation_context.active_fcn.instruction(&Instruction::End);
+         generation_context.levels_of_if -= 1;
       }
       Statement::Return(en) => {
-         do_emit_and_load_lval(*en, generation_context, interner);
+         do_emit_and_load_lval(*en, generation_context);
 
          if generation_context.expressions[*en]
             .exp_type
@@ -987,12 +947,8 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
    }
 }
 
-fn do_emit_and_load_lval(
-   expr_index: ExpressionId,
-   generation_context: &mut GenerationContext,
-   interner: &mut Interner,
-) {
-   do_emit(expr_index, generation_context, interner);
+fn do_emit_and_load_lval(expr_index: ExpressionId, generation_context: &mut GenerationContext) {
+   do_emit(expr_index, generation_context);
 
    let expr_node = &generation_context.expressions[expr_index];
    if expr_node
@@ -1094,7 +1050,7 @@ fn emit_literal_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_co
    }
 }
 
-fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext, interner: &mut Interner) {
+fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext) {
    let expr_node = &generation_context.expressions[expr_index];
    match &expr_node.expression {
       Expression::UnitLiteral => (),
@@ -1110,36 +1066,27 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
       }
       Expression::EnumLiteral(_, _) => unreachable!(),
       Expression::IntLiteral { val: x, .. } => {
-         let (signed, wasm_type) = match expr_node.exp_type.as_ref().unwrap() {
-            ExpressionType::Int(x) => match x.width {
-               IntWidth::Eight => (x.signed, WasmType::Int64),
-               _ => (x.signed, WasmType::Int32),
-            },
-            // can occur when an int->ptr transmute is constant folded
-            ExpressionType::Pointer(_) => (false, WasmType::Int32),
+         let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
+         match wasm_type {
+            WasmType::Int64 => generation_context
+               .active_fcn
+               .instruction(&Instruction::I64Const(*x as i64)),
+            WasmType::Int32 => generation_context
+               .active_fcn
+               .instruction(&Instruction::I32Const(*x as i32)),
             _ => unreachable!(),
          };
-         if signed {
-            writeln!(generation_context.out.out, "{}.const {}", wasm_type, *x as i64).unwrap();
-         } else {
-            writeln!(generation_context.out.out, "{}.const {}", wasm_type, *x).unwrap();
-         }
       }
       Expression::FloatLiteral(x) => {
          let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
-         if x.is_nan() {
-            // It would be nice to support NaN payloads too, but it was kind of a pain when I tried.
-            // Better maybe would be to just output everything as a hex float?
-            // This would all be so much better if the web assembly text format had a
-            // "raw:0x{hex}" format. I don't agree with their reasoning not to support it.
-            if x.is_sign_negative() {
-               writeln!(generation_context.out.out, "{}.const -nan", wasm_type).unwrap();
-            } else {
-               writeln!(generation_context.out.out, "{}.const nan", wasm_type).unwrap();
-            }
-         } else {
-            writeln!(generation_context.out.out, "{}.const {}", wasm_type, x).unwrap();
-         }
+         // nocheckin: nans ok?
+         match wasm_type {
+            WasmType::Float32 => generation_context
+               .active_fcn
+               .instruction(&Instruction::F32Const(*x as f32)),
+            WasmType::Float64 => generation_context.active_fcn.instruction(&Instruction::F64Const(*x)),
+            _ => unreachable!(),
+         };
       }
       Expression::StringLiteral(str) => {
          let (offset, len) = generation_context.literal_offsets.get(str).unwrap();
@@ -1155,12 +1102,12 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          lhs,
          rhs,
       } => {
-         do_emit_and_load_lval(*lhs, generation_context, interner);
+         do_emit_and_load_lval(*lhs, generation_context);
          generation_context
             .active_fcn
-            .instruction(&Instruction::If(BlockType::Empty));
+            .instruction(&Instruction::If(BlockType::Result(ValType::I32)));
          // then
-         do_emit_and_load_lval(*rhs, generation_context, interner);
+         do_emit_and_load_lval(*rhs, generation_context);
          // else
          generation_context.active_fcn.instruction(&Instruction::Else);
          generation_context.active_fcn.instruction(&Instruction::I32Const(0));
@@ -1172,82 +1119,169 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          lhs,
          rhs,
       } => {
-         do_emit_and_load_lval(*lhs, generation_context, interner);
+         do_emit_and_load_lval(*lhs, generation_context);
          generation_context
             .active_fcn
-            .instruction(&Instruction::If(BlockType::Empty));
+            .instruction(&Instruction::If(BlockType::Result(ValType::I32)));
          // then
          generation_context.active_fcn.instruction(&Instruction::I32Const(1));
          // else
-         generation_context.out.emit_else_start();
-         do_emit_and_load_lval(*rhs, generation_context, interner);
+         generation_context.active_fcn.instruction(&Instruction::Else);
+         do_emit_and_load_lval(*rhs, generation_context);
          // finish if
          generation_context.active_fcn.instruction(&Instruction::End);
-
       }
       Expression::BinaryOperator { operator, lhs, rhs } => {
-         do_emit_and_load_lval(*lhs, generation_context, interner);
+         do_emit_and_load_lval(*lhs, generation_context);
 
-         do_emit_and_load_lval(*rhs, generation_context, interner);
+         do_emit_and_load_lval(*rhs, generation_context);
 
-         let (wasm_type, suffix) = match generation_context.expressions[*lhs].exp_type.as_ref().unwrap() {
+         let (wasm_type, signed) = match generation_context.expressions[*lhs].exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
             ExpressionType::Enum(_) => unreachable!(),
             ExpressionType::Float(x) => match x.width {
-               FloatWidth::Eight => (WasmType::Float64, ""),
-               FloatWidth::Four => (WasmType::Float32, ""),
+               FloatWidth::Eight => (WasmType::Float64, false),
+               FloatWidth::Four => (WasmType::Float32, false),
             },
-            ExpressionType::Bool => (WasmType::Int32, "_u"),
+            ExpressionType::Bool => (WasmType::Int32, false),
             _ => unreachable!(),
          };
          match operator {
             BinOp::Add => {
-               writeln!(generation_context.out.out, "{}.add", wasm_type).unwrap();
+               match wasm_type {
+                  WasmType::Int64 => generation_context.active_fcn.instruction(&Instruction::I64Add),
+                  WasmType::Int32 => generation_context.active_fcn.instruction(&Instruction::I32Add),
+                  WasmType::Float64 => generation_context.active_fcn.instruction(&Instruction::F64Add),
+                  WasmType::Float32 => generation_context.active_fcn.instruction(&Instruction::F32Add),
+               };
             }
             BinOp::Subtract => {
-               writeln!(generation_context.out.out, "{}.sub", wasm_type).unwrap();
+               match wasm_type {
+                  WasmType::Int64 => generation_context.active_fcn.instruction(&Instruction::I64Sub),
+                  WasmType::Int32 => generation_context.active_fcn.instruction(&Instruction::I32Sub),
+                  WasmType::Float64 => generation_context.active_fcn.instruction(&Instruction::F64Sub),
+                  WasmType::Float32 => generation_context.active_fcn.instruction(&Instruction::F32Sub),
+               };
             }
             BinOp::Multiply => {
-               writeln!(generation_context.out.out, "{}.mul", wasm_type).unwrap();
+               match wasm_type {
+                  WasmType::Int64 => generation_context.active_fcn.instruction(&Instruction::I64Mul),
+                  WasmType::Int32 => generation_context.active_fcn.instruction(&Instruction::I32Mul),
+                  WasmType::Float64 => generation_context.active_fcn.instruction(&Instruction::F64Mul),
+                  WasmType::Float32 => generation_context.active_fcn.instruction(&Instruction::F32Mul),
+               };
             }
             BinOp::Divide => {
-               writeln!(generation_context.out.out, "{}.div{}", wasm_type, suffix).unwrap();
+               match (wasm_type, signed) {
+                  (WasmType::Int64, true) => generation_context.active_fcn.instruction(&Instruction::I64DivS),
+                  (WasmType::Int32, true) => generation_context.active_fcn.instruction(&Instruction::I32DivS),
+                  (WasmType::Int64, false) => generation_context.active_fcn.instruction(&Instruction::I64DivU),
+                  (WasmType::Int32, false) => generation_context.active_fcn.instruction(&Instruction::I32DivU),
+                  (WasmType::Float64, _) => generation_context.active_fcn.instruction(&Instruction::F64Div),
+                  (WasmType::Float32, _) => generation_context.active_fcn.instruction(&Instruction::F32Div),
+               };
             }
             BinOp::Remainder => {
-               writeln!(generation_context.out.out, "{}.rem{}", wasm_type, suffix).unwrap();
+               match (wasm_type, signed) {
+                  (WasmType::Int64, true) => generation_context.active_fcn.instruction(&Instruction::I64RemS),
+                  (WasmType::Int32, true) => generation_context.active_fcn.instruction(&Instruction::I32RemS),
+                  (WasmType::Int64, false) => generation_context.active_fcn.instruction(&Instruction::I64RemU),
+                  (WasmType::Int32, false) => generation_context.active_fcn.instruction(&Instruction::I32RemU),
+                  _ => unreachable!(),
+               };
             }
             BinOp::Equality => {
-               writeln!(generation_context.out.out, "{}.eq", wasm_type).unwrap();
+               match wasm_type {
+                  WasmType::Int64 => generation_context.active_fcn.instruction(&Instruction::I64Eq),
+                  WasmType::Int32 => generation_context.active_fcn.instruction(&Instruction::I32Eq),
+                  WasmType::Float64 => generation_context.active_fcn.instruction(&Instruction::F64Eq),
+                  WasmType::Float32 => generation_context.active_fcn.instruction(&Instruction::F32Eq),
+               };
             }
             BinOp::NotEquality => {
-               writeln!(generation_context.out.out, "{}.ne", wasm_type).unwrap();
+               match wasm_type {
+                  WasmType::Int64 => generation_context.active_fcn.instruction(&Instruction::I64Ne),
+                  WasmType::Int32 => generation_context.active_fcn.instruction(&Instruction::I32Ne),
+                  WasmType::Float64 => generation_context.active_fcn.instruction(&Instruction::F64Ne),
+                  WasmType::Float32 => generation_context.active_fcn.instruction(&Instruction::F32Ne),
+               };
             }
             BinOp::GreaterThan => {
-               writeln!(generation_context.out.out, "{}.gt{}", wasm_type, suffix).unwrap();
+               match (wasm_type, signed) {
+                  (WasmType::Int64, true) => generation_context.active_fcn.instruction(&Instruction::I64GtS),
+                  (WasmType::Int32, true) => generation_context.active_fcn.instruction(&Instruction::I32GtS),
+                  (WasmType::Int64, false) => generation_context.active_fcn.instruction(&Instruction::I64GtU),
+                  (WasmType::Int32, false) => generation_context.active_fcn.instruction(&Instruction::I32GtU),
+                  (WasmType::Float64, _) => generation_context.active_fcn.instruction(&Instruction::F64Gt),
+                  (WasmType::Float32, _) => generation_context.active_fcn.instruction(&Instruction::F32Gt),
+               };
             }
             BinOp::GreaterThanOrEqualTo => {
-               writeln!(generation_context.out.out, "{}.ge{}", wasm_type, suffix).unwrap();
+               match (wasm_type, signed) {
+                  (WasmType::Int64, true) => generation_context.active_fcn.instruction(&Instruction::I64GeS),
+                  (WasmType::Int32, true) => generation_context.active_fcn.instruction(&Instruction::I32GeS),
+                  (WasmType::Int64, false) => generation_context.active_fcn.instruction(&Instruction::I64GeU),
+                  (WasmType::Int32, false) => generation_context.active_fcn.instruction(&Instruction::I32GeU),
+                  (WasmType::Float64, _) => generation_context.active_fcn.instruction(&Instruction::F64Ge),
+                  (WasmType::Float32, _) => generation_context.active_fcn.instruction(&Instruction::F32Ge),
+               };
             }
             BinOp::LessThan => {
-               writeln!(generation_context.out.out, "{}.lt{}", wasm_type, suffix).unwrap();
+               match (wasm_type, signed) {
+                  (WasmType::Int64, true) => generation_context.active_fcn.instruction(&Instruction::I64LtS),
+                  (WasmType::Int32, true) => generation_context.active_fcn.instruction(&Instruction::I32LtS),
+                  (WasmType::Int64, false) => generation_context.active_fcn.instruction(&Instruction::I64LtU),
+                  (WasmType::Int32, false) => generation_context.active_fcn.instruction(&Instruction::I32LtU),
+                  (WasmType::Float64, _) => generation_context.active_fcn.instruction(&Instruction::F64Lt),
+                  (WasmType::Float32, _) => generation_context.active_fcn.instruction(&Instruction::F32Lt),
+               };
             }
             BinOp::LessThanOrEqualTo => {
-               writeln!(generation_context.out.out, "{}.le{}", wasm_type, suffix).unwrap();
+               match (wasm_type, signed) {
+                  (WasmType::Int64, true) => generation_context.active_fcn.instruction(&Instruction::I64LeS),
+                  (WasmType::Int32, true) => generation_context.active_fcn.instruction(&Instruction::I32LeS),
+                  (WasmType::Int64, false) => generation_context.active_fcn.instruction(&Instruction::I64LeU),
+                  (WasmType::Int32, false) => generation_context.active_fcn.instruction(&Instruction::I32LeU),
+                  (WasmType::Float64, _) => generation_context.active_fcn.instruction(&Instruction::F64Le),
+                  (WasmType::Float32, _) => generation_context.active_fcn.instruction(&Instruction::F32Le),
+               };
             }
             BinOp::BitwiseAnd => {
-               writeln!(generation_context.out.out, "{}.and", wasm_type).unwrap();
+               match wasm_type {
+                  WasmType::Int64 => generation_context.active_fcn.instruction(&Instruction::I64And),
+                  WasmType::Int32 => generation_context.active_fcn.instruction(&Instruction::I32And),
+                  _ => unreachable!(),
+               };
             }
             BinOp::BitwiseOr => {
-               writeln!(generation_context.out.out, "{}.or", wasm_type).unwrap();
+               match wasm_type {
+                  WasmType::Int64 => generation_context.active_fcn.instruction(&Instruction::I64Or),
+                  WasmType::Int32 => generation_context.active_fcn.instruction(&Instruction::I32Or),
+                  _ => unreachable!(),
+               };
             }
             BinOp::BitwiseXor => {
-               writeln!(generation_context.out.out, "{}.xor", wasm_type).unwrap();
+               match wasm_type {
+                  WasmType::Int64 => generation_context.active_fcn.instruction(&Instruction::I64Xor),
+                  WasmType::Int32 => generation_context.active_fcn.instruction(&Instruction::I32Xor),
+                  _ => unreachable!(),
+               };
             }
             BinOp::BitwiseLeftShift => {
-               writeln!(generation_context.out.out, "{}.shl", wasm_type).unwrap();
+               match wasm_type {
+                  WasmType::Int64 => generation_context.active_fcn.instruction(&Instruction::I64Shl),
+                  WasmType::Int32 => generation_context.active_fcn.instruction(&Instruction::I32Shl),
+                  _ => unreachable!(),
+               };
             }
             BinOp::BitwiseRightShift => {
-               writeln!(generation_context.out.out, "{}.shr{}", wasm_type, suffix).unwrap();
+               match (wasm_type, signed) {
+                  (WasmType::Int64, true) => generation_context.active_fcn.instruction(&Instruction::I64ShrS),
+                  (WasmType::Int32, true) => generation_context.active_fcn.instruction(&Instruction::I32ShrS),
+                  (WasmType::Int64, false) => generation_context.active_fcn.instruction(&Instruction::I64ShrU),
+                  (WasmType::Int32, false) => generation_context.active_fcn.instruction(&Instruction::I32ShrU),
+                  _ => unreachable!(),
+               };
             }
             BinOp::LogicalAnd | BinOp::LogicalOr => unreachable!(),
          }
@@ -1262,12 +1296,12 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
 
          match un_op {
             UnOp::AddressOf => {
-               do_emit(*e_index, generation_context, interner);
+               do_emit(*e_index, generation_context);
 
                // This operator coaxes the lvalue to an rvalue without a load
             }
             UnOp::Dereference => {
-               do_emit(*e_index, generation_context, interner);
+               do_emit(*e_index, generation_context);
 
                if e.expression.is_lvalue_disregard_consts(generation_context.expressions) {
                   load(e.exp_type.as_ref().unwrap(), generation_context);
@@ -1275,7 +1309,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             }
             UnOp::Complement => {
                let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
-               do_emit_and_load_lval(*e_index, generation_context, interner);
+               do_emit_and_load_lval(*e_index, generation_context);
 
                if *e.exp_type.as_ref().unwrap() == ExpressionType::Bool {
                   generation_context.active_fcn.instruction(&Instruction::I32Eqz);
@@ -1285,18 +1319,25 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             }
             UnOp::Negate => {
                let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
-               do_emit_and_load_lval(*e_index, generation_context, interner);
+               do_emit_and_load_lval(*e_index, generation_context);
 
-               match expr_node.exp_type.as_ref().unwrap() {
-                  ExpressionType::Int(_) => {
+               match wasm_type {
+                  WasmType::Int64 => {
                      complement_val(e.exp_type.as_ref().unwrap(), wasm_type, generation_context);
-                     writeln!(generation_context.out.out, "{}.const 1", wasm_type).unwrap();
-                     writeln!(generation_context.out.out, "{}.add", wasm_type).unwrap();
+                     generation_context.active_fcn.instruction(&Instruction::I64Const(1));
+                     generation_context.active_fcn.instruction(&Instruction::I64Add);
                   }
-                  ExpressionType::Float(_) => {
-                     writeln!(generation_context.out.out, "{}.neg", wasm_type).unwrap();
+                  WasmType::Int32 => {
+                     complement_val(e.exp_type.as_ref().unwrap(), wasm_type, generation_context);
+                     generation_context.active_fcn.instruction(&Instruction::I32Const(1));
+                     generation_context.active_fcn.instruction(&Instruction::I32Add);
                   }
-                  _ => unreachable!(),
+                  WasmType::Float64 => {
+                     generation_context.active_fcn.instruction(&Instruction::F64Neg);
+                  }
+                  WasmType::Float32 => {
+                     generation_context.active_fcn.instruction(&Instruction::F32Neg);
+                  }
                }
             }
          }
@@ -1306,7 +1347,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          target_type,
          expr: e,
       } => {
-         do_emit_and_load_lval(*e, generation_context, interner);
+         do_emit_and_load_lval(*e, generation_context);
 
          let e = &generation_context.expressions[*e];
 
@@ -1316,11 +1357,13 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             _ => unreachable!(),
          };
 
-         let suffix = if source_is_signed { "s" } else { "u" };
-
          match target_type {
             ExpressionType::Int(x) if x.width == IntWidth::Eight && source_width.as_num_bytes() <= 4 => {
-               writeln!(generation_context.out.out, "i64.extend_i32_{}", suffix).unwrap();
+               if source_is_signed {
+                  generation_context.active_fcn.instruction(&Instruction::I64ExtendI32S);
+               } else {
+                  generation_context.active_fcn.instruction(&Instruction::I64ExtendI32U);
+               }
             }
             ExpressionType::Int(_) => {
                // nop
@@ -1339,14 +1382,14 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          let e = &generation_context.expressions[*e_id];
 
          if e.expression.is_lvalue_disregard_consts(generation_context.expressions) {
-            do_emit(*e_id, generation_context, interner);
+            do_emit(*e_id, generation_context);
             load(target_type, generation_context);
          } else {
             debug_assert!(is_wasm_compatible_rval_transmute(
                e.exp_type.as_ref().unwrap(),
                target_type
             ));
-            do_emit(*e_id, generation_context, interner);
+            do_emit(*e_id, generation_context);
 
             if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Float(_))
                && matches!(target_type, ExpressionType::Int(_) | ExpressionType::Pointer(_))
@@ -1398,7 +1441,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          target_type,
          expr: e,
       } => {
-         do_emit_and_load_lval(*e, generation_context, interner);
+         do_emit_and_load_lval(*e, generation_context);
 
          let e = &generation_context.expressions[*e];
 
@@ -1426,51 +1469,71 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          {
             // float -> int
             // i32.trunc_f32_s
-            let (target_type_str, suffix) = match target_type {
-               ExpressionType::Int(x) => {
-                  let base_str = match x.width {
-                     IntWidth::Pointer => "i32",
-                     IntWidth::Eight => "i64",
-                     IntWidth::Four => "i32",
-                     IntWidth::Two => "i16",
-                     IntWidth::One => "i8",
-                  };
-                  (base_str, if x.signed { "_s" } else { "_u" })
-               }
+            let (target_type_wasm, signed) = match target_type {
+               ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
                _ => unreachable!(),
             };
-            let dest_type = type_to_wasm_type_basic(e.exp_type.as_ref().unwrap());
-            writeln!(
-               generation_context.out.out,
-               "{}.trunc_sat_{}{}",
-               target_type_str, dest_type, suffix
-            )
-            .unwrap();
+            let src_type = type_to_wasm_type_basic(e.exp_type.as_ref().unwrap());
+            match src_type {
+               WasmType::Float64 => {
+                  match (target_type_wasm, signed) {
+                     (WasmType::Int64, true) => generation_context.active_fcn.instruction(&Instruction::I64TruncF64S),
+                     (WasmType::Int64, false) => generation_context.active_fcn.instruction(&Instruction::I64TruncF64U),
+                     (WasmType::Int32, true) => generation_context.active_fcn.instruction(&Instruction::I32TruncF64S),
+                     (WasmType::Int32, false) => generation_context.active_fcn.instruction(&Instruction::I32TruncF64U),
+                     _ => unreachable!(),
+                  };
+               }
+               WasmType::Float32 => {
+                  match (target_type_wasm, signed) {
+                     (WasmType::Int64, true) => generation_context.active_fcn.instruction(&Instruction::I64TruncF32S),
+                     (WasmType::Int64, false) => generation_context.active_fcn.instruction(&Instruction::I64TruncF32U),
+                     (WasmType::Int32, true) => generation_context.active_fcn.instruction(&Instruction::I32TruncF32S),
+                     (WasmType::Int32, false) => generation_context.active_fcn.instruction(&Instruction::I32TruncF32U),
+                     _ => unreachable!(),
+                  };
+               }
+               _ => unreachable!(),
+            }
          } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Int(_))
             && matches!(target_type, ExpressionType::Float(_))
          {
             // int -> float
-            let target_type_str = type_to_wasm_type_basic(target_type);
+            let target_type_wasm = type_to_wasm_type_basic(target_type);
 
-            let (dest_type_str, suffix) = match e.exp_type.as_ref().unwrap() {
-               ExpressionType::Int(x) => {
-                  let base_str = match x.width {
-                     IntWidth::Eight => "i64",
-                     IntWidth::Pointer => "i32",
-                     IntWidth::Four => "i32",
-                     IntWidth::Two => "i32",
-                     IntWidth::One => "i32",
-                  };
-                  (base_str, if x.signed { "_s" } else { "_u" })
-               }
+            let (src_type, signed) = match e.exp_type.as_ref().unwrap() {
+               ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
                _ => unreachable!(),
             };
-            writeln!(
-               generation_context.out.out,
-               "{}.convert_{}{}",
-               target_type_str, dest_type_str, suffix
-            )
-            .unwrap();
+            match target_type_wasm {
+               WasmType::Float64 => {
+                  match (src_type, signed) {
+                     (WasmType::Int64, true) => generation_context.active_fcn.instruction(&Instruction::F64ConvertI64S),
+                     (WasmType::Int64, false) => {
+                        generation_context.active_fcn.instruction(&Instruction::F64ConvertI64U)
+                     }
+                     (WasmType::Int32, true) => generation_context.active_fcn.instruction(&Instruction::F64ConvertI32S),
+                     (WasmType::Int32, false) => {
+                        generation_context.active_fcn.instruction(&Instruction::F64ConvertI32U)
+                     }
+                     _ => unreachable!(),
+                  };
+               }
+               WasmType::Float32 => {
+                  match (src_type, signed) {
+                     (WasmType::Int64, true) => generation_context.active_fcn.instruction(&Instruction::F32ConvertI64S),
+                     (WasmType::Int64, false) => {
+                        generation_context.active_fcn.instruction(&Instruction::F32ConvertI64U)
+                     }
+                     (WasmType::Int32, true) => generation_context.active_fcn.instruction(&Instruction::F32ConvertI32S),
+                     (WasmType::Int32, false) => {
+                        generation_context.active_fcn.instruction(&Instruction::F32ConvertI32U)
+                     }
+                     _ => unreachable!(),
+                  };
+               }
+               _ => unreachable!(),
+            }
          } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Float(_))
             && matches!(target_type, ExpressionType::Float(_))
          {
@@ -1496,7 +1559,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             Some(ExpressionType::ProcedurePointer { .. })
          ) {
             // shouldn't place anything on the stack
-            do_emit_and_load_lval(*proc_expr, generation_context, interner);
+            do_emit_and_load_lval(*proc_expr, generation_context);
          }
 
          // Output the non-named parameters
@@ -1507,7 +1570,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                break;
             }
 
-            do_emit_and_load_lval(arg.expr, generation_context, interner);
+            do_emit_and_load_lval(arg.expr, generation_context);
          }
 
          if let Some(i) = first_named_arg {
@@ -1517,18 +1580,26 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             // Output each named parameter in canonical order
             named_args.sort_unstable_by_key(|x| x.name);
             for named_arg in named_args {
-               do_emit_and_load_lval(named_arg.expr, generation_context, interner);
+               do_emit_and_load_lval(named_arg.expr, generation_context);
             }
          }
 
          match generation_context.expressions[*proc_expr].exp_type.as_ref().unwrap() {
             ExpressionType::ProcedureItem(proc_name, _) => {
-               generation_context.out.emit_call(*proc_name, interner);
+               let idx = generation_context.procedure_indices.get(proc_name).copied().unwrap();
+               generation_context.active_fcn.instruction(&Instruction::Call(idx));
             }
-            ExpressionType::ProcedurePointer { .. } => {
-               do_emit_and_load_lval(*proc_expr, generation_context, interner);
-               writeln!(generation_context.out.out, "call_indirect 0 (type $::{})", proc_expr.0).unwrap();
-               generation_context.indirect_callees.push(*proc_expr);
+            ExpressionType::ProcedurePointer { parameters, ret_type } => {
+               do_emit_and_load_lval(*proc_expr, generation_context);
+               let type_index = generation_context.type_manager.register_or_find_type_nocheckin(
+                  parameters,
+                  ret_type,
+                  generation_context.struct_info,
+               );
+               generation_context.active_fcn.instruction(&Instruction::CallIndirect {
+                  ty: type_index,
+                  table: 0,
+               });
             }
             _ => unreachable!(),
          };
@@ -1538,11 +1609,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
          let si = generation_context.struct_info.get(&s_name.str).unwrap();
          for field in si.field_types.iter() {
             if let Some(value_of_field) = map.get(field.0).copied() {
-               do_emit_and_load_lval(value_of_field, generation_context, interner);
+               do_emit_and_load_lval(value_of_field, generation_context);
             } else {
                // Must be a default value
                let default_value = si.default_values.get(field.0).copied().unwrap();
-               do_emit(default_value, generation_context, interner);
+               do_emit(default_value, generation_context);
             }
          }
       }
@@ -1594,21 +1665,16 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             .expression
             .is_lvalue_disregard_consts(generation_context.expressions));
 
-         do_emit(*lhs_id, generation_context, interner);
+         do_emit(*lhs_id, generation_context);
          calculate_offset(lhs.exp_type.as_ref().unwrap(), field_names, generation_context);
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
-            do_emit_and_load_lval(*expr, generation_context, interner);
+            do_emit_and_load_lval(*expr, generation_context);
          }
       }
       Expression::ArrayIndex { array, index } => {
-         fn calculate_offset(
-            array: ExpressionId,
-            index_e: ExpressionId,
-            generation_context: &mut GenerationContext,
-            interner: &mut Interner,
-         ) {
+         fn calculate_offset(array: ExpressionId, index_e: ExpressionId, generation_context: &mut GenerationContext) {
             let sizeof_inner = match &generation_context.expressions[array].exp_type {
                Some(ExpressionType::Array(x, _)) => {
                   sizeof_type_mem(x, generation_context.enum_info, generation_context.struct_size_info)
@@ -1622,7 +1688,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
                let result = sizeof_inner.wrapping_mul(val_32);
                generation_context.emit_const_add_i32(result);
             } else {
-               do_emit_and_load_lval(index_e, generation_context, interner);
+               do_emit_and_load_lval(index_e, generation_context);
                generation_context.emit_const_mul_i32(sizeof_inner);
                generation_context.active_fcn.instruction(&Instruction::I32Add);
             }
@@ -1632,8 +1698,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext,
             .expression
             .is_lvalue_disregard_consts(generation_context.expressions));
 
-         do_emit(*array, generation_context, interner);
-         calculate_offset(*array, *index, generation_context, interner);
+         do_emit(*array, generation_context);
+         calculate_offset(*array, *index, generation_context);
       }
    }
 }
@@ -1654,8 +1720,21 @@ fn complement_val(t_type: &ExpressionType, wasm_type: WasmType, generation_conte
       crate::type_data::I64_TYPE => std::u64::MAX,
       _ => unreachable!(),
    };
-   writeln!(generation_context.out.out, "{}.const {}", wasm_type, magic_const).unwrap();
-   writeln!(generation_context.out.out, "{}.xor", wasm_type).unwrap();
+   match wasm_type {
+      WasmType::Int32 => {
+         generation_context
+            .active_fcn
+            .instruction(&Instruction::I32Const(magic_const as u32 as i32));
+         generation_context.active_fcn.instruction(&Instruction::I32Xor);
+      }
+      WasmType::Int64 => {
+         generation_context
+            .active_fcn
+            .instruction(&Instruction::I64Const(magic_const as i64));
+         generation_context.active_fcn.instruction(&Instruction::I64Xor);
+      }
+      _ => unreachable!(),
+   }
 }
 
 /// Places the address of given local on the stack
@@ -1786,36 +1865,46 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
       generation_context.enum_info,
       generation_context.struct_size_info,
    ) {
-      writeln!(generation_context.out.out, "{}.load", type_to_wasm_type_basic(val_type)).unwrap();
+      match type_to_wasm_type_basic(val_type) {
+         WasmType::Int64 => generation_context
+            .active_fcn
+            .instruction(&Instruction::I64Load(null_mem_arg())),
+         WasmType::Int32 => generation_context
+            .active_fcn
+            .instruction(&Instruction::I32Load(null_mem_arg())),
+         WasmType::Float64 => generation_context
+            .active_fcn
+            .instruction(&Instruction::F64Load(null_mem_arg())),
+         WasmType::Float32 => generation_context
+            .active_fcn
+            .instruction(&Instruction::F32Load(null_mem_arg())),
+      };
    } else {
-      let (load_suffx, sign_suffix) = match val_type {
-         ExpressionType::Int(x) => {
-            let load_suffx = match x.width {
-               IntWidth::Eight => "64",
-               IntWidth::Four | IntWidth::Pointer => "32",
-               IntWidth::Two => "16",
-               IntWidth::One => "8",
-            };
-            let sign_suffix = if x.signed { "_s" } else { "_u" };
-            (load_suffx, sign_suffix)
-         }
-         ExpressionType::Enum(_) => unreachable!(),
-         ExpressionType::Float(_) => ("", ""),
-         ExpressionType::Bool => ("8", "_u"),
+      match val_type {
+         ExpressionType::Int(x) => match (x.width, x.signed) {
+            (IntWidth::Two, true) => generation_context
+               .active_fcn
+               .instruction(&Instruction::I32Load16S(null_mem_arg())),
+            (IntWidth::Two, false) => generation_context
+               .active_fcn
+               .instruction(&Instruction::I32Load16U(null_mem_arg())),
+            (IntWidth::One, true) => generation_context
+               .active_fcn
+               .instruction(&Instruction::I32Load8S(null_mem_arg())),
+            (IntWidth::One, false) => generation_context
+               .active_fcn
+               .instruction(&Instruction::I32Load8U(null_mem_arg())),
+            _ => unreachable!(),
+         },
+         ExpressionType::Bool => generation_context
+            .active_fcn
+            .instruction(&Instruction::I32Load8U(null_mem_arg())),
          _ => unreachable!(),
       };
-      writeln!(
-         generation_context.out.out,
-         "{}.load{}{}",
-         type_to_wasm_type_basic(val_type),
-         load_suffx,
-         sign_suffix
-      )
-      .unwrap();
    }
 }
 
-fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext, interner: &mut Interner) {
+fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    if sizeof_type_values(
       val_type,
       generation_context.enum_info,
@@ -1838,9 +1927,10 @@ fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext, 
    ) > 1
    {
       let (store_fcn_index, _) = generation_context.needed_store_fns.insert_full(val_type.clone());
+      let overall_index = (generation_context.procedure_indices.len() + store_fcn_index) as u32;
       generation_context
-         .out
-         .emit_call(interner.intern(&format!("::store::{}", store_fcn_index)), interner);
+         .active_fcn
+         .instruction(&Instruction::Call(overall_index));
    }
 }
 
@@ -1883,25 +1973,21 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
          .active_fcn
          .instruction(&type_to_wasm_type_basic(val_type).store_instruction());
    } else {
-      let load_suffx = match val_type {
+      match val_type {
          ExpressionType::Int(x) => match x.width {
-            IntWidth::Eight => "64",
-            IntWidth::Four | IntWidth::Pointer => "32",
-            IntWidth::Two => "16",
-            IntWidth::One => "8",
+            IntWidth::Two => generation_context
+               .active_fcn
+               .instruction(&Instruction::I32Store16(null_mem_arg())),
+            IntWidth::One => generation_context
+               .active_fcn
+               .instruction(&Instruction::I32Store8(null_mem_arg())),
+            _ => unreachable!(),
          },
-         ExpressionType::Enum(_) => unreachable!(),
-         ExpressionType::Float(_) => "",
-         ExpressionType::Bool => "8",
+         ExpressionType::Bool => generation_context
+            .active_fcn
+            .instruction(&Instruction::I32Store8(null_mem_arg())),
          _ => unreachable!(),
       };
-      writeln!(
-         generation_context.out.out,
-         "{}.store{}",
-         type_to_wasm_type_basic(val_type),
-         load_suffx,
-      )
-      .unwrap();
    }
 }
 
