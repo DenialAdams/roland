@@ -43,7 +43,7 @@ struct GenerationContext<'a> {
    expressions: &'a ExpressionPool,
    procedure_to_table_index: IndexSet<StrId>,
    procedure_indices: HashMap<StrId, u32>,
-   levels_of_if: u32,
+   stack_of_loop_jump_offsets: Vec<u32>,
 }
 
 impl GenerationContext<'_> {
@@ -320,7 +320,7 @@ pub fn emit_wasm(
       expressions,
       procedure_to_table_index: IndexSet::new(),
       procedure_indices: HashMap::new(),
-      levels_of_if: 0,
+      stack_of_loop_jump_offsets: Vec::new(),
    };
 
    let mut import_section = ImportSection::new();
@@ -827,6 +827,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
 
          debug_assert!(!*inclusive); // unimplemented
 
+         generation_context.stack_of_loop_jump_offsets.push(0);
          generation_context
             .active_fcn
             .instruction(&Instruction::Block(BlockType::Empty)); // b
@@ -883,8 +884,10 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          generation_context.active_fcn.instruction(&Instruction::Br(0));
          generation_context.active_fcn.instruction(&Instruction::End);
          generation_context.active_fcn.instruction(&Instruction::End);
+         generation_context.stack_of_loop_jump_offsets.pop();
       }
       Statement::Loop(bn) => {
+         generation_context.stack_of_loop_jump_offsets.push(0);
          // nocheckin does it really have to be this complicated? seems like the innermost block is not necessary?
          generation_context
             .active_fcn
@@ -902,16 +905,17 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          generation_context.active_fcn.instruction(&Instruction::Br(0));
          generation_context.active_fcn.instruction(&Instruction::End); // end loop
          generation_context.active_fcn.instruction(&Instruction::End); // end block b
+         generation_context.stack_of_loop_jump_offsets.pop();
       }
       Statement::Break => {
          generation_context
             .active_fcn
-            .instruction(&Instruction::Br(2 + generation_context.levels_of_if));
+            .instruction(&Instruction::Br(2 + generation_context.stack_of_loop_jump_offsets.last().unwrap()));
       }
       Statement::Continue => {
          generation_context
             .active_fcn
-            .instruction(&Instruction::Br(generation_context.levels_of_if));
+            .instruction(&Instruction::Br(*generation_context.stack_of_loop_jump_offsets.last().unwrap()));
       }
       Statement::Expression(en) => {
          do_emit(*en, generation_context);
@@ -925,7 +929,9 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
       }
       Statement::IfElse(en, block_1, block_2) => {
          do_emit_and_load_lval(*en, generation_context);
-         generation_context.levels_of_if += 1;
+         if let Some(jo) = generation_context.stack_of_loop_jump_offsets.last_mut() {
+            *jo += 1;
+         }
          generation_context
             .active_fcn
             .instruction(&Instruction::If(BlockType::Empty));
@@ -938,7 +944,9 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          emit_statement(block_2, generation_context);
          // finish if
          generation_context.active_fcn.instruction(&Instruction::End);
-         generation_context.levels_of_if -= 1;
+         if let Some(jo) = generation_context.stack_of_loop_jump_offsets.last_mut() {
+            *jo -= 1;
+         }
       }
       Statement::Return(en) => {
          do_emit_and_load_lval(*en, generation_context);
