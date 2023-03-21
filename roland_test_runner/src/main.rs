@@ -260,7 +260,7 @@ fn test_result(tc_output: &Output, t_file_path: &Path) -> Result<(), TestFailure
 
       // Execute the program
       let mut prog_path = t_file_path.to_path_buf();
-      prog_path.set_extension("wat");
+      prog_path.set_extension("wasm");
 
       let prog_output = {
          let (mut handle, mut prog_output_stream) = {

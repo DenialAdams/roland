@@ -73,8 +73,8 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
    }
 
    let err_s = String::from_utf8(err_out).ok();
-   match compile_result.as_ref() {
-      Ok(v) => Some(wat::parse_bytes(v).unwrap().into_owned()),
+   match compile_result {
+      Ok(v) => Some(v),
       Err(_) => {
          output_frame.set_text_content(err_s.as_deref());
          None
