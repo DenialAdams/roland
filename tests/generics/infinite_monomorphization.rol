@@ -1,0 +1,11 @@
+proc main() {
+   let x = foo$bool();
+}
+
+proc foo$T() {
+   foo$proc(T)();
+}
+__END__
+compile:
+Reached depth limit of 100 during monomorphization
+↳ line 5, column 1 [tests/generics/infinite_monomorphization.rol]

@@ -203,8 +203,16 @@ impl TypeManager {
       }
    }
 
-   fn register_or_find_type_by_definition(&mut self, def: &ProcedureDefinition, si: &IndexMap<StrId, StructInfo>) -> u32 {
-      self.register_or_find_type(def.parameters.iter().map(|x| &x.p_type.e_type), &def.ret_type.e_type, si)
+   fn register_or_find_type_by_definition(
+      &mut self,
+      def: &ProcedureDefinition,
+      si: &IndexMap<StrId, StructInfo>,
+   ) -> u32 {
+      self.register_or_find_type(
+         def.parameters.iter().map(|x| &x.p_type.e_type),
+         &def.ret_type.e_type,
+         si,
+      )
    }
 
    fn register_or_find_type<'a, I: IntoIterator<Item = &'a ExpressionType>>(

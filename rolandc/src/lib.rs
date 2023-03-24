@@ -188,7 +188,10 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       return Err(CompilationError::Semantic);
    }
 
-   monomorphization::monomorphize(&mut ctx.program, &mut ctx.expressions, &mut ctx.interner);
+   monomorphization::monomorphize(&mut ctx.program, &mut ctx.expressions, &mut ctx.interner, &mut ctx.err_manager);
+   if !ctx.err_manager.errors.is_empty() {
+      return Err(CompilationError::Semantic);
+   }
 
    various_expression_lowering::lower_consts(&mut ctx.program, &mut ctx.expressions, &mut ctx.interner);
    ctx.program.global_info.retain(|_, v| !v.is_const);
