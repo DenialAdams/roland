@@ -80,7 +80,6 @@ fn type_to_wasm_type(t: &ExpressionType, buf: &mut Vec<ValType>, si: &IndexMap<S
 
 fn type_to_wasm_type_basic(t: &ExpressionType) -> ValType {
    match t {
-      ExpressionType::Pointer(_) => ValType::I32,
       ExpressionType::Int(x) => match x.width {
          IntWidth::Eight => ValType::I64,
          _ => ValType::I32,
@@ -944,7 +943,6 @@ fn emit_literal_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_co
       Expression::IntLiteral { val: x, .. } => {
          let width = match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => x.width,
-            ExpressionType::Pointer(_) => IntWidth::Pointer,
             _ => unreachable!(),
          };
          match width {
@@ -1380,16 +1378,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             do_emit(*e_id, generation_context);
 
             if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Float(_))
-               && matches!(target_type, ExpressionType::Int(_) | ExpressionType::Pointer(_))
+               && matches!(target_type, ExpressionType::Int(_))
             {
                // float -> int
                match target_type {
-                  ExpressionType::Pointer(_) => {
-                     // @FixedPointerWidth
-                     generation_context
-                        .active_fcn
-                        .instruction(&Instruction::I32ReinterpretF32);
-                  }
                   ExpressionType::Int(x) if x.width.as_num_bytes() == 4 => {
                      generation_context
                         .active_fcn
@@ -1404,7 +1396,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                }
             } else if matches!(
                e.exp_type.as_ref().unwrap(),
-               ExpressionType::Int(_) | ExpressionType::Pointer(_)
+               ExpressionType::Int(_)
             ) && matches!(target_type, ExpressionType::Float(_))
             {
                // int -> float

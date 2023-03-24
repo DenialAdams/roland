@@ -3,7 +3,7 @@ use indexmap::IndexMap;
 use crate::interner::StrId;
 use crate::parse::{Expression, ExpressionId, ExpressionPool, Program};
 use crate::semantic_analysis::EnumInfo;
-use crate::type_data::ExpressionType;
+use crate::type_data::{ExpressionType, USIZE_TYPE};
 use crate::typed_index_vec::Handle;
 
 fn lower_enum_type(the_enum_type: &mut ExpressionType, enum_info: &IndexMap<StrId, EnumInfo>) {
@@ -14,8 +14,8 @@ fn lower_enum_type(the_enum_type: &mut ExpressionType, enum_info: &IndexMap<StrI
       ExpressionType::Array(inner_type, _) => {
          lower_enum_type(inner_type, enum_info);
       }
-      ExpressionType::Pointer(inner_type) => {
-         lower_enum_type(inner_type, enum_info);
+      ExpressionType::Pointer(_) => {
+         *the_enum_type = USIZE_TYPE;
       }
       ExpressionType::ProcedurePointer { parameters, ret_type } => {
          for param in parameters.iter_mut() {
@@ -86,6 +86,13 @@ pub fn lower_enums(program: &mut Program, expressions: &mut ExpressionPool) {
    }
 
    for procedure in program.procedures.iter_mut() {
+      lower_enum_type(&mut procedure.definition.ret_type.e_type, &program.enum_info);
+      for param in procedure.definition.parameters.iter_mut() {
+         lower_enum_type(&mut param.p_type.e_type, &program.enum_info);
+      }
+   }
+
+   for procedure in program.external_procedures.iter_mut() {
       lower_enum_type(&mut procedure.definition.ret_type.e_type, &program.enum_info);
       for param in procedure.definition.parameters.iter_mut() {
          lower_enum_type(&mut param.p_type.e_type, &program.enum_info);
