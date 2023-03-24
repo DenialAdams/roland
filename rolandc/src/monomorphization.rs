@@ -81,7 +81,7 @@ pub fn monomorphize(program: &mut Program, expressions: &mut ExpressionPool, int
          &mut worklist,
       );
       let new_id = interner.intern(&format!(
-         "{}{}",
+         "{}${}",
          interner.lookup(new_spec.template_with_type_arguments.0),
          program.procedures.len() - 1
       ));
