@@ -1682,14 +1682,10 @@ fn complement_val(t_type: &ExpressionType, wasm_type: ValType, generation_contex
       crate::type_data::U8_TYPE => u64::from(std::u8::MAX),
       crate::type_data::U16_TYPE => u64::from(std::u16::MAX),
       crate::type_data::U32_TYPE => u64::from(std::u32::MAX),
-      // @FixedPointerWidth
-      crate::type_data::USIZE_TYPE => u64::from(std::u32::MAX),
       crate::type_data::U64_TYPE => std::u64::MAX,
       crate::type_data::I8_TYPE => u64::from(std::u32::MAX),
       crate::type_data::I16_TYPE => u64::from(std::u32::MAX),
       crate::type_data::I32_TYPE => u64::from(std::u32::MAX),
-      // @FixedPointerWidth
-      crate::type_data::ISIZE_TYPE => u64::from(std::u32::MAX),
       crate::type_data::I64_TYPE => std::u64::MAX,
       _ => unreachable!(),
    };
