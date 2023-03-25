@@ -24,7 +24,7 @@ mod add_virtual_variables;
 mod compile_globals;
 mod constant_folding;
 mod disjoint_set;
-mod enum_and_pointer_lowering;
+mod pre_wasm_lowering;
 pub mod error_handling;
 mod imports;
 pub mod interner;
@@ -234,7 +234,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 ) -> Result<Vec<u8>, CompilationError> {
    compile_for_errors(ctx, user_program_ep, config)?;
 
-   enum_and_pointer_lowering::lower_enums_and_pointers(&mut ctx.program, &mut ctx.expressions);
+   pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program, &mut ctx.expressions);
 
    add_virtual_variables::add_virtual_vars(&mut ctx.program, &mut ctx.expressions);
    Ok(wasm::emit_wasm(

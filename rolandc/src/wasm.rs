@@ -949,7 +949,7 @@ fn emit_literal_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_co
             IntWidth::Eight => {
                buf.extend(x.to_le_bytes());
             }
-            IntWidth::Pointer | IntWidth::Four => {
+            IntWidth::Four => {
                buf.extend((*x as u32).to_le_bytes());
             }
             IntWidth::Two => {
@@ -958,6 +958,7 @@ fn emit_literal_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_co
             IntWidth::One => {
                buf.extend((*x as u8).to_le_bytes());
             }
+            IntWidth::Pointer => unreachable!(),
          };
       }
       Expression::FloatLiteral(x) => {
