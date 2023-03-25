@@ -59,7 +59,23 @@ window.compileUpdateAll = async function compileUpdateAll() {
       });
       let response = new Response(wasm_bytes, { "headers": headers });
       let wasi_polyfill = { fd_write: fd_write_polyfill };
-      let result = await WebAssembly.instantiateStreaming(response, { wasi_unstable: wasi_polyfill });
+      let result;
+      try {
+         result = await WebAssembly.instantiateStreaming(response, { wasi_unstable: wasi_polyfill });
+      } catch (err) {
+         if (err instanceof WebAssembly.LinkError) {
+            output_frame.textContent = err.message;
+            output_frame.textContent += "\n---\n";
+            output_frame.textContent += "Note: External procedures in the Roland playground can't successfully link."
+            return;
+         } else if (err instanceof WebAssembly.CompileError) {
+            output_frame.textContent = err.message;
+            output_frame.textContent += "\n---\n";
+            output_frame.textContent += "Note: This is a bug in the roland compiler! Please file a github issue with the code that caused this."
+            return;
+         }
+         throw err;
+      };
       instance = result.instance;
       output_frame.textContent = '';
       try {
