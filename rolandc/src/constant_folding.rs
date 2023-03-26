@@ -126,9 +126,9 @@ fn fold_expr(
 
    // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
    // while this pointer is alive. We don't do this, because we update this expression in place.
-   let expr_to_fold = std::ptr::addr_of_mut!(folding_context.expressions[expr_index]);
+   let expr_to_fold = std::ptr::addr_of!(folding_context.expressions[expr_index]);
 
-   match unsafe { &mut (*expr_to_fold).expression } {
+   match unsafe { &(*expr_to_fold).expression } {
       Expression::ArrayIndex { array, index } => {
          try_fold_and_replace_expr(*array, err_manager, folding_context, interner);
          try_fold_and_replace_expr(*index, err_manager, folding_context, interner);
