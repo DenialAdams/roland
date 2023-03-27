@@ -73,11 +73,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
       validation_context,
    ));
 
-   // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
-   // while this pointer is alive. We don't do this, because we update this expression in place.
-   let inferring_expr = std::ptr::addr_of_mut!(validation_context.expressions[expr_index]);
-
-   match unsafe { &(*inferring_expr).expression } {
+   match validation_context.expressions[expr_index].expression.clone() {
       Expression::BoundFcnLiteral(_, _) => unreachable!(),
       Expression::Cast { .. } => unreachable!(),
       Expression::BoolLiteral(_) => unreachable!(),
@@ -96,24 +92,24 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
       }
       Expression::StringLiteral(_) => unreachable!(),
       Expression::BinaryOperator { lhs, rhs, .. } => {
-         set_inferred_type(e_type, *lhs, validation_context);
-         set_inferred_type(e_type, *rhs, validation_context);
+         set_inferred_type(e_type, lhs, validation_context);
+         set_inferred_type(e_type, rhs, validation_context);
          *validation_context.expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
       }
       Expression::UnaryOperator(unop, e) => {
          match unop {
             crate::parse::UnOp::Negate | crate::parse::UnOp::Complement => {
-               set_inferred_type(e_type, *e, validation_context);
+               set_inferred_type(e_type, e, validation_context);
             }
             crate::parse::UnOp::AddressOf => {
                // reverse the indirection
                let mut reversed = e_type.clone();
                reversed.decrement_indirection_count().unwrap();
-               set_inferred_type(&reversed, *e, validation_context);
+               set_inferred_type(&reversed, e, validation_context);
             }
             crate::parse::UnOp::Dereference => {
                let reversed = ExpressionType::Pointer(Box::new(e_type.clone()));
-               set_inferred_type(&reversed, *e, validation_context);
+               set_inferred_type(&reversed, e, validation_context);
             }
          }
          *validation_context.expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
@@ -182,11 +178,11 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          validation_context.unknown_literals.remove(&expr_index);
       }
       Expression::ArrayIndex { array, index: _index } => {
-         let ExpressionType::Array(_, real_array_len) = validation_context.expressions[*array].exp_type.as_ref().unwrap() else {
+         let ExpressionType::Array(_, real_array_len) = validation_context.expressions[array].exp_type.as_ref().unwrap() else {
             unreachable!()
          };
          let array_type = ExpressionType::Array(Box::new(e_type.clone()), *real_array_len);
-         set_inferred_type(&array_type, *array, validation_context);
+         set_inferred_type(&array_type, array, validation_context);
          *validation_context.expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
       }
       Expression::EnumLiteral(_, _) => unreachable!(),

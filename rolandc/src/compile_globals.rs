@@ -135,34 +135,30 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
 }
 
 fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
-   // SAFETY: it's paramount that this pointer stays valid, so we can't let the expression array resize
-   // while this pointer is alive. We don't do this, because we update this expression in place.
-   let expr_to_fold = std::ptr::addr_of!(cg_context.expressions[expr_index]);
-
-   match unsafe { &(*expr_to_fold).expression } {
+   match cg_context.expressions[expr_index].expression.clone() {
       Expression::Variable(x) => {
-         if cg_context.consts_being_processed.contains(x) {
-            let loc = cg_context.all_consts[x].0;
-            let name = cg_context.all_consts[x].2;
+         if cg_context.consts_being_processed.contains(&x) {
+            let loc = cg_context.all_consts[&x].0;
+            let name = cg_context.all_consts[&x].2;
             rolandc_error!(
                err_manager,
                loc,
                "const `{}` has a cyclic dependency",
                cg_context.interner.lookup(name),
             );
-         } else if cg_context.const_replacements.contains_key(x) {
+         } else if cg_context.const_replacements.contains_key(&x) {
             // We've already visited this constant, great, nothing to do
-         } else if cg_context.all_consts.contains_key(x) {
-            cg_const(*x, cg_context, err_manager);
+         } else if cg_context.all_consts.contains_key(&x) {
+            cg_const(x, cg_context, err_manager);
          }
       }
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::ArrayIndex { array, index } => {
-         cg_expr(*array, cg_context, err_manager);
-         cg_expr(*index, cg_context, err_manager);
+         cg_expr(array, cg_context, err_manager);
+         cg_expr(index, cg_context, err_manager);
       }
       Expression::ProcedureCall { args, proc_expr } => {
-         cg_expr(*proc_expr, cg_context, err_manager);
+         cg_expr(proc_expr, cg_context, err_manager);
          for arg in args.iter() {
             cg_expr(arg.expr, cg_context, err_manager);
          }
@@ -172,11 +168,11 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
          lhs,
          rhs,
       } => {
-         cg_expr(*lhs, cg_context, err_manager);
-         cg_expr(*rhs, cg_context, err_manager);
+         cg_expr(lhs, cg_context, err_manager);
+         cg_expr(rhs, cg_context, err_manager);
       }
       Expression::UnaryOperator(_op, expr) => {
-         cg_expr(*expr, cg_context, err_manager);
+         cg_expr(expr, cg_context, err_manager);
       }
       Expression::StructLiteral(_, field_exprs) => {
          for (_, expr) in field_exprs.iter() {
@@ -184,10 +180,10 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
          }
       }
       Expression::FieldAccess(_field_names, expr) => {
-         cg_expr(*expr, cg_context, err_manager);
+         cg_expr(expr, cg_context, err_manager);
       }
       Expression::Cast { expr, .. } => {
-         cg_expr(*expr, cg_context, err_manager);
+         cg_expr(expr, cg_context, err_manager);
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
