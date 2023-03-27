@@ -3,7 +3,7 @@ use indexmap::IndexMap;
 use crate::interner::StrId;
 use crate::parse::{Expression, ExpressionId, ExpressionPool, Program};
 use crate::semantic_analysis::EnumInfo;
-use crate::type_data::{ExpressionType, USIZE_TYPE, IntWidth};
+use crate::type_data::{ExpressionType, IntWidth, USIZE_TYPE};
 use crate::typed_index_vec::Handle;
 
 fn lower_type(the_enum_type: &mut ExpressionType, enum_info: &IndexMap<StrId, EnumInfo>) {

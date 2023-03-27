@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::rolandc_error;
+use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureNode, Statement};
 use crate::semantic_analysis::validator::map_generic_to_concrete;
@@ -22,7 +22,12 @@ struct SpecializationWorkItem {
    depth: usize,
 }
 
-pub fn monomorphize(program: &mut Program, expressions: &mut ExpressionPool, interner: &mut Interner, err_manager: &mut ErrorManager) {
+pub fn monomorphize(
+   program: &mut Program,
+   expressions: &mut ExpressionPool,
+   interner: &mut Interner,
+   err_manager: &mut ErrorManager,
+) {
    let mut worklist: Vec<SpecializationWorkItem> = Vec::new();
    let mut new_procedures: HashMap<(StrId, Box<[ExpressionType]>), ProcedureId> = HashMap::new();
 
@@ -65,7 +70,12 @@ pub fn monomorphize(program: &mut Program, expressions: &mut ExpressionPool, int
       let template_procedure = program.procedures.get(proc_id).unwrap();
 
       if new_spec.depth >= DEPTH_LIMIT {
-         rolandc_error!(err_manager, template_procedure.location, "Reached depth limit of {} during monomorphization", DEPTH_LIMIT);
+         rolandc_error!(
+            err_manager,
+            template_procedure.location,
+            "Reached depth limit of {} during monomorphization",
+            DEPTH_LIMIT
+         );
          return;
       }
 

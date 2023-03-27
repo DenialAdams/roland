@@ -1395,10 +1395,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                   }
                   _ => unreachable!(),
                }
-            } else if matches!(
-               e.exp_type.as_ref().unwrap(),
-               ExpressionType::Int(_)
-            ) && matches!(target_type, ExpressionType::Float(_))
+            } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Int(_))
+               && matches!(target_type, ExpressionType::Float(_))
             {
                // int -> float
                match *target_type {

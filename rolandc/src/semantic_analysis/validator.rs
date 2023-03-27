@@ -1845,60 +1845,7 @@ fn check_procedure_item(
    interner: &Interner,
    err_manager: &mut ErrorManager,
 ) -> ExpressionType {
-   if callee_proc_info.type_parameters.len() == type_arguments.len() {
-      for (g_arg, constraints) in type_arguments.iter().zip(callee_proc_info.type_parameters.values()) {
-         match g_arg.gtype {
-            ExpressionType::Unresolved(_) => {
-               // We have already errored on this argument
-            }
-            ExpressionType::GenericParam(gp) => {
-               // this unwrap is safe, because nothing should be resolved to a generic param if we're not in a procedure body
-               let our_constraints = our_proc_info.and_then(|x| x.type_parameters.get(&gp)).unwrap();
-               if !our_constraints.is_superset(constraints) {
-                  let constraints_we_do_not_meet: Vec<String> = constraints
-                     .difference(our_constraints)
-                     .map(|x| format!("`{}`", interner.lookup(*x)))
-                     .collect();
-                  rolandc_error!(
-                     err_manager,
-                     g_arg.location,
-                     "For procedure `{}`, encountered generic argument of type {} which does not meet the constraints {}",
-                     interner.lookup(callee_proc_name),
-                     g_arg.gtype.as_roland_type_info_notv(interner),
-                     constraints_we_do_not_meet.join(", "),
-                  );
-               }
-            }
-            _ => {
-               for constraint in constraints {
-                  let constraint_met = match interner.lookup(*constraint) {
-                     "Enum" => matches!(g_arg.gtype, ExpressionType::Enum(_)),
-                     "Float" => matches!(g_arg.gtype, ExpressionType::Float(_)),
-                     _ => unreachable!(),
-                  };
-                  if !constraint_met {
-                     rolandc_error!(
-                                       err_manager,
-                                       g_arg.location,
-                                       "For procedure `{}`, encountered generic argument of type {} which does not meet the constraint `{}`",
-                                       interner.lookup(callee_proc_name),
-                                       g_arg.gtype.as_roland_type_info_notv(interner),
-                                       interner.lookup(*constraint),
-                                    );
-                  }
-               }
-            }
-         }
-      }
-      ExpressionType::ProcedureItem(
-         callee_proc_name,
-         type_arguments
-            .iter()
-            .map(|x| x.gtype.clone())
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-      )
-   } else {
+   if callee_proc_info.type_parameters.len() != type_arguments.len() {
       rolandc_error!(
          err_manager,
          location,
@@ -1907,8 +1854,60 @@ fn check_procedure_item(
          callee_proc_info.type_parameters.len(),
          type_arguments.len()
       );
-      ExpressionType::CompileError
+      return ExpressionType::CompileError;
    }
+   for (g_arg, constraints) in type_arguments.iter().zip(callee_proc_info.type_parameters.values()) {
+      match g_arg.gtype {
+         ExpressionType::Unresolved(_) => {
+            // We have already errored on this argument
+         }
+         ExpressionType::GenericParam(gp) => {
+            // this unwrap is safe, because nothing should be resolved to a generic param if we're not in a procedure body
+            let our_constraints = our_proc_info.and_then(|x| x.type_parameters.get(&gp)).unwrap();
+            if !our_constraints.is_superset(constraints) {
+               let constraints_we_do_not_meet: Vec<String> = constraints
+                  .difference(our_constraints)
+                  .map(|x| format!("`{}`", interner.lookup(*x)))
+                  .collect();
+               rolandc_error!(
+                  err_manager,
+                  g_arg.location,
+                  "For procedure `{}`, encountered generic argument of type {} which does not meet the constraints {}",
+                  interner.lookup(callee_proc_name),
+                  g_arg.gtype.as_roland_type_info_notv(interner),
+                  constraints_we_do_not_meet.join(", "),
+               );
+            }
+         }
+         _ => {
+            for constraint in constraints {
+               let constraint_met = match interner.lookup(*constraint) {
+                  "Enum" => matches!(g_arg.gtype, ExpressionType::Enum(_)),
+                  "Float" => matches!(g_arg.gtype, ExpressionType::Float(_)),
+                  _ => unreachable!(),
+               };
+               if !constraint_met {
+                  rolandc_error!(
+                                       err_manager,
+                                       g_arg.location,
+                                       "For procedure `{}`, encountered generic argument of type {} which does not meet the constraint `{}`",
+                                       interner.lookup(callee_proc_name),
+                                       g_arg.gtype.as_roland_type_info_notv(interner),
+                                       interner.lookup(*constraint),
+                                    );
+               }
+            }
+         }
+      }
+   }
+   ExpressionType::ProcedureItem(
+      callee_proc_name,
+      type_arguments
+         .iter()
+         .map(|x| x.gtype.clone())
+         .collect::<Vec<_>>()
+         .into_boxed_slice(),
+   )
 }
 
 fn check_type_declared_vs_actual(

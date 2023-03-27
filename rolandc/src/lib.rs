@@ -24,13 +24,13 @@ mod add_virtual_variables;
 mod compile_globals;
 mod constant_folding;
 mod disjoint_set;
-mod pre_wasm_lowering;
 pub mod error_handling;
 mod imports;
 pub mod interner;
 mod lex;
 mod monomorphization;
 pub mod parse;
+mod pre_wasm_lowering;
 mod semantic_analysis;
 mod size_info;
 pub mod source_info;
@@ -188,7 +188,12 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       return Err(CompilationError::Semantic);
    }
 
-   monomorphization::monomorphize(&mut ctx.program, &mut ctx.expressions, &mut ctx.interner, &mut ctx.err_manager);
+   monomorphization::monomorphize(
+      &mut ctx.program,
+      &mut ctx.expressions,
+      &mut ctx.interner,
+      &mut ctx.err_manager,
+   );
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
