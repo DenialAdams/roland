@@ -1339,13 +1339,14 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          let e = &generation_context.expressions[*e];
 
          let (source_width, source_is_signed) = match e.exp_type.as_ref().unwrap() {
-            ExpressionType::Int(x) => (x.width, x.signed),
-            ExpressionType::Bool => (IntWidth::One, false),
+            ExpressionType::Int(x) => (x.width.as_num_bytes(), x.signed),
+            ExpressionType::Bool => (1, false),
+            ExpressionType::Float(_) => (1, false), // unused
             _ => unreachable!(),
          };
 
          match target_type {
-            ExpressionType::Int(x) if x.width == IntWidth::Eight && source_width.as_num_bytes() <= 4 => {
+            ExpressionType::Int(x) if x.width == IntWidth::Eight && source_width <= 4 => {
                if source_is_signed {
                   generation_context.active_fcn.instruction(&Instruction::I64ExtendI32S);
                } else {
