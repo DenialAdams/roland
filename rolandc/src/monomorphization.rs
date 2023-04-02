@@ -294,7 +294,7 @@ fn deep_clone_expr(
       Expression::BoolLiteral(_) => (),
       Expression::StringLiteral(_) => (),
       Expression::IntLiteral { .. } => (),
-      Expression::FloatLiteral(_) => (),
+      Expression::FloatLiteral { .. } => (),
       Expression::UnitLiteral => (),
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::Variable(_) => (),

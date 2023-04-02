@@ -1,0 +1,7 @@
+proc main() {
+   let x: f32 = 0.004221370676532388;
+   println(f32_to_string(x));
+}
+__END__
+run:
+4.2213709E-3

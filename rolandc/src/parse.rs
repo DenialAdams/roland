@@ -213,7 +213,10 @@ pub enum Expression {
       val: u64,
       synthetic: bool,
    },
-   FloatLiteral(f64),
+   FloatLiteral {
+      val: f64,
+      source_text: Option<StrId>,
+   },
    UnitLiteral,
    UnresolvedVariable(StrNode),
    Variable(VariableId),
@@ -405,7 +408,7 @@ fn token_starts_expression(token: Token) -> bool {
       Token::BoolLiteral(_)
          | Token::StringLiteral(_)
          | Token::IntLiteral(_)
-         | Token::FloatLiteral(_)
+         | Token::FloatLiteral(_, _)
          | Token::OpenParen
          | Token::OpenSquareBracket
          | Token::Exclam
@@ -1252,7 +1255,7 @@ fn pratt(
          expr_begin_token.source_info,
          expressions,
       ),
-      Token::FloatLiteral(x) => wrap(Expression::FloatLiteral(x), expr_begin_token.source_info, expressions),
+      Token::FloatLiteral(x, source_text) => wrap(Expression::FloatLiteral { val: x, source_text: Some(source_text) }, expr_begin_token.source_info, expressions),
       Token::StringLiteral(x) => wrap(Expression::StringLiteral(x), expr_begin_token.source_info, expressions),
       Token::Identifier(s) => {
          if l.peek_token() == Token::Dollar {

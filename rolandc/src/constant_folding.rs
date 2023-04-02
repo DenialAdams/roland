@@ -236,7 +236,7 @@ fn fold_expr(
 
          None
       }
-      Expression::FloatLiteral(_) => None,
+      Expression::FloatLiteral { .. } => None,
       Expression::UnitLiteral | Expression::BoundFcnLiteral(_, _) => None,
       Expression::BinaryOperator {
          operator,
@@ -832,7 +832,7 @@ pub fn is_const(expr: &Expression, expressions: &ExpressionPool) -> bool {
       Expression::UnitLiteral => true,
       Expression::EnumLiteral(_, _) => true,
       Expression::IntLiteral { .. } => true,
-      Expression::FloatLiteral(_) => true,
+      Expression::FloatLiteral { .. } => true,
       Expression::BoolLiteral(_) => true,
       Expression::ArrayLiteral(exprs) => exprs
          .iter()
@@ -937,10 +937,22 @@ impl Literal {
    fn transmute(self, target_type: &ExpressionType) -> Option<Expression> {
       Some(match (self, target_type) {
          // Transmute int to float
-         (Literal::Int32(i), &F32_TYPE) => Expression::FloatLiteral(f64::from(f32::from_bits(i as u32))),
-         (Literal::Uint32(i), &F32_TYPE) => Expression::FloatLiteral(f64::from(f32::from_bits(i))),
-         (Literal::Int64(i), &F64_TYPE) => Expression::FloatLiteral(f64::from_bits(i as u64)),
-         (Literal::Uint64(i), &F64_TYPE) => Expression::FloatLiteral(f64::from_bits(i)),
+         (Literal::Int32(i), &F32_TYPE) => Expression::FloatLiteral {
+            val: f64::from(f32::from_bits(i as u32)),
+            source_text: None,
+         },
+         (Literal::Uint32(i), &F32_TYPE) => Expression::FloatLiteral {
+            val: f64::from(f32::from_bits(i)),
+            source_text: None,
+         },
+         (Literal::Int64(i), &F64_TYPE) => Expression::FloatLiteral {
+            val: f64::from_bits(i as u64),
+            source_text: None,
+         },
+         (Literal::Uint64(i), &F64_TYPE) => Expression::FloatLiteral {
+            val: f64::from_bits(i),
+            source_text: None,
+         },
 
          // Transmute float to int
          (Literal::Float32(f), &ExpressionType::Int(_)) => Expression::IntLiteral {
@@ -1041,8 +1053,14 @@ impl Literal {
 
    fn extend(self, target_type: &ExpressionType) -> Option<Expression> {
       Some(match (self, target_type) {
-         (Literal::Float64(f), &ExpressionType::Float(_)) => Expression::FloatLiteral(f),
-         (Literal::Float32(f), &ExpressionType::Float(_)) => Expression::FloatLiteral(f64::from(f)),
+         (Literal::Float64(f), &ExpressionType::Float(_)) => Expression::FloatLiteral {
+            val: f,
+            source_text: None,
+         },
+         (Literal::Float32(f), &ExpressionType::Float(_)) => Expression::FloatLiteral {
+            val: f64::from(f),
+            source_text: None,
+         },
          (Literal::Int64(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: i as u64,
             synthetic: true,
@@ -1081,7 +1099,10 @@ impl Literal {
 
    fn truncate(self, target_type: &ExpressionType) -> Option<Expression> {
       Some(match (self, target_type) {
-         (Literal::Float64(f), &F32_TYPE) => Expression::FloatLiteral(f64::from(f as f32)),
+         (Literal::Float64(f), &F32_TYPE) => Expression::FloatLiteral {
+            val: f64::from(f as f32),
+            source_text: None,
+         },
          (Literal::Uint64(i), &U32_TYPE) => Expression::IntLiteral {
             val: u64::from(i as u32),
             synthetic: true,
@@ -1216,8 +1237,14 @@ impl Literal {
             val: u64::from(i.checked_add(j)?),
             synthetic: true,
          }),
-         (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i + j)),
-         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i - j))),
+         (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral {
+            val: i + j,
+            source_text: None,
+         }),
+         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral {
+            val: f64::from(i - j),
+            source_text: None,
+         }),
          _ => unreachable!(),
       }
    }
@@ -1256,8 +1283,14 @@ impl Literal {
             val: u64::from(i.checked_sub(j)?),
             synthetic: true,
          }),
-         (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i - j)),
-         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i - j))),
+         (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral {
+            val: i - j,
+            source_text: None,
+         }),
+         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral {
+            val: f64::from(i - j),
+            source_text: None,
+         }),
          _ => unreachable!(),
       }
    }
@@ -1296,8 +1329,14 @@ impl Literal {
             val: u64::from(i.checked_mul(j)?),
             synthetic: true,
          }),
-         (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i * j)),
-         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i * j))),
+         (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral {
+            val: i * j,
+            source_text: None,
+         }),
+         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral {
+            val: f64::from(i * j),
+            source_text: None,
+         }),
          _ => unreachable!(),
       }
    }
@@ -1336,8 +1375,14 @@ impl Literal {
             val: u64::from(i.checked_rem(j)?),
             synthetic: true,
          }),
-         (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i % j)),
-         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i % j))),
+         (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral {
+            val: i % j,
+            source_text: None,
+         }),
+         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral {
+            val: f64::from(i % j),
+            source_text: None,
+         }),
          _ => unreachable!(),
       }
    }
@@ -1376,8 +1421,14 @@ impl Literal {
             val: u64::from(i.checked_div(j)?),
             synthetic: true,
          }),
-         (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i / j)),
-         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i / j))),
+         (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral {
+            val: i / j,
+            source_text: None,
+         }),
+         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral {
+            val: f64::from(i / j),
+            source_text: None,
+         }),
          _ => unreachable!(),
       }
    }
@@ -1476,8 +1527,8 @@ impl Literal {
             val: i64::from(i.checked_neg()?) as u64,
             synthetic: true,
          }),
-         Literal::Float64(i) => Some(Expression::FloatLiteral(-i)),
-         Literal::Float32(i) => Some(Expression::FloatLiteral(f64::from(-i))),
+         Literal::Float64(i) => Some(Expression::FloatLiteral { val: -i, source_text: None }),
+         Literal::Float32(i) => Some(Expression::FloatLiteral { val: f64::from(-i), source_text: None }),
          _ => unreachable!(),
       }
    }
@@ -1691,7 +1742,7 @@ fn extract_literal(expr_node: &ExpressionNode) -> Option<Literal> {
             _ => unreachable!(),
          }
       }
-      Expression::FloatLiteral(x) => match *expr_node.exp_type.as_ref().unwrap() {
+      Expression::FloatLiteral { val: x, .. } => match *expr_node.exp_type.as_ref().unwrap() {
          F64_TYPE => Some(Literal::Float64(*x)),
          F32_TYPE => Some(Literal::Float32(*x as f32)),
          _ => unreachable!(),
@@ -1725,7 +1776,7 @@ pub fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &E
       Expression::BoolLiteral(_) => false,
       Expression::StringLiteral(_) => false,
       Expression::IntLiteral { .. } => false,
-      Expression::FloatLiteral(_) => false,
+      Expression::FloatLiteral { .. } => false,
       Expression::UnitLiteral | Expression::BoundFcnLiteral(_, _) => false,
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::Variable(_) => false,

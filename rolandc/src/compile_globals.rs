@@ -194,7 +194,7 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
       Expression::BoolLiteral(_) => (),
       Expression::StringLiteral(_) => (),
       Expression::IntLiteral { .. } => (),
-      Expression::FloatLiteral(_) => (),
+      Expression::FloatLiteral { .. } => (),
       Expression::UnitLiteral => (),
       Expression::BoundFcnLiteral(_, _) => (),
    }

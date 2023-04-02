@@ -961,7 +961,7 @@ fn emit_literal_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_co
             IntWidth::Pointer => unreachable!(),
          };
       }
-      Expression::FloatLiteral(x) => {
+      Expression::FloatLiteral { val: x, .. } => {
          let width = match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Float(x) => x.width,
             _ => unreachable!(),
@@ -1054,7 +1054,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             _ => unreachable!(),
          };
       }
-      Expression::FloatLiteral(x) => {
+      Expression::FloatLiteral { val: x, .. } => {
          let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
          match wasm_type {
             ValType::F32 => generation_context

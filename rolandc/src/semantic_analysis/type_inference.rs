@@ -77,7 +77,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
       Expression::BoundFcnLiteral(_, _) => unreachable!(),
       Expression::Cast { .. } => unreachable!(),
       Expression::BoolLiteral(_) => unreachable!(),
-      Expression::IntLiteral { .. } | Expression::FloatLiteral(_) => {
+      Expression::IntLiteral { .. } | Expression::FloatLiteral { .. } => {
          if let ExpressionType::Unknown(e_tv) = e_type {
             let my_tv = match validation_context.expressions[expr_index].exp_type.as_ref().unwrap() {
                ExpressionType::Unknown(x) => *x,

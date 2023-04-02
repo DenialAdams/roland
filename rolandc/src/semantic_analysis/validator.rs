@@ -418,6 +418,13 @@ pub fn type_and_check_validity(
                validation_context.unknown_literals.remove(&ExpressionId::new(i));
             }
          }
+
+         if e.exp_type.as_ref().map_or(false, |x| *x == F32_TYPE) {
+            if let Expression::FloatLiteral { val, source_text } = &mut e.expression {
+               let raw_buf = interner.lookup(source_text.unwrap());
+               *val = f64::from(raw_buf.parse::<f32>().unwrap());
+            }
+         }
       }
 
       for proc in program.procedures.iter_mut() {
@@ -866,7 +873,7 @@ fn get_type(
          let new_type_variable = validation_context.type_variables.new_type_variable(TypeConstraint::Int);
          ExpressionType::Unknown(new_type_variable)
       }
-      Expression::FloatLiteral(_) => {
+      Expression::FloatLiteral { .. } => {
          validation_context.unknown_literals.insert(expr_index);
          let new_type_variable = validation_context
             .type_variables

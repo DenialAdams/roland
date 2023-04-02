@@ -50,7 +50,7 @@ pub enum Token {
    BoolLiteral(bool),
    StringLiteral(StrId),
    IntLiteral(u64),
-   FloatLiteral(f64),
+   FloatLiteral(f64, StrId),
    Plus,
    Minus,
    Multiply,
@@ -118,7 +118,7 @@ impl Token {
          Token::BoolLiteral(_) => "boolean literal",
          Token::StringLiteral(_) => "string literal",
          Token::IntLiteral(_) => "int literal",
-         Token::FloatLiteral(_) => "float literal",
+         Token::FloatLiteral(_, _) => "float literal",
          Token::Plus => "token '+'",
          Token::Minus => "token '-'",
          Token::Multiply => "token '*'",
@@ -788,6 +788,7 @@ pub fn lex_for_tokens(
                         file: source_path,
                      },
                      is_float,
+                     interner,
                   )?);
                   cur_position.col += str_buf.clear();
                   is_float = false;
@@ -817,6 +818,7 @@ pub fn lex_for_tokens(
                         file: source_path,
                      },
                      is_float,
+                     interner,
                   )?);
                   cur_position.col += str_buf.clear();
                   is_float = false;
@@ -833,6 +835,7 @@ pub fn lex_for_tokens(
                      file: source_path,
                   },
                   is_float,
+                  interner,
                )?);
                cur_position.col += str_buf.clear();
                is_float = false;
@@ -856,6 +859,7 @@ pub fn lex_for_tokens(
                      file: source_path,
                   },
                   is_float,
+                  interner,
                )?);
                cur_position.col += str_buf.clear();
                is_float = false;
@@ -903,6 +907,7 @@ pub fn lex_for_tokens(
                file: source_path,
             },
             is_float,
+            interner,
          )?);
          cur_position.col += str_buf.clear();
          Ok(tokens)
@@ -928,6 +933,7 @@ fn finish_numeric_literal(
    err_manager: &mut ErrorManager,
    source_info: SourceInfo,
    is_float: bool,
+   interner: &mut Interner,
 ) -> Result<SourceToken, ()> {
    let resulting_token = if is_float {
       let Ok(float_value) = s.parse::<f64>() else {
@@ -938,7 +944,7 @@ fn finish_numeric_literal(
          );
          return Err(());
       };
-      Token::FloatLiteral(float_value)
+      Token::FloatLiteral(float_value, interner.intern(s))
    } else if let Some(rest_of_s) = s.strip_prefix("0x") {
       parse_int(rest_of_s, 16, err_manager, source_info)?
    } else if let Some(rest_of_s) = s.strip_prefix("0o") {
