@@ -75,7 +75,6 @@ pub enum CompilationError {
    Parse,
    Semantic,
    Io,
-   Internal,
 }
 
 pub trait FileResolver<'a> {

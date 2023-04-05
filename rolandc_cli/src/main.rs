@@ -4,7 +4,6 @@
 #![allow(clippy::unnecessary_wraps)] // False positives
 
 use std::borrow::Cow;
-use std::io::Write;
 use std::path::PathBuf;
 
 use rolandc::{CompilationContext, CompilationEntryPoint, CompilationError, FileResolver, Target};
@@ -128,10 +127,6 @@ fn main() {
       Err(CompilationError::Parse) => std::process::exit(1),
       Err(CompilationError::Semantic) => std::process::exit(1),
       Err(CompilationError::Io) => std::process::exit(1),
-      Err(CompilationError::Internal) => {
-         writeln!(err_stream_l, "rolandc has encountered an internal error. *This is a bug in the compiler*, please file an issue on github with the problematic input.").unwrap();
-         std::process::exit(1);
-      }
    };
 
    let output_path = if let Some(v) = opts.output {

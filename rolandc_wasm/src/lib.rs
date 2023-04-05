@@ -4,9 +4,7 @@
 #![allow(clippy::missing_panics_doc)] // We don't have any documentation
 #![allow(clippy::missing_errors_doc)] // We don't have any documentation
 
-use std::io::Write;
-
-use rolandc::{CompilationContext, CompilationError, FileResolver};
+use rolandc::{CompilationContext, FileResolver};
 use wasm_bindgen::prelude::*;
 
 static mut COMPILATION_CTX: Option<CompilationContext> = None;
@@ -67,10 +65,6 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
       rolandc::compile::<PlaygroundFileResolver>(ctx, rolandc::CompilationEntryPoint::Playground(source_code), &config);
 
    ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner);
-
-   if let Err(CompilationError::Internal) = compile_result.as_ref() {
-      writeln!(err_out, "rolandc has encountered an internal error. *This is a bug in the compiler*, please file an issue on github with the problematic input.").unwrap();
-   }
 
    let err_s = String::from_utf8(err_out).ok();
    match compile_result {
