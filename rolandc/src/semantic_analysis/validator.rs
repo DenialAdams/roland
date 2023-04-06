@@ -694,18 +694,24 @@ fn type_statement(
                dt_str,
             );
             ExpressionType::CompileError
-         } else if dt.is_some() {
+         } else if let Some(dt_val) = dt {
             if let Some(en) = opt_en {
                check_type_declared_vs_actual(
-                  dt.as_ref().unwrap(),
+                  dt_val,
                   en,
                   interner,
                   &validation_context.type_variables,
                   err_manager,
                );
+            } else if dt_val.e_type.is_or_contains_never(&validation_context.struct_size_info) {
+               rolandc_error!(
+                  err_manager,
+                  id.location,
+                  "Variables of the never type, a pointer to the never type, or a struct containing the never type can't be uninitialized",
+               );
             }
 
-            dt.clone().map(|x| x.e_type).unwrap()
+            dt_val.e_type.clone()
          } else if let Some(en) = opt_en {
             en.exp_type.clone().unwrap()
          } else {
