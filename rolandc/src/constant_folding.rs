@@ -777,37 +777,77 @@ fn fold_expr(
       Expression::FieldAccess(field_names, expr) => {
          try_fold_and_replace_expr(expr, err_manager, folding_context, interner);
 
-         let expr = &folding_context.expressions[expr];
+         if expression_could_have_side_effects(expr, folding_context.expressions) {
+            None
+         } else {
+            let expr = &folding_context.expressions[expr];
 
-         if is_const(&expr.expression, folding_context.expressions) {
-            let mut struct_literal = &expr.expression;
-            // drill to innermost struct
-            for field_name in field_names.iter().take(field_names.len() - 1) {
-               match struct_literal {
-                  Expression::StructLiteral(_, fields) => {
-                     // We want O(1) field access in other places- consider unifying, perhaps at parse time? TODO
-                     let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
-                     struct_literal = &folding_context.expressions[map.get(field_name).copied().unwrap()].expression;
+            // Handle the case where we're getting the length of an array
+            // (only requires type information, no constant expressions)
+            {
+               let mut next_exp_type = expr.exp_type.as_ref().unwrap();
+               for field_name in field_names.iter() {
+                  match next_exp_type {
+                     ExpressionType::Struct(s) => {
+                        next_exp_type = &folding_context.struct_info.get(s).unwrap().field_types.get(field_name).unwrap().e_type;
+                     }
+                     ExpressionType::Array(_, len) => {
+                        // Arrays only have one possible field, length
+                        return Some(ExpressionNode {
+                           expression: Expression::IntLiteral {
+                              val: u64::from(*len),
+                              synthetic: true,
+                           },
+                           exp_type: folding_context.expressions[expr_index].exp_type.clone(),
+                           location: expr_to_fold_location,
+                        })
+                     }
+                     _ => unreachable!(),
                   }
-                  _ => unreachable!(),
                }
             }
 
-            match struct_literal {
+            let mut inner_expr_node = expr;
+
+            // drill to innermost struct
+            for field_name in field_names.iter().take(field_names.len() - 1) {
+               match &inner_expr_node.expression {
+                  Expression::StructLiteral(_, fields) => {
+                     // We want O(1) field access in other places- consider unifying, perhaps at parse time? TODO
+                     let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
+                     inner_expr_node = &folding_context.expressions[map.get(field_name).copied().unwrap()];
+                  }
+                  _ => return None,
+               }
+            }
+
+            match &inner_expr_node.expression {
+               Expression::StringLiteral(literal_val)
+                  if interner.lookup(field_names.last().copied().unwrap()) == "length" =>
+               {
+                  Some(ExpressionNode {
+                     expression: Expression::IntLiteral {
+                        val: interner.lookup(*literal_val).len() as u64,
+                        synthetic: true,
+                     },
+                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
+                     location: expr_to_fold_location,
+                  })
+               }
                Expression::StructLiteral(_, fields) => {
                   // We want O(1) field access in other places- consider unifying, perhaps at parse time? TODO
                   let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
-                  let inner_node = folding_context.expressions[*map.get(field_names.last().unwrap()).unwrap()].clone();
+                  let inner_node =
+                     folding_context.expressions[*map.get(field_names.last().unwrap()).unwrap()].clone();
                   Some(ExpressionNode {
                      expression: inner_node.expression,
                      exp_type: inner_node.exp_type,
                      location: expr_to_fold_location,
                   })
                }
-               _ => unreachable!(),
+               Expression::ArrayLiteral(_) => unreachable!(), // covered by type check above
+               _ => None,                                     // Some non-constant
             }
-         } else {
-            None
          }
       }
       Expression::Cast { cast_type, expr, .. } => {

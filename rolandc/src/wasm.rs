@@ -1595,6 +1595,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             field_names: &[StrId],
             generation_context: &mut GenerationContext,
          ) {
+            // all of this code needs to work for array type things
+            // because in some rare circumstances, those values aren't lowered by the constant folder
             let ExpressionType::Struct(mut struct_name) = lhs_type else { unreachable!() };
             let mut mem_offset = 0;
 

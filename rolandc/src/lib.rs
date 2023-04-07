@@ -197,7 +197,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       return Err(CompilationError::Semantic);
    }
 
-   various_expression_lowering::lower_consts(&mut ctx.program, &mut ctx.expressions, &mut ctx.interner);
+   various_expression_lowering::lower_consts(&mut ctx.program, &mut ctx.expressions);
    ctx.program.global_info.retain(|_, v| !v.is_const);
 
    compile_globals::ensure_statics_const(

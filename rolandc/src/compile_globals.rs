@@ -235,7 +235,5 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
       cg_context.expressions,
       expr_index,
       cg_context.const_replacements,
-      cg_context.struct_info,
-      cg_context.interner,
    );
 }

@@ -1,0 +1,21 @@
+struct Foo {
+   x: u8,
+   y: [u8; 2],
+}
+
+proc main() {
+   let a = Foo {
+      x: disarmMissiles(),
+      y: [1, 2]
+   }.y.length;
+   println(int_to_string(a extend u64));
+}
+
+proc disarmMissiles() -> u8 {
+   println("disarmed");
+   return 10;
+}
+__END__
+run:
+disarmed
+2
