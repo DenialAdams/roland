@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::ops::{BitAnd, BitOr, BitXor};
 
+use indexmap::IndexMap;
+
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_warn};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
@@ -9,6 +11,8 @@ use crate::parse::{
    BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement,
    StatementNode, UnOp,
 };
+use crate::semantic_analysis::{EnumInfo, StructInfo};
+use crate::size_info::SizeInfo;
 use crate::type_data::{
    ExpressionType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
    U8_TYPE, USIZE_TYPE,
@@ -16,6 +20,9 @@ use crate::type_data::{
 
 pub struct FoldingContext<'a> {
    pub expressions: &'a mut ExpressionPool,
+   pub struct_info: &'a IndexMap<StrId, StructInfo>,
+   pub struct_size_info: &'a HashMap<StrId, SizeInfo>,
+   pub enum_info: &'a IndexMap<StrId, EnumInfo>,
 }
 
 pub fn fold_constants(
@@ -24,7 +31,12 @@ pub fn fold_constants(
    expressions: &mut ExpressionPool,
    interner: &Interner,
 ) {
-   let mut folding_context = FoldingContext { expressions };
+   let mut folding_context = FoldingContext {
+      expressions,
+      struct_info: &program.struct_info,
+      struct_size_info: &program.struct_size_info,
+      enum_info: &program.enum_info,
+   };
 
    for procedure in program.procedures.iter_mut() {
       if !procedure.definition.generic_parameters.is_empty() {
@@ -173,7 +185,11 @@ fn fold_expr(
             try_fold_and_replace_expr(arg, err_manager, folding_context, interner);
          }
 
-         None
+         fold_builtin_call(proc_expr, interner, folding_context).map(|expr| ExpressionNode {
+            expression: expr,
+            exp_type: folding_context.expressions[expr_index].exp_type.clone(),
+            location: expr_to_fold_location,
+         })
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
@@ -823,6 +839,44 @@ fn fold_expr(
          }
       }
       Expression::EnumLiteral(_, _) => None,
+   }
+}
+
+pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &FoldingContext) -> Option<Expression> {
+   let (proc_name, generic_args) = match &fc.expressions[proc_expr].exp_type.as_ref().unwrap() {
+      ExpressionType::ProcedureItem(x, type_arguments) => (*x, type_arguments),
+      _ => return None,
+   };
+
+   match interner.lookup(proc_name) {
+      "sizeof" => {
+         let type_size = crate::size_info::sizeof_type_mem(&generic_args[0], fc.enum_info, fc.struct_size_info);
+
+         Some(Expression::IntLiteral {
+            val: u64::from(type_size),
+            synthetic: true,
+         })
+      }
+      "alignof" => {
+         let type_alignment = crate::size_info::mem_alignment(&generic_args[0], fc.enum_info, fc.struct_size_info);
+
+         Some(Expression::IntLiteral {
+            val: u64::from(type_alignment),
+            synthetic: true,
+         })
+      }
+      "num_variants" => {
+         let num_variants = match generic_args[0] {
+            ExpressionType::Enum(enum_name) => fc.enum_info.get(&enum_name).unwrap().variants.len(),
+            _ => unreachable!(),
+         };
+
+         Some(Expression::IntLiteral {
+            val: num_variants as u64,
+            synthetic: true,
+         })
+      }
+      _ => None,
    }
 }
 

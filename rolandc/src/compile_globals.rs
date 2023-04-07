@@ -25,11 +25,19 @@ struct CgContext<'a> {
 
 fn fold_expr_id(
    expr_id: ExpressionId,
-   expressions: &mut ExpressionPool,
-   interner: &Interner,
    err_manager: &mut ErrorManager,
+   expressions: &mut ExpressionPool,
+   struct_info: &IndexMap<StrId, StructInfo>,
+   struct_size_info: &HashMap<StrId, SizeInfo>,
+   enum_info: &IndexMap<StrId, EnumInfo>,
+   interner: &Interner,
 ) {
-   let mut fc = FoldingContext { expressions };
+   let mut fc = FoldingContext {
+      expressions,
+      struct_info,
+      struct_size_info,
+      enum_info,
+   };
    constant_folding::try_fold_and_replace_expr(expr_id, err_manager, &mut fc, interner);
 }
 
@@ -41,7 +49,15 @@ pub fn ensure_statics_const(
 ) {
    for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
       if let Some(v) = p_static.value.as_ref() {
-         fold_expr_id(*v, expressions, interner, err_manager);
+         fold_expr_id(
+            *v,
+            err_manager,
+            expressions,
+            &program.struct_info,
+            &program.struct_size_info,
+            &program.enum_info,
+            interner,
+         );
          let v = &expressions[*v];
          if !crate::constant_folding::is_const(&v.expression, expressions) {
             rolandc_error!(
@@ -56,7 +72,15 @@ pub fn ensure_statics_const(
 
    for si in program.struct_info.iter() {
       for field_with_default in si.1.default_values.iter() {
-         fold_expr_id(*field_with_default.1, expressions, interner, err_manager);
+         fold_expr_id(
+            *field_with_default.1,
+            err_manager,
+            expressions,
+            &program.struct_info,
+            &program.struct_size_info,
+            &program.enum_info,
+            interner,
+         );
          let v = &expressions[*field_with_default.1];
          if !crate::constant_folding::is_const(&v.expression, expressions) {
             rolandc_error!(
@@ -117,7 +141,15 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
    let c = cg_context.all_consts[&c_id];
    cg_expr(c.1, cg_context, err_manager);
 
-   fold_expr_id(c.1, cg_context.expressions, cg_context.interner, err_manager);
+   fold_expr_id(
+      c.1,
+      err_manager,
+      cg_context.expressions,
+      cg_context.struct_info,
+      cg_context.struct_size_info,
+      cg_context.enum_info,
+      cg_context.interner,
+   );
 
    let p_const_expr = &cg_context.expressions[c.1];
 
@@ -204,8 +236,6 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
       expr_index,
       cg_context.const_replacements,
       cg_context.struct_info,
-      cg_context.struct_size_info,
-      cg_context.enum_info,
       cg_context.interner,
    );
 }

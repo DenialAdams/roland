@@ -696,13 +696,7 @@ fn type_statement(
             ExpressionType::CompileError
          } else if let Some(dt_val) = dt {
             if let Some(en) = opt_en {
-               check_type_declared_vs_actual(
-                  dt_val,
-                  en,
-                  interner,
-                  &validation_context.type_variables,
-                  err_manager,
-               );
+               check_type_declared_vs_actual(dt_val, en, interner, &validation_context.type_variables, err_manager);
             } else if dt_val.e_type.is_or_contains_never(&validation_context.struct_size_info) {
                rolandc_error!(
                   err_manager,
