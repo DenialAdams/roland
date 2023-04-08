@@ -936,6 +936,7 @@ pub fn is_const(expr: &Expression, expressions: &ExpressionPool) -> bool {
          .iter()
          .copied()
          .all(|(_, x)| is_const(&expressions[x].expression, expressions)),
+      Expression::StringLiteral(_) => true,
       _ => false,
    }
 }

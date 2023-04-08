@@ -1,0 +1,8 @@
+const A: String = "Hello";
+
+proc main () {
+   println(A);
+}
+__END__
+run:
+Hello
