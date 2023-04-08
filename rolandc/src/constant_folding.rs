@@ -9,7 +9,7 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement,
-   StatementNode, UnOp,
+   StatementNode, UnOp, VariableId,
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::SizeInfo;
@@ -23,6 +23,7 @@ pub struct FoldingContext<'a> {
    pub struct_info: &'a IndexMap<StrId, StructInfo>,
    pub struct_size_info: &'a HashMap<StrId, SizeInfo>,
    pub enum_info: &'a IndexMap<StrId, EnumInfo>,
+   pub const_replacements: &'a HashMap<VariableId, ExpressionId>,
 }
 
 pub fn fold_constants(
@@ -31,12 +32,49 @@ pub fn fold_constants(
    expressions: &mut ExpressionPool,
    interner: &Interner,
 ) {
+   let mut const_replacements: HashMap<VariableId, ExpressionId> = HashMap::new();
+
+   for p_const in program.consts.drain(..) {
+      const_replacements.insert(p_const.var_id, p_const.value);
+   }
+
    let mut folding_context = FoldingContext {
       expressions,
       struct_info: &program.struct_info,
       struct_size_info: &program.struct_size_info,
       enum_info: &program.enum_info,
+      const_replacements: &const_replacements,
    };
+
+   for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
+      if let Some(v) = p_static.value.as_ref().copied() {
+         try_fold_and_replace_expr(v, err_manager, &mut folding_context, interner);
+         let v = &folding_context.expressions[v];
+         if !is_const(&v.expression, folding_context.expressions) {
+            rolandc_error!(
+               err_manager,
+               v.location,
+               "Value of static `{}` can't be constant folded. Hint: Either simplify the expression, or initialize it yourself on program start.",
+               interner.lookup(p_static.name.str),
+            );
+         }
+      }
+   }
+
+   for si in program.struct_info.iter() {
+      for field_with_default in si.1.default_values.iter() {
+         try_fold_and_replace_expr(*field_with_default.1, err_manager, &mut folding_context, interner);
+         let v = &folding_context.expressions[*field_with_default.1];
+         if !crate::constant_folding::is_const(&v.expression, folding_context.expressions) {
+            rolandc_error!(
+               err_manager,
+               v.location,
+               "Default value of struct field `{}` can't be constant folded.",
+               interner.lookup(*field_with_default.0),
+            );
+         }
+      }
+   }
 
    for procedure in program.procedures.iter_mut() {
       fold_block(&mut procedure.block, err_manager, &mut folding_context, interner);
@@ -175,7 +213,17 @@ fn fold_expr(
          None
       }
       Expression::UnresolvedVariable(_) => unreachable!(),
-      Expression::Variable(_) => None,
+      Expression::Variable(x) => {
+         if let Some(replacement_index) = folding_context.const_replacements.get(&x).copied() {
+            return Some(ExpressionNode {
+               expression: folding_context.expressions[replacement_index].expression.clone(),
+               exp_type: folding_context.expressions[replacement_index].exp_type.clone(),
+               location: expr_to_fold_location,
+            });
+         }
+
+         None
+      }
       Expression::ProcedureCall { args, proc_expr } => {
          try_fold_and_replace_expr(proc_expr, err_manager, folding_context, interner);
          for arg in args.iter().map(|x| x.expr) {
