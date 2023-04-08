@@ -10,7 +10,6 @@ use crate::parse::{Expression, ExpressionId, ExpressionPool, Program, VariableId
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
-use crate::various_expression_lowering;
 
 struct CgContext<'a> {
    expressions: &'a mut ExpressionPool,
@@ -30,6 +29,7 @@ fn fold_expr_id(
    struct_info: &IndexMap<StrId, StructInfo>,
    struct_size_info: &HashMap<StrId, SizeInfo>,
    enum_info: &IndexMap<StrId, EnumInfo>,
+   const_replacements: &HashMap<VariableId, ExpressionId>,
    interner: &Interner,
 ) {
    let mut fc = FoldingContext {
@@ -37,61 +37,9 @@ fn fold_expr_id(
       struct_info,
       struct_size_info,
       enum_info,
+      const_replacements,
    };
    constant_folding::try_fold_and_replace_expr(expr_id, err_manager, &mut fc, interner);
-}
-
-pub fn ensure_statics_const(
-   program: &Program,
-   expressions: &mut ExpressionPool,
-   interner: &mut Interner,
-   err_manager: &mut ErrorManager,
-) {
-   for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
-      if let Some(v) = p_static.value.as_ref() {
-         fold_expr_id(
-            *v,
-            err_manager,
-            expressions,
-            &program.struct_info,
-            &program.struct_size_info,
-            &program.enum_info,
-            interner,
-         );
-         let v = &expressions[*v];
-         if !crate::constant_folding::is_const(&v.expression, expressions) {
-            rolandc_error!(
-               err_manager,
-               v.location,
-               "Value of static `{}` can't be constant folded. Hint: Either simplify the expression, or initialize it yourself on program start.",
-               interner.lookup(p_static.name.str),
-            );
-         }
-      }
-   }
-
-   for si in program.struct_info.iter() {
-      for field_with_default in si.1.default_values.iter() {
-         fold_expr_id(
-            *field_with_default.1,
-            err_manager,
-            expressions,
-            &program.struct_info,
-            &program.struct_size_info,
-            &program.enum_info,
-            interner,
-         );
-         let v = &expressions[*field_with_default.1];
-         if !crate::constant_folding::is_const(&v.expression, expressions) {
-            rolandc_error!(
-               err_manager,
-               v.location,
-               "Default value of struct field `{}` can't be constant folded.",
-               interner.lookup(*field_with_default.0),
-            );
-         }
-      }
-   }
 }
 
 pub fn compile_globals(
@@ -148,6 +96,7 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
       cg_context.struct_info,
       cg_context.struct_size_info,
       cg_context.enum_info,
+      cg_context.const_replacements,
       cg_context.interner,
    );
 
@@ -230,10 +179,4 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
       Expression::UnitLiteral => (),
       Expression::BoundFcnLiteral(_, _) => (),
    }
-
-   various_expression_lowering::lower_single_expression(
-      cg_context.expressions,
-      expr_index,
-      cg_context.const_replacements,
-   );
 }

@@ -36,7 +36,6 @@ mod size_info;
 pub mod source_info;
 pub mod type_data;
 mod typed_index_vec;
-mod various_expression_lowering;
 mod wasm;
 
 use std::borrow::Cow;
@@ -198,26 +197,13 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    }
    ctx.program.procedures.retain(|x| x.definition.generic_parameters.is_empty());
 
-   various_expression_lowering::lower_consts(&mut ctx.program, &mut ctx.expressions);
-   ctx.program.global_info.retain(|_, v| !v.is_const);
-
-   compile_globals::ensure_statics_const(
-      &ctx.program,
-      &mut ctx.expressions,
-      &mut ctx.interner,
-      &mut ctx.err_manager,
-   );
-
-   if !ctx.err_manager.errors.is_empty() {
-      return Err(CompilationError::Semantic);
-   }
-
    constant_folding::fold_constants(
       &mut ctx.program,
       &mut ctx.err_manager,
       &mut ctx.expressions,
       &ctx.interner,
    );
+   ctx.program.global_info.retain(|_, v| !v.is_const);
 
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
