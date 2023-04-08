@@ -39,9 +39,6 @@ pub fn fold_constants(
    };
 
    for procedure in program.procedures.iter_mut() {
-      if !procedure.definition.generic_parameters.is_empty() {
-         continue;
-      }
       fold_block(&mut procedure.block, err_manager, &mut folding_context, interner);
    }
 }

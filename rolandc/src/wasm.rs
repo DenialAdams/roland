@@ -447,10 +447,6 @@ pub fn emit_wasm(
 
    // One pass over all procedures first so that call expressions know what index to use
    for procedure in program.procedures.iter() {
-      if !procedure.definition.generic_parameters.is_empty() {
-         continue;
-      }
-
       function_section.function(
          generation_context
             .type_manager
@@ -460,10 +456,6 @@ pub fn emit_wasm(
    }
 
    for procedure in program.procedures.iter_mut() {
-      if !procedure.definition.generic_parameters.is_empty() {
-         continue;
-      }
-
       generation_context.active_fcn = Function::new_with_locals_types([]);
       generation_context.local_offsets_mem.clear();
 

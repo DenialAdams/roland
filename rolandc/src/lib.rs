@@ -196,6 +196,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
+   ctx.program.procedures.retain(|x| x.definition.generic_parameters.is_empty());
 
    various_expression_lowering::lower_consts(&mut ctx.program, &mut ctx.expressions);
    ctx.program.global_info.retain(|_, v| !v.is_const);
