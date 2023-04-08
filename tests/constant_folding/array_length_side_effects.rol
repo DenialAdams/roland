@@ -8,7 +8,19 @@ proc main() {
       x: disarmMissiles(),
       y: [1, 2]
    }.y.length;
+   let b = foo([getTrue(), false].length).length;
    println(int_to_string(a extend u64));
+   println(int_to_string(b extend u64));
+}
+
+proc getTrue() -> bool {
+   println("true");
+   return true;
+}
+
+proc foo(x: usize) -> [u8; 2] {
+   println("side effect");
+   return [1, 1];
 }
 
 proc disarmMissiles() -> u8 {
@@ -18,4 +30,7 @@ proc disarmMissiles() -> u8 {
 __END__
 run:
 disarmed
+true
+side effect
+2
 2
