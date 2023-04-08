@@ -182,7 +182,7 @@ pub enum CastType {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct VariableId(u64);
+pub struct VariableId(pub u64);
 
 impl VariableId {
    #[must_use]

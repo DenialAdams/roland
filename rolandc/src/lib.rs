@@ -30,6 +30,7 @@ pub mod interner;
 mod lex;
 mod monomorphization;
 pub mod parse;
+mod pp;
 mod pre_wasm_lowering;
 mod semantic_analysis;
 mod size_info;
