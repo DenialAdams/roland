@@ -195,7 +195,9 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
-   ctx.program.procedures.retain(|x| x.definition.generic_parameters.is_empty());
+   ctx.program
+      .procedures
+      .retain(|x| x.definition.generic_parameters.is_empty());
 
    constant_folding::fold_constants(
       &mut ctx.program,
