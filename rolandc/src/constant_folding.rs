@@ -834,7 +834,14 @@ fn fold_expr(
                for field_name in field_names.iter() {
                   match next_exp_type {
                      ExpressionType::Struct(s) => {
-                        next_exp_type = &folding_context.struct_info.get(s).unwrap().field_types.get(field_name).unwrap().e_type;
+                        next_exp_type = &folding_context
+                           .struct_info
+                           .get(s)
+                           .unwrap()
+                           .field_types
+                           .get(field_name)
+                           .unwrap()
+                           .e_type;
                      }
                      ExpressionType::Array(_, len) => {
                         // Arrays only have one possible field, length
@@ -845,7 +852,7 @@ fn fold_expr(
                            },
                            exp_type: folding_context.expressions[expr_index].exp_type.clone(),
                            location: expr_to_fold_location,
-                        })
+                        });
                      }
                      _ => unreachable!(),
                   }
@@ -882,8 +889,7 @@ fn fold_expr(
                Expression::StructLiteral(_, fields) => {
                   // We want O(1) field access in other places- consider unifying, perhaps at parse time? TODO
                   let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
-                  let inner_node =
-                     folding_context.expressions[*map.get(field_names.last().unwrap()).unwrap()].clone();
+                  let inner_node = folding_context.expressions[*map.get(field_names.last().unwrap()).unwrap()].clone();
                   Some(ExpressionNode {
                      expression: inner_node.expression,
                      exp_type: inner_node.exp_type,
