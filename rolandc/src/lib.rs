@@ -21,7 +21,7 @@
 #![feature(hash_drain_filter)]
 
 mod add_virtual_variables;
-mod compile_globals;
+mod compile_consts;
 mod constant_folding;
 mod disjoint_set;
 pub mod error_handling;
@@ -175,7 +175,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       return Err(CompilationError::Semantic);
    }
 
-   compile_globals::compile_globals(
+   compile_consts::compile_consts(
       &ctx.program,
       &mut ctx.expressions,
       &mut ctx.interner,

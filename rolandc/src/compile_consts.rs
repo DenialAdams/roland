@@ -42,7 +42,7 @@ fn fold_expr_id(
    constant_folding::try_fold_and_replace_expr(expr_id, err_manager, &mut fc, interner);
 }
 
-pub fn compile_globals(
+pub fn compile_consts(
    program: &Program,
    expressions: &mut ExpressionPool,
    interner: &mut Interner,
