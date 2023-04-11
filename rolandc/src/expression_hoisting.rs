@@ -123,7 +123,9 @@ fn vv_statement(statement: &mut Statement, vv_context: &mut VvContext, expressio
          vv_stack_frame.virtual_vars.push((*start, *start_var_id, current_stmt));
 
          // This virtual variable will be used to hoist the end expression out of the loop
-         vv_context.declare_vv(*end, expressions);
+         if expression_could_have_side_effects(*end, expressions) {
+            vv_context.declare_vv(*end, expressions);
+         }
       }
       Statement::Loop(block) => {
          vv_block(block, vv_context, expressions);
