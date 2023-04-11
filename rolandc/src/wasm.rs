@@ -7,7 +7,7 @@ use wasm_encoder::{
    RefType, TableSection, TableType, TypeSection, ValType,
 };
 
-use crate::add_virtual_variables::is_wasm_compatible_rval_transmute;
+use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    statement_always_returns, BinOp, CastType, Expression, ExpressionId, ExpressionPool, ExternalProcImplSource,

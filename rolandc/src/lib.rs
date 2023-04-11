@@ -20,7 +20,7 @@
 #![allow(clippy::let_underscore_untyped)] // looks weird with no let
 #![feature(hash_drain_filter)]
 
-mod add_virtual_variables;
+mod expression_hoisting;
 mod compile_consts;
 mod constant_folding;
 mod disjoint_set;
@@ -229,7 +229,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program, &mut ctx.expressions);
 
-   add_virtual_variables::add_virtual_vars(&mut ctx.program, &mut ctx.expressions);
+   expression_hoisting::expression_hoisting(&mut ctx.program, &mut ctx.expressions);
    Ok(wasm::emit_wasm(
       &mut ctx.program,
       &mut ctx.interner,
