@@ -186,6 +186,8 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       return Err(CompilationError::Semantic);
    }
 
+   expression_hoisting::expression_hoisting(&mut ctx.program, &mut ctx.expressions);
+
    monomorphization::monomorphize(
       &mut ctx.program,
       &mut ctx.expressions,
@@ -229,7 +231,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program, &mut ctx.expressions);
 
-   expression_hoisting::expression_hoisting(&mut ctx.program, &mut ctx.expressions);
    Ok(wasm::emit_wasm(
       &mut ctx.program,
       &mut ctx.interner,
