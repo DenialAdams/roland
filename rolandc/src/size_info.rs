@@ -70,7 +70,7 @@ pub fn calculate_struct_size_info(
 
       strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(field_t, enum_info, struct_size_info));
 
-      contains_never_type |= field_t.is_never();
+      contains_never_type |= field_t.is_or_contains_never(struct_size_info);
    }
 
    if let Some((last_field_name, last_field_t_node)) = struct_info.get(&name).unwrap().field_types.iter().last() {
@@ -91,7 +91,7 @@ pub fn calculate_struct_size_info(
          strictest_alignment,
          mem_alignment(last_field_t, enum_info, struct_size_info),
       );
-      contains_never_type |= last_field_t.is_never();
+      contains_never_type |= last_field_t.is_or_contains_never(struct_size_info);
    }
 
    struct_size_info.insert(
