@@ -62,12 +62,10 @@ impl TypeVariableManager {
       TypeVariable(new_tv)
    }
 
-   // find with path compression
    pub fn find(&self, x: TypeVariable) -> TypeVariable {
       TypeVariable(self.disjoint_set.find(x.0))
    }
 
-   // union by rank
    pub fn union(&self, x: TypeVariable, y: TypeVariable) {
       self.disjoint_set.union(x.0, y.0);
    }
