@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::mem::discriminant;
 
 use indexmap::{IndexMap, IndexSet};
+use slotmap::{new_key_type, SlotMap};
 
 use super::lex::{SourceToken, Token};
 use crate::error_handling::error_handling_macros::rolandc_error;
@@ -12,9 +13,9 @@ use crate::semantic_analysis::{EnumInfo, GlobalInfo, ProcedureInfo, StructInfo};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
-use crate::typed_index_vec::{Handle, HandleMap};
 
-pub type ExpressionPool = HandleMap<ExpressionId, ExpressionNode>;
+new_key_type! { pub struct ExpressionId; }
+pub type ExpressionPool = SlotMap<ExpressionId, ExpressionNode>;
 
 fn merge_locations(begin: SourceInfo, end: SourceInfo) -> SourceInfo {
    SourceInfo {
@@ -159,19 +160,6 @@ pub struct ExpressionNode {
    pub expression: Expression,
    pub exp_type: Option<ExpressionType>,
    pub location: SourceInfo,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ExpressionId(pub usize);
-
-impl Handle for ExpressionId {
-   fn new(x: usize) -> Self {
-      ExpressionId(x)
-   }
-
-   fn index(self) -> usize {
-      self.0
-   }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1632,7 +1620,7 @@ fn infix_binding_power(op: Token) -> (u8, u8) {
 }
 
 fn wrap(expression: Expression, source_info: SourceInfo, expressions: &mut ExpressionPool) -> ExpressionId {
-   expressions.push(ExpressionNode {
+   expressions.insert(ExpressionNode {
       expression,
       exp_type: None,
       location: source_info,

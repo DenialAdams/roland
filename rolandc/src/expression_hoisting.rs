@@ -77,12 +77,12 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, expressions: &mut
       let (vv_assignment_stmt, loc) = {
          let et = expressions[vv.0].exp_type.clone();
          let el = expressions[vv.0].location;
-         let lhs = expressions.push(ExpressionNode {
+         let lhs = expressions.insert(ExpressionNode {
             expression: Expression::Variable(vv.1),
             exp_type: et,
             location: el,
          });
-         let rhs = expressions.push(expressions[vv.0].clone());
+         let rhs = expressions.insert(expressions[vv.0].clone());
          (Statement::Assignment(lhs, rhs), el)
       };
 

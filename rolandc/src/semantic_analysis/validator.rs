@@ -22,7 +22,6 @@ use crate::source_info::SourceInfo;
 use crate::type_data::{
    ExpressionType, IntType, IntWidth, F32_TYPE, F64_TYPE, I32_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE,
 };
-use crate::typed_index_vec::Handle;
 use crate::Target;
 
 struct SpecialProcedure {
@@ -408,14 +407,14 @@ pub fn type_and_check_validity(
 
    // lower type variables
    {
-      for (i, e) in validation_context.expressions.values.iter_mut().enumerate() {
+      for (i, e) in validation_context.expressions.iter_mut() {
          let opt_tv = e.exp_type.as_ref().unwrap().get_type_variable_of_unknown_type();
 
          if let Some(tv) = opt_tv {
             let the_type = validation_context.type_variables.get_data(tv);
             if let Some(t) = the_type.known_type.as_ref() {
                *e.exp_type.as_mut().unwrap().get_unknown_portion_of_type().unwrap() = t.clone();
-               validation_context.unknown_literals.remove(&ExpressionId::new(i));
+               validation_context.unknown_literals.remove(&i);
             }
          }
       }

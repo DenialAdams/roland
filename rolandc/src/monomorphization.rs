@@ -32,7 +32,7 @@ pub fn monomorphize(
    let mut new_procedures: HashMap<(StrId, Box<[ExpressionType]>), ProcedureId> = HashMap::new();
 
    // Construct initial worklist
-   for expr in expressions.values.iter_mut() {
+   for expr in expressions.values_mut() {
       if let Expression::BoundFcnLiteral(id, generic_args) = &expr.expression {
          if generic_args.is_empty() {
             continue;
@@ -101,7 +101,7 @@ pub fn monomorphize(
    }
 
    // Update all procedure calls to refer to specialized procedures
-   for expr in expressions.values.iter_mut() {
+   for expr in expressions.values_mut() {
       if let ExpressionType::ProcedureItem(id, generic_args) = expr.exp_type.as_mut().unwrap() {
          if generic_args.is_empty() {
             continue;
@@ -344,5 +344,5 @@ fn deep_clone_expr(
          }
       }
    }
-   expressions.push(cloned)
+   expressions.insert(cloned)
 }

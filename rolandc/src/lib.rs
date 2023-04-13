@@ -35,7 +35,6 @@ mod semantic_analysis;
 mod size_info;
 pub mod source_info;
 pub mod type_data;
-mod typed_index_vec;
 mod wasm;
 
 use std::borrow::Cow;
@@ -46,9 +45,8 @@ use error_handling::error_handling_macros::rolandc_error;
 use error_handling::ErrorManager;
 use interner::Interner;
 pub use parse::Program;
-use parse::{ExpressionId, ExpressionNode, ExpressionPool, ImportNode};
+use parse::{ExpressionPool, ImportNode};
 use source_info::SourcePath;
-use typed_index_vec::HandleMap;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Target {
@@ -88,7 +86,7 @@ pub enum CompilationEntryPoint<'a, FR: FileResolver<'a>> {
 
 // Repeated compilations can be sped up by reusing the context
 pub struct CompilationContext {
-   pub expressions: HandleMap<ExpressionId, ExpressionNode>,
+   pub expressions: ExpressionPool,
    pub interner: Interner,
    pub err_manager: ErrorManager,
    pub program: Program,
@@ -98,7 +96,7 @@ impl CompilationContext {
    #[must_use]
    pub fn new() -> CompilationContext {
       CompilationContext {
-         expressions: HandleMap::new(),
+         expressions: ExpressionPool::with_key(),
          interner: Interner::with_capacity(1024),
          err_manager: ErrorManager::new(),
          program: Program::new(),
