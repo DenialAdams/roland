@@ -189,14 +189,42 @@ fn dynamic_move_locals_of_type_to_dest(
    }
 }
 
+#[derive(Hash, Eq, PartialEq)]
+struct FunctionValTypes {
+   param_val_types: Vec<ValType>,
+   ret_val_types: Vec<ValType>,
+}
+
+impl FunctionValTypes {
+   fn new() -> Self {
+      FunctionValTypes {
+         param_val_types: vec![],
+         ret_val_types: vec![],
+      }
+   }
+
+   fn clear(&mut self) {
+      self.param_val_types.clear();
+      self.ret_val_types.clear();
+   }
+}
+
+impl Default for FunctionValTypes {
+   fn default() -> Self {
+      FunctionValTypes::new()
+   }
+}
+
 struct TypeManager {
-   registered_types: IndexSet<(Vec<ValType>, Vec<ValType>)>,
+   function_val_types: FunctionValTypes,
+   registered_types: IndexSet<FunctionValTypes>,
    type_section: TypeSection,
 }
 
 impl TypeManager {
    fn new() -> TypeManager {
       TypeManager {
+         function_val_types: FunctionValTypes::new(),
          registered_types: IndexSet::new(),
          type_section: TypeSection::new(),
       }
@@ -220,20 +248,27 @@ impl TypeManager {
       ret_type: &ExpressionType,
       si: &IndexMap<StrId, StructInfo>,
    ) -> u32 {
-      let mut param_type_buf = vec![];
+      self.function_val_types.clear();
+
       for param in parameters {
-         type_to_wasm_type(param, &mut param_type_buf, si);
+         type_to_wasm_type(param, &mut self.function_val_types.param_val_types, si);
       }
 
-      let mut ret_type_buf = vec![];
-      type_to_wasm_type(ret_type, &mut ret_type_buf, si);
+      type_to_wasm_type(ret_type, &mut self.function_val_types.ret_val_types, si);
 
-      let (idx, is_new) = self
-         .registered_types
-         .insert_full((param_type_buf.clone(), ret_type_buf.clone()));
-      if is_new {
-         self.type_section.function(param_type_buf, ret_type_buf);
-      }
+      // (we are manually insert_full-ing here to minimize new vec allocation)
+      let idx = if let Some(idx) = self.registered_types.get_index_of(&self.function_val_types) {
+         idx
+      } else {
+         self.type_section.function(
+            self.function_val_types.param_val_types.iter().copied(),
+            self.function_val_types.ret_val_types.iter().copied(),
+         );
+         self
+            .registered_types
+            .insert_full(std::mem::take(&mut self.function_val_types))
+            .0
+      };
       idx as u32
    }
 }
