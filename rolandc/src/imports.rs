@@ -113,7 +113,13 @@ pub fn import_program<'a, FR: FileResolver<'a>>(
          );
       }
 
-      let imports = lex_and_parse(&program_s, source_path, &mut ctx.err_manager, &mut ctx.interner, &mut ctx.program)?;
+      let imports = lex_and_parse(
+         &program_s,
+         source_path,
+         &mut ctx.err_manager,
+         &mut ctx.interner,
+         &mut ctx.program,
+      )?;
 
       base_path.pop(); // /foo/bar/main.rol -> /foo/bar
       for file in imports {

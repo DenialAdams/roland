@@ -128,7 +128,13 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
          imports::import_program(ctx, ep_path, resolver)?;
       }
       CompilationEntryPoint::Playground(contents) => {
-         let files_to_import = lex_and_parse(contents, SourcePath::Sandbox, &mut ctx.err_manager, &mut ctx.interner, &mut ctx.program)?;
+         let files_to_import = lex_and_parse(
+            contents,
+            SourcePath::Sandbox,
+            &mut ctx.err_manager,
+            &mut ctx.interner,
+            &mut ctx.program,
+         )?;
          if !files_to_import.is_empty() {
             rolandc_error!(
                ctx.err_manager,
