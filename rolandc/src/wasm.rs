@@ -242,12 +242,7 @@ impl TypeManager {
 // 0-l literals
 // l-s statics
 // s+ program stack (local variables and parameters are pushed here during runtime)
-pub fn emit_wasm(
-   program: &mut Program,
-   interner: &mut Interner,
-   expressions: &ExpressionPool,
-   target: Target,
-) -> Vec<u8> {
+pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target) -> Vec<u8> {
    let mut generation_context = GenerationContext {
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
       type_manager: TypeManager::new(),
@@ -259,7 +254,7 @@ pub fn emit_wasm(
       struct_size_info: &program.struct_size_info,
       enum_info: &program.enum_info,
       sum_sizeof_locals_mem: 0,
-      expressions,
+      expressions: &program.expressions,
       procedure_to_table_index: IndexSet::new(),
       procedure_indices: IndexSet::new(),
       stack_of_loop_jump_offsets: Vec::new(),

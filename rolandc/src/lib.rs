@@ -20,11 +20,11 @@
 #![allow(clippy::let_underscore_untyped)] // looks weird with no let
 #![feature(hash_drain_filter)]
 
-mod expression_hoisting;
 mod compile_consts;
 mod constant_folding;
 mod disjoint_set;
 pub mod error_handling;
+mod expression_hoisting;
 mod imports;
 pub mod interner;
 mod lex;
@@ -44,8 +44,8 @@ use std::path::{Path, PathBuf};
 use error_handling::error_handling_macros::rolandc_error;
 use error_handling::ErrorManager;
 use interner::Interner;
+use parse::ImportNode;
 pub use parse::Program;
-use parse::{ExpressionPool, ImportNode};
 use source_info::SourcePath;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -86,7 +86,6 @@ pub enum CompilationEntryPoint<'a, FR: FileResolver<'a>> {
 
 // Repeated compilations can be sped up by reusing the context
 pub struct CompilationContext {
-   pub expressions: ExpressionPool,
    pub interner: Interner,
    pub err_manager: ErrorManager,
    pub program: Program,
@@ -96,7 +95,6 @@ impl CompilationContext {
    #[must_use]
    pub fn new() -> CompilationContext {
       CompilationContext {
-         expressions: ExpressionPool::with_key(),
          interner: Interner::with_capacity(1024),
          err_manager: ErrorManager::new(),
          program: Program::new(),
@@ -110,7 +108,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    config: &CompilationConfig,
 ) -> Result<(), CompilationError> {
    ctx.program.clear();
-   ctx.expressions.clear();
    ctx.err_manager.clear();
    // We don't have to clear the interner - assumption is that the context is coming from a recent version of the same source, so symbols should be relevant
 
@@ -131,13 +128,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
          imports::import_program(ctx, ep_path, resolver)?;
       }
       CompilationEntryPoint::Playground(contents) => {
-         let (files_to_import, mut user_program) = lex_and_parse(
-            contents,
-            SourcePath::Sandbox,
-            &mut ctx.err_manager,
-            &mut ctx.interner,
-            &mut ctx.expressions,
-         )?;
+         let files_to_import = lex_and_parse(contents, SourcePath::Sandbox, &mut ctx.err_manager, &mut ctx.interner, &mut ctx.program)?;
          if !files_to_import.is_empty() {
             rolandc_error!(
                ctx.err_manager,
@@ -146,7 +137,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
             );
             return Err(CompilationError::Io);
          }
-         merge_program(&mut ctx.program, &mut user_program);
       }
    };
 
@@ -165,7 +155,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       &mut ctx.program,
       &mut ctx.err_manager,
       &mut ctx.interner,
-      &mut ctx.expressions,
       config.target,
    );
 
@@ -173,25 +162,14 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       return Err(CompilationError::Semantic);
    }
 
-   compile_consts::compile_consts(
-      &ctx.program,
-      &mut ctx.expressions,
-      &mut ctx.interner,
-      &ctx.program.struct_size_info,
-      &mut ctx.err_manager,
-   );
+   compile_consts::compile_consts(&mut ctx.program, &mut ctx.interner, &mut ctx.err_manager);
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
 
-   expression_hoisting::expression_hoisting(&mut ctx.program, &mut ctx.expressions);
+   expression_hoisting::expression_hoisting(&mut ctx.program);
 
-   monomorphization::monomorphize(
-      &mut ctx.program,
-      &mut ctx.expressions,
-      &mut ctx.interner,
-      &mut ctx.err_manager,
-   );
+   monomorphization::monomorphize(&mut ctx.program, &mut ctx.interner, &mut ctx.err_manager);
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
@@ -199,12 +177,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       .procedures
       .retain(|x| x.definition.generic_parameters.is_empty());
 
-   constant_folding::fold_constants(
-      &mut ctx.program,
-      &mut ctx.err_manager,
-      &mut ctx.expressions,
-      &ctx.interner,
-   );
+   constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner);
    ctx.program.global_info.retain(|_, v| !v.is_const);
 
    if !ctx.err_manager.errors.is_empty() {
@@ -227,14 +200,9 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 ) -> Result<Vec<u8>, CompilationError> {
    compile_for_errors(ctx, user_program_ep, config)?;
 
-   pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program, &mut ctx.expressions);
+   pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program);
 
-   Ok(wasm::emit_wasm(
-      &mut ctx.program,
-      &mut ctx.interner,
-      &ctx.expressions,
-      config.target,
-   ))
+   Ok(wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, config.target))
 }
 
 fn lex_and_parse(
@@ -242,26 +210,13 @@ fn lex_and_parse(
    source_path: SourcePath,
    err_manager: &mut ErrorManager,
    interner: &mut Interner,
-   expressions: &mut ExpressionPool,
-) -> Result<(Vec<ImportNode>, Program), CompilationError> {
+   program: &mut Program,
+) -> Result<Vec<ImportNode>, CompilationError> {
    let Ok(tokens) = lex::lex(s, source_path, err_manager, interner) else {
       return Err(CompilationError::Lex)
    };
-   match parse::astify(tokens, err_manager, interner, expressions) {
+   match parse::astify(tokens, err_manager, interner, program) {
       Err(()) => Err(CompilationError::Parse),
-      Ok((imports, program)) => Ok((imports, program)),
+      Ok(imports) => Ok(imports),
    }
-}
-
-fn merge_program(main_program: &mut Program, other_program: &mut Program) {
-   main_program.literals.extend(other_program.literals.drain(..));
-   main_program
-      .external_procedures
-      .append(&mut other_program.external_procedures);
-   main_program.procedures.append(&mut other_program.procedures);
-   main_program.structs.append(&mut other_program.structs);
-   main_program.statics.append(&mut other_program.statics);
-   main_program.enums.append(&mut other_program.enums);
-   main_program.consts.append(&mut other_program.consts);
-   main_program.parsed_types.append(&mut other_program.parsed_types);
 }

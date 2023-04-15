@@ -47,7 +47,7 @@ impl VvContext<'_> {
 // 2) Some operations are easier to implement in the backend when rvalue's dont have to be considered (array indexing, field access, transmute)
 // 3) The constant folder can't fold away an entire expression with side effects, but it can if the side effect is pulled out into a separate statement
 //    - (this is of particular importance for field access - we need to lower all array length queries (which is pure type system info) before the backend)
-pub fn expression_hoisting(program: &mut Program, expressions: &mut ExpressionPool) {
+pub fn expression_hoisting(program: &mut Program) {
    let mut vv_context = VvContext {
       vv_stack: Vec::new(),
       cur_procedure_locals: &mut IndexMap::new(),
@@ -56,7 +56,7 @@ pub fn expression_hoisting(program: &mut Program, expressions: &mut ExpressionPo
 
    for procedure in program.procedures.iter_mut() {
       vv_context.cur_procedure_locals = &mut procedure.locals;
-      vv_block(&mut procedure.block, &mut vv_context, expressions);
+      vv_block(&mut procedure.block, &mut vv_context, &mut program.expressions);
    }
 
    program.next_variable = vv_context.next_variable;

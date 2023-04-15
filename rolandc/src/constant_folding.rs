@@ -26,12 +26,7 @@ pub struct FoldingContext<'a> {
    pub const_replacements: &'a HashMap<VariableId, ExpressionId>,
 }
 
-pub fn fold_constants(
-   program: &mut Program,
-   err_manager: &mut ErrorManager,
-   expressions: &mut ExpressionPool,
-   interner: &Interner,
-) {
+pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, interner: &Interner) {
    let mut const_replacements: HashMap<VariableId, ExpressionId> = HashMap::new();
 
    for p_const in program.consts.drain(..) {
@@ -39,7 +34,7 @@ pub fn fold_constants(
    }
 
    let mut folding_context = FoldingContext {
-      expressions,
+      expressions: &mut program.expressions,
       struct_info: &program.struct_info,
       struct_size_info: &program.struct_size_info,
       enum_info: &program.enum_info,
