@@ -13,8 +13,7 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    statement_always_returns, ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode,
-   ExpressionPool, ExpressionTypeNode, GenericArgumentNode, Program, Statement, StatementNode, StrNode, UnOp,
-   VariableId,
+   ExpressionTypeNode, GenericArgumentNode, Program, Statement, StatementNode, StrNode, UnOp, VariableId,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, mem_alignment, sizeof_type_mem};
@@ -176,7 +175,6 @@ pub fn type_and_check_validity(
    program: &mut Program,
    err_manager: &mut ErrorManager,
    interner: &mut Interner,
-   expressions: &mut ExpressionPool,
    target: Target,
 ) {
    let mut validation_context = ValidationContext {
@@ -191,7 +189,7 @@ pub fn type_and_check_validity(
       block_depth: 0,
       loop_depth: 0,
       unknown_literals: IndexSet::new(),
-      expressions,
+      expressions: &mut program.expressions,
       struct_size_info: HashMap::new(),
       type_variables: super::TypeVariableManager::new(),
       cur_procedure_locals: IndexMap::new(),

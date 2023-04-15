@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 
 use crate::interner::StrId;
-use crate::parse::{Expression, ExpressionPool, Program, ExpressionNode};
+use crate::parse::{Expression, ExpressionNode, Program};
 use crate::semantic_analysis::EnumInfo;
 use crate::type_data::{ExpressionType, IntWidth, USIZE_TYPE};
 
@@ -36,10 +36,7 @@ fn lower_type(the_enum_type: &mut ExpressionType, enum_info: &IndexMap<StrId, En
    }
 }
 
-fn lower_single_expression(
-   expression_node: &mut ExpressionNode,
-   enum_info: &IndexMap<StrId, EnumInfo>,
-) {
+fn lower_single_expression(expression_node: &mut ExpressionNode, enum_info: &IndexMap<StrId, EnumInfo>) {
    match &mut expression_node.expression {
       Expression::EnumLiteral(a, b) => {
          let ei = enum_info.get(&a.str).unwrap();
@@ -74,8 +71,8 @@ fn lower_single_expression(
    lower_type(expression_node.exp_type.as_mut().unwrap(), enum_info);
 }
 
-pub fn lower_enums_and_pointers(program: &mut Program, expressions: &mut ExpressionPool) {
-   for e in expressions.values_mut() {
+pub fn lower_enums_and_pointers(program: &mut Program) {
+   for e in program.expressions.values_mut() {
       lower_single_expression(e, &program.enum_info);
    }
 

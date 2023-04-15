@@ -331,6 +331,7 @@ pub struct Program {
    pub structs: Vec<StructNode>,
    pub consts: Vec<ConstNode>,
    pub statics: Vec<StaticNode>,
+   pub expressions: ExpressionPool,
 
    // (only read by the language server)
    pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
@@ -365,6 +366,7 @@ impl Program {
          struct_size_info: HashMap::new(),
          source_to_definition: IndexMap::new(),
          next_variable: VariableId::first(),
+         expressions: ExpressionPool::with_key(),
       }
    }
 
@@ -383,6 +385,7 @@ impl Program {
       self.procedure_info.clear();
       self.struct_size_info.clear();
       self.source_to_definition.clear();
+      self.expressions.clear();
       self.next_variable = VariableId::first();
    }
 }
@@ -531,8 +534,8 @@ pub fn astify(
    mut lexer: Lexer,
    err_manager: &mut ErrorManager,
    interner: &Interner,
-   expressions: &mut ExpressionPool,
-) -> Result<(Vec<ImportNode>, Program), ()> {
+   program: &mut Program,
+) -> Result<Vec<ImportNode>, ()> {
    let mut parse_context = ParseContext {
       err_manager,
       interner,
@@ -550,7 +553,7 @@ pub fn astify(
    };
 
    loop {
-      if let Ok(()) = parse_top_level_item(&mut lexer, &mut parse_context, expressions, &mut top) {
+      if let Ok(()) = parse_top_level_item(&mut lexer, &mut parse_context, &mut program.expressions, &mut top) {
          break;
       }
       // skip tokens until we get to a token that must be at the top level and continue parsing
@@ -574,26 +577,15 @@ pub fn astify(
       }
    }
 
-   Ok((
-      top.imports,
-      Program {
-         external_procedures: top.external_procedures,
-         procedures: top.procedures,
-         enums: top.enums,
-         structs: top.structs,
-         consts: top.consts,
-         statics: top.statics,
-         parsed_types: parse_context.parsed_types,
-         literals: IndexSet::new(),
-         struct_info: IndexMap::new(),
-         global_info: IndexMap::new(),
-         enum_info: IndexMap::new(),
-         procedure_info: IndexMap::new(),
-         struct_size_info: HashMap::new(),
-         source_to_definition: IndexMap::new(),
-         next_variable: VariableId::first(),
-      },
-   ))
+   program.external_procedures.append(&mut top.external_procedures);
+   program.procedures.append(&mut top.procedures);
+   program.structs.append(&mut top.structs);
+   program.statics.append(&mut top.statics);
+   program.enums.append(&mut top.enums);
+   program.consts.append(&mut top.consts);
+   program.parsed_types.append(&mut parse_context.parsed_types);
+
+   Ok(top.imports)
 }
 
 fn extract_identifier(t: Token) -> StrId {

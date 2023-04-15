@@ -22,17 +22,12 @@ struct SpecializationWorkItem {
    depth: usize,
 }
 
-pub fn monomorphize(
-   program: &mut Program,
-   expressions: &mut ExpressionPool,
-   interner: &mut Interner,
-   err_manager: &mut ErrorManager,
-) {
+pub fn monomorphize(program: &mut Program, interner: &mut Interner, err_manager: &mut ErrorManager) {
    let mut worklist: Vec<SpecializationWorkItem> = Vec::new();
    let mut new_procedures: HashMap<(StrId, Box<[ExpressionType]>), ProcedureId> = HashMap::new();
 
    // Construct initial worklist
-   for expr in expressions.values_mut() {
+   for expr in program.expressions.values_mut() {
       if let Expression::BoundFcnLiteral(id, generic_args) = &expr.expression {
          if generic_args.is_empty() {
             continue;
@@ -87,7 +82,7 @@ pub fn monomorphize(
             .get(&new_spec.template_with_type_arguments.0)
             .unwrap(),
          new_spec.depth,
-         expressions,
+         &mut program.expressions,
          &mut worklist,
       );
       let new_id = interner.intern(&format!(
@@ -101,7 +96,7 @@ pub fn monomorphize(
    }
 
    // Update all procedure calls to refer to specialized procedures
-   for expr in expressions.values_mut() {
+   for expr in program.expressions.values_mut() {
       if let ExpressionType::ProcedureItem(id, generic_args) = expr.exp_type.as_mut().unwrap() {
          if generic_args.is_empty() {
             continue;
