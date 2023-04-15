@@ -409,7 +409,7 @@ fn token_starts_expression(token: Token) -> bool {
 struct ParseContext<'a> {
    err_manager: &'a mut ErrorManager,
    interner: &'a Interner,
-   parsed_types: Vec<ExpressionTypeNode>,
+   parsed_types: &'a mut Vec<ExpressionTypeNode>,
 }
 
 fn parse_top_level_item(
@@ -520,13 +520,13 @@ fn parse_top_level_item(
    Ok(())
 }
 
-struct TopLevelItems {
-   external_procedures: Vec<ExternalProcedureNode>,
-   procedures: Vec<ProcedureNode>,
-   structs: Vec<StructNode>,
-   enums: Vec<EnumNode>,
-   consts: Vec<ConstNode>,
-   statics: Vec<StaticNode>,
+struct TopLevelItems<'a> {
+   external_procedures: &'a mut Vec<ExternalProcedureNode>,
+   procedures: &'a mut Vec<ProcedureNode>,
+   structs: &'a mut Vec<StructNode>,
+   enums: &'a mut Vec<EnumNode>,
+   consts: &'a mut Vec<ConstNode>,
+   statics: &'a mut Vec<StaticNode>,
    imports: Vec<ImportNode>,
 }
 
@@ -539,16 +539,16 @@ pub fn astify(
    let mut parse_context = ParseContext {
       err_manager,
       interner,
-      parsed_types: Vec::new(),
+      parsed_types: &mut program.parsed_types,
    };
 
    let mut top = TopLevelItems {
-      external_procedures: vec![],
-      procedures: vec![],
-      structs: vec![],
-      enums: vec![],
-      consts: vec![],
-      statics: vec![],
+      external_procedures: &mut program.external_procedures,
+      procedures: &mut program.procedures,
+      structs: &mut program.structs,
+      enums: &mut program.enums,
+      consts: &mut program.consts,
+      statics: &mut program.statics,
       imports: vec![],
    };
 
@@ -576,14 +576,6 @@ pub fn astify(
          }
       }
    }
-
-   program.external_procedures.append(&mut top.external_procedures);
-   program.procedures.append(&mut top.procedures);
-   program.structs.append(&mut top.structs);
-   program.statics.append(&mut top.statics);
-   program.enums.append(&mut top.enums);
-   program.consts.append(&mut top.consts);
-   program.parsed_types.append(&mut parse_context.parsed_types);
 
    Ok(top.imports)
 }
