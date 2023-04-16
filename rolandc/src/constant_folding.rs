@@ -153,7 +153,7 @@ pub fn try_fold_and_replace_expr(
    interner: &Interner,
 ) {
    if let Some(new_node) = fold_expr(node, err_manager, folding_context, interner) {
-      folding_context.expressions[node] = new_node;
+      folding_context.expressions[node].expression = new_node;
    }
 }
 
@@ -163,7 +163,7 @@ fn fold_expr(
    err_manager: &mut ErrorManager,
    folding_context: &mut FoldingContext,
    interner: &Interner,
-) -> Option<ExpressionNode> {
+) -> Option<Expression> {
    let expr_to_fold_location = folding_context.expressions[expr_index].location;
 
    match folding_context.expressions[expr_index].expression.clone() {
@@ -191,17 +191,14 @@ fn fold_expr(
                   unreachable!();
                };
 
-               let chosen_elem = folding_context
+               let chosen_elem_expr = folding_context
                   .expressions
                   .get(array_elems[v as usize])
                   .unwrap()
+                  .expression
                   .clone();
 
-               return Some(ExpressionNode {
-                  expression: chosen_elem.expression,
-                  exp_type: chosen_elem.exp_type,
-                  location: expr_to_fold_location,
-               });
+               return Some(chosen_elem_expr);
             }
          }
 
@@ -210,11 +207,7 @@ fn fold_expr(
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::Variable(x) => {
          if let Some(replacement_index) = folding_context.const_replacements.get(&x).copied() {
-            return Some(ExpressionNode {
-               expression: folding_context.expressions[replacement_index].expression.clone(),
-               exp_type: folding_context.expressions[replacement_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            });
+            return Some(folding_context.expressions[replacement_index].expression.clone());
          }
 
          None
@@ -225,11 +218,7 @@ fn fold_expr(
             try_fold_and_replace_expr(arg, err_manager, folding_context, interner);
          }
 
-         fold_builtin_call(proc_expr, interner, folding_context).map(|expr| ExpressionNode {
-            expression: expr,
-            exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-            location: expr_to_fold_location,
-         })
+         fold_builtin_call(proc_expr, interner, folding_context)
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
@@ -317,13 +306,9 @@ fn fold_expr(
                      Some(ExpressionType::Float(_))
                   ) =>
                {
-                  return Some(ExpressionNode {
-                     expression: Expression::IntLiteral {
-                        val: 1,
-                        synthetic: true,
-                     },
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
+                  return Some(Expression::IntLiteral {
+                     val: 1,
+                     synthetic: true,
                   });
                }
                BinOp::BitwiseXor => {
@@ -335,11 +320,7 @@ fn fold_expr(
                      },
                      _ => unreachable!(),
                   };
-                  return Some(ExpressionNode {
-                     expression: expr,
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  });
+                  return Some(expr);
                }
                BinOp::GreaterThan | BinOp::LessThan
                   if !matches!(
@@ -347,11 +328,7 @@ fn fold_expr(
                      Some(ExpressionType::Float(_))
                   ) =>
                {
-                  return Some(ExpressionNode {
-                     expression: Expression::BoolLiteral(false),
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  });
+                  return Some(Expression::BoolLiteral(false));
                }
                BinOp::Equality | BinOp::GreaterThanOrEqualTo | BinOp::LessThanOrEqualTo
                   if !matches!(
@@ -359,19 +336,11 @@ fn fold_expr(
                      Some(ExpressionType::Float(_))
                   ) =>
                {
-                  return Some(ExpressionNode {
-                     expression: Expression::BoolLiteral(true),
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  });
+                  return Some(Expression::BoolLiteral(true));
                }
                BinOp::LogicalAnd | BinOp::LogicalOr | BinOp::BitwiseAnd | BinOp::BitwiseOr => {
                   let new_expr = lhs_expr.expression.clone();
-                  return Some(ExpressionNode {
-                     expression: new_expr,
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  });
+                  return Some(new_expr);
                }
                _ => (),
             }
@@ -400,71 +369,35 @@ fn fold_expr(
                }
                (Some(x), BinOp::Divide) if x.is_int_one() => {
                   let new_expr = lhs_expr.expression.clone();
-                  return Some(ExpressionNode {
-                     expression: new_expr,
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  });
+                  return Some(new_expr);
                }
                (Some(x), BinOp::GreaterThanOrEqualTo) if x.is_int_min() => {
-                  return Some(ExpressionNode {
-                     expression: Expression::BoolLiteral(true),
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  });
+                  return Some(Expression::BoolLiteral(true));
                }
                (Some(x), BinOp::LessThanOrEqualTo) if x.is_int_max() => {
-                  return Some(ExpressionNode {
-                     expression: Expression::BoolLiteral(true),
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  });
+                  return Some(Expression::BoolLiteral(true));
                }
                (Some(x), BinOp::GreaterThan) if x.is_int_max() => {
-                  return Some(ExpressionNode {
-                     expression: Expression::BoolLiteral(false),
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  });
+                  return Some(Expression::BoolLiteral(false));
                }
                (Some(x), BinOp::LessThan) if x.is_int_min() => {
-                  return Some(ExpressionNode {
-                     expression: Expression::BoolLiteral(false),
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  });
+                  return Some(Expression::BoolLiteral(false));
                }
                _ => (),
             }
 
             match (lhs, operator) {
                (Some(x), BinOp::GreaterThanOrEqualTo) if x.is_int_max() => {
-                  return Some(ExpressionNode {
-                     expression: Expression::BoolLiteral(true),
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  });
+                  return Some(Expression::BoolLiteral(true));
                }
                (Some(x), BinOp::LessThanOrEqualTo) if x.is_int_min() => {
-                  return Some(ExpressionNode {
-                     expression: Expression::BoolLiteral(true),
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  });
+                  return Some(Expression::BoolLiteral(true));
                }
                (Some(x), BinOp::GreaterThan) if x.is_int_min() => {
-                  return Some(ExpressionNode {
-                     expression: Expression::BoolLiteral(false),
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  });
+                  return Some(Expression::BoolLiteral(false));
                }
                (Some(x), BinOp::LessThan) if x.is_int_max() => {
-                  return Some(ExpressionNode {
-                     expression: Expression::BoolLiteral(false),
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  });
+                  return Some(Expression::BoolLiteral(false));
                }
                _ => (),
             }
@@ -477,69 +410,37 @@ fn fold_expr(
 
             if is_commutative_noop(one_literal, operator) {
                let new_expr = non_literal_expr.clone();
-               return Some(ExpressionNode {
-                  expression: new_expr,
-                  exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                  location: expr_to_fold_location,
-               });
+               return Some(new_expr);
             } else if !non_literal_side_effects {
                match (one_literal, operator) {
                   (x, BinOp::BitwiseOr) if x.is_int_max() => {
-                     return Some(ExpressionNode {
-                        expression: Expression::IntLiteral {
-                           val: x.int_max_value(),
-                           synthetic: true,
-                        },
-                        exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                        location: expr_to_fold_location,
+                     return Some(Expression::IntLiteral {
+                        val: x.int_max_value(),
+                        synthetic: true,
                      });
                   }
                   (x, BinOp::BitwiseAnd) if x.is_int_zero() => {
-                     return Some(ExpressionNode {
-                        expression: Expression::IntLiteral {
-                           val: 0,
-                           synthetic: true,
-                        },
-                        exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                        location: expr_to_fold_location,
+                     return Some(Expression::IntLiteral {
+                        val: 0,
+                        synthetic: true,
                      });
                   }
                   (Literal::Bool(true), BinOp::BitwiseOr) => {
-                     return Some(ExpressionNode {
-                        expression: Expression::BoolLiteral(true),
-                        exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                        location: expr_to_fold_location,
-                     });
+                     return Some(Expression::BoolLiteral(true));
                   }
                   (Literal::Bool(false), BinOp::BitwiseAnd) => {
-                     return Some(ExpressionNode {
-                        expression: Expression::BoolLiteral(false),
-                        exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                        location: expr_to_fold_location,
-                     });
+                     return Some(Expression::BoolLiteral(false));
                   }
                   (Literal::Bool(true), BinOp::LogicalOr) => {
-                     return Some(ExpressionNode {
-                        expression: Expression::BoolLiteral(true),
-                        exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                        location: expr_to_fold_location,
-                     });
+                     return Some(Expression::BoolLiteral(true));
                   }
                   (Literal::Bool(false), BinOp::LogicalAnd) => {
-                     return Some(ExpressionNode {
-                        expression: Expression::BoolLiteral(false),
-                        exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                        location: expr_to_fold_location,
-                     });
+                     return Some(Expression::BoolLiteral(false));
                   }
                   (x, BinOp::Multiply) if x.is_int_zero() => {
-                     return Some(ExpressionNode {
-                        expression: Expression::IntLiteral {
-                           val: 0,
-                           synthetic: true,
-                        },
-                        exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                        location: expr_to_fold_location,
+                     return Some(Expression::IntLiteral {
+                        val: 0,
+                        synthetic: true,
                      });
                   }
                   _ => (),
@@ -556,24 +457,12 @@ fn fold_expr(
 
          match operator {
             // int and float and bool
-            BinOp::Equality => Some(ExpressionNode {
-               expression: Expression::BoolLiteral(lhs == rhs),
-               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            }),
-            BinOp::NotEquality => Some(ExpressionNode {
-               expression: Expression::BoolLiteral(lhs != rhs),
-               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            }),
+            BinOp::Equality => Some(Expression::BoolLiteral(lhs == rhs)),
+            BinOp::NotEquality => Some(Expression::BoolLiteral(lhs != rhs)),
             // int and float
             BinOp::Add => {
                if let Some(v) = lhs.checked_add(rhs) {
-                  Some(ExpressionNode {
-                     expression: v,
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  })
+                  Some(v)
                } else {
                   rolandc_error!(
                      err_manager,
@@ -585,11 +474,7 @@ fn fold_expr(
             }
             BinOp::Subtract => {
                if let Some(v) = lhs.checked_sub(rhs) {
-                  Some(ExpressionNode {
-                     expression: v,
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  })
+                  Some(v)
                } else {
                   rolandc_error!(
                      err_manager,
@@ -601,11 +486,7 @@ fn fold_expr(
             }
             BinOp::Multiply => {
                if let Some(v) = lhs.checked_mul(rhs) {
-                  Some(ExpressionNode {
-                     expression: v,
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  })
+                  Some(v)
                } else {
                   rolandc_error!(
                      err_manager,
@@ -617,11 +498,7 @@ fn fold_expr(
             }
             BinOp::Divide => {
                if let Some(v) = lhs.checked_div(rhs) {
-                  Some(ExpressionNode {
-                     expression: v,
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  })
+                  Some(v)
                } else {
                   // Divide by 0 handled above
                   unreachable!();
@@ -629,11 +506,7 @@ fn fold_expr(
             }
             BinOp::Remainder => {
                if let Some(v) = lhs.checked_rem(rhs) {
-                  Some(ExpressionNode {
-                     expression: v,
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  })
+                  Some(v)
                } else {
                   rolandc_error!(
                      err_manager,
@@ -643,50 +516,18 @@ fn fold_expr(
                   None
                }
             }
-            BinOp::GreaterThan => Some(ExpressionNode {
-               expression: Expression::BoolLiteral(lhs > rhs),
-               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            }),
-            BinOp::LessThan => Some(ExpressionNode {
-               expression: Expression::BoolLiteral(lhs < rhs),
-               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            }),
-            BinOp::GreaterThanOrEqualTo => Some(ExpressionNode {
-               expression: Expression::BoolLiteral(lhs >= rhs),
-               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            }),
-            BinOp::LessThanOrEqualTo => Some(ExpressionNode {
-               expression: Expression::BoolLiteral(lhs <= rhs),
-               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            }),
+            BinOp::GreaterThan => Some(Expression::BoolLiteral(lhs > rhs)),
+            BinOp::LessThan => Some(Expression::BoolLiteral(lhs < rhs)),
+            BinOp::GreaterThanOrEqualTo => Some(Expression::BoolLiteral(lhs >= rhs)),
+            BinOp::LessThanOrEqualTo => Some(Expression::BoolLiteral(lhs <= rhs)),
             // int and bool
-            BinOp::BitwiseAnd => Some(ExpressionNode {
-               expression: lhs & rhs,
-               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            }),
-            BinOp::BitwiseOr => Some(ExpressionNode {
-               expression: lhs | rhs,
-               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            }),
-            BinOp::BitwiseXor => Some(ExpressionNode {
-               expression: lhs ^ rhs,
-               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            }),
+            BinOp::BitwiseAnd => Some(lhs & rhs),
+            BinOp::BitwiseOr => Some(lhs | rhs),
+            BinOp::BitwiseXor => Some(lhs ^ rhs),
             // int
             BinOp::BitwiseLeftShift => {
                if let Some(v) = lhs.checked_shl(rhs) {
-                  Some(ExpressionNode {
-                     expression: v,
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  })
+                  Some(v)
                } else {
                   rolandc_error!(
                      err_manager,
@@ -698,11 +539,7 @@ fn fold_expr(
             }
             BinOp::BitwiseRightShift => {
                if let Some(v) = lhs.checked_shr(rhs) {
-                  Some(ExpressionNode {
-                     expression: v,
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
-                  })
+                  Some(v)
                } else {
                   rolandc_error!(
                      err_manager,
@@ -713,16 +550,8 @@ fn fold_expr(
                }
             }
             // bool
-            BinOp::LogicalAnd => Some(ExpressionNode {
-               expression: lhs & rhs,
-               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            }),
-            BinOp::LogicalOr => Some(ExpressionNode {
-               expression: lhs | rhs,
-               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            }),
+            BinOp::LogicalAnd => Some(lhs & rhs),
+            BinOp::LogicalOr => Some(lhs | rhs),
          }
       }
       Expression::UnaryOperator(op, expr) => {
@@ -757,11 +586,7 @@ fn fold_expr(
                // Run the fold anyway, for the base error check
                let _fold_result = fold_expr(expr, err_manager, folding_context, interner);
 
-               return Some(ExpressionNode {
-                  expression: Expression::IntLiteral { val, synthetic: true },
-                  exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                  location: expr_to_fold_location,
-               });
+               return Some(Expression::IntLiteral { val, synthetic: true });
             }
          }
 
@@ -774,11 +599,7 @@ fn fold_expr(
                // float and signed int
                UnOp::Negate => {
                   if let Some(v) = literal.checked_negate() {
-                     Some(ExpressionNode {
-                        expression: v,
-                        exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                        location: expr_to_fold_location,
-                     })
+                     Some(v)
                   } else {
                      rolandc_error!(
                         err_manager,
@@ -789,20 +610,12 @@ fn fold_expr(
                   }
                }
                // int and bool
-               UnOp::Complement => Some(ExpressionNode {
-                  expression: literal.complement(),
-                  exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                  location: expr_to_fold_location,
-               }),
+               UnOp::Complement => Some(literal.complement()),
                // nothing to do
                UnOp::AddressOf | UnOp::Dereference => None,
             }
          } else if matches!(expr.expression, Expression::BoundFcnLiteral(_, _)) {
-            Some(ExpressionNode {
-               expression: expr.expression.clone(),
-               exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-               location: expr_to_fold_location,
-            })
+            Some(expr.expression.clone())
          } else {
             None
          }
@@ -840,13 +653,9 @@ fn fold_expr(
                      }
                      ExpressionType::Array(_, len) => {
                         // Arrays only have one possible field, length
-                        return Some(ExpressionNode {
-                           expression: Expression::IntLiteral {
-                              val: u64::from(*len),
-                              synthetic: true,
-                           },
-                           exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                           location: expr_to_fold_location,
+                        return Some(Expression::IntLiteral {
+                           val: u64::from(*len),
+                           synthetic: true,
                         });
                      }
                      _ => unreachable!(),
@@ -872,24 +681,19 @@ fn fold_expr(
                Expression::StringLiteral(literal_val)
                   if interner.lookup(field_names.last().copied().unwrap()) == "length" =>
                {
-                  Some(ExpressionNode {
-                     expression: Expression::IntLiteral {
-                        val: interner.lookup(*literal_val).len() as u64,
-                        synthetic: true,
-                     },
-                     exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                     location: expr_to_fold_location,
+                  Some(Expression::IntLiteral {
+                     val: interner.lookup(*literal_val).len() as u64,
+                     synthetic: true,
                   })
                }
                Expression::StructLiteral(_, fields) => {
                   // We want O(1) field access in other places- consider unifying, perhaps at parse time? TODO
                   let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
-                  let inner_node = folding_context.expressions[*map.get(field_names.last().unwrap()).unwrap()].clone();
-                  Some(ExpressionNode {
-                     expression: inner_node.expression,
-                     exp_type: inner_node.exp_type,
-                     location: expr_to_fold_location,
-                  })
+                  let inner_node_expression = folding_context.expressions
+                     [*map.get(field_names.last().unwrap()).unwrap()]
+                  .expression
+                  .clone();
+                  Some(inner_node_expression)
                }
                Expression::ArrayLiteral(_) => unreachable!(), // covered by type check above
                _ => None,                                     // Some non-constant
@@ -902,7 +706,7 @@ fn fold_expr(
          let expr = &folding_context.expressions[expr];
 
          if let Some(literal) = extract_literal(expr) {
-            let cast_val = match cast_type {
+            match cast_type {
                CastType::Transmute => {
                   literal.transmute(folding_context.expressions[expr_index].exp_type.as_ref().unwrap())
                }
@@ -910,15 +714,6 @@ fn fold_expr(
                CastType::Truncate => {
                   literal.truncate(folding_context.expressions[expr_index].exp_type.as_ref().unwrap())
                }
-            };
-            if let Some(t_val) = cast_val {
-               Some(ExpressionNode {
-                  expression: t_val,
-                  exp_type: folding_context.expressions[expr_index].exp_type.clone(),
-                  location: expr_to_fold_location,
-               })
-            } else {
-               None
             }
          } else {
             None
