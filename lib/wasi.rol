@@ -10,7 +10,14 @@ struct ciovec {
    buf_len: usize,
 }
 
+struct prestat {
+   tag: u8,
+   u: u32,
+}
+
 extern proc fd_write(handle: usize, strings_to_write: &ciovec, strings_to_write_len: usize, written_ptr: &usize) -> isize;
+extern proc path_open(fd: usize, dirflags: u32, path: String, oflags: u16, fs_rights_base: u64, fs_rights_inheriting: u64, fdflags: u16, ret: &usize) -> isize;
+extern proc fd_prestat_get(fd: usize, result: &prestat) -> isize;
 
 proc print(s: String) {
    let data = [
