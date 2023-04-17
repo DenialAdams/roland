@@ -209,6 +209,8 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program);
 
+   pp::pp(&ctx.program, &ctx.interner, &mut std::fs::File::create("pp.rol").unwrap());
+
    Ok(wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, config.target))
 }
 

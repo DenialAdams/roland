@@ -21,10 +21,10 @@ impl<W: Write> PpCtx<'_, W> {
    }
 }
 
-fn pp<W: Write>(program: &Program, expressions: &ExpressionPool, interner: &Interner, output: &mut W) -> Result<(), std::io::Error> {
+pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> Result<(), std::io::Error> {
    let mut pp_ctx = PpCtx {
       indentation_level: 0,
-      expressions,
+      expressions: &program.expressions,
       interner,
       output,
    };
@@ -37,6 +37,7 @@ fn pp<W: Write>(program: &Program, expressions: &ExpressionPool, interner: &Inte
          }
          write!(pp_ctx.output, "{}: ", interner.lookup(parameter.name))?;
          pp_type(&parameter.p_type.e_type, &mut pp_ctx)?;
+         write!(pp_ctx.output, ", ")?;
       }
       write!(pp_ctx.output, ") -> ")?;
       pp_type(&proc.definition.ret_type.e_type, &mut pp_ctx)?;
@@ -65,6 +66,7 @@ fn pp_stmt<W: Write>(stmt: &Statement, pp_ctx: &mut PpCtx<W>) -> Result<(), std:
          pp_expr(*lhs, pp_ctx)?;
          write!(pp_ctx.output, " = ")?;
          pp_expr(*rhs, pp_ctx)?;
+         writeln!(pp_ctx.output, ";")?;
       }
       Statement::Block(bn) => {
          pp_block(bn, pp_ctx)?;
@@ -149,14 +151,14 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          write!(pp_ctx.output, "{}", val)?;
       }
       Expression::StringLiteral(val) => {
-         write!(pp_ctx.output, "{}", pp_ctx.interner.lookup(*val))?;
+         write!(pp_ctx.output, "\"{}\"", pp_ctx.interner.lookup(*val))?;
       }
       Expression::IntLiteral { .. } => {
          // nocheckin
          write!(pp_ctx.output, "{}", 0)?;
       }
       Expression::FloatLiteral(val) => {
-         write!(pp_ctx.output, "{}", val)?;
+         write!(pp_ctx.output, "{}", *val)?;
       }
       Expression::UnitLiteral => {
          write!(pp_ctx.output, "()")?;
