@@ -81,7 +81,7 @@ enum TypeValidator {
    Any,
 }
 
-fn matches(type_validation: &TypeValidator, et: &ExpressionType, validation_context: &ValidationContext) -> bool {
+fn matches(type_validation: &TypeValidator, et: &ExpressionType, validation_context: &ValidationContext, interner: &Interner) -> bool {
    let normal_matches = matches!(
       (type_validation, et),
       (TypeValidator::Any, _)
@@ -108,13 +108,23 @@ fn matches(type_validation: &TypeValidator, et: &ExpressionType, validation_cont
       false
    };
 
-   normal_matches | unknown_matches
+   let type_param_matches = if let ExpressionType::GenericParam(gp) = et {
+      let constraints = validation_context.cur_procedure_info.and_then(|x| x.type_parameters.get(gp)).unwrap();
+      match type_validation {
+        TypeValidator::AnyEnum => interner.reverse_lookup("Enum").map_or(false, |enum_id| constraints.contains(&enum_id)),
+        _ => false,
+    }
+   } else {
+      false
+   };
+
+   normal_matches | unknown_matches | type_param_matches
 }
 
-fn any_match(type_validations: &[TypeValidator], et: &ExpressionType, validation_context: &ValidationContext) -> bool {
+fn any_match(type_validations: &[TypeValidator], et: &ExpressionType, validation_context: &ValidationContext, interner: &Interner) -> bool {
    let mut any_match = false;
    for type_validation in type_validations.iter() {
-      any_match |= matches(type_validation, et, validation_context);
+      any_match |= matches(type_validation, et, validation_context, interner);
    }
    any_match
 }
@@ -1106,7 +1116,7 @@ fn get_type(
          if lhs_type.is_error() || rhs_type.is_error() {
             // Avoid cascading errors
             ExpressionType::CompileError
-         } else if !any_match(correct_arg_types, lhs_type, validation_context) {
+         } else if !any_match(correct_arg_types, lhs_type, validation_context, interner) {
             rolandc_error!(
                err_manager,
                lhs_expr.location,
@@ -1116,7 +1126,7 @@ fn get_type(
                lhs_type.as_roland_type_info(interner, &validation_context.type_variables)
             );
             ExpressionType::CompileError
-         } else if !any_match(correct_arg_types, rhs_type, validation_context) {
+         } else if !any_match(correct_arg_types, rhs_type, validation_context, interner) {
             rolandc_error!(
                err_manager,
                rhs_expr.location,
@@ -1240,7 +1250,7 @@ fn get_type(
          if e.exp_type.as_ref().unwrap().is_error() {
             // Avoid cascading errors
             ExpressionType::CompileError
-         } else if !any_match(correct_type, e.exp_type.as_ref().unwrap(), validation_context) {
+         } else if !any_match(correct_type, e.exp_type.as_ref().unwrap(), validation_context, interner) {
             rolandc_error!(
                err_manager,
                e.location,
