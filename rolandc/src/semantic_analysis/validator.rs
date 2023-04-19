@@ -81,6 +81,25 @@ enum TypeValidator {
    Any,
 }
 
+pub fn is_type_param_with_trait(
+   validation_context: &ValidationContext,
+   the_type: &ExpressionType,
+   the_trait: &'static str,
+) -> bool {
+   if let ExpressionType::GenericParam(gp) = the_type {
+      let constraints = validation_context
+         .cur_procedure_info
+         .and_then(|x| x.type_parameters.get(gp))
+         .unwrap();
+      validation_context
+         .interner
+         .reverse_lookup(the_trait)
+         .map_or(false, |enum_id| constraints.contains(&enum_id))
+   } else {
+      false
+   }
+}
+
 fn matches(type_validation: &TypeValidator, et: &ExpressionType, validation_context: &ValidationContext) -> bool {
    let normal_matches = matches!(
       (type_validation, et),
@@ -108,24 +127,10 @@ fn matches(type_validation: &TypeValidator, et: &ExpressionType, validation_cont
       false
    };
 
-   let type_param_matches = if let ExpressionType::GenericParam(gp) = et {
-      let constraints = validation_context
-         .cur_procedure_info
-         .and_then(|x| x.type_parameters.get(gp))
-         .unwrap();
-      match type_validation {
-         TypeValidator::AnyEnum => validation_context
-            .interner
-            .reverse_lookup("Enum")
-            .map_or(false, |enum_id| constraints.contains(&enum_id)),
-         TypeValidator::AnyFloat => validation_context
-            .interner
-            .reverse_lookup("Float")
-            .map_or(false, |float_id| constraints.contains(&float_id)),
-         _ => false,
-      }
-   } else {
-      false
+   let type_param_matches = match type_validation {
+      TypeValidator::AnyEnum => is_type_param_with_trait(validation_context, et, "Enum"),
+      TypeValidator::AnyFloat => is_type_param_with_trait(validation_context, et, "Float"),
+      _ => false,
    };
 
    normal_matches | unknown_matches | type_param_matches
