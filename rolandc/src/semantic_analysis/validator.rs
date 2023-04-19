@@ -112,6 +112,7 @@ fn matches(type_validation: &TypeValidator, et: &ExpressionType, validation_cont
       let constraints = validation_context.cur_procedure_info.and_then(|x| x.type_parameters.get(gp)).unwrap();
       match type_validation {
         TypeValidator::AnyEnum => interner.reverse_lookup("Enum").map_or(false, |enum_id| constraints.contains(&enum_id)),
+        TypeValidator::AnyFloat => interner.reverse_lookup("Float").map_or(false, |float_id| constraints.contains(&float_id)),
         _ => false,
     }
    } else {
