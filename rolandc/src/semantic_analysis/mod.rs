@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use indexmap::{IndexMap, IndexSet};
 
 use self::type_variables::TypeVariableManager;
-use crate::interner::StrId;
+use crate::interner::{Interner, StrId};
 use crate::parse::{ExpressionId, ExpressionPool, ExpressionTypeNode, ExternalProcImplSource, VariableId};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
@@ -96,6 +96,7 @@ pub struct ValidationContext<'a> {
    pub type_variables: TypeVariableManager,
    pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,
    pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
+   pub interner: &'a mut Interner,
    next_var_dont_access: VariableId,
 }
 
