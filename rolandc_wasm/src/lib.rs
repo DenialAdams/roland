@@ -70,7 +70,7 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
    match compile_result {
       Ok(v) => {
          if source_code.starts_with("//[disasm]") {
-            let disasm = wabt::wasm2wat(v).unwrap();
+            let disasm = wasmprinter::print_bytes(v).unwrap();
             output_frame.set_text_content(Some(disasm.as_str()));
             None
          } else {
