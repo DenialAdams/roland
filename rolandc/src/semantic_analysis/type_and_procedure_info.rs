@@ -3,7 +3,7 @@ use std::ops::BitOrAssign;
 
 use indexmap::{IndexMap, IndexSet};
 
-use super::{EnumInfo, GlobalInfo, ProcImplSource, ProcedureInfo, StructInfo};
+use super::{EnumInfo, GlobalInfo, GlobalKind, ProcImplSource, ProcedureInfo, StructInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
@@ -299,7 +299,7 @@ pub fn populate_type_and_procedure_info(
          GlobalInfo {
             expr_type: const_node.const_type.e_type.clone(),
             location: const_node.location,
-            is_const: true,
+            kind: GlobalKind::Const,
             name: const_node.name.str,
          },
       ) {
@@ -317,7 +317,7 @@ pub fn populate_type_and_procedure_info(
       program.next_variable = program.next_variable.next();
    }
 
-   for static_node in program.statics.iter_mut() {
+   for (static_id, static_node) in program.statics.iter_mut() {
       let static_e_type = &mut static_node.static_type.e_type;
 
       if resolve_type(static_e_type, &program.enum_info, &program.struct_info, None).is_err() {
@@ -336,7 +336,7 @@ pub fn populate_type_and_procedure_info(
          GlobalInfo {
             expr_type: static_node.static_type.e_type.clone(),
             location: static_node.location,
-            is_const: false,
+            kind: GlobalKind::Static(static_id),
             name: static_node.name.str,
          },
       ) {

@@ -13,7 +13,7 @@ use crate::parse::{
    statement_always_returns, BinOp, CastType, Expression, ExpressionId, ExpressionPool, ExternalProcImplSource,
    ProcedureDefinition, Program, Statement, StatementNode, UnOp, VariableId,
 };
-use crate::semantic_analysis::{EnumInfo, StructInfo};
+use crate::semantic_analysis::{EnumInfo, GlobalKind, StructInfo};
 use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
 };
@@ -377,7 +377,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
    // what ridiculous crap. we need to get rid of this map.
    let mut static_addresses_by_name = HashMap::new();
    for (static_var, static_details) in program.global_info.iter() {
-      debug_assert!(!static_details.is_const);
+      debug_assert!(static_details.kind != GlobalKind::Const);
       generation_context.static_addresses.insert(*static_var, offset);
       static_addresses_by_name.insert(static_details.name, offset);
 
@@ -389,7 +389,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
    }
 
    let mut buf = vec![];
-   for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
+   for p_static in program.statics.values().filter(|x| x.value.is_some()) {
       emit_literal_bytes(&mut buf, p_static.value.unwrap(), &mut generation_context);
       let static_address = static_addresses_by_name.get(&p_static.name.str).copied().unwrap();
       data_section.active(0, &ConstExpr::i32_const(static_address as i32), buf.drain(..));

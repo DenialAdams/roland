@@ -5,7 +5,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use super::type_inference::try_set_inferred_type;
 use super::type_variables::{TypeConstraint, TypeVariableManager};
-use super::{ProcImplSource, ProcedureInfo, StructInfo, ValidationContext, VariableDetails, VariableKind};
+use super::{GlobalKind, ProcImplSource, ProcedureInfo, StructInfo, ValidationContext, VariableDetails, VariableKind};
 use crate::error_handling::error_handling_macros::{
    rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn,
 };
@@ -360,7 +360,7 @@ pub fn type_and_check_validity(
       );
    }
 
-   for p_static in program.statics.iter_mut().filter(|x| x.value.is_some()) {
+   for p_static in program.statics.values_mut().filter(|x| x.value.is_some()) {
       // p_static.static_type is guaranteed to be resolved at this point
       type_expression(err_manager, p_static.value.unwrap(), &mut validation_context);
       try_set_inferred_type(
@@ -1301,7 +1301,7 @@ fn get_type(
          } else if un_op == UnOp::AddressOf {
             if let Expression::Variable(var) = &e.expression {
                if let Some(gi) = validation_context.global_info.get(var) {
-                  if gi.is_const {
+                  if gi.kind == GlobalKind::Const {
                      rolandc_error!(
                         err_manager,
                         expr_location,

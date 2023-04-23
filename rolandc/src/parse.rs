@@ -9,7 +9,7 @@ use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
 use crate::lex::Lexer;
-use crate::semantic_analysis::{EnumInfo, GlobalInfo, ProcedureInfo, StructInfo};
+use crate::semantic_analysis::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
@@ -238,7 +238,7 @@ impl Expression {
    #[must_use]
    pub fn is_lvalue(&self, expressions: &ExpressionPool, global_info: &IndexMap<VariableId, GlobalInfo>) -> bool {
       match self {
-         Expression::Variable(x) => global_info.get(x).map_or(true, |x| !x.is_const),
+         Expression::Variable(x) => global_info.get(x).map_or(true, |x| x.kind != GlobalKind::Const),
          Expression::UnresolvedVariable(_) => true,
          Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue(expressions, global_info),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
@@ -322,6 +322,8 @@ pub struct BlockNode {
    pub location: SourceInfo,
 }
 
+new_key_type! { pub struct StaticId; }
+
 #[derive(Clone)]
 pub struct Program {
    // These fields are populated by the parser
@@ -330,7 +332,7 @@ pub struct Program {
    pub procedures: Vec<ProcedureNode>,
    pub structs: Vec<StructNode>,
    pub consts: Vec<ConstNode>,
-   pub statics: Vec<StaticNode>,
+   pub statics: SlotMap<StaticId, StaticNode>,
    pub expressions: ExpressionPool,
 
    // (only read by the language server)
@@ -356,7 +358,7 @@ impl Program {
          procedures: Vec::new(),
          structs: Vec::new(),
          consts: Vec::new(),
-         statics: Vec::new(),
+         statics: SlotMap::with_key(),
          parsed_types: Vec::new(),
          literals: IndexSet::new(),
          enum_info: IndexMap::new(),
@@ -496,7 +498,7 @@ fn parse_top_level_item(
                Some(parse_expression(lexer, parse_context, false, expressions)?)
             };
             let end_token = expect(lexer, parse_context, Token::Semicolon)?;
-            top.statics.push(StaticNode {
+            top.statics.insert(StaticNode {
                name: variable_name,
                static_type,
                location: merge_locations(a_static.source_info, end_token.source_info),
@@ -526,7 +528,7 @@ struct TopLevelItems<'a> {
    structs: &'a mut Vec<StructNode>,
    enums: &'a mut Vec<EnumNode>,
    consts: &'a mut Vec<ConstNode>,
-   statics: &'a mut Vec<StaticNode>,
+   statics: &'a mut SlotMap<StaticId, StaticNode>,
    imports: Vec<ImportNode>,
 }
 

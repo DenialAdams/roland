@@ -47,6 +47,7 @@ use error_handling::ErrorManager;
 use interner::Interner;
 use parse::ImportNode;
 pub use parse::Program;
+use semantic_analysis::GlobalKind;
 use source_info::SourcePath;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -198,7 +199,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    dead_code_elimination::doit(&mut ctx.program, &mut ctx.interner, config.target);
 
    constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner);
-   ctx.program.global_info.retain(|_, v| !v.is_const);
+   ctx.program.global_info.retain(|_, v| v.kind != GlobalKind::Const);
 
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);

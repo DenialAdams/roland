@@ -41,7 +41,7 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
       const_replacements: &const_replacements,
    };
 
-   for p_static in program.statics.iter().filter(|x| x.value.is_some()) {
+   for p_static in program.statics.values().filter(|x| x.value.is_some()) {
       if let Some(v) = p_static.value.as_ref().copied() {
          try_fold_and_replace_expr(v, err_manager, &mut folding_context, interner);
          let v = &folding_context.expressions[v];
