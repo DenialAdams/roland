@@ -1,16 +1,22 @@
 use std::collections::HashSet;
 
-use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{BlockNode, Expression, ExpressionId, ExpressionPool, Statement};
 use crate::semantic_analysis::ProcImplSource;
-use crate::Program;
+use crate::semantic_analysis::validator::get_special_procedures;
+use crate::{Program, Target};
 
 type ProcedureId = StrId;
 
-pub fn doit(program: &mut Program, interner: &Interner, err_manager: &mut ErrorManager) {
+pub fn doit(program: &mut Program, interner: &mut Interner, target: Target) {
    let mut worklist: Vec<ProcedureId> = Vec::new();
    let mut visited_procedures: HashSet<ProcedureId> = HashSet::new();
+
+   for special_proc in get_special_procedures(target, interner) {
+      if program.procedure_info.contains_key(&special_proc.name) {
+         worklist.push(special_proc.name);
+      }
+   }
 
    if let Some(x) = interner.reverse_lookup("main") {
       worklist.push(x);
@@ -85,7 +91,7 @@ fn mark_reachable_stmt(stmt: &Statement, expressions: &ExpressionPool, worklist:
       Statement::Return(expr) => {
          mark_reachable_expr(*expr, expressions, worklist);
       }
-      Statement::VariableDeclaration(_, initializer, declared_type, _) => {
+      Statement::VariableDeclaration(_, initializer, _, _) => {
          if let Some(initializer) = initializer.as_ref() {
             mark_reachable_expr(
                *initializer,

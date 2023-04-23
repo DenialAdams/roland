@@ -195,7 +195,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    //   1) make program.procedures a SlotMap
    //   2) delete template procedures here
    //   3) move DCE to after compile_for_errors
-   dead_code_elimination::doit(&mut ctx.program, &ctx.interner, &mut ctx.err_manager);
+   dead_code_elimination::doit(&mut ctx.program, &mut ctx.interner, config.target);
 
    constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner);
    ctx.program.global_info.retain(|_, v| !v.is_const);

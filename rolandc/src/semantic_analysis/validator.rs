@@ -23,14 +23,14 @@ use crate::type_data::{
 };
 use crate::Target;
 
-struct SpecialProcedure {
-   name: StrId,
-   required: bool,
-   input_types: Vec<ExpressionType>,
-   return_type: ExpressionType,
+pub struct SpecialProcedure {
+   pub name: StrId,
+   pub required: bool,
+   pub input_types: Vec<ExpressionType>,
+   pub return_type: ExpressionType,
 }
 
-fn get_special_procedures(target: Target, interner: &mut Interner) -> Vec<SpecialProcedure> {
+pub fn get_special_procedures(target: Target, interner: &mut Interner) -> Vec<SpecialProcedure> {
    match target {
       Target::Lib => vec![],
       Target::Wasm4 => vec![
