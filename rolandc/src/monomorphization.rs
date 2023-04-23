@@ -74,6 +74,8 @@ pub fn monomorphize(program: &mut Program, interner: &mut Interner, err_manager:
          return;
       }
 
+      let mut cloned_procedure_info = program.procedure_info.get(&new_spec.template_with_type_arguments.0).unwrap().clone();
+
       let mut cloned_procedure = clone_procedure(
          template_procedure,
          &new_spec.template_with_type_arguments.1,
@@ -88,11 +90,17 @@ pub fn monomorphize(program: &mut Program, interner: &mut Interner, err_manager:
       let new_id = interner.intern(&format!(
          "{}${}",
          interner.lookup(new_spec.template_with_type_arguments.0),
-         program.procedures.len() - 1
+         program.procedures.len()
       ));
       cloned_procedure.definition.name = new_id;
       new_procedures.insert(new_spec.template_with_type_arguments, new_id);
+
+      // hack: the cloned procedure info is completely bogus, except for the proc_impl_source.
+      // a better solution is needed.
+      cloned_procedure_info.proc_impl_source = ProcImplSource::ProcedureId(program.procedures.len());
+
       program.procedures.push(cloned_procedure);
+      program.procedure_info.insert(new_id, cloned_procedure_info);
    }
 
    // Update all procedure calls to refer to specialized procedures

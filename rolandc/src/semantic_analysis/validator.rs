@@ -232,7 +232,7 @@ pub fn type_and_check_validity(
             declaration_location: gi.1.location,
             kind: VariableKind::Global,
             depth: 0,
-            used: true,
+            used: false,
             var_id: *gi.0,
          },
       );
