@@ -34,8 +34,8 @@ pub fn doit(program: &mut Program, interner: &mut Interner, target: Target) {
       visited_procedures.insert(reachable_proc);
 
       match program.procedure_info.get(&reachable_proc).unwrap().proc_impl_source {
-         ProcImplSource::Builtin => (), // We'd like to prune these, but for now we will always leave builtins
-         ProcImplSource::External => (), // Same as above
+         ProcImplSource::Builtin => (),
+         ProcImplSource::External => (),
          ProcImplSource::ProcedureId(proc_id) => {
             let pn = program.procedures.get(proc_id).unwrap();
             mark_reachable_block(&pn.block, &program.expressions, &mut worklist);
@@ -44,7 +44,7 @@ pub fn doit(program: &mut Program, interner: &mut Interner, target: Target) {
    }
 
    program.procedures.retain(|x| visited_procedures.contains(&x.definition.name));
-   program.external_procedures.retain(|x| visited_procedures.contains(&x.definition.name)); // nocheckin
+   program.external_procedures.retain(|x| visited_procedures.contains(&x.definition.name));
 }
 
 fn mark_reachable_block(block: &BlockNode, expressions: &ExpressionPool, worklist: &mut Vec<ProcedureId>) {
