@@ -10,7 +10,7 @@ type ProcedureId = StrId;
 
 pub fn doit(program: &mut Program, interner: &mut Interner, target: Target) {
    let mut worklist: Vec<ProcedureId> = Vec::new();
-   let mut visited_procedures: HashSet<ProcedureId> = HashSet::new();
+   let mut reachable_procedures: HashSet<ProcedureId> = HashSet::new();
 
    for special_proc in get_special_procedures(target, interner) {
       if program.procedure_info.contains_key(&special_proc.name) {
@@ -23,11 +23,11 @@ pub fn doit(program: &mut Program, interner: &mut Interner, target: Target) {
    }
 
    while let Some(reachable_proc) = worklist.pop() {
-      if visited_procedures.contains(&reachable_proc) {
+      if reachable_procedures.contains(&reachable_proc) {
          continue;
       }
 
-      visited_procedures.insert(reachable_proc);
+      reachable_procedures.insert(reachable_proc);
 
       match program.procedure_info.get(&reachable_proc).unwrap().proc_impl_source {
          ProcImplSource::Builtin => (),
@@ -39,8 +39,8 @@ pub fn doit(program: &mut Program, interner: &mut Interner, target: Target) {
       }
    }
 
-   program.procedures.retain(|x| visited_procedures.contains(&x.definition.name));
-   program.external_procedures.retain(|x| visited_procedures.contains(&x.definition.name));
+   program.procedures.retain(|x| reachable_procedures.contains(&x.definition.name));
+   program.external_procedures.retain(|x| reachable_procedures.contains(&x.definition.name));
 }
 
 fn mark_reachable_block(block: &BlockNode, expressions: &ExpressionPool, worklist: &mut Vec<ProcedureId>) {
