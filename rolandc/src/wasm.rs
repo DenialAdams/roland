@@ -610,27 +610,29 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
 
    let (table_section, element_section) = {
       let mut table = TableSection::new();
-
-      let table_type = TableType {
-         element_type: RefType::FUNCREF,
-         minimum: generation_context.procedure_to_table_index.len() as u32,
-         maximum: Some(generation_context.procedure_to_table_index.len() as u32),
-      };
-
-      table.table(table_type);
-
       let mut elem = ElementSection::new();
-      let elements = generation_context
-         .procedure_to_table_index
-         .iter()
-         .map(|x| generation_context.procedure_indices.get_index_of(x).unwrap() as u32)
-         .collect::<Vec<_>>();
-      elem.active(
-         Some(0),
-         &ConstExpr::i32_const(0),
-         RefType::FUNCREF,
-         Elements::Functions(&elements),
-      );
+
+      if !generation_context.procedure_to_table_index.is_empty() {
+         let table_type = TableType {
+            element_type: RefType::FUNCREF,
+            minimum: generation_context.procedure_to_table_index.len() as u32,
+            maximum: Some(generation_context.procedure_to_table_index.len() as u32),
+         };
+   
+         table.table(table_type);
+   
+         let elements = generation_context
+            .procedure_to_table_index
+            .iter()
+            .map(|x| generation_context.procedure_indices.get_index_of(x).unwrap() as u32)
+            .collect::<Vec<_>>();
+         elem.active(
+            Some(0),
+            &ConstExpr::i32_const(0),
+            RefType::FUNCREF,
+            Elements::Functions(&elements),
+         );
+      }
 
       (table, elem)
    };
