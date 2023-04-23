@@ -74,7 +74,11 @@ pub fn monomorphize(program: &mut Program, interner: &mut Interner, err_manager:
          return;
       }
 
-      let mut cloned_procedure_info = program.procedure_info.get(&new_spec.template_with_type_arguments.0).unwrap().clone();
+      let mut cloned_procedure_info = program
+         .procedure_info
+         .get(&new_spec.template_with_type_arguments.0)
+         .unwrap()
+         .clone();
 
       let mut cloned_procedure = clone_procedure(
          template_procedure,
