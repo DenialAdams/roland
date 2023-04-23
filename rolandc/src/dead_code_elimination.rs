@@ -18,10 +18,6 @@ pub fn doit(program: &mut Program, interner: &mut Interner, target: Target) {
       }
    }
 
-   if let Some(x) = interner.reverse_lookup("main") {
-      worklist.push(x);
-   }
-
    for static_expr in program.statics.iter().flat_map(|x| x.value) {
       mark_reachable_expr(static_expr, &program.expressions, &mut worklist);
    }
