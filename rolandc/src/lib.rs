@@ -181,23 +181,10 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
-
-   //ctx.program
-   //   .procedures
-   //   .retain(|x| x.definition.generic_parameters.is_empty());
-   //
-   // Dead code elimination is run immediately after monomorphization because we want to clean up
-   // template procedures before constant folding, so that constant folding can be simplified.
-   // This leads to oddities like 1/0 not being caught at compile time in an unused procedure.
-   // I'd like to have two passes where we clean up procedures: here, where we just clean up templates,
-   // and DCE, which runs after compile_for_errors. The problem with *that* is that we currently store
-   // procedures in a Vec with no tombstones, but DCE is relying on indices into this vec that live in procedure_info.
-   // So, the plan:
-   //   1) make program.procedures a SlotMap
-   //   2) delete template procedures here
-   //   3) move DCE to after compile_for_errors
-   dead_code_elimination::doit(&mut ctx.program, &mut ctx.interner, config.target);
-
+   ctx.program
+      .procedures
+      .retain(|_, x| x.definition.generic_parameters.is_empty());
+   
    constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner);
    ctx.program.global_info.retain(|_, v| v.kind != GlobalKind::Const);
 
@@ -220,6 +207,8 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    config: &CompilationConfig,
 ) -> Result<Vec<u8>, CompilationError> {
    compile_for_errors(ctx, user_program_ep, config)?;
+
+   dead_code_elimination::doit(&mut ctx.program, &mut ctx.interner, config.target);
 
    pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program);
 

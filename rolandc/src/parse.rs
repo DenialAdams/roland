@@ -323,13 +323,14 @@ pub struct BlockNode {
 }
 
 new_key_type! { pub struct StaticId; }
+new_key_type! { pub struct ProcedureId; }
 
 #[derive(Clone)]
 pub struct Program {
    // These fields are populated by the parser
    pub enums: Vec<EnumNode>,
    pub external_procedures: Vec<ExternalProcedureNode>,
-   pub procedures: Vec<ProcedureNode>,
+   pub procedures: SlotMap<ProcedureId, ProcedureNode>,
    pub structs: Vec<StructNode>,
    pub consts: Vec<ConstNode>,
    pub statics: SlotMap<StaticId, StaticNode>,
@@ -355,7 +356,7 @@ impl Program {
       Program {
          enums: Vec::new(),
          external_procedures: Vec::new(),
-         procedures: Vec::new(),
+         procedures: SlotMap::with_key(),
          structs: Vec::new(),
          consts: Vec::new(),
          statics: SlotMap::with_key(),
@@ -448,7 +449,7 @@ fn parse_top_level_item(
          Token::KeywordProc => {
             let def = lexer.next();
             let p = parse_procedure(lexer, parse_context, def.source_info, expressions)?;
-            top.procedures.push(p);
+            top.procedures.insert(p);
          }
          Token::KeywordImport => {
             let kw = lexer.next();
@@ -524,7 +525,7 @@ fn parse_top_level_item(
 
 struct TopLevelItems<'a> {
    external_procedures: &'a mut Vec<ExternalProcedureNode>,
-   procedures: &'a mut Vec<ProcedureNode>,
+   procedures: &'a mut SlotMap<ProcedureId, ProcedureNode>,
    structs: &'a mut Vec<StructNode>,
    enums: &'a mut Vec<EnumNode>,
    consts: &'a mut Vec<ConstNode>,

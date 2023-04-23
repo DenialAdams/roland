@@ -71,7 +71,7 @@ pub fn doit(program: &mut Program, interner: &mut Interner, target: Target) {
 
    program
       .procedures
-      .retain(|x| reachable_procedures.contains(&x.definition.name));
+      .retain(|_, x| reachable_procedures.contains(&x.definition.name));
    program
       .external_procedures
       .retain(|x| reachable_procedures.contains(&x.definition.name));

@@ -476,7 +476,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
    }
 
    // One pass over all procedures first so that call expressions know what index to use
-   for procedure in program.procedures.iter() {
+   for procedure in program.procedures.values() {
       function_section.function(
          generation_context
             .type_manager
@@ -485,7 +485,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       generation_context.procedure_indices.insert(procedure.definition.name);
    }
 
-   for procedure in program.procedures.iter_mut() {
+   for procedure in program.procedures.values_mut() {
       generation_context.active_fcn = Function::new_with_locals_types([]);
       generation_context.local_offsets_mem.clear();
 

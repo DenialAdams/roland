@@ -54,7 +54,7 @@ pub fn expression_hoisting(program: &mut Program) {
       next_variable: program.next_variable,
    };
 
-   for procedure in program.procedures.iter_mut() {
+   for procedure in program.procedures.values_mut() {
       vv_context.cur_procedure_locals = &mut procedure.locals;
       vv_block(&mut procedure.block, &mut vv_context, &mut program.expressions);
    }

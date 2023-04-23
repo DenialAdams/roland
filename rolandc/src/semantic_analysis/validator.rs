@@ -380,7 +380,7 @@ pub fn type_and_check_validity(
       );
    }
 
-   for procedure in program.procedures.iter_mut() {
+   for procedure in program.procedures.values_mut() {
       validation_context.cur_procedure_info = program.procedure_info.get(&procedure.definition.name);
 
       for parameter in procedure.definition.parameters.iter_mut() {
@@ -445,7 +445,7 @@ pub fn type_and_check_validity(
          }
       }
 
-      for proc in program.procedures.iter_mut() {
+      for proc in program.procedures.values_mut() {
          for lt in proc.locals.values_mut() {
             let Some(tv) = lt.get_type_variable_of_unknown_type() else { continue; };
 

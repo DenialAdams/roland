@@ -4,7 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use self::type_variables::TypeVariableManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{ExpressionId, ExpressionPool, ExpressionTypeNode, ExternalProcImplSource, StaticId, VariableId};
+use crate::parse::{ExpressionId, ExpressionPool, ExpressionTypeNode, ExternalProcImplSource, StaticId, VariableId, ProcedureId};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
@@ -19,7 +19,7 @@ pub mod validator;
 pub enum ProcImplSource {
    Builtin,
    External,
-   ProcedureId(usize),
+   ProcedureId(ProcedureId),
 }
 
 impl From<ExternalProcImplSource> for ProcImplSource {

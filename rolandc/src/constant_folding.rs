@@ -71,7 +71,7 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
       }
    }
 
-   for procedure in program.procedures.iter_mut() {
+   for procedure in program.procedures.values_mut() {
       fold_block(&mut procedure.block, err_manager, &mut folding_context, interner);
    }
 }

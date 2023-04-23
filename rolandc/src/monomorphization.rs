@@ -99,11 +99,12 @@ pub fn monomorphize(program: &mut Program, interner: &mut Interner, err_manager:
       cloned_procedure.definition.name = new_id;
       new_procedures.insert(new_spec.template_with_type_arguments, new_id);
 
+      let new_proc_id = program.procedures.insert(cloned_procedure);
+
       // hack: the cloned procedure info is completely bogus, except for the proc_impl_source.
       // a better solution is needed.
-      cloned_procedure_info.proc_impl_source = ProcImplSource::ProcedureId(program.procedures.len());
+      cloned_procedure_info.proc_impl_source = ProcImplSource::ProcedureId(new_proc_id);
 
-      program.procedures.push(cloned_procedure);
       program.procedure_info.insert(new_id, cloned_procedure_info);
    }
 

@@ -361,7 +361,6 @@ pub fn populate_type_and_procedure_info(
          program
             .procedures
             .iter_mut()
-            .enumerate()
             .map(|(i, x)| (&mut x.definition, x.location, ProcImplSource::ProcedureId(i))),
       )
    {
