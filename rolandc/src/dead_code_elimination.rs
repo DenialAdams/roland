@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::interner::{Interner, StrId};
 use crate::parse::{BlockNode, Expression, ExpressionId, ExpressionPool, Statement, StaticId, VariableId};
@@ -18,12 +18,14 @@ enum WorkItem {
 struct DceCtx<'a> {
    worklist: Vec<WorkItem>,
    global_info: &'a IndexMap<VariableId, GlobalInfo>,
+   literals: &'a mut IndexSet<StrId>,
 }
 
 pub fn doit(program: &mut Program, interner: &mut Interner, target: Target) {
    let mut ctx = DceCtx {
       worklist: Vec::new(),
       global_info: &program.global_info,
+      literals: &mut program.literals,
    };
 
    let mut reachable_procedures: HashSet<ProcedureId> = HashSet::new();
@@ -141,7 +143,9 @@ fn mark_reachable_expr(expr: ExpressionId, expressions: &ExpressionPool, ctx: &m
          mark_reachable_expr(*index, expressions, ctx);
       }
       Expression::BoolLiteral(_) => (),
-      Expression::StringLiteral(_) => (),
+      Expression::StringLiteral(lit) => {
+         ctx.literals.insert(*lit);
+      },
       Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
       Expression::UnitLiteral => (),

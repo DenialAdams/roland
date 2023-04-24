@@ -618,9 +618,9 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
             minimum: generation_context.procedure_to_table_index.len() as u32,
             maximum: Some(generation_context.procedure_to_table_index.len() as u32),
          };
-   
+
          table.table(table_type);
-   
+
          let elements = generation_context
             .procedure_to_table_index
             .iter()

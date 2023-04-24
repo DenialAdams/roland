@@ -184,7 +184,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    ctx.program
       .procedures
       .retain(|_, x| x.definition.generic_parameters.is_empty());
-   
+
    constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner);
    ctx.program.global_info.retain(|_, v| v.kind != GlobalKind::Const);
 

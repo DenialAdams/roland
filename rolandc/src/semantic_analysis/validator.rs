@@ -204,7 +204,6 @@ pub fn type_and_check_validity(
 ) {
    let mut validation_context = ValidationContext {
       target,
-      string_literals: IndexSet::new(),
       variable_types: IndexMap::new(),
       procedure_info: &program.procedure_info,
       enum_info: &program.enum_info,
@@ -462,7 +461,6 @@ pub fn type_and_check_validity(
       error_on_unknown_literals(err_manager, &mut validation_context);
    }
 
-   program.literals = validation_context.string_literals;
    program.struct_size_info = validation_context.struct_size_info;
    program.source_to_definition = validation_context.source_to_definition;
    program.next_variable = validation_context.next_var_dont_access;
@@ -896,8 +894,7 @@ fn get_type(
             .new_type_variable(TypeConstraint::Float);
          ExpressionType::Unknown(new_type_variable)
       }
-      Expression::StringLiteral(lit) => {
-         validation_context.string_literals.insert(lit);
+      Expression::StringLiteral(_) => {
          ExpressionType::Struct(validation_context.interner.intern("String"))
       }
       Expression::Cast {
