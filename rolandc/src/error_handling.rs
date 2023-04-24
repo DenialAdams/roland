@@ -1,5 +1,7 @@
 use std::io::Write;
 
+use indexmap::IndexSet;
+
 use crate::interner::Interner;
 use crate::source_info::{SourceInfo, SourcePath};
 
@@ -23,28 +25,30 @@ pub(crate) mod error_handling_macros {
    pub(crate) use {rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn};
 }
 
+#[derive(Hash, PartialEq, Eq)]
 pub enum ErrorLocation {
    Simple(SourceInfo),
    WithDetails(Vec<(SourceInfo, String)>),
    NoLocation,
 }
 
+#[derive(Hash, PartialEq, Eq)]
 pub struct ErrorInfo {
    pub message: String,
    pub location: ErrorLocation,
 }
 
 pub struct ErrorManager {
-   pub errors: Vec<ErrorInfo>,
-   pub warnings: Vec<ErrorInfo>,
+   pub errors: IndexSet<ErrorInfo>,
+   pub warnings: IndexSet<ErrorInfo>,
 }
 
 impl ErrorManager {
    #[must_use]
    pub fn new() -> ErrorManager {
       ErrorManager {
-         errors: Vec::new(),
-         warnings: Vec::new(),
+         errors: IndexSet::new(),
+         warnings: IndexSet::new(),
       }
    }
 
@@ -62,14 +66,14 @@ impl ErrorManager {
    }
 
    pub fn emit_error(&mut self, location: SourceInfo, message: String) {
-      self.errors.push(ErrorInfo {
+      self.errors.insert(ErrorInfo {
          message,
          location: ErrorLocation::Simple(location),
       });
    }
 
    pub fn emit_warning(&mut self, location: SourceInfo, message: String) {
-      self.warnings.push(ErrorInfo {
+      self.warnings.insert(ErrorInfo {
          message,
          location: ErrorLocation::Simple(location),
       });
@@ -77,22 +81,22 @@ impl ErrorManager {
 
    pub fn emit_error_with_details<I: ToString>(&mut self, location: &[(SourceInfo, I)], message: String) {
       let location_vec = location.iter().map(|x| (x.0, x.1.to_string())).collect();
-      self.errors.push(ErrorInfo {
+      self.errors.insert(ErrorInfo {
          message,
          location: ErrorLocation::WithDetails(location_vec),
       });
    }
 
    pub fn emit_error_no_location(&mut self, message: String) {
-      self.errors.push(ErrorInfo {
+      self.errors.insert(ErrorInfo {
          message,
          location: ErrorLocation::NoLocation,
       });
    }
 }
 
-pub fn write_out_error_buf<W: Write>(err_stream: &mut W, interner: &Interner, buf: &[ErrorInfo]) {
-   for error in buf.iter() {
+pub fn write_out_error_buf<'a, W: Write, I: IntoIterator<Item = &'a ErrorInfo>>(err_stream: &mut W, interner: &Interner, buf: I) {
+   for error in buf {
       writeln!(err_stream, "{}", error.message).unwrap();
       match &error.location {
          ErrorLocation::NoLocation => {}
