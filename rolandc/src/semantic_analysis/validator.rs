@@ -765,20 +765,19 @@ fn declare_variable(
          "Variable shadowing is not supported at this time (`{}`)",
          validation_context.interner.lookup(id.str)
       );
-   } else {
-      validation_context.variable_types.insert(
-         id.str,
-         VariableDetails {
-            var_type: var_type.clone(),
-            depth: validation_context.block_depth,
-            declaration_location: id.location,
-            used: false,
-            kind: VariableKind::Local,
-            var_id: next_var,
-         },
-      );
-      validation_context.cur_procedure_locals.insert(next_var, var_type);
    }
+   validation_context.variable_types.insert(
+      id.str,
+      VariableDetails {
+         var_type: var_type.clone(),
+         depth: validation_context.block_depth,
+         declaration_location: id.location,
+         used: false,
+         kind: VariableKind::Local,
+         var_id: next_var,
+      },
+   );
+   validation_context.cur_procedure_locals.insert(next_var, var_type);
    next_var
 }
 
