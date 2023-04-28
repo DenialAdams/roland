@@ -10,3 +10,6 @@ roland-vscode/rolandc_lsp.exe
 scratch.rol
 dhat-heap.json
 tarpaulin-report.html
+perf.data
+perf.data.old
+flamegraph.svg

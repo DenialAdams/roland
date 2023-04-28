@@ -125,16 +125,15 @@ fn mark_reachable_stmt(stmt: &Statement, expressions: &ExpressionPool, ctx: &mut
 }
 
 fn mark_reachable_expr(expr: ExpressionId, expressions: &ExpressionPool, ctx: &mut DceCtx) {
-   let mut cloned = expressions[expr].clone();
-   match &mut cloned.expression {
+   match &expressions[expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
          mark_reachable_expr(*proc_expr, expressions, ctx);
-         for arg in args.iter_mut() {
+         for arg in args.iter() {
             mark_reachable_expr(arg.expr, expressions, ctx);
          }
       }
       Expression::ArrayLiteral(exprs) => {
-         for expr in exprs.iter_mut() {
+         for expr in exprs.iter() {
             mark_reachable_expr(*expr, expressions, ctx);
          }
       }
@@ -163,7 +162,7 @@ fn mark_reachable_expr(expr: ExpressionId, expressions: &ExpressionPool, ctx: &m
          mark_reachable_expr(*operand, expressions, ctx);
       }
       Expression::StructLiteral(_, field_exprs) => {
-         for field_expr in field_exprs.iter_mut() {
+         for field_expr in field_exprs.iter() {
             mark_reachable_expr(field_expr.1, expressions, ctx);
          }
       }
