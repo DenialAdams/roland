@@ -83,7 +83,6 @@ pub struct VariableDetails {
    pub var_id: VariableId,
    pub declaration_location: SourceInfo,
    pub kind: VariableKind,
-   pub depth: u64,
    pub used: bool,
 }
 
@@ -95,7 +94,6 @@ pub struct ValidationContext<'a> {
    pub global_info: &'a IndexMap<VariableId, GlobalInfo>,
    pub cur_procedure_info: Option<&'a ProcedureInfo>,
    pub variable_types: IndexMap<StrId, VariableDetails>,
-   pub block_depth: u64,
    pub loop_depth: u64,
    pub unknown_literals: IndexSet<ExpressionId>,
    pub expressions: &'a mut ExpressionPool,

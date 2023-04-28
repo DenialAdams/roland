@@ -210,7 +210,6 @@ pub fn type_and_check_validity(
       struct_info: &program.struct_info,
       global_info: &program.global_info,
       cur_procedure_info: None,
-      block_depth: 0,
       loop_depth: 0,
       unknown_literals: IndexSet::new(),
       expressions: &mut program.expressions,
@@ -230,7 +229,6 @@ pub fn type_and_check_validity(
             var_type: gi.1.expr_type.clone(),
             declaration_location: gi.1.location,
             kind: VariableKind::Global,
-            depth: 0,
             used: false,
             var_id: *gi.0,
          },
@@ -382,13 +380,14 @@ pub fn type_and_check_validity(
    for procedure in program.procedures.values_mut() {
       validation_context.cur_procedure_info = program.procedure_info.get(&procedure.definition.name);
 
+      let num_globals = validation_context.variable_types.len();
+
       for parameter in procedure.definition.parameters.iter_mut() {
          let next_var = validation_context.next_var();
          validation_context.variable_types.insert(
             parameter.name,
             VariableDetails {
                var_type: parameter.p_type.e_type.clone(),
-               depth: 1,
                used: false,
                declaration_location: parameter.location,
                kind: VariableKind::Parameter,
@@ -402,6 +401,7 @@ pub fn type_and_check_validity(
       }
 
       type_block(err_manager, &mut procedure.block, &mut validation_context);
+      fall_out_of_scope(err_manager, &mut validation_context, num_globals);   
 
       std::mem::swap(&mut validation_context.cur_procedure_locals, &mut procedure.locals);
 
@@ -616,14 +616,14 @@ fn type_statement(
             );
          }
 
-         // This way the variable is declared at the depth that we'll be typing in
-         validation_context.block_depth += 1;
+         let vars_before = validation_context.variable_types.len();
          *var_id = declare_variable(err_manager, var, result_type, validation_context);
-         validation_context.block_depth -= 1;
 
          validation_context.loop_depth += 1;
          type_block(err_manager, bn, validation_context);
          validation_context.loop_depth -= 1;
+
+         fall_out_of_scope(err_manager, validation_context, vars_before);   
       }
       Statement::Loop(bn) => {
          validation_context.loop_depth += 1;
@@ -770,7 +770,6 @@ fn declare_variable(
       id.str,
       VariableDetails {
          var_type: var_type.clone(),
-         depth: validation_context.block_depth,
          declaration_location: id.location,
          used: false,
          kind: VariableKind::Local,
@@ -781,20 +780,8 @@ fn declare_variable(
    next_var
 }
 
-fn type_block(err_manager: &mut ErrorManager, bn: &mut BlockNode, validation_context: &mut ValidationContext) {
-   validation_context.block_depth += 1;
-
-   for statement in bn.statements.iter_mut() {
-      type_statement(err_manager, statement, validation_context);
-   }
-
-   validation_context.block_depth -= 1;
-
-   validation_context.variable_types.retain(|k, v| {
-      if v.depth <= validation_context.block_depth {
-         return true;
-      }
-
+fn fall_out_of_scope(err_manager: &mut ErrorManager, validation_context: &mut ValidationContext, first_var_in_scope: usize) {
+   for (k, v) in validation_context.variable_types.drain(first_var_in_scope..) {
       if !v.used {
          let begin = match v.kind {
             VariableKind::Parameter => "Parameter",
@@ -806,12 +793,20 @@ fn type_block(err_manager: &mut ErrorManager, bn: &mut BlockNode, validation_con
             v.declaration_location,
             "{} `{}` is unused",
             begin,
-            validation_context.interner.lookup(*k),
+            validation_context.interner.lookup(k),
          );
       }
+   }
+}
 
-      false
-   });
+fn type_block(err_manager: &mut ErrorManager, bn: &mut BlockNode, validation_context: &mut ValidationContext) {
+   let num_vars = validation_context.variable_types.len();
+
+   for statement in bn.statements.iter_mut() {
+      type_statement(err_manager, statement, validation_context);
+   }
+
+   fall_out_of_scope(err_manager, validation_context, num_vars);   
 }
 
 fn get_type(

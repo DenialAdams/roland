@@ -1,0 +1,16 @@
+proc main() {
+    let z: usize = 10;
+    for x in 1..z {
+
+    }
+    foo(x);
+
+}
+
+proc foo(x: usize) {
+
+}
+__END__
+compile:
+Encountered undefined symbol `x`
+↳ line 6, column 9 [tests/loops/for_var_own_scope.rol]
