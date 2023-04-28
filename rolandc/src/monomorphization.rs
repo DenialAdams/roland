@@ -5,7 +5,7 @@ use indexmap::{IndexMap, IndexSet};
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureNode, Statement};
+use crate::parse::{BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureNode, Statement, VariableId};
 use crate::semantic_analysis::validator::map_generic_to_concrete;
 use crate::semantic_analysis::{ProcImplSource, ProcedureInfo};
 use crate::type_data::ExpressionType;
@@ -52,7 +52,7 @@ pub fn monomorphize(program: &mut Program, interner: &mut Interner, err_manager:
       }
    }
 
-   // Specialize procedures (which may add more items to the worklist)
+   // Specialize procedures (which may add more items to the worklist, variable_replacements)
    while let Some(new_spec) = worklist.pop() {
       if new_procedures.contains_key(&new_spec.template_with_type_arguments) {
          continue;
@@ -90,6 +90,7 @@ pub fn monomorphize(program: &mut Program, interner: &mut Interner, err_manager:
          new_spec.depth,
          &mut program.expressions,
          &mut worklist,
+         &mut program.next_variable,
       );
       let new_id = interner.intern(&format!(
          "{}${}",
@@ -144,25 +145,20 @@ fn clone_procedure(
    depth: usize,
    expressions: &mut ExpressionPool,
    worklist: &mut Vec<SpecializationWorkItem>,
+   next_var: &mut VariableId,
 ) -> ProcedureNode {
-   // There is one major shortcoming with this procedure: VariableIds are not adjusted.
-   // This means that the cloned procedure will share the same variable ids as the original.
-   // This is currently OK, but feels sketchy long-term.
-
    let mut cloned = template_procedure.clone();
 
-   deep_clone_block(
-      &mut cloned.block,
-      expressions,
-      concrete_types,
-      &procedure_info.type_parameters,
-      depth,
-      worklist,
-   );
+   let mut variable_replacements = HashMap::with_capacity(cloned.locals.len());
 
    // Rewrite locals
-   for local_type in cloned.locals.values_mut() {
-      map_generic_to_concrete(local_type, concrete_types, &procedure_info.type_parameters);
+   let old_locals = std::mem::take(&mut cloned.locals);
+   cloned.locals.reserve(old_locals.len());
+   for (var_id, mut local_type) in old_locals {
+      map_generic_to_concrete(&mut local_type, concrete_types, &procedure_info.type_parameters);
+      variable_replacements.insert(var_id, *next_var);
+      cloned.locals.insert(*next_var, local_type);
+      *next_var = next_var.next();
    }
 
    // Rewrite the procedure definition
@@ -172,12 +168,24 @@ fn clone_procedure(
          concrete_types,
          &procedure_info.type_parameters,
       );
+      param.var_id = variable_replacements[&param.var_id];
    }
    map_generic_to_concrete(
       &mut cloned.definition.ret_type.e_type,
       concrete_types,
       &procedure_info.type_parameters,
    );
+
+   deep_clone_block(
+      &mut cloned.block,
+      expressions,
+      concrete_types,
+      &procedure_info.type_parameters,
+      depth,
+      worklist,
+      &variable_replacements,
+   );
+
    cloned.definition.generic_parameters.clear();
 
    cloned
@@ -190,6 +198,7 @@ fn deep_clone_block(
    type_parameters: &IndexMap<StrId, IndexSet<StrId>>,
    depth: usize,
    worklist: &mut Vec<SpecializationWorkItem>,
+   variable_replacements: &HashMap<VariableId, VariableId>,
 ) {
    for stmt in block.statements.iter_mut() {
       deep_clone_stmt(
@@ -199,6 +208,7 @@ fn deep_clone_block(
          type_parameters,
          depth,
          worklist,
+         variable_replacements,
       );
    }
 }
@@ -210,31 +220,113 @@ fn deep_clone_stmt(
    type_parameters: &IndexMap<StrId, IndexSet<StrId>>,
    depth: usize,
    worklist: &mut Vec<SpecializationWorkItem>,
+   variable_replacements: &HashMap<VariableId, VariableId>,
 ) {
    match stmt {
       Statement::Assignment(lhs, rhs) => {
-         *lhs = deep_clone_expr(*lhs, expressions, concrete_types, type_parameters, depth, worklist);
-         *rhs = deep_clone_expr(*rhs, expressions, concrete_types, type_parameters, depth, worklist);
+         *lhs = deep_clone_expr(
+            *lhs,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
+         *rhs = deep_clone_expr(
+            *rhs,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
       }
       Statement::Block(bn) => {
-         deep_clone_block(bn, expressions, concrete_types, type_parameters, depth, worklist);
+         deep_clone_block(
+            bn,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
       }
       Statement::Loop(bn) => {
-         deep_clone_block(bn, expressions, concrete_types, type_parameters, depth, worklist);
+         deep_clone_block(
+            bn,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
       }
-      Statement::For(_, start, end, bn, _, _) => {
-         *start = deep_clone_expr(*start, expressions, concrete_types, type_parameters, depth, worklist);
-         *end = deep_clone_expr(*end, expressions, concrete_types, type_parameters, depth, worklist);
-         deep_clone_block(bn, expressions, concrete_types, type_parameters, depth, worklist);
+      Statement::For(_, start, end, bn, _, var) => {
+         *start = deep_clone_expr(
+            *start,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
+         *end = deep_clone_expr(
+            *end,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
+         deep_clone_block(
+            bn,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
+         *var = variable_replacements.get(var).copied().unwrap();
       }
       Statement::Continue => (),
       Statement::Break => (),
       Statement::Expression(expr) => {
-         *expr = deep_clone_expr(*expr, expressions, concrete_types, type_parameters, depth, worklist);
+         *expr = deep_clone_expr(
+            *expr,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
       }
       Statement::IfElse(cond, then, else_e) => {
-         *cond = deep_clone_expr(*cond, expressions, concrete_types, type_parameters, depth, worklist);
-         deep_clone_block(then, expressions, concrete_types, type_parameters, depth, worklist);
+         *cond = deep_clone_expr(
+            *cond,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
+         deep_clone_block(
+            then,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
          deep_clone_stmt(
             &mut else_e.statement,
             expressions,
@@ -242,12 +334,21 @@ fn deep_clone_stmt(
             type_parameters,
             depth,
             worklist,
+            variable_replacements,
          );
       }
       Statement::Return(expr) => {
-         *expr = deep_clone_expr(*expr, expressions, concrete_types, type_parameters, depth, worklist);
+         *expr = deep_clone_expr(
+            *expr,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
       }
-      Statement::VariableDeclaration(_, initializer, declared_type, _) => {
+      Statement::VariableDeclaration(_, initializer, declared_type, var) => {
          if let Some(initializer) = initializer.as_mut() {
             *initializer = deep_clone_expr(
                *initializer,
@@ -256,11 +357,13 @@ fn deep_clone_stmt(
                type_parameters,
                depth,
                worklist,
+               variable_replacements,
             );
          }
          if let Some(dt) = declared_type.as_mut() {
             map_generic_to_concrete(&mut dt.e_type, concrete_types, type_parameters);
          }
+         *var = variable_replacements.get(var).copied().unwrap();
       }
    }
 }
@@ -273,6 +376,7 @@ fn deep_clone_expr(
    type_parameters: &IndexMap<StrId, IndexSet<StrId>>,
    depth: usize,
    worklist: &mut Vec<SpecializationWorkItem>,
+   variable_replacements: &HashMap<VariableId, VariableId>,
 ) -> ExpressionId {
    let mut cloned = expressions[expr].clone();
    map_generic_to_concrete(cloned.exp_type.as_mut().unwrap(), concrete_types, type_parameters);
@@ -285,19 +389,52 @@ fn deep_clone_expr(
             type_parameters,
             depth,
             worklist,
+            variable_replacements,
          );
          for arg in args.iter_mut() {
-            arg.expr = deep_clone_expr(arg.expr, expressions, concrete_types, type_parameters, depth, worklist);
+            arg.expr = deep_clone_expr(
+               arg.expr,
+               expressions,
+               concrete_types,
+               type_parameters,
+               depth,
+               worklist,
+               variable_replacements,
+            );
          }
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter_mut() {
-            *expr = deep_clone_expr(*expr, expressions, concrete_types, type_parameters, depth, worklist);
+            *expr = deep_clone_expr(
+               *expr,
+               expressions,
+               concrete_types,
+               type_parameters,
+               depth,
+               worklist,
+               variable_replacements,
+            );
          }
       }
       Expression::ArrayIndex { array, index } => {
-         *array = deep_clone_expr(*array, expressions, concrete_types, type_parameters, depth, worklist);
-         *index = deep_clone_expr(*index, expressions, concrete_types, type_parameters, depth, worklist);
+         *array = deep_clone_expr(
+            *array,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
+         *index = deep_clone_expr(
+            *index,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
       }
       Expression::BoolLiteral(_) => (),
       Expression::StringLiteral(_) => (),
@@ -305,13 +442,42 @@ fn deep_clone_expr(
       Expression::FloatLiteral(_) => (),
       Expression::UnitLiteral => (),
       Expression::UnresolvedVariable(_) => unreachable!(),
-      Expression::Variable(_) => (),
+      Expression::Variable(var) => {
+         if let Some(new_var) = variable_replacements.get(var).copied() {
+            *var = new_var;
+         }
+         // (There won't be a replacement for this variable if it's a global)
+      }
       Expression::BinaryOperator { lhs, rhs, .. } => {
-         *lhs = deep_clone_expr(*lhs, expressions, concrete_types, type_parameters, depth, worklist);
-         *rhs = deep_clone_expr(*rhs, expressions, concrete_types, type_parameters, depth, worklist);
+         *lhs = deep_clone_expr(
+            *lhs,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
+         *rhs = deep_clone_expr(
+            *rhs,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
       }
       Expression::UnaryOperator(_, operand) => {
-         *operand = deep_clone_expr(*operand, expressions, concrete_types, type_parameters, depth, worklist);
+         *operand = deep_clone_expr(
+            *operand,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
       }
       Expression::StructLiteral(_, field_exprs) => {
          for field_expr in field_exprs.iter_mut() {
@@ -322,15 +488,32 @@ fn deep_clone_expr(
                type_parameters,
                depth,
                worklist,
+               variable_replacements,
             );
          }
       }
       Expression::FieldAccess(_, base) => {
-         *base = deep_clone_expr(*base, expressions, concrete_types, type_parameters, depth, worklist);
+         *base = deep_clone_expr(
+            *base,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
       }
       Expression::Cast { target_type, expr, .. } => {
          map_generic_to_concrete(target_type, concrete_types, type_parameters);
-         *expr = deep_clone_expr(*expr, expressions, concrete_types, type_parameters, depth, worklist);
+         *expr = deep_clone_expr(
+            *expr,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
       }
       Expression::EnumLiteral(_, _) => (),
       Expression::BoundFcnLiteral(id, generic_args) => {

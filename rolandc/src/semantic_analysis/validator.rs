@@ -401,7 +401,7 @@ pub fn type_and_check_validity(
       }
 
       type_block(err_manager, &mut procedure.block, &mut validation_context);
-      fall_out_of_scope(err_manager, &mut validation_context, num_globals);   
+      fall_out_of_scope(err_manager, &mut validation_context, num_globals);
 
       std::mem::swap(&mut validation_context.cur_procedure_locals, &mut procedure.locals);
 
@@ -619,16 +619,12 @@ fn type_statement(
          let vars_before = validation_context.variable_types.len();
          *var_id = declare_variable(err_manager, var, result_type, validation_context);
 
-         validation_context.loop_depth += 1;
-         type_block(err_manager, bn, validation_context);
-         validation_context.loop_depth -= 1;
+         type_loop_block(err_manager, bn, validation_context);
 
-         fall_out_of_scope(err_manager, validation_context, vars_before);   
+         fall_out_of_scope(err_manager, validation_context, vars_before);
       }
       Statement::Loop(bn) => {
-         validation_context.loop_depth += 1;
-         type_block(err_manager, bn, validation_context);
-         validation_context.loop_depth -= 1;
+         type_loop_block(err_manager, bn, validation_context);
       }
       Statement::Expression(en) => {
          type_expression(err_manager, *en, validation_context);
@@ -780,7 +776,11 @@ fn declare_variable(
    next_var
 }
 
-fn fall_out_of_scope(err_manager: &mut ErrorManager, validation_context: &mut ValidationContext, first_var_in_scope: usize) {
+fn fall_out_of_scope(
+   err_manager: &mut ErrorManager,
+   validation_context: &mut ValidationContext,
+   first_var_in_scope: usize,
+) {
    for (k, v) in validation_context.variable_types.drain(first_var_in_scope..) {
       if !v.used {
          let begin = match v.kind {
@@ -799,6 +799,12 @@ fn fall_out_of_scope(err_manager: &mut ErrorManager, validation_context: &mut Va
    }
 }
 
+fn type_loop_block(err_manager: &mut ErrorManager, bn: &mut BlockNode, validation_context: &mut ValidationContext) {
+   validation_context.loop_depth += 1;
+   type_block(err_manager, bn, validation_context);
+   validation_context.loop_depth -= 1;
+}
+
 fn type_block(err_manager: &mut ErrorManager, bn: &mut BlockNode, validation_context: &mut ValidationContext) {
    let num_vars = validation_context.variable_types.len();
 
@@ -806,7 +812,7 @@ fn type_block(err_manager: &mut ErrorManager, bn: &mut BlockNode, validation_con
       type_statement(err_manager, statement, validation_context);
    }
 
-   fall_out_of_scope(err_manager, validation_context, num_vars);   
+   fall_out_of_scope(err_manager, validation_context, num_vars);
 }
 
 fn get_type(
@@ -888,9 +894,7 @@ fn get_type(
             .new_type_variable(TypeConstraint::Float);
          ExpressionType::Unknown(new_type_variable)
       }
-      Expression::StringLiteral(_) => {
-         ExpressionType::Struct(validation_context.interner.intern("String"))
-      }
+      Expression::StringLiteral(_) => ExpressionType::Struct(validation_context.interner.intern("String")),
       Expression::Cast {
          cast_type,
          target_type,

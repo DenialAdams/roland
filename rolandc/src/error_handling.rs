@@ -95,7 +95,11 @@ impl ErrorManager {
    }
 }
 
-pub fn write_out_error_buf<'a, W: Write, I: IntoIterator<Item = &'a ErrorInfo>>(err_stream: &mut W, interner: &Interner, buf: I) {
+pub fn write_out_error_buf<'a, W: Write, I: IntoIterator<Item = &'a ErrorInfo>>(
+   err_stream: &mut W,
+   interner: &Interner,
+   buf: I,
+) {
    for error in buf {
       writeln!(err_stream, "{}", error.message).unwrap();
       match &error.location {

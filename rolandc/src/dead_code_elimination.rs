@@ -145,7 +145,7 @@ fn mark_reachable_expr(expr: ExpressionId, expressions: &ExpressionPool, ctx: &m
       Expression::BoolLiteral(_) => (),
       Expression::StringLiteral(lit) => {
          ctx.literals.insert(*lit);
-      },
+      }
       Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
       Expression::UnitLiteral => (),
