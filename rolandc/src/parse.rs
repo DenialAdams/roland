@@ -376,7 +376,9 @@ impl Program {
    pub fn clear(&mut self) {
       self.enums.clear();
       self.external_procedures.clear();
-      self.procedures.clear();
+      //self.procedures.clear();
+      let old_cap = self.procedures.capacity();
+      self.procedures = SlotMap::with_capacity_and_key(old_cap);
       self.structs.clear();
       self.consts.clear();
       self.statics.clear();
