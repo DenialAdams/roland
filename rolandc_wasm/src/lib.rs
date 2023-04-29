@@ -55,7 +55,7 @@ pub struct CompilationOutput {
 impl CompilationOutput {
    #[must_use]
    #[wasm_bindgen(getter)]
-   pub fn diasm(&self) -> String {
+   pub fn disasm(&self) -> String {
       self.disasm.clone()
    }
 
