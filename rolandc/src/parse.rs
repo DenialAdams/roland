@@ -350,6 +350,15 @@ pub struct Program {
    pub next_variable: VariableId,
 }
 
+// SlotMaps are deterministic, but the order that you get after clearing it is not the same as you would get
+// from a new SlotMap. To preserve determinism when the compiler is invoked multiple times with the same context,
+// we reset SlotMaps this (more expensive) way.
+fn reset_slotmap<K: slotmap::Key, V>(s: &mut SlotMap<K, V>) {
+   let old_cap = s.capacity();
+   let new_map = SlotMap::with_capacity_and_key(old_cap);
+   *s = new_map;
+}
+
 impl Program {
    #[must_use]
    pub fn new() -> Program {
@@ -376,12 +385,10 @@ impl Program {
    pub fn clear(&mut self) {
       self.enums.clear();
       self.external_procedures.clear();
-      //self.procedures.clear();
-      let old_cap = self.procedures.capacity();
-      self.procedures = SlotMap::with_capacity_and_key(old_cap);
+      reset_slotmap(&mut self.procedures);
       self.structs.clear();
       self.consts.clear();
-      self.statics.clear();
+      reset_slotmap(&mut self.statics);
       self.parsed_types.clear();
       self.literals.clear();
       self.enum_info.clear();
@@ -390,7 +397,7 @@ impl Program {
       self.procedure_info.clear();
       self.struct_size_info.clear();
       self.source_to_definition.clear();
-      self.expressions.clear();
+      reset_slotmap(&mut self.expressions);
       self.next_variable = VariableId::first();
    }
 }
