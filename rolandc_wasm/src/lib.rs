@@ -46,8 +46,29 @@ pub fn compile_wasm4(source_code: &str) -> Result<Vec<u8>, String> {
 }
 
 #[wasm_bindgen]
+pub struct CompilationOutput {
+   bytes: Vec<u8>,
+   disasm: String,
+}
+
+#[wasm_bindgen]
+impl CompilationOutput {
+   #[must_use]
+   #[wasm_bindgen(getter)]
+   pub fn diasm(&self) -> String {
+      self.disasm.clone()
+   }
+
+   #[must_use]
+   #[wasm_bindgen(getter)]
+   pub fn bytes(&self) -> Vec<u8> {
+      self.bytes.clone()
+   }
+}
+
+#[wasm_bindgen]
 #[must_use]
-pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
+pub fn compile_and_update_all(source_code: &str) -> Option<CompilationOutput> {
    let ctx = unsafe { COMPILATION_CTX.as_mut().unwrap() };
    let window = web_sys::window().unwrap();
    let document = window.document().unwrap();
@@ -69,13 +90,8 @@ pub fn compile_and_update_all(source_code: &str) -> Option<Vec<u8>> {
    let err_s = String::from_utf8(err_out).ok();
    match compile_result {
       Ok(v) => {
-         if source_code.starts_with("//[disasm]") {
-            let disasm = wasmprinter::print_bytes(v).unwrap();
-            output_frame.set_text_content(Some(disasm.as_str()));
-            None
-         } else {
-            Some(v)
-         }
+         let disasm = wasmprinter::print_bytes(v.as_slice()).unwrap();
+         Some(CompilationOutput { bytes: v, disasm })
       }
       Err(_) => {
          output_frame.set_text_content(err_s.as_deref());

@@ -24,6 +24,7 @@ const HELLO_WORLD =
 
 let instance = null;
 let code_editor = null;
+let disasm_viewer = null;
 
 window.setHelloWorld = function setHelloWorld() {
    code_editor.getDoc().setValue(HELLO_WORLD);
@@ -46,18 +47,26 @@ window.addEventListener('DOMContentLoaded', (event) => {
       lineNumbers: true,
       mode: null
    });
+   disasm_viewer = CodeMirror.fromTextArea(disassembly_frame, {
+      tabSize: 3,
+      lineNumbers: true,
+      mode: "text/webassembly",
+      readOnly: true,
+   });
    initApp();
 });
 
 window.compileUpdateAll = async function compileUpdateAll() {
    let output_frame = document.getElementById("out_frame");
    output_frame.textContent = "Compiling...";
-   let wasm_bytes = compile_and_update_all(code_editor.getDoc().getValue());
-   if (wasm_bytes != null) {
+   disasm_viewer.getDoc().setValue('');
+   let compilation_output = compile_and_update_all(code_editor.getDoc().getValue());
+   if (compilation_output != null) {
+      disasm_viewer.getDoc().setValue(compilation_output.disasm);
       let headers = new Headers({
          'Content-Type': 'application/wasm'
       });
-      let response = new Response(wasm_bytes, { "headers": headers });
+      let response = new Response(compilation_output.bytes, { "headers": headers });
       let wasi_polyfill = { fd_write: fd_write_polyfill };
       let result;
       try {
@@ -86,6 +95,17 @@ window.compileUpdateAll = async function compileUpdateAll() {
       }
    }
 };
+
+window.toggleDisassembly = async function toggleDisassembly() {
+   if (document.getElementById('disassembly_div').hasAttribute('hidden')) {
+      document.getElementById('out_frame').setAttribute('hidden', '');
+      document.getElementById('disassembly_div').removeAttribute('hidden');
+   } else {
+      document.getElementById('disassembly_div').setAttribute('hidden', '');
+      document.getElementById('out_frame').removeAttribute('hidden');
+   }
+   disasm_viewer.refresh();
+}
 
 function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
 
