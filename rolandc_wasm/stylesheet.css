@@ -35,3 +35,7 @@ main {
    height: 20%;
    overflow: scroll;
 }
+
+#disassembly_div {
+   width: 100%;
+}
