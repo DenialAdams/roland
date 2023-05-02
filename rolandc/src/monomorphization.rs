@@ -297,6 +297,7 @@ fn deep_clone_stmt(
       }
       Statement::Continue => (),
       Statement::Break => (),
+      Statement::Defer(_) => unreachable!(),
       Statement::Expression(expr) => {
          *expr = deep_clone_expr(
             *expr,

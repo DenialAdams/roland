@@ -105,6 +105,7 @@ fn mark_reachable_stmt(stmt: &Statement, expressions: &ExpressionPool, ctx: &mut
       }
       Statement::Continue => (),
       Statement::Break => (),
+      Statement::Defer(_) => unreachable!(),
       Statement::Expression(expr) => {
          mark_reachable_expr(*expr, expressions, ctx);
       }

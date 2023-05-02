@@ -10,6 +10,7 @@ use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Token {
    Arrow,
+   KeywordDefer,
    KeywordElse,
    KeywordIf,
    KeywordProc,
@@ -80,6 +81,7 @@ impl Token {
    pub fn for_parse_err(&self) -> &'static str {
       match self {
          Token::Arrow => "token '->'",
+         Token::KeywordDefer => "keyword 'defer'",
          Token::KeywordElse => "keyword 'else'",
          Token::KeywordIf => "keyword 'if'",
          Token::KeywordProc => "keyword 'proc'",
@@ -162,6 +164,7 @@ fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
       "true" => Token::BoolLiteral(true),
       "false" => Token::BoolLiteral(false),
       "else" => Token::KeywordElse,
+      "defer" => Token::KeywordDefer,
       "if" => Token::KeywordIf,
       "proc" => Token::KeywordProc,
       "struct" => Token::KeywordStructDef,

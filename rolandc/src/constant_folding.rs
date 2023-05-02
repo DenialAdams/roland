@@ -123,6 +123,7 @@ pub fn fold_statement(
       Statement::Loop(block) => {
          fold_block(block, err_manager, folding_context, interner);
       }
+      Statement::Defer(_) => unreachable!(),
       Statement::Expression(expr_id) => {
          try_fold_and_replace_expr(*expr_id, err_manager, folding_context, interner);
 

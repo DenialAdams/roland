@@ -130,6 +130,7 @@ fn vv_statement(statement: &mut Statement, vv_context: &mut VvContext, expressio
       Statement::Loop(block) => {
          vv_block(block, vv_context, expressions);
       }
+      Statement::Defer(_) => unreachable!(),
       Statement::Expression(expr) => {
          vv_expr(*expr, vv_context, expressions);
       }

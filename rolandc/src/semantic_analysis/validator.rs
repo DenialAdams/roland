@@ -626,6 +626,12 @@ fn type_statement(
       Statement::Loop(bn) => {
          type_loop_block(err_manager, bn, validation_context);
       }
+      Statement::Defer(en) => {
+         type_expression(err_manager, *en, validation_context);
+
+         let en = &validation_context.expressions[*en];
+         rolandc_error!(err_manager, en.location, "Defer is currently unsupported");
+      }
       Statement::Expression(en) => {
          type_expression(err_manager, *en, validation_context);
       }

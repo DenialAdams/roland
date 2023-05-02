@@ -275,6 +275,7 @@ pub enum Statement {
    For(StrNode, ExpressionId, ExpressionId, BlockNode, bool, VariableId),
    Continue,
    Break,
+   Defer(ExpressionId),
    Expression(ExpressionId),
    // TODO: banish this Box. The type is misleading here, because an if else always has either a block or another if-else,
    // so we should try to rectify that too.
@@ -904,6 +905,13 @@ fn parse_block(
          Token::KeywordIf => {
             let s = parse_if_else_statement(l, parse_context, expressions)?;
             statements.push(s);
+         }
+         Token::KeywordDefer => {
+            let defer_kw = l.next();
+            let e = parse_expression(l, parse_context, false, expressions)?;
+            let sc = expect(l, parse_context, Token::Semicolon)?;
+            let statement_location = merge_locations(defer_kw.source_info, sc.source_info);
+            statements.push(StatementNode { statement: Statement::Defer(e), location: statement_location });
          }
          x if token_starts_expression(x) => {
             let e = parse_expression(l, parse_context, false, expressions)?;

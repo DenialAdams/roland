@@ -889,6 +889,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             *generation_context.stack_of_loop_jump_offsets.last().unwrap(),
          ));
       }
+      Statement::Defer(_) => unreachable!(),
       Statement::Expression(en) => {
          do_emit(*en, generation_context);
          for _ in 0..sizeof_type_values(
