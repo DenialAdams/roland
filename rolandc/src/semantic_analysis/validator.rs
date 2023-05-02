@@ -1595,14 +1595,12 @@ fn get_type(
          let mut any_error = false;
 
          for i in 1..elems.len() {
-            try_set_inferred_type(
-               &validation_context.ast.expressions[elems[i - 1]]
-                  .exp_type
-                  .clone()
-                  .unwrap(),
-               elems[i],
-               validation_context,
-            );
+            let borrowed_type = validation_context.ast.expressions[elems[i - 1]]
+               .exp_type
+               .take()
+               .unwrap();
+            try_set_inferred_type(&borrowed_type, elems[i], validation_context);
+            validation_context.ast.expressions[elems[i - 1]].exp_type = Some(borrowed_type);
 
             let last_elem_expr = &validation_context.ast.expressions[elems[i - 1]];
             let this_elem_expr = &validation_context.ast.expressions[elems[i]];

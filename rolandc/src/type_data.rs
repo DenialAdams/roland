@@ -151,9 +151,7 @@ impl ExpressionType {
    pub fn decrement_indirection_count(&mut self) -> Result<(), ()> {
       match self {
          ExpressionType::Pointer(v) => {
-            let mut inner_value = ExpressionType::Unit;
-            std::mem::swap(&mut **v, &mut inner_value);
-            *self = inner_value;
+            *self = std::mem::replace(&mut **v, ExpressionType::Unit);
             Ok(())
          }
          _ => Err(()),
