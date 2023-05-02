@@ -1260,9 +1260,13 @@ fn get_type(
 
          let (correct_type, node_type): (&[TypeValidator], _) = match un_op {
             UnOp::Dereference => {
-               let mut new_type = e.exp_type.clone().unwrap();
-               // If this fails, it will be caught by the type matcher
-               let _ = new_type.decrement_indirection_count();
+               let new_type = match e.exp_type.as_ref().unwrap() {
+                  ExpressionType::Pointer(inner) => inner.deref().clone(),
+                  _ => {
+                     // No message; let the type matcher throw the error
+                     ExpressionType::CompileError
+                  },
+               };
                (&[TypeValidator::AnyPointer], new_type)
             }
             UnOp::Negate => (
@@ -1962,10 +1966,12 @@ fn check_type_declared_vs_actual(
       actual_type_ref == *declared_type
    }
    fn deref_of_actual_matches_dt(actual_type: &ExpressionType, declared_type: &ExpressionType) -> bool {
-      let mut actual_type_deref = actual_type.clone();
-      let actual_deref_exists = actual_type_deref.decrement_indirection_count().is_ok();
-
-      actual_type_deref == *declared_type && actual_deref_exists
+      match actual_type {
+         ExpressionType::Pointer(inner) => {
+            &**inner == declared_type
+         }
+         _ => false
+      }
    }
 
    let actual_type = actual.exp_type.as_ref().unwrap();
@@ -2013,6 +2019,7 @@ fn check_type_declared_vs_actual(
    }
 }
 
+// TODO: should param_type be a Cow? would avoid manye needless allocations at the callsite
 pub fn map_generic_to_concrete(
    param_type: &mut ExpressionType,
    generic_args: &[ExpressionType],

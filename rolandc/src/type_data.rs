@@ -148,16 +148,6 @@ pub struct FloatType {
 }
 
 impl ExpressionType {
-   pub fn decrement_indirection_count(&mut self) -> Result<(), ()> {
-      match self {
-         ExpressionType::Pointer(v) => {
-            *self = std::mem::replace(&mut **v, ExpressionType::Unit);
-            Ok(())
-         }
-         _ => Err(()),
-      }
-   }
-
    #[must_use]
    pub fn get_type_or_type_being_pointed_to(&self) -> &ExpressionType {
       match self {
