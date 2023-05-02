@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use super::type_variables::{TypeConstraint, TypeVariable};
 use super::validator::is_type_param_with_trait;
 use super::ValidationContext;
@@ -208,7 +210,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
 
          // It's important that we don't override the length here; that can't be inferred
          match &mut validation_context.ast.expressions[expr_index].exp_type {
-            Some(ExpressionType::Array(a_type, _)) => *a_type = target_elem_type.clone(),
+            Some(ExpressionType::Array(a_type, _)) => **a_type = target_elem_type.deref().clone(),
             _ => unreachable!(),
          }
 
