@@ -173,13 +173,15 @@ fn fold_expr(
 ) -> Option<Expression> {
    let expr_to_fold_location = folding_context.ast.expressions[expr_index].location;
 
-   match folding_context.ast.expressions[expr_index].expression.clone() {
+   // TODO: dummy expr?
+   let the_expr = std::mem::replace(&mut folding_context.ast.expressions[expr_index].expression, Expression::UnitLiteral);
+   let new_expr = match &the_expr {
       Expression::ArrayIndex { array, index } => {
-         try_fold_and_replace_expr(array, err_manager, folding_context, interner);
-         try_fold_and_replace_expr(index, err_manager, folding_context, interner);
+         try_fold_and_replace_expr(*array, err_manager, folding_context, interner);
+         try_fold_and_replace_expr(*index, err_manager, folding_context, interner);
 
-         let array = &folding_context.ast.expressions[array];
-         let index = &folding_context.ast.expressions[index];
+         let array = &folding_context.ast.expressions[*array];
+         let index = &folding_context.ast.expressions[*index];
 
          let Some(ExpressionType::Array(_, len)) = array.exp_type else { unreachable!() };
 
@@ -731,6 +733,9 @@ fn fold_expr(
       }
       Expression::EnumLiteral(_, _) => None,
    }
+   folding_context.ast.expressions[expr_index].expression = the_expr;
+
+   new_expr
 }
 
 pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &FoldingContext) -> Option<Expression> {
