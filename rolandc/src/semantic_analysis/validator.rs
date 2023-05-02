@@ -1376,13 +1376,13 @@ fn get_type(
             type_expression(err_manager, arg.expr, validation_context);
          }
 
-         // sad clone :(
-         match validation_context.ast.expressions[*proc_expr].exp_type.clone().unwrap() {
+         let the_type = validation_context.ast.expressions[*proc_expr].exp_type.take().unwrap();
+         let resulting_type = match &the_type {
             ExpressionType::ProcedureItem(proc_name, generic_args) => {
-               let procedure_info = validation_context.procedure_info.get(&proc_name).unwrap();
+               let procedure_info = validation_context.procedure_info.get(proc_name).unwrap();
                check_procedure_call(
                   args,
-                  &generic_args,
+                  generic_args,
                   &procedure_info.parameters,
                   &procedure_info.named_parameters,
                   &procedure_info.type_parameters,
@@ -1391,14 +1391,14 @@ fn get_type(
                   err_manager,
                );
                let mut resulting_type = procedure_info.ret_type.clone();
-               map_generic_to_concrete(&mut resulting_type, &generic_args, &procedure_info.type_parameters);
+               map_generic_to_concrete(&mut resulting_type, generic_args, &procedure_info.type_parameters);
                resulting_type
             }
             ExpressionType::ProcedurePointer { parameters, ret_type } => {
                check_procedure_call(
                   args,
                   &[],
-                  &parameters,
+                  parameters,
                   &HashMap::new(),
                   &IndexMap::new(),
                   expr_location,
@@ -1417,7 +1417,9 @@ fn get_type(
                );
                ExpressionType::CompileError
             }
-         }
+         };
+         validation_context.ast.expressions[*proc_expr].exp_type = Some(the_type);
+         resulting_type
       }
       Expression::StructLiteral(struct_name, fields) => {
          for field in fields.iter() {
