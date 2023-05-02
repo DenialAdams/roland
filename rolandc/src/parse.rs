@@ -806,11 +806,7 @@ fn parse_enum(l: &mut Lexer, parse_context: &mut ParseContext, source_info: Sour
    })
 }
 
-fn parse_block(
-   l: &mut Lexer,
-   parse_context: &mut ParseContext,
-   ast: &mut AstPool,
-) -> Result<BlockNode, ()> {
+fn parse_block(l: &mut Lexer, parse_context: &mut ParseContext, ast: &mut AstPool) -> Result<BlockNode, ()> {
    let open_brace = expect(l, parse_context, Token::OpenBrace)?;
 
    let mut statements: Vec<StatementId> = vec![];

@@ -94,7 +94,10 @@ pub fn fold_statement(
    interner: &Interner,
 ) {
    // TODO: dummy stmt?
-   let the_statement = std::mem::replace(&mut folding_context.ast.statements[statement].statement, Statement::Break);
+   let the_statement = std::mem::replace(
+      &mut folding_context.ast.statements[statement].statement,
+      Statement::Break,
+   );
    match &the_statement {
       Statement::Assignment(lhs_expr, rhs_expr) => {
          try_fold_and_replace_expr(*lhs_expr, err_manager, folding_context, interner);

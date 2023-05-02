@@ -10,8 +10,8 @@ use wasm_encoder::{
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   statement_always_returns, BinOp, CastType, Expression, ExpressionId, ExternalProcImplSource,
-   ProcedureDefinition, Program, Statement, UnOp, VariableId, StatementId, AstPool,
+   statement_always_returns, AstPool, BinOp, CastType, Expression, ExpressionId, ExternalProcImplSource,
+   ProcedureDefinition, Program, Statement, StatementId, UnOp, VariableId,
 };
 use crate::semantic_analysis::{EnumInfo, GlobalKind, StructInfo};
 use crate::size_info::{
@@ -565,9 +565,13 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
          emit_statement(statement, &mut generation_context);
       }
 
-      if procedure.block.statements.last().copied().map_or(false, |x| {
-         statement_always_returns(x, generation_context.ast)
-      }) {
+      if procedure
+         .block
+         .statements
+         .last()
+         .copied()
+         .map_or(false, |x| statement_always_returns(x, generation_context.ast))
+      {
          // No need to adjust stack; it was done in the return statement
          if !matches!(
             generation_context.ast.statements[procedure.block.statements.last().copied().unwrap()].statement,
@@ -1314,7 +1318,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             UnOp::Dereference => {
                do_emit(*e_index, generation_context);
 
-               if e.expression.is_lvalue_disregard_consts(&generation_context.ast.expressions) {
+               if e
+                  .expression
+                  .is_lvalue_disregard_consts(&generation_context.ast.expressions)
+               {
                   load(e.exp_type.as_ref().unwrap(), generation_context);
                }
             }
@@ -1394,7 +1401,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       } => {
          let e = &generation_context.ast.expressions[*e_id];
 
-         if e.expression.is_lvalue_disregard_consts(&generation_context.ast.expressions) {
+         if e
+            .expression
+            .is_lvalue_disregard_consts(&generation_context.ast.expressions)
+         {
             do_emit(*e_id, generation_context);
             load(target_type, generation_context);
          } else {
@@ -1581,7 +1591,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             }
          }
 
-         match generation_context.ast.expressions[*proc_expr].exp_type.as_ref().unwrap() {
+         match generation_context.ast.expressions[*proc_expr]
+            .exp_type
+            .as_ref()
+            .unwrap()
+         {
             ExpressionType::ProcedureItem(proc_name, _) => {
                let idx = generation_context.procedure_indices.get_index_of(proc_name).unwrap() as u32;
                generation_context.active_fcn.instruction(&Instruction::Call(idx));

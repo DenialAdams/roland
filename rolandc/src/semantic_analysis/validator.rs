@@ -471,7 +471,10 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
    let stmt_loc = validation_context.ast.statements[statement].location;
 
    // TODO: dummy stmt?
-   let mut the_statement = std::mem::replace(&mut validation_context.ast.statements[statement].statement, Statement::Break);
+   let mut the_statement = std::mem::replace(
+      &mut validation_context.ast.statements[statement].statement,
+      Statement::Break,
+   );
    match &mut the_statement {
       Statement::Assignment(lhs, rhs) => {
          type_expression(err_manager, *lhs, validation_context);
