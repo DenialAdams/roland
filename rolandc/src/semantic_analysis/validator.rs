@@ -814,11 +814,11 @@ fn type_block(err_manager: &mut ErrorManager, bn: &BlockNode, validation_context
    fall_out_of_scope(err_manager, validation_context, num_vars);
 }
 
-fn get_type(
+fn type_expression(
    err_manager: &mut ErrorManager,
    expr_index: ExpressionId,
    validation_context: &mut ValidationContext,
-) -> ExpressionType {
+) {
    let expr_location = validation_context.ast.expressions[expr_index].location;
 
    // Resolve types and names first
@@ -864,8 +864,9 @@ fn get_type(
             validation_context
                .source_to_definition
                .insert(expr_location, var_info.declaration_location);
+            validation_context.ast.expressions[expr_index].exp_type = Some(var_info.var_type.clone());
             validation_context.ast.expressions[expr_index].expression = Expression::Variable(var_info.var_id);
-            return var_info.var_type.clone();
+            return;
          }
          None => {
             if validation_context.procedure_info.contains_key(&id.str) {
@@ -878,14 +879,21 @@ fn get_type(
    }
 
    // TODO: dummy expr?
-   let the_expr = std::mem::replace(&mut validation_context.ast.expressions[expr_index].expression, Expression::UnitLiteral);
-   let t_type = get_type_inner(&the_expr, expr_location, err_manager, expr_index, validation_context);
+   let the_expr = std::mem::replace(
+      &mut validation_context.ast.expressions[expr_index].expression,
+      Expression::UnitLiteral,
+   );
+   validation_context.ast.expressions[expr_index].exp_type = Some(get_type(
+      &the_expr,
+      expr_location,
+      err_manager,
+      expr_index,
+      validation_context,
+   ));
    validation_context.ast.expressions[expr_index].expression = the_expr;
-
-   t_type
 }
 
-fn get_type_inner(
+fn get_type(
    expr: &Expression,
    expr_location: SourceInfo,
    err_manager: &mut ErrorManager,
@@ -1737,15 +1745,6 @@ fn get_type_inner(
          }
       }
    }
-}
-
-fn type_expression(
-   err_manager: &mut ErrorManager,
-   expr_index: ExpressionId,
-   validation_context: &mut ValidationContext,
-) {
-   validation_context.ast.expressions[expr_index].exp_type =
-      Some(get_type(err_manager, expr_index, validation_context));
 }
 
 fn error_on_unknown_literals(err_manager: &mut ErrorManager, validation_context: &mut ValidationContext) {

@@ -111,7 +111,10 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
 
 fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
    // TODO: dummy expr?
-   let the_expr = std::mem::replace(&mut cg_context.ast.expressions[expr_index].expression, Expression::UnitLiteral);
+   let the_expr = std::mem::replace(
+      &mut cg_context.ast.expressions[expr_index].expression,
+      Expression::UnitLiteral,
+   );
    match &the_expr {
       Expression::Variable(x) => {
          if cg_context.consts_being_processed.contains(x) {

@@ -173,7 +173,14 @@ fn fold_expr(
    interner: &Interner,
 ) -> Option<Expression> {
    // TODO: dummy expr?
-   let the_expr = std::mem::replace(&mut folding_context.ast.expressions[expr_index], ExpressionNode { expression: Expression::UnitLiteral, exp_type: None, location: SourceInfo::dummy() });
+   let the_expr = std::mem::replace(
+      &mut folding_context.ast.expressions[expr_index],
+      ExpressionNode {
+         expression: Expression::UnitLiteral,
+         exp_type: None,
+         location: SourceInfo::dummy(),
+      },
+   );
    let new_expr = fold_expr_inner(&the_expr, err_manager, folding_context, interner);
    folding_context.ast.expressions[expr_index] = the_expr;
 
@@ -281,8 +288,7 @@ fn fold_expr_inner(
                   err_manager,
                   expr_to_fold_location,
                   "Literal of type {} has value `{}` which would immediately over/underflow",
-                  expr_type
-                     .as_roland_type_info_notv(interner),
+                  expr_type.as_roland_type_info_notv(interner),
                   val as i64
                );
             } else {
@@ -290,8 +296,7 @@ fn fold_expr_inner(
                   err_manager,
                   expr_to_fold_location,
                   "Literal of type {} has value `{}` which would immediately over/underflow",
-                  expr_type
-                     .as_roland_type_info_notv(interner),
+                  expr_type.as_roland_type_info_notv(interner),
                   val
                );
             }
@@ -312,18 +317,15 @@ fn fold_expr_inner(
          let lhs_expr = &folding_context.ast.expressions[*lhs_id];
          let rhs_expr = &folding_context.ast.expressions[*rhs_id];
 
-         let lhs_could_have_side_effects = expression_could_have_side_effects(*lhs_id, &folding_context.ast.expressions);
-         let rhs_could_have_side_effects = expression_could_have_side_effects(*rhs_id, &folding_context.ast.expressions);
+         let lhs_could_have_side_effects =
+            expression_could_have_side_effects(*lhs_id, &folding_context.ast.expressions);
+         let rhs_could_have_side_effects =
+            expression_could_have_side_effects(*rhs_id, &folding_context.ast.expressions);
 
          // For some cases, we don't care if either operand is literal
          if !lhs_could_have_side_effects && !rhs_could_have_side_effects && lhs_expr.expression == rhs_expr.expression {
             match operator {
-               BinOp::Divide
-                  if !matches!(
-                     expr_type,
-                     ExpressionType::Float(_)
-                  ) =>
-               {
+               BinOp::Divide if !matches!(expr_type, ExpressionType::Float(_)) => {
                   return Some(Expression::IntLiteral {
                      val: 1,
                      synthetic: true,
@@ -340,19 +342,11 @@ fn fold_expr_inner(
                   };
                   return Some(expr);
                }
-               BinOp::GreaterThan | BinOp::LessThan
-                  if !matches!(
-                     expr_type,
-                     ExpressionType::Float(_)
-                  ) =>
-               {
+               BinOp::GreaterThan | BinOp::LessThan if !matches!(expr_type, ExpressionType::Float(_)) => {
                   return Some(Expression::BoolLiteral(false));
                }
                BinOp::Equality | BinOp::GreaterThanOrEqualTo | BinOp::LessThanOrEqualTo
-                  if !matches!(
-                     expr_type,
-                     ExpressionType::Float(_)
-                  ) =>
+                  if !matches!(expr_type, ExpressionType::Float(_)) =>
                {
                   return Some(Expression::BoolLiteral(true));
                }
@@ -725,15 +719,9 @@ fn fold_expr_inner(
 
          if let Some(literal) = extract_literal(expr) {
             match cast_type {
-               CastType::Transmute => {
-                  literal.transmute(expr_type)
-               }
-               CastType::Extend => {
-                  literal.extend(expr_type)
-               }
-               CastType::Truncate => {
-                  literal.truncate(expr_type)
-               }
+               CastType::Transmute => literal.transmute(expr_type),
+               CastType::Extend => literal.extend(expr_type),
+               CastType::Truncate => literal.truncate(expr_type),
             }
          } else {
             None
