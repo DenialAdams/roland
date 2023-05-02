@@ -821,8 +821,7 @@ fn get_type(
 ) -> ExpressionType {
    let expr_location = validation_context.ast.expressions[expr_index].location;
 
-   // For borrow checking reasons, we resolve types and names first
-   // (which requires mutable access to the expression)
+   // Resolve types and names first
    match &mut validation_context.ast.expressions[expr_index].expression {
       Expression::Cast { target_type, .. } => {
          if resolve_type(
@@ -878,7 +877,22 @@ fn get_type(
       _ => (),
    }
 
-   match validation_context.ast.expressions[expr_index].expression.clone() {
+   // TODO: dummy expr?
+   let the_expr = std::mem::replace(&mut validation_context.ast.expressions[expr_index].expression, Expression::UnitLiteral);
+   let t_type = get_type_inner(&the_expr, expr_location, err_manager, expr_index, validation_context);
+   validation_context.ast.expressions[expr_index].expression = the_expr;
+
+   t_type
+}
+
+fn get_type_inner(
+   expr: &Expression,
+   expr_location: SourceInfo,
+   err_manager: &mut ErrorManager,
+   expr_index: ExpressionId,
+   validation_context: &mut ValidationContext,
+) -> ExpressionType {
+   match expr {
       Expression::UnitLiteral => ExpressionType::Unit,
       Expression::BoolLiteral(_) => ExpressionType::Bool,
       Expression::IntLiteral { .. } => {
@@ -899,7 +913,7 @@ fn get_type(
          target_type,
          expr: expr_id,
       } => {
-         type_expression(err_manager, expr_id, validation_context);
+         type_expression(err_manager, *expr_id, validation_context);
 
          if target_type.is_error() {
             // this can occur when the target type is unresolved
@@ -909,7 +923,7 @@ fn get_type(
          }
 
          let from_type_is_unknown_int = {
-            let exp_type = validation_context.ast.expressions[expr_id].exp_type.as_ref().unwrap();
+            let exp_type = validation_context.ast.expressions[*expr_id].exp_type.as_ref().unwrap();
             match exp_type {
                ExpressionType::Unknown(v) => {
                   matches!(
@@ -922,22 +936,22 @@ fn get_type(
          };
 
          if from_type_is_unknown_int {
-            if cast_type == CastType::Transmute && target_type.is_pointer() {
-               try_set_inferred_type(&USIZE_TYPE, expr_id, validation_context);
-            } else if cast_type == CastType::Transmute && matches!(target_type, F64_TYPE) {
-               try_set_inferred_type(&U64_TYPE, expr_id, validation_context);
-            } else if cast_type == CastType::Transmute && matches!(target_type, F32_TYPE) {
-               try_set_inferred_type(&U32_TYPE, expr_id, validation_context);
-            } else if cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Enum(_)) {
+            if *cast_type == CastType::Transmute && target_type.is_pointer() {
+               try_set_inferred_type(&USIZE_TYPE, *expr_id, validation_context);
+            } else if *cast_type == CastType::Transmute && matches!(target_type, &F64_TYPE) {
+               try_set_inferred_type(&U64_TYPE, *expr_id, validation_context);
+            } else if *cast_type == CastType::Transmute && matches!(target_type, &F32_TYPE) {
+               try_set_inferred_type(&U32_TYPE, *expr_id, validation_context);
+            } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Enum(_)) {
                let enum_base_type = match target_type {
-                  ExpressionType::Enum(x) => &validation_context.enum_info.get(&x).unwrap().base_type,
+                  ExpressionType::Enum(x) => &validation_context.enum_info.get(x).unwrap().base_type,
                   _ => unreachable!(),
                };
-               try_set_inferred_type(enum_base_type, expr_id, validation_context);
+               try_set_inferred_type(enum_base_type, *expr_id, validation_context);
             }
          };
 
-         let e = &validation_context.ast.expressions[expr_id];
+         let e = &validation_context.ast.expressions[*expr_id];
          let e_type = e.exp_type.as_ref().unwrap();
 
          if e_type.is_error() {
@@ -947,7 +961,7 @@ fn get_type(
 
          match cast_type {
             CastType::Extend => {
-               let valid_cast = match (e_type, &target_type) {
+               let valid_cast = match (e_type, target_type) {
                   (ExpressionType::Int(x), ExpressionType::Int(y)) if x.width == IntWidth::Pointer => {
                      // going from unsigned -> signed is ok, but signed -> unsigned is not
                      let bad = x.signed & !y.signed;
@@ -967,7 +981,7 @@ fn get_type(
                };
 
                if valid_cast {
-                  target_type
+                  target_type.clone()
                } else {
                   rolandc_error_w_details!(
                      err_manager,
@@ -980,7 +994,7 @@ fn get_type(
                }
             }
             CastType::Truncate => {
-               let valid_cast = match (e_type, &target_type) {
+               let valid_cast = match (e_type, target_type) {
                   (ExpressionType::Int(x), ExpressionType::Int(y)) if x.width == IntWidth::Pointer => {
                      IntWidth::Pointer.as_num_bytes() >= y.width.as_num_bytes()
                   }
@@ -995,7 +1009,7 @@ fn get_type(
                };
 
                if valid_cast {
-                  target_type
+                  target_type.clone()
                } else {
                   rolandc_error_w_details!(
                      err_manager,
@@ -1023,7 +1037,7 @@ fn get_type(
                   &validation_context.struct_size_info,
                );
                let size_target = sizeof_type_mem(
-                  &target_type,
+                  target_type,
                   validation_context.enum_info,
                   &validation_context.struct_size_info,
                );
@@ -1065,7 +1079,7 @@ fn get_type(
                      );
                      ExpressionType::CompileError
                   } else {
-                     target_type
+                     target_type.clone()
                   }
                } else {
                   rolandc_error!(
@@ -1083,8 +1097,8 @@ fn get_type(
          }
       }
       Expression::BinaryOperator { operator, lhs, rhs } => {
-         type_expression(err_manager, lhs, validation_context);
-         type_expression(err_manager, rhs, validation_context);
+         type_expression(err_manager, *lhs, validation_context);
+         type_expression(err_manager, *rhs, validation_context);
 
          let correct_arg_types: &[TypeValidator] = match operator {
             BinOp::Add
@@ -1107,18 +1121,18 @@ fn get_type(
          };
 
          try_set_inferred_type(
-            &validation_context.ast.expressions[lhs].exp_type.clone().unwrap(),
-            rhs,
+            &validation_context.ast.expressions[*lhs].exp_type.clone().unwrap(),
+            *rhs,
             validation_context,
          );
          try_set_inferred_type(
-            &validation_context.ast.expressions[rhs].exp_type.clone().unwrap(),
-            lhs,
+            &validation_context.ast.expressions[*rhs].exp_type.clone().unwrap(),
+            *lhs,
             validation_context,
          );
 
-         let lhs_expr = &validation_context.ast.expressions[lhs];
-         let rhs_expr = &validation_context.ast.expressions[rhs];
+         let lhs_expr = &validation_context.ast.expressions[*lhs];
+         let rhs_expr = &validation_context.ast.expressions[*rhs];
 
          let lhs_type = lhs_expr.exp_type.as_ref().unwrap();
          let rhs_type = rhs_expr.exp_type.as_ref().unwrap();
@@ -1183,11 +1197,11 @@ fn get_type(
          }
       }
       Expression::UnaryOperator(un_op, e) => {
-         type_expression(err_manager, e, validation_context);
+         type_expression(err_manager, *e, validation_context);
 
-         let e = &validation_context.ast.expressions[e];
+         let e = &validation_context.ast.expressions[*e];
 
-         if un_op == UnOp::AddressOf {
+         if *un_op == UnOp::AddressOf {
             if let ExpressionType::ProcedureItem(proc_name, bound_type_params) = e.exp_type.as_ref().unwrap() {
                // special case
                let procedure_info = validation_context.procedure_info.get(proc_name).unwrap();
@@ -1226,7 +1240,7 @@ fn get_type(
             }
          }
 
-         if un_op == UnOp::Negate {
+         if *un_op == UnOp::Negate {
             if let Some(x) = e.exp_type.as_ref().unwrap().get_type_variable_of_unknown_type() {
                let tvd = validation_context.type_variables.get_data_mut(x);
                if tvd.constraint == TypeConstraint::Int {
@@ -1273,7 +1287,7 @@ fn get_type(
                   .as_roland_type_info(validation_context.interner, &validation_context.type_variables)
             );
             ExpressionType::CompileError
-         } else if un_op == UnOp::AddressOf
+         } else if *un_op == UnOp::AddressOf
             && !e
                .expression
                .is_lvalue(&validation_context.ast.expressions, validation_context.global_info)
@@ -1295,7 +1309,7 @@ fn get_type(
                );
             }
             ExpressionType::CompileError
-         } else if un_op == UnOp::AddressOf {
+         } else if *un_op == UnOp::AddressOf {
             if let Expression::Variable(var) = &e.expression {
                if let Some(gi) = validation_context.global_info.get(var) {
                   if gi.kind == GlobalKind::Const {
@@ -1323,7 +1337,7 @@ fn get_type(
                proc_info,
                validation_context.cur_procedure_info,
                expr_location,
-               &type_arguments,
+               type_arguments,
                validation_context.interner,
                err_manager,
             )
@@ -1349,17 +1363,17 @@ fn get_type(
       }
       Expression::Variable(_) => unreachable!(),
       Expression::ProcedureCall { proc_expr, args } => {
-         type_expression(err_manager, proc_expr, validation_context);
+         type_expression(err_manager, *proc_expr, validation_context);
          for arg in args.iter() {
             type_expression(err_manager, arg.expr, validation_context);
          }
 
          // sad clone :(
-         match validation_context.ast.expressions[proc_expr].exp_type.clone().unwrap() {
+         match validation_context.ast.expressions[*proc_expr].exp_type.clone().unwrap() {
             ExpressionType::ProcedureItem(proc_name, generic_args) => {
                let procedure_info = validation_context.procedure_info.get(&proc_name).unwrap();
                check_procedure_call(
-                  &args,
+                  args,
                   &generic_args,
                   &procedure_info.parameters,
                   &procedure_info.named_parameters,
@@ -1374,7 +1388,7 @@ fn get_type(
             }
             ExpressionType::ProcedurePointer { parameters, ret_type } => {
                check_procedure_call(
-                  &args,
+                  args,
                   &[],
                   &parameters,
                   &HashMap::new(),
@@ -1389,7 +1403,7 @@ fn get_type(
             bad_type => {
                rolandc_error!(
                   err_manager,
-                  validation_context.ast.expressions[proc_expr].location,
+                  validation_context.ast.expressions[*proc_expr].location,
                   "Attempting to invoke a procedure on non-procedure type {}",
                   bad_type.as_roland_type_info(validation_context.interner, &validation_context.type_variables),
                );
@@ -1503,9 +1517,9 @@ fn get_type(
          }
       }
       Expression::FieldAccess(fields, lhs) => {
-         type_expression(err_manager, lhs, validation_context);
+         type_expression(err_manager, *lhs, validation_context);
 
-         let lhs = &validation_context.ast.expressions[lhs];
+         let lhs = &validation_context.ast.expressions[*lhs];
          let mut lhs_type = lhs.exp_type.as_ref().unwrap().clone();
          let mut remaining_fields = fields.as_slice();
 
@@ -1641,13 +1655,13 @@ fn get_type(
          }
       }
       Expression::ArrayIndex { array, index } => {
-         type_expression(err_manager, array, validation_context);
-         type_expression(err_manager, index, validation_context);
+         type_expression(err_manager, *array, validation_context);
+         type_expression(err_manager, *index, validation_context);
 
-         try_set_inferred_type(&USIZE_TYPE, index, validation_context);
+         try_set_inferred_type(&USIZE_TYPE, *index, validation_context);
 
-         let array_expression = &validation_context.ast.expressions[array];
-         let index_expression = &validation_context.ast.expressions[index];
+         let array_expression = &validation_context.ast.expressions[*array];
+         let index_expression = &validation_context.ast.expressions[*index];
 
          if index_expression.exp_type.as_ref().unwrap().is_error() {
             // avoid cascading errors

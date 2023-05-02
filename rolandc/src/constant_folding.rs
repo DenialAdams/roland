@@ -13,6 +13,7 @@ use crate::parse::{
 };
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::SizeInfo;
+use crate::source_info::SourceInfo;
 use crate::type_data::{
    ExpressionType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
    U8_TYPE, USIZE_TYPE,
@@ -171,11 +172,23 @@ fn fold_expr(
    folding_context: &mut FoldingContext,
    interner: &Interner,
 ) -> Option<Expression> {
-   let expr_to_fold_location = folding_context.ast.expressions[expr_index].location;
-
    // TODO: dummy expr?
-   let the_expr = std::mem::replace(&mut folding_context.ast.expressions[expr_index].expression, Expression::UnitLiteral);
-   let new_expr = match &the_expr {
+   let the_expr = std::mem::replace(&mut folding_context.ast.expressions[expr_index], ExpressionNode { expression: Expression::UnitLiteral, exp_type: None, location: SourceInfo::dummy() });
+   let new_expr = fold_expr_inner(&the_expr, err_manager, folding_context, interner);
+   folding_context.ast.expressions[expr_index] = the_expr;
+
+   new_expr
+}
+
+fn fold_expr_inner(
+   expr: &ExpressionNode,
+   err_manager: &mut ErrorManager,
+   folding_context: &mut FoldingContext,
+   interner: &Interner,
+) -> Option<Expression> {
+   let expr_to_fold_location = expr.location;
+   let expr_type = expr.exp_type.as_ref().unwrap();
+   match &expr.expression {
       Expression::ArrayIndex { array, index } => {
          try_fold_and_replace_expr(*array, err_manager, folding_context, interner);
          try_fold_and_replace_expr(*index, err_manager, folding_context, interner);
@@ -216,19 +229,19 @@ fn fold_expr(
       }
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::Variable(x) => {
-         if let Some(replacement_index) = folding_context.const_replacements.get(&x).copied() {
+         if let Some(replacement_index) = folding_context.const_replacements.get(x).copied() {
             return Some(folding_context.ast.expressions[replacement_index].expression.clone());
          }
 
          None
       }
       Expression::ProcedureCall { args, proc_expr } => {
-         try_fold_and_replace_expr(proc_expr, err_manager, folding_context, interner);
+         try_fold_and_replace_expr(*proc_expr, err_manager, folding_context, interner);
          for arg in args.iter().map(|x| x.expr) {
             try_fold_and_replace_expr(arg, err_manager, folding_context, interner);
          }
 
-         fold_builtin_call(proc_expr, interner, folding_context)
+         fold_builtin_call(*proc_expr, interner, folding_context)
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
@@ -240,7 +253,8 @@ fn fold_expr(
       Expression::BoolLiteral(_) => None,
       Expression::StringLiteral(_) => None,
       Expression::IntLiteral { val, .. } => {
-         let overflowing_literal = match folding_context.ast.expressions[expr_index].exp_type.as_ref().unwrap() {
+         let val = *val;
+         let overflowing_literal = match expr_type {
             &I8_TYPE => (val as i64) > i64::from(i8::MAX) || (val as i64) < i64::from(i8::MIN),
             &I16_TYPE => (val as i64) > i64::from(i16::MAX) || (val as i64) < i64::from(i16::MIN),
             &I32_TYPE => (val as i64) > i64::from(i32::MAX) || (val as i64) < i64::from(i32::MIN),
@@ -257,7 +271,7 @@ fn fold_expr(
          };
 
          if overflowing_literal {
-            let signed = match folding_context.ast.expressions[expr_index].exp_type.as_ref().unwrap() {
+            let signed = match expr_type {
                ExpressionType::Int(x) => x.signed,
                _ => unreachable!(),
             };
@@ -265,24 +279,18 @@ fn fold_expr(
             if signed {
                rolandc_error!(
                   err_manager,
-                  folding_context.ast.expressions[expr_index].location,
+                  expr_to_fold_location,
                   "Literal of type {} has value `{}` which would immediately over/underflow",
-                  folding_context.ast.expressions[expr_index]
-                     .exp_type
-                     .as_ref()
-                     .unwrap()
+                  expr_type
                      .as_roland_type_info_notv(interner),
                   val as i64
                );
             } else {
                rolandc_error!(
                   err_manager,
-                  folding_context.ast.expressions[expr_index].location,
+                  expr_to_fold_location,
                   "Literal of type {} has value `{}` which would immediately over/underflow",
-                  folding_context.ast.expressions[expr_index]
-                     .exp_type
-                     .as_ref()
-                     .unwrap()
+                  expr_type
                      .as_roland_type_info_notv(interner),
                   val
                );
@@ -298,22 +306,22 @@ fn fold_expr(
          lhs: lhs_id,
          rhs: rhs_id,
       } => {
-         try_fold_and_replace_expr(lhs_id, err_manager, folding_context, interner);
-         try_fold_and_replace_expr(rhs_id, err_manager, folding_context, interner);
+         try_fold_and_replace_expr(*lhs_id, err_manager, folding_context, interner);
+         try_fold_and_replace_expr(*rhs_id, err_manager, folding_context, interner);
 
-         let lhs_expr = &folding_context.ast.expressions[lhs_id];
-         let rhs_expr = &folding_context.ast.expressions[rhs_id];
+         let lhs_expr = &folding_context.ast.expressions[*lhs_id];
+         let rhs_expr = &folding_context.ast.expressions[*rhs_id];
 
-         let lhs_could_have_side_effects = expression_could_have_side_effects(lhs_id, &folding_context.ast.expressions);
-         let rhs_could_have_side_effects = expression_could_have_side_effects(rhs_id, &folding_context.ast.expressions);
+         let lhs_could_have_side_effects = expression_could_have_side_effects(*lhs_id, &folding_context.ast.expressions);
+         let rhs_could_have_side_effects = expression_could_have_side_effects(*rhs_id, &folding_context.ast.expressions);
 
          // For some cases, we don't care if either operand is literal
          if !lhs_could_have_side_effects && !rhs_could_have_side_effects && lhs_expr.expression == rhs_expr.expression {
             match operator {
                BinOp::Divide
                   if !matches!(
-                     folding_context.ast.expressions[expr_index].exp_type.as_ref(),
-                     Some(ExpressionType::Float(_))
+                     expr_type,
+                     ExpressionType::Float(_)
                   ) =>
                {
                   return Some(Expression::IntLiteral {
@@ -322,9 +330,9 @@ fn fold_expr(
                   });
                }
                BinOp::BitwiseXor => {
-                  let expr = match folding_context.ast.expressions[expr_index].exp_type.as_ref() {
-                     Some(ExpressionType::Bool) => Expression::BoolLiteral(false),
-                     Some(ExpressionType::Int { .. }) => Expression::IntLiteral {
+                  let expr = match expr_type {
+                     ExpressionType::Bool => Expression::BoolLiteral(false),
+                     ExpressionType::Int { .. } => Expression::IntLiteral {
                         val: 0,
                         synthetic: true,
                      },
@@ -334,16 +342,16 @@ fn fold_expr(
                }
                BinOp::GreaterThan | BinOp::LessThan
                   if !matches!(
-                     folding_context.ast.expressions[expr_index].exp_type.as_ref(),
-                     Some(ExpressionType::Float(_))
+                     expr_type,
+                     ExpressionType::Float(_)
                   ) =>
                {
                   return Some(Expression::BoolLiteral(false));
                }
                BinOp::Equality | BinOp::GreaterThanOrEqualTo | BinOp::LessThanOrEqualTo
                   if !matches!(
-                     folding_context.ast.expressions[expr_index].exp_type.as_ref(),
-                     Some(ExpressionType::Float(_))
+                     expr_type,
+                     ExpressionType::Float(_)
                   ) =>
                {
                   return Some(Expression::BoolLiteral(true));
@@ -418,7 +426,7 @@ fn fold_expr(
                (lhs.unwrap(), &rhs_expr.expression, rhs_could_have_side_effects)
             };
 
-            if is_commutative_noop(one_literal, operator) {
+            if is_commutative_noop(one_literal, *operator) {
                let new_expr = non_literal_expr.clone();
                return Some(new_expr);
             } else if !non_literal_side_effects {
@@ -565,7 +573,7 @@ fn fold_expr(
          }
       }
       Expression::UnaryOperator(op, expr) => {
-         if op == UnOp::Negate {
+         if *op == UnOp::Negate {
             // THE POINT:
             // We want "-128" to be one value, not the negation of 128
             // Why? Because:
@@ -573,7 +581,7 @@ fn fold_expr(
             // 128 is > than the max we can store in an i8, but -128 just fits.
             // So, we match expectations by applying the negation BEFORE
             // we check the literal for overflow/underflow
-            let f_expr = &mut folding_context.ast.expressions[expr];
+            let f_expr = &mut folding_context.ast.expressions[*expr];
             if let Expression::IntLiteral {
                val: x,
                synthetic: false,
@@ -594,15 +602,15 @@ fn fold_expr(
                *x = val;
 
                // Run the fold anyway, for the base error check
-               let _fold_result = fold_expr(expr, err_manager, folding_context, interner);
+               let _fold_result = fold_expr(*expr, err_manager, folding_context, interner);
 
                return Some(Expression::IntLiteral { val, synthetic: true });
             }
          }
 
-         try_fold_and_replace_expr(expr, err_manager, folding_context, interner);
+         try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
 
-         let expr = &folding_context.ast.expressions[expr];
+         let expr = &folding_context.ast.expressions[*expr];
 
          if let Some(literal) = extract_literal(expr) {
             match op {
@@ -638,12 +646,12 @@ fn fold_expr(
          None
       }
       Expression::FieldAccess(field_names, expr) => {
-         try_fold_and_replace_expr(expr, err_manager, folding_context, interner);
+         try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
 
-         if expression_could_have_side_effects(expr, &folding_context.ast.expressions) {
+         if expression_could_have_side_effects(*expr, &folding_context.ast.expressions) {
             None
          } else {
-            let expr = &folding_context.ast.expressions[expr];
+            let expr = &folding_context.ast.expressions[*expr];
 
             // Handle the case where we're getting the length of an array
             // (only requires type information, no constant expressions)
@@ -711,20 +719,20 @@ fn fold_expr(
          }
       }
       Expression::Cast { cast_type, expr, .. } => {
-         try_fold_and_replace_expr(expr, err_manager, folding_context, interner);
+         try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
 
-         let expr = &folding_context.ast.expressions[expr];
+         let expr = &folding_context.ast.expressions[*expr];
 
          if let Some(literal) = extract_literal(expr) {
             match cast_type {
                CastType::Transmute => {
-                  literal.transmute(folding_context.ast.expressions[expr_index].exp_type.as_ref().unwrap())
+                  literal.transmute(expr_type)
                }
                CastType::Extend => {
-                  literal.extend(folding_context.ast.expressions[expr_index].exp_type.as_ref().unwrap())
+                  literal.extend(expr_type)
                }
                CastType::Truncate => {
-                  literal.truncate(folding_context.ast.expressions[expr_index].exp_type.as_ref().unwrap())
+                  literal.truncate(expr_type)
                }
             }
          } else {
@@ -733,9 +741,6 @@ fn fold_expr(
       }
       Expression::EnumLiteral(_, _) => None,
    }
-   folding_context.ast.expressions[expr_index].expression = the_expr;
-
-   new_expr
 }
 
 pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &FoldingContext) -> Option<Expression> {

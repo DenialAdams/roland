@@ -28,6 +28,17 @@ pub struct SourceInfo {
    pub file: SourcePath,
 }
 
+impl SourceInfo {
+   #[must_use]
+   pub fn dummy() -> SourceInfo {
+      SourceInfo {
+         begin: SourcePosition { line: 0, col: 0 },
+         end: SourcePosition { line: 0, col: 0 },
+         file: SourcePath::Sandbox,
+      }
+   }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum SourcePath {
    Sandbox,
