@@ -62,7 +62,10 @@ pub fn try_set_inferred_type(
    expr_index: ExpressionId,
    validation_context: &mut ValidationContext,
 ) {
-   let current_type = validation_context.expressions[expr_index].exp_type.as_ref().unwrap();
+   let current_type = validation_context.ast.expressions[expr_index]
+      .exp_type
+      .as_ref()
+      .unwrap();
    if !inference_is_possible(current_type, e_type, validation_context) {
       return;
    }
@@ -72,18 +75,25 @@ pub fn try_set_inferred_type(
 
 fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validation_context: &mut ValidationContext) {
    debug_assert!(inference_is_possible(
-      validation_context.expressions[expr_index].exp_type.as_ref().unwrap(),
+      validation_context.ast.expressions[expr_index]
+         .exp_type
+         .as_ref()
+         .unwrap(),
       e_type,
       validation_context,
    ));
 
-   match validation_context.expressions[expr_index].expression.clone() {
+   match validation_context.ast.expressions[expr_index].expression.clone() {
       Expression::BoundFcnLiteral(_, _) => unreachable!(),
       Expression::Cast { .. } => unreachable!(),
       Expression::BoolLiteral(_) => unreachable!(),
       Expression::IntLiteral { .. } | Expression::FloatLiteral(_) => {
          if let ExpressionType::Unknown(e_tv) = e_type {
-            let my_tv = match validation_context.expressions[expr_index].exp_type.as_ref().unwrap() {
+            let my_tv = match validation_context.ast.expressions[expr_index]
+               .exp_type
+               .as_ref()
+               .unwrap()
+            {
                ExpressionType::Unknown(x) => *x,
                _ => unreachable!(),
             };
@@ -92,13 +102,19 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          } else {
             validation_context.unknown_literals.remove(&expr_index);
          }
-         *validation_context.expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
+         *validation_context.ast.expressions[expr_index]
+            .exp_type
+            .as_mut()
+            .unwrap() = e_type.clone();
       }
       Expression::StringLiteral(_) => unreachable!(),
       Expression::BinaryOperator { lhs, rhs, .. } => {
          set_inferred_type(e_type, lhs, validation_context);
          set_inferred_type(e_type, rhs, validation_context);
-         *validation_context.expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
+         *validation_context.ast.expressions[expr_index]
+            .exp_type
+            .as_mut()
+            .unwrap() = e_type.clone();
       }
       Expression::UnaryOperator(unop, e) => {
          match unop {
@@ -116,7 +132,10 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
                set_inferred_type(&reversed, e, validation_context);
             }
          }
-         *validation_context.expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
+         *validation_context.ast.expressions[expr_index]
+            .exp_type
+            .as_mut()
+            .unwrap() = e_type.clone();
       }
       Expression::UnitLiteral => unreachable!(),
       Expression::Variable(_) => {
@@ -127,9 +146,12 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          // (and recursive variants: an array of arrays of pointers to an unknown type...)
          // We must take care to preserve the existing type structure.
 
-         // dbg!(validation_context.expressions[expr_index].exp_type.as_ref().unwrap(), e_type);
+         // dbg!(validation_context.ast.expressions[expr_index].exp_type.as_ref().unwrap(), e_type);
          let (my_tv, incoming_definition) = get_type_variable_of_unknown_type_and_associated_e_type(
-            validation_context.expressions[expr_index].exp_type.as_ref().unwrap(),
+            validation_context.ast.expressions[expr_index]
+               .exp_type
+               .as_ref()
+               .unwrap(),
             e_type,
          )
          .unwrap();
@@ -160,7 +182,10 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
                .known_type = Some(incoming_definition);
          }
 
-         *validation_context.expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
+         *validation_context.ast.expressions[expr_index]
+            .exp_type
+            .as_mut()
+            .unwrap() = e_type.clone();
       }
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::ProcedureCall { .. } => unreachable!(),
@@ -174,7 +199,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          }
 
          // It's important that we don't override the length here; that can't be inferred
-         match &mut validation_context.expressions[expr_index].exp_type {
+         match &mut validation_context.ast.expressions[expr_index].exp_type {
             Some(ExpressionType::Array(a_type, _)) => *a_type = target_elem_type.clone(),
             _ => unreachable!(),
          }
@@ -182,12 +207,15 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          validation_context.unknown_literals.remove(&expr_index);
       }
       Expression::ArrayIndex { array, index: _index } => {
-         let ExpressionType::Array(_, real_array_len) = validation_context.expressions[array].exp_type.as_ref().unwrap() else {
+         let ExpressionType::Array(_, real_array_len) = validation_context.ast.expressions[array].exp_type.as_ref().unwrap() else {
             unreachable!()
          };
          let array_type = ExpressionType::Array(Box::new(e_type.clone()), *real_array_len);
          set_inferred_type(&array_type, array, validation_context);
-         *validation_context.expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
+         *validation_context.ast.expressions[expr_index]
+            .exp_type
+            .as_mut()
+            .unwrap() = e_type.clone();
       }
       Expression::EnumLiteral(_, _) => unreachable!(),
    }

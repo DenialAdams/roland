@@ -5,7 +5,9 @@ use indexmap::{IndexMap, IndexSet};
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureNode, Statement, VariableId};
+use crate::parse::{
+   AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureNode, Statement, StatementId, VariableId,
+};
 use crate::semantic_analysis::validator::map_generic_to_concrete;
 use crate::semantic_analysis::{ProcImplSource, ProcedureInfo};
 use crate::type_data::ExpressionType;
@@ -27,7 +29,7 @@ pub fn monomorphize(program: &mut Program, interner: &mut Interner, err_manager:
    let mut new_procedures: HashMap<(StrId, Box<[ExpressionType]>), ProcedureId> = HashMap::new();
 
    // Construct initial worklist
-   for expr in program.expressions.values_mut() {
+   for expr in program.ast.expressions.values_mut() {
       if let Expression::BoundFcnLiteral(id, generic_args) = &expr.expression {
          if generic_args.is_empty() {
             continue;
@@ -88,7 +90,7 @@ pub fn monomorphize(program: &mut Program, interner: &mut Interner, err_manager:
             .get(&new_spec.template_with_type_arguments.0)
             .unwrap(),
          new_spec.depth,
-         &mut program.expressions,
+         &mut program.ast,
          &mut worklist,
          &mut program.next_variable,
       );
@@ -110,7 +112,7 @@ pub fn monomorphize(program: &mut Program, interner: &mut Interner, err_manager:
    }
 
    // Update all procedure calls to refer to specialized procedures
-   for expr in program.expressions.values_mut() {
+   for expr in program.ast.expressions.values_mut() {
       if let ExpressionType::ProcedureItem(id, generic_args) = expr.exp_type.as_mut().unwrap() {
          if generic_args.is_empty() {
             continue;
@@ -143,7 +145,7 @@ fn clone_procedure(
    concrete_types: &[ExpressionType],
    procedure_info: &ProcedureInfo,
    depth: usize,
-   expressions: &mut ExpressionPool,
+   ast: &mut AstPool,
    worklist: &mut Vec<SpecializationWorkItem>,
    next_var: &mut VariableId,
 ) -> ProcedureNode {
@@ -178,7 +180,7 @@ fn clone_procedure(
 
    deep_clone_block(
       &mut cloned.block,
-      expressions,
+      ast,
       concrete_types,
       &procedure_info.type_parameters,
       depth,
@@ -193,7 +195,7 @@ fn clone_procedure(
 
 fn deep_clone_block(
    block: &mut BlockNode,
-   expressions: &mut ExpressionPool,
+   ast: &mut AstPool,
    concrete_types: &[ExpressionType],
    type_parameters: &IndexMap<StrId, IndexSet<StrId>>,
    depth: usize,
@@ -201,9 +203,9 @@ fn deep_clone_block(
    variable_replacements: &HashMap<VariableId, VariableId>,
 ) {
    for stmt in block.statements.iter_mut() {
-      deep_clone_stmt(
-         &mut stmt.statement,
-         expressions,
+      *stmt = deep_clone_stmt(
+         *stmt,
+         ast,
          concrete_types,
          type_parameters,
          depth,
@@ -213,20 +215,22 @@ fn deep_clone_block(
    }
 }
 
+#[must_use]
 fn deep_clone_stmt(
-   stmt: &mut Statement,
-   expressions: &mut ExpressionPool,
+   stmt: StatementId,
+   ast: &mut AstPool,
    concrete_types: &[ExpressionType],
    type_parameters: &IndexMap<StrId, IndexSet<StrId>>,
    depth: usize,
    worklist: &mut Vec<SpecializationWorkItem>,
    variable_replacements: &HashMap<VariableId, VariableId>,
-) {
-   match stmt {
+) -> StatementId {
+   let mut cloned = ast.statements[stmt].clone();
+   match &mut cloned.statement {
       Statement::Assignment(lhs, rhs) => {
          *lhs = deep_clone_expr(
             *lhs,
-            expressions,
+            &mut ast.expressions,
             concrete_types,
             type_parameters,
             depth,
@@ -235,7 +239,7 @@ fn deep_clone_stmt(
          );
          *rhs = deep_clone_expr(
             *rhs,
-            expressions,
+            &mut ast.expressions,
             concrete_types,
             type_parameters,
             depth,
@@ -246,7 +250,7 @@ fn deep_clone_stmt(
       Statement::Block(bn) => {
          deep_clone_block(
             bn,
-            expressions,
+            ast,
             concrete_types,
             type_parameters,
             depth,
@@ -257,7 +261,7 @@ fn deep_clone_stmt(
       Statement::Loop(bn) => {
          deep_clone_block(
             bn,
-            expressions,
+            ast,
             concrete_types,
             type_parameters,
             depth,
@@ -268,7 +272,7 @@ fn deep_clone_stmt(
       Statement::For(_, start, end, bn, _, var) => {
          *start = deep_clone_expr(
             *start,
-            expressions,
+            &mut ast.expressions,
             concrete_types,
             type_parameters,
             depth,
@@ -277,7 +281,7 @@ fn deep_clone_stmt(
          );
          *end = deep_clone_expr(
             *end,
-            expressions,
+            &mut ast.expressions,
             concrete_types,
             type_parameters,
             depth,
@@ -286,7 +290,7 @@ fn deep_clone_stmt(
          );
          deep_clone_block(
             bn,
-            expressions,
+            ast,
             concrete_types,
             type_parameters,
             depth,
@@ -301,7 +305,7 @@ fn deep_clone_stmt(
       Statement::Expression(expr) => {
          *expr = deep_clone_expr(
             *expr,
-            expressions,
+            &mut ast.expressions,
             concrete_types,
             type_parameters,
             depth,
@@ -309,10 +313,10 @@ fn deep_clone_stmt(
             variable_replacements,
          );
       }
-      Statement::IfElse(cond, then, else_e) => {
+      Statement::IfElse(cond, then, else_s) => {
          *cond = deep_clone_expr(
             *cond,
-            expressions,
+            &mut ast.expressions,
             concrete_types,
             type_parameters,
             depth,
@@ -321,16 +325,16 @@ fn deep_clone_stmt(
          );
          deep_clone_block(
             then,
-            expressions,
+            ast,
             concrete_types,
             type_parameters,
             depth,
             worklist,
             variable_replacements,
          );
-         deep_clone_stmt(
-            &mut else_e.statement,
-            expressions,
+         *else_s = deep_clone_stmt(
+            *else_s,
+            ast,
             concrete_types,
             type_parameters,
             depth,
@@ -341,7 +345,7 @@ fn deep_clone_stmt(
       Statement::Return(expr) => {
          *expr = deep_clone_expr(
             *expr,
-            expressions,
+            &mut ast.expressions,
             concrete_types,
             type_parameters,
             depth,
@@ -353,7 +357,7 @@ fn deep_clone_stmt(
          if let Some(initializer) = initializer.as_mut() {
             *initializer = deep_clone_expr(
                *initializer,
-               expressions,
+               &mut ast.expressions,
                concrete_types,
                type_parameters,
                depth,
@@ -367,6 +371,7 @@ fn deep_clone_stmt(
          *var = variable_replacements.get(var).copied().unwrap();
       }
    }
+   ast.statements.insert(cloned)
 }
 
 #[must_use]

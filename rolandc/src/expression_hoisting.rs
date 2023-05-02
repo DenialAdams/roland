@@ -2,8 +2,8 @@ use indexmap::IndexMap;
 
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
-   BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement, StatementNode,
-   VariableId,
+   AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement,
+   StatementId, StatementNode, VariableId,
 };
 use crate::type_data::ExpressionType;
 
@@ -56,66 +56,66 @@ pub fn expression_hoisting(program: &mut Program) {
 
    for procedure in program.procedures.values_mut() {
       vv_context.cur_procedure_locals = &mut procedure.locals;
-      vv_block(&mut procedure.block, &mut vv_context, &mut program.expressions);
+      vv_block(&mut procedure.block, &mut vv_context, &mut program.ast);
    }
 
    program.next_variable = vv_context.next_variable;
 }
 
-fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, expressions: &mut ExpressionPool) {
+fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool) {
    vv_context.vv_stack.push(VvStackItem {
       virtual_vars: Vec::new(),
       current_stmt: 0,
    });
-   for statement in block.statements.iter_mut() {
-      vv_statement(&mut statement.statement, vv_context, expressions);
+   for statement in block.statements.iter().copied() {
+      vv_statement(statement, vv_context, ast);
       vv_context.vv_stack.last_mut().unwrap().current_stmt += 1;
    }
    let mut vv_frame = vv_context.vv_stack.pop().unwrap();
 
    for vv in vv_frame.virtual_vars.drain(..).rev() {
       let (vv_assignment_stmt, loc) = {
-         let et = expressions[vv.0].exp_type.clone();
-         let el = expressions[vv.0].location;
-         let lhs = expressions.insert(ExpressionNode {
+         let et = ast.expressions[vv.0].exp_type.clone();
+         let el = ast.expressions[vv.0].location;
+         let lhs = ast.expressions.insert(ExpressionNode {
             expression: Expression::Variable(vv.1),
             exp_type: et,
             location: el,
          });
-         let rhs = expressions.insert(expressions[vv.0].clone());
+         let rhs = ast.expressions.insert(ast.expressions[vv.0].clone());
          (Statement::Assignment(lhs, rhs), el)
       };
 
-      block.statements.insert(
-         vv.2,
-         StatementNode {
-            statement: vv_assignment_stmt,
-            location: loc,
-         },
-      );
-      expressions[vv.0].expression = Expression::Variable(vv.1);
+      let new_id = ast.statements.insert(StatementNode {
+         statement: vv_assignment_stmt,
+         location: loc,
+      });
+      block.statements.insert(vv.2, new_id);
+      ast.expressions[vv.0].expression = Expression::Variable(vv.1);
    }
 }
 
-fn vv_statement(statement: &mut Statement, vv_context: &mut VvContext, expressions: &mut ExpressionPool) {
-   match statement {
+fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut AstPool) {
+   // TODO: dummy stmt?
+   let mut the_statement = std::mem::replace(&mut ast.statements[statement].statement, Statement::Break);
+   match &mut the_statement {
       Statement::Assignment(lhs_expr, rhs_expr) => {
-         vv_expr(*lhs_expr, vv_context, expressions);
-         vv_expr(*rhs_expr, vv_context, expressions);
+         vv_expr(*lhs_expr, vv_context, &ast.expressions);
+         vv_expr(*rhs_expr, vv_context, &ast.expressions);
       }
       Statement::Block(block) => {
-         vv_block(block, vv_context, expressions);
+         vv_block(block, vv_context, ast);
       }
       Statement::Break | Statement::Continue => (),
       Statement::IfElse(if_expr, if_block, else_statement) => {
-         vv_expr(*if_expr, vv_context, expressions);
-         vv_block(if_block, vv_context, expressions);
-         vv_statement(&mut else_statement.statement, vv_context, expressions);
+         vv_expr(*if_expr, vv_context, &ast.expressions);
+         vv_block(if_block, vv_context, ast);
+         vv_statement(*else_statement, vv_context, ast);
       }
       Statement::For(_var, start, end, block, _inclusive, start_var_id) => {
-         vv_expr(*start, vv_context, expressions);
-         vv_expr(*end, vv_context, expressions);
-         vv_block(block, vv_context, expressions);
+         vv_expr(*start, vv_context, &ast.expressions);
+         vv_expr(*end, vv_context, &ast.expressions);
+         vv_block(block, vv_context, ast);
 
          // there is a already a variable id for start, but we still need to hoist
          let vv_stack_frame = vv_context.vv_stack.last_mut().unwrap();
@@ -123,26 +123,27 @@ fn vv_statement(statement: &mut Statement, vv_context: &mut VvContext, expressio
          vv_stack_frame.virtual_vars.push((*start, *start_var_id, current_stmt));
 
          // This virtual variable will be used to hoist the end expression out of the loop
-         if expression_could_have_side_effects(*end, expressions) {
-            vv_context.declare_vv(*end, expressions);
+         if expression_could_have_side_effects(*end, &ast.expressions) {
+            vv_context.declare_vv(*end, &ast.expressions);
          }
       }
       Statement::Loop(block) => {
-         vv_block(block, vv_context, expressions);
+         vv_block(block, vv_context, ast);
       }
       Statement::Defer(_) => unreachable!(),
       Statement::Expression(expr) => {
-         vv_expr(*expr, vv_context, expressions);
+         vv_expr(*expr, vv_context, &ast.expressions);
       }
       Statement::Return(expr) => {
-         vv_expr(*expr, vv_context, expressions);
+         vv_expr(*expr, vv_context, &ast.expressions);
       }
       Statement::VariableDeclaration(_, opt_expr, _, _) => {
          if let Some(expr) = opt_expr {
-            vv_expr(*expr, vv_context, expressions);
+            vv_expr(*expr, vv_context, &ast.expressions);
          }
       }
    }
+   ast.statements[statement].statement = the_statement;
 }
 
 fn vv_expr(expr_index: ExpressionId, vv_context: &mut VvContext, expressions: &ExpressionPool) {

@@ -5,7 +5,7 @@ use indexmap::{IndexMap, IndexSet};
 use self::type_variables::TypeVariableManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   ExpressionId, ExpressionPool, ExpressionTypeNode, ExternalProcImplSource, ProcedureId, StaticId, VariableId,
+   AstPool, ExpressionId, ExpressionTypeNode, ExternalProcImplSource, ProcedureId, StaticId, VariableId,
 };
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
@@ -96,7 +96,7 @@ pub struct ValidationContext<'a> {
    pub variable_types: IndexMap<StrId, VariableDetails>,
    pub loop_depth: u64,
    pub unknown_literals: IndexSet<ExpressionId>,
-   pub expressions: &'a mut ExpressionPool,
+   pub ast: &'a mut AstPool,
    pub struct_size_info: HashMap<StrId, SizeInfo>,
    pub type_variables: TypeVariableManager,
    pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,

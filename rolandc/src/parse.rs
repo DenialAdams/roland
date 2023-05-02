@@ -17,6 +17,15 @@ use crate::type_data::ExpressionType;
 new_key_type! { pub struct ExpressionId; }
 pub type ExpressionPool = SlotMap<ExpressionId, ExpressionNode>;
 
+new_key_type! { pub struct StatementId; }
+pub type StatementPool = SlotMap<StatementId, StatementNode>;
+
+#[derive(Clone)]
+pub struct AstPool {
+   pub statements: StatementPool,
+   pub expressions: ExpressionPool,
+}
+
 fn merge_locations(begin: SourceInfo, end: SourceInfo) -> SourceInfo {
    SourceInfo {
       begin: begin.begin,
@@ -277,30 +286,28 @@ pub enum Statement {
    Break,
    Defer(ExpressionId),
    Expression(ExpressionId),
-   // TODO: banish this Box. The type is misleading here, because an if else always has either a block or another if-else,
-   // so we should try to rectify that too.
-   IfElse(ExpressionId, BlockNode, Box<StatementNode>),
+   IfElse(ExpressionId, BlockNode, StatementId),
    Return(ExpressionId),
    VariableDeclaration(StrNode, Option<ExpressionId>, Option<ExpressionTypeNode>, VariableId),
 }
 
 // For lack of a better place...
 #[must_use]
-pub fn statement_always_returns(stmt: &Statement, expressions: &ExpressionPool) -> bool {
-   match stmt {
+pub fn statement_always_returns(stmt: StatementId, ast: &AstPool) -> bool {
+   match &ast.statements[stmt].statement {
       Statement::Return(_) => true,
       Statement::IfElse(_, then_block, else_if) => {
          then_block
             .statements
             .last()
-            .map_or(false, |l| statement_always_returns(&l.statement, expressions))
-            && statement_always_returns(&else_if.statement, expressions)
+            .map_or(false, |l| statement_always_returns(*l, ast))
+            && statement_always_returns(*else_if, ast)
       }
       Statement::Block(bn) => bn
          .statements
          .last()
-         .map_or(false, |l| statement_always_returns(&l.statement, expressions)),
-      Statement::Expression(ex) => *expressions[*ex].exp_type.as_ref().unwrap() == ExpressionType::Never,
+         .map_or(false, |l| statement_always_returns(*l, ast)),
+      Statement::Expression(ex) => *ast.expressions[*ex].exp_type.as_ref().unwrap() == ExpressionType::Never,
       _ => false,
    }
 }
@@ -319,7 +326,7 @@ pub struct ImportNode {
 
 #[derive(Clone)]
 pub struct BlockNode {
-   pub statements: Vec<StatementNode>,
+   pub statements: Vec<StatementId>,
    pub location: SourceInfo,
 }
 
@@ -335,7 +342,7 @@ pub struct Program {
    pub structs: Vec<StructNode>,
    pub consts: Vec<ConstNode>,
    pub statics: SlotMap<StaticId, StaticNode>,
-   pub expressions: ExpressionPool,
+   pub ast: AstPool,
 
    // (only read by the language server)
    pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
@@ -379,7 +386,10 @@ impl Program {
          struct_size_info: HashMap::new(),
          source_to_definition: IndexMap::new(),
          next_variable: VariableId::first(),
-         expressions: ExpressionPool::with_key(),
+         ast: AstPool {
+            expressions: ExpressionPool::with_key(),
+            statements: StatementPool::with_key(),
+         },
       }
    }
 
@@ -398,7 +408,8 @@ impl Program {
       self.procedure_info.clear();
       self.struct_size_info.clear();
       self.source_to_definition.clear();
-      reset_slotmap(&mut self.expressions);
+      reset_slotmap(&mut self.ast.expressions);
+      reset_slotmap(&mut self.ast.statements);
       self.next_variable = VariableId::first();
    }
 }
@@ -428,7 +439,7 @@ struct ParseContext<'a> {
 fn parse_top_level_item(
    lexer: &mut Lexer,
    parse_context: &mut ParseContext,
-   expressions: &mut ExpressionPool,
+   ast: &mut AstPool,
    top: &mut TopLevelItems,
 ) -> Result<(), ()> {
    loop {
@@ -458,7 +469,7 @@ fn parse_top_level_item(
          }
          Token::KeywordProc => {
             let def = lexer.next();
-            let p = parse_procedure(lexer, parse_context, def.source_info, expressions)?;
+            let p = parse_procedure(lexer, parse_context, def.source_info, ast)?;
             top.procedures.insert(p);
          }
          Token::KeywordImport => {
@@ -472,7 +483,7 @@ fn parse_top_level_item(
          }
          Token::KeywordStructDef => {
             let def = lexer.next();
-            let s = parse_struct(lexer, parse_context, def.source_info, expressions)?;
+            let s = parse_struct(lexer, parse_context, def.source_info, &mut ast.expressions)?;
             top.structs.push(s);
          }
          Token::KeywordEnumDef => {
@@ -486,7 +497,7 @@ fn parse_top_level_item(
             expect(lexer, parse_context, Token::Colon)?;
             let const_type = parse_type(lexer, parse_context)?;
             expect(lexer, parse_context, Token::Assignment)?;
-            let exp = parse_expression(lexer, parse_context, false, expressions)?;
+            let exp = parse_expression(lexer, parse_context, false, &mut ast.expressions)?;
             let end_token = expect(lexer, parse_context, Token::Semicolon)?;
             top.consts.push(ConstNode {
                name: variable_name,
@@ -506,7 +517,7 @@ fn parse_top_level_item(
                let _ = lexer.next();
                None
             } else {
-               Some(parse_expression(lexer, parse_context, false, expressions)?)
+               Some(parse_expression(lexer, parse_context, false, &mut ast.expressions)?)
             };
             let end_token = expect(lexer, parse_context, Token::Semicolon)?;
             top.statics.insert(StaticNode {
@@ -566,7 +577,7 @@ pub fn astify(
    };
 
    loop {
-      if let Ok(()) = parse_top_level_item(&mut lexer, &mut parse_context, &mut program.expressions, &mut top) {
+      if let Ok(()) = parse_top_level_item(&mut lexer, &mut parse_context, &mut program.ast, &mut top) {
          break;
       }
       // skip tokens until we get to a token that must be at the top level and continue parsing
@@ -682,10 +693,10 @@ fn parse_procedure(
    l: &mut Lexer,
    parse_context: &mut ParseContext,
    source_info: SourceInfo,
-   expressions: &mut ExpressionPool,
+   ast: &mut AstPool,
 ) -> Result<ProcedureNode, ()> {
    let definition = parse_procedure_definition(l, parse_context)?;
-   let block = parse_block(l, parse_context, expressions)?;
+   let block = parse_block(l, parse_context, ast)?;
    let combined_location = merge_locations(source_info, block.location);
    Ok(ProcedureNode {
       definition,
@@ -798,21 +809,22 @@ fn parse_enum(l: &mut Lexer, parse_context: &mut ParseContext, source_info: Sour
 fn parse_block(
    l: &mut Lexer,
    parse_context: &mut ParseContext,
-   expressions: &mut ExpressionPool,
+   ast: &mut AstPool,
 ) -> Result<BlockNode, ()> {
    let open_brace = expect(l, parse_context, Token::OpenBrace)?;
 
-   let mut statements: Vec<StatementNode> = vec![];
+   let mut statements: Vec<StatementId> = vec![];
 
    let close_brace = loop {
       match l.peek_token() {
          Token::OpenBrace => {
             let source = l.peek_source();
-            let new_block = parse_block(l, parse_context, expressions)?;
-            statements.push(StatementNode {
+            let new_block = parse_block(l, parse_context, ast)?;
+            let id = ast.statements.insert(StatementNode {
                statement: Statement::Block(new_block),
                location: source,
             });
+            statements.push(id);
          }
          Token::CloseBrace => {
             break l.next();
@@ -820,24 +832,26 @@ fn parse_block(
          Token::KeywordContinue => {
             let continue_token = l.next();
             let sc = expect(l, parse_context, Token::Semicolon)?;
-            statements.push(StatementNode {
+            let id = ast.statements.insert(StatementNode {
                statement: Statement::Continue,
                location: merge_locations(continue_token.source_info, sc.source_info),
             });
+            statements.push(id);
          }
          Token::KeywordBreak => {
             let break_token = l.next();
             let sc = expect(l, parse_context, Token::Semicolon)?;
-            statements.push(StatementNode {
+            let id = ast.statements.insert(StatementNode {
                statement: Statement::Break,
                location: merge_locations(break_token.source_info, sc.source_info),
             });
+            statements.push(id);
          }
          Token::KeywordFor => {
             let for_token = l.next();
             let variable_name = parse_identifier(l, parse_context)?;
             let _ = expect(l, parse_context, Token::KeywordIn)?;
-            let start_en = parse_expression(l, parse_context, true, expressions)?;
+            let start_en = parse_expression(l, parse_context, true, &mut ast.expressions)?;
             let _ = expect(l, parse_context, Token::DoublePeriod)?;
             let inclusive = if l.peek_token() == Token::Assignment {
                let _ = l.next();
@@ -845,9 +859,9 @@ fn parse_block(
             } else {
                false
             };
-            let end_en = parse_expression(l, parse_context, true, expressions)?;
-            let new_block = parse_block(l, parse_context, expressions)?;
-            statements.push(StatementNode {
+            let end_en = parse_expression(l, parse_context, true, &mut ast.expressions)?;
+            let new_block = parse_block(l, parse_context, ast)?;
+            let id = ast.statements.insert(StatementNode {
                statement: Statement::For(
                   variable_name,
                   start_en,
@@ -858,27 +872,30 @@ fn parse_block(
                ),
                location: for_token.source_info,
             });
+            statements.push(id);
          }
          Token::KeywordLoop => {
             let loop_token = l.next();
-            let new_block = parse_block(l, parse_context, expressions)?;
-            statements.push(StatementNode {
+            let new_block = parse_block(l, parse_context, ast)?;
+            let id = ast.statements.insert(StatementNode {
                statement: Statement::Loop(new_block),
                location: loop_token.source_info,
             });
+            statements.push(id);
          }
          Token::KeywordReturn => {
             let return_token = l.next();
             let e = if l.peek_token() == Token::Semicolon {
-               wrap(Expression::UnitLiteral, return_token.source_info, expressions)
+               wrap(Expression::UnitLiteral, return_token.source_info, &mut ast.expressions)
             } else {
-               parse_expression(l, parse_context, false, expressions)?
+               parse_expression(l, parse_context, false, &mut ast.expressions)?
             };
             let sc = expect(l, parse_context, Token::Semicolon)?;
-            statements.push(StatementNode {
+            let id = ast.statements.insert(StatementNode {
                statement: Statement::Return(e),
                location: merge_locations(return_token.source_info, sc.source_info),
             });
+            statements.push(id);
          }
          Token::KeywordLet => {
             let mut declared_type = None;
@@ -893,46 +910,53 @@ fn parse_block(
                let _ = l.next();
                None
             } else {
-               Some(parse_expression(l, parse_context, false, expressions)?)
+               Some(parse_expression(l, parse_context, false, &mut ast.expressions)?)
             };
             let sc = expect(l, parse_context, Token::Semicolon)?;
             let statement_location = merge_locations(let_token.source_info, sc.source_info);
-            statements.push(StatementNode {
+            let id = ast.statements.insert(StatementNode {
                statement: Statement::VariableDeclaration(variable_name, e, declared_type, VariableId::first()),
                location: statement_location,
             });
+            statements.push(id);
          }
          Token::KeywordIf => {
-            let s = parse_if_else_statement(l, parse_context, expressions)?;
+            let s = parse_if_else_statement(l, parse_context, ast)?;
             statements.push(s);
          }
          Token::KeywordDefer => {
             let defer_kw = l.next();
-            let e = parse_expression(l, parse_context, false, expressions)?;
+            let e = parse_expression(l, parse_context, false, &mut ast.expressions)?;
             let sc = expect(l, parse_context, Token::Semicolon)?;
             let statement_location = merge_locations(defer_kw.source_info, sc.source_info);
-            statements.push(StatementNode { statement: Statement::Defer(e), location: statement_location });
+            let id = ast.statements.insert(StatementNode {
+               statement: Statement::Defer(e),
+               location: statement_location,
+            });
+            statements.push(id);
          }
          x if token_starts_expression(x) => {
-            let e = parse_expression(l, parse_context, false, expressions)?;
+            let e = parse_expression(l, parse_context, false, &mut ast.expressions)?;
             match l.peek_token() {
                Token::Assignment => {
                   let _ = l.next();
-                  let re = parse_expression(l, parse_context, false, expressions)?;
+                  let re = parse_expression(l, parse_context, false, &mut ast.expressions)?;
                   let sc = expect(l, parse_context, Token::Semicolon)?;
-                  let statement_location = merge_locations(expressions[e].location, sc.source_info);
-                  statements.push(StatementNode {
+                  let statement_location = merge_locations(ast.expressions[e].location, sc.source_info);
+                  let id = ast.statements.insert(StatementNode {
                      statement: Statement::Assignment(e, re),
                      location: statement_location,
                   });
+                  statements.push(id);
                }
                Token::Semicolon => {
                   let sc = l.next();
-                  let statement_location = merge_locations(expressions[e].location, sc.source_info);
-                  statements.push(StatementNode {
+                  let statement_location = merge_locations(ast.expressions[e].location, sc.source_info);
+                  let id = ast.statements.insert(StatementNode {
                      statement: Statement::Expression(e),
                      location: statement_location,
                   });
+                  statements.push(id);
                }
                x => {
                   rolandc_error!(
@@ -965,36 +989,37 @@ fn parse_block(
 fn parse_if_else_statement(
    l: &mut Lexer,
    parse_context: &mut ParseContext,
-   expressions: &mut ExpressionPool,
-) -> Result<StatementNode, ()> {
+   ast: &mut AstPool,
+) -> Result<StatementId, ()> {
    let if_token = l.next();
-   let e = parse_expression(l, parse_context, true, expressions)?;
-   let if_block = parse_block(l, parse_context, expressions)?;
+   let e = parse_expression(l, parse_context, true, &mut ast.expressions)?;
+   let if_block = parse_block(l, parse_context, ast)?;
    let else_statement = match (l.peek_token(), l.double_peek_token()) {
       (Token::KeywordElse, Token::KeywordIf) => {
          let _ = l.next();
-         parse_if_else_statement(l, parse_context, expressions)?
+         parse_if_else_statement(l, parse_context, ast)?
       }
       (Token::KeywordElse, _) => {
          let else_token = l.next();
-         StatementNode {
-            statement: Statement::Block(parse_block(l, parse_context, expressions)?),
+         let n = StatementNode {
+            statement: Statement::Block(parse_block(l, parse_context, ast)?),
             location: else_token.source_info,
-         }
+         };
+         ast.statements.insert(n)
       }
-      _ => StatementNode {
+      _ => ast.statements.insert(StatementNode {
          statement: Statement::Block(BlockNode {
             statements: vec![],
             location: if_block.location,
          }),
          location: if_token.source_info,
-      },
+      }),
    };
-   let combined_location = merge_locations(if_token.source_info, else_statement.location);
-   Ok(StatementNode {
-      statement: Statement::IfElse(e, if_block, Box::new(else_statement)),
+   let combined_location = merge_locations(if_token.source_info, ast.statements[else_statement].location);
+   Ok(ast.statements.insert(StatementNode {
+      statement: Statement::IfElse(e, if_block, else_statement),
       location: combined_location,
-   })
+   }))
 }
 
 fn parse_parameters(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Vec<ParameterNode>, ()> {

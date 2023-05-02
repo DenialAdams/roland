@@ -10,8 +10,8 @@ use wasm_encoder::{
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   statement_always_returns, BinOp, CastType, Expression, ExpressionId, ExpressionPool, ExternalProcImplSource,
-   ProcedureDefinition, Program, Statement, StatementNode, UnOp, VariableId,
+   statement_always_returns, BinOp, CastType, Expression, ExpressionId, ExternalProcImplSource,
+   ProcedureDefinition, Program, Statement, UnOp, VariableId, StatementId, AstPool,
 };
 use crate::semantic_analysis::{EnumInfo, GlobalKind, StructInfo};
 use crate::size_info::{
@@ -38,7 +38,7 @@ struct GenerationContext<'a> {
    enum_info: &'a IndexMap<StrId, EnumInfo>,
    needed_store_fns: IndexSet<ExpressionType>,
    sum_sizeof_locals_mem: u32,
-   expressions: &'a ExpressionPool,
+   ast: &'a AstPool,
    procedure_to_table_index: IndexSet<StrId>,
    procedure_indices: IndexSet<StrId>,
    stack_of_loop_jump_offsets: Vec<u32>,
@@ -289,7 +289,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       struct_size_info: &program.struct_size_info,
       enum_info: &program.enum_info,
       sum_sizeof_locals_mem: 0,
-      expressions: &program.expressions,
+      ast: &program.ast,
       procedure_to_table_index: IndexSet::new(),
       procedure_indices: IndexSet::new(),
       stack_of_loop_jump_offsets: Vec::new(),
@@ -561,16 +561,16 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
          }
       }
 
-      for statement in &procedure.block.statements {
+      for statement in procedure.block.statements.iter().copied() {
          emit_statement(statement, &mut generation_context);
       }
 
-      if procedure.block.statements.last().map_or(false, |x| {
-         statement_always_returns(&x.statement, generation_context.expressions)
+      if procedure.block.statements.last().copied().map_or(false, |x| {
+         statement_always_returns(x, generation_context.ast)
       }) {
          // No need to adjust stack; it was done in the return statement
          if !matches!(
-            procedure.block.statements.last().unwrap().statement,
+            generation_context.ast.statements[procedure.block.statements.last().copied().unwrap()].statement,
             Statement::Return(_)
          ) {
             // Roland can be smarter than WASM permits, hence we make this explicit to avoid tripping stack violations
@@ -768,29 +768,29 @@ fn compare_type_alignment(
    compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
 }
 
-fn emit_statement(statement: &StatementNode, generation_context: &mut GenerationContext) {
-   match &statement.statement {
+fn emit_statement(statement: StatementId, generation_context: &mut GenerationContext) {
+   match &generation_context.ast.statements[statement].statement {
       Statement::Assignment(len, en) => {
          do_emit(*len, generation_context);
          do_emit_and_load_lval(*en, generation_context);
-         let val_type = generation_context.expressions[*en].exp_type.as_ref().unwrap();
+         let val_type = generation_context.ast.expressions[*en].exp_type.as_ref().unwrap();
          store(val_type, generation_context);
       }
       Statement::VariableDeclaration(_, opt_en, _, var_id) => {
          if let Some(en) = opt_en {
             get_stack_address_of_local(*var_id, generation_context);
             do_emit_and_load_lval(*en, generation_context);
-            let val_type = generation_context.expressions[*en].exp_type.as_ref().unwrap();
+            let val_type = generation_context.ast.expressions[*en].exp_type.as_ref().unwrap();
             store(val_type, generation_context);
          }
       }
       Statement::Block(bn) => {
-         for statement in &bn.statements {
+         for statement in bn.statements.iter().copied() {
             emit_statement(statement, generation_context);
          }
       }
       Statement::For(_, start, end, bn, inclusive, start_var_id) => {
-         let start_expr = &generation_context.expressions[*start];
+         let start_expr = &generation_context.ast.expressions[*start];
 
          let (wasm_type, signed) = match start_expr.exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
@@ -831,7 +831,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             // finish if
             generation_context.active_fcn.instruction(&Instruction::End);
          }
-         for statement in &bn.statements {
+         for statement in bn.statements.iter().copied() {
             emit_statement(statement, generation_context);
          }
          generation_context.active_fcn.instruction(&Instruction::End); // end block bi
@@ -870,7 +870,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
          generation_context
             .active_fcn
             .instruction(&Instruction::Block(BlockType::Empty));
-         for statement in &bn.statements {
+         for statement in bn.statements.iter().copied() {
             emit_statement(statement, generation_context);
          }
          generation_context.active_fcn.instruction(&Instruction::End); // end block bi
@@ -893,7 +893,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
       Statement::Expression(en) => {
          do_emit(*en, generation_context);
          for _ in 0..sizeof_type_values(
-            generation_context.expressions[*en].exp_type.as_ref().unwrap(),
+            generation_context.ast.expressions[*en].exp_type.as_ref().unwrap(),
             generation_context.enum_info,
             generation_context.struct_size_info,
          ) {
@@ -909,12 +909,12 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
             .active_fcn
             .instruction(&Instruction::If(BlockType::Empty));
          // then
-         for statement in &block_1.statements {
+         for statement in block_1.statements.iter().copied() {
             emit_statement(statement, generation_context);
          }
          // else
          generation_context.active_fcn.instruction(&Instruction::Else);
-         emit_statement(block_2, generation_context);
+         emit_statement(*block_2, generation_context);
          // finish if
          generation_context.active_fcn.instruction(&Instruction::End);
          if let Some(jo) = generation_context.stack_of_loop_jump_offsets.last_mut() {
@@ -924,7 +924,7 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
       Statement::Return(en) => {
          do_emit_and_load_lval(*en, generation_context);
 
-         if generation_context.expressions[*en]
+         if generation_context.ast.expressions[*en]
             .exp_type
             .as_ref()
             .unwrap()
@@ -943,17 +943,17 @@ fn emit_statement(statement: &StatementNode, generation_context: &mut Generation
 fn do_emit_and_load_lval(expr_index: ExpressionId, generation_context: &mut GenerationContext) {
    do_emit(expr_index, generation_context);
 
-   let expr_node = &generation_context.expressions[expr_index];
+   let expr_node = &generation_context.ast.expressions[expr_index];
    if expr_node
       .expression
-      .is_lvalue_disregard_consts(generation_context.expressions)
+      .is_lvalue_disregard_consts(&generation_context.ast.expressions)
    {
       load(expr_node.exp_type.as_ref().unwrap(), generation_context);
    }
 }
 
 fn emit_literal_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_context: &mut GenerationContext) {
-   let expr_node = &generation_context.expressions[expr_index];
+   let expr_node = &generation_context.ast.expressions[expr_index];
    match &expr_node.expression {
       Expression::BoundFcnLiteral(proc_name, _) => {
          let (my_index, _) = generation_context.procedure_to_table_index.insert_full(proc_name.str);
@@ -1053,7 +1053,7 @@ fn emit_literal_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_co
 }
 
 fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext) {
-   let expr_node = &generation_context.expressions[expr_index];
+   let expr_node = &generation_context.ast.expressions[expr_index];
    match &expr_node.expression {
       Expression::UnitLiteral => (),
       Expression::BoundFcnLiteral(proc_name, _bound_type_params) => {
@@ -1137,7 +1137,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
 
          do_emit_and_load_lval(*rhs, generation_context);
 
-         let (wasm_type, signed) = match generation_context.expressions[*lhs].exp_type.as_ref().unwrap() {
+         let (wasm_type, signed) = match generation_context.ast.expressions[*lhs].exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
             ExpressionType::Enum(_) => unreachable!(),
             ExpressionType::Float(x) => match x.width {
@@ -1298,7 +1298,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          }
       }
       Expression::UnaryOperator(un_op, e_index) => {
-         let e = &generation_context.expressions[*e_index];
+         let e = &generation_context.ast.expressions[*e_index];
 
          if let ExpressionType::ProcedureItem(proc_name, _bound_type_params) = e.exp_type.as_ref().unwrap() {
             emit_procedure_pointer_index(*proc_name, generation_context);
@@ -1314,7 +1314,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             UnOp::Dereference => {
                do_emit(*e_index, generation_context);
 
-               if e.expression.is_lvalue_disregard_consts(generation_context.expressions) {
+               if e.expression.is_lvalue_disregard_consts(&generation_context.ast.expressions) {
                   load(e.exp_type.as_ref().unwrap(), generation_context);
                }
             }
@@ -1361,7 +1361,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       } => {
          do_emit_and_load_lval(*e, generation_context);
 
-         let e = &generation_context.expressions[*e];
+         let e = &generation_context.ast.expressions[*e];
 
          let (source_width, source_is_signed) = match e.exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => (x.width.as_num_bytes(), x.signed),
@@ -1392,9 +1392,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          target_type,
          expr: e_id,
       } => {
-         let e = &generation_context.expressions[*e_id];
+         let e = &generation_context.ast.expressions[*e_id];
 
-         if e.expression.is_lvalue_disregard_consts(generation_context.expressions) {
+         if e.expression.is_lvalue_disregard_consts(&generation_context.ast.expressions) {
             do_emit(*e_id, generation_context);
             load(target_type, generation_context);
          } else {
@@ -1448,7 +1448,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       } => {
          do_emit_and_load_lval(*e, generation_context);
 
-         let e = &generation_context.expressions[*e];
+         let e = &generation_context.ast.expressions[*e];
 
          if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Int(_))
             && matches!(target_type, ExpressionType::Int(_))
@@ -1552,7 +1552,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       }
       Expression::ProcedureCall { proc_expr, args } => {
          if !matches!(
-            generation_context.expressions[*proc_expr].exp_type,
+            generation_context.ast.expressions[*proc_expr].exp_type,
             Some(ExpressionType::ProcedurePointer { .. })
          ) {
             // shouldn't place anything on the stack
@@ -1581,7 +1581,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             }
          }
 
-         match generation_context.expressions[*proc_expr].exp_type.as_ref().unwrap() {
+         match generation_context.ast.expressions[*proc_expr].exp_type.as_ref().unwrap() {
             ExpressionType::ProcedureItem(proc_name, _) => {
                let idx = generation_context.procedure_indices.get_index_of(proc_name).unwrap() as u32;
                generation_context.active_fcn.instruction(&Instruction::Call(idx));
@@ -1658,11 +1658,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             generation_context.emit_const_add_i32(mem_offset);
          }
 
-         let lhs = &generation_context.expressions[*lhs_id];
+         let lhs = &generation_context.ast.expressions[*lhs_id];
 
          debug_assert!(lhs
             .expression
-            .is_lvalue_disregard_consts(generation_context.expressions));
+            .is_lvalue_disregard_consts(&generation_context.ast.expressions));
 
          do_emit(*lhs_id, generation_context);
          calculate_offset(lhs.exp_type.as_ref().unwrap(), field_names, generation_context);
@@ -1674,14 +1674,14 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       }
       Expression::ArrayIndex { array, index } => {
          fn calculate_offset(array: ExpressionId, index_e: ExpressionId, generation_context: &mut GenerationContext) {
-            let sizeof_inner = match &generation_context.expressions[array].exp_type {
+            let sizeof_inner = match &generation_context.ast.expressions[array].exp_type {
                Some(ExpressionType::Array(x, _)) => {
                   sizeof_type_mem(x, generation_context.enum_info, generation_context.struct_size_info)
                }
                _ => unreachable!(),
             };
 
-            if let Expression::IntLiteral { val: x, .. } = generation_context.expressions[index_e].expression {
+            if let Expression::IntLiteral { val: x, .. } = generation_context.ast.expressions[index_e].expression {
                // Safe assert due to inference and constant folding validating this
                let val_32 = u32::try_from(x).unwrap();
                let result = sizeof_inner.wrapping_mul(val_32);
@@ -1693,9 +1693,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             }
          }
 
-         debug_assert!(generation_context.expressions[*array]
+         debug_assert!(generation_context.ast.expressions[*array]
             .expression
-            .is_lvalue_disregard_consts(generation_context.expressions));
+            .is_lvalue_disregard_consts(&generation_context.ast.expressions));
 
          do_emit(*array, generation_context);
          calculate_offset(*array, *index, generation_context);

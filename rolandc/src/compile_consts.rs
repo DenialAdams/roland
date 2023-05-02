@@ -6,13 +6,13 @@ use crate::constant_folding::{self, FoldingContext};
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{Expression, ExpressionId, ExpressionPool, Program, VariableId};
+use crate::parse::{AstPool, Expression, ExpressionId, Program, VariableId};
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 
 struct CgContext<'a> {
-   expressions: &'a mut ExpressionPool,
+   ast: &'a mut AstPool,
    all_consts: &'a HashMap<VariableId, (SourceInfo, ExpressionId, StrId)>,
    consts_being_processed: &'a mut HashSet<VariableId>,
    const_replacements: &'a mut HashMap<VariableId, ExpressionId>,
@@ -25,7 +25,7 @@ struct CgContext<'a> {
 fn fold_expr_id(
    expr_id: ExpressionId,
    err_manager: &mut ErrorManager,
-   expressions: &mut ExpressionPool,
+   ast: &mut AstPool,
    struct_info: &IndexMap<StrId, StructInfo>,
    struct_size_info: &HashMap<StrId, SizeInfo>,
    enum_info: &IndexMap<StrId, EnumInfo>,
@@ -33,7 +33,7 @@ fn fold_expr_id(
    interner: &Interner,
 ) {
    let mut fc = FoldingContext {
-      expressions,
+      ast,
       struct_info,
       struct_size_info,
       enum_info,
@@ -58,7 +58,7 @@ pub fn compile_consts(program: &mut Program, interner: &mut Interner, err_manage
    let mut const_replacements: HashMap<VariableId, ExpressionId> = HashMap::new();
 
    let mut cg_ctx = CgContext {
-      expressions: &mut program.expressions,
+      ast: &mut program.ast,
       all_consts: &all_consts,
       consts_being_processed: &mut consts_being_processed,
       const_replacements: &mut const_replacements,
@@ -86,7 +86,7 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
    fold_expr_id(
       c.1,
       err_manager,
-      cg_context.expressions,
+      cg_context.ast,
       cg_context.struct_info,
       cg_context.struct_size_info,
       cg_context.enum_info,
@@ -94,9 +94,9 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
       cg_context.interner,
    );
 
-   let p_const_expr = &cg_context.expressions[c.1];
+   let p_const_expr = &cg_context.ast.expressions[c.1];
 
-   if !crate::constant_folding::is_const(&p_const_expr.expression, cg_context.expressions) {
+   if !crate::constant_folding::is_const(&p_const_expr.expression, &cg_context.ast.expressions) {
       rolandc_error!(
          err_manager,
          p_const_expr.location,
@@ -110,7 +110,7 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
 }
 
 fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
-   match cg_context.expressions[expr_index].expression.clone() {
+   match cg_context.ast.expressions[expr_index].expression.clone() {
       Expression::Variable(x) => {
          if cg_context.consts_being_processed.contains(&x) {
             let loc = cg_context.all_consts[&x].0;

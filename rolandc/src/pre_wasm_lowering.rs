@@ -72,7 +72,7 @@ fn lower_single_expression(expression_node: &mut ExpressionNode, enum_info: &Ind
 }
 
 pub fn lower_enums_and_pointers(program: &mut Program) {
-   for e in program.expressions.values_mut() {
+   for e in program.ast.expressions.values_mut() {
       lower_single_expression(e, &program.enum_info);
    }
 
