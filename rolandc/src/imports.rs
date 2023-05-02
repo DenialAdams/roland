@@ -130,7 +130,7 @@ pub fn import_program<'a, FR: FileResolver<'a>>(
          }
          let mut new_path = base_path.clone();
          new_path.push(file_str);
-         import_queue.push((new_path, Some(file.clone())));
+         import_queue.push((new_path, Some(file)));
       }
    }
 
