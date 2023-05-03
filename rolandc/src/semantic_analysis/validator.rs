@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
@@ -1810,21 +1811,20 @@ fn check_procedure_call(
       // We shortcircuit here, because there will likely be lots of mismatched types if an arg was forgotten
    } else if args_in_order {
       let expected_types = parameters.iter();
-      for (i, (actual, expected)) in args.iter().zip(expected_types).enumerate() {
+      for (i, (actual, expected_raw)) in args.iter().zip(expected_types).enumerate() {
          // These should be at the end by now, so we've checked everything we needed to
          if actual.name.is_some() {
             break;
          }
 
-         let mut expected = expected.clone();
-         map_generic_to_concrete(&mut expected, generic_args, generic_parameters);
+         let expected = map_generic_to_concrete_cow(expected_raw, generic_args, generic_parameters);
 
          try_set_inferred_type(&expected, actual.expr, validation_context);
 
          let actual_expr = &validation_context.ast.expressions[actual.expr];
          let actual_type = actual_expr.exp_type.as_ref().unwrap();
 
-         if *actual_type != expected && !actual_type.is_error() {
+         if *actual_type != *expected && !actual_type.is_error() {
             let actual_type_str =
                actual_type.as_roland_type_info(validation_context.interner, &validation_context.type_variables);
             let expected_type_str =
@@ -1841,9 +1841,9 @@ fn check_procedure_call(
       }
 
       for arg in args.iter().filter(|x| x.name.is_some()) {
-         let expected = named_parameters.get(&arg.name.unwrap());
+         let expected_raw = named_parameters.get(&arg.name.unwrap());
 
-         if expected.is_none() {
+         if expected_raw.is_none() {
             rolandc_error!(
                err_manager,
                call_location,
@@ -1853,15 +1853,14 @@ fn check_procedure_call(
             continue;
          }
 
-         let mut expected = expected.cloned().unwrap();
-         map_generic_to_concrete(&mut expected, generic_args, generic_parameters);
+         let expected = map_generic_to_concrete_cow(expected_raw.as_ref().unwrap(), generic_args, generic_parameters);
 
          try_set_inferred_type(&expected, arg.expr, validation_context);
 
          let arg_expr = &validation_context.ast.expressions[arg.expr];
 
          let actual_type = arg_expr.exp_type.as_ref().unwrap();
-         if *actual_type != expected && !actual_type.is_error() {
+         if *actual_type != *expected && !actual_type.is_error() {
             let actual_type_str =
                actual_type.as_roland_type_info(validation_context.interner, &validation_context.type_variables);
             let expected_type_str =
@@ -2019,7 +2018,19 @@ fn check_type_declared_vs_actual(
    }
 }
 
-// TODO: should param_type be a Cow? would avoid manye needless allocations at the callsite
+pub fn map_generic_to_concrete_cow<'a>(
+   param_type: &'a ExpressionType,
+   generic_args: &[ExpressionType],
+   generic_parameters: &IndexMap<StrId, IndexSet<StrId>>,
+) -> Cow<'a, ExpressionType> {
+   if generic_args.is_empty() {
+      Cow::Borrowed(param_type)
+   } else {
+      let mut new = param_type.clone();
+      map_generic_to_concrete(&mut new, generic_args, generic_parameters);
+      Cow::Owned(new)   }
+}
+
 pub fn map_generic_to_concrete(
    param_type: &mut ExpressionType,
    generic_args: &[ExpressionType],
