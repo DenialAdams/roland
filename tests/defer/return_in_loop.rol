@@ -1,0 +1,13 @@
+proc a() {
+    println("a");
+}
+
+proc main() {
+    defer a();
+    loop {
+        return;
+    }
+}
+__END__
+run:
+a

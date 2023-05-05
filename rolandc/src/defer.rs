@@ -3,15 +3,28 @@ use crate::parse::{
    StatementId, StatementNode,
 };
 
+enum CfKind {
+   Loop,
+   Return,
+}
+
+struct InsertionPoint {
+   insert_at: usize,
+   num_exprs_at_point: usize,
+   kind: CfKind,
+}
+
 struct DeferContext {
    deferred_exprs: Vec<ExpressionId>,
-   insertion_points: Vec<(usize, usize)>,
+   insertion_points: Vec<InsertionPoint>,
+   num_exprs_at_loop_begin: usize,
 }
 
 pub fn process_defer_statements(program: &mut Program) {
    let mut ctx = DeferContext {
       deferred_exprs: Vec::new(),
       insertion_points: Vec::new(),
+      num_exprs_at_loop_begin: 0,
    };
 
    for procedure in program.procedures.values_mut() {
@@ -37,9 +50,12 @@ fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, ast: &mut As
       defer_statement(statement, defer_ctx, ast, current_stmt);
    }
 
-   for (point, deferred_expr_len) in defer_ctx.insertion_points.drain(insertion_points_before..).rev() {
-      let deferred_exprs = &defer_ctx.deferred_exprs[..deferred_expr_len];
-      insert_deferred_expr(point, deferred_exprs, block, ast);
+   for point_details in defer_ctx.insertion_points.drain(insertion_points_before..).rev() {
+      let deferred_exprs = match point_details.kind {
+         CfKind::Loop => &defer_ctx.deferred_exprs[defer_ctx.num_exprs_at_loop_begin..point_details.num_exprs_at_point],
+         CfKind::Return => &defer_ctx.deferred_exprs[..point_details.num_exprs_at_point],
+      };
+      insert_deferred_expr(point_details.insert_at, deferred_exprs, block, ast);
    }
 
    if !block
@@ -71,8 +87,19 @@ fn defer_statement(statement: StatementId, defer_ctx: &mut DeferContext, ast: &m
    // TODO: dummy stmt?
    let mut the_statement = std::mem::replace(&mut ast.statements[statement].statement, Statement::Break);
    match &mut the_statement {
-      Statement::Break | Statement::Continue | Statement::Return(_) => {
-         defer_ctx.insertion_points.push((current_statement, defer_ctx.deferred_exprs.len()));
+      Statement::Return(_) => {
+         defer_ctx.insertion_points.push(InsertionPoint {
+            insert_at: current_statement,
+            num_exprs_at_point: defer_ctx.deferred_exprs.len(),
+            kind: CfKind::Return,
+         });
+      }
+      Statement::Break | Statement::Continue => {
+         defer_ctx.insertion_points.push(InsertionPoint {
+            insert_at: current_statement,
+            num_exprs_at_point: defer_ctx.deferred_exprs.len(),
+            kind: CfKind::Loop,
+         });
       }
       Statement::Block(block) => {
          defer_block(block, defer_ctx, ast);
@@ -81,11 +108,11 @@ fn defer_statement(statement: StatementId, defer_ctx: &mut DeferContext, ast: &m
          defer_block(if_block, defer_ctx, ast);
          defer_statement(*else_statement, defer_ctx, ast, current_statement);
       }
-      Statement::For(_, _, _, block, _, _) => {
+      Statement::For(_, _, _, block, _, _) | Statement::Loop(block) => {
+         let old = defer_ctx.num_exprs_at_loop_begin;
+         defer_ctx.num_exprs_at_loop_begin = defer_ctx.deferred_exprs.len();
          defer_block(block, defer_ctx, ast);
-      }
-      Statement::Loop(block) => {
-         defer_block(block, defer_ctx, ast);
+         defer_ctx.num_exprs_at_loop_begin = old;
       }
       Statement::Defer(the_expr) => {
          defer_ctx.deferred_exprs.push(*the_expr);

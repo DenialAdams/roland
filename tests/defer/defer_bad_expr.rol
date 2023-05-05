@@ -1,0 +1,10 @@
+proc main() {
+    let x: u8 = 1;
+    // We wnly want one error, and it should be here
+    defer x / 0;
+    if x == 1 {
+        return; 
+    }
+}
+__END__:
+↳ line 4, column 11 [tests/defer/defer_bad_expr.rol]

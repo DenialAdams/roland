@@ -10,9 +10,14 @@ proc c() {
     println("c");
 }
 
+proc d() {
+    println("d");
+}
+
 proc main() {
     let z: u8 = 2;
 
+    defer d();
     for i in 0..z {
         defer a();
         if i == 1 {
@@ -28,3 +33,4 @@ c
 b
 a
 a
+d
