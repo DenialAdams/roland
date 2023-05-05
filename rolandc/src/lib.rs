@@ -23,6 +23,7 @@
 mod compile_consts;
 mod constant_folding;
 mod dead_code_elimination;
+mod defer;
 mod disjoint_set;
 pub mod error_handling;
 mod expression_hoisting;
@@ -169,6 +170,8 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
+
+   defer::process_defer_statements(&mut ctx.program);
 
    compile_consts::compile_consts(&mut ctx.program, &mut ctx.interner, &mut ctx.err_manager);
    if !ctx.err_manager.errors.is_empty() {

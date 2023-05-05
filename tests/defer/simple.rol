@@ -1,0 +1,22 @@
+proc a() {
+    println("a");
+}
+
+proc b() {
+    println("b");
+}
+
+proc c() {
+    println("c");
+}
+
+proc main() {
+    defer a();
+    defer b();
+    c();
+}
+__END__
+run:
+c
+b
+a

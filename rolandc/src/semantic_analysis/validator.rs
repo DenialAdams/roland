@@ -621,9 +621,6 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
       }
       Statement::Defer(en) => {
          type_expression(err_manager, *en, validation_context);
-
-         let en = &validation_context.ast.expressions[*en];
-         rolandc_error!(err_manager, en.location, "Defer is currently unsupported");
       }
       Statement::Expression(en) => {
          type_expression(err_manager, *en, validation_context);
