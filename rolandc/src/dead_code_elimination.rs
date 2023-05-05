@@ -21,7 +21,7 @@ struct DceCtx<'a> {
    literals: &'a mut IndexSet<StrId>,
 }
 
-pub fn doit(program: &mut Program, interner: &mut Interner, target: Target) {
+pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner: &mut Interner, target: Target) {
    let mut ctx = DceCtx {
       worklist: Vec::new(),
       global_info: &program.global_info,
@@ -117,11 +117,7 @@ fn mark_reachable_stmt(stmt: StatementId, ast: &AstPool, ctx: &mut DceCtx) {
       Statement::Return(expr) => {
          mark_reachable_expr(*expr, ast, ctx);
       }
-      Statement::VariableDeclaration(_, initializer, _, _) => {
-         if let Some(initializer) = initializer.as_ref() {
-            mark_reachable_expr(*initializer, ast, ctx);
-         }
-      }
+      Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
    }
 }
 

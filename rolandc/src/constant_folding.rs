@@ -145,11 +145,7 @@ pub fn fold_statement(
       Statement::Return(expr) => {
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
       }
-      Statement::VariableDeclaration(_, opt_expr, _, _) => {
-         if let Some(expr) = opt_expr {
-            try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
-         }
-      }
+      Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
    }
    folding_context.ast.statements[statement].statement = the_statement;
 }

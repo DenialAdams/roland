@@ -353,23 +353,7 @@ fn deep_clone_stmt(
             variable_replacements,
          );
       }
-      Statement::VariableDeclaration(_, initializer, declared_type, var) => {
-         if let Some(initializer) = initializer.as_mut() {
-            *initializer = deep_clone_expr(
-               *initializer,
-               &mut ast.expressions,
-               concrete_types,
-               type_parameters,
-               depth,
-               worklist,
-               variable_replacements,
-            );
-         }
-         if let Some(dt) = declared_type.as_mut() {
-            map_generic_to_concrete(&mut dt.e_type, concrete_types, type_parameters);
-         }
-         *var = variable_replacements.get(var).copied().unwrap();
-      }
+      Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
    }
    ast.statements.insert(cloned)
 }

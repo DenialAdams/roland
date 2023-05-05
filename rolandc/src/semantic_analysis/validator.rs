@@ -1266,7 +1266,7 @@ fn get_type(
                   _ => {
                      // No message; let the type matcher throw the error
                      ExpressionType::CompileError
-                  },
+                  }
                };
                (&[TypeValidator::AnyPointer], new_type)
             }
@@ -1966,10 +1966,8 @@ fn check_type_declared_vs_actual(
    }
    fn deref_of_actual_matches_dt(actual_type: &ExpressionType, declared_type: &ExpressionType) -> bool {
       match actual_type {
-         ExpressionType::Pointer(inner) => {
-            &**inner == declared_type
-         }
-         _ => false
+         ExpressionType::Pointer(inner) => &**inner == declared_type,
+         _ => false,
       }
    }
 
@@ -2028,7 +2026,8 @@ pub fn map_generic_to_concrete_cow<'a>(
    } else {
       let mut new = param_type.clone();
       map_generic_to_concrete(&mut new, generic_args, generic_parameters);
-      Cow::Owned(new)   }
+      Cow::Owned(new)
+   }
 }
 
 pub fn map_generic_to_concrete(

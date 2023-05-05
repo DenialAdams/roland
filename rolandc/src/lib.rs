@@ -208,7 +208,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 ) -> Result<Vec<u8>, CompilationError> {
    compile_for_errors(ctx, user_program_ep, config)?;
 
-   dead_code_elimination::doit(&mut ctx.program, &mut ctx.interner, config.target);
+   dead_code_elimination::delete_unreachable_procedures_and_globals(&mut ctx.program, &mut ctx.interner, config.target);
 
    pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program);
 
