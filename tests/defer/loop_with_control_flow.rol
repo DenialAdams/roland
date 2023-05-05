@@ -1,0 +1,30 @@
+proc a() {
+    println("a");
+}
+
+proc b() {
+    println("b");
+}
+
+proc c() {
+    println("c");
+}
+
+proc main() {
+    let z: u8 = 2;
+
+    for i in 0..z {
+        defer a();
+        if i == 1 {
+            break;
+        }
+        defer b();
+        c();
+    }
+}
+__END__
+run:
+c
+b
+a
+a

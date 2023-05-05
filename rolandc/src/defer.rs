@@ -5,11 +5,13 @@ use crate::parse::{
 
 struct DeferContext {
    deferred_exprs: Vec<ExpressionId>,
+   insertion_points: Vec<(usize, usize)>,
 }
 
 pub fn process_defer_statements(program: &mut Program) {
    let mut ctx = DeferContext {
       deferred_exprs: Vec::new(),
+      insertion_points: Vec::new(),
    };
 
    for procedure in program.procedures.values_mut() {
@@ -17,10 +19,27 @@ pub fn process_defer_statements(program: &mut Program) {
    }
 }
 
+fn insert_deferred_expr(point: usize, deferred_exprs: &[ExpressionId], block: &mut BlockNode, ast: &mut AstPool) {
+   for (i, expr) in deferred_exprs.iter().rev().copied().enumerate() {
+      let location = ast.expressions[expr].location;
+      let new_stmt = ast.statements.insert(StatementNode {
+         statement: Statement::Expression(deep_clone_expr(expr, &mut ast.expressions)),
+         location,
+      });
+      block.statements.insert(point + i, new_stmt);
+   }
+}
+
 fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, ast: &mut AstPool) {
-   let before_len = defer_ctx.deferred_exprs.len();
+   let deferred_exprs_before = defer_ctx.deferred_exprs.len();
+   let insertion_points_before = defer_ctx.insertion_points.len();
    for (current_stmt, statement) in block.statements.iter().copied().enumerate() {
       defer_statement(statement, defer_ctx, ast, current_stmt);
+   }
+
+   for (point, deferred_expr_len) in defer_ctx.insertion_points.drain(insertion_points_before..).rev() {
+      let deferred_exprs = &defer_ctx.deferred_exprs[..deferred_expr_len];
+      insert_deferred_expr(point, deferred_exprs, block, ast);
    }
 
    if !block
@@ -29,16 +48,11 @@ fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, ast: &mut As
       .copied()
       .map_or(false, |x| statement_always_returns(x, ast))
    {
-      let deferred_exprs = &defer_ctx.deferred_exprs[before_len..];
-      for expr in deferred_exprs.iter().rev().copied() {
-         let location = ast.expressions[expr].location;
-         let new_stmt = ast.statements.insert(StatementNode {
-            statement: Statement::Expression(deep_clone_expr(expr, &mut ast.expressions)),
-            location,
-         });
-         block.statements.push(new_stmt);
-      }
+      let deferred_exprs = &defer_ctx.deferred_exprs[deferred_exprs_before..];
+      insert_deferred_expr(block.statements.len(), deferred_exprs, block, ast);
    }
+
+   defer_ctx.deferred_exprs.truncate(deferred_exprs_before);
 
    block.statements.drain_filter(|x| {
       if let Statement::Defer(expr_id) = ast.statements[*x].statement {
@@ -58,7 +72,7 @@ fn defer_statement(statement: StatementId, defer_ctx: &mut DeferContext, ast: &m
    let mut the_statement = std::mem::replace(&mut ast.statements[statement].statement, Statement::Break);
    match &mut the_statement {
       Statement::Break | Statement::Continue | Statement::Return(_) => {
-         // Need to inset defer handling
+         defer_ctx.insertion_points.push((current_statement, defer_ctx.deferred_exprs.len()));
       }
       Statement::Block(block) => {
          defer_block(block, defer_ctx, ast);

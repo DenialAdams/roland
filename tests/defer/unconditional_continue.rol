@@ -1,0 +1,27 @@
+proc a() {
+    println("a");
+}
+
+proc b() {
+    println("b");
+}
+
+proc c() {
+    println("c");
+}
+
+proc main() {
+    let z: u8 = 2;
+
+    // Unconditional control flow
+    for i in 0..z {
+        defer a();
+        continue;
+        defer b();
+        c();
+    }
+}
+__END__
+run:
+a
+a
