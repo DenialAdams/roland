@@ -6,5 +6,7 @@ proc main() {
         return; 
     }
 }
-__END__:
+__END__
+compile:
+During constant folding, got a divide by zero
 ↳ line 4, column 11 [tests/defer/defer_bad_expr.rol]
