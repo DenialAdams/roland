@@ -815,20 +815,18 @@ fn parse_block(l: &mut Lexer, parse_context: &mut ParseContext, ast: &mut AstPoo
             statements.push(s);
             continue;
          }
-         Err(e) => {
-            loop {
-               match l.peek_token() {
-                  Token::Semicolon => {
-                     let _ = l.next();
-                     continue 'outer;
-                  }
-                  Token::Eof => return Err(e),
-                  _ => {
-                     let _ = l.next();
-                  },
+         Err(e) => loop {
+            match l.peek_token() {
+               Token::Semicolon => {
+                  let _ = l.next();
+                  continue 'outer;
+               }
+               Token::Eof => return Err(e),
+               _ => {
+                  let _ = l.next();
                }
             }
-         }
+         },
       }
 
       match l.peek_token() {
@@ -901,18 +899,22 @@ fn parse_block(l: &mut Lexer, parse_context: &mut ParseContext, ast: &mut AstPoo
    })
 }
 
-fn parse_semicolon_terminated_statement(l: &mut Lexer, parse_context: &mut ParseContext, ast: &mut AstPool) -> Result<Option<StatementId>, ()> {
+fn parse_semicolon_terminated_statement(
+   l: &mut Lexer,
+   parse_context: &mut ParseContext,
+   ast: &mut AstPool,
+) -> Result<Option<StatementId>, ()> {
    let next = l.peek_token();
    let begin_source = l.peek_source();
    let stmt = match next {
       Token::KeywordContinue => {
          let _ = l.next();
          Statement::Continue
-      },
+      }
       Token::KeywordBreak => {
          let _ = l.next();
          Statement::Break
-      },
+      }
       Token::KeywordReturn => {
          let _ = l.next();
          let e = if l.peek_token() == Token::Semicolon {
@@ -1252,33 +1254,31 @@ fn pratt(
       Token::BoolLiteral(x) => {
          let _ = l.next();
          wrap(Expression::BoolLiteral(x), begin_source, expressions)
-      },
+      }
       Token::IntLiteral(x) => {
          let _ = l.next();
          wrap(
-         Expression::IntLiteral {
-            val: x,
-            synthetic: false,
-         },
-         begin_source,
-         expressions,
-      )},
+            Expression::IntLiteral {
+               val: x,
+               synthetic: false,
+            },
+            begin_source,
+            expressions,
+         )
+      }
       Token::FloatLiteral(x) => {
          let _ = l.next();
          wrap(Expression::FloatLiteral(x), begin_source, expressions)
-      },
+      }
       Token::StringLiteral(x) => {
          let _ = l.next();
          wrap(Expression::StringLiteral(x), begin_source, expressions)
-      },
+      }
       Token::Identifier(s) => {
          let _ = l.next();
          if l.peek_token() == Token::Dollar {
             let generic_args = parse_generic_arguments(l, parse_context)?;
-            let combined_location = merge_locations(
-               begin_source,
-               generic_args.last().as_ref().unwrap().location,
-            );
+            let combined_location = merge_locations(begin_source, generic_args.last().as_ref().unwrap().location);
             wrap(
                Expression::BoundFcnLiteral(
                   StrNode {
