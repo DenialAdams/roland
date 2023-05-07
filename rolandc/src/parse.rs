@@ -821,6 +821,9 @@ fn parse_block(l: &mut Lexer, parse_context: &mut ParseContext, ast: &mut AstPoo
                   let _ = l.next();
                   continue 'outer;
                }
+               Token::CloseBrace => {
+                  break 'outer l.next();
+               }
                Token::Eof => return Err(e),
                _ => {
                   let _ = l.next();

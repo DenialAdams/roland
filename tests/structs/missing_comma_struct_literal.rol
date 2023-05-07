@@ -13,3 +13,5 @@ __END__
 compile:
 While parsing instantiation of struct `X`, encountered an unexpected identifier `bar`. Hint: Are you missing a comma?
 ↳ line 9, column 7 [tests/structs/missing_comma_struct_literal.rol]
+While parsing top level, encountered unexpected token ';'; was expecting a procedure, const, static, enum, or struct declaration
+↳ line 10, column 5 [tests/structs/missing_comma_struct_literal.rol]
