@@ -436,7 +436,7 @@ struct ParseContext<'a> {
    parsed_types: &'a mut Vec<ExpressionTypeNode>,
 }
 
-fn parse_top_level_item(
+fn parse_top_level_items(
    lexer: &mut Lexer,
    parse_context: &mut ParseContext,
    ast: &mut AstPool,
@@ -576,10 +576,7 @@ pub fn astify(
       imports: vec![],
    };
 
-   loop {
-      if let Ok(()) = parse_top_level_item(&mut lexer, &mut parse_context, &mut program.ast, &mut top) {
-         break;
-      }
+   while parse_top_level_items(&mut lexer, &mut parse_context, &mut program.ast, &mut top).is_err() {
       // skip tokens until we get to a token that must be at the top level and continue parsing
       // in order to give the user more valid errors
       loop {
@@ -811,7 +808,29 @@ fn parse_block(l: &mut Lexer, parse_context: &mut ParseContext, ast: &mut AstPoo
 
    let mut statements: Vec<StatementId> = vec![];
 
-   let close_brace = loop {
+   let close_brace = 'outer: loop {
+      match parse_semicolon_terminated_statement(l, parse_context, ast) {
+         Ok(None) => (),
+         Ok(Some(s)) => {
+            statements.push(s);
+            continue;
+         }
+         Err(e) => {
+            loop {
+               match l.peek_token() {
+                  Token::Semicolon => {
+                     let _ = l.next();
+                     continue 'outer;
+                  }
+                  Token::Eof => return Err(e),
+                  _ => {
+                     let _ = l.next();
+                  },
+               }
+            }
+         }
+      }
+
       match l.peek_token() {
          Token::OpenBrace => {
             let source = l.peek_source();
@@ -824,24 +843,6 @@ fn parse_block(l: &mut Lexer, parse_context: &mut ParseContext, ast: &mut AstPoo
          }
          Token::CloseBrace => {
             break l.next();
-         }
-         Token::KeywordContinue => {
-            let continue_token = l.next();
-            let sc = expect(l, parse_context, Token::Semicolon)?;
-            let id = ast.statements.insert(StatementNode {
-               statement: Statement::Continue,
-               location: merge_locations(continue_token.source_info, sc.source_info),
-            });
-            statements.push(id);
-         }
-         Token::KeywordBreak => {
-            let break_token = l.next();
-            let sc = expect(l, parse_context, Token::Semicolon)?;
-            let id = ast.statements.insert(StatementNode {
-               statement: Statement::Break,
-               location: merge_locations(break_token.source_info, sc.source_info),
-            });
-            statements.push(id);
          }
          Token::KeywordFor => {
             let for_token = l.next();
@@ -879,91 +880,9 @@ fn parse_block(l: &mut Lexer, parse_context: &mut ParseContext, ast: &mut AstPoo
             });
             statements.push(id);
          }
-         Token::KeywordReturn => {
-            let return_token = l.next();
-            let e = if l.peek_token() == Token::Semicolon {
-               wrap(Expression::UnitLiteral, return_token.source_info, &mut ast.expressions)
-            } else {
-               parse_expression(l, parse_context, false, &mut ast.expressions)?
-            };
-            let sc = expect(l, parse_context, Token::Semicolon)?;
-            let id = ast.statements.insert(StatementNode {
-               statement: Statement::Return(e),
-               location: merge_locations(return_token.source_info, sc.source_info),
-            });
-            statements.push(id);
-         }
-         Token::KeywordLet => {
-            let mut declared_type = None;
-            let let_token = l.next();
-            let variable_name = parse_identifier(l, parse_context)?;
-            if l.peek_token() == Token::Colon {
-               let _ = l.next();
-               declared_type = Some(parse_type(l, parse_context)?);
-            }
-            expect(l, parse_context, Token::Assignment)?;
-            let e = if l.peek_token() == Token::TripleUnderscore {
-               let _ = l.next();
-               None
-            } else {
-               Some(parse_expression(l, parse_context, false, &mut ast.expressions)?)
-            };
-            let sc = expect(l, parse_context, Token::Semicolon)?;
-            let statement_location = merge_locations(let_token.source_info, sc.source_info);
-            let id = ast.statements.insert(StatementNode {
-               statement: Statement::VariableDeclaration(variable_name, e, declared_type, VariableId::first()),
-               location: statement_location,
-            });
-            statements.push(id);
-         }
          Token::KeywordIf => {
             let s = parse_if_else_statement(l, parse_context, ast)?;
             statements.push(s);
-         }
-         Token::KeywordDefer => {
-            let defer_kw = l.next();
-            let e = parse_expression(l, parse_context, false, &mut ast.expressions)?;
-            let sc = expect(l, parse_context, Token::Semicolon)?;
-            let statement_location = merge_locations(defer_kw.source_info, sc.source_info);
-            let id = ast.statements.insert(StatementNode {
-               statement: Statement::Defer(e),
-               location: statement_location,
-            });
-            statements.push(id);
-         }
-         x if token_starts_expression(x) => {
-            let e = parse_expression(l, parse_context, false, &mut ast.expressions)?;
-            match l.peek_token() {
-               Token::Assignment => {
-                  let _ = l.next();
-                  let re = parse_expression(l, parse_context, false, &mut ast.expressions)?;
-                  let sc = expect(l, parse_context, Token::Semicolon)?;
-                  let statement_location = merge_locations(ast.expressions[e].location, sc.source_info);
-                  let id = ast.statements.insert(StatementNode {
-                     statement: Statement::Assignment(e, re),
-                     location: statement_location,
-                  });
-                  statements.push(id);
-               }
-               Token::Semicolon => {
-                  let sc = l.next();
-                  let statement_location = merge_locations(ast.expressions[e].location, sc.source_info);
-                  let id = ast.statements.insert(StatementNode {
-                     statement: Statement::Expression(e),
-                     location: statement_location,
-                  });
-                  statements.push(id);
-               }
-               x => {
-                  rolandc_error!(
-                     &mut parse_context.err_manager,
-                     l.peek_source(),
-                     "While parsing statement, encountered unexpected {}; was expecting a semicolon or assignment operator",
-                     x.for_parse_err()
-                  );
-                  return Err(());
-               }
-            }
          }
          x => {
             rolandc_error!(
@@ -980,6 +899,80 @@ fn parse_block(l: &mut Lexer, parse_context: &mut ParseContext, ast: &mut AstPoo
       statements,
       location: merge_locations(open_brace.source_info, close_brace.source_info),
    })
+}
+
+fn parse_semicolon_terminated_statement(l: &mut Lexer, parse_context: &mut ParseContext, ast: &mut AstPool) -> Result<Option<StatementId>, ()> {
+   let next = l.peek_token();
+   let begin_source = l.peek_source();
+   let stmt = match next {
+      Token::KeywordContinue => {
+         let _ = l.next();
+         Statement::Continue
+      },
+      Token::KeywordBreak => {
+         let _ = l.next();
+         Statement::Break
+      },
+      Token::KeywordReturn => {
+         let _ = l.next();
+         let e = if l.peek_token() == Token::Semicolon {
+            wrap(Expression::UnitLiteral, begin_source, &mut ast.expressions)
+         } else {
+            parse_expression(l, parse_context, false, &mut ast.expressions)?
+         };
+         Statement::Return(e)
+      }
+      Token::KeywordDefer => {
+         let _ = l.next();
+         let e = parse_expression(l, parse_context, false, &mut ast.expressions)?;
+         Statement::Defer(e)
+      }
+      Token::KeywordLet => {
+         let _ = l.next();
+         let mut declared_type = None;
+         let variable_name = parse_identifier(l, parse_context)?;
+         if l.peek_token() == Token::Colon {
+            let _ = l.next();
+            declared_type = Some(parse_type(l, parse_context)?);
+         }
+         expect(l, parse_context, Token::Assignment)?;
+         let e = if l.peek_token() == Token::TripleUnderscore {
+            let _ = l.next();
+            None
+         } else {
+            Some(parse_expression(l, parse_context, false, &mut ast.expressions)?)
+         };
+         Statement::VariableDeclaration(variable_name, e, declared_type, VariableId::first())
+      }
+      x if token_starts_expression(x) => {
+         let e = parse_expression(l, parse_context, false, &mut ast.expressions)?;
+         match l.peek_token() {
+            Token::Assignment => {
+               let _ = l.next();
+               let re = parse_expression(l, parse_context, false, &mut ast.expressions)?;
+               Statement::Assignment(e, re)
+            }
+            Token::Semicolon => Statement::Expression(e),
+            x => {
+               rolandc_error!(
+                  &mut parse_context.err_manager,
+                  l.peek_source(),
+                  "While parsing statement, encountered unexpected {}; was expecting a semicolon or assignment operator",
+                  x.for_parse_err()
+               );
+               return Err(());
+            }
+         }
+      }
+      _ => return Ok(None),
+   };
+
+   let sc = expect(l, parse_context, Token::Semicolon)?;
+
+   Ok(Some(ast.statements.insert(StatementNode {
+      statement: stmt,
+      location: merge_locations(begin_source, sc.source_info),
+   })))
 }
 
 fn parse_if_else_statement(
@@ -1254,31 +1247,43 @@ fn pratt(
    if_head: bool,
    expressions: &mut ExpressionPool,
 ) -> Result<ExpressionId, ()> {
-   let expr_begin_token = l.next();
-   let mut lhs = match expr_begin_token.token {
-      Token::BoolLiteral(x) => wrap(Expression::BoolLiteral(x), expr_begin_token.source_info, expressions),
-      Token::IntLiteral(x) => wrap(
+   let begin_source = l.peek_source();
+   let mut lhs = match l.peek_token() {
+      Token::BoolLiteral(x) => {
+         let _ = l.next();
+         wrap(Expression::BoolLiteral(x), begin_source, expressions)
+      },
+      Token::IntLiteral(x) => {
+         let _ = l.next();
+         wrap(
          Expression::IntLiteral {
             val: x,
             synthetic: false,
          },
-         expr_begin_token.source_info,
+         begin_source,
          expressions,
-      ),
-      Token::FloatLiteral(x) => wrap(Expression::FloatLiteral(x), expr_begin_token.source_info, expressions),
-      Token::StringLiteral(x) => wrap(Expression::StringLiteral(x), expr_begin_token.source_info, expressions),
+      )},
+      Token::FloatLiteral(x) => {
+         let _ = l.next();
+         wrap(Expression::FloatLiteral(x), begin_source, expressions)
+      },
+      Token::StringLiteral(x) => {
+         let _ = l.next();
+         wrap(Expression::StringLiteral(x), begin_source, expressions)
+      },
       Token::Identifier(s) => {
+         let _ = l.next();
          if l.peek_token() == Token::Dollar {
             let generic_args = parse_generic_arguments(l, parse_context)?;
             let combined_location = merge_locations(
-               expr_begin_token.source_info,
+               begin_source,
                generic_args.last().as_ref().unwrap().location,
             );
             wrap(
                Expression::BoundFcnLiteral(
                   StrNode {
                      str: s,
-                     location: expr_begin_token.source_info,
+                     location: begin_source,
                   },
                   generic_args.into_boxed_slice(),
                ),
@@ -1288,12 +1293,12 @@ fn pratt(
          } else if l.peek_token() == Token::DoubleColon {
             let _ = l.next();
             let variant = parse_identifier(l, parse_context)?;
-            let combined_location = merge_locations(expr_begin_token.source_info, variant.location);
+            let combined_location = merge_locations(begin_source, variant.location);
             wrap(
                Expression::EnumLiteral(
                   StrNode {
                      str: s,
-                     location: expr_begin_token.source_info,
+                     location: begin_source,
                   },
                   variant,
                ),
@@ -1327,12 +1332,12 @@ fn pratt(
                };
                expect(l, parse_context, Token::Comma)?;
             };
-            let combined_location = merge_locations(expr_begin_token.source_info, close_brace.source_info);
+            let combined_location = merge_locations(begin_source, close_brace.source_info);
             wrap(
                Expression::StructLiteral(
                   StrNode {
                      str: s,
-                     location: expr_begin_token.source_info,
+                     location: begin_source,
                   },
                   fields.into_boxed_slice(),
                ),
@@ -1343,17 +1348,18 @@ fn pratt(
             wrap(
                Expression::UnresolvedVariable(StrNode {
                   str: s,
-                  location: expr_begin_token.source_info,
+                  location: begin_source,
                }),
-               expr_begin_token.source_info,
+               begin_source,
                expressions,
             )
          }
       }
       Token::OpenParen => {
+         let _ = l.next();
          if l.peek_token() == Token::CloseParen {
             let end_token = l.next();
-            let combined_location = merge_locations(expr_begin_token.source_info, end_token.source_info);
+            let combined_location = merge_locations(begin_source, end_token.source_info);
             wrap(Expression::UnitLiteral, combined_location, expressions)
          } else {
             let new_lhs = pratt(l, parse_context, 0, false, expressions)?;
@@ -1362,6 +1368,7 @@ fn pratt(
          }
       }
       Token::OpenSquareBracket => {
+         let _ = l.next();
          // Array creation
          let mut es = vec![];
          let closing_square_bracket = loop {
@@ -1374,7 +1381,7 @@ fn pratt(
             }
             expect(l, parse_context, Token::Comma)?;
          };
-         let combined_location = merge_locations(expr_begin_token.source_info, closing_square_bracket.source_info);
+         let combined_location = merge_locations(begin_source, closing_square_bracket.source_info);
          wrap(
             Expression::ArrayLiteral(es.into_boxed_slice()),
             combined_location,
@@ -1382,10 +1389,11 @@ fn pratt(
          )
       }
       x @ Token::Minus => {
+         let _ = l.next();
          let ((), r_bp) = prefix_binding_power(&x);
          let begin_location = l.peek_source();
          let rhs = pratt(l, parse_context, r_bp, if_head, expressions)?;
-         let combined_location = merge_locations(expr_begin_token.source_info, begin_location);
+         let combined_location = merge_locations(begin_source, begin_location);
          wrap(
             Expression::UnaryOperator(UnOp::Negate, rhs),
             combined_location,
@@ -1393,10 +1401,11 @@ fn pratt(
          )
       }
       x @ Token::Exclam => {
+         let _ = l.next();
          let ((), r_bp) = prefix_binding_power(&x);
          let begin_location = l.peek_source();
          let rhs = pratt(l, parse_context, r_bp, if_head, expressions)?;
-         let combined_location = merge_locations(expr_begin_token.source_info, begin_location);
+         let combined_location = merge_locations(begin_source, begin_location);
          wrap(
             Expression::UnaryOperator(UnOp::Complement, rhs),
             combined_location,
@@ -1404,10 +1413,11 @@ fn pratt(
          )
       }
       x @ Token::Amp => {
+         let _ = l.next();
          let ((), r_bp) = prefix_binding_power(&x);
          let begin_location = l.peek_source();
          let rhs = pratt(l, parse_context, r_bp, if_head, expressions)?;
-         let combined_location = merge_locations(expr_begin_token.source_info, begin_location);
+         let combined_location = merge_locations(begin_source, begin_location);
          wrap(
             Expression::UnaryOperator(UnOp::AddressOf, rhs),
             combined_location,
@@ -1417,7 +1427,7 @@ fn pratt(
       x => {
          rolandc_error!(
             &mut parse_context.err_manager,
-            expr_begin_token.source_info,
+            begin_source,
             "While parsing expression, encountered unexpected {}; was expecting a literal, call, variable, or prefix operator",
             x.for_parse_err(),
          );
@@ -1463,7 +1473,7 @@ fn pratt(
                   break;
                }
             }
-            let combined_location = merge_locations(expr_begin_token.source_info, last_location);
+            let combined_location = merge_locations(begin_source, last_location);
             lhs = wrap(Expression::FieldAccess(fields, lhs), combined_location, expressions);
             continue;
          }
@@ -1481,7 +1491,7 @@ fn pratt(
             Token::OpenParen => {
                let args = parse_arguments(l, parse_context, expressions)?;
                let close_token = expect(l, parse_context, Token::CloseParen)?;
-               let combined_location = merge_locations(expr_begin_token.source_info, close_token.source_info);
+               let combined_location = merge_locations(begin_source, close_token.source_info);
                wrap(
                   Expression::ProcedureCall {
                      proc_expr: lhs,
@@ -1494,7 +1504,7 @@ fn pratt(
             Token::OpenSquareBracket => {
                let inner = parse_expression(l, parse_context, false, expressions)?;
                let close_token = expect(l, parse_context, Token::CloseSquareBracket)?;
-               let combined_location = merge_locations(expr_begin_token.source_info, close_token.source_info);
+               let combined_location = merge_locations(begin_source, close_token.source_info);
                wrap(
                   Expression::ArrayIndex {
                      array: lhs,
@@ -1506,7 +1516,7 @@ fn pratt(
             }
             Token::KeywordExtend => {
                let a_type = parse_type(l, parse_context)?;
-               let combined_location = merge_locations(expr_begin_token.source_info, a_type.location);
+               let combined_location = merge_locations(begin_source, a_type.location);
                wrap(
                   Expression::Cast {
                      cast_type: CastType::Extend,
@@ -1519,7 +1529,7 @@ fn pratt(
             }
             Token::KeywordTruncate => {
                let a_type = parse_type(l, parse_context)?;
-               let combined_location = merge_locations(expr_begin_token.source_info, a_type.location);
+               let combined_location = merge_locations(begin_source, a_type.location);
                wrap(
                   Expression::Cast {
                      cast_type: CastType::Truncate,
@@ -1532,7 +1542,7 @@ fn pratt(
             }
             Token::KeywordTransmute => {
                let a_type = parse_type(l, parse_context)?;
-               let combined_location = merge_locations(expr_begin_token.source_info, a_type.location);
+               let combined_location = merge_locations(begin_source, a_type.location);
                wrap(
                   Expression::Cast {
                      cast_type: CastType::Transmute,
@@ -1544,7 +1554,7 @@ fn pratt(
                )
             }
             Token::Deref => {
-               let combined_location = merge_locations(expr_begin_token.source_info, op.source_info);
+               let combined_location = merge_locations(begin_source, op.source_info);
                wrap(
                   Expression::UnaryOperator(UnOp::Dereference, lhs),
                   combined_location,

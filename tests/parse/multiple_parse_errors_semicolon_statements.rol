@@ -1,0 +1,10 @@
+proc main() {
+    let x = ;
+    leggo+;
+}
+__END__
+compile:
+While parsing expression, encountered unexpected token ';'; was expecting a literal, call, variable, or prefix operator
+↳ line 2, column 13 [tests/parse/multiple_parse_errors_semicolon_statements.rol]
+While parsing expression, encountered unexpected token ';'; was expecting a literal, call, variable, or prefix operator
+↳ line 3, column 11 [tests/parse/multiple_parse_errors_semicolon_statements.rol]
