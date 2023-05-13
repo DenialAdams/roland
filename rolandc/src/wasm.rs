@@ -24,7 +24,7 @@ const MINIMUM_STACK_FRAME_SIZE: u32 = 0;
 
 // globals
 const SP: u32 = 0;
-const MEM_ADDRESS: u32 = 2;
+const MEM_ADDRESS: u32 = 1;
 
 struct GenerationContext<'a> {
    active_fcn: wasm_encoder::Function,
@@ -413,13 +413,6 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
          },
          &ConstExpr::i32_const(offset as i32),
       ); // sp
-      globals.global(
-         GlobalType {
-            val_type: wasm_encoder::ValType::I32,
-            mutable: true,
-         },
-         &ConstExpr::i32_const(offset as i32),
-      ); // bp
       globals.global(
          GlobalType {
             val_type: wasm_encoder::ValType::I32,
