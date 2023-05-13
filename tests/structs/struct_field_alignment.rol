@@ -1,16 +1,16 @@
 struct BadAlignment {
-  x: u8,
-  y: u64,
-  z: u8,
-  a: u64,
+   x: u8,
+   y: u64,
+   z: u8,
+   a: u64,
 }
 
 proc main() {
    let a = BadAlignment {
-     x: 10,
-     y: 11,
-     z: 12,
-     a: 13,
+      x: 10,
+      y: 11,
+      z: 12,
+      a: 13,
    };
    let address = &a.y transmute usize;
    let aligned = (address % 8) == 0;

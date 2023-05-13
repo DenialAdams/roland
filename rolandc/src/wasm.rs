@@ -20,11 +20,10 @@ use crate::size_info::{
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I32_TYPE};
 use crate::Target;
 
-const MINIMUM_STACK_FRAME_SIZE: u32 = 4;
+const MINIMUM_STACK_FRAME_SIZE: u32 = 0;
 
 // globals
 const SP: u32 = 0;
-const BP: u32 = 1;
 const MEM_ADDRESS: u32 = 2;
 
 struct GenerationContext<'a> {
@@ -49,6 +48,13 @@ impl GenerationContext<'_> {
       if value > 0 {
          self.active_fcn.instruction(&Instruction::I32Const(value as i32));
          self.active_fcn.instruction(&Instruction::I32Add);
+      }
+   }
+
+   fn emit_const_sub_i32(&mut self, value: u32) {
+      if value > 0 {
+         self.active_fcn.instruction(&Instruction::I32Const(value as i32));
+         self.active_fcn.instruction(&Instruction::I32Sub);
       }
    }
 
@@ -489,7 +495,6 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       generation_context.active_fcn = Function::new_with_locals_types([]);
       generation_context.local_offsets_mem.clear();
 
-      // 0-4 == value of previous frame base pointer
       generation_context.sum_sizeof_locals_mem = MINIMUM_STACK_FRAME_SIZE;
 
       let mut mem_info: IndexMap<VariableId, (u32, u32)> = procedure
@@ -1739,9 +1744,9 @@ fn complement_val(t_type: &ExpressionType, wasm_type: ValType, generation_contex
 
 /// Places the address of given local on the stack
 fn get_stack_address_of_local(id: VariableId, generation_context: &mut GenerationContext) {
-   let offset = generation_context.local_offsets_mem.get(&id).copied().unwrap();
-   generation_context.active_fcn.instruction(&Instruction::GlobalGet(BP));
-   generation_context.emit_const_add_i32(offset);
+   let offset = aligned_address(generation_context.sum_sizeof_locals_mem, 8) - generation_context.local_offsets_mem.get(&id).copied().unwrap();
+   generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
+   generation_context.emit_const_sub_i32(offset);
 }
 
 fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
@@ -2005,34 +2010,18 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
 }
 
 fn adjust_stack_function_entry(generation_context: &mut GenerationContext) {
-   if generation_context.sum_sizeof_locals_mem == MINIMUM_STACK_FRAME_SIZE {
-      return;
-   }
-
-   generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
-   generation_context.active_fcn.instruction(&Instruction::GlobalGet(BP));
-   generation_context
-      .active_fcn
-      .instruction(&Instruction::I32Store(null_mem_arg()));
-   generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
-   generation_context.active_fcn.instruction(&Instruction::GlobalSet(BP));
    adjust_stack(generation_context, &Instruction::I32Add);
 }
 
 fn adjust_stack_function_exit(generation_context: &mut GenerationContext) {
+   adjust_stack(generation_context, &Instruction::I32Sub);
+}
+
+fn adjust_stack(generation_context: &mut GenerationContext, instr: &Instruction) {
    if generation_context.sum_sizeof_locals_mem == MINIMUM_STACK_FRAME_SIZE {
       return;
    }
 
-   adjust_stack(generation_context, &Instruction::I32Sub);
-   generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
-   generation_context
-      .active_fcn
-      .instruction(&Instruction::I32Load(null_mem_arg()));
-   generation_context.active_fcn.instruction(&Instruction::GlobalSet(BP));
-}
-
-fn adjust_stack(generation_context: &mut GenerationContext, instr: &Instruction) {
    generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
    // ensure that each stack frame is strictly aligned so that internal stack frame alignment is preserved
    let adjust_value = aligned_address(generation_context.sum_sizeof_locals_mem, 8);
