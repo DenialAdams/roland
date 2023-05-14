@@ -7,7 +7,6 @@
 #![allow(clippy::flat_map_option)] // Not sure how filter_map is any more clear than flat_map
 #![allow(clippy::cast_sign_loss)] // I am aware
 #![allow(clippy::cast_possible_wrap)] // I am aware
-#![allow(clippy::cast_possible_wrap)] // I am aware
 #![allow(clippy::cast_possible_truncation)] // I am aware
 #![allow(clippy::single_match_else)] // Not always an improvement in my opinion
 #![allow(clippy::missing_errors_doc)] // Nothing is documented
@@ -34,6 +33,7 @@ mod lex;
 mod monomorphization;
 pub mod parse;
 mod pre_wasm_lowering;
+mod regalloc;
 mod semantic_analysis;
 mod size_info;
 pub mod source_info;

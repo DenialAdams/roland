@@ -121,7 +121,14 @@ pub fn fold_statement(
             rolandc_warn!(err_manager, if_expr_d.location, "This condition will always be true");
          }
       }
-      Statement::For(_var, start_expr, end_expr, block, _, _) => {
+      Statement::For {
+         induction_var_name: _var,
+         range_start: start_expr,
+         range_end: end_expr,
+         body: block,
+         range_inclusive: _,
+         induction_var: _,
+      } => {
          try_fold_and_replace_expr(*start_expr, err_manager, folding_context, interner);
          try_fold_and_replace_expr(*end_expr, err_manager, folding_context, interner);
          fold_block(block, err_manager, folding_context, interner);

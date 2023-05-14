@@ -98,7 +98,14 @@ fn mark_reachable_stmt(stmt: StatementId, ast: &AstPool, ctx: &mut DceCtx) {
       Statement::Loop(bn) => {
          mark_reachable_block(bn, ast, ctx);
       }
-      Statement::For(_, start, end, bn, _, _) => {
+      Statement::For {
+         induction_var_name: _,
+         range_start: start,
+         range_end: end,
+         body: bn,
+         range_inclusive: _,
+         induction_var: _,
+      } => {
          mark_reachable_expr(*start, ast, ctx);
          mark_reachable_expr(*end, ast, ctx);
          mark_reachable_block(bn, ast, ctx);

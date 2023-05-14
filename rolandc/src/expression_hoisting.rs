@@ -129,7 +129,14 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
          vv_block(if_block, vv_context, ast);
          vv_statement(*else_statement, vv_context, ast, current_statement);
       }
-      Statement::For(_var, start, end, block, _inclusive, start_var_id) => {
+      Statement::For {
+         induction_var_name: _var,
+         range_start: start,
+         range_end: end,
+         body: block,
+         range_inclusive: _inclusive,
+         induction_var: start_var_id,
+      } => {
          vv_expr(*start, vv_context, &ast.expressions, current_statement);
          vv_expr(*end, vv_context, &ast.expressions, current_statement);
          vv_block(block, vv_context, ast);

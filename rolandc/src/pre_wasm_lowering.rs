@@ -90,6 +90,9 @@ pub fn lower_enums_and_pointers(program: &mut Program) {
       for param in procedure.definition.parameters.iter_mut() {
          lower_type(&mut param.p_type.e_type, &program.enum_info);
       }
+      for var_type in procedure.locals.values_mut() {
+         lower_type(var_type, &program.enum_info);
+      }
    }
 
    for procedure in program.external_procedures.iter_mut() {

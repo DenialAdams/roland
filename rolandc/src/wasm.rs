@@ -18,7 +18,7 @@ use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
 };
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I32_TYPE};
-use crate::Target;
+use crate::{Target, regalloc};
 
 const MINIMUM_STACK_FRAME_SIZE: u32 = 0;
 
@@ -41,6 +41,7 @@ struct GenerationContext<'a> {
    procedure_to_table_index: IndexSet<StrId>,
    procedure_indices: IndexSet<StrId>,
    stack_of_loop_jump_offsets: Vec<u32>,
+   var_to_reg: IndexMap<VariableId, usize>,
 }
 
 impl GenerationContext<'_> {
@@ -66,7 +67,7 @@ impl GenerationContext<'_> {
    }
 }
 
-fn type_to_wasm_type(t: &ExpressionType, buf: &mut Vec<ValType>, si: &IndexMap<StrId, StructInfo>) {
+pub fn type_to_wasm_type(t: &ExpressionType, buf: &mut Vec<ValType>, si: &IndexMap<StrId, StructInfo>) {
    match t {
       ExpressionType::Unit | ExpressionType::Never | ExpressionType::ProcedureItem(_, _) => (),
       ExpressionType::Struct(x) => {
@@ -96,7 +97,9 @@ fn type_to_wasm_type_basic(t: &ExpressionType) -> ValType {
       },
       ExpressionType::Bool => ValType::I32,
       ExpressionType::ProcedurePointer { .. } => ValType::I32,
-      _ => unreachable!(),
+      x => {
+         unreachable!("{:?}", x);
+      },
    }
 }
 
@@ -284,6 +287,8 @@ impl TypeManager {
 // l-s statics
 // s+ program stack (local variables and parameters are pushed here during runtime)
 pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target) -> Vec<u8> {
+   let var_to_reg = regalloc::assign_variables_to_locals(program);
+
    let mut generation_context = GenerationContext {
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
       type_manager: TypeManager::new(),
@@ -299,6 +304,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       procedure_to_table_index: IndexSet::new(),
       procedure_indices: IndexSet::new(),
       stack_of_loop_jump_offsets: Vec::new(),
+      var_to_reg,
    };
 
    let mut import_section = ImportSection::new();
@@ -784,7 +790,14 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
             emit_statement(statement, generation_context);
          }
       }
-      Statement::For(_, start, end, bn, inclusive, start_var_id) => {
+      Statement::For {
+         induction_var_name: _,
+         range_start: start,
+         range_end: end,
+         body: bn,
+         range_inclusive: inclusive,
+         induction_var: start_var_id,
+      } => {
          let start_expr = &generation_context.ast.expressions[*start];
 
          let (wasm_type, signed) = match start_expr.exp_type.as_ref().unwrap() {
@@ -1737,7 +1750,8 @@ fn complement_val(t_type: &ExpressionType, wasm_type: ValType, generation_contex
 
 /// Places the address of given local on the stack
 fn get_stack_address_of_local(id: VariableId, generation_context: &mut GenerationContext) {
-   let offset = aligned_address(generation_context.sum_sizeof_locals_mem, 8) - generation_context.local_offsets_mem.get(&id).copied().unwrap();
+   let offset = aligned_address(generation_context.sum_sizeof_locals_mem, 8)
+      - generation_context.local_offsets_mem.get(&id).copied().unwrap();
    generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
    generation_context.emit_const_sub_i32(offset);
 }

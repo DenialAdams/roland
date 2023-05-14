@@ -269,7 +269,14 @@ fn deep_clone_stmt(
             variable_replacements,
          );
       }
-      Statement::For(_, start, end, bn, _, var) => {
+      Statement::For {
+         induction_var_name: _,
+         range_start: start,
+         range_end: end,
+         body: bn,
+         range_inclusive: _,
+         induction_var: var,
+      } => {
          *start = deep_clone_expr(
             *start,
             &mut ast.expressions,

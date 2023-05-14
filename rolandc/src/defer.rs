@@ -108,7 +108,15 @@ fn defer_statement(statement: StatementId, defer_ctx: &mut DeferContext, ast: &m
          defer_block(if_block, defer_ctx, ast);
          defer_statement(*else_statement, defer_ctx, ast, current_statement);
       }
-      Statement::For(_, _, _, block, _, _) | Statement::Loop(block) => {
+      Statement::For {
+         induction_var_name: _,
+         range_start: _,
+         range_end: _,
+         body: block,
+         range_inclusive: _,
+         induction_var: _,
+      }
+      | Statement::Loop(block) => {
          let old = defer_ctx.num_exprs_at_loop_begin;
          defer_ctx.num_exprs_at_loop_begin = defer_ctx.deferred_exprs.len();
          defer_block(block, defer_ctx, ast);

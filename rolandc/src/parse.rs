@@ -281,7 +281,14 @@ pub enum Statement {
    Assignment(ExpressionId, ExpressionId),
    Block(BlockNode),
    Loop(BlockNode),
-   For(StrNode, ExpressionId, ExpressionId, BlockNode, bool, VariableId),
+   For {
+      induction_var_name: StrNode,
+      range_start: ExpressionId,
+      range_end: ExpressionId,
+      body: BlockNode,
+      range_inclusive: bool,
+      induction_var: VariableId,
+   },
    Continue,
    Break,
    Defer(ExpressionId),
@@ -860,14 +867,14 @@ fn parse_block(l: &mut Lexer, parse_context: &mut ParseContext, ast: &mut AstPoo
             let end_en = parse_expression(l, parse_context, true, &mut ast.expressions)?;
             let new_block = parse_block(l, parse_context, ast)?;
             let id = ast.statements.insert(StatementNode {
-               statement: Statement::For(
-                  variable_name,
-                  start_en,
-                  end_en,
-                  new_block,
-                  inclusive,
-                  VariableId::first(),
-               ),
+               statement: Statement::For {
+                  induction_var_name: variable_name,
+                  range_start: start_en,
+                  range_end: end_en,
+                  body: new_block,
+                  range_inclusive: inclusive,
+                  induction_var: VariableId::first(),
+               },
                location: for_token.source_info,
             });
             statements.push(id);

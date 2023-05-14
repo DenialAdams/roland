@@ -544,7 +544,14 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             rolandc_error!(err_manager, stmt_loc, "Break statement can only be used in a loop");
          }
       }
-      Statement::For(var, start, end, bn, inclusive, var_id) => {
+      Statement::For {
+         induction_var_name: var,
+         range_start: start,
+         range_end: end,
+         body: bn,
+         range_inclusive: inclusive,
+         induction_var: var_id,
+      } => {
          type_expression(err_manager, *start, validation_context);
          type_expression(err_manager, *end, validation_context);
 
