@@ -920,7 +920,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
       }
       Statement::Defer(_) => unreachable!(),
       Statement::Expression(en) => {
-         do_emit(*en, generation_context);
+         do_emit_and_load_lval(*en, generation_context);
          for _ in 0..sizeof_type_values(
             generation_context.ast.expressions[*en].exp_type.as_ref().unwrap(),
             generation_context.enum_info,

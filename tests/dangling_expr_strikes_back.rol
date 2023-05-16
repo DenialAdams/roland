@@ -1,0 +1,7 @@
+proc main() {
+   let x = [true, false, true];
+   // x is composed of 3 values, each of which needs to be dropped after this statement
+   x;
+   // The bug was that I was emitting x but not loading it, which means that we tried to drop
+   // 3 values when only one was on the stack (the address of x)
+}
