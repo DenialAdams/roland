@@ -13,12 +13,13 @@ use crate::parse::{
    statement_always_returns, AstPool, BinOp, CastType, Expression, ExpressionId, ExternalProcImplSource,
    ProcedureDefinition, Program, Statement, StatementId, UnOp, VariableId,
 };
+use crate::regalloc::get_var_from_lhs_expr;
 use crate::semantic_analysis::{EnumInfo, GlobalKind, StructInfo};
 use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
 };
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I32_TYPE};
-use crate::{Target, regalloc};
+use crate::{regalloc, Target};
 
 const MINIMUM_STACK_FRAME_SIZE: u32 = 0;
 
@@ -41,7 +42,8 @@ struct GenerationContext<'a> {
    procedure_to_table_index: IndexSet<StrId>,
    procedure_indices: IndexSet<StrId>,
    stack_of_loop_jump_offsets: Vec<u32>,
-   var_to_reg: IndexMap<VariableId, usize>,
+   var_to_reg: IndexMap<VariableId, u32>,
+   param_val_count: u32,
 }
 
 impl GenerationContext<'_> {
@@ -99,7 +101,7 @@ fn type_to_wasm_type_basic(t: &ExpressionType) -> ValType {
       ExpressionType::ProcedurePointer { .. } => ValType::I32,
       x => {
          unreachable!("{:?}", x);
-      },
+      }
    }
 }
 
@@ -191,7 +193,7 @@ fn dynamic_move_locals_of_type_to_dest(
          generation_context
             .active_fcn
             .instruction(&Instruction::LocalGet(*local_index));
-         simple_store(field, generation_context);
+         simple_store_mem(field, generation_context);
          *local_index += 1;
          *offset += sizeof_type_mem(field, generation_context.enum_info, generation_context.struct_size_info);
       }
@@ -287,7 +289,7 @@ impl TypeManager {
 // l-s statics
 // s+ program stack (local variables and parameters are pushed here during runtime)
 pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target) -> Vec<u8> {
-   let var_to_reg = regalloc::assign_variables_to_locals(program);
+   let mut regalloc_result = regalloc::assign_variables_to_locals(program);
 
    let mut generation_context = GenerationContext {
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
@@ -304,7 +306,8 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       procedure_to_table_index: IndexSet::new(),
       procedure_indices: IndexSet::new(),
       stack_of_loop_jump_offsets: Vec::new(),
-      var_to_reg,
+      var_to_reg: regalloc_result.var_to_reg,
+      param_val_count: 0,
    };
 
    let mut import_section = ImportSection::new();
@@ -490,8 +493,8 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       generation_context.procedure_indices.insert(procedure.definition.name);
    }
 
-   for procedure in program.procedures.values_mut() {
-      generation_context.active_fcn = Function::new_with_locals_types([]);
+   for (proc_id, procedure) in program.procedures.iter_mut() {
+      generation_context.active_fcn = Function::new_with_locals_types(regalloc_result.procedure_registers.remove(proc_id).unwrap());
       generation_context.local_offsets_mem.clear();
 
       generation_context.sum_sizeof_locals_mem = MINIMUM_STACK_FRAME_SIZE;
@@ -499,6 +502,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       let mut mem_info: IndexMap<VariableId, (u32, u32)> = procedure
          .locals
          .iter()
+         .filter(|x| !generation_context.var_to_reg.contains_key(x.0))
          .map(|x| {
             let alignment = mem_alignment(x.1, generation_context.enum_info, generation_context.struct_size_info);
             let size = sizeof_type_mem(x.1, generation_context.enum_info, generation_context.struct_size_info);
@@ -528,6 +532,19 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
          generation_context.sum_sizeof_locals_mem += local.1 .1;
       }
 
+      generation_context.param_val_count = procedure
+         .definition
+         .parameters
+         .iter()
+         .map(|x| {
+            sizeof_type_values(
+               &x.p_type.e_type,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            )
+         })
+         .sum();
+
       adjust_stack_function_entry(&mut generation_context);
 
       // Copy parameters to stack memory so we can take pointers
@@ -546,7 +563,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
                generation_context
                   .active_fcn
                   .instruction(&Instruction::LocalGet(values_index));
-               simple_store(&param.p_type.e_type, &mut generation_context);
+               store_var(param.var_id, &param.p_type.e_type, &mut generation_context);
                values_index += 1;
             }
             std::cmp::Ordering::Greater => {
@@ -782,7 +799,11 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
          do_emit(*len, generation_context);
          do_emit_and_load_lval(*en, generation_context);
          let val_type = generation_context.ast.expressions[*en].exp_type.as_ref().unwrap();
-         store(val_type, generation_context);
+         if let Some(v) = get_var_from_lhs_expr(*len, &generation_context.ast.expressions) {
+            store_var(v, val_type, generation_context);
+         } else {
+            store_mem(val_type, generation_context);
+         }
       }
       Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
       Statement::Block(bn) => {
@@ -821,7 +842,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
          // Check and break if needed
          {
             get_stack_address_of_local(*start_var_id, generation_context);
-            load(start_expr.exp_type.as_ref().unwrap(), generation_context);
+            load_var(*start_var_id, start_expr.exp_type.as_ref().unwrap(), generation_context);
             do_emit_and_load_lval(*end, generation_context);
             match (wasm_type, signed) {
                (ValType::I64, true) => generation_context.active_fcn.instruction(&Instruction::I64GeS),
@@ -848,7 +869,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
          {
             get_stack_address_of_local(*start_var_id, generation_context);
             get_stack_address_of_local(*start_var_id, generation_context);
-            load(start_expr.exp_type.as_ref().unwrap(), generation_context);
+            load_var(*start_var_id, start_expr.exp_type.as_ref().unwrap(), generation_context);
             match wasm_type {
                ValType::I64 => {
                   generation_context.active_fcn.instruction(&Instruction::I64Const(1));
@@ -860,7 +881,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
                }
                _ => unreachable!(),
             }
-            store(start_expr.exp_type.as_ref().unwrap(), generation_context);
+            store_var(*start_var_id, start_expr.exp_type.as_ref().unwrap(), generation_context);
          }
          generation_context.active_fcn.instruction(&Instruction::Br(0));
          generation_context.active_fcn.instruction(&Instruction::End);
@@ -956,7 +977,12 @@ fn do_emit_and_load_lval(expr_index: ExpressionId, generation_context: &mut Gene
       .expression
       .is_lvalue_disregard_consts(&generation_context.ast.expressions)
    {
-      load(expr_node.exp_type.as_ref().unwrap(), generation_context);
+      // nocheckin: wait, struct with one field? i guess that can happen
+      if let Some(v) = get_var_from_lhs_expr(expr_index, &generation_context.ast.expressions) {
+         load_var(v, expr_node.exp_type.as_ref().unwrap(), generation_context);
+      } else {
+         load_mem(expr_node.exp_type.as_ref().unwrap(), generation_context);
+      }
    }
 }
 
@@ -1320,14 +1346,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                // This operator coaxes the lvalue to an rvalue without a load
             }
             UnOp::Dereference => {
-               do_emit(*e_index, generation_context);
-
-               if e
-                  .expression
-                  .is_lvalue_disregard_consts(&generation_context.ast.expressions)
-               {
-                  load(e.exp_type.as_ref().unwrap(), generation_context);
-               }
+               do_emit_and_load_lval(*e_index, generation_context);
             }
             UnOp::Complement => {
                let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
@@ -1410,7 +1429,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             .is_lvalue_disregard_consts(&generation_context.ast.expressions)
          {
             do_emit(*e_id, generation_context);
-            load(target_type, generation_context);
+            load_mem(target_type, generation_context);
          } else {
             debug_assert!(is_wasm_compatible_rval_transmute(
                e.exp_type.as_ref().unwrap(),
@@ -1750,13 +1769,24 @@ fn complement_val(t_type: &ExpressionType, wasm_type: ValType, generation_contex
 
 /// Places the address of given local on the stack
 fn get_stack_address_of_local(id: VariableId, generation_context: &mut GenerationContext) {
+   if generation_context.var_to_reg.contains_key(&id) {
+      return;
+   }
    let offset = aligned_address(generation_context.sum_sizeof_locals_mem, 8)
       - generation_context.local_offsets_mem.get(&id).copied().unwrap();
    generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
    generation_context.emit_const_sub_i32(offset);
 }
 
-fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+fn load_var(var: VariableId, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+   if let Some(reg) = generation_context.var_to_reg.get(&var) {
+      generation_context.active_fcn.instruction(&Instruction::LocalGet(*reg + generation_context.param_val_count));
+      return;
+   }
+   load_mem(val_type, generation_context);
+}
+
+fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    if sizeof_type_values(
       val_type,
       generation_context.enum_info,
@@ -1766,13 +1796,13 @@ fn load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
       generation_context
          .active_fcn
          .instruction(&Instruction::GlobalSet(MEM_ADDRESS));
-      complex_load(0, val_type, generation_context);
+      complex_load_mem(0, val_type, generation_context);
    } else {
-      simple_load(val_type, generation_context);
+      simple_load_mem(val_type, generation_context);
    }
 }
 
-fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+fn complex_load_mem(mut offset: u32, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    match val_type {
       ExpressionType::Struct(x) => {
          for (field_name, field) in generation_context.struct_info.get(x).unwrap().field_types.iter() {
@@ -1796,9 +1826,9 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
                      .active_fcn
                      .instruction(&Instruction::GlobalGet(MEM_ADDRESS));
                   generation_context.emit_const_add_i32(offset + field_offset);
-                  simple_load(&field.e_type, generation_context);
+                  simple_load_mem(&field.e_type, generation_context);
                }
-               std::cmp::Ordering::Greater => complex_load(offset + field_offset, &field.e_type, generation_context),
+               std::cmp::Ordering::Greater => complex_load_mem(offset + field_offset, &field.e_type, generation_context),
             }
          }
       }
@@ -1817,10 +1847,10 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
                      .active_fcn
                      .instruction(&Instruction::GlobalGet(MEM_ADDRESS));
                   generation_context.emit_const_add_i32(offset);
-                  simple_load(a_type, generation_context);
+                  simple_load_mem(a_type, generation_context);
                }
                std::cmp::Ordering::Greater => {
-                  complex_load(offset, a_type, generation_context);
+                  complex_load_mem(offset, a_type, generation_context);
                }
             }
 
@@ -1835,7 +1865,7 @@ fn complex_load(mut offset: u32, val_type: &ExpressionType, generation_context: 
    }
 }
 
-fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+fn simple_load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    // If this is a tiny struct or array, drill into the inner type
    match val_type {
       ExpressionType::Struct(x) => {
@@ -1850,13 +1880,13 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
                generation_context.struct_size_info,
             ) {
                0 => continue,
-               1 => return simple_load(field_type, generation_context),
+               1 => return simple_load_mem(field_type, generation_context),
                _ => unreachable!(),
             }
          }
       }
       ExpressionType::Array(inner_type, _len) => {
-         return simple_load(inner_type, generation_context);
+         return simple_load_mem(inner_type, generation_context);
       }
       _ => (),
    }
@@ -1917,7 +1947,15 @@ fn simple_load(val_type: &ExpressionType, generation_context: &mut GenerationCon
    }
 }
 
-fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+fn store_var(var: VariableId, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+   if let Some(reg) = generation_context.var_to_reg.get(&var) {
+      generation_context.active_fcn.instruction(&Instruction::LocalSet(*reg + generation_context.param_val_count));
+      return;
+   }
+   store_mem(val_type, generation_context);
+}
+
+fn store_mem(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    if sizeof_type_values(
       val_type,
       generation_context.enum_info,
@@ -1932,7 +1970,7 @@ fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) 
       generation_context.struct_size_info,
    ) == 1
    {
-      simple_store(val_type, generation_context);
+      simple_store_mem(val_type, generation_context);
    } else if sizeof_type_values(
       val_type,
       generation_context.enum_info,
@@ -1948,7 +1986,7 @@ fn store(val_type: &ExpressionType, generation_context: &mut GenerationContext) 
 }
 
 // VALUE STACK: i32 MEMORY_OFFSET, (any 1 value)
-fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
+fn simple_store_mem(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    // If this is a tiny struct or array, drill into the inner type
    match val_type {
       ExpressionType::Struct(x) => {
@@ -1963,13 +2001,13 @@ fn simple_store(val_type: &ExpressionType, generation_context: &mut GenerationCo
                generation_context.struct_size_info,
             ) {
                0 => continue,
-               1 => return simple_store(field_type, generation_context),
+               1 => return simple_store_mem(field_type, generation_context),
                _ => unreachable!(),
             }
          }
       }
       ExpressionType::Array(inner_type, _len) => {
-         return simple_store(inner_type, generation_context);
+         return simple_store_mem(inner_type, generation_context);
       }
       _ => (),
    }

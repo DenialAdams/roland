@@ -1,11 +1,14 @@
 use std::collections::HashSet;
 
 use indexmap::{IndexMap, IndexSet};
+use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
-use crate::parse::{AstPool, BlockNode, Expression, ExpressionId, Statement, StatementId, UnOp, VariableId};
-use crate::Program;
+use crate::parse::{
+   AstPool, BlockNode, Expression, ExpressionId, ProcedureId, Statement, StatementId, UnOp, VariableId, CastType, ExpressionPool,
+};
 use crate::wasm::type_to_wasm_type;
+use crate::Program;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 struct ProgramIndex {
@@ -49,21 +52,32 @@ struct RegallocCtx {
    current_loc: ProgramIndex,
 }
 
-pub fn assign_variables_to_locals(program: &Program) -> IndexMap<VariableId, usize> {
+pub struct RegallocResult {
+   pub var_to_reg: IndexMap<VariableId, u32>,
+   pub procedure_registers: SecondaryMap<ProcedureId, Vec<ValType>>,
+}
+
+pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
    let mut ctx = RegallocCtx {
       escaping_vars: HashSet::new(),
       live_ranges: IndexMap::new(),
       current_loc: ProgramIndex { block: 0, stmt: 0 },
    };
 
+   let mut result = RegallocResult {
+      var_to_reg: IndexMap::new(),
+      procedure_registers: SecondaryMap::with_capacity(program.procedures.len()),
+   };
+
    let mut active_ranges = IndexSet::new();
-   let mut free_registers: IndexMap<ValType, Vec<usize>> = IndexMap::new();
-   let mut used_registers: IndexMap<ValType, Vec<usize>> = IndexMap::new();
-   let mut var_to_reg: IndexMap<VariableId, usize> = IndexMap::new();
+   let mut free_registers: IndexMap<ValType, Vec<u32>> = IndexMap::new();
+   let mut used_registers: IndexMap<ValType, Vec<u32>> = IndexMap::new();
    let mut t_buf: Vec<ValType> = Vec::new();
 
-   for procedure in program.procedures.values() {
-      let mut total_registers = 0;
+   for (proc_id, procedure) in program.procedures.iter() {
+      result.procedure_registers.insert(proc_id, Vec::new());
+      let all_registers = result.procedure_registers.get_mut(proc_id).unwrap();
+
       free_registers.clear();
       used_registers.clear();
 
@@ -89,7 +103,7 @@ pub fn assign_variables_to_locals(program: &Program) -> IndexMap<VariableId, usi
          type_to_wasm_type(procedure.locals.get(var).unwrap(), &mut t_buf, &program.struct_info);
 
          if t_buf.len() != 1 {
-            // We skip aggregates for no good reason - 
+            // We skip aggregates for no good reason -
             // if the aggregate var hasn't escaped, we can decompose the aggregate
             // into registers. But, that does take some effort
             continue;
@@ -101,19 +115,19 @@ pub fn assign_variables_to_locals(program: &Program) -> IndexMap<VariableId, usi
             used_registers.entry(t_buf[0]).and_modify(|x| x.push(reg));
             reg
          } else {
-            used_registers.entry(t_buf[0]).and_modify(|x| x.push(total_registers));
-            let val = total_registers;
-            total_registers += 1;
+            let val = all_registers.len() as u32;
+            used_registers.entry(t_buf[0]).and_modify(|x| x.push(val));
+            all_registers.push(t_buf[0]);
             val
          };
 
-         var_to_reg.insert(*var, reg);
+         result.var_to_reg.insert(*var, reg);
 
          active_ranges.insert(*range);
       }
    }
 
-   var_to_reg
+   result
 }
 
 fn regalloc_block(block: &BlockNode, ctx: &mut RegallocCtx, ast: &AstPool) {
@@ -198,22 +212,19 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
       Expression::FieldAccess(_, base_expr) => {
          regalloc_expr(*base_expr, ctx, ast);
       }
-      Expression::Cast { expr, .. } => {
+      Expression::Cast { expr, cast_type, .. } => {
          regalloc_expr(*expr, ctx, ast);
+         if *cast_type == CastType::Transmute {
+            if let Some(v) = get_var_from_lhs_expr(*expr, &ast.expressions) {
+               ctx.escaping_vars.insert(v);
+            }
+         }
       }
       Expression::UnaryOperator(op, expr) => {
          regalloc_expr(*expr, ctx, ast);
          if *op == UnOp::AddressOf {
-            match ast.expressions[*expr].expression {
-               Expression::Variable(v) => {
-                  ctx.escaping_vars.insert(v);
-               }
-               Expression::FieldAccess(_, e) => {
-                  if let Expression::Variable(v) = ast.expressions[e].expression {
-                     ctx.escaping_vars.insert(v);
-                  }
-               }
-               _ => (),
+            if let Some(v) = get_var_from_lhs_expr(*expr, &ast.expressions) {
+               ctx.escaping_vars.insert(v);
             }
          }
       }
@@ -242,5 +253,20 @@ fn regalloc_var(var: VariableId, ctx: &mut RegallocCtx) {
             end: ctx.current_loc,
          },
       );
+   }
+}
+
+pub fn get_var_from_lhs_expr(expr: ExpressionId, expressions: &ExpressionPool) -> Option<VariableId> {
+   match &expressions[expr].expression {
+      Expression::Variable(v) => {
+         Some(*v)
+      }
+      Expression::FieldAccess(_, e) => {
+         get_var_from_lhs_expr(*e, expressions)
+      }
+      Expression::ArrayIndex { array, .. } => {
+         get_var_from_lhs_expr(*array, expressions)
+      }
+      _ => None,
    }
 }
