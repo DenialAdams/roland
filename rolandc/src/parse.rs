@@ -248,10 +248,10 @@ impl Expression {
    pub fn is_lvalue(&self, expressions: &ExpressionPool, global_info: &IndexMap<VariableId, GlobalInfo>) -> bool {
       match self {
          Expression::Variable(x) => global_info.get(x).map_or(true, |x| x.kind != GlobalKind::Const),
-         Expression::UnresolvedVariable(_) => true,
          Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue(expressions, global_info),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
          Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue(expressions, global_info),
+         Expression::UnresolvedVariable(_) => unreachable!(),
          _ => false,
       }
    }
@@ -261,10 +261,10 @@ impl Expression {
    pub fn is_lvalue_disregard_consts(&self, expressions: &ExpressionPool) -> bool {
       match self {
          Expression::Variable(_) => true,
-         Expression::UnresolvedVariable(_) => true,
          Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue_disregard_consts(expressions),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
          Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue_disregard_consts(expressions),
+         Expression::UnresolvedVariable(_) => unreachable!(),
          _ => false,
       }
    }
