@@ -5,3 +5,7 @@ proc main() {
    // The bug was that I was emitting x but not loading it, which means that we tried to drop
    // 3 values when only one was on the stack (the address of x)
 }
+__END__
+compile:
+The result of this expression is not conumed
+↳ line 4, column 4 [tests/dangling_expr_strikes_back.rol]
