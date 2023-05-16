@@ -494,7 +494,8 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
    }
 
    for (proc_id, procedure) in program.procedures.iter_mut() {
-      generation_context.active_fcn = Function::new_with_locals_types(regalloc_result.procedure_registers.remove(proc_id).unwrap());
+      generation_context.active_fcn =
+         Function::new_with_locals_types(regalloc_result.procedure_registers.remove(proc_id).unwrap());
       generation_context.local_offsets_mem.clear();
 
       generation_context.sum_sizeof_locals_mem = MINIMUM_STACK_FRAME_SIZE;
@@ -1780,7 +1781,9 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
 
 fn load_var(var: VariableId, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    if let Some(reg) = generation_context.var_to_reg.get(&var) {
-      generation_context.active_fcn.instruction(&Instruction::LocalGet(*reg + generation_context.param_val_count));
+      generation_context
+         .active_fcn
+         .instruction(&Instruction::LocalGet(*reg + generation_context.param_val_count));
       return;
    }
    load_mem(val_type, generation_context);
@@ -1828,7 +1831,9 @@ fn complex_load_mem(mut offset: u32, val_type: &ExpressionType, generation_conte
                   generation_context.emit_const_add_i32(offset + field_offset);
                   simple_load_mem(&field.e_type, generation_context);
                }
-               std::cmp::Ordering::Greater => complex_load_mem(offset + field_offset, &field.e_type, generation_context),
+               std::cmp::Ordering::Greater => {
+                  complex_load_mem(offset + field_offset, &field.e_type, generation_context);
+               }
             }
          }
       }
@@ -1949,7 +1954,9 @@ fn simple_load_mem(val_type: &ExpressionType, generation_context: &mut Generatio
 
 fn store_var(var: VariableId, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    if let Some(reg) = generation_context.var_to_reg.get(&var) {
-      generation_context.active_fcn.instruction(&Instruction::LocalSet(*reg + generation_context.param_val_count));
+      generation_context
+         .active_fcn
+         .instruction(&Instruction::LocalSet(*reg + generation_context.param_val_count));
       return;
    }
    store_mem(val_type, generation_context);

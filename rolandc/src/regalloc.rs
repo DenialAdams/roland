@@ -1,55 +1,18 @@
 use std::collections::HashSet;
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
 use crate::parse::{
-   AstPool, BlockNode, Expression, ExpressionId, ProcedureId, Statement, StatementId, UnOp, VariableId, CastType, ExpressionPool,
+   AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, ProcedureId, Statement, StatementId, UnOp,
+   VariableId,
 };
 use crate::wasm::type_to_wasm_type;
 use crate::Program;
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
-struct ProgramIndex {
-   block: usize,
-   stmt: usize,
-}
-
-impl PartialOrd for ProgramIndex {
-   fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-      Some(self.cmp(other))
-   }
-}
-
-impl Ord for ProgramIndex {
-   fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-      self.block.cmp(&other.block).then_with(|| self.stmt.cmp(&other.stmt))
-   }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
-struct LiveRange {
-   begin: ProgramIndex,
-   end: ProgramIndex,
-}
-
-impl PartialOrd for LiveRange {
-   fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-      Some(self.cmp(other))
-   }
-}
-
-impl Ord for LiveRange {
-   fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-      self.begin.cmp(&other.begin).then_with(|| self.end.cmp(&other.end))
-   }
-}
-
 struct RegallocCtx {
    escaping_vars: HashSet<VariableId>,
-   live_ranges: IndexMap<VariableId, LiveRange>,
-   current_loc: ProgramIndex,
 }
 
 pub struct RegallocResult {
@@ -60,8 +23,6 @@ pub struct RegallocResult {
 pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
    let mut ctx = RegallocCtx {
       escaping_vars: HashSet::new(),
-      live_ranges: IndexMap::new(),
-      current_loc: ProgramIndex { block: 0, stmt: 0 },
    };
 
    let mut result = RegallocResult {
@@ -69,38 +30,22 @@ pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
       procedure_registers: SecondaryMap::with_capacity(program.procedures.len()),
    };
 
-   let mut active_ranges = IndexSet::new();
-   let mut free_registers: IndexMap<ValType, Vec<u32>> = IndexMap::new();
-   let mut used_registers: IndexMap<ValType, Vec<u32>> = IndexMap::new();
    let mut t_buf: Vec<ValType> = Vec::new();
 
    for (proc_id, procedure) in program.procedures.iter() {
       result.procedure_registers.insert(proc_id, Vec::new());
       let all_registers = result.procedure_registers.get_mut(proc_id).unwrap();
 
-      free_registers.clear();
-      used_registers.clear();
-
-      ctx.current_loc = ProgramIndex { block: 0, stmt: 0 };
-      ctx.live_ranges.clear();
       regalloc_block(&procedure.block, &mut ctx, &program.ast);
 
-      ctx.live_ranges.sort_unstable_by(|_, v1, _, v2| v1.cmp(v2));
-
-      active_ranges.clear();
-      for (var, range) in ctx.live_ranges.iter() {
+      for (var, typ) in procedure.locals.iter() {
          if ctx.escaping_vars.contains(var) {
             // address is observed, variable must live on the stack
             continue;
          }
 
-         if !procedure.locals.contains_key(var) {
-            // global variables
-            continue;
-         }
-
          t_buf.clear();
-         type_to_wasm_type(procedure.locals.get(var).unwrap(), &mut t_buf, &program.struct_info);
+         type_to_wasm_type(typ, &mut t_buf, &program.struct_info);
 
          if t_buf.len() != 1 {
             // We skip aggregates for no good reason -
@@ -109,21 +54,13 @@ pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
             continue;
          }
 
-         // TODO: expire live ranges
-
-         let reg = if let Some(reg) = free_registers.entry(t_buf[0]).or_default().pop() {
-            used_registers.entry(t_buf[0]).and_modify(|x| x.push(reg));
-            reg
-         } else {
+         let reg = {
             let val = all_registers.len() as u32;
-            used_registers.entry(t_buf[0]).and_modify(|x| x.push(val));
             all_registers.push(t_buf[0]);
             val
          };
 
          result.var_to_reg.insert(*var, reg);
-
-         active_ranges.insert(*range);
       }
    }
 
@@ -131,17 +68,12 @@ pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
 }
 
 fn regalloc_block(block: &BlockNode, ctx: &mut RegallocCtx, ast: &AstPool) {
-   let saved_location = ctx.current_loc;
-   ctx.current_loc.block += 1;
    for statement in block.statements.iter().copied() {
-      ctx.current_loc.stmt += 1;
       regalloc_statement(statement, ctx, ast);
    }
-   ctx.current_loc = saved_location;
 }
 
 fn regalloc_statement(stmt: StatementId, ctx: &mut RegallocCtx, ast: &AstPool) {
-   ctx.current_loc.stmt += 1;
    match &ast.statements[stmt].statement {
       Statement::Return(expr) => {
          regalloc_expr(*expr, ctx, ast);
@@ -242,31 +174,15 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
    }
 }
 
-fn regalloc_var(var: VariableId, ctx: &mut RegallocCtx) {
-   if let Some(existing_range) = ctx.live_ranges.get_mut(&var) {
-      existing_range.end = ctx.current_loc;
-   } else {
-      ctx.live_ranges.insert(
-         var,
-         LiveRange {
-            begin: ctx.current_loc,
-            end: ctx.current_loc,
-         },
-      );
-   }
+fn regalloc_var(_var: VariableId, _ctx: &mut RegallocCtx) {
+   // In the future, we might do some liveness analysis here.
 }
 
 pub fn get_var_from_lhs_expr(expr: ExpressionId, expressions: &ExpressionPool) -> Option<VariableId> {
    match &expressions[expr].expression {
-      Expression::Variable(v) => {
-         Some(*v)
-      }
-      Expression::FieldAccess(_, e) => {
-         get_var_from_lhs_expr(*e, expressions)
-      }
-      Expression::ArrayIndex { array, .. } => {
-         get_var_from_lhs_expr(*array, expressions)
-      }
+      Expression::Variable(v) => Some(*v),
+      Expression::FieldAccess(_, e) => get_var_from_lhs_expr(*e, expressions),
+      Expression::ArrayIndex { array, .. } => get_var_from_lhs_expr(*array, expressions),
       _ => None,
    }
 }
