@@ -15,8 +15,13 @@ struct RegallocCtx {
    escaping_vars: HashSet<VariableId>,
 }
 
+pub enum Register {
+   Reg(u32),
+   ZSTReg,
+}
+
 pub struct RegallocResult {
-   pub var_to_reg: IndexMap<VariableId, u32>,
+   pub var_to_reg: IndexMap<VariableId, Register>,
    pub procedure_registers: SecondaryMap<ProcedureId, Vec<ValType>>,
 }
 
@@ -47,7 +52,10 @@ pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
          t_buf.clear();
          type_to_wasm_type(typ, &mut t_buf, &program.struct_info);
 
-         if t_buf.len() != 1 {
+         if t_buf.is_empty() {
+            result.var_to_reg.insert(*var, Register::ZSTReg);
+            continue;
+         } else if t_buf.len() > 1 {
             // We skip aggregates for no good reason -
             // if the aggregate var hasn't escaped, we can decompose the aggregate
             // into registers. But, that does take some effort
@@ -60,7 +68,7 @@ pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
             val
          };
 
-         result.var_to_reg.insert(*var, reg);
+         result.var_to_reg.insert(*var, Register::Reg(reg));
       }
    }
 

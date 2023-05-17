@@ -13,7 +13,7 @@ use crate::parse::{
    statement_always_returns, AstPool, BinOp, CastType, Expression, ExpressionId, ExternalProcImplSource,
    ProcedureDefinition, Program, Statement, StatementId, UnOp, VariableId,
 };
-use crate::regalloc::get_var_from_lhs_expr;
+use crate::regalloc::{get_var_from_lhs_expr, Register};
 use crate::semantic_analysis::{EnumInfo, GlobalKind, StructInfo};
 use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
@@ -42,7 +42,7 @@ struct GenerationContext<'a> {
    procedure_to_table_index: IndexSet<StrId>,
    procedure_indices: IndexSet<StrId>,
    stack_of_loop_jump_offsets: Vec<u32>,
-   var_to_reg: IndexMap<VariableId, u32>,
+   var_to_reg: IndexMap<VariableId, Register>,
    param_val_count: u32,
 }
 
@@ -1780,13 +1780,15 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
 }
 
 fn load_var(var: VariableId, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   if let Some(reg) = generation_context.var_to_reg.get(&var) {
-      generation_context
+   match generation_context.var_to_reg.get(&var) {
+      Some(Register::Reg(reg)) => {
+         generation_context
          .active_fcn
          .instruction(&Instruction::LocalGet(*reg + generation_context.param_val_count));
-      return;
+      },
+      Some(Register::ZSTReg) => (),
+      None => load_mem(val_type, generation_context),
    }
-   load_mem(val_type, generation_context);
 }
 
 fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
@@ -1953,13 +1955,15 @@ fn simple_load_mem(val_type: &ExpressionType, generation_context: &mut Generatio
 }
 
 fn store_var(var: VariableId, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   if let Some(reg) = generation_context.var_to_reg.get(&var) {
-      generation_context
+   match generation_context.var_to_reg.get(&var) {
+      Some(Register::Reg(reg)) => {
+         generation_context
          .active_fcn
          .instruction(&Instruction::LocalSet(*reg + generation_context.param_val_count));
-      return;
+      },
+      Some(Register::ZSTReg) => (),
+      None => store_mem(val_type, generation_context),
    }
-   store_mem(val_type, generation_context);
 }
 
 fn store_mem(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
