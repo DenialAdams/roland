@@ -16,14 +16,8 @@ struct RegallocCtx {
    escaping_vars: HashSet<VariableId>,
 }
 
-#[derive(Clone)]
-pub enum Register {
-   Reg(Range<u32>),
-   ZSTReg,
-}
-
 pub struct RegallocResult {
-   pub var_to_reg: IndexMap<VariableId, Register>,
+   pub var_to_reg: IndexMap<VariableId, Range<u32>>,
    pub procedure_registers: SecondaryMap<ProcedureId, Vec<ValType>>,
 }
 
@@ -54,10 +48,7 @@ pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
          t_buf.clear();
          type_to_wasm_type(typ, &mut t_buf, &program.struct_info);
 
-         if t_buf.is_empty() {
-            result.var_to_reg.insert(*var, Register::ZSTReg);
-            continue;
-         } else if t_buf.len() > 1 {
+         if t_buf.len() > 1 {
             // nocheckin
             continue;
          }
@@ -65,7 +56,7 @@ pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
          let reg = all_registers.len() as u32;
          all_registers.extend_from_slice(&t_buf);
 
-         result.var_to_reg.insert(*var, Register::Reg(reg..all_registers.len() as u32));
+         result.var_to_reg.insert(*var, reg..all_registers.len() as u32);
       }
    }
 

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Range;
 
 use indexmap::{IndexMap, IndexSet};
 use wasm_encoder::{
@@ -13,7 +14,7 @@ use crate::parse::{
    statement_always_returns, AstPool, BinOp, CastType, Expression, ExpressionId, ExternalProcImplSource,
    ProcedureDefinition, Program, Statement, StatementId, UnOp, VariableId,
 };
-use crate::regalloc::{get_var_from_lhs_expr, Register};
+use crate::regalloc::get_var_from_lhs_expr;
 use crate::semantic_analysis::{EnumInfo, GlobalKind, StructInfo};
 use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
@@ -42,7 +43,7 @@ struct GenerationContext<'a> {
    procedure_to_table_index: IndexSet<StrId>,
    procedure_indices: IndexSet<StrId>,
    stack_of_loop_jump_offsets: Vec<u32>,
-   var_to_reg: IndexMap<VariableId, Register>,
+   var_to_reg: IndexMap<VariableId, Range<u32>>,
    param_val_count: u32,
 }
 
@@ -1781,14 +1782,13 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
 
 fn load_var(var: VariableId, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    match generation_context.var_to_reg.get(&var).cloned() {
-      Some(Register::Reg(reg)) => {
-         for a_reg in reg {
+      Some(reg_range) => {
+         for a_reg in reg_range {
             generation_context
-            .active_fcn
-            .instruction(&Instruction::LocalGet(a_reg + generation_context.param_val_count));
+               .active_fcn
+               .instruction(&Instruction::LocalGet(a_reg + generation_context.param_val_count));
          }
-      },
-      Some(Register::ZSTReg) => (),
+      }
       None => load_mem(val_type, generation_context),
    }
 }
@@ -1958,14 +1958,13 @@ fn simple_load_mem(val_type: &ExpressionType, generation_context: &mut Generatio
 
 fn store_var(var: VariableId, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    match generation_context.var_to_reg.get(&var).cloned() {
-      Some(Register::Reg(reg)) => {
-         for a_reg in reg.rev() {
+      Some(reg_range) => {
+         for a_reg in reg_range.rev() {
             generation_context
-            .active_fcn
-            .instruction(&Instruction::LocalSet(a_reg + generation_context.param_val_count));
+               .active_fcn
+               .instruction(&Instruction::LocalSet(a_reg + generation_context.param_val_count));
          }
-      },
-      Some(Register::ZSTReg) => (),
+      }
       None => store_mem(val_type, generation_context),
    }
 }
