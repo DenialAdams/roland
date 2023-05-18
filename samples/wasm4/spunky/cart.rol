@@ -496,9 +496,8 @@ proc update() {
 
    // Draw world
    {
-      // We can't use this local variable as Roland will put this local variable in memory
-      // A future roland optimization that recognizes variables don't need to live in memory
-      // and "demotes" them to wasm locals would be good.
+      // paranoia: avoid using a local variable to avoid causing desync
+      // (although rolandc should properly optimize this now)
       //let active_player: usize = (NETPLAY~ & 0b11) extend usize;
       let camera_position = Position {
          x: PLAYER_POSITIONS[(NETPLAY~ & 0b11) extend usize].x + 5.0,

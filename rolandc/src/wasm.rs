@@ -551,34 +551,34 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       // Copy parameters to stack memory so we can take pointers
       let mut values_index = 0;
       for param in &procedure.definition.parameters {
-         match sizeof_type_values(
-            &param.p_type.e_type,
-            generation_context.enum_info,
-            generation_context.struct_size_info,
-         )
-         .cmp(&1)
-         {
-            std::cmp::Ordering::Less => (),
-            std::cmp::Ordering::Equal => {
-               get_stack_address_of_local(param.var_id, &mut generation_context);
+         if let Some(range) = generation_context.var_to_reg.get(&param.var_id).cloned() {
+            for dest_reg in range {
                generation_context
                   .active_fcn
                   .instruction(&Instruction::LocalGet(values_index));
-               store_var(param.var_id, &param.p_type.e_type, &mut generation_context);
                values_index += 1;
+               generation_context
+                  .active_fcn
+                  .instruction(&Instruction::LocalSet(dest_reg + generation_context.param_val_count));
             }
-            std::cmp::Ordering::Greater => {
-               if let Some(range) = generation_context.var_to_reg.get(&param.var_id).cloned() {
-                  for dest_reg in range {
-                     generation_context
-                        .active_fcn
-                        .instruction(&Instruction::LocalGet(values_index));
-                     values_index += 1;
-                     generation_context
-                        .active_fcn
-                        .instruction(&Instruction::LocalSet(dest_reg + generation_context.param_val_count));
-                  }
-               } else {
+         } else {
+            match sizeof_type_values(
+               &param.p_type.e_type,
+               generation_context.enum_info,
+               generation_context.struct_size_info,
+            )
+            .cmp(&1)
+            {
+               std::cmp::Ordering::Less => (),
+               std::cmp::Ordering::Equal => {
+                  get_stack_address_of_local(param.var_id, &mut generation_context);
+                  generation_context
+                     .active_fcn
+                     .instruction(&Instruction::LocalGet(values_index));
+                  store_mem(&param.p_type.e_type, &mut generation_context);
+                  values_index += 1;
+               }
+               std::cmp::Ordering::Greater => {
                   get_stack_address_of_local(param.var_id, &mut generation_context);
                   generation_context
                   .active_fcn
