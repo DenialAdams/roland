@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::ops::Range;
 
 use indexmap::IndexMap;
 use slotmap::SecondaryMap;
@@ -15,8 +16,9 @@ struct RegallocCtx {
    escaping_vars: HashSet<VariableId>,
 }
 
+#[derive(Clone)]
 pub enum Register {
-   Reg(u32),
+   Reg(Range<u32>),
    ZSTReg,
 }
 
@@ -56,19 +58,14 @@ pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
             result.var_to_reg.insert(*var, Register::ZSTReg);
             continue;
          } else if t_buf.len() > 1 {
-            // We skip aggregates for no good reason -
-            // if the aggregate var hasn't escaped, we can decompose the aggregate
-            // into registers. But, that does take some effort
+            // nocheckin
             continue;
          }
 
-         let reg = {
-            let val = all_registers.len() as u32;
-            all_registers.push(t_buf[0]);
-            val
-         };
+         let reg = all_registers.len() as u32;
+         all_registers.extend_from_slice(&t_buf);
 
-         result.var_to_reg.insert(*var, Register::Reg(reg));
+         result.var_to_reg.insert(*var, Register::Reg(reg..all_registers.len() as u32));
       }
    }
 

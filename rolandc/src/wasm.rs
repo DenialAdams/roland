@@ -1780,11 +1780,13 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
 }
 
 fn load_var(var: VariableId, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   match generation_context.var_to_reg.get(&var) {
+   match generation_context.var_to_reg.get(&var).cloned() {
       Some(Register::Reg(reg)) => {
-         generation_context
-         .active_fcn
-         .instruction(&Instruction::LocalGet(*reg + generation_context.param_val_count));
+         for a_reg in reg {
+            generation_context
+            .active_fcn
+            .instruction(&Instruction::LocalGet(a_reg + generation_context.param_val_count));
+         }
       },
       Some(Register::ZSTReg) => (),
       None => load_mem(val_type, generation_context),
@@ -1955,11 +1957,13 @@ fn simple_load_mem(val_type: &ExpressionType, generation_context: &mut Generatio
 }
 
 fn store_var(var: VariableId, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   match generation_context.var_to_reg.get(&var) {
+   match generation_context.var_to_reg.get(&var).cloned() {
       Some(Register::Reg(reg)) => {
-         generation_context
-         .active_fcn
-         .instruction(&Instruction::LocalSet(*reg + generation_context.param_val_count));
+         for a_reg in reg.rev() {
+            generation_context
+            .active_fcn
+            .instruction(&Instruction::LocalSet(a_reg + generation_context.param_val_count));
+         }
       },
       Some(Register::ZSTReg) => (),
       None => store_mem(val_type, generation_context),
