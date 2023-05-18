@@ -16,7 +16,7 @@ bump-deps:
    cd roland-vscode && npm update
 scratch:
    cargo run {{release_flag}} --bin rolandc_cli -- scratch.rol
-   wasm2wat scratch.wasm > scratch.wat
+   wasm2wat --no-check scratch.wasm > scratch.wat
    wasmtime scratch.wasm
 coverage:
    mv tests/ roland_test_runner/tests/

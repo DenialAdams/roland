@@ -48,11 +48,6 @@ pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
          t_buf.clear();
          type_to_wasm_type(typ, &mut t_buf, &program.struct_info);
 
-         if t_buf.len() > 1 {
-            // nocheckin
-            continue;
-         }
-
          let reg = all_registers.len() as u32;
          all_registers.extend_from_slice(&t_buf);
 
@@ -127,6 +122,10 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
       Expression::ArrayIndex { array, index } => {
          regalloc_expr(*array, ctx, ast);
          regalloc_expr(*index, ctx, ast);
+
+         if let Some(v) = get_var_from_lval_expr(*array, &ast.expressions) {
+            ctx.escaping_vars.insert(v);
+         }
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
          regalloc_expr(*lhs, ctx, ast);
@@ -143,7 +142,7 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
       Expression::Cast { expr, cast_type, .. } => {
          regalloc_expr(*expr, ctx, ast);
          if *cast_type == CastType::Transmute {
-            if let Some(v) = get_var_from_lhs_expr(*expr, &ast.expressions) {
+            if let Some(v) = get_var_from_lval_expr(*expr, &ast.expressions) {
                ctx.escaping_vars.insert(v);
             }
          }
@@ -151,7 +150,7 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
       Expression::UnaryOperator(op, expr) => {
          regalloc_expr(*expr, ctx, ast);
          if *op == UnOp::AddressOf {
-            if let Some(v) = get_var_from_lhs_expr(*expr, &ast.expressions) {
+            if let Some(v) = get_var_from_lval_expr(*expr, &ast.expressions) {
                ctx.escaping_vars.insert(v);
             }
          }
@@ -174,11 +173,11 @@ fn regalloc_var(_var: VariableId, _ctx: &mut RegallocCtx) {
    // In the future, we might do some liveness analysis here.
 }
 
-pub fn get_var_from_lhs_expr(expr: ExpressionId, expressions: &ExpressionPool) -> Option<VariableId> {
+fn get_var_from_lval_expr(expr: ExpressionId, expressions: &ExpressionPool) -> Option<VariableId> {
    match &expressions[expr].expression {
       Expression::Variable(v) => Some(*v),
-      Expression::FieldAccess(_, e) => get_var_from_lhs_expr(*e, expressions),
-      Expression::ArrayIndex { array, .. } => get_var_from_lhs_expr(*array, expressions),
+      Expression::FieldAccess(_, e) => get_var_from_lval_expr(*e, expressions),
+      Expression::ArrayIndex { array, .. } => get_var_from_lval_expr(*array, expressions),
       _ => None,
    }
 }

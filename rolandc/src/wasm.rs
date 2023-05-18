@@ -14,7 +14,6 @@ use crate::parse::{
    statement_always_returns, AstPool, BinOp, CastType, Expression, ExpressionId, ExternalProcImplSource,
    ProcedureDefinition, Program, Statement, StatementId, UnOp, VariableId,
 };
-use crate::regalloc::get_var_from_lhs_expr;
 use crate::semantic_analysis::{EnumInfo, GlobalKind, StructInfo};
 use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
@@ -569,17 +568,29 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
                values_index += 1;
             }
             std::cmp::Ordering::Greater => {
-               get_stack_address_of_local(param.var_id, &mut generation_context);
-               generation_context
+               if let Some(range) = generation_context.var_to_reg.get(&param.var_id).cloned() {
+                  for dest_reg in range {
+                     generation_context
+                        .active_fcn
+                        .instruction(&Instruction::LocalGet(values_index));
+                     values_index += 1;
+                     generation_context
+                        .active_fcn
+                        .instruction(&Instruction::LocalSet(dest_reg + generation_context.param_val_count));
+                  }
+               } else {
+                  get_stack_address_of_local(param.var_id, &mut generation_context);
+                  generation_context
                   .active_fcn
                   .instruction(&Instruction::GlobalSet(MEM_ADDRESS));
-               dynamic_move_locals_of_type_to_dest(
-                  &Instruction::GlobalGet(MEM_ADDRESS),
-                  &mut 0,
-                  &mut values_index,
-                  &param.p_type.e_type,
-                  &mut generation_context,
-               );
+                  dynamic_move_locals_of_type_to_dest(
+                     &Instruction::GlobalGet(MEM_ADDRESS),
+                     &mut 0,
+                     &mut values_index,
+                     &param.p_type.e_type,
+                     &mut generation_context,
+                  );
+               }
             }
          }
       }
@@ -801,8 +812,12 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
          do_emit(*len, generation_context);
          do_emit_and_load_lval(*en, generation_context);
          let val_type = generation_context.ast.expressions[*en].exp_type.as_ref().unwrap();
-         if let Some(v) = get_var_from_lhs_expr(*len, &generation_context.ast.expressions) {
-            store_var(v, val_type, generation_context);
+         if let Some(range) = get_registers_for_expr(*len, generation_context) {
+            for a_reg in range.rev() {
+               generation_context
+                  .active_fcn
+                  .instruction(&Instruction::LocalSet(a_reg + generation_context.param_val_count));
+            }
          } else {
             store_mem(val_type, generation_context);
          }
@@ -971,6 +986,72 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
    }
 }
 
+fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &mut GenerationContext) -> Option<Range<u32>> {
+   let node = &generation_context.ast.expressions[expr_id];
+   match &node.expression {
+      Expression::Variable(v) => generation_context.var_to_reg.get(v).cloned(),
+      Expression::FieldAccess(fields, e) => {
+         let Some(base_range) = get_registers_for_expr(*e, generation_context) else { return None; };
+         let ExpressionType::Struct(mut struct_name) = generation_context.ast.expressions[*e].exp_type.as_ref().unwrap() else { unreachable!() };
+
+         let mut value_offset = 0;
+
+         for field_name in fields.iter().take(fields.len() - 1) {
+            value_offset += generation_context
+               .struct_size_info
+               .get(&struct_name)
+               .unwrap()
+               .field_offsets_values
+               .get(field_name)
+               .unwrap();
+            struct_name = match generation_context
+               .struct_info
+               .get(&struct_name)
+               .unwrap()
+               .field_types
+               .get(field_name)
+               .map(|x| &x.e_type)
+            {
+               Some(ExpressionType::Struct(x)) => *x,
+               _ => unreachable!(),
+            };
+         }
+
+         let last_field_name = fields.last().unwrap();
+         value_offset += generation_context
+            .struct_size_info
+            .get(&struct_name)
+            .unwrap()
+            .field_offsets_values
+            .get(last_field_name)
+            .unwrap();
+
+         let last_field_type = &generation_context
+            .struct_info
+            .get(&struct_name)
+            .unwrap()
+            .field_types
+            .get(last_field_name)
+            .unwrap()
+            .e_type;
+
+         let last_field_size_values = sizeof_type_values(
+            last_field_type,
+            generation_context.enum_info,
+            generation_context.struct_size_info,
+         );
+
+         let mut final_range = base_range;
+
+         final_range.start += value_offset;
+         final_range.end = final_range.start + last_field_size_values;
+
+         Some(final_range)
+      }
+      _ => None,
+   }
+}
+
 fn do_emit_and_load_lval(expr_index: ExpressionId, generation_context: &mut GenerationContext) {
    do_emit(expr_index, generation_context);
 
@@ -979,9 +1060,12 @@ fn do_emit_and_load_lval(expr_index: ExpressionId, generation_context: &mut Gene
       .expression
       .is_lvalue_disregard_consts(&generation_context.ast.expressions)
    {
-      // nocheckin: wait, struct with one field? i guess that can happen
-      if let Some(v) = get_var_from_lhs_expr(expr_index, &generation_context.ast.expressions) {
-         load_var(v, expr_node.exp_type.as_ref().unwrap(), generation_context);
+      if let Some(range) = get_registers_for_expr(expr_index, generation_context) {
+         for a_reg in range {
+            generation_context
+               .active_fcn
+               .instruction(&Instruction::LocalGet(a_reg + generation_context.param_val_count));
+         }
       } else {
          load_mem(expr_node.exp_type.as_ref().unwrap(), generation_context);
       }
@@ -1049,8 +1133,8 @@ fn emit_literal_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_co
          for (field, next_field) in si.field_types.iter().zip(si.field_types.keys().skip(1)) {
             let value_of_field = map.get(field.0).copied().unwrap();
             emit_literal_bytes(buf, value_of_field, generation_context);
-            let this_offset = ssi.field_offsets.get(field.0).unwrap();
-            let next_offset = ssi.field_offsets.get(next_field).unwrap();
+            let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
+            let next_offset = ssi.field_offsets_mem.get(next_field).unwrap();
             let padding_bytes = next_offset
                - this_offset
                - sizeof_type_mem(
@@ -1065,7 +1149,7 @@ fn emit_literal_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_co
          if let Some(last_field) = si.field_types.iter().last() {
             let value_of_field = map.get(last_field.0).copied().unwrap();
             emit_literal_bytes(buf, value_of_field, generation_context);
-            let this_offset = ssi.field_offsets.get(last_field.0).unwrap();
+            let this_offset = ssi.field_offsets_mem.get(last_field.0).unwrap();
             let next_offset = ssi.mem_size;
             let padding_bytes = next_offset
                - this_offset
@@ -1667,7 +1751,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                   .struct_size_info
                   .get(&struct_name)
                   .unwrap()
-                  .field_offsets
+                  .field_offsets_mem
                   .get(field_name)
                   .unwrap();
                struct_name = match generation_context
@@ -1688,7 +1772,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                .struct_size_info
                .get(&struct_name)
                .unwrap()
-               .field_offsets
+               .field_offsets_mem
                .get(last_field_name)
                .unwrap();
 
@@ -1702,7 +1786,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             .is_lvalue_disregard_consts(&generation_context.ast.expressions));
 
          do_emit(*lhs_id, generation_context);
-         calculate_offset(lhs.exp_type.as_ref().unwrap(), field_names, generation_context);
+         if get_registers_for_expr(*lhs_id, generation_context).is_none() {
+            calculate_offset(lhs.exp_type.as_ref().unwrap(), field_names, generation_context);
+         }
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
@@ -1817,7 +1903,7 @@ fn complex_load_mem(mut offset: u32, val_type: &ExpressionType, generation_conte
                .struct_size_info
                .get(x)
                .unwrap()
-               .field_offsets
+               .field_offsets_mem
                .get(field_name)
                .unwrap();
             match sizeof_type_values(
