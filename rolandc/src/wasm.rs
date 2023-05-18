@@ -43,7 +43,6 @@ struct GenerationContext<'a> {
    procedure_indices: IndexSet<StrId>,
    stack_of_loop_jump_offsets: Vec<u32>,
    var_to_reg: IndexMap<VariableId, Range<u32>>,
-   param_val_count: u32,
 }
 
 impl GenerationContext<'_> {
@@ -307,7 +306,6 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       procedure_indices: IndexSet::new(),
       stack_of_loop_jump_offsets: Vec::new(),
       var_to_reg: regalloc_result.var_to_reg,
-      param_val_count: 0,
    };
 
    let mut import_section = ImportSection::new();
@@ -533,34 +531,13 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
          generation_context.sum_sizeof_locals_mem += local.1 .1;
       }
 
-      generation_context.param_val_count = procedure
-         .definition
-         .parameters
-         .iter()
-         .map(|x| {
-            sizeof_type_values(
-               &x.p_type.e_type,
-               generation_context.enum_info,
-               generation_context.struct_size_info,
-            )
-         })
-         .sum();
-
       adjust_stack_function_entry(&mut generation_context);
 
       // Copy parameters to stack memory so we can take pointers
       let mut values_index = 0;
       for param in &procedure.definition.parameters {
-         if let Some(range) = generation_context.var_to_reg.get(&param.var_id).cloned() {
-            for dest_reg in range {
-               generation_context
-                  .active_fcn
-                  .instruction(&Instruction::LocalGet(values_index));
-               values_index += 1;
-               generation_context
-                  .active_fcn
-                  .instruction(&Instruction::LocalSet(dest_reg + generation_context.param_val_count));
-            }
+         if let Some(range) = generation_context.var_to_reg.get(&param.var_id) {
+            values_index += range.len() as u32;
          } else {
             match sizeof_type_values(
                &param.p_type.e_type,
@@ -581,8 +558,8 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
                std::cmp::Ordering::Greater => {
                   get_stack_address_of_local(param.var_id, &mut generation_context);
                   generation_context
-                  .active_fcn
-                  .instruction(&Instruction::GlobalSet(MEM_ADDRESS));
+                     .active_fcn
+                     .instruction(&Instruction::GlobalSet(MEM_ADDRESS));
                   dynamic_move_locals_of_type_to_dest(
                      &Instruction::GlobalGet(MEM_ADDRESS),
                      &mut 0,
@@ -814,9 +791,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
          let val_type = generation_context.ast.expressions[*en].exp_type.as_ref().unwrap();
          if let Some(range) = get_registers_for_expr(*len, generation_context) {
             for a_reg in range.rev() {
-               generation_context
-                  .active_fcn
-                  .instruction(&Instruction::LocalSet(a_reg + generation_context.param_val_count));
+               generation_context.active_fcn.instruction(&Instruction::LocalSet(a_reg));
             }
          } else {
             store_mem(val_type, generation_context);
@@ -1062,9 +1037,7 @@ fn do_emit_and_load_lval(expr_index: ExpressionId, generation_context: &mut Gene
    {
       if let Some(range) = get_registers_for_expr(expr_index, generation_context) {
          for a_reg in range {
-            generation_context
-               .active_fcn
-               .instruction(&Instruction::LocalGet(a_reg + generation_context.param_val_count));
+            generation_context.active_fcn.instruction(&Instruction::LocalGet(a_reg));
          }
       } else {
          load_mem(expr_node.exp_type.as_ref().unwrap(), generation_context);
@@ -1870,9 +1843,7 @@ fn load_var(var: VariableId, val_type: &ExpressionType, generation_context: &mut
    match generation_context.var_to_reg.get(&var).cloned() {
       Some(reg_range) => {
          for a_reg in reg_range {
-            generation_context
-               .active_fcn
-               .instruction(&Instruction::LocalGet(a_reg + generation_context.param_val_count));
+            generation_context.active_fcn.instruction(&Instruction::LocalGet(a_reg));
          }
       }
       None => load_mem(val_type, generation_context),
@@ -2046,9 +2017,7 @@ fn store_var(var: VariableId, val_type: &ExpressionType, generation_context: &mu
    match generation_context.var_to_reg.get(&var).cloned() {
       Some(reg_range) => {
          for a_reg in reg_range.rev() {
-            generation_context
-               .active_fcn
-               .instruction(&Instruction::LocalSet(a_reg + generation_context.param_val_count));
+            generation_context.active_fcn.instruction(&Instruction::LocalSet(a_reg));
          }
       }
       None => store_mem(val_type, generation_context),

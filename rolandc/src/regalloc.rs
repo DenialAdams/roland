@@ -36,10 +36,36 @@ pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
    for (proc_id, procedure) in program.procedures.iter() {
       result.procedure_registers.insert(proc_id, Vec::new());
       let all_registers = result.procedure_registers.get_mut(proc_id).unwrap();
+      let mut total_registers = 0;
 
       regalloc_block(&procedure.block, &mut ctx, &program.ast);
 
+      for param in procedure.definition.parameters.iter() {
+         let var = param.var_id;
+         let typ = &param.p_type.e_type;
+
+         t_buf.clear();
+         type_to_wasm_type(typ, &mut t_buf, &program.struct_info);
+
+         let reg = total_registers;
+         total_registers += t_buf.len() as u32;
+
+         if ctx.escaping_vars.contains(&var) {
+            // address is observed, variable must live on the stack.
+            // however, this var is a parameter, so we still need to offset
+            // the register count
+            continue;
+         }
+
+         result.var_to_reg.insert(var, reg..total_registers);
+      }
+
       for (var, typ) in procedure.locals.iter() {
+         if result.var_to_reg.contains_key(var) {
+            // (This local is a parameter, which inherently has a register)
+            continue;
+         }
+
          if ctx.escaping_vars.contains(var) {
             // address is observed, variable must live on the stack
             continue;
@@ -48,10 +74,12 @@ pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
          t_buf.clear();
          type_to_wasm_type(typ, &mut t_buf, &program.struct_info);
 
-         let reg = all_registers.len() as u32;
-         all_registers.extend_from_slice(&t_buf);
+         let reg = total_registers;
+         total_registers += t_buf.len() as u32;
 
-         result.var_to_reg.insert(*var, reg..all_registers.len() as u32);
+         result.var_to_reg.insert(*var, reg..total_registers);
+
+         all_registers.extend_from_slice(&t_buf);
       }
    }
 
