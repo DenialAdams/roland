@@ -28,6 +28,6 @@ rolandc *args:
 rolandc_dhat *args:
    cargo run --profile dhat --bin rolandc_cli --features dhat-heap -- {{args}}
 rolandc_flame *args:
-   cargo flamegraph --freq 50700 --bin rolandc_cli -- {{args}}
+   cargo flamegraph --profile dhat --freq 50700 --bin rolandc_cli -- {{args}}
 prepare-release kind="patch":
    cd roland-vscode && npm version {{kind}}
