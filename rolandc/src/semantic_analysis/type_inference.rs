@@ -156,7 +156,6 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          // (and recursive variants: an array of arrays of pointers to an unknown type...)
          // We must take care to preserve the existing type structure.
 
-         // dbg!(validation_context.ast.expressions[expr_index].exp_type.as_ref().unwrap(), e_type);
          let (my_tv, incoming_definition) = get_type_variable_of_unknown_type_and_associated_e_type(
             validation_context.ast.expressions[expr_index]
                .exp_type
