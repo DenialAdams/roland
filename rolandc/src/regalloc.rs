@@ -152,7 +152,9 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
          regalloc_expr(*index, ctx, ast);
 
          if let Some(v) = get_var_from_lval_expr(*array, &ast.expressions) {
-            ctx.escaping_vars.insert(v);
+            if !matches!(ast.expressions[*index].expression, Expression::IntLiteral{..}) {
+               ctx.escaping_vars.insert(v);
+            }
          }
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {

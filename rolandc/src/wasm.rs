@@ -966,7 +966,7 @@ fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &mut Genera
    match &node.expression {
       Expression::Variable(v) => generation_context.var_to_reg.get(v).cloned(),
       Expression::FieldAccess(fields, e) => {
-         let Some(base_range) = get_registers_for_expr(*e, generation_context) else { return None; };
+         let base_range = get_registers_for_expr(*e, generation_context)?;
          let ExpressionType::Struct(mut struct_name) = generation_context.ast.expressions[*e].exp_type.as_ref().unwrap() else { unreachable!() };
 
          let mut value_offset = 0;
@@ -1022,6 +1022,31 @@ fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &mut Genera
          final_range.end = final_range.start + last_field_size_values;
 
          Some(final_range)
+      }
+      Expression::ArrayIndex { array, index } => {
+         let base_range = get_registers_for_expr(*array, generation_context)?;
+
+         if let Expression::IntLiteral { val: x, .. } = generation_context.ast.expressions[*index].expression {
+            let mut final_range = base_range;
+            
+            // Safe assert due to inference and constant folding validating this
+            let val_32 = u32::try_from(x).unwrap();
+            let sizeof_inner = match &generation_context.ast.expressions[*array].exp_type {
+               Some(ExpressionType::Array(x, _)) => {
+                  sizeof_type_values(x, generation_context.enum_info, generation_context.struct_size_info)
+               }
+               _ => unreachable!(),
+            };
+            
+            final_range.start += sizeof_inner * val_32;
+            final_range.end = final_range.start + sizeof_inner;
+
+            dbg!(&final_range);
+
+            Some(final_range)
+         } else {
+            None
+         }
       }
       _ => None,
    }
@@ -1794,7 +1819,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             .is_lvalue_disregard_consts(&generation_context.ast.expressions));
 
          do_emit(*array, generation_context);
-         calculate_offset(*array, *index, generation_context);
+         if get_registers_for_expr(*array, generation_context).is_none() {
+            calculate_offset(*array, *index, generation_context);
+         }
       }
    }
 }
