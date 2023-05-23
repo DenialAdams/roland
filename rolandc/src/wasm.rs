@@ -1041,8 +1041,6 @@ fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &mut Genera
             final_range.start += sizeof_inner * val_32;
             final_range.end = final_range.start + sizeof_inner;
 
-            dbg!(&final_range);
-
             Some(final_range)
          } else {
             None
