@@ -387,12 +387,9 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
 
       offset = aligned_address(offset, strictest_alignment);
    }
-   // what ridiculous crap. we need to get rid of this map.
-   let mut static_addresses_by_name = HashMap::new();
    for (static_var, static_details) in program.global_info.iter() {
       debug_assert!(static_details.kind != GlobalKind::Const);
       generation_context.static_addresses.insert(*static_var, offset);
-      static_addresses_by_name.insert(static_details.name, offset);
 
       offset += sizeof_type_mem(
          &static_details.expr_type.e_type,
@@ -402,9 +399,9 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
    }
 
    let mut buf = vec![];
-   for p_static in program.global_info.values().filter(|x| x.initializer.is_some()) {
+   for (p_var, p_static) in program.global_info.iter().filter(|x| x.1.initializer.is_some()) {
       emit_literal_bytes(&mut buf, p_static.initializer.unwrap(), &mut generation_context);
-      let static_address = static_addresses_by_name.get(&p_static.name).copied().unwrap();
+      let static_address = generation_context.static_addresses.get(p_var).copied().unwrap();
       data_section.active(0, &ConstExpr::i32_const(static_address as i32), buf.drain(..));
    }
 
