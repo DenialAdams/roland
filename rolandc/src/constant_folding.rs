@@ -42,8 +42,8 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
       const_replacements: &const_replacements,
    };
 
-   for p_static in program.statics.values().filter(|x| x.value.is_some()) {
-      if let Some(v) = p_static.value.as_ref().copied() {
+   for p_static in program.global_info.values().filter(|x| x.initializer.is_some()) {
+      if let Some(v) = p_static.initializer.as_ref().copied() {
          try_fold_and_replace_expr(v, err_manager, &mut folding_context, interner);
          let v = &folding_context.ast.expressions[v];
          if !is_const(&v.expression, &folding_context.ast.expressions) {
@@ -51,7 +51,7 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
                err_manager,
                v.location,
                "Value of static `{}` can't be constant folded. Hint: Either simplify the expression, or initialize it yourself on program start.",
-               interner.lookup(p_static.name.str),
+               interner.lookup(p_static.name),
             );
          }
       }

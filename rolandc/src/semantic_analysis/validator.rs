@@ -227,7 +227,7 @@ pub fn type_and_check_validity(
       validation_context.variable_types.insert(
          gi.1.name,
          VariableDetails {
-            var_type: gi.1.expr_type.clone(),
+            var_type: gi.1.expr_type.e_type.clone(),
             declaration_location: gi.1.location,
             kind: VariableKind::Global,
             used: false,
@@ -358,19 +358,19 @@ pub fn type_and_check_validity(
       );
    }
 
-   for p_static in program.statics.values_mut().filter(|x| x.value.is_some()) {
+   for p_static in program.global_info.values().filter(|x| x.kind == GlobalKind::Static && x.initializer.is_some()) {
       // p_static.static_type is guaranteed to be resolved at this point
-      type_expression(err_manager, p_static.value.unwrap(), &mut validation_context);
+      type_expression(err_manager, p_static.initializer.unwrap(), &mut validation_context);
       try_set_inferred_type(
-         &p_static.static_type.e_type,
-         p_static.value.unwrap(),
+         &p_static.expr_type.e_type,
+         p_static.initializer.unwrap(),
          &mut validation_context,
       );
 
-      let p_static_expr = &validation_context.ast.expressions[p_static.value.unwrap()];
+      let p_static_expr = &validation_context.ast.expressions[p_static.initializer.unwrap()];
 
       check_type_declared_vs_actual(
-         &p_static.static_type,
+         &p_static.expr_type,
          p_static_expr,
          validation_context.interner,
          &validation_context.type_variables,
@@ -908,7 +908,7 @@ fn get_type(
    match expr {
       Expression::UnitLiteral => ExpressionType::Unit,
       Expression::BoolLiteral(_) => ExpressionType::Bool,
-      Expression::IntLiteral { .. } => {
+      Expression::IntLiteral{..} => {
          validation_context.unknown_literals.insert(expr_index);
          let new_type_variable = validation_context.type_variables.new_type_variable(TypeConstraint::Int);
          ExpressionType::Unknown(new_type_variable)

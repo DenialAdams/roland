@@ -297,7 +297,8 @@ pub fn populate_type_and_procedure_info(
       if let Some(old_value) = program.global_info.insert(
          program.next_variable,
          GlobalInfo {
-            expr_type: const_node.const_type.e_type.clone(),
+            expr_type: const_node.const_type.clone(),
+            initializer: Some(const_node.value),
             location: const_node.location,
             kind: GlobalKind::Const,
             name: const_node.name.str,
@@ -317,11 +318,9 @@ pub fn populate_type_and_procedure_info(
       program.next_variable = program.next_variable.next();
    }
 
-   for (static_id, static_node) in program.statics.iter_mut() {
-      let static_e_type = &mut static_node.static_type.e_type;
-
-      if resolve_type(static_e_type, &program.enum_info, &program.struct_info, None).is_err() {
-         let static_type_str = static_e_type.as_roland_type_info_notv(interner);
+   for mut static_node in program.statics.drain(..) {
+      if resolve_type(&mut static_node.static_type.e_type, &program.enum_info, &program.struct_info, None).is_err() {
+         let static_type_str = static_node.static_type.e_type.as_roland_type_info_notv(interner);
          rolandc_error!(
             err_manager,
             static_node.static_type.location,
@@ -334,9 +333,10 @@ pub fn populate_type_and_procedure_info(
       if let Some(old_value) = program.global_info.insert(
          program.next_variable,
          GlobalInfo {
-            expr_type: static_node.static_type.e_type.clone(),
+            expr_type: static_node.static_type,
+            initializer: static_node.value,
             location: static_node.location,
-            kind: GlobalKind::Static(static_id),
+            kind: GlobalKind::Static,
             name: static_node.name.str,
          },
       ) {

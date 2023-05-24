@@ -375,11 +375,11 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
    {
       program
          .global_info
-         .sort_by(|_k_1, v_1, _k_2, v_2| compare_type_alignment(&v_1.expr_type, &v_2.expr_type, &generation_context));
+         .sort_by(|_k_1, v_1, _k_2, v_2| compare_type_alignment(&v_1.expr_type.e_type, &v_2.expr_type.e_type, &generation_context));
 
       let strictest_alignment = if let Some(v) = program.global_info.first() {
          mem_alignment(
-            &v.1.expr_type,
+            &v.1.expr_type.e_type,
             generation_context.enum_info,
             generation_context.struct_size_info,
          )
@@ -389,8 +389,6 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
 
       offset = aligned_address(offset, strictest_alignment);
    }
-   // what ridiculous crap. we need to get rid of this map.
-   let mut static_addresses_by_name = HashMap::new();
    for (static_var, static_details) in program.global_info.iter() {
       generation_context.globals.insert(*static_var);
       if generation_context.var_to_reg.contains_key(static_var) {
@@ -399,19 +397,18 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
 
       debug_assert!(static_details.kind != GlobalKind::Const);
       generation_context.static_addresses.insert(*static_var, offset);
-      static_addresses_by_name.insert(static_details.name, offset);
 
       offset += sizeof_type_mem(
-         &static_details.expr_type,
+         &static_details.expr_type.e_type,
          generation_context.enum_info,
          generation_context.struct_size_info,
       );
    }
 
    let mut buf = vec![];
-   for p_static in program.statics.values().filter(|x| x.value.is_some()) {
-      emit_literal_bytes(&mut buf, p_static.value.unwrap(), &mut generation_context);
-      let static_address = static_addresses_by_name.get(&p_static.name.str).copied().unwrap();
+   for (p_var, p_static) in program.global_info.iter().filter(|x| x.1.initializer.is_some()) {
+      emit_literal_bytes(&mut buf, p_static.initializer.unwrap(), &mut generation_context);
+      let static_address = generation_context.static_addresses.get(p_var).copied().unwrap();
       data_section.active(0, &ConstExpr::i32_const(static_address as i32), buf.drain(..));
    }
 

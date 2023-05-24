@@ -3,16 +3,16 @@ use std::collections::HashSet;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::interner::{Interner, StrId};
-use crate::parse::{AstPool, BlockNode, Expression, ExpressionId, Statement, StatementId, StaticId, VariableId};
+use crate::parse::{AstPool, BlockNode, Expression, ExpressionId, Statement, StatementId, VariableId};
 use crate::semantic_analysis::validator::get_special_procedures;
-use crate::semantic_analysis::{GlobalInfo, GlobalKind, ProcImplSource};
+use crate::semantic_analysis::{GlobalInfo, ProcImplSource};
 use crate::{Program, Target};
 
 type ProcedureId = StrId;
 
 enum WorkItem {
    Procedure(ProcedureId),
-   Static(StaticId),
+   Static(VariableId),
 }
 
 struct DceCtx<'a> {
@@ -29,7 +29,7 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
    };
 
    let mut reachable_procedures: HashSet<ProcedureId> = HashSet::new();
-   let mut reachable_globals: HashSet<StaticId> = HashSet::new();
+   let mut reachable_globals: HashSet<VariableId> = HashSet::new();
 
    for special_proc in get_special_procedures(target, interner) {
       if program.procedure_info.contains_key(&special_proc.name) {
@@ -37,7 +37,7 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
       }
    }
 
-   for static_expr in program.statics.values().flat_map(|x| x.value) {
+   for static_expr in program.global_info.values().flat_map(|x| x.initializer) {
       mark_reachable_expr(static_expr, &program.ast, &mut ctx);
    }
 
@@ -64,7 +64,7 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
 
             reachable_globals.insert(reachable_global);
 
-            if let Some(val_expr) = program.statics[reachable_global].value {
+            if let Some(val_expr) = program.global_info[&reachable_global].initializer {
                mark_reachable_expr(val_expr, &program.ast, &mut ctx);
             }
          }
@@ -77,7 +77,7 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
    program
       .external_procedures
       .retain(|x| reachable_procedures.contains(&x.definition.name));
-   program.statics.retain(|k, _| reachable_globals.contains(&k));
+   program.global_info.retain(|k, _| reachable_globals.contains(k));
 }
 
 fn mark_reachable_block(block: &BlockNode, ast: &AstPool, ctx: &mut DceCtx) {
@@ -149,13 +149,13 @@ fn mark_reachable_expr(expr: ExpressionId, ast: &AstPool, ctx: &mut DceCtx) {
       Expression::StringLiteral(lit) => {
          ctx.literals.insert(*lit);
       }
-      Expression::IntLiteral { .. } => (),
+      Expression::IntLiteral{..} => (),
       Expression::FloatLiteral(_) => (),
       Expression::UnitLiteral => (),
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::Variable(var_id) => {
-         if let Some(GlobalKind::Static(static_id)) = ctx.global_info.get(var_id).map(|x| &x.kind) {
-            ctx.worklist.push(WorkItem::Static(*static_id));
+         if ctx.global_info.contains_key(var_id) {
+            ctx.worklist.push(WorkItem::Static(*var_id));
          }
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
