@@ -415,6 +415,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
    // keep stack aligned
    offset = aligned_address(offset, 8);
 
+   let mut t_buf = Vec::new();
    let global_section = {
       let mut globals = GlobalSection::new();
       globals.global(
@@ -431,6 +432,26 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
          },
          &ConstExpr::i32_const(0),
       ); // mem_address
+
+      for global in program.global_info.iter() {
+         if !generation_context.var_to_reg.contains_key(global.0) {
+            continue;
+         }
+
+         type_to_wasm_type(&global.1.expr_type.e_type, &mut t_buf, &program.struct_info);
+
+         for wt in t_buf.drain(..) {
+            let initial_val = match wt {
+                ValType::I32 => ConstExpr::i32_const(0),
+                ValType::I64 => ConstExpr::i64_const(0),
+                ValType::F32 => ConstExpr::f32_const(0.0),
+                ValType::F64 => ConstExpr::f64_const(0.0),
+                _ => unreachable!(),
+            };
+
+            globals.global(GlobalType { val_type: wt, mutable: true }, &initial_val);
+         }
+      }
 
       globals
    };
