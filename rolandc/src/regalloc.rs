@@ -83,6 +83,21 @@ pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
       }
    }
 
+   let mut num_global_registers = 2; // Skip the base pointer, mem address globals
+   for global in program.global_info.iter() {
+      if ctx.escaping_vars.contains(global.0) {
+         continue;
+      }
+
+      t_buf.clear();
+      type_to_wasm_type(&global.1.expr_type, &mut t_buf, &program.struct_info);
+
+      let reg = num_global_registers;
+      num_global_registers += t_buf.len() as u32;
+
+      result.var_to_reg.insert(*global.0, reg..num_global_registers);
+   }
+
    result
 }
 
@@ -152,7 +167,7 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
          regalloc_expr(*index, ctx, ast);
 
          if let Some(v) = get_var_from_lval_expr(*array, &ast.expressions) {
-            if !matches!(ast.expressions[*index].expression, Expression::IntLiteral{..}) {
+            if !matches!(ast.expressions[*index].expression, Expression::IntLiteral { .. }) {
                ctx.escaping_vars.insert(v);
             }
          }

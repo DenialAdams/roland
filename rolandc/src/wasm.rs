@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use indexmap::{IndexMap, IndexSet};
@@ -31,6 +31,7 @@ struct GenerationContext<'a> {
    active_fcn: wasm_encoder::Function,
    type_manager: TypeManager,
    literal_offsets: HashMap<StrId, (u32, u32)>,
+   globals: HashSet<VariableId>,
    static_addresses: HashMap<VariableId, u32>,
    local_offsets_mem: HashMap<VariableId, u32>,
    struct_info: &'a IndexMap<StrId, StructInfo>,
@@ -295,6 +296,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       type_manager: TypeManager::new(),
       literal_offsets: HashMap::with_capacity(program.literals.len()),
       static_addresses: HashMap::with_capacity(program.global_info.len()),
+      globals: HashSet::with_capacity(program.global_info.len()),
       local_offsets_mem: HashMap::new(),
       needed_store_fns: IndexSet::new(),
       struct_info: &program.struct_info,
@@ -390,6 +392,11 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
    // what ridiculous crap. we need to get rid of this map.
    let mut static_addresses_by_name = HashMap::new();
    for (static_var, static_details) in program.global_info.iter() {
+      generation_context.globals.insert(*static_var);
+      if generation_context.var_to_reg.contains_key(static_var) {
+         continue;
+      }
+
       debug_assert!(static_details.kind != GlobalKind::Const);
       generation_context.static_addresses.insert(*static_var, offset);
       static_addresses_by_name.insert(static_details.name, offset);
@@ -789,9 +796,15 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
          do_emit(*len, generation_context);
          do_emit_and_load_lval(*en, generation_context);
          let val_type = generation_context.ast.expressions[*en].exp_type.as_ref().unwrap();
-         if let Some(range) = get_registers_for_expr(*len, generation_context) {
-            for a_reg in range.rev() {
-               generation_context.active_fcn.instruction(&Instruction::LocalSet(a_reg));
+         if let Some((is_global, range)) = get_registers_for_expr(*len, generation_context) {
+            if is_global {
+               for a_reg in range.rev() {
+                  generation_context.active_fcn.instruction(&Instruction::GlobalSet(a_reg));
+               }
+            } else {
+               for a_reg in range.rev() {
+                  generation_context.active_fcn.instruction(&Instruction::LocalSet(a_reg));
+               }
             }
          } else {
             store_mem(val_type, generation_context);
@@ -961,12 +974,19 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
    }
 }
 
-fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &mut GenerationContext) -> Option<Range<u32>> {
+fn get_registers_for_expr(
+   expr_id: ExpressionId,
+   generation_context: &mut GenerationContext,
+) -> Option<(bool, Range<u32>)> {
    let node = &generation_context.ast.expressions[expr_id];
    match &node.expression {
-      Expression::Variable(v) => generation_context.var_to_reg.get(v).cloned(),
+      Expression::Variable(v) => generation_context
+         .var_to_reg
+         .get(v)
+         .cloned()
+         .map(|x| (generation_context.globals.contains(v), x)),
       Expression::FieldAccess(fields, e) => {
-         let base_range = get_registers_for_expr(*e, generation_context)?;
+         let (is_global, base_range) = get_registers_for_expr(*e, generation_context)?;
          let ExpressionType::Struct(mut struct_name) = generation_context.ast.expressions[*e].exp_type.as_ref().unwrap() else { unreachable!() };
 
          let mut value_offset = 0;
@@ -1021,14 +1041,14 @@ fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &mut Genera
          final_range.start += value_offset;
          final_range.end = final_range.start + last_field_size_values;
 
-         Some(final_range)
+         Some((is_global, final_range))
       }
       Expression::ArrayIndex { array, index } => {
-         let base_range = get_registers_for_expr(*array, generation_context)?;
+         let (is_global, base_range) = get_registers_for_expr(*array, generation_context)?;
 
          if let Expression::IntLiteral { val: x, .. } = generation_context.ast.expressions[*index].expression {
             let mut final_range = base_range;
-            
+
             // Safe assert due to inference and constant folding validating this
             let val_32 = u32::try_from(x).unwrap();
             let sizeof_inner = match &generation_context.ast.expressions[*array].exp_type {
@@ -1037,11 +1057,11 @@ fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &mut Genera
                }
                _ => unreachable!(),
             };
-            
+
             final_range.start += sizeof_inner * val_32;
             final_range.end = final_range.start + sizeof_inner;
 
-            Some(final_range)
+            Some((is_global, final_range))
          } else {
             None
          }
@@ -1058,9 +1078,15 @@ fn do_emit_and_load_lval(expr_index: ExpressionId, generation_context: &mut Gene
       .expression
       .is_lvalue_disregard_consts(&generation_context.ast.expressions)
    {
-      if let Some(range) = get_registers_for_expr(expr_index, generation_context) {
-         for a_reg in range {
-            generation_context.active_fcn.instruction(&Instruction::LocalGet(a_reg));
+      if let Some((is_global, range)) = get_registers_for_expr(expr_index, generation_context) {
+         if is_global {
+            for a_reg in range {
+               generation_context.active_fcn.instruction(&Instruction::GlobalGet(a_reg));
+            }
+         } else {
+            for a_reg in range {
+               generation_context.active_fcn.instruction(&Instruction::LocalGet(a_reg));
+            }
          }
       } else {
          load_mem(expr_node.exp_type.as_ref().unwrap(), generation_context);
