@@ -103,6 +103,6 @@ pub fn lower_enums_and_pointers(program: &mut Program) {
    }
 
    for a_global in program.global_info.iter_mut() {
-      lower_type(&mut a_global.1.expr_type, &program.enum_info);
+      lower_type(&mut a_global.1.expr_type.e_type, &program.enum_info);
    }
 }

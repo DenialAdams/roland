@@ -5,7 +5,7 @@ use indexmap::{IndexMap, IndexSet};
 use self::type_variables::TypeVariableManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, ExpressionId, ExpressionTypeNode, ExternalProcImplSource, ProcedureId, StaticId, VariableId,
+   AstPool, ExpressionId, ExpressionTypeNode, ExternalProcImplSource, ProcedureId, VariableId,
 };
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
@@ -60,13 +60,14 @@ pub struct StructInfo {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum GlobalKind {
-   Static(StaticId),
+   Static,
    Const,
 }
 
 #[derive(Clone, Debug)]
 pub struct GlobalInfo {
-   pub expr_type: ExpressionType,
+   pub expr_type: ExpressionTypeNode,
+   pub initializer: Option<ExpressionId>,
    pub location: SourceInfo,
    pub kind: GlobalKind,
    pub name: StrId,

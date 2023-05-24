@@ -348,7 +348,7 @@ pub struct Program {
    pub procedures: SlotMap<ProcedureId, ProcedureNode>,
    pub structs: Vec<StructNode>,
    pub consts: Vec<ConstNode>,
-   pub statics: SlotMap<StaticId, StaticNode>,
+   pub statics: Vec<StaticNode>,
    pub ast: AstPool,
 
    // (only read by the language server)
@@ -383,7 +383,7 @@ impl Program {
          procedures: SlotMap::with_key(),
          structs: Vec::new(),
          consts: Vec::new(),
-         statics: SlotMap::with_key(),
+         statics: Vec::new(),
          parsed_types: Vec::new(),
          literals: IndexSet::new(),
          enum_info: IndexMap::new(),
@@ -406,7 +406,7 @@ impl Program {
       reset_slotmap(&mut self.procedures);
       self.structs.clear();
       self.consts.clear();
-      reset_slotmap(&mut self.statics);
+      self.statics.clear();
       self.parsed_types.clear();
       self.literals.clear();
       self.enum_info.clear();
@@ -527,7 +527,7 @@ fn parse_top_level_items(
                Some(parse_expression(lexer, parse_context, false, &mut ast.expressions)?)
             };
             let end_token = expect(lexer, parse_context, Token::Semicolon)?;
-            top.statics.insert(StaticNode {
+            top.statics.push(StaticNode {
                name: variable_name,
                static_type,
                location: merge_locations(a_static.source_info, end_token.source_info),
@@ -557,7 +557,7 @@ struct TopLevelItems<'a> {
    structs: &'a mut Vec<StructNode>,
    enums: &'a mut Vec<EnumNode>,
    consts: &'a mut Vec<ConstNode>,
-   statics: &'a mut SlotMap<StaticId, StaticNode>,
+   statics: &'a mut Vec<StaticNode>,
    imports: Vec<ImportNode>,
 }
 

@@ -373,11 +373,11 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
    {
       program
          .global_info
-         .sort_by(|_k_1, v_1, _k_2, v_2| compare_type_alignment(&v_1.expr_type, &v_2.expr_type, &generation_context));
+         .sort_by(|_k_1, v_1, _k_2, v_2| compare_type_alignment(&v_1.expr_type.e_type, &v_2.expr_type.e_type, &generation_context));
 
       let strictest_alignment = if let Some(v) = program.global_info.first() {
          mem_alignment(
-            &v.1.expr_type,
+            &v.1.expr_type.e_type,
             generation_context.enum_info,
             generation_context.struct_size_info,
          )
@@ -395,16 +395,16 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       static_addresses_by_name.insert(static_details.name, offset);
 
       offset += sizeof_type_mem(
-         &static_details.expr_type,
+         &static_details.expr_type.e_type,
          generation_context.enum_info,
          generation_context.struct_size_info,
       );
    }
 
    let mut buf = vec![];
-   for p_static in program.statics.values().filter(|x| x.value.is_some()) {
-      emit_literal_bytes(&mut buf, p_static.value.unwrap(), &mut generation_context);
-      let static_address = static_addresses_by_name.get(&p_static.name.str).copied().unwrap();
+   for p_static in program.global_info.values().filter(|x| x.initializer.is_some()) {
+      emit_literal_bytes(&mut buf, p_static.initializer.unwrap(), &mut generation_context);
+      let static_address = static_addresses_by_name.get(&p_static.name).copied().unwrap();
       data_section.active(0, &ConstExpr::i32_const(static_address as i32), buf.drain(..));
    }
 
