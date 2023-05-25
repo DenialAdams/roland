@@ -418,7 +418,11 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
 
    let mut buf = vec![];
    for (p_var, p_static) in program.global_info.iter().filter(|x| x.1.initializer.is_some()) {
-      emit_literal_bytes(&mut buf, p_static.initializer.unwrap(), &mut generation_context);
+      if generation_context.var_to_reg.contains_key(p_var) {
+         continue;
+      }
+
+      literal_as_bytes(&mut buf, p_static.initializer.unwrap(), &mut generation_context);
       let static_address = generation_context.static_addresses.get(p_var).copied().unwrap();
       data_section.active(0, &ConstExpr::i32_const(static_address as i32), buf.drain(..));
    }
@@ -427,6 +431,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
    offset = aligned_address(offset, 8);
 
    let mut t_buf = Vec::new();
+   let mut global_c = Vec::new();
    let global_section = {
       let mut globals = GlobalSection::new();
       globals.global(
@@ -452,15 +457,24 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
          type_to_wasm_type(&global.1.expr_type.e_type, &mut t_buf, &program.struct_info);
          debug_assert!(t_buf.len() == generation_context.var_to_reg.get(global.0).unwrap().len());
 
-         for wt in t_buf.drain(..) {
-            let initial_val = match wt {
-               ValType::I32 => ConstExpr::i32_const(0),
-               ValType::I64 => ConstExpr::i64_const(0),
-               ValType::F32 => ConstExpr::f32_const(0.0),
-               ValType::F64 => ConstExpr::f64_const(0.0),
-               _ => unreachable!(),
-            };
+         if let Some(initializer) = global.1.initializer {
+            literal_as_wasm_consts(&mut global_c, initializer, &mut generation_context);
+         } else {
+            for wt in t_buf.iter() {
+               let initial_val = match wt {
+                  ValType::I32 => ConstExpr::i32_const(0),
+                  ValType::I64 => ConstExpr::i64_const(0),
+                  ValType::F32 => ConstExpr::f32_const(0.0),
+                  ValType::F64 => ConstExpr::f64_const(0.0),
+                  _ => unreachable!(),
+               };
+               global_c.push(initial_val);
+            }
+         };
 
+         debug_assert!(global_c.len() == t_buf.len());
+
+         for (wt, initial_val) in t_buf.drain(..).zip(global_c.drain(..)) {
             globals.global(
                GlobalType {
                   val_type: wt,
@@ -1137,7 +1151,7 @@ fn do_emit_and_load_lval(expr_index: ExpressionId, generation_context: &mut Gene
    }
 }
 
-fn emit_literal_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_context: &mut GenerationContext) {
+fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_context: &mut GenerationContext) {
    let expr_node = &generation_context.ast.expressions[expr_index];
    match &expr_node.expression {
       Expression::BoundFcnLiteral(proc_name, _) => {
@@ -1197,7 +1211,7 @@ fn emit_literal_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_co
          let ssi = generation_context.struct_size_info.get(&s_name.str).unwrap();
          for (field, next_field) in si.field_types.iter().zip(si.field_types.keys().skip(1)) {
             let value_of_field = map.get(field.0).copied().unwrap();
-            emit_literal_bytes(buf, value_of_field, generation_context);
+            literal_as_bytes(buf, value_of_field, generation_context);
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
             let next_offset = ssi.field_offsets_mem.get(next_field).unwrap();
             let padding_bytes = next_offset
@@ -1213,7 +1227,7 @@ fn emit_literal_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_co
          }
          if let Some(last_field) = si.field_types.iter().last() {
             let value_of_field = map.get(last_field.0).copied().unwrap();
-            emit_literal_bytes(buf, value_of_field, generation_context);
+            literal_as_bytes(buf, value_of_field, generation_context);
             let this_offset = ssi.field_offsets_mem.get(last_field.0).unwrap();
             let next_offset = ssi.mem_size;
             let padding_bytes = next_offset
@@ -1230,7 +1244,72 @@ fn emit_literal_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_co
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
-            emit_literal_bytes(buf, *expr, generation_context);
+            literal_as_bytes(buf, *expr, generation_context);
+         }
+      }
+      _ => unreachable!(),
+   }
+}
+
+fn literal_as_wasm_consts(buf: &mut Vec<ConstExpr>, expr_index: ExpressionId, generation_context: &mut GenerationContext) {
+   let expr_node = &generation_context.ast.expressions[expr_index];
+   match &expr_node.expression {
+      Expression::BoundFcnLiteral(proc_name, _) => {
+         let (my_index, _) = generation_context.procedure_to_table_index.insert_full(proc_name.str);
+         // todo: truncation
+         buf.push(ConstExpr::i32_const(my_index as u32 as i32));
+      }
+      Expression::UnitLiteral => (),
+      Expression::BoolLiteral(x) => {
+         buf.push(ConstExpr::i32_const(i32::from(*x)));
+      }
+      Expression::EnumLiteral(_, _) => unreachable!(),
+      Expression::IntLiteral { val: x, .. } => {
+         let width = match expr_node.exp_type.as_ref().unwrap() {
+            ExpressionType::Int(x) => x.width,
+            _ => unreachable!(),
+         };
+         match width {
+            IntWidth::Eight => {
+               buf.push(ConstExpr::i64_const(*x as i64));
+            }
+            IntWidth::Four | IntWidth::Two | IntWidth::One => {
+               buf.push(ConstExpr::i32_const(*x as u32 as i32));
+            }
+            IntWidth::Pointer => unreachable!(),
+         };
+      }
+      Expression::FloatLiteral(x) => {
+         let width = match expr_node.exp_type.as_ref().unwrap() {
+            ExpressionType::Float(x) => x.width,
+            _ => unreachable!(),
+         };
+         match width {
+            FloatWidth::Eight => {
+               buf.push(ConstExpr::f64_const(*x));
+            }
+            FloatWidth::Four => {
+               buf.push(ConstExpr::f32_const(*x as f32));
+            }
+         }
+      }
+      Expression::StringLiteral(str) => {
+         let (offset, len) = generation_context.literal_offsets.get(str).unwrap();
+         buf.push(ConstExpr::i32_const(*offset as i32));
+         buf.push(ConstExpr::i32_const(*len as i32));
+      }
+      Expression::StructLiteral(s_name, fields) => {
+         // We need to emit this in the proper order!!
+         let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
+         let si = generation_context.struct_info.get(&s_name.str).unwrap();
+         for field in si.field_types.iter() {
+            let value_of_field = map.get(field.0).copied().unwrap();
+            literal_as_wasm_consts(buf, value_of_field, generation_context);
+         }
+      }
+      Expression::ArrayLiteral(exprs) => {
+         for expr in exprs.iter() {
+            literal_as_wasm_consts(buf, *expr, generation_context);
          }
       }
       _ => unreachable!(),

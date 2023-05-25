@@ -91,12 +91,6 @@ pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
          continue;
       }
 
-      if global.1.initializer.is_some() {
-         // Temporary limitation
-         // nocheckin create github issue
-         continue;
-      }
-
       t_buf.clear();
       type_to_wasm_type(&global.1.expr_type.e_type, &mut t_buf, &program.struct_info);
 
