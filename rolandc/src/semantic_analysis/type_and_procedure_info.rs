@@ -319,7 +319,14 @@ pub fn populate_type_and_procedure_info(
    }
 
    for mut static_node in program.statics.drain(..) {
-      if resolve_type(&mut static_node.static_type.e_type, &program.enum_info, &program.struct_info, None).is_err() {
+      if resolve_type(
+         &mut static_node.static_type.e_type,
+         &program.enum_info,
+         &program.struct_info,
+         None,
+      )
+      .is_err()
+      {
          let static_type_str = static_node.static_type.e_type.as_roland_type_info_notv(interner);
          rolandc_error!(
             err_manager,

@@ -149,7 +149,7 @@ fn mark_reachable_expr(expr: ExpressionId, ast: &AstPool, ctx: &mut DceCtx) {
       Expression::StringLiteral(lit) => {
          ctx.literals.insert(*lit);
       }
-      Expression::IntLiteral{..} => (),
+      Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
       Expression::UnitLiteral => (),
       Expression::UnresolvedVariable(_) => unreachable!(),

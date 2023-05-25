@@ -358,7 +358,11 @@ pub fn type_and_check_validity(
       );
    }
 
-   for p_static in program.global_info.values().filter(|x| x.kind == GlobalKind::Static && x.initializer.is_some()) {
+   for p_static in program
+      .global_info
+      .values()
+      .filter(|x| x.kind == GlobalKind::Static && x.initializer.is_some())
+   {
       // p_static.static_type is guaranteed to be resolved at this point
       type_expression(err_manager, p_static.initializer.unwrap(), &mut validation_context);
       try_set_inferred_type(
@@ -908,7 +912,7 @@ fn get_type(
    match expr {
       Expression::UnitLiteral => ExpressionType::Unit,
       Expression::BoolLiteral(_) => ExpressionType::Bool,
-      Expression::IntLiteral{..} => {
+      Expression::IntLiteral { .. } => {
          validation_context.unknown_literals.insert(expr_index);
          let new_type_variable = validation_context.type_variables.new_type_variable(TypeConstraint::Int);
          ExpressionType::Unknown(new_type_variable)

@@ -85,6 +85,8 @@ pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
 
    let mut num_global_registers = 2; // Skip the base pointer, mem address globals
    for global in program.global_info.iter() {
+      debug_assert!(!result.var_to_reg.contains_key(global.0));
+
       if ctx.escaping_vars.contains(global.0) {
          continue;
       }

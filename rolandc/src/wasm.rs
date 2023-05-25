@@ -289,6 +289,17 @@ impl TypeManager {
 // l-s statics
 // s+ program stack (local variables and parameters are pushed here during runtime)
 pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target) -> Vec<u8> {
+   // This will come in handy later, allowing us to avoid padding.
+   // Do it now, because we will iterate globals in regalloc and we want it to be consistent
+   program.global_info.sort_by(|_k_1, v_1, _k_2, v_2| {
+      compare_type_alignment(
+         &v_1.expr_type.e_type,
+         &v_2.expr_type.e_type,
+         &program.enum_info,
+         &program.struct_size_info,
+      )
+   });
+
    let mut regalloc_result = regalloc::assign_variables_to_locals(program);
 
    let mut generation_context = GenerationContext {
@@ -373,11 +384,11 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
 
    // Handle alignment of statics
    {
-      program
+      let strictest_alignment = if let Some(v) = program
          .global_info
-         .sort_by(|_k_1, v_1, _k_2, v_2| compare_type_alignment(&v_1.expr_type.e_type, &v_2.expr_type.e_type, &generation_context));
-
-      let strictest_alignment = if let Some(v) = program.global_info.first() {
+         .iter()
+         .find(|x| !generation_context.var_to_reg.contains_key(x.0))
+      {
          mem_alignment(
             &v.1.expr_type.e_type,
             generation_context.enum_info,
@@ -439,18 +450,27 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
          }
 
          type_to_wasm_type(&global.1.expr_type.e_type, &mut t_buf, &program.struct_info);
+         debug_assert!(t_buf.len() == generation_context.var_to_reg.get(global.0).unwrap().len());
 
          for wt in t_buf.drain(..) {
             let initial_val = match wt {
-                ValType::I32 => ConstExpr::i32_const(0),
-                ValType::I64 => ConstExpr::i64_const(0),
-                ValType::F32 => ConstExpr::f32_const(0.0),
-                ValType::F64 => ConstExpr::f64_const(0.0),
-                _ => unreachable!(),
+               ValType::I32 => ConstExpr::i32_const(0),
+               ValType::I64 => ConstExpr::i64_const(0),
+               ValType::F32 => ConstExpr::f32_const(0.0),
+               ValType::F64 => ConstExpr::f64_const(0.0),
+               _ => unreachable!(),
             };
 
-            globals.global(GlobalType { val_type: wt, mutable: true }, &initial_val);
+            globals.global(
+               GlobalType {
+                  val_type: wt,
+                  mutable: true,
+               },
+               &initial_val,
+            );
          }
+
+         debug_assert!(globals.len() == generation_context.var_to_reg.get(global.0).unwrap().end);
       }
 
       globals
@@ -797,13 +817,14 @@ fn compare_alignment(alignment_1: u32, sizeof_1: u32, alignment_2: u32, sizeof_2
 fn compare_type_alignment(
    e_1: &ExpressionType,
    e_2: &ExpressionType,
-   generation_context: &GenerationContext,
+   enum_info: &IndexMap<StrId, EnumInfo>,
+   ssi: &HashMap<StrId, SizeInfo>,
 ) -> std::cmp::Ordering {
-   let alignment_1 = mem_alignment(e_1, generation_context.enum_info, generation_context.struct_size_info);
-   let alignment_2 = mem_alignment(e_2, generation_context.enum_info, generation_context.struct_size_info);
+   let alignment_1 = mem_alignment(e_1, enum_info, ssi);
+   let alignment_2 = mem_alignment(e_2, enum_info, ssi);
 
-   let sizeof_1 = sizeof_type_mem(e_1, generation_context.enum_info, generation_context.struct_size_info);
-   let sizeof_2 = sizeof_type_mem(e_1, generation_context.enum_info, generation_context.struct_size_info);
+   let sizeof_1 = sizeof_type_mem(e_1, enum_info, ssi);
+   let sizeof_2 = sizeof_type_mem(e_1, enum_info, ssi);
 
    compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
 }
@@ -817,7 +838,9 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
          if let Some((is_global, range)) = get_registers_for_expr(*len, generation_context) {
             if is_global {
                for a_reg in range.rev() {
-                  generation_context.active_fcn.instruction(&Instruction::GlobalSet(a_reg));
+                  generation_context
+                     .active_fcn
+                     .instruction(&Instruction::GlobalSet(a_reg));
                }
             } else {
                for a_reg in range.rev() {
@@ -1099,7 +1122,9 @@ fn do_emit_and_load_lval(expr_index: ExpressionId, generation_context: &mut Gene
       if let Some((is_global, range)) = get_registers_for_expr(expr_index, generation_context) {
          if is_global {
             for a_reg in range {
-               generation_context.active_fcn.instruction(&Instruction::GlobalGet(a_reg));
+               generation_context
+                  .active_fcn
+                  .instruction(&Instruction::GlobalGet(a_reg));
             }
          } else {
             for a_reg in range {

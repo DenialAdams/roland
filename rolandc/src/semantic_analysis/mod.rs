@@ -4,9 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use self::type_variables::TypeVariableManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{
-   AstPool, ExpressionId, ExpressionTypeNode, ExternalProcImplSource, ProcedureId, VariableId,
-};
+use crate::parse::{AstPool, ExpressionId, ExpressionTypeNode, ExternalProcImplSource, ProcedureId, VariableId};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
