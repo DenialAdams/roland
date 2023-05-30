@@ -300,7 +300,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       )
    });
 
-   let mut regalloc_result = regalloc::assign_variables_to_locals(program);
+   let mut regalloc_result = regalloc::assign_variables_to_wasm_registers(program, target);
 
    let mut generation_context = GenerationContext {
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),

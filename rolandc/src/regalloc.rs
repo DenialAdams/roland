@@ -10,7 +10,7 @@ use crate::parse::{
    VariableId,
 };
 use crate::wasm::type_to_wasm_type;
-use crate::Program;
+use crate::{Program, Target};
 
 struct RegallocCtx {
    escaping_vars: HashSet<VariableId>,
@@ -21,7 +21,7 @@ pub struct RegallocResult {
    pub procedure_registers: SecondaryMap<ProcedureId, Vec<ValType>>,
 }
 
-pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
+pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> RegallocResult {
    let mut ctx = RegallocCtx {
       escaping_vars: HashSet::new(),
    };
@@ -81,6 +81,12 @@ pub fn assign_variables_to_locals(program: &Program) -> RegallocResult {
 
          all_registers.extend_from_slice(&t_buf);
       }
+   }
+
+   if target == Target::Wasm4 {
+      // Force global variables to live in memory for WASM4, because globals
+      // are not synchronized by the netplay engine
+      return result;
    }
 
    let mut num_global_registers = 2; // Skip the base pointer, mem address globals
