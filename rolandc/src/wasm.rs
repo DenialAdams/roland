@@ -901,8 +901,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
 
          // Check and break if needed
          {
-            get_stack_address_of_local(*start_var_id, generation_context);
-            load_var(*start_var_id, start_expr.exp_type.as_ref().unwrap(), generation_context);
+            do_emit_and_load_lval(*start, generation_context);
             do_emit_and_load_lval(*end, generation_context);
             match (wasm_type, signed) {
                (ValType::I64, true) => generation_context.active_fcn.instruction(&Instruction::I64GeS),
@@ -928,8 +927,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
          // Increment
          {
             get_stack_address_of_local(*start_var_id, generation_context);
-            get_stack_address_of_local(*start_var_id, generation_context);
-            load_var(*start_var_id, start_expr.exp_type.as_ref().unwrap(), generation_context);
+            do_emit_and_load_lval(*start, generation_context);
             match wasm_type {
                ValType::I64 => {
                   generation_context.active_fcn.instruction(&Instruction::I64Const(1));
@@ -2010,17 +2008,6 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
       - generation_context.local_offsets_mem.get(&id).copied().unwrap();
    generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
    generation_context.emit_const_sub_i32(offset);
-}
-
-fn load_var(var: VariableId, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   match generation_context.var_to_reg.get(&var).cloned() {
-      Some(reg_range) => {
-         for a_reg in reg_range {
-            generation_context.active_fcn.instruction(&Instruction::LocalGet(a_reg));
-         }
-      }
-      None => load_mem(val_type, generation_context),
-   }
 }
 
 fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
