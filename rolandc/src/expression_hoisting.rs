@@ -260,15 +260,18 @@ fn vv_expr(
       }
       Expression::Cast {
          cast_type: CastType::Transmute,
-         target_type,
          expr,
+         ..
       } => {
          vv_expr(*expr, vv_context, expressions, current_statement);
 
          let e = &expressions[*expr];
 
          if !e.expression.is_lvalue_disregard_consts(expressions)
-            && !is_wasm_compatible_rval_transmute(e.exp_type.as_ref().unwrap(), target_type)
+            && !is_wasm_compatible_rval_transmute(
+               e.exp_type.as_ref().unwrap(),
+               expressions[expr_index].exp_type.as_ref().unwrap(),
+            )
          {
             vv_context.declare_temp_and_mark_expr_for_hoisting(*expr, expressions, current_statement);
          }

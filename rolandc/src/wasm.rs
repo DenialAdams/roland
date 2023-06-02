@@ -1249,7 +1249,11 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
    }
 }
 
-fn literal_as_wasm_consts(buf: &mut Vec<ConstExpr>, expr_index: ExpressionId, generation_context: &mut GenerationContext) {
+fn literal_as_wasm_consts(
+   buf: &mut Vec<ConstExpr>,
+   expr_index: ExpressionId,
+   generation_context: &mut GenerationContext,
+) {
    let expr_node = &generation_context.ast.expressions[expr_index];
    match &expr_node.expression {
       Expression::BoundFcnLiteral(proc_name, _) => {
@@ -1647,14 +1651,16 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       }
       Expression::Cast {
          cast_type: CastType::Transmute,
-         target_type,
          expr: e_id,
+         ..
       } => {
          let e = &generation_context.ast.expressions[*e_id];
+         let target_type = expr_node.exp_type.as_ref().unwrap();
 
          if e
             .expression
             .is_lvalue_disregard_consts(&generation_context.ast.expressions)
+            && !is_wasm_compatible_rval_transmute(e.exp_type.as_ref().unwrap(), target_type)
          {
             do_emit(*e_id, generation_context);
             load_mem(target_type, generation_context);
@@ -1663,7 +1669,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                e.exp_type.as_ref().unwrap(),
                target_type
             ));
-            do_emit(*e_id, generation_context);
+            do_emit_and_load_lval(*e_id, generation_context);
 
             if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Float(_))
                && matches!(target_type, ExpressionType::Int(_))
@@ -1704,10 +1710,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       }
       Expression::Cast {
          cast_type: CastType::Truncate,
-         target_type,
          expr: e,
+         ..
       } => {
          do_emit_and_load_lval(*e, generation_context);
+         let target_type = expr_node.exp_type.as_ref().unwrap();
 
          let e = &generation_context.ast.expressions[*e];
 

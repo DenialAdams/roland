@@ -5,6 +5,7 @@ use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
+use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, ProcedureId, Statement, StatementId, UnOp,
    VariableId,
@@ -174,7 +175,7 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
          regalloc_expr(*array, ctx, ast);
          regalloc_expr(*index, ctx, ast);
 
-         if let Some(v) = get_var_from_lval_expr(*array, &ast.expressions) {
+         if let Some(v) = get_var_from_use(*array, &ast.expressions) {
             if !matches!(ast.expressions[*index].expression, Expression::IntLiteral { .. }) {
                ctx.escaping_vars.insert(v);
             }
@@ -194,8 +195,14 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
       }
       Expression::Cast { expr, cast_type, .. } => {
          regalloc_expr(*expr, ctx, ast);
-         if *cast_type == CastType::Transmute {
-            if let Some(v) = get_var_from_lval_expr(*expr, &ast.expressions) {
+
+         if *cast_type == CastType::Transmute
+            && !is_wasm_compatible_rval_transmute(
+               ast.expressions[*expr].exp_type.as_ref().unwrap(),
+               ast.expressions[in_expr].exp_type.as_ref().unwrap(),
+            )
+         {
+            if let Some(v) = get_var_from_use(*expr, &ast.expressions) {
                ctx.escaping_vars.insert(v);
             }
          }
@@ -203,7 +210,7 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
       Expression::UnaryOperator(op, expr) => {
          regalloc_expr(*expr, ctx, ast);
          if *op == UnOp::AddressOf {
-            if let Some(v) = get_var_from_lval_expr(*expr, &ast.expressions) {
+            if let Some(v) = get_var_from_use(*expr, &ast.expressions) {
                ctx.escaping_vars.insert(v);
             }
          }
@@ -226,11 +233,11 @@ fn regalloc_var(_var: VariableId, _ctx: &mut RegallocCtx) {
    // In the future, we might do some liveness analysis here.
 }
 
-fn get_var_from_lval_expr(expr: ExpressionId, expressions: &ExpressionPool) -> Option<VariableId> {
+fn get_var_from_use(expr: ExpressionId, expressions: &ExpressionPool) -> Option<VariableId> {
    match &expressions[expr].expression {
       Expression::Variable(v) => Some(*v),
-      Expression::FieldAccess(_, e) => get_var_from_lval_expr(*e, expressions),
-      Expression::ArrayIndex { array, .. } => get_var_from_lval_expr(*array, expressions),
+      Expression::FieldAccess(_, e) => get_var_from_use(*e, expressions),
+      Expression::ArrayIndex { array, .. } => get_var_from_use(*array, expressions),
       _ => None,
    }
 }
