@@ -1,5 +1,5 @@
 [workspace]
-
+resolver = "2"
 members = [
    "roland_test_runner",
    "rolandc",
