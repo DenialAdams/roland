@@ -1029,7 +1029,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
 
 fn get_registers_for_expr(
    expr_id: ExpressionId,
-   generation_context: &mut GenerationContext,
+   generation_context: &GenerationContext,
 ) -> Option<(bool, Range<u32>)> {
    let node = &generation_context.ast.expressions[expr_id];
    match &node.expression {
@@ -1660,7 +1660,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          if e
             .expression
             .is_lvalue_disregard_consts(&generation_context.ast.expressions)
-            && !is_wasm_compatible_rval_transmute(e.exp_type.as_ref().unwrap(), target_type)
+            && get_registers_for_expr(*e_id, generation_context).is_none()
          {
             do_emit(*e_id, generation_context);
             load_mem(target_type, generation_context);
