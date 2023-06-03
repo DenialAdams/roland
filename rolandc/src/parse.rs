@@ -839,58 +839,14 @@ fn parse_block(l: &mut Lexer, parse_context: &mut ParseContext, ast: &mut AstPoo
          },
       }
 
+      if let Some(s) = parse_blocky_statement(l, parse_context, ast)? {
+         statements.push(s);
+         continue;
+      }
+
       match l.peek_token() {
-         Token::OpenBrace => {
-            let source = l.peek_source();
-            let new_block = parse_block(l, parse_context, ast)?;
-            let id = ast.statements.insert(StatementNode {
-               statement: Statement::Block(new_block),
-               location: source,
-            });
-            statements.push(id);
-         }
          Token::CloseBrace => {
             break l.next();
-         }
-         Token::KeywordFor => {
-            let for_token = l.next();
-            let variable_name = parse_identifier(l, parse_context)?;
-            let _ = expect(l, parse_context, Token::KeywordIn)?;
-            let start_en = parse_expression(l, parse_context, true, &mut ast.expressions)?;
-            let _ = expect(l, parse_context, Token::DoublePeriod)?;
-            let inclusive = if l.peek_token() == Token::Assignment {
-               let _ = l.next();
-               true
-            } else {
-               false
-            };
-            let end_en = parse_expression(l, parse_context, true, &mut ast.expressions)?;
-            let new_block = parse_block(l, parse_context, ast)?;
-            let id = ast.statements.insert(StatementNode {
-               statement: Statement::For {
-                  induction_var_name: variable_name,
-                  range_start: start_en,
-                  range_end: end_en,
-                  body: new_block,
-                  range_inclusive: inclusive,
-                  induction_var: VariableId::first(),
-               },
-               location: for_token.source_info,
-            });
-            statements.push(id);
-         }
-         Token::KeywordLoop => {
-            let loop_token = l.next();
-            let new_block = parse_block(l, parse_context, ast)?;
-            let id = ast.statements.insert(StatementNode {
-               statement: Statement::Loop(new_block),
-               location: loop_token.source_info,
-            });
-            statements.push(id);
-         }
-         Token::KeywordIf => {
-            let s = parse_if_else_statement(l, parse_context, ast)?;
-            statements.push(s);
          }
          x => {
             rolandc_error!(
@@ -985,6 +941,65 @@ fn parse_semicolon_terminated_statement(
       statement: stmt,
       location: merge_locations(begin_source, sc.source_info),
    })))
+}
+
+fn parse_blocky_statement(
+   l: &mut Lexer,
+   parse_context: &mut ParseContext,
+   ast: &mut AstPool,
+) -> Result<Option<StatementId>, ()> {
+   match l.peek_token() {
+      Token::OpenBrace => {
+         let source = l.peek_source();
+         let new_block = parse_block(l, parse_context, ast)?;
+         let id = ast.statements.insert(StatementNode {
+            statement: Statement::Block(new_block),
+            location: source,
+         });
+         Ok(Some(id))
+      }
+      Token::KeywordFor => {
+         let for_token = l.next();
+         let variable_name = parse_identifier(l, parse_context)?;
+         let _ = expect(l, parse_context, Token::KeywordIn)?;
+         let start_en = parse_expression(l, parse_context, true, &mut ast.expressions)?;
+         let _ = expect(l, parse_context, Token::DoublePeriod)?;
+         let inclusive = if l.peek_token() == Token::Assignment {
+            let _ = l.next();
+            true
+         } else {
+            false
+         };
+         let end_en = parse_expression(l, parse_context, true, &mut ast.expressions)?;
+         let new_block = parse_block(l, parse_context, ast)?;
+         let id = ast.statements.insert(StatementNode {
+            statement: Statement::For {
+               induction_var_name: variable_name,
+               range_start: start_en,
+               range_end: end_en,
+               body: new_block,
+               range_inclusive: inclusive,
+               induction_var: VariableId::first(),
+            },
+            location: for_token.source_info,
+         });
+         Ok(Some(id))
+      }
+      Token::KeywordLoop => {
+         let loop_token = l.next();
+         let new_block = parse_block(l, parse_context, ast)?;
+         let id = ast.statements.insert(StatementNode {
+            statement: Statement::Loop(new_block),
+            location: loop_token.source_info,
+         });
+         Ok(Some(id))
+      }
+      Token::KeywordIf => {
+         let s = parse_if_else_statement(l, parse_context, ast)?;
+         Ok(Some(s))
+      }
+      _ => Ok(None),
+   }
 }
 
 fn parse_if_else_statement(
