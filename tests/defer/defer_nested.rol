@@ -1,0 +1,10 @@
+proc main() {
+    defer {
+        defer println("inner");
+    }
+    defer println("outer");
+}
+__END__
+run:
+outer
+inner

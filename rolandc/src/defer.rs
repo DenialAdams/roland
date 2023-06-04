@@ -119,6 +119,7 @@ fn defer_statement(statement: StatementId, defer_ctx: &mut DeferContext, ast: &m
          defer_ctx.num_stmts_at_loop_begin = old;
       }
       Statement::Defer(the_stmt) => {
+         defer_statement(*the_stmt, defer_ctx, ast, current_statement);
          defer_ctx.deferred_stmts.push(*the_stmt);
       }
       Statement::Assignment(_, _) => (),
