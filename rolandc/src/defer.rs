@@ -1,6 +1,6 @@
 use crate::parse::{
    statement_always_returns, AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, Program, Statement,
-   StatementId, StatementNode,
+   StatementId,
 };
 
 enum CfKind {
@@ -10,21 +10,21 @@ enum CfKind {
 
 struct InsertionPoint {
    insert_at: usize,
-   num_exprs_at_point: usize,
+   num_stmts_at_point: usize,
    kind: CfKind,
 }
 
 struct DeferContext {
-   deferred_exprs: Vec<ExpressionId>,
+   deferred_stmts: Vec<StatementId>,
    insertion_points: Vec<InsertionPoint>,
-   num_exprs_at_loop_begin: usize,
+   num_stmts_at_loop_begin: usize,
 }
 
 pub fn process_defer_statements(program: &mut Program) {
    let mut ctx = DeferContext {
-      deferred_exprs: Vec::new(),
+      deferred_stmts: Vec::new(),
       insertion_points: Vec::new(),
-      num_exprs_at_loop_begin: 0,
+      num_stmts_at_loop_begin: 0,
    };
 
    for procedure in program.procedures.values_mut() {
@@ -32,30 +32,26 @@ pub fn process_defer_statements(program: &mut Program) {
    }
 }
 
-fn insert_deferred_expr(point: usize, deferred_exprs: &[ExpressionId], block: &mut BlockNode, ast: &mut AstPool) {
-   for (i, expr) in deferred_exprs.iter().rev().copied().enumerate() {
-      let location = ast.expressions[expr].location;
-      let new_stmt = ast.statements.insert(StatementNode {
-         statement: Statement::Expression(deep_clone_expr(expr, &mut ast.expressions)),
-         location,
-      });
+fn insert_deferred_stmt(point: usize, deferred_stmts: &[StatementId], block: &mut BlockNode, ast: &mut AstPool) {
+   for (i, stmt) in deferred_stmts.iter().rev().copied().enumerate() {
+      let new_stmt = deep_clone_stmt(stmt, ast);
       block.statements.insert(point + i, new_stmt);
    }
 }
 
 fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, ast: &mut AstPool) {
-   let deferred_exprs_before = defer_ctx.deferred_exprs.len();
+   let deferred_stmts_before = defer_ctx.deferred_stmts.len();
    let insertion_points_before = defer_ctx.insertion_points.len();
    for (current_stmt, statement) in block.statements.iter().copied().enumerate() {
       defer_statement(statement, defer_ctx, ast, current_stmt);
    }
 
    for point_details in defer_ctx.insertion_points.drain(insertion_points_before..).rev() {
-      let deferred_exprs = match point_details.kind {
-         CfKind::Loop => &defer_ctx.deferred_exprs[defer_ctx.num_exprs_at_loop_begin..point_details.num_exprs_at_point],
-         CfKind::Return => &defer_ctx.deferred_exprs[..point_details.num_exprs_at_point],
+      let deferred_stmts = match point_details.kind {
+         CfKind::Loop => &defer_ctx.deferred_stmts[defer_ctx.num_stmts_at_loop_begin..point_details.num_stmts_at_point],
+         CfKind::Return => &defer_ctx.deferred_stmts[..point_details.num_stmts_at_point],
       };
-      insert_deferred_expr(point_details.insert_at, deferred_exprs, block, ast);
+      insert_deferred_stmt(point_details.insert_at, deferred_stmts, block, ast);
    }
 
    if !block
@@ -64,17 +60,17 @@ fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, ast: &mut As
       .copied()
       .map_or(false, |x| statement_always_returns(x, ast))
    {
-      let deferred_exprs = &defer_ctx.deferred_exprs[deferred_exprs_before..];
-      insert_deferred_expr(block.statements.len(), deferred_exprs, block, ast);
+      let deferred_exprs = &defer_ctx.deferred_stmts[deferred_stmts_before..];
+      insert_deferred_stmt(block.statements.len(), deferred_exprs, block, ast);
    }
 
-   defer_ctx.deferred_exprs.truncate(deferred_exprs_before);
+   defer_ctx.deferred_stmts.truncate(deferred_stmts_before);
 
    block.statements.drain_filter(|x| {
-      if let Statement::Defer(expr_id) = ast.statements[*x].statement {
-         // todo: this is a shallow delete of the expression
+      if let Statement::Defer(stmt_id) = ast.statements[*x].statement {
+         // todo: this is a shallow delete of the stmt
          // we should probably delete deeply or not delete it at all
-         ast.expressions.remove(expr_id);
+         ast.statements.remove(stmt_id);
          ast.statements.remove(*x);
          true
       } else {
@@ -90,14 +86,14 @@ fn defer_statement(statement: StatementId, defer_ctx: &mut DeferContext, ast: &m
       Statement::Return(_) => {
          defer_ctx.insertion_points.push(InsertionPoint {
             insert_at: current_statement,
-            num_exprs_at_point: defer_ctx.deferred_exprs.len(),
+            num_stmts_at_point: defer_ctx.deferred_stmts.len(),
             kind: CfKind::Return,
          });
       }
       Statement::Break | Statement::Continue => {
          defer_ctx.insertion_points.push(InsertionPoint {
             insert_at: current_statement,
-            num_exprs_at_point: defer_ctx.deferred_exprs.len(),
+            num_stmts_at_point: defer_ctx.deferred_stmts.len(),
             kind: CfKind::Loop,
          });
       }
@@ -117,19 +113,70 @@ fn defer_statement(statement: StatementId, defer_ctx: &mut DeferContext, ast: &m
          induction_var: _,
       }
       | Statement::Loop(block) => {
-         let old = defer_ctx.num_exprs_at_loop_begin;
-         defer_ctx.num_exprs_at_loop_begin = defer_ctx.deferred_exprs.len();
+         let old = defer_ctx.num_stmts_at_loop_begin;
+         defer_ctx.num_stmts_at_loop_begin = defer_ctx.deferred_stmts.len();
          defer_block(block, defer_ctx, ast);
-         defer_ctx.num_exprs_at_loop_begin = old;
+         defer_ctx.num_stmts_at_loop_begin = old;
       }
-      Statement::Defer(the_expr) => {
-         defer_ctx.deferred_exprs.push(*the_expr);
+      Statement::Defer(the_stmt) => {
+         defer_ctx.deferred_stmts.push(*the_stmt);
       }
       Statement::Assignment(_, _) => (),
       Statement::Expression(_) => (),
       Statement::VariableDeclaration(_, _, _, _) => (),
    }
    ast.statements[statement].statement = the_statement;
+}
+
+fn deep_clone_block(block: &mut BlockNode, ast: &mut AstPool) {
+   for stmt in block.statements.iter_mut() {
+      *stmt = deep_clone_stmt(*stmt, ast);
+   }
+}
+
+#[must_use]
+fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool) -> StatementId {
+   let mut cloned = ast.statements[stmt].clone();
+   match &mut cloned.statement {
+      Statement::Assignment(lhs, rhs) => {
+         *lhs = deep_clone_expr(*lhs, &mut ast.expressions);
+         *rhs = deep_clone_expr(*rhs, &mut ast.expressions);
+      }
+      Statement::Block(bn) => {
+         deep_clone_block(bn, ast);
+      }
+      Statement::Loop(bn) => {
+         deep_clone_block(bn, ast);
+      }
+      Statement::For {
+         range_start: start,
+         range_end: end,
+         body: bn,
+         ..
+      } => {
+         *start = deep_clone_expr(*start, &mut ast.expressions);
+         *end = deep_clone_expr(*end, &mut ast.expressions);
+         deep_clone_block(bn, ast);
+      }
+      Statement::Continue => (),
+      Statement::Break => (),
+      Statement::Defer(stmt) => {
+         *stmt = deep_clone_stmt(*stmt, ast);
+      }
+      Statement::Expression(expr) => {
+         *expr = deep_clone_expr(*expr, &mut ast.expressions);
+      }
+      Statement::IfElse(cond, then, else_s) => {
+         *cond = deep_clone_expr(*cond, &mut ast.expressions);
+         deep_clone_block(then, ast);
+         *else_s = deep_clone_stmt(*else_s, ast);
+      }
+      Statement::Return(expr) => {
+         *expr = deep_clone_expr(*expr, &mut ast.expressions);
+      }
+      Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
+   }
+   ast.statements.insert(cloned)
 }
 
 #[must_use]

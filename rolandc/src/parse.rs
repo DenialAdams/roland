@@ -291,7 +291,7 @@ pub enum Statement {
    },
    Continue,
    Break,
-   Defer(ExpressionId),
+   Defer(StatementId),
    Expression(ExpressionId),
    IfElse(ExpressionId, BlockNode, StatementId),
    Return(ExpressionId),
@@ -865,6 +865,20 @@ fn parse_block(l: &mut Lexer, parse_context: &mut ParseContext, ast: &mut AstPoo
    })
 }
 
+fn parse_statement(
+   l: &mut Lexer,
+   parse_context: &mut ParseContext,
+   ast: &mut AstPool,
+) -> Result<Option<StatementId>, ()> {
+   if let Some(s) = parse_semicolon_terminated_statement(l, parse_context, ast)? {
+      return Ok(Some(s));
+   }
+   if let Some(s) = parse_blocky_statement(l, parse_context, ast)? {
+      return Ok(Some(s));
+   }
+   Ok(None)
+}
+
 fn parse_semicolon_terminated_statement(
    l: &mut Lexer,
    parse_context: &mut ParseContext,
@@ -892,8 +906,22 @@ fn parse_semicolon_terminated_statement(
       }
       Token::KeywordDefer => {
          let _ = l.next();
-         let e = parse_expression(l, parse_context, false, &mut ast.expressions)?;
-         Statement::Defer(e)
+         let opt_stmt = parse_statement(l, parse_context, ast)?;
+
+         if let Some(stmt) = opt_stmt {
+            return Ok(Some(ast.statements.insert(StatementNode {
+               statement: Statement::Defer(stmt),
+               location: merge_locations(begin_source, ast.statements[stmt].location),
+            })));
+         }
+
+         rolandc_error!(
+            &mut parse_context.err_manager,
+            l.peek_source(),
+            "While parsing defer, encountered unexpected {}; was expecting a statement",
+            l.peek_token().for_parse_err()
+         );
+         return Err(());
       }
       Token::KeywordLet => {
          let _ = l.next();

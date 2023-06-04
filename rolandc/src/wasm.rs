@@ -1027,10 +1027,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
    }
 }
 
-fn get_registers_for_expr(
-   expr_id: ExpressionId,
-   generation_context: &GenerationContext,
-) -> Option<(bool, Range<u32>)> {
+fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &GenerationContext) -> Option<(bool, Range<u32>)> {
    let node = &generation_context.ast.expressions[expr_id];
    match &node.expression {
       Expression::Variable(v) => generation_context
