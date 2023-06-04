@@ -92,18 +92,18 @@ proc count_digits(value: u32) -> u8 {
 }
 
 proc int_to_string(value: u32, buf: &[u8; 10]) -> String {
-   let total_len = count_digits(value) extend usize;
+   let total_len = count_digits(value) as usize;
    let next_digit: u8 = 0;
    let i: usize = 0;
 
    loop {
       if value <= 9 {
-         next_digit = value truncate u8;
+         next_digit = value as u8;
          buf~[total_len - i - 1] = next_digit + 48;
          i = i + 1;
          break;
       }
-      next_digit = (value % 10) truncate u8;
+      next_digit = (value % 10) as u8;
       value = value / 10;
       buf~[total_len - i - 1] = next_digit + 48;
       i = i + 1;

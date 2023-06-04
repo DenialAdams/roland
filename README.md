@@ -164,32 +164,18 @@ proc main() {
 ```
 
 ### Casting
-Casts come in three flavors, all of which are postfix keywords.
+There are two kinds of casts. Both kinds are postfix keywords.
 
-#### Extend
-`extend` is used for casts that have no risk of data loss and are guaranteed to resolve to a valid representation. In the future,`extend` may be inserted implicitly.
+```roland
+x as f32;
+x transmute i32;
+```
 
-Examples:
-- `f32` to `f64`
-- `u8` to `u64`
-- `u8` to `i16`
+#### As
+`as` casts mathematically between numeric types, or from a bool to an integer.
 
 #### Transmute
-`transmute` is used for casts that have no risk of data loss but may not resolve to a valid representation. It carries the restriction that the source and destination type must be the same size.
-
-Examples:
-- `f32` to `u32`
-- `usize` to `&T`
-- `i32` to `u32`
-
-#### Truncate
-`truncate` is used for casts that have a risk of data loss.
-
-Examples:
-- `f64` to `f32`
-- `u64` to `u32`
-- `f32` to `u32`
-- `u32` to `f32`
+`transmute` allows for re-interpreting memory. It carries the restriction that the source and destination type must be of the same size.
 
 ## Compilation Targets
 

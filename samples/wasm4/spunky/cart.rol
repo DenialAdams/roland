@@ -146,13 +146,13 @@ proc reset_game(starting_score: u32) {
 }
 
 proc shade(rgb: u32, shade_factor: f64) -> u32 {
-   let b = ((rgb & 0x0000FF) truncate f64) / 255.0;
-   let g = (((rgb & 0x00FF00) >> 8) truncate f64) / 255.0;
-   let r = (((rgb & 0xFF0000) >> 16) truncate f64) / 255.0;
+   let b = ((rgb & 0x0000FF) as f64) / 255.0;
+   let g = (((rgb & 0x00FF00) >> 8) as f64) / 255.0;
+   let r = (((rgb & 0xFF0000) >> 16) as f64) / 255.0;
 
-   let new_r = ((r * (1.0 - shade_factor)) * 255.0) truncate u32;
-   let new_g = ((g * (1.0 - shade_factor)) * 255.0) truncate u32;
-   let new_b = ((b * (1.0 - shade_factor)) * 255.0) truncate u32;
+   let new_r = ((r * (1.0 - shade_factor)) * 255.0) as u32;
+   let new_g = ((g * (1.0 - shade_factor)) * 255.0) as u32;
+   let new_b = ((b * (1.0 - shade_factor)) * 255.0) as u32;
 
    return (new_r << 16) | (new_b << 8) | new_g;
 }
@@ -189,7 +189,7 @@ proc sim(dt: f64) {
 
       let collidable_tiles: [usize; 30] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
-      let tile_corresponding_to_upper_left_player: usize = ((PLAYER_POSITIONS[p].y / TILE_HEIGHT) truncate usize * 40 + (PLAYER_POSITIONS[p].x / TILE_WIDTH) truncate usize);
+      let tile_corresponding_to_upper_left_player: usize = ((PLAYER_POSITIONS[p].y / TILE_HEIGHT) as usize * 40 + (PLAYER_POSITIONS[p].x / TILE_WIDTH) as usize);
 
       collidable_tiles[0] = tile_corresponding_to_upper_left_player - 82;
       collidable_tiles[1] = tile_corresponding_to_upper_left_player - 81;
@@ -232,8 +232,8 @@ proc sim(dt: f64) {
             continue;
          }
 
-         let x = ((t % 40) * 16) truncate f64;
-         let y = ((t / 40) * 16) truncate f64;
+         let x = ((t % 40) * 16) as f64;
+         let y = ((t / 40) * 16) as f64;
          if rectangles_collide(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y - PLAYER_HEIGHT, PLAYER_WIDTH, PLAYER_HEIGHT, x, y, TILE_WIDTH, TILE_HEIGHT) {
             underneath = true;
             break;
@@ -276,8 +276,8 @@ proc sim(dt: f64) {
             continue;
          }
 
-         let x = ((t % 40) * 16) truncate f64;
-         let y = ((t / 40) * 16) truncate f64;
+         let x = ((t % 40) * 16) as f64;
+         let y = ((t / 40) * 16) as f64;
 
          if rectangles_collide(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y, PLAYER_WIDTH, PLAYER_HEIGHT, x, y, TILE_WIDTH, TILE_HEIGHT) {
             if TILES[t] == Tile::Coin {
@@ -308,7 +308,7 @@ proc sim(dt: f64) {
 
       if (GHOST_IS_PRESENT) {
          // Check if colliding with ghost
-         if rectangles_collide(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y, PLAYER_WIDTH, PLAYER_HEIGHT, GHOST_POSITION.x, GHOST_POSITION.y, GHOST_WIDTH truncate f64, GHOST_HEIGHT truncate f64) {
+         if rectangles_collide(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y, PLAYER_WIDTH, PLAYER_HEIGHT, GHOST_POSITION.x, GHOST_POSITION.y, GHOST_WIDTH as f64, GHOST_HEIGHT as f64) {
                maybe_play_game_over_noise();
                PLAYERS_ALIVE[p] = false;
                break;
@@ -331,8 +331,8 @@ proc sim(dt: f64) {
                   continue;
                }
 
-               let x = ((t % 40) * 16) truncate f64;
-               let y = ((t / 40) * 16) truncate f64;
+               let x = ((t % 40) * 16) as f64;
+               let y = ((t / 40) * 16) as f64;
                if rectangles_collide(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y, PLAYER_WIDTH, PLAYER_HEIGHT, x, y, TILE_WIDTH, TILE_HEIGHT) {
                   if TILES[t] == Tile::Coin {
                      handle_coin_collision(t);
@@ -367,8 +367,8 @@ proc sim(dt: f64) {
                if t >= TILES.length or TILES[t] == Tile::Air {
                   continue;
                }
-               let x = ((t % 40) * 16) truncate f64;
-               let y = ((t / 40) * 16) truncate f64;
+               let x = ((t % 40) * 16) as f64;
+               let y = ((t / 40) * 16) as f64;
                if rectangles_collide(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y, PLAYER_WIDTH, PLAYER_HEIGHT, x, y, TILE_WIDTH, TILE_HEIGHT) {
                   if TILES[t] == Tile::Coin {
                      handle_coin_collision(t);
@@ -414,8 +414,8 @@ proc sim(dt: f64) {
                   continue;
                }
 
-               let x = ((t % 40) * 16) truncate f64;
-               let y = ((t / 40) * 16) truncate f64;
+               let x = ((t % 40) * 16) as f64;
+               let y = ((t / 40) * 16) as f64;
                if rectangles_collide(PLAYER_POSITIONS[p].x, PLAYER_POSITIONS[p].y + 0.1, PLAYER_WIDTH, PLAYER_HEIGHT, x, y, TILE_WIDTH, TILE_HEIGHT) {
                   ontop = true;
                   break;
@@ -498,42 +498,42 @@ proc update() {
    {
       // paranoia: avoid using a local variable to avoid causing desync
       // (although rolandc should properly optimize this now)
-      //let active_player: usize = (NETPLAY~ & 0b11) extend usize;
+      //let active_player: usize = (NETPLAY~ & 0b11) as usize;
       let camera_position = Position {
-         x: PLAYER_POSITIONS[(NETPLAY~ & 0b11) extend usize].x + 5.0,
-         y: PLAYER_POSITIONS[(NETPLAY~ & 0b11) extend usize].y + 8.0,
+         x: PLAYER_POSITIONS[(NETPLAY~ & 0b11) as usize].x + 5.0,
+         y: PLAYER_POSITIONS[(NETPLAY~ & 0b11) as usize].y + 8.0,
       };
-      camera_position.x = PLAYER_POSITIONS[(NETPLAY~ & 0b11) extend usize].x + 5.0;
-      camera_position.y = PLAYER_POSITIONS[(NETPLAY~ & 0b11) extend usize].y + 8.0;
+      camera_position.x = PLAYER_POSITIONS[(NETPLAY~ & 0b11) as usize].x + 5.0;
+      camera_position.y = PLAYER_POSITIONS[(NETPLAY~ & 0b11) as usize].y + 8.0;
 
       let camera_offset_x: f64 = (camera_position.x) - 80.0;
       let camera_offset_y: f64 = (camera_position.y) - 80.0;
 
       for p in 0..ACTIVE_PLAYERS {
-         draw_player((PLAYER_POSITIONS[p].x - camera_offset_x) truncate i32, (PLAYER_POSITIONS[p].y - camera_offset_y) truncate i32, p);
+         draw_player((PLAYER_POSITIONS[p].x - camera_offset_x) as i32, (PLAYER_POSITIONS[p].y - camera_offset_y) as i32, p);
       }
 
       for t in 0..TILES.length {
          let tmp: u16 = DRAW_COLORS~;
          DRAW_COLORS~ = 0x2340;
-         let x = ((t % 40) * 16) truncate f64;
-         let y = ((t / 40) * 16) truncate f64;
+         let x = ((t % 40) * 16) as f64;
+         let y = ((t / 40) * 16) as f64;
          if TILES[t] == Tile::Air {
             continue;
          } else if TILES[t] == Tile::Wall {
-            blit_sub(&BLOCKS[0], (x - camera_offset_x) truncate i32, (y - camera_offset_y) truncate i32, 16, 16, 0, 0, BLOCKS_WIDTH, BLOCKS_FLAGS);
+            blit_sub(&BLOCKS[0], (x - camera_offset_x) as i32, (y - camera_offset_y) as i32, 16, 16, 0, 0, BLOCKS_WIDTH, BLOCKS_FLAGS);
          } else if TILES[t] == Tile::Spike {
-            blit_sub(&SPIKES[0], (x - camera_offset_x) truncate i32, (y - camera_offset_y) truncate i32, 16, 16, 0, 0, SPIKES_WIDTH, SPIKES_FLAGS);
+            blit_sub(&SPIKES[0], (x - camera_offset_x) as i32, (y - camera_offset_y) as i32, 16, 16, 0, 0, SPIKES_WIDTH, SPIKES_FLAGS);
          } else if TILES[t] == Tile::Door {
             if DOING_DOOR {
                let door_spritesheet_x = advance_animation_and_return_x(&DOOR_CYCLE, (1.0/60.0));
-               blit_sub(&DOOR[0], (x - camera_offset_x) truncate i32, (y - camera_offset_y) truncate i32, 16, 16, door_spritesheet_x, 0, DOOR_WIDTH, DOOR_FLAGS);
+               blit_sub(&DOOR[0], (x - camera_offset_x) as i32, (y - camera_offset_y) as i32, 16, 16, door_spritesheet_x, 0, DOOR_WIDTH, DOOR_FLAGS);
             } else {
-               blit_sub(&DOOR[0], (x - camera_offset_x) truncate i32, (y - camera_offset_y) truncate i32, 16, 16, 0, 0, DOOR_WIDTH, DOOR_FLAGS);
+               blit_sub(&DOOR[0], (x - camera_offset_x) as i32, (y - camera_offset_y) as i32, 16, 16, 0, 0, DOOR_WIDTH, DOOR_FLAGS);
             }
          } else if TILES[t] == Tile::Coin {
             let coin_spritesheet_x = advance_animation_and_return_x(&COIN_CYCLE, (1.0/60.0));
-            blit_sub(&COIN[0], (x - camera_offset_x) truncate i32, (y - camera_offset_y) truncate i32, 16, 16, coin_spritesheet_x, 0, COIN_WIDTH, COIN_FLAGS);
+            blit_sub(&COIN[0], (x - camera_offset_x) as i32, (y - camera_offset_y) as i32, 16, 16, coin_spritesheet_x, 0, COIN_WIDTH, COIN_FLAGS);
          }
          DRAW_COLORS~ = tmp;
       }
@@ -543,7 +543,7 @@ proc update() {
       }
    }
 
-   //trace(int_to_string(PLAYER_POSITIONS[p].y truncate u32, &SCORE_BUF));
+   //trace(int_to_string(PLAYER_POSITIONS[p].y as u32, &SCORE_BUF));
 
    // Draw UI
    {
@@ -569,10 +569,10 @@ proc draw_player(player_x: i32, player_y: i32, player_index: usize) {
    // Choose which player sprite to use based on the player index. Then draw the player.
    if (player_index % 2 == 0) {
       DRAW_COLORS~ = 0x0432;
-      blit_sub(&PLAYER_SPRITESHEET[0], player_x - 2 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
+      blit_sub(&PLAYER_SPRITESHEET[0], player_x - 2 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] as u32 << 1));
    } else {
       DRAW_COLORS~ = 0x0324;
-      blit_sub(&PLAYER_2_SPRITESHEET[0], player_x - 2 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] extend u32 << 1));
+      blit_sub(&PLAYER_2_SPRITESHEET[0], player_x - 2 , player_y - 2, 20, 18, current_sprite_x, current_sprite_y, PLAYER_SPRITESHEET_WIDTH, PLAYER_SPRITESHEET_FLAGS | (PLAYERS_FACING_LEFT[player_index] as u32 << 1));
    }
    DRAW_COLORS~ = tmp;
 }
@@ -649,8 +649,8 @@ proc move_ghost(dt: f64) {
 // TODO: add some other color to the ghost to make it stand out.
 proc draw_ghost(camera_offset_x: f64, camera_offset_y: f64) {
    // body
-   let ghost_draw_x = (GHOST_POSITION.x - camera_offset_x) truncate i32;
-   let ghost_draw_y = (GHOST_POSITION.y - camera_offset_y) truncate i32;
+   let ghost_draw_x = (GHOST_POSITION.x - camera_offset_x) as i32;
+   let ghost_draw_y = (GHOST_POSITION.y - camera_offset_y) as i32;
    rect(ghost_draw_x, ghost_draw_y, GHOST_WIDTH, GHOST_HEIGHT);
 
    // eyes

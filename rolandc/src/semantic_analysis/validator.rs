@@ -19,9 +19,7 @@ use crate::parse::{
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, mem_alignment, sizeof_type_mem};
 use crate::source_info::SourceInfo;
-use crate::type_data::{
-   ExpressionType, IntType, IntWidth, F32_TYPE, F64_TYPE, I32_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE,
-};
+use crate::type_data::{ExpressionType, IntType, F32_TYPE, F64_TYPE, I32_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE};
 use crate::Target;
 
 pub struct SpecialProcedure {
@@ -993,61 +991,25 @@ fn get_type(
          }
 
          match cast_type {
-            CastType::Extend => {
-               let valid_cast = match (e_type, target_type) {
-                  (ExpressionType::Int(x), ExpressionType::Int(y)) if x.width == IntWidth::Pointer => {
-                     // going from unsigned -> signed is ok, but signed -> unsigned is not
-                     let bad = x.signed & !y.signed;
-                     (IntWidth::Pointer.as_num_bytes() <= y.width.as_num_bytes()) & !bad
-                  }
-                  (ExpressionType::Int(x), ExpressionType::Int(y)) if y.width == IntWidth::Pointer => {
-                     let bad = x.signed & !y.signed;
-                     (x.width.as_num_bytes() <= IntWidth::Pointer.as_num_bytes()) & !bad
-                  }
-                  (ExpressionType::Int(x), ExpressionType::Int(y)) => {
-                     let bad = x.signed & !y.signed;
-                     (x.width.as_num_bytes() < y.width.as_num_bytes()) & !bad
-                  }
-                  (&F32_TYPE, &F64_TYPE) => true,
-                  (ExpressionType::Bool, ExpressionType::Int(_)) => true,
-                  _ => false,
-               };
+            CastType::As => {
+               let valid_cast = matches!(
+                  (e_type, target_type),
+                  (
+                     ExpressionType::Int(_) | ExpressionType::Float(_) | ExpressionType::Bool,
+                     ExpressionType::Int(_)
+                  ) | (
+                     ExpressionType::Float(_) | ExpressionType::Int(_),
+                     ExpressionType::Float(_)
+                  )
+               );
 
                if valid_cast {
                   target_type.clone()
                } else {
                   rolandc_error_w_details!(
                      err_manager,
-                     &[(expr_location, "extend"), (e.location, "operand")],
-                     "Extend encountered an operand of type {} which can not be extended to type {}",
-                     e_type.as_roland_type_info(validation_context.interner, &validation_context.type_variables),
-                     target_type.as_roland_type_info(validation_context.interner, &validation_context.type_variables),
-                  );
-                  ExpressionType::CompileError
-               }
-            }
-            CastType::Truncate => {
-               let valid_cast = match (e_type, target_type) {
-                  (ExpressionType::Int(x), ExpressionType::Int(y)) if x.width == IntWidth::Pointer => {
-                     IntWidth::Pointer.as_num_bytes() >= y.width.as_num_bytes()
-                  }
-                  (ExpressionType::Int(x), ExpressionType::Int(y)) if y.width == IntWidth::Pointer => {
-                     x.width.as_num_bytes() >= IntWidth::Pointer.as_num_bytes()
-                  }
-                  (ExpressionType::Int(x), ExpressionType::Int(y)) => x.width.as_num_bytes() > y.width.as_num_bytes(),
-                  (&F64_TYPE, &F32_TYPE) => true,
-                  (ExpressionType::Float(_), ExpressionType::Int(_)) => true,
-                  (ExpressionType::Int(_), ExpressionType::Float(_)) => true,
-                  _ => false,
-               };
-
-               if valid_cast {
-                  target_type.clone()
-               } else {
-                  rolandc_error_w_details!(
-                     err_manager,
-                     &[(expr_location, "truncate"), (e.location, "operand")],
-                     "Truncate encountered an operand of type {} which can not be truncated to type {}",
+                     &[(expr_location, "as"), (e.location, "operand")],
+                     "As encountered an operand of type {} which can not be cast to type {}",
                      e_type.as_roland_type_info(validation_context.interner, &validation_context.type_variables),
                      target_type.as_roland_type_info(validation_context.interner, &validation_context.type_variables),
                   );

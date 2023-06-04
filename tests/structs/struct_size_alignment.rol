@@ -7,8 +7,8 @@ proc main() {
   let arr: [X; 2] = [X{a: 0, b: 0}, X{a:0, b:0}];
   let addr1 = (&arr[0]) transmute usize;
   let addr2 = (&arr[1]) transmute usize;
-  println(int_to_string(addr2 extend u64 - addr1 extend u64));
-  println(int_to_string(sizeof$X() extend u64));
+  println(int_to_string(addr2 as u64 - addr1 as u64));
+  println(int_to_string(sizeof$X() as u64));
 }
 __END__
 run:

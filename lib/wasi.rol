@@ -97,21 +97,21 @@ proc f64_to_string(f: f64) -> String {
 
 proc int_to_string(value: u64) -> String {
    let digit_count = count_digits(value);
-   let digit_count_for_loop = digit_count extend usize - 1;
-   let buf = malloc(digit_count extend usize);
+   let digit_count_for_loop = digit_count as usize - 1;
+   let buf = malloc(digit_count as usize);
 
    let next_digit: u8 = 0;
    let i: usize = 0;
 
    loop {
       if value <= 9 {
-         next_digit = value truncate u8;
+         next_digit = value as u8;
          let ptr = ((buf transmute usize) + digit_count_for_loop - i) transmute &u8;
          ptr~ = next_digit + 48;
          i = i + 1;
          break;
       }
-      next_digit = (value % 10) truncate u8;
+      next_digit = (value % 10) as u8;
       value = value / 10;
       let ptr = ((buf transmute usize) + digit_count_for_loop - i) transmute &u8;
       ptr~ = next_digit + 48;
@@ -125,7 +125,7 @@ proc int_to_string(value: u64) -> String {
 }
 
 proc malloc(bytes: usize) -> &u8 {
-   let num_new_pages = (bytes / 65536) + (bytes % 65536 != 0) extend usize;
+   let num_new_pages = (bytes / 65536) + (bytes % 65536 != 0) as usize;
    let current_page_start = wasm_memory_grow(num_new_pages) * 65536;
    return current_page_start transmute &u8;
 }

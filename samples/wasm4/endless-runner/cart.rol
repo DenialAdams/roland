@@ -152,17 +152,17 @@ proc update() {
       let camera_offset_y: f64 = -140.0;
 
       // Draw player
-      rect((PLAYER_X - camera_offset_x) truncate i32, (-PLAYER_Y - camera_offset_y) truncate i32, 10, 20);
+      rect((PLAYER_X - camera_offset_x) as i32, (-PLAYER_Y - camera_offset_y) as i32, 10, 20);
 
       // Draw obstacles
       for i in 0..OBSTACLE_COUNT {
-         rect((OBSTACLES[i].x - camera_offset_x) truncate i32, (-OBSTACLES[i].y - camera_offset_y + 10.0) truncate i32, 10, 10);
+         rect((OBSTACLES[i].x - camera_offset_x) as i32, (-OBSTACLES[i].y - camera_offset_y + 10.0) as i32, 10, 10);
       }
    }
 
    // Draw UI
    {
       text("SCORE: ", 2, 2);
-      text(int_to_string((PLAYER_X / 10.0) truncate u32, &SCORE_BUF), 47, 2);
+      text(int_to_string((PLAYER_X / 10.0) as u32, &SCORE_BUF), 47, 2);
    }
 }

@@ -19,10 +19,10 @@ proc _ryu_f2d(ieeeMantissa: u32, ieeeExponent: u32) -> _ryu_floating_decimal_32 
    let m2: u32 = ___;
    if (ieeeExponent == 0) {
       // We subtract 2 so that the bounds computation has 2 additional bits.
-      e2 = 1 - _RYU_FLOAT_BIAS transmute i32 - _RYU_FLOAT_MANTISSA_BITS transmute i32 - 2;
+      e2 = 1 - _RYU_FLOAT_BIAS as i32 - _RYU_FLOAT_MANTISSA_BITS as i32 - 2;
       m2 = ieeeMantissa;
    } else {
-      e2 = ieeeExponent transmute i32 - _RYU_FLOAT_BIAS transmute i32 - _RYU_FLOAT_MANTISSA_BITS transmute i32 - 2;
+      e2 = ieeeExponent as i32 - _RYU_FLOAT_BIAS as i32 - _RYU_FLOAT_MANTISSA_BITS as i32 - 2;
       m2 = (1 << _RYU_FLOAT_MANTISSA_BITS) | ieeeMantissa;
    }
    let even = (m2 & 1) == 0;
@@ -32,7 +32,7 @@ proc _ryu_f2d(ieeeMantissa: u32, ieeeExponent: u32) -> _ryu_floating_decimal_32 
    let mv: u32 = 4 * m2;
    let mp: u32 = 4 * m2 + 2;
    // Implicit bool -> int conversion. True is 1, false is 0.
-   let mmShift: u32 = (ieeeMantissa != 0 or ieeeExponent <= 1) extend u32;
+   let mmShift: u32 = (ieeeMantissa != 0 or ieeeExponent <= 1) as u32;
    let mm: u32 = 4 * m2 - 1 - mmShift;
 
    // Step 3: Convert to a decimal power base using 64-bit arithmetic.
@@ -45,9 +45,9 @@ proc _ryu_f2d(ieeeMantissa: u32, ieeeExponent: u32) -> _ryu_floating_decimal_32 
    let lastRemovedDigit: u8 = 0;
    if e2 >= 0 {
       let q: u32 = _ryu_log10Pow2(e2);
-      e10 = q transmute i32;
-      let k: i32 = _RYU_FLOAT_POW5_INV_BITCOUNT + _ryu_pow5bits(q transmute i32) - 1;
-      let i: i32 = -e2 + q transmute i32 + k;
+      e10 = q as i32;
+      let k: i32 = _RYU_FLOAT_POW5_INV_BITCOUNT + _ryu_pow5bits(q as i32) - 1;
+      let i: i32 = -e2 + q as i32 + k;
       vr = mulPow5InvDivPow2(mv, q, i);
       vp = mulPow5InvDivPow2(mp, q, i);
       vm = mulPow5InvDivPow2(mm, q, i);
@@ -55,8 +55,8 @@ proc _ryu_f2d(ieeeMantissa: u32, ieeeExponent: u32) -> _ryu_floating_decimal_32 
          // We need to know one removed digit even if we are not going to loop below. We could use
          // q = X - 1 above, except that would require 33 bits for the result, and we've found that
          // 32-bit arithmetic is faster even on 64-bit machines.
-         let l: i32 = _RYU_FLOAT_POW5_INV_BITCOUNT + _ryu_pow5bits((q - 1) transmute i32) - 1;
-         lastRemovedDigit = (mulPow5InvDivPow2(mv, q - 1, -e2 + q transmute i32 - 1 + l) % 10) truncate u8;
+         let l: i32 = _RYU_FLOAT_POW5_INV_BITCOUNT + _ryu_pow5bits((q - 1) as i32) - 1;
+         lastRemovedDigit = (mulPow5InvDivPow2(mv, q - 1, -e2 + q as i32 - 1 + l) % 10) as u8;
       }
       if (q <= 9) {
          // The largest power of 5 that fits in 24 bits is 5^10, but q <= 9 seems to be safe as well.
@@ -66,22 +66,22 @@ proc _ryu_f2d(ieeeMantissa: u32, ieeeExponent: u32) -> _ryu_floating_decimal_32 
          } else if (acceptBounds) {
             vmIsTrailingZeros = multipleOfPowerOf5_32(mm, q);
          } else {
-            vp = vp - multipleOfPowerOf5_32(mp, q) extend u32;
+            vp = vp - multipleOfPowerOf5_32(mp, q) as u32;
          }
       }
    } else {
       let q: u32 = _ryu_log10Pow5(-e2);
-      e10 = q transmute i32 + e2;
-      let i: i32 = -e2 - q transmute i32;
+      e10 = q as i32 + e2;
+      let i: i32 = -e2 - q as i32;
       let k: i32 = _ryu_pow5bits(i) - _RYU_FLOAT_POW5_BITCOUNT;
-      let j: i32 = q transmute i32 - k;
-      vr = mulPow5divPow2(mv, i transmute u32, j);
-      vp = mulPow5divPow2(mp, i transmute u32, j);
-      vm = mulPow5divPow2(mm, i transmute u32, j);
+      let j: i32 = q as i32 - k;
+      vr = mulPow5divPow2(mv, i as u32, j);
+      vp = mulPow5divPow2(mp, i as u32, j);
+      vm = mulPow5divPow2(mm, i as u32, j);
 
     if (q != 0 and (vp - 1) / 10 <= vm / 10) {
-      j = q transmute i32 - 1 - (_ryu_pow5bits(i + 1) - _RYU_FLOAT_POW5_BITCOUNT);
-      lastRemovedDigit = (mulPow5divPow2(mv, (i + 1) transmute u32, j) % 10) truncate u8;
+      j = q as i32 - 1 - (_ryu_pow5bits(i + 1) - _RYU_FLOAT_POW5_BITCOUNT);
+      lastRemovedDigit = (mulPow5divPow2(mv, (i + 1) as u32, j) % 10) as u8;
     }
     if (q <= 1) {
       // {vr,vp,vm} is trailing zeros if {mv,mp,mm} has at least q trailing 0 bits.
@@ -110,7 +110,7 @@ proc _ryu_f2d(ieeeMantissa: u32, ieeeExponent: u32) -> _ryu_floating_decimal_32 
       }
       vmIsTrailingZeros = vmIsTrailingZeros & (vm % 10 == 0);
       vrIsTrailingZeros = vrIsTrailingZeros & (lastRemovedDigit == 0);
-      lastRemovedDigit = (vr % 10) truncate u8;
+      lastRemovedDigit = (vr % 10) as u8;
       vr = vr / 10;
       vp = vp / 10;
       vm = vm / 10;
@@ -122,7 +122,7 @@ proc _ryu_f2d(ieeeMantissa: u32, ieeeExponent: u32) -> _ryu_floating_decimal_32 
           break;
         } 
         vrIsTrailingZeros = vrIsTrailingZeros & (lastRemovedDigit == 0);
-        lastRemovedDigit = (vr % 10) truncate u8;
+        lastRemovedDigit = (vr % 10) as u8;
         vr = vr / 10;
         vp = vp / 10;
         vm = vm / 10;
@@ -134,7 +134,7 @@ proc _ryu_f2d(ieeeMantissa: u32, ieeeExponent: u32) -> _ryu_floating_decimal_32 
       lastRemovedDigit = 4;
     }
     // We need to take vr + 1 if vr is outside bounds or we need to round up.
-    output = vr + ((vr == vm and (!acceptBounds or !vmIsTrailingZeros)) or lastRemovedDigit >= 5) extend u32;
+    output = vr + ((vr == vm and (!acceptBounds or !vmIsTrailingZeros)) or lastRemovedDigit >= 5) as u32;
   } else {
     // Specialized for the common case (~96.0%). Percentages below are relative to this.
     // Loop iterations below (approximately):
@@ -143,14 +143,14 @@ proc _ryu_f2d(ieeeMantissa: u32, ieeeExponent: u32) -> _ryu_floating_decimal_32 
       if !(vp / 10 > vm / 10) {
         break;
       }
-      lastRemovedDigit = (vr % 10) truncate u8;
+      lastRemovedDigit = (vr % 10) as u8;
       vr = vr / 10;
       vp = vp / 10;
       vm = vm / 10;
       removed = removed + 1;
     }
     // We need to take vr + 1 if vr is outside bounds or we need to round up.
-    output = vr + (vr == vm or lastRemovedDigit >= 5) extend u32;
+    output = vr + (vr == vm or lastRemovedDigit >= 5) as u32;
   }
   let exp: i32 = e10 + removed;
 
@@ -187,29 +187,29 @@ proc _ryu_f2s_to_chars(v: _ryu_floating_decimal_32, sign: bool, result: &u8) -> 
       output = output / 10000;
       let c0: u32 = (c % 100) << 1;
       let c1: u32 = (c / 100) << 1;
-      _ryu_memcpy(_ryu_offset_ptr_forward(result, index + (olength extend usize) - (i extend usize) - 1), &_RYU_DIGIT_TABLE[c0 extend usize], 2);
-      _ryu_memcpy(_ryu_offset_ptr_forward(result, index + (olength extend usize) - (i extend usize) - 3), &_RYU_DIGIT_TABLE[c1 extend usize], 2);
+      _ryu_memcpy(_ryu_offset_ptr_forward(result, index + (olength as usize) - (i as usize) - 1), &_RYU_DIGIT_TABLE[c0 as usize], 2);
+      _ryu_memcpy(_ryu_offset_ptr_forward(result, index + (olength as usize) - (i as usize) - 3), &_RYU_DIGIT_TABLE[c1 as usize], 2);
       i = i + 4;
    }
    if (output >= 100) {
       let c: u32 = (output % 100) << 1;
       output = output / 100;
-      _ryu_memcpy(_ryu_offset_ptr_forward(result, index + (olength extend usize) - (i extend usize) - 1), &_RYU_DIGIT_TABLE[c extend usize], 2);
+      _ryu_memcpy(_ryu_offset_ptr_forward(result, index + (olength as usize) - (i as usize) - 1), &_RYU_DIGIT_TABLE[c as usize], 2);
       i = i + 2;
    }
    if output >= 10 {
       let c: u32 = output << 1;
       // We can't use _ryu_memcpy here: the decimal dot goes between these two digits.
-      _ryu_offset_ptr_forward(result, index + olength extend usize - i extend usize)~ = _RYU_DIGIT_TABLE[c extend usize + 1];
-      _ryu_offset_ptr_forward(result, index)~ = _RYU_DIGIT_TABLE[c extend usize];
+      _ryu_offset_ptr_forward(result, index + olength as usize - i as usize)~ = _RYU_DIGIT_TABLE[c as usize + 1];
+      _ryu_offset_ptr_forward(result, index)~ = _RYU_DIGIT_TABLE[c as usize];
    } else {
-      _ryu_offset_ptr_forward(result, index)~ = "0".pointer~ + output truncate u8;
+      _ryu_offset_ptr_forward(result, index)~ = "0".pointer~ + output as u8;
    }
 
    // Print decimal point if needed.
    if (olength > 1) {
       _ryu_offset_ptr_forward(result, index + 1)~ = ".".pointer~;
-      index = index + olength extend usize + 1;
+      index = index + olength as usize + 1;
    } else {
       index = index + 1;
    }
@@ -217,7 +217,7 @@ proc _ryu_f2s_to_chars(v: _ryu_floating_decimal_32, sign: bool, result: &u8) -> 
    // Print the exponent.
    _ryu_offset_ptr_forward(result, index)~ = "E".pointer~;
    index = index + 1;
-   let exp: i32 = v.exponent + olength transmute i32 - 1;
+   let exp: i32 = v.exponent + olength as i32 - 1;
    if (exp < 0) {
       _ryu_offset_ptr_forward(result, index)~ = "-".pointer~;
       index = index + 1;
@@ -225,10 +225,10 @@ proc _ryu_f2s_to_chars(v: _ryu_floating_decimal_32, sign: bool, result: &u8) -> 
    }
 
    if (exp >= 10) {
-      _ryu_memcpy(_ryu_offset_ptr_forward(result, index), &_RYU_DIGIT_TABLE[(2 * exp) transmute u32 extend usize], 2);
+      _ryu_memcpy(_ryu_offset_ptr_forward(result, index), &_RYU_DIGIT_TABLE[(2 * exp) as usize], 2);
       index = index + 2;
    } else {
-      _ryu_offset_ptr_forward(result, index)~ = "0".pointer~ + exp truncate u8;
+      _ryu_offset_ptr_forward(result, index)~ = "0".pointer~ + exp as u8;
       index = index + 1;
    }
 

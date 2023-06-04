@@ -718,13 +718,16 @@ fn fold_expr_inner(
       Expression::Cast { cast_type, expr, .. } => {
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
 
-         let expr = &folding_context.ast.expressions[*expr];
+         let operand = &folding_context.ast.expressions[*expr];
 
-         if let Some(literal) = extract_literal(expr) {
+         if expr_type == operand.exp_type.as_ref().unwrap() {
+            return Some(operand.expression.clone());
+         }
+
+         if let Some(literal) = extract_literal(operand) {
             match cast_type {
                CastType::Transmute => literal.transmute(expr_type),
-               CastType::Extend => literal.extend(expr_type),
-               CastType::Truncate => literal.truncate(expr_type),
+               CastType::As => literal.do_as(expr_type),
             }
          } else {
             None
@@ -986,19 +989,17 @@ impl Literal {
       })
    }
 
-   fn extend(self, target_type: &ExpressionType) -> Option<Expression> {
+   fn do_as(self, target_type: &ExpressionType) -> Option<Expression> {
       Some(match (self, target_type) {
-         (Literal::Float64(f), &ExpressionType::Float(_)) => Expression::FloatLiteral(f),
-         (Literal::Float32(f), &ExpressionType::Float(_)) => Expression::FloatLiteral(f64::from(f)),
-         (Literal::Int64(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
+         (Literal::Int64(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes() >= 8 => Expression::IntLiteral {
             val: i as u64,
             synthetic: true,
          },
-         (Literal::Int32(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
+         (Literal::Int32(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes() >= 4 => Expression::IntLiteral {
             val: i64::from(i) as u64,
             synthetic: true,
          },
-         (Literal::Int16(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
+         (Literal::Int16(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes() >= 2 => Expression::IntLiteral {
             val: i64::from(i) as u64,
             synthetic: true,
          },
@@ -1006,15 +1007,15 @@ impl Literal {
             val: i64::from(i) as u64,
             synthetic: true,
          },
-         (Literal::Uint64(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
+         (Literal::Uint64(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes() >= 8 => Expression::IntLiteral {
             val: i,
             synthetic: true,
          },
-         (Literal::Uint32(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
+         (Literal::Uint32(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes() >= 4 => Expression::IntLiteral {
             val: u64::from(i),
             synthetic: true,
          },
-         (Literal::Uint16(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
+         (Literal::Uint16(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes() >= 2 => Expression::IntLiteral {
             val: u64::from(i),
             synthetic: true,
          },
@@ -1022,13 +1023,8 @@ impl Literal {
             val: u64::from(i),
             synthetic: true,
          },
-         _ => return None,
-      })
-   }
-
-   fn truncate(self, target_type: &ExpressionType) -> Option<Expression> {
-      Some(match (self, target_type) {
          (Literal::Float64(f), &F32_TYPE) => Expression::FloatLiteral(f64::from(f as f32)),
+         (Literal::Float32(f), &F64_TYPE) => Expression::FloatLiteral(f64::from(f)),
          (Literal::Uint64(i), &U32_TYPE) => Expression::IntLiteral {
             val: u64::from(i as u32),
             synthetic: true,

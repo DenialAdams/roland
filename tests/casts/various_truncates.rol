@@ -1,13 +1,13 @@
 proc main() {
    // int to float
    let x: u64 = 123;
-   let y = x truncate f64;
+   let y = x as f64;
    println_bool(y < 124.0);
    println_bool(y >= 123.0);
 
    // float to float
    let fz: f64 = 123.0;
-   let fz_2 = fz truncate f32;
+   let fz_2 = fz as f32;
    println_bool(fz_2 < 124.0);
    println_bool(fz_2 >= 123.0);
 }

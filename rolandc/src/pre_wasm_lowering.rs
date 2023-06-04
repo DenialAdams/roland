@@ -5,16 +5,16 @@ use crate::parse::{Expression, ExpressionNode, Program};
 use crate::semantic_analysis::EnumInfo;
 use crate::type_data::{ExpressionType, IntWidth, USIZE_TYPE};
 
-fn lower_type(the_enum_type: &mut ExpressionType, enum_info: &IndexMap<StrId, EnumInfo>) {
-   match the_enum_type {
+fn lower_type(the_type: &mut ExpressionType, enum_info: &IndexMap<StrId, EnumInfo>) {
+   match the_type {
       ExpressionType::Enum(a) => {
-         *the_enum_type = enum_info.get(a).unwrap().base_type.clone();
+         *the_type = enum_info.get(a).unwrap().base_type.clone();
       }
       ExpressionType::Array(inner_type, _) => {
          lower_type(inner_type, enum_info);
       }
       ExpressionType::Pointer(_) => {
-         *the_enum_type = USIZE_TYPE;
+         *the_type = USIZE_TYPE;
       }
       ExpressionType::Int(it) => {
          if it.width == IntWidth::Pointer {

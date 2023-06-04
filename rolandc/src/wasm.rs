@@ -1614,39 +1614,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          }
       }
       Expression::Cast {
-         cast_type: CastType::Extend,
-         target_type,
-         expr: e,
-      } => {
-         do_emit_and_load_lval(*e, generation_context);
-
-         let e = &generation_context.ast.expressions[*e];
-
-         let (source_width, source_is_signed) = match e.exp_type.as_ref().unwrap() {
-            ExpressionType::Int(x) => (x.width.as_num_bytes(), x.signed),
-            ExpressionType::Bool => (1, false),
-            ExpressionType::Float(_) => (1, false), // unused
-            _ => unreachable!(),
-         };
-
-         match target_type {
-            ExpressionType::Int(x) if x.width == IntWidth::Eight && source_width <= 4 => {
-               if source_is_signed {
-                  generation_context.active_fcn.instruction(&Instruction::I64ExtendI32S);
-               } else {
-                  generation_context.active_fcn.instruction(&Instruction::I64ExtendI32U);
-               }
-            }
-            ExpressionType::Int(_) => {
-               // nop
-            }
-            ExpressionType::Float(_) => {
-               generation_context.active_fcn.instruction(&Instruction::F64PromoteF32);
-            }
-            _ => unreachable!(),
-         }
-      }
-      Expression::Cast {
          cast_type: CastType::Transmute,
          expr: e_id,
          ..
@@ -1706,101 +1673,123 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          }
       }
       Expression::Cast {
-         cast_type: CastType::Truncate,
+         cast_type: CastType::As,
          expr: e,
          ..
       } => {
          do_emit_and_load_lval(*e, generation_context);
-         let target_type = expr_node.exp_type.as_ref().unwrap();
 
          let e = &generation_context.ast.expressions[*e];
 
-         if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Int(_))
-            && matches!(target_type, ExpressionType::Int(_))
-         {
-            // 8bytes -> (4, 2, 1) bytes is a wrap
-            // anything else is a nop
+         let src_type = e.exp_type.as_ref().unwrap();
+         let target_type = expr_node.exp_type.as_ref().unwrap();
 
-            if sizeof_type_wasm(
-               e.exp_type.as_ref().unwrap(),
-               generation_context.enum_info,
-               generation_context.struct_size_info,
-            ) > 4
-               && sizeof_type_wasm(
-                  target_type,
+         if src_type == target_type {
+            return;
+         }
+
+         match (src_type, target_type) {
+            (ExpressionType::Int(l), ExpressionType::Int(r)) if l.width.as_num_bytes() >= r.width.as_num_bytes() => {
+               if sizeof_type_wasm(
+                  e.exp_type.as_ref().unwrap(),
                   generation_context.enum_info,
                   generation_context.struct_size_info,
-               ) <= 4
-            {
-               generation_context.active_fcn.instruction(&Instruction::I32WrapI64);
-            }
-         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Float(_))
-            && matches!(target_type, ExpressionType::Int(_))
-         {
-            // float -> int
-            // i32.trunc_f32_s
-            let (target_type_wasm, signed) = match target_type {
-               ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
-               _ => unreachable!(),
-            };
-            let src_type = type_to_wasm_type_basic(e.exp_type.as_ref().unwrap());
-            match src_type {
-               ValType::F64 => {
-                  match (target_type_wasm, signed) {
-                     (ValType::I64, true) => generation_context.active_fcn.instruction(&Instruction::I64TruncF64S),
-                     (ValType::I64, false) => generation_context.active_fcn.instruction(&Instruction::I64TruncF64U),
-                     (ValType::I32, true) => generation_context.active_fcn.instruction(&Instruction::I32TruncF64S),
-                     (ValType::I32, false) => generation_context.active_fcn.instruction(&Instruction::I32TruncF64U),
-                     _ => unreachable!(),
-                  };
+               ) > 4
+                  && sizeof_type_wasm(
+                     target_type,
+                     generation_context.enum_info,
+                     generation_context.struct_size_info,
+                  ) <= 4
+               {
+                  generation_context.active_fcn.instruction(&Instruction::I32WrapI64);
                }
-               ValType::F32 => {
-                  match (target_type_wasm, signed) {
-                     (ValType::I64, true) => generation_context.active_fcn.instruction(&Instruction::I64TruncF32S),
-                     (ValType::I64, false) => generation_context.active_fcn.instruction(&Instruction::I64TruncF32U),
-                     (ValType::I32, true) => generation_context.active_fcn.instruction(&Instruction::I32TruncF32S),
-                     (ValType::I32, false) => generation_context.active_fcn.instruction(&Instruction::I32TruncF32U),
-                     _ => unreachable!(),
-                  };
-               }
-               _ => unreachable!(),
             }
-         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Int(_))
-            && matches!(target_type, ExpressionType::Float(_))
-         {
-            // int -> float
-            let target_type_wasm = type_to_wasm_type_basic(target_type);
+            (ExpressionType::Int(l), ExpressionType::Int(r)) if l.width.as_num_bytes() < r.width.as_num_bytes() => {
+               if r.width == IntWidth::Eight && l.width.as_num_bytes() <= 4 {
+                  if l.signed {
+                     generation_context.active_fcn.instruction(&Instruction::I64ExtendI32S);
+                  } else {
+                     generation_context.active_fcn.instruction(&Instruction::I64ExtendI32U);
+                  }
+               }
+            }
+            (&F64_TYPE, &F32_TYPE) => {
+               generation_context.active_fcn.instruction(&Instruction::F32DemoteF64);
+            }
+            (&F32_TYPE, &F64_TYPE) => {
+               generation_context.active_fcn.instruction(&Instruction::F64PromoteF32);
+            }
+            (ExpressionType::Float(_), ExpressionType::Int(_)) => {
+               let (target_type_wasm, signed) = match target_type {
+                  ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
+                  _ => unreachable!(),
+               };
+               let src_type = type_to_wasm_type_basic(e.exp_type.as_ref().unwrap());
+               match src_type {
+                  ValType::F64 => {
+                     match (target_type_wasm, signed) {
+                        (ValType::I64, true) => generation_context.active_fcn.instruction(&Instruction::I64TruncF64S),
+                        (ValType::I64, false) => generation_context.active_fcn.instruction(&Instruction::I64TruncF64U),
+                        (ValType::I32, true) => generation_context.active_fcn.instruction(&Instruction::I32TruncF64S),
+                        (ValType::I32, false) => generation_context.active_fcn.instruction(&Instruction::I32TruncF64U),
+                        _ => unreachable!(),
+                     };
+                  }
+                  ValType::F32 => {
+                     match (target_type_wasm, signed) {
+                        (ValType::I64, true) => generation_context.active_fcn.instruction(&Instruction::I64TruncF32S),
+                        (ValType::I64, false) => generation_context.active_fcn.instruction(&Instruction::I64TruncF32U),
+                        (ValType::I32, true) => generation_context.active_fcn.instruction(&Instruction::I32TruncF32S),
+                        (ValType::I32, false) => generation_context.active_fcn.instruction(&Instruction::I32TruncF32U),
+                        _ => unreachable!(),
+                     };
+                  }
+                  _ => unreachable!(),
+               }
+            }
+            (ExpressionType::Int(_), ExpressionType::Float(_)) => {
+               let target_type_wasm = type_to_wasm_type_basic(target_type);
 
-            let (src_type, signed) = match e.exp_type.as_ref().unwrap() {
-               ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
-               _ => unreachable!(),
-            };
-            match target_type_wasm {
-               ValType::F64 => {
-                  match (src_type, signed) {
-                     (ValType::I64, true) => generation_context.active_fcn.instruction(&Instruction::F64ConvertI64S),
-                     (ValType::I64, false) => generation_context.active_fcn.instruction(&Instruction::F64ConvertI64U),
-                     (ValType::I32, true) => generation_context.active_fcn.instruction(&Instruction::F64ConvertI32S),
-                     (ValType::I32, false) => generation_context.active_fcn.instruction(&Instruction::F64ConvertI32U),
-                     _ => unreachable!(),
-                  };
+               let (src_type, signed) = match e.exp_type.as_ref().unwrap() {
+                  ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
+                  _ => unreachable!(),
+               };
+               match target_type_wasm {
+                  ValType::F64 => {
+                     match (src_type, signed) {
+                        (ValType::I64, true) => generation_context.active_fcn.instruction(&Instruction::F64ConvertI64S),
+                        (ValType::I64, false) => {
+                           generation_context.active_fcn.instruction(&Instruction::F64ConvertI64U)
+                        }
+                        (ValType::I32, true) => generation_context.active_fcn.instruction(&Instruction::F64ConvertI32S),
+                        (ValType::I32, false) => {
+                           generation_context.active_fcn.instruction(&Instruction::F64ConvertI32U)
+                        }
+                        _ => unreachable!(),
+                     };
+                  }
+                  ValType::F32 => {
+                     match (src_type, signed) {
+                        (ValType::I64, true) => generation_context.active_fcn.instruction(&Instruction::F32ConvertI64S),
+                        (ValType::I64, false) => {
+                           generation_context.active_fcn.instruction(&Instruction::F32ConvertI64U)
+                        }
+                        (ValType::I32, true) => generation_context.active_fcn.instruction(&Instruction::F32ConvertI32S),
+                        (ValType::I32, false) => {
+                           generation_context.active_fcn.instruction(&Instruction::F32ConvertI32U)
+                        }
+                        _ => unreachable!(),
+                     };
+                  }
+                  _ => unreachable!(),
                }
-               ValType::F32 => {
-                  match (src_type, signed) {
-                     (ValType::I64, true) => generation_context.active_fcn.instruction(&Instruction::F32ConvertI64S),
-                     (ValType::I64, false) => generation_context.active_fcn.instruction(&Instruction::F32ConvertI64U),
-                     (ValType::I32, true) => generation_context.active_fcn.instruction(&Instruction::F32ConvertI32S),
-                     (ValType::I32, false) => generation_context.active_fcn.instruction(&Instruction::F32ConvertI32U),
-                     _ => unreachable!(),
-                  };
-               }
-               _ => unreachable!(),
             }
-         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Float(_))
-            && matches!(target_type, ExpressionType::Float(_))
-         {
-            // f64 -> f32
-            generation_context.active_fcn.instruction(&Instruction::F32DemoteF64);
+            (ExpressionType::Bool, ExpressionType::Int(i)) => {
+               if i.width == IntWidth::Eight {
+                  generation_context.active_fcn.instruction(&Instruction::I64ExtendI32U);
+               }
+            }
+            _ => unreachable!(),
          }
       }
       Expression::Variable(id) => {

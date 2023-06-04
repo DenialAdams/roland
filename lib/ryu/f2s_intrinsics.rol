@@ -33,21 +33,21 @@ proc mulShift32(m: u32, factor: u64, shift: i32) -> u32 {
 
   // The casts here help MSVC to avoid calls to the __allmul library
   // function.
-  let factorLo: u32 = factor truncate u32;
-  let factorHi: u32 = (factor >> 32) truncate u32;
-  let bits0: u64 = m extend u64 * factorLo extend u64;
-  let bits1: u64 = m extend u64 * factorHi extend u64;
+  let factorLo: u32 = factor as u32;
+  let factorHi: u32 = (factor >> 32) as u32;
+  let bits0: u64 = m as u64 * factorLo as u64;
+  let bits1: u64 = m as u64 * factorHi as u64;
 
   let sum: u64  = (bits0 >> 32) + bits1;
-  let shiftedSum: u64 = sum >> (shift - 32) transmute u32 extend u64;
-  assert(shiftedSum <= U32_MAX extend u64);
-  return shiftedSum truncate u32;
+  let shiftedSum: u64 = sum >> (shift - 32) as u64;
+  assert(shiftedSum <= U32_MAX as u64);
+  return shiftedSum as u32;
 }
 
 proc mulPow5InvDivPow2(m: u32, q: u32, j: i32) -> u32 {
-  return mulShift32(m, _RYU_FLOAT_POW5_INV_SPLIT[q extend usize], j);
+  return mulShift32(m, _RYU_FLOAT_POW5_INV_SPLIT[q as usize], j);
 }
 
 proc mulPow5divPow2(m: u32, i: u32, j: i32) -> u32 {
-  return mulShift32(m, _RYU_FLOAT_POW5_SPLIT[i extend usize], j);
+  return mulShift32(m, _RYU_FLOAT_POW5_SPLIT[i as usize], j);
 }

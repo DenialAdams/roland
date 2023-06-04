@@ -53,7 +53,7 @@ proc advance_animation_and_return_x(anim_cycle: &AnimationCycle, seconds_to_adva
       ratio =  (anim_cycle~.current_time_in_animation_seconds/anim_cycle~.animation_length_seconds);
    }
 
-   let sprite_index = ((ratio * (anim_cycle~.animation_sprites -1) truncate f64) truncate i32);
+   let sprite_index = ((ratio * (anim_cycle~.animation_sprites -1) as f64) as i32);
    let x = anim_cycle~.starting_animation_x + anim_cycle~.offset_between_sprites*sprite_index;
    return x;
 }

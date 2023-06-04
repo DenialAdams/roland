@@ -1,0 +1,14 @@
+proc main() {
+   let x: u32 = 123;
+   let foo = "hello";
+   let y = x as &String;
+   let q = foo as u64;
+}
+__END__
+compile:
+As encountered an operand of type u32 which can not be cast to type &String
+↳ as @ line 4, column 12 [tests/casts/bad_as.rol]
+↳ operand @ line 4, column 12 [tests/casts/bad_as.rol]
+As encountered an operand of type String which can not be cast to type u64
+↳ as @ line 5, column 12 [tests/casts/bad_as.rol]
+↳ operand @ line 5, column 12 [tests/casts/bad_as.rol]

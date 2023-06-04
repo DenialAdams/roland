@@ -173,8 +173,7 @@ pub struct ExpressionNode {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CastType {
-   Extend,
-   Truncate,
+   As,
    Transmute,
 }
 
@@ -1506,8 +1505,7 @@ fn pratt(
          | Token::Pipe
          | Token::Caret
          | Token::NotEquality
-         | Token::KeywordExtend
-         | Token::KeywordTruncate
+         | Token::KeywordAs
          | Token::KeywordTransmute
          | Token::Deref
          | Token::OpenSquareBracket
@@ -1567,25 +1565,12 @@ fn pratt(
                   expressions,
                )
             }
-            Token::KeywordExtend => {
+            Token::KeywordAs => {
                let a_type = parse_type(l, parse_context)?;
                let combined_location = merge_locations(begin_source, a_type.location);
                wrap(
                   Expression::Cast {
-                     cast_type: CastType::Extend,
-                     target_type: a_type.e_type,
-                     expr: lhs,
-                  },
-                  combined_location,
-                  expressions,
-               )
-            }
-            Token::KeywordTruncate => {
-               let a_type = parse_type(l, parse_context)?;
-               let combined_location = merge_locations(begin_source, a_type.location);
-               wrap(
-                  Expression::Cast {
-                     cast_type: CastType::Truncate,
+                     cast_type: CastType::As,
                      target_type: a_type.e_type,
                      expr: lhs,
                   },
@@ -1679,8 +1664,7 @@ fn postfix_binding_power(op: Token) -> Option<(u8, ())> {
    match &op {
       Token::OpenParen => Some((21, ())),
       Token::OpenSquareBracket => Some((21, ())),
-      Token::KeywordExtend => Some((18, ())),
-      Token::KeywordTruncate => Some((18, ())),
+      Token::KeywordAs => Some((18, ())),
       Token::KeywordTransmute => Some((18, ())),
       Token::Deref => Some((20, ())),
       _ => None,

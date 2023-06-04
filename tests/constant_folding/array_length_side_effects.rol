@@ -9,8 +9,8 @@ proc main() {
       y: [1, 2]
    }.y.length;
    let b = foo([getTrue(), false].length).length;
-   println(int_to_string(a extend u64));
-   println(int_to_string(b extend u64));
+   println(int_to_string(a as u64));
+   println(int_to_string(b as u64));
 }
 
 proc getTrue() -> bool {

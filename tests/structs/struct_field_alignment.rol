@@ -15,7 +15,7 @@ proc main() {
    let address = &a.y transmute usize;
    let aligned = (address % 8) == 0;
    println_bool(aligned);
-   println(int_to_string(sizeof$BadAlignment() extend u64));
+   println(int_to_string(sizeof$BadAlignment() as u64));
 }
 __END__
 run:

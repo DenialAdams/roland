@@ -272,7 +272,7 @@ proc make_maps() {
 proc carve_path() {
    let starting_cell = rand_range(0, 3);
 
-   let current_cell = starting_cell truncate i32;
+   let current_cell = starting_cell as i32;
    let ending_cell = current_cell;
 
    let LEFT_EXIT: u8 = 1;
@@ -387,23 +387,23 @@ proc carve_path() {
 
       let map = DROP_ROOMS[0];
       if is_drop {
-         let drop_map = rand_range(0, (DROP_ROOMS.length - 1) extend u64);
-         map = DROP_ROOMS[drop_map truncate usize];
+         let drop_map = rand_range(0, (DROP_ROOMS.length - 1) as u64);
+         map = DROP_ROOMS[drop_map as usize];
        } else if is_landing {
-         let landing_map = rand_range(0, (LANDING_ROOMS.length - 1) extend u64);
-         map = LANDING_ROOMS[landing_map truncate usize];
+         let landing_map = rand_range(0, (LANDING_ROOMS.length - 1) as u64);
+         map = LANDING_ROOMS[landing_map as usize];
       } else if is_hallway {
-         let hallway_map = rand_range(0, (HALLWAY_ROOMS.length - 1) extend u64);
-         map = HALLWAY_ROOMS[hallway_map truncate usize];
+         let hallway_map = rand_range(0, (HALLWAY_ROOMS.length - 1) as u64);
+         map = HALLWAY_ROOMS[hallway_map as usize];
       } else {
          map = BONUS_ROOMS[0];
       }
 
-      if cell_i == starting_cell truncate usize {
+      if cell_i == starting_cell as usize {
          // set the player spawn position
          let start_tile: usize = 0;
          loop {
-            let test_tile = rand_range(10, map.length extend u64) truncate usize;
+            let test_tile = rand_range(10, map.length as u64) as usize;
 
             if test_tile % 10 == 0 or test_tile % 10 == 9 {
                continue;
@@ -418,8 +418,8 @@ proc carve_path() {
          let c_offset = (start_tile / 10) * 40;
          let r_offset = (start_tile % 10);
          let final = start_index + c_offset + r_offset;
-         let x = ((final % 40) * 16) truncate f64;
-         let y = ((final / 40) * 16) truncate f64;
+         let x = ((final % 40) * 16) as f64;
+         let y = ((final / 40) * 16) as f64;
          for i in 0..PLAYER_POSITIONS.length {
             PLAYER_POSITIONS[i].x = x;
             PLAYER_POSITIONS[i].y = y;
@@ -429,7 +429,7 @@ proc carve_path() {
       if cell_i == ending_cell transmute usize {
          // stick an exit into the map
          loop {
-            let test_tile = rand_range(10, map.length extend u64) truncate usize;
+            let test_tile = rand_range(10, map.length as u64) as usize;
 
             if test_tile % 10 == 0 or test_tile % 10 == 9 {
                continue;

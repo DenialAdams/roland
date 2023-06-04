@@ -3,13 +3,13 @@ proc upd() {
 
    loop {
       let t: f32 = time() * 63.0;
-      let x: f32 = (i % 320 - 160) truncate f32;
-      let y: f32 = (i / 320 - 120) truncate f32;
+      let x: f32 = (i % 320 - 160) as f32;
+      let y: f32 = (i / 320 - 120) as f32;
       let d: f32 = 40000.0 / sqrt_32(x * x + y * y);
       let u: f32 = atan2(x, y) * 512.0 / 3.141;
 
       // store the u8 as an intermediate to force visible truncating. see issue #41
-      let bug = ((d + t * 2.0) truncate i32 ^ (u + t) truncate i32) truncate u8;
+      let bug = ((d + t * 2.0) as i32 ^ (u + t) as i32) as u8;
       let c: u8 = bug >> 4;
       
       FRAMEBUFFER~[i transmute usize] = c;

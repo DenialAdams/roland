@@ -1,17 +1,17 @@
 proc main() {
    let x: u8 = 123;
-   let y = x extend u16;
-   let z = x extend u32;
-   let q = x extend u64;
-   println_bool(z == y extend u32);
-   println_bool(q == y extend u64);
-   let bint_true = true extend u32;
-   let bint_false = false extend u32;
+   let y = x as u16;
+   let z = x as u32;
+   let q = x as u64;
+   println_bool(z == y as u32);
+   println_bool(q == y as u64);
+   let bint_true = true as u32;
+   let bint_false = false as u32;
    println_bool(bint_true == 1);
    println_bool(bint_false == 0);
 
    let a: f32 = 123.0;
-   let b = a extend f64;
+   let b = a as f64;
    println_bool(b == 123.0);
 }
 __END__

@@ -1,28 +1,28 @@
 proc _ryu_umul128(a: u64, b: u64, productHi: &u64) -> u64 {
    // The casts here help MSVC to avoid calls to the __allmul library function.
-   let aLo: u32 = a truncate u32;
-   let aHi: u32 = (a >> 32) truncate u32;
-   let bLo: u32 = b truncate u32;
-   let bHi: u32 = (b >> 32) truncate u32;
+   let aLo: u32 = a as u32;
+   let aHi: u32 = (a >> 32) as u32;
+   let bLo: u32 = b as u32;
+   let bHi: u32 = (b >> 32) as u32;
 
-   let b00: u64 = aLo extend u64 * bLo extend u64;
-   let b01: u64 = aLo extend u64 * bHi extend u64;
-   let b10: u64 = aHi extend u64 * bLo extend u64;
-   let b11: u64 = aHi extend u64 * bHi extend u64;
+   let b00: u64 = aLo as u64 * bLo as u64;
+   let b01: u64 = aLo as u64 * bHi as u64;
+   let b10: u64 = aHi as u64 * bLo as u64;
+   let b11: u64 = aHi as u64 * bHi as u64;
 
-   let b00Lo: u32 = b00 truncate u32;
-   let b00Hi: u32 = (b00 >> 32) truncate u32;
+   let b00Lo: u32 = b00 as u32;
+   let b00Hi: u32 = (b00 >> 32) as u32;
 
-   let mid1: u64 = b10 + b00Hi extend u64;
-   let mid1Lo: u32 = mid1 truncate u32;
-   let mid1Hi: u32 = (mid1 >> 32) truncate u32;
+   let mid1: u64 = b10 + b00Hi as u64;
+   let mid1Lo: u32 = mid1 as u32;
+   let mid1Hi: u32 = (mid1 >> 32) as u32;
 
-   let mid2: u64 = b01 + mid1Lo extend u64;
-   let mid2Lo: u32 = mid2 truncate u32;
-   let mid2Hi: u32 = (mid2 >> 32) truncate u32;
+   let mid2: u64 = b01 + mid1Lo as u64;
+   let mid2Lo: u32 = mid2 as u32;
+   let mid2Hi: u32 = (mid2 >> 32) as u32;
 
-   let pHi: u64 = b11 + mid1Hi extend u64 + mid2Hi extend u64;
-   let pLo: u64 = (mid2Lo extend u64 << 32) | b00Lo extend u64;
+   let pHi: u64 = b11 + mid1Hi as u64 + mid2Hi as u64;
+   let pLo: u64 = (mid2Lo as u64 << 32) | b00Lo as u64;
 
    productHi~ = pHi;
    return pLo;
@@ -32,7 +32,7 @@ proc _ryu_shiftright128(lo: u64, hi: u64, dist: u32) -> u64 {
    // We don't need to handle the case dist >= 64 here (see above).
    assert(dist < 64);
    assert(dist > 0);
-   return (hi << (64 - dist) extend u64) | (lo >> dist extend u64);
+   return (hi << (64 - dist) as u64) | (lo >> dist as u64);
 }
 
 proc _ryu_div5(x: u64) -> u64 {
@@ -56,7 +56,7 @@ proc _ryu_div1e9(x: u64) -> u64 {
 }
 
 proc _ryu_mod1e9(x: u64) -> u32 {
-   return (x - 1000000000 * _ryu_div1e9(x)) truncate u32;
+   return (x - 1000000000 * _ryu_div1e9(x)) as u32;
 }
 
 proc _ryu_pow5Factor(value: u64) -> u32 {
@@ -85,7 +85,7 @@ proc _ryu_multipleOfPowerOf2(value: u64, p: u32) -> bool {
    assert(value != 0);
    assert(p < 64);
    // __builtin_ctzll doesn't appear to be faster here.
-   return (value & ((1 << p) - 1) extend u64) == 0;
+   return (value & ((1 << p) - 1) as u64) == 0;
 }
 
 // We need a 64x128-bit multiplication and a subsequent 128-bit shift.
@@ -135,7 +135,7 @@ proc _ryu_mulShift64(m: u64, mul: &[u64; 2], j: i32) -> u64 {
    if (sum < high0) {
       high1 = high1 + 1; // overflow into high1
    }
-   return _ryu_shiftright128(sum, high1, (j - 64) transmute u32);
+   return _ryu_shiftright128(sum, high1, (j - 64) as u32);
 }
 
 // This is faster if we don't have a 64x64->128-bit multiplication.
@@ -146,27 +146,27 @@ proc _ryu_mulShiftAll64(m: u64, mul: &[u64; 2], j: i32, vp: &u64, vm: &u64, mmSh
    let lo: u64 = _ryu_umul128(m, mul~[0], &tmp);
    let hi: u64 = ___;
    let mid: u64 = tmp + _ryu_umul128(m, mul~[1], &hi);
-   hi = hi + (mid < tmp) extend u64; // overflow into hi
+   hi = hi + (mid < tmp) as u64; // overflow into hi
 
    let lo2: u64 = lo + mul~[0];
-   let mid2: u64 = mid + mul~[1] + (lo2 < lo) extend u64;
-   let hi2: u64 = hi + (mid2 < mid) extend u64;
-   vp~ = _ryu_shiftright128(mid2, hi2, (j - 64 - 1) transmute u32);
+   let mid2: u64 = mid + mul~[1] + (lo2 < lo) as u64;
+   let hi2: u64 = hi + (mid2 < mid) as u64;
+   vp~ = _ryu_shiftright128(mid2, hi2, (j - 64 - 1) as u32);
 
    if (mmShift == 1) {
       let lo3: u64 = lo - mul~[0];
-      let mid3: u64 = mid - mul~[1] - (lo3 > lo) extend u64;
-      let hi3: u64 = hi - (mid3 > mid) extend u64;
-      vm~ = _ryu_shiftright128(mid3, hi3, (j - 64 - 1) transmute u32);
+      let mid3: u64 = mid - mul~[1] - (lo3 > lo) as u64;
+      let hi3: u64 = hi - (mid3 > mid) as u64;
+      vm~ = _ryu_shiftright128(mid3, hi3, (j - 64 - 1) as u32);
    } else {
       let lo3: u64 = lo + lo;
-      let mid3: u64 = mid + mid + (lo3 < lo) extend u64;
-      let hi3: u64 = hi + hi + (mid3 < mid) extend u64;
+      let mid3: u64 = mid + mid + (lo3 < lo) as u64;
+      let hi3: u64 = hi + hi + (mid3 < mid) as u64;
       let lo4: u64 = lo3 - mul~[0];
-      let mid4: u64 = mid3 - mul~[1] - (lo4 > lo3) extend u64;
-      let hi4: u64 = hi3 - (mid4 > mid3) extend u64;
-      vm~ = _ryu_shiftright128(mid4, hi4, (j - 64) transmute u32);
+      let mid4: u64 = mid3 - mul~[1] - (lo4 > lo3) as u64;
+      let hi4: u64 = hi3 - (mid4 > mid3) as u64;
+      vm~ = _ryu_shiftright128(mid4, hi4, (j - 64) as u32);
    }
 
-   return _ryu_shiftright128(mid, hi, (j - 64 - 1) transmute u32);
+   return _ryu_shiftright128(mid, hi, (j - 64 - 1) as u32);
 }

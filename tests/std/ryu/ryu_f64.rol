@@ -3,7 +3,7 @@ static BUF: [u8; 25] = ___;
 proc ieeeParts2Double(sign: bool, ieeeExponent: u32, ieeeMantissa: u64) -> f64 {
   assert(ieeeExponent <= 2047);
   assert(ieeeMantissa <= (1 << 53) - 1);
-  return ((sign extend u64 << 63) | (ieeeExponent extend u64 << 52) | ieeeMantissa) transmute f64;
+  return ((sign as u64 << 63) | (ieeeExponent as u64 << 52) | ieeeMantissa) transmute f64;
 }
 
 proc main() {
