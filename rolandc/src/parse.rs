@@ -35,15 +35,15 @@ fn merge_locations(begin: SourceInfo, end: SourceInfo) -> SourceInfo {
 }
 
 fn expect(l: &mut Lexer, parse_context: &mut ParseContext, token: Token) -> Result<SourceToken, ()> {
-   let lex_token = l.next();
-   if discriminant(&lex_token.token) == discriminant(&token) {
-      Ok(lex_token)
+   let lex_token = l.peek_token();
+   if discriminant(&lex_token) == discriminant(&token) {
+      Ok(l.next())
    } else {
       rolandc_error!(
          &mut parse_context.err_manager,
-         lex_token.source_info,
+         l.peek_source(),
          "Encountered {} when expecting {}",
-         lex_token.token.for_parse_err(),
+         lex_token.for_parse_err(),
          token.for_parse_err()
       );
       Err(())
