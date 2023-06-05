@@ -1690,18 +1690,37 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
 
          match (src_type, target_type) {
             (ExpressionType::Int(l), ExpressionType::Int(r)) if l.width.as_num_bytes() >= r.width.as_num_bytes() => {
-               if sizeof_type_wasm(
-                  e.exp_type.as_ref().unwrap(),
-                  generation_context.enum_info,
-                  generation_context.struct_size_info,
-               ) > 4
-                  && sizeof_type_wasm(
-                     target_type,
-                     generation_context.enum_info,
-                     generation_context.struct_size_info,
-                  ) <= 4
-               {
-                  generation_context.active_fcn.instruction(&Instruction::I32WrapI64);
+               match (l.width, r.width) {
+                  (IntWidth::Eight, IntWidth::Four) => {
+                     generation_context.active_fcn.instruction(&Instruction::I32WrapI64);
+                  }
+                  (IntWidth::Eight, IntWidth::Two) => {
+                     generation_context.active_fcn.instruction(&Instruction::I32WrapI64);
+                     generation_context
+                        .active_fcn
+                        .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_1111_1111_1111_1111));
+                     generation_context.active_fcn.instruction(&Instruction::I32And);
+                  }
+                  (IntWidth::Eight, IntWidth::One) => {
+                     generation_context.active_fcn.instruction(&Instruction::I32WrapI64);
+                     generation_context
+                        .active_fcn
+                        .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_0000_0000_1111_1111));
+                     generation_context.active_fcn.instruction(&Instruction::I32And);
+                  }
+                  (IntWidth::Four, IntWidth::Two) => {
+                     generation_context
+                        .active_fcn
+                        .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_1111_1111_1111_1111));
+                     generation_context.active_fcn.instruction(&Instruction::I32And);
+                  }
+                  (IntWidth::Four | IntWidth::Two, IntWidth::One) => {
+                     generation_context
+                        .active_fcn
+                        .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_0000_0000_1111_1111));
+                     generation_context.active_fcn.instruction(&Instruction::I32And);
+                  }
+                  _ => (),
                }
             }
             (ExpressionType::Int(l), ExpressionType::Int(r)) if l.width.as_num_bytes() < r.width.as_num_bytes() => {

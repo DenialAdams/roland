@@ -8,9 +8,7 @@ proc upd() {
       let d: f32 = 40000.0 / sqrt_32(x * x + y * y);
       let u: f32 = atan2(x, y) * 512.0 / 3.141;
 
-      // store the u8 as an intermediate to force visible truncating. see issue #41
-      let bug = ((d + t * 2.0) as i32 ^ (u + t) as i32) as u8;
-      let c: u8 = bug >> 4;
+      let c: u8 = ((d + t * 2.0) as i32 ^ (u + t) as i32) as u8 >> 4;
       
       FRAMEBUFFER~[i transmute usize] = c;
 
