@@ -5,6 +5,6 @@ proc main() {
 __END__
 compile:
 Encountered keyword 'let' when expecting token ';'
-↳ line 3, column 4 [scratch.rol]
+↳ line 3, column 4 [tests/parse/multiple_parse_errors_semicolon_statements_with_definite_statement_after.rol]
 Encountered token '}' when expecting token ';'
-↳ line 4, column 1 [scratch.rol]
+↳ line 4, column 1 [tests/parse/multiple_parse_errors_semicolon_statements_with_definite_statement_after.rol]
