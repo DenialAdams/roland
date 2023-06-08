@@ -23,10 +23,10 @@ coverage:
    cargo tarpaulin --skip-clean --implicit-test-threads --follow-exec --engine llvm --command build --bin roland_test_runner -o html -- {{justfile_directory()}}/tests/ --cli {{justfile_directory()}}/target/debug/rolandc_cli
    {{env_var_or_default("BROWSER", "firefox")}} "{{justfile_directory()}}/tarpaulin-report.html#rolandc/src"
 rolandc *args:
-   cargo run {{release_flag}} --bin rolandc_cli -- {{args}}
+   cd {{invocation_directory()}} && cargo run {{release_flag}} --bin rolandc_cli -- {{args}}
 rolandc_dhat *args:
-   cargo run --profile dhat --bin rolandc_cli --features dhat-heap -- {{args}}
+   cd {{invocation_directory()}} && cargo run --profile dhat --bin rolandc_cli --features dhat-heap -- {{args}}
 rolandc_flame *args:
-   cargo flamegraph --profile dhat --freq 50700 --bin rolandc_cli -- {{args}}
+   cd {{invocation_directory()}} && cargo flamegraph --profile dhat --freq 50700 --bin rolandc_cli -- {{args}}
 prepare-release kind="patch":
    cd roland-vscode && npm version {{kind}}
