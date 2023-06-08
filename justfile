@@ -2,10 +2,10 @@ release_flag := if env_var_or_default("DEBUG", "false") == "true" { "" } else { 
 
 test path="tests/":
    cargo build {{release_flag}} --bin rolandc_cli
-   cargo run {{release_flag}} --bin roland_test_runner -- --cli `readlink --canonicalize ./target/release/rolandc_cli` {{path}}
+   cargo run {{release_flag}} --bin roland_test_runner -- --cli {{justfile_directory()}}/target/release/rolandc_cli {{path}}
 test-overwrite:
    cargo build {{release_flag}} --bin rolandc_cli
-   cargo run {{release_flag}} --bin roland_test_runner -- --cli `readlink --canonicalize ./target/release/rolandc_cli` tests/ --overwrite-error-files
+   cargo run {{release_flag}} --bin roland_test_runner -- --cli {{justfile_directory()}}/target/release/rolandc_cli tests/ --overwrite-error-files
 samples:
    cargo run {{release_flag}} --bin rolandc_cli -- --wasm4 samples/wasm4/spunky/cart.rol
    cargo run {{release_flag}} --bin rolandc_cli -- --wasm4 samples/wasm4/endless-runner/cart.rol
@@ -19,10 +19,9 @@ scratch:
    wasm2wat --no-check scratch.wasm > scratch.wat
    wasmtime scratch.wasm
 coverage:
-   mv tests/ roland_test_runner/tests/
-   cargo tarpaulin --skip-clean --implicit-test-threads --command build --bin roland_test_runner -o html -- tests/
-   mv roland_test_runner/tests/ tests/
-   {{env_var_or_default("BROWSER", "firefox")}} "file://`readlink -f tarpaulin-report.html`#rolandc/src"
+   cargo build --bin rolandc_cli
+   cargo tarpaulin --skip-clean --implicit-test-threads --follow-exec --engine llvm --command build --bin roland_test_runner -o html -- {{justfile_directory()}}/tests/ --cli {{justfile_directory()}}/target/debug/rolandc_cli
+   {{env_var_or_default("BROWSER", "firefox")}} {{justfile_directory()}}/tarpaulin-report.html#rolandc/src"
 rolandc *args:
    cargo run {{release_flag}} --bin rolandc_cli -- {{args}}
 rolandc_dhat *args:
