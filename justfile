@@ -19,9 +19,9 @@ scratch:
    wasm2wat --no-check scratch.wasm > scratch.wat
    wasmtime scratch.wasm
 coverage:
-   cargo build --bin rolandc_cli
+   RUSTFLAGS=-Cinstrument-coverage cargo build --bin rolandc_cli
    cargo tarpaulin --skip-clean --implicit-test-threads --follow-exec --engine llvm --command build --bin roland_test_runner -o html -- {{justfile_directory()}}/tests/ --cli {{justfile_directory()}}/target/debug/rolandc_cli
-   {{env_var_or_default("BROWSER", "firefox")}} {{justfile_directory()}}/tarpaulin-report.html#rolandc/src"
+   {{env_var_or_default("BROWSER", "firefox")}} "{{justfile_directory()}}/tarpaulin-report.html#rolandc/src"
 rolandc *args:
    cargo run {{release_flag}} --bin rolandc_cli -- {{args}}
 rolandc_dhat *args:
