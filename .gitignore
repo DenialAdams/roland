@@ -2,6 +2,7 @@
 rolandc/target
 **/*.wasm
 **/*.wat
+**/*.profraw
 roland-vscode/node_modules
 roland-vscode/out
 roland-vscode/*.vsix
