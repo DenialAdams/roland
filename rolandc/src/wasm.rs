@@ -1739,31 +1739,45 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                generation_context.active_fcn.instruction(&Instruction::F64PromoteF32);
             }
             (ExpressionType::Float(_), ExpressionType::Int(_)) => {
-               let (target_type_wasm, signed) = match target_type {
-                  ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
+               let (dest_width, signed) = match target_type {
+                  ExpressionType::Int(x) => (x.width, x.signed),
                   _ => unreachable!(),
                };
                let src_type = type_to_wasm_type_basic(e.exp_type.as_ref().unwrap());
                match src_type {
                   ValType::F64 => {
-                     match (target_type_wasm, signed) {
-                        (ValType::I64, true) => generation_context.active_fcn.instruction(&Instruction::I64TruncF64S),
-                        (ValType::I64, false) => generation_context.active_fcn.instruction(&Instruction::I64TruncF64U),
-                        (ValType::I32, true) => generation_context.active_fcn.instruction(&Instruction::I32TruncF64S),
-                        (ValType::I32, false) => generation_context.active_fcn.instruction(&Instruction::I32TruncF64U),
-                        _ => unreachable!(),
+                     match (dest_width, signed) {
+                        (IntWidth::Eight, true) => generation_context.active_fcn.instruction(&Instruction::I64TruncSatF64S),
+                        (IntWidth::Eight, false) => generation_context.active_fcn.instruction(&Instruction::I64TruncSatF64U),
+                        (_, true) => generation_context.active_fcn.instruction(&Instruction::I32TruncSatF64S),
+                        (_, false) => generation_context.active_fcn.instruction(&Instruction::I32TruncSatF64U),
                      };
                   }
                   ValType::F32 => {
-                     match (target_type_wasm, signed) {
-                        (ValType::I64, true) => generation_context.active_fcn.instruction(&Instruction::I64TruncF32S),
-                        (ValType::I64, false) => generation_context.active_fcn.instruction(&Instruction::I64TruncF32U),
-                        (ValType::I32, true) => generation_context.active_fcn.instruction(&Instruction::I32TruncF32S),
-                        (ValType::I32, false) => generation_context.active_fcn.instruction(&Instruction::I32TruncF32U),
-                        _ => unreachable!(),
+                     match (dest_width, signed) {
+                        (IntWidth::Eight, true) => generation_context.active_fcn.instruction(&Instruction::I64TruncSatF32S),
+                        (IntWidth::Eight, false) => generation_context.active_fcn.instruction(&Instruction::I64TruncSatF32U),
+                        (_, true) => generation_context.active_fcn.instruction(&Instruction::I32TruncSatF32S),
+                        (_, false) => generation_context.active_fcn.instruction(&Instruction::I32TruncSatF32U),
                      };
                   }
                   _ => unreachable!(),
+               }
+               match dest_width {
+                  IntWidth::Eight | IntWidth::Four => (),
+                  IntWidth::Two => {
+                     generation_context
+                        .active_fcn
+                        .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_1111_1111_1111_1111));
+                     generation_context.active_fcn.instruction(&Instruction::I32And);
+                  },
+                  IntWidth::One => {
+                     generation_context
+                        .active_fcn
+                        .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_0000_0000_1111_1111));
+                     generation_context.active_fcn.instruction(&Instruction::I32And);
+                  },
+                  IntWidth::Pointer => unreachable!(),
                }
             }
             (ExpressionType::Int(_), ExpressionType::Float(_)) => {
