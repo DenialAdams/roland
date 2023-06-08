@@ -1747,16 +1747,24 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                match src_type {
                   ValType::F64 => {
                      match (dest_width, signed) {
-                        (IntWidth::Eight, true) => generation_context.active_fcn.instruction(&Instruction::I64TruncSatF64S),
-                        (IntWidth::Eight, false) => generation_context.active_fcn.instruction(&Instruction::I64TruncSatF64U),
+                        (IntWidth::Eight, true) => {
+                           generation_context.active_fcn.instruction(&Instruction::I64TruncSatF64S)
+                        }
+                        (IntWidth::Eight, false) => {
+                           generation_context.active_fcn.instruction(&Instruction::I64TruncSatF64U)
+                        }
                         (_, true) => generation_context.active_fcn.instruction(&Instruction::I32TruncSatF64S),
                         (_, false) => generation_context.active_fcn.instruction(&Instruction::I32TruncSatF64U),
                      };
                   }
                   ValType::F32 => {
                      match (dest_width, signed) {
-                        (IntWidth::Eight, true) => generation_context.active_fcn.instruction(&Instruction::I64TruncSatF32S),
-                        (IntWidth::Eight, false) => generation_context.active_fcn.instruction(&Instruction::I64TruncSatF32U),
+                        (IntWidth::Eight, true) => {
+                           generation_context.active_fcn.instruction(&Instruction::I64TruncSatF32S)
+                        }
+                        (IntWidth::Eight, false) => {
+                           generation_context.active_fcn.instruction(&Instruction::I64TruncSatF32U)
+                        }
                         (_, true) => generation_context.active_fcn.instruction(&Instruction::I32TruncSatF32S),
                         (_, false) => generation_context.active_fcn.instruction(&Instruction::I32TruncSatF32U),
                      };
@@ -1770,13 +1778,13 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                         .active_fcn
                         .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_1111_1111_1111_1111));
                      generation_context.active_fcn.instruction(&Instruction::I32And);
-                  },
+                  }
                   IntWidth::One => {
                      generation_context
                         .active_fcn
                         .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_0000_0000_1111_1111));
                      generation_context.active_fcn.instruction(&Instruction::I32And);
-                  },
+                  }
                   IntWidth::Pointer => unreachable!(),
                }
             }

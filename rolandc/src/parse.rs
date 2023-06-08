@@ -827,6 +827,17 @@ fn parse_block(l: &mut Lexer, parse_context: &mut ParseContext, ast: &mut AstPoo
                   let _ = l.next();
                   continue 'outer;
                }
+               // Token unambiguously begins a new statement
+               Token::KeywordLet
+               | Token::KeywordFor
+               | Token::KeywordBreak
+               | Token::KeywordContinue
+               | Token::KeywordDefer
+               | Token::KeywordIf
+               | Token::KeywordLoop
+               | Token::KeywordReturn => {
+                  continue 'outer;
+               }
                Token::CloseBrace => {
                   break 'outer l.next();
                }
