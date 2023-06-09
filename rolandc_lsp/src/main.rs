@@ -19,8 +19,7 @@ mod goto_definition;
 
 enum WorkspaceMode {
    LooseFiles,
-   Wasm4EntryPoint(PathBuf),
-   WasiEntryPoint(PathBuf),
+   EntryPointAndTarget(PathBuf, Target),
    StdLib,
 }
 
@@ -156,8 +155,7 @@ impl Backend {
          let (root_file_path, target) = match mode {
             WorkspaceMode::LooseFiles => (doc_uri.to_file_path().unwrap(), Target::Wasi),
             WorkspaceMode::StdLib => (doc_uri.to_file_path().unwrap(), Target::Lib),
-            WorkspaceMode::Wasm4EntryPoint(x) => (x.clone(), Target::Wasm4),
-            WorkspaceMode::WasiEntryPoint(x) => (x.clone(), Target::Wasi),
+            WorkspaceMode::EntryPointAndTarget(x, t) => (x.clone(), *t),
          };
          let config = rolandc::CompilationConfig {
             target,
@@ -244,13 +242,16 @@ impl LanguageServer for Backend {
                .client
                .log_message(MessageType::INFO, "detected wasm4 project")
                .await;
-            WorkspaceMode::Wasm4EntryPoint(root_path.join("cart.rol"))
+            WorkspaceMode::EntryPointAndTarget(root_path.join("cart.rol"), Target::Wasm4)
          } else if root_path.join("main.rol").exists() {
             self
                .client
                .log_message(MessageType::INFO, "detected wasi project")
                .await;
-            WorkspaceMode::WasiEntryPoint(root_path.join("main.rol"))
+            WorkspaceMode::EntryPointAndTarget(root_path.join("main.rol"), Target::Wasi)
+         } else if root_path.join(".microw8").exists() && root_path.join("cart.rol").exists() {
+            self.client.log_message(MessageType::INFO, "detected microw8 project").await;
+            WorkspaceMode::EntryPointAndTarget(root_path.join("cart.rol"), Target::Microw8)
          } else if root_path.join(".i_assure_you_we're_std").exists() {
             self.client.log_message(MessageType::INFO, "detected stdlib").await;
             WorkspaceMode::StdLib
