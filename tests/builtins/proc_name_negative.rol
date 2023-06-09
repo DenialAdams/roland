@@ -1,0 +1,10 @@
+static S: String = proc_name();
+
+proc main() {
+
+}
+
+__END__
+compile:
+Value of static `S` can't be constant folded. Hint: Either simplify the expression, or initialize it yourself on program start.
+↳ line 1, column 20 [tests/builtins/proc_name_negative.rol]

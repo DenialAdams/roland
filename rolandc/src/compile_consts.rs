@@ -38,6 +38,7 @@ fn fold_expr_id(
       struct_size_info,
       enum_info,
       const_replacements,
+      current_proc_name: None,
    };
    constant_folding::try_fold_and_replace_expr(expr_id, err_manager, &mut fc, interner);
 }

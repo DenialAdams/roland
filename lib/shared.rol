@@ -11,6 +11,8 @@ builtin proc unreachable() -> !;
 builtin proc sizeof$T() -> usize;
 builtin proc alignof$T() -> usize;
 
+builtin proc proc_name() -> String;
+
 struct String {
    pointer: &u8,
    length: usize,

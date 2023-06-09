@@ -25,6 +25,7 @@ pub struct FoldingContext<'a> {
    pub struct_size_info: &'a HashMap<StrId, SizeInfo>,
    pub enum_info: &'a IndexMap<StrId, EnumInfo>,
    pub const_replacements: &'a HashMap<VariableId, ExpressionId>,
+   pub current_proc_name: Option<StrId>, 
 }
 
 pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, interner: &Interner) {
@@ -40,6 +41,7 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
       struct_size_info: &program.struct_size_info,
       enum_info: &program.enum_info,
       const_replacements: &const_replacements,
+      current_proc_name: None,
    };
 
    for p_static in program.global_info.values().filter(|x| x.initializer.is_some()) {
@@ -73,6 +75,7 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
    }
 
    for procedure in program.procedures.values_mut() {
+      folding_context.current_proc_name = Some(procedure.definition.name);
       fold_block(&procedure.block, err_manager, &mut folding_context, interner);
    }
 }
@@ -744,6 +747,9 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
    };
 
    match interner.lookup(proc_name) {
+      "proc_name" => {
+         fc.current_proc_name.map(Expression::StringLiteral)
+      }
       "sizeof" => {
          let type_size = crate::size_info::sizeof_type_mem(&generic_args[0], fc.enum_info, fc.struct_size_info);
 
