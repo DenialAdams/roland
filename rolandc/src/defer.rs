@@ -1,6 +1,6 @@
 use crate::parse::{
-   statement_always_returns, AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, Program, Statement,
-   StatementId,
+   statement_always_returns, AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcImplSource, Program,
+   Statement, StatementId,
 };
 
 enum CfKind {
@@ -28,7 +28,9 @@ pub fn process_defer_statements(program: &mut Program) {
    };
 
    for procedure in program.procedures.values_mut() {
-      defer_block(&mut procedure.block, &mut ctx, &mut program.ast);
+      if let ProcImplSource::Body(block) = &mut procedure.proc_impl {
+         defer_block(block, &mut ctx, &mut program.ast);
+      }
    }
 }
 
@@ -204,7 +206,7 @@ fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool) -> Expr
       Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
       Expression::UnitLiteral => (),
-      Expression::UnresolvedVariable(_) => unreachable!(),
+      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::Variable(_) => (),
       Expression::BinaryOperator { lhs, rhs, .. } => {
          *lhs = deep_clone_expr(*lhs, expressions);

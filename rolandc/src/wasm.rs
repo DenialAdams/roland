@@ -11,8 +11,8 @@ use wasm_encoder::{
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   statement_always_returns, AstPool, BinOp, CastType, Expression, ExpressionId, ExternalProcImplSource,
-   ProcedureDefinition, Program, Statement, StatementId, UnOp, VariableId,
+   statement_always_returns, AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureDefinition,
+   ProcedureId, Program, Statement, StatementId, UnOp, VariableId,
 };
 use crate::semantic_analysis::{EnumInfo, GlobalKind, StructInfo};
 use crate::size_info::{
@@ -40,8 +40,9 @@ struct GenerationContext<'a> {
    needed_store_fns: IndexSet<ExpressionType>,
    sum_sizeof_locals_mem: u32,
    ast: &'a AstPool,
-   procedure_to_table_index: IndexSet<StrId>,
-   procedure_indices: IndexSet<StrId>,
+   proc_name_table: &'a HashMap<StrId, ProcedureId>,
+   procedure_to_table_index: IndexSet<ProcedureId>,
+   procedure_indices: IndexSet<ProcedureId>,
    stack_of_loop_jump_offsets: Vec<u32>,
    var_to_reg: IndexMap<VariableId, Range<u32>>,
 }
@@ -319,6 +320,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       procedure_indices: IndexSet::new(),
       stack_of_loop_jump_offsets: Vec::new(),
       var_to_reg: regalloc_result.var_to_reg,
+      proc_name_table: &program.procedure_name_table,
    };
 
    let mut import_section = ImportSection::new();
@@ -328,10 +330,10 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
    let mut data_section = DataSection::new();
    let mut code_section = CodeSection::new();
 
-   for external_procedure in program
-      .external_procedures
+   for (id, external_procedure) in program
+      .procedures
       .iter()
-      .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ExternalProcImplSource::External))
+      .filter(|(_, v)| matches!(v.proc_impl, ProcImplSource::External))
    {
       let type_index = generation_context
          .type_manager
@@ -341,21 +343,19 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
          Target::Wasm4 | Target::Microw8 => {
             import_section.import(
                "env",
-               interner.lookup(external_procedure.definition.name),
+               interner.lookup(external_procedure.definition.name.str),
                EntityType::Function(type_index),
             );
          }
          Target::Wasi => {
             import_section.import(
                "wasi_unstable",
-               interner.lookup(external_procedure.definition.name),
+               interner.lookup(external_procedure.definition.name.str),
                EntityType::Function(type_index),
             );
          }
       }
-      generation_context
-         .procedure_indices
-         .insert(external_procedure.definition.name);
+      generation_context.procedure_indices.insert(id);
    }
 
    // Data section
@@ -490,20 +490,14 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       globals
    };
 
-   for external_procedure in program
-      .external_procedures
+   for (id, builtin_procedure) in program
+      .procedures
       .iter()
-      .filter(|x| std::mem::discriminant(&x.impl_source) == std::mem::discriminant(&ExternalProcImplSource::Builtin))
+      .filter(|(_, v)| matches!(v.proc_impl, ProcImplSource::Builtin))
    {
-      let proc_name = interner.lookup(external_procedure.definition.name);
-      if proc_name == "sizeof" || proc_name == "alignof" || proc_name == "num_variants" {
-         // These builtins have no body. All calls should have been lowered.
-         continue;
-      }
-
       generation_context.active_fcn = Function::new_with_locals_types([]);
 
-      match interner.lookup(external_procedure.definition.name) {
+      match interner.lookup(builtin_procedure.definition.name.str) {
          "wasm_memory_size" => {
             generation_context.active_fcn.instruction(&Instruction::MemorySize(0));
          }
@@ -532,25 +526,28 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       function_section.function(
          generation_context
             .type_manager
-            .register_or_find_type_by_definition(&external_procedure.definition, generation_context.struct_info),
+            .register_or_find_type_by_definition(&builtin_procedure.definition, generation_context.struct_info),
       );
-      generation_context
-         .procedure_indices
-         .insert(external_procedure.definition.name);
+      generation_context.procedure_indices.insert(id);
       code_section.function(&generation_context.active_fcn);
    }
 
    // One pass over all procedures first so that call expressions know what index to use
-   for procedure in program.procedures.values() {
+   for (id, procedure) in program
+      .procedures
+      .iter()
+      .filter(|(_, v)| matches!(v.proc_impl, ProcImplSource::Body(_)))
+   {
       function_section.function(
          generation_context
             .type_manager
             .register_or_find_type_by_definition(&procedure.definition, generation_context.struct_info),
       );
-      generation_context.procedure_indices.insert(procedure.definition.name);
+      generation_context.procedure_indices.insert(id);
    }
 
-   for (proc_id, procedure) in program.procedures.iter_mut() {
+   for (proc_id, procedure) in program.procedures.iter() {
+      let ProcImplSource::Body(block) = &procedure.proc_impl else { continue; };
       generation_context.active_fcn =
          Function::new_with_locals_types(regalloc_result.procedure_registers.remove(proc_id).unwrap());
       generation_context.local_offsets_mem.clear();
@@ -631,12 +628,11 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
          }
       }
 
-      for statement in procedure.block.statements.iter().copied() {
+      for statement in block.statements.iter().copied() {
          emit_statement(statement, &mut generation_context);
       }
 
-      if procedure
-         .block
+      if block
          .statements
          .last()
          .copied()
@@ -644,7 +640,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       {
          // No need to adjust stack; it was done in the return statement
          if !matches!(
-            generation_context.ast.statements[procedure.block.statements.last().copied().unwrap()].statement,
+            generation_context.ast.statements[block.statements.last().copied().unwrap()].statement,
             Statement::Return(_)
          ) {
             // Roland can be smarter than WASM permits, hence we make this explicit to avoid tripping stack violations
@@ -728,20 +724,10 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
          export_section.export(
             "update",
             wasm_encoder::ExportKind::Func,
-            generation_context
-               .procedure_indices
-               .get_index_of(&interner.intern("update"))
-               .unwrap() as u32,
+            name_to_procedure_index("update", interner, &generation_context).unwrap(),
          );
-         if program.procedure_info.contains_key(&interner.intern("start")) {
-            export_section.export(
-               "start",
-               wasm_encoder::ExportKind::Func,
-               generation_context
-                  .procedure_indices
-                  .get_index_of(&interner.intern("start"))
-                  .unwrap() as u32,
-            );
+         if let Some(idx) = name_to_procedure_index("start", interner, &generation_context) {
+            export_section.export("start", wasm_encoder::ExportKind::Func, idx);
          }
       }
       Target::Microw8 => {
@@ -758,20 +744,10 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
          export_section.export(
             "upd",
             wasm_encoder::ExportKind::Func,
-            generation_context
-               .procedure_indices
-               .get_index_of(&interner.intern("upd"))
-               .unwrap() as u32,
+            name_to_procedure_index("upd", interner, &generation_context).unwrap(),
          );
-         if program.procedure_info.contains_key(&interner.intern("snd")) {
-            export_section.export(
-               "snd",
-               wasm_encoder::ExportKind::Func,
-               generation_context
-                  .procedure_indices
-                  .get_index_of(&interner.intern("snd"))
-                  .unwrap() as u32,
-            );
+         if let Some(idx) = name_to_procedure_index("snd", interner, &generation_context) {
+            export_section.export("snd", wasm_encoder::ExportKind::Func, idx);
          }
       }
       Target::Wasi => {
@@ -785,10 +761,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
          export_section.export(
             "_start",
             wasm_encoder::ExportKind::Func,
-            generation_context
-               .procedure_indices
-               .get_index_of(&interner.intern("main"))
-               .unwrap() as u32,
+            name_to_procedure_index("main", interner, &generation_context).unwrap(),
          );
       }
    }
@@ -1149,8 +1122,8 @@ fn do_emit_and_load_lval(expr_index: ExpressionId, generation_context: &mut Gene
 fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_context: &mut GenerationContext) {
    let expr_node = &generation_context.ast.expressions[expr_index];
    match &expr_node.expression {
-      Expression::BoundFcnLiteral(proc_name, _) => {
-         let (my_index, _) = generation_context.procedure_to_table_index.insert_full(proc_name.str);
+      Expression::BoundFcnLiteral(proc_id, _) => {
+         let (my_index, _) = generation_context.procedure_to_table_index.insert_full(*proc_id);
          // todo: truncation
          buf.extend((my_index as u32).to_le_bytes());
       }
@@ -1253,10 +1226,10 @@ fn literal_as_wasm_consts(
 ) {
    let expr_node = &generation_context.ast.expressions[expr_index];
    match &expr_node.expression {
-      Expression::BoundFcnLiteral(proc_name, _) => {
-         let (my_index, _) = generation_context.procedure_to_table_index.insert_full(proc_name.str);
+      Expression::BoundFcnLiteral(proc_id, _) => {
+         let (my_index, _) = generation_context.procedure_to_table_index.insert_full(*proc_id);
          // todo: truncation
-         buf.push(ConstExpr::i32_const(my_index as u32 as i32));
+         buf.push(ConstExpr::i32_const(my_index as i32));
       }
       Expression::UnitLiteral => (),
       Expression::BoolLiteral(x) => {
@@ -1319,9 +1292,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
    let expr_node = &generation_context.ast.expressions[expr_index];
    match &expr_node.expression {
       Expression::UnitLiteral => (),
-      Expression::BoundFcnLiteral(proc_name, _bound_type_params) => {
+      Expression::BoundFcnLiteral(proc_id, _bound_type_params) => {
          if let ExpressionType::ProcedurePointer { .. } = expr_node.exp_type.as_ref().unwrap() {
-            emit_procedure_pointer_index(proc_name.str, generation_context);
+            emit_procedure_pointer_index(*proc_id, generation_context);
          }
       }
       Expression::BoolLiteral(x) => {
@@ -1842,7 +1815,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             get_stack_address_of_local(*id, generation_context);
          }
       }
-      Expression::UnresolvedVariable(_) => {
+      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => {
          unreachable!()
       }
       Expression::ProcedureCall { proc_expr, args } => {
@@ -2340,8 +2313,8 @@ fn adjust_stack(generation_context: &mut GenerationContext, instr: &Instruction)
    generation_context.active_fcn.instruction(&Instruction::GlobalSet(SP));
 }
 
-fn emit_procedure_pointer_index(proc_name: StrId, generation_context: &mut GenerationContext) {
-   let (my_index, _) = generation_context.procedure_to_table_index.insert_full(proc_name);
+fn emit_procedure_pointer_index(proc_id: ProcedureId, generation_context: &mut GenerationContext) {
+   let (my_index, _) = generation_context.procedure_to_table_index.insert_full(proc_id);
    generation_context
       .active_fcn
       .instruction(&Instruction::I32Const(my_index as u32 as i32));
@@ -2353,4 +2326,13 @@ fn null_mem_arg() -> MemArg {
       align: 0,
       memory_index: 0,
    }
+}
+
+fn name_to_procedure_index(
+   name: &'static str,
+   interner: &mut Interner,
+   generation_context: &GenerationContext,
+) -> Option<u32> {
+   let id = generation_context.proc_name_table.get(&interner.intern(name))?;
+   Some(generation_context.procedure_indices.get_index_of(id).unwrap() as u32)
 }

@@ -3,12 +3,12 @@ use std::collections::HashSet;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::interner::{Interner, StrId};
-use crate::parse::{AstPool, BlockNode, Expression, ExpressionId, Statement, StatementId, VariableId};
+use crate::parse::{
+   AstPool, BlockNode, Expression, ExpressionId, ProcImplSource, ProcedureId, Statement, StatementId, VariableId,
+};
 use crate::semantic_analysis::validator::get_special_procedures;
-use crate::semantic_analysis::{GlobalInfo, ProcImplSource};
+use crate::semantic_analysis::GlobalInfo;
 use crate::{Program, Target};
-
-type ProcedureId = StrId;
 
 enum WorkItem {
    Procedure(ProcedureId),
@@ -32,8 +32,8 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
    let mut reachable_globals: HashSet<VariableId> = HashSet::new();
 
    for special_proc in get_special_procedures(target, interner) {
-      if program.procedure_info.contains_key(&special_proc.name) {
-         ctx.worklist.push(WorkItem::Procedure(special_proc.name));
+      if let Some(proc_id) = program.procedure_name_table.get(&special_proc.name).copied() {
+         ctx.worklist.push(WorkItem::Procedure(proc_id));
       }
    }
 
@@ -50,11 +50,8 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
 
             reachable_procedures.insert(reachable_proc);
 
-            if let ProcImplSource::ProcedureId(proc_id) =
-               program.procedure_info.get(&reachable_proc).unwrap().proc_impl_source
-            {
-               let pn = program.procedures.get(proc_id).unwrap();
-               mark_reachable_block(&pn.block, &program.ast, &mut ctx);
+            if let ProcImplSource::Body(block) = &program.procedures.get(reachable_proc).unwrap().proc_impl {
+               mark_reachable_block(block, &program.ast, &mut ctx);
             }
          }
          WorkItem::Static(reachable_global) => {
@@ -71,12 +68,7 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
       }
    }
 
-   program
-      .procedures
-      .retain(|_, x| reachable_procedures.contains(&x.definition.name));
-   program
-      .external_procedures
-      .retain(|x| reachable_procedures.contains(&x.definition.name));
+   program.procedures.retain(|k, _| reachable_procedures.contains(&k));
    program.global_info.retain(|k, _| reachable_globals.contains(k));
 }
 
@@ -152,7 +144,7 @@ fn mark_reachable_expr(expr: ExpressionId, ast: &AstPool, ctx: &mut DceCtx) {
       Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
       Expression::UnitLiteral => (),
-      Expression::UnresolvedVariable(_) => unreachable!(),
+      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::Variable(var_id) => {
          if ctx.global_info.contains_key(var_id) {
             ctx.worklist.push(WorkItem::Static(*var_id));
@@ -178,7 +170,7 @@ fn mark_reachable_expr(expr: ExpressionId, ast: &AstPool, ctx: &mut DceCtx) {
       }
       Expression::EnumLiteral(_, _) => (),
       Expression::BoundFcnLiteral(id, _) => {
-         ctx.worklist.push(WorkItem::Procedure(id.str));
+         ctx.worklist.push(WorkItem::Procedure(*id));
       }
    }
 }

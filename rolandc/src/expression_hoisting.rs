@@ -2,8 +2,8 @@ use indexmap::IndexMap;
 
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
-   AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement,
-   StatementId, StatementNode, VariableId,
+   AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcImplSource, Program,
+   Statement, StatementId, StatementNode, VariableId,
 };
 use crate::type_data::ExpressionType;
 
@@ -69,8 +69,10 @@ pub fn expression_hoisting(program: &mut Program) {
    };
 
    for procedure in program.procedures.values_mut() {
-      vv_context.cur_procedure_locals = &mut procedure.locals;
-      vv_block(&mut procedure.block, &mut vv_context, &mut program.ast);
+      if let ProcImplSource::Body(block) = &mut procedure.proc_impl {
+         vv_context.cur_procedure_locals = &mut procedure.locals;
+         vv_block(block, &mut vv_context, &mut program.ast);
+      }
    }
 
    program.next_variable = vv_context.next_variable;
@@ -291,7 +293,7 @@ fn vv_expr(
       Expression::FloatLiteral(_) => (),
       Expression::BoundFcnLiteral(_, _) => (),
       Expression::UnitLiteral => (),
-      Expression::UnresolvedVariable(_) => unreachable!(),
+      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::Variable(_) => (),
    }
 }

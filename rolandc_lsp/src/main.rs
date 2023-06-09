@@ -250,7 +250,10 @@ impl LanguageServer for Backend {
                .await;
             WorkspaceMode::EntryPointAndTarget(root_path.join("main.rol"), Target::Wasi)
          } else if root_path.join(".microw8").exists() && root_path.join("cart.rol").exists() {
-            self.client.log_message(MessageType::INFO, "detected microw8 project").await;
+            self
+               .client
+               .log_message(MessageType::INFO, "detected microw8 project")
+               .await;
             WorkspaceMode::EntryPointAndTarget(root_path.join("cart.rol"), Target::Microw8)
          } else if root_path.join(".i_assure_you_we're_std").exists() {
             self.client.log_message(MessageType::INFO, "detected stdlib").await;

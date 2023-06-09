@@ -2,8 +2,12 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
+use slotmap::SecondaryMap;
+
 use crate::interner::{Interner, StrId};
+use crate::parse::ProcedureId;
 use crate::semantic_analysis::type_variables::{TypeConstraint, TypeVariable, TypeVariableManager};
+use crate::semantic_analysis::ProcedureInfo;
 use crate::size_info::SizeInfo;
 
 pub const U8_TYPE: ExpressionType = ExpressionType::Int(IntType {
@@ -76,7 +80,7 @@ pub enum ExpressionType {
    Pointer(Box<ExpressionType>),
    CompileError,
    Enum(StrId),
-   ProcedureItem(StrId, Box<[ExpressionType]>),
+   ProcedureItem(ProcedureId, Box<[ExpressionType]>),
    ProcedurePointer {
       parameters: Box<[ExpressionType]>,
       ret_type: Box<ExpressionType>,
@@ -233,15 +237,17 @@ impl ExpressionType {
    pub fn as_roland_type_info<'i>(
       &self,
       interner: &'i Interner,
+      procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
       type_variable_info: &TypeVariableManager,
    ) -> Cow<'i, str> {
-      self.as_roland_type_info_inner(interner, Some(type_variable_info))
+      self.as_roland_type_info_inner(interner, procedure_info, Some(type_variable_info))
    }
 
    #[must_use]
    fn as_roland_type_info_inner<'i>(
       &self,
       interner: &'i Interner,
+      procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
       type_variable_info: Option<&TypeVariableManager>,
    ) -> Cow<'i, str> {
       match self {
@@ -284,12 +290,12 @@ impl ExpressionType {
          ExpressionType::Enum(x) => Cow::Owned(format!("Enum {}", interner.lookup(*x))),
          ExpressionType::Array(i_type, length) => Cow::Owned(format!(
             "[{}; {}]",
-            i_type.as_roland_type_info_inner(interner, type_variable_info),
+            i_type.as_roland_type_info_inner(interner, procedure_info, type_variable_info),
             length
          )),
          ExpressionType::Pointer(i_type) => Cow::Owned(format!(
             "&{}",
-            i_type.as_roland_type_info_inner(interner, type_variable_info)
+            i_type.as_roland_type_info_inner(interner, procedure_info, type_variable_info)
          )),
          ExpressionType::Unresolved(x) | ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::ProcedurePointer {
@@ -298,27 +304,28 @@ impl ExpressionType {
          } => {
             let params: String = parameters
                .iter()
-               .map(|x| x.as_roland_type_info_inner(interner, type_variable_info))
+               .map(|x| x.as_roland_type_info_inner(interner, procedure_info, type_variable_info))
                .collect::<Vec<_>>()
                .join(", ");
             Cow::Owned(format!(
                "proc({}) -> {}",
                params,
-               ret_val.as_roland_type_info_inner(interner, type_variable_info)
+               ret_val.as_roland_type_info_inner(interner, procedure_info, type_variable_info)
             ))
          }
-         ExpressionType::ProcedureItem(proc_name, type_arguments) => {
+         ExpressionType::ProcedureItem(proc_id, type_arguments) => {
+            let proc_name = procedure_info.get(*proc_id).unwrap().name.str;
             if type_arguments.is_empty() {
-               Cow::Owned(format!("proc() {{{}}}", interner.lookup(*proc_name),))
+               Cow::Owned(format!("proc() {{{}}}", interner.lookup(proc_name),))
             } else {
                let type_argument_string = type_arguments
                   .iter()
-                  .map(|x| x.as_roland_type_info_like_source(interner))
+                  .map(|x| x.as_roland_type_info_like_source(interner, procedure_info))
                   .collect::<Vec<_>>()
                   .join("$");
                Cow::Owned(format!(
                   "proc() {{{}${}}}",
-                  interner.lookup(*proc_name),
+                  interner.lookup(proc_name),
                   type_argument_string
                ))
             }
@@ -327,12 +334,20 @@ impl ExpressionType {
    }
 
    #[must_use]
-   pub fn as_roland_type_info_notv<'i>(&self, interner: &'i Interner) -> Cow<'i, str> {
-      self.as_roland_type_info_inner(interner, None)
+   pub fn as_roland_type_info_notv<'i>(
+      &self,
+      interner: &'i Interner,
+      procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
+   ) -> Cow<'i, str> {
+      self.as_roland_type_info_inner(interner, procedure_info, None)
    }
 
    #[must_use]
-   pub fn as_roland_type_info_like_source<'i>(&self, interner: &'i Interner) -> Cow<'i, str> {
+   pub fn as_roland_type_info_like_source<'i>(
+      &self,
+      interner: &'i Interner,
+      procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
+   ) -> Cow<'i, str> {
       match self {
          ExpressionType::Unknown(_) => unreachable!(),
          ExpressionType::Int(x) => match (x.signed, &x.width) {
@@ -359,10 +374,13 @@ impl ExpressionType {
          ExpressionType::Enum(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::Array(i_type, length) => Cow::Owned(format!(
             "[{}; {}]",
-            i_type.as_roland_type_info_like_source(interner),
+            i_type.as_roland_type_info_like_source(interner, procedure_info),
             length
          )),
-         ExpressionType::Pointer(i_type) => Cow::Owned(format!("&{}", i_type.as_roland_type_info_notv(interner))),
+         ExpressionType::Pointer(i_type) => Cow::Owned(format!(
+            "&{}",
+            i_type.as_roland_type_info_notv(interner, procedure_info)
+         )),
          ExpressionType::Unresolved(x) | ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::ProcedurePointer {
             parameters,
@@ -370,13 +388,13 @@ impl ExpressionType {
          } => {
             let params: String = parameters
                .iter()
-               .map(|x| x.as_roland_type_info_like_source(interner))
+               .map(|x| x.as_roland_type_info_like_source(interner, procedure_info))
                .collect::<Vec<_>>()
                .join(", ");
             Cow::Owned(format!(
                "proc({}) -> {}",
                params,
-               ret_val.as_roland_type_info_like_source(interner)
+               ret_val.as_roland_type_info_like_source(interner, procedure_info)
             ))
          }
          ExpressionType::ProcedureItem(_, _) => unreachable!(),

@@ -1,13 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
 use indexmap::IndexMap;
+use slotmap::SecondaryMap;
 
 use crate::constant_folding::{self, FoldingContext};
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{AstPool, Expression, ExpressionId, Program, VariableId};
-use crate::semantic_analysis::{EnumInfo, StructInfo};
+use crate::parse::{AstPool, Expression, ExpressionId, ProcedureId, Program, VariableId};
+use crate::semantic_analysis::{EnumInfo, ProcedureInfo, StructInfo};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 
@@ -16,6 +17,7 @@ struct CgContext<'a> {
    all_consts: &'a HashMap<VariableId, (SourceInfo, ExpressionId, StrId)>,
    consts_being_processed: &'a mut HashSet<VariableId>,
    const_replacements: &'a mut HashMap<VariableId, ExpressionId>,
+   procedure_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
    struct_info: &'a IndexMap<StrId, StructInfo>,
    enum_info: &'a IndexMap<StrId, EnumInfo>,
    struct_size_info: &'a HashMap<StrId, SizeInfo>,
@@ -26,6 +28,7 @@ fn fold_expr_id(
    expr_id: ExpressionId,
    err_manager: &mut ErrorManager,
    ast: &mut AstPool,
+   procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
    struct_info: &IndexMap<StrId, StructInfo>,
    struct_size_info: &HashMap<StrId, SizeInfo>,
    enum_info: &IndexMap<StrId, EnumInfo>,
@@ -34,6 +37,7 @@ fn fold_expr_id(
 ) {
    let mut fc = FoldingContext {
       ast,
+      procedure_info,
       struct_info,
       struct_size_info,
       enum_info,
@@ -60,6 +64,7 @@ pub fn compile_consts(program: &mut Program, interner: &mut Interner, err_manage
 
    let mut cg_ctx = CgContext {
       ast: &mut program.ast,
+      procedure_info: &program.procedure_info,
       all_consts: &all_consts,
       consts_being_processed: &mut consts_being_processed,
       const_replacements: &mut const_replacements,
@@ -88,6 +93,7 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
       c.1,
       err_manager,
       cg_context.ast,
+      cg_context.procedure_info,
       cg_context.struct_info,
       cg_context.struct_size_info,
       cg_context.enum_info,
@@ -133,7 +139,7 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
             cg_const(*x, cg_context, err_manager);
          }
       }
-      Expression::UnresolvedVariable(_) => unreachable!(),
+      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::ArrayIndex { array, index } => {
          cg_expr(*array, cg_context, err_manager);
          cg_expr(*index, cg_context, err_manager);

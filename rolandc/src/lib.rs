@@ -181,7 +181,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
 
    expression_hoisting::expression_hoisting(&mut ctx.program);
 
-   monomorphization::monomorphize(&mut ctx.program, &mut ctx.interner, &mut ctx.err_manager);
+   monomorphization::monomorphize(&mut ctx.program, &mut ctx.err_manager);
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }

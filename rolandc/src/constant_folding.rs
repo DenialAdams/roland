@@ -3,15 +3,16 @@ use std::convert::TryInto;
 use std::ops::{BitAnd, BitOr, BitXor};
 
 use indexmap::IndexMap;
+use slotmap::SecondaryMap;
 
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_warn};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement,
-   StatementId, UnOp, VariableId,
+   AstPool, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcImplSource,
+   ProcedureId, Program, Statement, StatementId, UnOp, VariableId,
 };
-use crate::semantic_analysis::{EnumInfo, StructInfo};
+use crate::semantic_analysis::{EnumInfo, ProcedureInfo, StructInfo};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::{
@@ -21,11 +22,12 @@ use crate::type_data::{
 
 pub struct FoldingContext<'a> {
    pub ast: &'a mut AstPool,
+   pub procedure_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
    pub struct_info: &'a IndexMap<StrId, StructInfo>,
    pub struct_size_info: &'a HashMap<StrId, SizeInfo>,
    pub enum_info: &'a IndexMap<StrId, EnumInfo>,
    pub const_replacements: &'a HashMap<VariableId, ExpressionId>,
-   pub current_proc_name: Option<StrId>, 
+   pub current_proc_name: Option<StrId>,
 }
 
 pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, interner: &Interner) {
@@ -37,6 +39,7 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
 
    let mut folding_context = FoldingContext {
       ast: &mut program.ast,
+      procedure_info: &program.procedure_info,
       struct_info: &program.struct_info,
       struct_size_info: &program.struct_size_info,
       enum_info: &program.enum_info,
@@ -75,8 +78,10 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
    }
 
    for procedure in program.procedures.values_mut() {
-      folding_context.current_proc_name = Some(procedure.definition.name);
-      fold_block(&procedure.block, err_manager, &mut folding_context, interner);
+      if let ProcImplSource::Body(block) = &procedure.proc_impl {
+         folding_context.current_proc_name = Some(procedure.definition.name.str);
+         fold_block(block, err_manager, &mut folding_context, interner);
+      }
    }
 }
 
@@ -240,7 +245,6 @@ fn fold_expr_inner(
 
          None
       }
-      Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::Variable(x) => {
          if let Some(replacement_index) = folding_context.const_replacements.get(x).copied() {
             return Some(folding_context.ast.expressions[replacement_index].expression.clone());
@@ -294,7 +298,7 @@ fn fold_expr_inner(
                   err_manager,
                   expr_to_fold_location,
                   "Literal of type {} has value `{}` which would immediately over/underflow",
-                  expr_type.as_roland_type_info_notv(interner),
+                  expr_type.as_roland_type_info_notv(interner, folding_context.procedure_info),
                   val as i64
                );
             } else {
@@ -302,7 +306,7 @@ fn fold_expr_inner(
                   err_manager,
                   expr_to_fold_location,
                   "Literal of type {} has value `{}` which would immediately over/underflow",
-                  expr_type.as_roland_type_info_notv(interner),
+                  expr_type.as_roland_type_info_notv(interner, folding_context.procedure_info),
                   val
                );
             }
@@ -593,7 +597,11 @@ fn fold_expr_inner(
                      err_manager,
                      expr_to_fold_location,
                      "Literal of type {} has value `-{}` which would immediately underflow",
-                     f_expr.exp_type.as_ref().unwrap().as_roland_type_info_notv(interner),
+                     f_expr
+                        .exp_type
+                        .as_ref()
+                        .unwrap()
+                        .as_roland_type_info_notv(interner, folding_context.procedure_info),
                      *x,
                   );
                   return None;
@@ -737,19 +745,19 @@ fn fold_expr_inner(
          }
       }
       Expression::EnumLiteral(_, _) => None,
+      Expression::UnresolvedVariable(_) => unreachable!(),
+      Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
    }
 }
 
 pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &FoldingContext) -> Option<Expression> {
    let (proc_name, generic_args) = match &fc.ast.expressions[proc_expr].exp_type.as_ref().unwrap() {
-      ExpressionType::ProcedureItem(x, type_arguments) => (*x, type_arguments),
+      ExpressionType::ProcedureItem(x, type_arguments) => (fc.procedure_info[*x].name.str, type_arguments),
       _ => return None,
    };
 
    match interner.lookup(proc_name) {
-      "proc_name" => {
-         fc.current_proc_name.map(Expression::StringLiteral)
-      }
+      "proc_name" => fc.current_proc_name.map(Expression::StringLiteral),
       "sizeof" => {
          let type_size = crate::size_info::sizeof_type_mem(&generic_args[0], fc.enum_info, fc.struct_size_info);
 
@@ -1677,6 +1685,7 @@ pub fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &E
       Expression::FloatLiteral(_) => false,
       Expression::UnitLiteral | Expression::BoundFcnLiteral(_, _) => false,
       Expression::UnresolvedVariable(_) => unreachable!(),
+      Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::Variable(_) => false,
       Expression::BinaryOperator { lhs, rhs, .. } => {
          expression_could_have_side_effects(*lhs, expressions) || expression_could_have_side_effects(*rhs, expressions)

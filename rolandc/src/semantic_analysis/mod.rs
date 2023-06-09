@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
+use slotmap::SecondaryMap;
 
 use self::type_variables::TypeVariableManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{AstPool, ExpressionId, ExpressionTypeNode, ExternalProcImplSource, ProcedureId, VariableId};
+use crate::parse::{AstPool, ExpressionId, ExpressionTypeNode, ProcedureId, StrNode, VariableId};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
@@ -15,22 +16,6 @@ pub mod type_inference;
 pub mod type_variables;
 pub mod validator;
 
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum ProcImplSource {
-   Builtin,
-   External,
-   ProcedureId(ProcedureId),
-}
-
-impl From<ExternalProcImplSource> for ProcImplSource {
-   fn from(value: ExternalProcImplSource) -> Self {
-      match value {
-         ExternalProcImplSource::Builtin => ProcImplSource::Builtin,
-         ExternalProcImplSource::External => ProcImplSource::External,
-      }
-   }
-}
-
 #[derive(Clone)]
 pub struct ProcedureInfo {
    // This includes named parameters
@@ -39,7 +24,8 @@ pub struct ProcedureInfo {
    pub type_parameters: IndexMap<StrId, IndexSet<StrId>>,
    pub ret_type: ExpressionType,
    pub location: SourceInfo,
-   pub proc_impl_source: ProcImplSource,
+   pub name: StrNode,
+   pub is_builtin: bool,
 }
 
 #[derive(Clone)]
@@ -87,7 +73,8 @@ pub struct VariableDetails {
 
 pub struct ValidationContext<'a> {
    pub target: Target,
-   pub procedure_info: &'a IndexMap<StrId, ProcedureInfo>,
+   pub procedure_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
+   pub proc_name_table: &'a HashMap<StrId, ProcedureId>,
    pub enum_info: &'a IndexMap<StrId, EnumInfo>,
    pub struct_info: &'a IndexMap<StrId, StructInfo>,
    pub global_info: &'a IndexMap<VariableId, GlobalInfo>,

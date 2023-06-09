@@ -3,11 +3,11 @@ use std::ops::BitOrAssign;
 
 use indexmap::{IndexMap, IndexSet};
 
-use super::{EnumInfo, GlobalInfo, GlobalKind, ProcImplSource, ProcedureInfo, StructInfo};
+use super::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::ExpressionTypeNode;
+use crate::parse::{ExpressionTypeNode, ProcImplSource};
 use crate::semantic_analysis::validator::resolve_type;
 use crate::source_info::{SourceInfo, SourcePath};
 use crate::type_data::{ExpressionType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
@@ -247,7 +247,7 @@ pub fn populate_type_and_procedure_info(
             continue;
          }
 
-         let etype_str = etn.e_type.as_roland_type_info_notv(interner);
+         let etype_str = etn.e_type.as_roland_type_info_notv(interner, &program.procedure_info);
          rolandc_error_w_details!(
             err_manager,
             &[(struct_i.1.location, "struct defined")],
@@ -284,7 +284,7 @@ pub fn populate_type_and_procedure_info(
       let si = &const_node.location;
 
       if resolve_type(const_type, &program.enum_info, &program.struct_info, None).is_err() {
-         let static_type_str = const_type.as_roland_type_info_notv(interner);
+         let static_type_str = const_type.as_roland_type_info_notv(interner, &program.procedure_info);
          rolandc_error!(
             err_manager,
             const_node.const_type.location,
@@ -327,7 +327,10 @@ pub fn populate_type_and_procedure_info(
       )
       .is_err()
       {
-         let static_type_str = static_node.static_type.e_type.as_roland_type_info_notv(interner);
+         let static_type_str = static_node
+            .static_type
+            .e_type
+            .as_roland_type_info_notv(interner, &program.procedure_info);
          rolandc_error!(
             err_manager,
             static_node.static_type.location,
@@ -360,26 +363,20 @@ pub fn populate_type_and_procedure_info(
       program.next_variable = program.next_variable.next();
    }
 
-   for (definition, source_location, proc_impl_source) in program
-      .external_procedures
+   for (id, definition, source_location, proc_impl_source) in program
+      .procedures
       .iter_mut()
-      .map(|x| (&mut x.definition, x.location, x.impl_source.into()))
-      .chain(
-         program
-            .procedures
-            .iter_mut()
-            .map(|(i, x)| (&mut x.definition, x.location, ProcImplSource::ProcedureId(i))),
-      )
+      .map(|(id, x)| (id, &mut x.definition, x.location, &x.proc_impl))
    {
       dupe_check.clear();
       dupe_check.reserve(definition.parameters.len());
 
-      if proc_impl_source == ProcImplSource::Builtin && !source_is_std(source_location, config) {
+      if matches!(proc_impl_source, ProcImplSource::Builtin) && !source_is_std(source_location, config) {
          rolandc_error!(
             err_manager,
             source_location,
             "Procedure `{}` is declared to be builtin, but only the compiler can declare builtin procedures",
-            interner.lookup(definition.name),
+            interner.lookup(definition.name.str),
          );
       }
 
@@ -391,7 +388,7 @@ pub fn populate_type_and_procedure_info(
                err_manager,
                source_location,
                "Procedure `{}` has a duplicate parameter `{}`",
-               interner.lookup(definition.name),
+               interner.lookup(definition.name.str),
                interner.lookup(param.name),
             );
          }
@@ -399,13 +396,13 @@ pub fn populate_type_and_procedure_info(
          if param.named && first_named_param.is_none() {
             first_named_param = Some(i);
 
-            if proc_impl_source == ProcImplSource::External {
+            if matches!(proc_impl_source, ProcImplSource::External) {
                reported_named_error = true;
                rolandc_error!(
                   err_manager,
                   source_location,
                   "External procedure `{}` has named parameter(s), which isn't supported",
-                  interner.lookup(definition.name),
+                  interner.lookup(definition.name.str),
                );
             }
          }
@@ -416,7 +413,7 @@ pub fn populate_type_and_procedure_info(
                err_manager,
                source_location,
                "Procedure `{}` has named parameter(s) which come before non-named parameter(s)",
-               interner.lookup(definition.name),
+               interner.lookup(definition.name.str),
             );
          }
       }
@@ -483,13 +480,16 @@ pub fn populate_type_and_procedure_info(
          )
          .is_err()
          {
-            let etype_str = parameter.p_type.e_type.as_roland_type_info_notv(interner);
+            let etype_str = parameter
+               .p_type
+               .e_type
+               .as_roland_type_info_notv(interner, &program.procedure_info);
             rolandc_error!(
                err_manager,
                parameter.p_type.location,
                "Parameter `{}` of procedure `{}` is of undeclared type `{}`",
                interner.lookup(parameter.name),
-               interner.lookup(definition.name),
+               interner.lookup(definition.name.str),
                etype_str,
             );
          }
@@ -503,18 +503,21 @@ pub fn populate_type_and_procedure_info(
       )
       .is_err()
       {
-         let etype_str = definition.ret_type.e_type.as_roland_type_info_notv(interner);
+         let etype_str = definition
+            .ret_type
+            .e_type
+            .as_roland_type_info_notv(interner, &program.procedure_info);
          rolandc_error!(
             err_manager,
             definition.ret_type.location,
             "Return type of procedure `{}` is of undeclared type `{}`",
-            interner.lookup(definition.name),
+            interner.lookup(definition.name.str),
             etype_str,
          );
       }
 
-      if let Some(old_procedure) = program.procedure_info.insert(
-         definition.name,
+      program.procedure_info.insert(
+         id,
          ProcedureInfo {
             type_parameters: type_parameters_with_constraints,
             parameters: definition.parameters.iter().map(|x| x.p_type.e_type.clone()).collect(),
@@ -526,18 +529,21 @@ pub fn populate_type_and_procedure_info(
                .collect(),
             ret_type: definition.ret_type.e_type.clone(),
             location: source_location,
-            proc_impl_source,
+            name: definition.name.clone(),
+            is_builtin: matches!(proc_impl_source, ProcImplSource::Builtin),
          },
-      ) {
-         let procedure_name_str = interner.lookup(definition.name);
+      );
+
+      if let Some(old_proc_id) = program.procedure_name_table.insert(definition.name.str, id) {
+         let old_proc_location = program.procedure_info[old_proc_id].location;
          rolandc_error_w_details!(
             err_manager,
             &[
-               (old_procedure.location, "first procedure declared"),
+               (old_proc_location, "first procedure declared"),
                (source_location, "second procedure declared")
             ],
             "Encountered duplicate procedures with the same name `{}`",
-            procedure_name_str
+            interner.lookup(definition.name.str),
          );
       }
    }

@@ -197,6 +197,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             .unwrap() = e_type.clone();
       }
       Expression::UnresolvedVariable(_) => unreachable!(),
+      Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::ProcedureCall { .. } => unreachable!(),
       Expression::StructLiteral(_, _) => unreachable!(),
       Expression::FieldAccess(_, _) => unreachable!(),

@@ -95,13 +95,6 @@ pub fn lower_enums_and_pointers(program: &mut Program) {
       }
    }
 
-   for procedure in program.external_procedures.iter_mut() {
-      lower_type(&mut procedure.definition.ret_type.e_type, &program.enum_info);
-      for param in procedure.definition.parameters.iter_mut() {
-         lower_type(&mut param.p_type.e_type, &program.enum_info);
-      }
-   }
-
    for a_global in program.global_info.iter_mut() {
       lower_type(&mut a_global.1.expr_type.e_type, &program.enum_info);
    }

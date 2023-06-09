@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::mem::discriminant;
 
 use indexmap::{IndexMap, IndexSet};
-use slotmap::{new_key_type, SlotMap};
+use slotmap::{new_key_type, SecondaryMap, SlotMap};
 
 use super::lex::{SourceToken, Token};
 use crate::error_handling::error_handling_macros::rolandc_error;
@@ -52,7 +52,7 @@ fn expect(l: &mut Lexer, parse_context: &mut ParseContext, token: Token) -> Resu
 
 #[derive(Clone)]
 pub struct ProcedureDefinition {
-   pub name: StrId,
+   pub name: StrNode,
    pub generic_parameters: Vec<StrNode>,
    pub constraints: IndexMap<StrId, IndexSet<StrId>>,
    pub parameters: Vec<ParameterNode>,
@@ -62,23 +62,17 @@ pub struct ProcedureDefinition {
 #[derive(Clone)]
 pub struct ProcedureNode {
    pub definition: ProcedureDefinition,
-   pub block: BlockNode,
    pub location: SourceInfo,
+   pub proc_impl: ProcImplSource,
 
    pub locals: IndexMap<VariableId, ExpressionType>,
 }
 
-#[derive(Clone, Copy)]
-pub enum ExternalProcImplSource {
+#[derive(Clone)]
+pub enum ProcImplSource {
    Builtin,
    External,
-}
-
-#[derive(Clone)]
-pub struct ExternalProcedureNode {
-   pub definition: ProcedureDefinition,
-   pub location: SourceInfo,
-   pub impl_source: ExternalProcImplSource,
+   Body(BlockNode),
 }
 
 #[derive(Clone)]
@@ -227,7 +221,8 @@ pub enum Expression {
       expr: ExpressionId,
    },
    EnumLiteral(StrNode, StrNode),
-   BoundFcnLiteral(StrNode, Box<[GenericArgumentNode]>),
+   UnresolvedProcLiteral(StrNode, Vec<GenericArgumentNode>),
+   BoundFcnLiteral(ProcedureId, Box<[GenericArgumentNode]>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -343,7 +338,6 @@ new_key_type! { pub struct ProcedureId; }
 pub struct Program {
    // These fields are populated by the parser
    pub enums: Vec<EnumNode>,
-   pub external_procedures: Vec<ExternalProcedureNode>,
    pub procedures: SlotMap<ProcedureId, ProcedureNode>,
    pub structs: Vec<StructNode>,
    pub consts: Vec<ConstNode>,
@@ -359,7 +353,8 @@ pub struct Program {
    pub enum_info: IndexMap<StrId, EnumInfo>,
    pub struct_info: IndexMap<StrId, StructInfo>,
    pub global_info: IndexMap<VariableId, GlobalInfo>,
-   pub procedure_info: IndexMap<StrId, ProcedureInfo>,
+   pub procedure_info: SecondaryMap<ProcedureId, ProcedureInfo>,
+   pub procedure_name_table: HashMap<StrId, ProcedureId>, // TODO: this doesn't need to live on Program
    pub struct_size_info: HashMap<StrId, SizeInfo>,
    pub next_variable: VariableId,
 }
@@ -373,12 +368,17 @@ fn reset_slotmap<K: slotmap::Key, V>(s: &mut SlotMap<K, V>) {
    *s = new_map;
 }
 
+fn reset_secondarymap<K: slotmap::Key, V>(s: &mut SecondaryMap<K, V>) {
+   let old_cap = s.capacity();
+   let new_map = SecondaryMap::with_capacity(old_cap);
+   *s = new_map;
+}
+
 impl Program {
    #[must_use]
    pub fn new() -> Program {
       Program {
          enums: Vec::new(),
-         external_procedures: Vec::new(),
          procedures: SlotMap::with_key(),
          structs: Vec::new(),
          consts: Vec::new(),
@@ -388,7 +388,8 @@ impl Program {
          enum_info: IndexMap::new(),
          struct_info: IndexMap::new(),
          global_info: IndexMap::new(),
-         procedure_info: IndexMap::new(),
+         procedure_info: SecondaryMap::new(),
+         procedure_name_table: HashMap::new(),
          struct_size_info: HashMap::new(),
          source_to_definition: IndexMap::new(),
          next_variable: VariableId::first(),
@@ -401,7 +402,6 @@ impl Program {
 
    pub fn clear(&mut self) {
       self.enums.clear();
-      self.external_procedures.clear();
       reset_slotmap(&mut self.procedures);
       self.structs.clear();
       self.consts.clear();
@@ -411,7 +411,8 @@ impl Program {
       self.enum_info.clear();
       self.struct_info.clear();
       self.global_info.clear();
-      self.procedure_info.clear();
+      reset_secondarymap(&mut self.procedure_info);
+      self.procedure_name_table.clear();
       self.struct_size_info.clear();
       self.source_to_definition.clear();
       reset_slotmap(&mut self.ast.expressions);
@@ -454,24 +455,14 @@ fn parse_top_level_items(
          Token::KeywordExtern => {
             let extern_kw = lexer.next();
             expect(lexer, parse_context, Token::KeywordProc)?;
-            let p = parse_external_procedure(
-               lexer,
-               parse_context,
-               extern_kw.source_info,
-               ExternalProcImplSource::External,
-            )?;
-            top.external_procedures.push(p);
+            let p = parse_external_procedure(lexer, parse_context, extern_kw.source_info, ProcImplSource::External)?;
+            top.procedures.insert(p);
          }
          Token::KeywordBuiltin => {
             let builtin_kw = lexer.next();
             expect(lexer, parse_context, Token::KeywordProc)?;
-            let p = parse_external_procedure(
-               lexer,
-               parse_context,
-               builtin_kw.source_info,
-               ExternalProcImplSource::Builtin,
-            )?;
-            top.external_procedures.push(p);
+            let p = parse_external_procedure(lexer, parse_context, builtin_kw.source_info, ProcImplSource::Builtin)?;
+            top.procedures.insert(p);
          }
          Token::KeywordProc => {
             let def = lexer.next();
@@ -551,7 +542,6 @@ fn parse_top_level_items(
 }
 
 struct TopLevelItems<'a> {
-   external_procedures: &'a mut Vec<ExternalProcedureNode>,
    procedures: &'a mut SlotMap<ProcedureId, ProcedureNode>,
    structs: &'a mut Vec<StructNode>,
    enums: &'a mut Vec<EnumNode>,
@@ -573,7 +563,6 @@ pub fn astify(
    };
 
    let mut top = TopLevelItems {
-      external_procedures: &mut program.external_procedures,
       procedures: &mut program.procedures,
       structs: &mut program.structs,
       enums: &mut program.enums,
@@ -645,7 +634,7 @@ fn parse_string(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<StrNo
 }
 
 fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<ProcedureDefinition, ()> {
-   let procedure_name = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
+   let procedure_name = parse_identifier(l, parse_context)?;
    let mut generic_parameters = vec![];
    while l.peek_token() == Token::Dollar {
       let _ = l.next();
@@ -662,7 +651,7 @@ fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -
       ExpressionTypeNode {
          e_type: ExpressionType::Unit,
          // this location is somewhat bogus. ok for now?
-         location: merge_locations(procedure_name.source_info, close_paren.source_info),
+         location: merge_locations(procedure_name.location, close_paren.source_info),
       }
    };
    let mut constraints = IndexMap::new();
@@ -684,7 +673,7 @@ fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -
       }
    }
    Ok(ProcedureDefinition {
-      name: extract_identifier(procedure_name.token),
+      name: procedure_name,
       generic_parameters,
       constraints,
       parameters,
@@ -704,7 +693,7 @@ fn parse_procedure(
    Ok(ProcedureNode {
       definition,
       locals: IndexMap::new(),
-      block,
+      proc_impl: ProcImplSource::Body(block),
       location: combined_location,
    })
 }
@@ -713,14 +702,15 @@ fn parse_external_procedure(
    l: &mut Lexer,
    parse_context: &mut ParseContext,
    source_info: SourceInfo,
-   proc_impl_source: ExternalProcImplSource,
-) -> Result<ExternalProcedureNode, ()> {
+   proc_impl_source: ProcImplSource,
+) -> Result<ProcedureNode, ()> {
    let definition = parse_procedure_definition(l, parse_context)?;
    let end_token = expect(l, parse_context, Token::Semicolon)?;
-   Ok(ExternalProcedureNode {
+   Ok(ProcedureNode {
       definition,
       location: merge_locations(source_info, end_token.source_info),
-      impl_source: proc_impl_source,
+      proc_impl: proc_impl_source,
+      locals: IndexMap::new(),
    })
 }
 
@@ -1343,12 +1333,12 @@ fn pratt(
             let generic_args = parse_generic_arguments(l, parse_context)?;
             let combined_location = merge_locations(begin_source, generic_args.last().as_ref().unwrap().location);
             wrap(
-               Expression::BoundFcnLiteral(
+               Expression::UnresolvedProcLiteral(
                   StrNode {
                      str: s,
                      location: begin_source,
                   },
-                  generic_args.into_boxed_slice(),
+                  generic_args,
                ),
                combined_location,
                expressions,

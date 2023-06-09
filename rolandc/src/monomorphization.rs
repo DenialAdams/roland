@@ -4,29 +4,28 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
-use crate::interner::{Interner, StrId};
+use crate::interner::StrId;
 use crate::parse::{
-   AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureNode, Statement, StatementId, VariableId,
+   AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, ProcedureNode, Statement,
+   StatementId, VariableId,
 };
 use crate::semantic_analysis::validator::map_generic_to_concrete;
-use crate::semantic_analysis::{ProcImplSource, ProcedureInfo};
+use crate::semantic_analysis::ProcedureInfo;
 use crate::type_data::ExpressionType;
 use crate::Program;
 
 const DEPTH_LIMIT: usize = 100;
 
-type ProcedureId = StrId;
-
-type TemplateWithTypeArguments = (StrId, Box<[ExpressionType]>);
+type TemplateWithTypeArguments = (ProcedureId, Box<[ExpressionType]>);
 
 struct SpecializationWorkItem {
    template_with_type_arguments: TemplateWithTypeArguments,
    depth: usize,
 }
 
-pub fn monomorphize(program: &mut Program, interner: &mut Interner, err_manager: &mut ErrorManager) {
+pub fn monomorphize(program: &mut Program, err_manager: &mut ErrorManager) {
    let mut worklist: Vec<SpecializationWorkItem> = Vec::new();
-   let mut new_procedures: HashMap<(StrId, Box<[ExpressionType]>), ProcedureId> = HashMap::new();
+   let mut new_procedures: HashMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId> = HashMap::new();
 
    // Construct initial worklist
    for expr in program.ast.expressions.values_mut() {
@@ -42,7 +41,7 @@ pub fn monomorphize(program: &mut Program, interner: &mut Interner, err_manager:
 
          worklist.push(SpecializationWorkItem {
             template_with_type_arguments: (
-               id.str,
+               *id,
                generic_args
                   .iter()
                   .map(|x| x.gtype.clone())
@@ -60,11 +59,13 @@ pub fn monomorphize(program: &mut Program, interner: &mut Interner, err_manager:
          continue;
       }
 
-      let ProcImplSource::ProcedureId(proc_id) = program.procedure_info.get(&new_spec.template_with_type_arguments.0).unwrap().proc_impl_source else {
-         continue;
-      };
+      let template_procedure = program.procedures.get(new_spec.template_with_type_arguments.0).unwrap();
 
-      let template_procedure = program.procedures.get(proc_id).unwrap();
+      // It would be great to do this check before we push it onto the worklist, since at the moment
+      // that involes cloning a bunch of types
+      if !matches!(template_procedure.proc_impl, ProcImplSource::Body(_)) {
+         continue;
+      }
 
       if new_spec.depth >= DEPTH_LIMIT {
          rolandc_error!(
@@ -76,39 +77,29 @@ pub fn monomorphize(program: &mut Program, interner: &mut Interner, err_manager:
          return;
       }
 
-      let mut cloned_procedure_info = program
+      let cloned_procedure_info = program
          .procedure_info
-         .get(&new_spec.template_with_type_arguments.0)
+         .get(new_spec.template_with_type_arguments.0)
          .unwrap()
          .clone();
 
-      let mut cloned_procedure = clone_procedure(
+      let cloned_procedure = clone_procedure(
          template_procedure,
          &new_spec.template_with_type_arguments.1,
          program
             .procedure_info
-            .get(&new_spec.template_with_type_arguments.0)
+            .get(new_spec.template_with_type_arguments.0)
             .unwrap(),
          new_spec.depth,
          &mut program.ast,
          &mut worklist,
          &mut program.next_variable,
       );
-      let new_id = interner.intern(&format!(
-         "{}${}",
-         interner.lookup(new_spec.template_with_type_arguments.0),
-         program.procedures.len()
-      ));
-      cloned_procedure.definition.name = new_id;
-      new_procedures.insert(new_spec.template_with_type_arguments, new_id);
 
       let new_proc_id = program.procedures.insert(cloned_procedure);
+      program.procedure_info.insert(new_proc_id, cloned_procedure_info);
 
-      // hack: the cloned procedure info is completely bogus, except for the proc_impl_source.
-      // a better solution is needed.
-      cloned_procedure_info.proc_impl_source = ProcImplSource::ProcedureId(new_proc_id);
-
-      program.procedure_info.insert(new_id, cloned_procedure_info);
+      new_procedures.insert(new_spec.template_with_type_arguments, new_proc_id);
    }
 
    // Update all procedure calls to refer to specialized procedures
@@ -133,8 +124,8 @@ pub fn monomorphize(program: &mut Program, interner: &mut Interner, err_manager:
             .collect::<Vec<_>>()
             .into_boxed_slice();
 
-         if let Some(new_id) = new_procedures.get(&(id.str, gargs)).copied() {
-            id.str = new_id;
+         if let Some(new_id) = new_procedures.get(&(*id, gargs)).copied() {
+            *id = new_id;
          }
       }
    }
@@ -178,8 +169,9 @@ fn clone_procedure(
       &procedure_info.type_parameters,
    );
 
+   let ProcImplSource::Body(block) = &mut cloned.proc_impl else { unreachable!() };
    deep_clone_block(
-      &mut cloned.block,
+      block,
       ast,
       concrete_types,
       &procedure_info.type_parameters,
@@ -438,7 +430,7 @@ fn deep_clone_expr(
       Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
       Expression::UnitLiteral => (),
-      Expression::UnresolvedVariable(_) => unreachable!(),
+      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::Variable(var) => {
          if let Some(new_var) = variable_replacements.get(var).copied() {
             *var = new_var;
@@ -520,7 +512,7 @@ fn deep_clone_expr(
          if !generic_args.is_empty() {
             worklist.push(SpecializationWorkItem {
                template_with_type_arguments: (
-                  id.str,
+                  *id,
                   generic_args
                      .iter()
                      .map(|x| x.gtype.clone())

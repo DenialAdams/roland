@@ -7,8 +7,8 @@ use wasm_encoder::ValType;
 
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::parse::{
-   AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, ProcedureId, Statement, StatementId, UnOp,
-   VariableId,
+   AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, Statement,
+   StatementId, UnOp, VariableId,
 };
 use crate::wasm::type_to_wasm_type;
 use crate::{Program, Target};
@@ -39,7 +39,9 @@ pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> 
       let all_registers = result.procedure_registers.get_mut(proc_id).unwrap();
       let mut total_registers = 0;
 
-      regalloc_block(&procedure.block, &mut ctx, &program.ast);
+      let ProcImplSource::Body(block) = &procedure.proc_impl else {continue;};
+
+      regalloc_block(block, &mut ctx, &program.ast);
 
       for param in procedure.definition.parameters.iter() {
          let var = param.var_id;
@@ -225,7 +227,7 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
       Expression::UnitLiteral => (),
       Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
-      Expression::UnresolvedVariable(_) => unreachable!(),
+      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
    }
 }
 
