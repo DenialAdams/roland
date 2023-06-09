@@ -992,16 +992,15 @@ fn get_type(
 
          match cast_type {
             CastType::As => {
-               let valid_cast = matches!(
-                  (e_type, target_type),
-                  (
-                     ExpressionType::Int(_) | ExpressionType::Float(_) | ExpressionType::Bool,
-                     ExpressionType::Int(_)
-                  ) | (
-                     ExpressionType::Float(_) | ExpressionType::Int(_),
-                     ExpressionType::Float(_)
-                  )
-               );
+               let valid_cast = match target_type {
+                  ExpressionType::Int(_) => {
+                     any_match(&[TypeValidator::AnyFloat, TypeValidator::AnyInt, TypeValidator::Bool], e_type, validation_context)
+                  }
+                  ExpressionType::Float(_) => {
+                     any_match(&[TypeValidator::AnyFloat, TypeValidator::AnyInt], e_type, validation_context)
+                  }
+                  _ => false,
+               };
 
                if valid_cast {
                   target_type.clone()

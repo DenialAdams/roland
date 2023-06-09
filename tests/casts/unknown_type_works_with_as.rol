@@ -1,0 +1,7 @@
+proc main() {
+   let x = 10;
+   let y = x as f32;
+   let z: u8 = x;
+}
+__END__
+run:
