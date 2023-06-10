@@ -1,0 +1,14 @@
+const C: u64 = 10;
+
+proc main() {
+   foo(&5);
+   foo(&C);
+}
+
+proc foo(x: &u64) {
+   println(int_to_string(x~));
+}
+__END__
+run:
+5
+10

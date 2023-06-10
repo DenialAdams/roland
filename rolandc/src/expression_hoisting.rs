@@ -3,7 +3,7 @@ use indexmap::IndexMap;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcImplSource, Program,
-   Statement, StatementId, StatementNode, VariableId,
+   Statement, StatementId, StatementNode, VariableId, UnOp,
 };
 use crate::semantic_analysis::GlobalInfo;
 use crate::type_data::ExpressionType;
@@ -244,8 +244,12 @@ fn vv_expr(
          vv_expr(*lhs, vv_context, expressions, current_statement);
          vv_expr(*rhs, vv_context, expressions, current_statement);
       }
-      Expression::UnaryOperator(_op, expr) => {
+      Expression::UnaryOperator(op, expr) => {
          vv_expr(*expr, vv_context, expressions, current_statement);
+
+         if *op == UnOp::AddressOf && !expressions[*expr].expression.is_lvalue(expressions, vv_context.global_info) {
+            vv_context.declare_temp_and_mark_expr_for_hoisting(*expr, expressions, current_statement);
+         }
       }
       Expression::StructLiteral(_, field_exprs) => {
          for (_, expr) in field_exprs.iter() {

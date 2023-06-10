@@ -1352,42 +1352,6 @@ fn get_type(
                )
             );
             ExpressionType::CompileError
-         } else if *un_op == UnOp::AddressOf
-            && !e
-               .expression
-               .is_lvalue(&validation_context.ast.expressions, validation_context.global_info)
-         {
-            if e
-               .expression
-               .is_lvalue_disregard_consts(&validation_context.ast.expressions)
-            {
-               rolandc_error!(
-                  err_manager,
-                  expr_location,
-                  "Attempting to take a pointer to a const, which can't be done as they don't reside in memory"
-               );
-            } else {
-               rolandc_error!(
-                  err_manager,
-                  expr_location,
-                  "A pointer can only be taken to a value that resides in memory; i.e. a variable or parameter"
-               );
-            }
-            ExpressionType::CompileError
-         } else if *un_op == UnOp::AddressOf {
-            if let Expression::Variable(var) = &e.expression {
-               if let Some(gi) = validation_context.global_info.get(var) {
-                  if gi.kind == GlobalKind::Const {
-                     rolandc_error!(
-                        err_manager,
-                        expr_location,
-                        "Attempting to take a pointer to a const, which does not have a memory location. Hint: Should `{}` be a static?",
-                        validation_context.interner.lookup(gi.name),
-                     );
-                  }
-               }
-            }
-            node_type
          } else {
             node_type
          }

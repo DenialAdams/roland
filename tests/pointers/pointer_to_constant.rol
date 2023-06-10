@@ -1,9 +1,0 @@
-const FOO: u64 = 0;
-
-proc main() {
-   let x = &FOO;
-}
-__END__
-compile:
-Attempting to take a pointer to a const, which can't be done as they don't reside in memory
-↳ line 4, column 12 [tests/pointers/pointer_to_constant.rol]
