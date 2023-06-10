@@ -5,6 +5,7 @@ use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcImplSource, Program,
    Statement, StatementId, StatementNode, VariableId,
 };
+use crate::semantic_analysis::GlobalInfo;
 use crate::type_data::ExpressionType;
 
 pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
@@ -30,6 +31,7 @@ enum Action {
 
 struct VvContext<'a> {
    cur_procedure_locals: &'a mut IndexMap<VariableId, ExpressionType>,
+   global_info: &'a IndexMap<VariableId, GlobalInfo>,
    next_variable: VariableId,
    statement_actions: Vec<StmtAction>,
 }
@@ -64,6 +66,7 @@ impl VvContext<'_> {
 pub fn expression_hoisting(program: &mut Program) {
    let mut vv_context = VvContext {
       cur_procedure_locals: &mut IndexMap::new(),
+      global_info: &program.global_info,
       next_variable: program.next_variable,
       statement_actions: Vec::new(),
    };
@@ -202,9 +205,8 @@ fn vv_expr(
          let array_expression = &expressions[*array];
 
          // If this is an rvalue, we need to store this array in memory to do the indexing
-         // and hence declare a virtual variable here. It's important that this
-         // runs after validation, because we need type inference to be complete
-         if !array_expression.expression.is_lvalue_disregard_consts(expressions) {
+         // and hence hoist here.
+         if !array_expression.expression.is_lvalue(expressions, vv_context.global_info) {
             vv_context.declare_temp_and_mark_expr_for_hoisting(*array, expressions, current_statement);
          }
       }
@@ -256,7 +258,7 @@ fn vv_expr(
       Expression::FieldAccess(_field_names, expr) => {
          vv_expr(*expr, vv_context, expressions, current_statement);
 
-         if !expressions[*expr].expression.is_lvalue_disregard_consts(expressions) {
+         if !expressions[*expr].expression.is_lvalue(expressions, vv_context.global_info) {
             vv_context.declare_temp_and_mark_expr_for_hoisting(*expr, expressions, current_statement);
          }
       }
@@ -269,7 +271,7 @@ fn vv_expr(
 
          let e = &expressions[*expr];
 
-         if !e.expression.is_lvalue_disregard_consts(expressions)
+         if !e.expression.is_lvalue(expressions, vv_context.global_info)
             && !is_wasm_compatible_rval_transmute(
                e.exp_type.as_ref().unwrap(),
                expressions[expr_index].exp_type.as_ref().unwrap(),
