@@ -10,9 +10,9 @@ pipeline {
 
       stage('Wasm Build') {
          steps {
-            dir('rolandc_wasm') {
+            dir('rolandc_web') {
                sh 'cargo build --release --target wasm32-unknown-unknown'
-               sh 'wasm-bindgen --target web ../target/wasm32-unknown-unknown/release/rolandc_wasm.wasm --out-dir ./pkg'
+               sh 'wasm-bindgen --target web ../target/wasm32-unknown-unknown/release/rolandc_web.wasm --out-dir ./pkg'
             }
          }
       }
@@ -42,13 +42,13 @@ pipeline {
          steps {
             dir('publish') {
                dir('pkg') {
-                  sh 'cp ../../rolandc_wasm/pkg/rolandc_wasm.js .'
-                  sh 'cp ../../rolandc_wasm/pkg/rolandc_wasm_bg.wasm .'
+                  sh 'cp ../../rolandc_web/pkg/rolandc_web.js .'
+                  sh 'cp ../../rolandc_web/pkg/rolandc_web_bg.wasm .'
                }
-               sh 'cp -r ../rolandc_wasm/lib .'
-               sh 'cp ../rolandc_wasm/index.html .'
-               sh 'cp ../rolandc_wasm/index.js .'
-               sh 'cp ../rolandc_wasm/stylesheet.css .'
+               sh 'cp -r ../rolandc_web/lib .'
+               sh 'cp ../rolandc_web/index.html .'
+               sh 'cp ../rolandc_web/index.js .'
+               sh 'cp ../rolandc_web/stylesheet.css .'
                sh 'cp ../target/x86_64-pc-windows-gnu/release/rolandc_cli.exe ./rolandc.exe'
                sh 'cp ../target/x86_64-unknown-linux-musl/release/rolandc_cli ./rolandc'
                sshagent (credentials: ['jenkins-ssh-nfs']) {
@@ -79,7 +79,7 @@ pipeline {
             expression { env.BRANCH_NAME == "master" }
          }
          steps {
-            dir('rolandc_wasm') {
+            dir('rolandc_web') {
                dir('pkg') {
                   sh 'npm pack'
                   sh 'npm publish || true'
