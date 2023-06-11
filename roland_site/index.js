@@ -28,11 +28,15 @@ let code_editor = null;
 let disasm_viewer = null;
 
 window.setHelloWorld = function setHelloWorld() {
-   code_editor.getDoc().setValue(HELLO_WORLD);
+   code_editor.dispatch({
+      changes: {from: 0, to: code_editor.state.doc.length, insert: HELLO_WORLD}
+   });
 };
 
 window.setFib = function setFib() {
-   code_editor.getDoc().setValue(FIB);
+   code_editor.dispatch({
+      changes: {from: 0, to: code_editor.state.doc.length, insert: FIB}
+   });
 };
 
 window.initApp = async function initApp() {
@@ -55,7 +59,7 @@ window.compileUpdateAll = async function compileUpdateAll() {
    disasm_viewer.dispatch({
       changes: {from: 0, to: disasm_viewer.state.doc.length, insert: ''}
    });
-   let compilation_output = compile_and_update_all(code_editor.getDoc().getValue());
+   let compilation_output = compile_and_update_all(code_editor.state.doc.toString());
    if (compilation_output != null) {
       disasm_viewer.dispatch({
          changes: {from: 0, to: disasm_viewer.state.doc.length, insert: compilation_output.disasm}
