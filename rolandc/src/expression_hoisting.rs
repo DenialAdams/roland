@@ -61,7 +61,8 @@ impl VvContext<'_> {
 // We hoist for a couple of different reasons:
 // 1) Some operations are easier to sequence in the backend when side effects are pulled into separate statements (for loops, procedure calls, struct literals)
 // 2) Some operations are easier to implement in the backend when rvalue's dont have to be considered (array indexing, field access, transmute)
-// 3) The constant folder can't fold away an entire expression with side effects, but it can if the side effect is pulled out into a separate statement
+// 3) Some operations don't make sense without operating on an lvalue (addressof)
+// 4) The constant folder can't fold away an entire expression with side effects, but it can if the side effect is pulled out into a separate statement
 //    - (this is of particular importance for field access - we need to lower all array length queries (which is pure type system info) before the backend)
 pub fn expression_hoisting(program: &mut Program) {
    let mut vv_context = VvContext {

@@ -1,0 +1,20 @@
+proc main() {
+    foo(a(), b()[1]);
+}
+
+proc foo(x: u8, y: u8) {
+}
+
+proc a() -> u8 {
+    println("a");
+    return 5;
+}
+
+proc b() -> [u8; 2] {
+    println("b");
+    return [10, 20];
+}
+__END__
+run:
+a
+b

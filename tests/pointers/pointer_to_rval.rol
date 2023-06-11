@@ -3,12 +3,19 @@ const C: u64 = 10;
 proc main() {
    foo(&5);
    foo(&C);
+   bar(&&&25);
 }
 
 proc foo(x: &u64) {
    println(int_to_string(x~));
 }
+
+proc bar(y: &&&u64) {
+   println(int_to_string(y~~~));
+}
+
 __END__
 run:
 5
 10
+25
