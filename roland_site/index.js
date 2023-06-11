@@ -53,12 +53,12 @@ window.compileUpdateAll = async function compileUpdateAll() {
    let output_frame = document.getElementById("out_frame");
    output_frame.textContent = "Compiling...";
    disasm_viewer.dispatch({
-      changes: {from: 0, to: cm.state.doc.length, insert: ''}
+      changes: {from: 0, to: disasm_viewer.state.doc.length, insert: ''}
    });
    let compilation_output = compile_and_update_all(code_editor.getDoc().getValue());
    if (compilation_output != null) {
       disasm_viewer.dispatch({
-         changes: {from: 0, to: cm.state.doc.length, insert: compilation_output.disasm}
+         changes: {from: 0, to: disasm_viewer.state.doc.length, insert: compilation_output.disasm}
       });
       let headers = new Headers({
          'Content-Type': 'application/wasm'
