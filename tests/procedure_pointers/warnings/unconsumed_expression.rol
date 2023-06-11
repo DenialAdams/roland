@@ -3,5 +3,5 @@ proc main() {
 }
 __END__
 compile:
-The result of this expression is not conumed
+The result of this expression is not consumed
 ↳ line 2, column 4 [tests/procedure_pointers/warnings/unconsumed_expression.rol]

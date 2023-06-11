@@ -153,7 +153,7 @@ pub fn fold_statement(
             rolandc_warn!(
                err_manager,
                expression.location,
-               "The result of this expression is not conumed"
+               "The result of this expression is not consumed"
             );
          }
       }
