@@ -1,4 +1,5 @@
-import { start, compile_and_update_all, default as init } from './pkg/rolandc_web.js';
+import { createEditorState, createEditorView } from './cm6.bundle.js';
+//import { start, compile_and_update_all, default as init } from './pkg/rolandc_wasm.js';
 
 const FIB =
 `proc main() {
@@ -41,18 +42,10 @@ window.initApp = async function initApp() {
 };
 
 window.addEventListener('DOMContentLoaded', (event) => {
-   let text_area = document.getElementById("src_frame");
-   code_editor = CodeMirror.fromTextArea(text_area, {
-      tabSize: 3,
-      lineNumbers: true,
-      mode: null
-   });
-   disasm_viewer = CodeMirror.fromTextArea(disassembly_frame, {
-      tabSize: 3,
-      lineNumbers: true,
-      mode: "text/webassembly",
-      readOnly: true,
-   });
+   code_editor = createEditorView(createEditorState(HELLO_WORLD, false)),
+   document.getElementById('buttons').insertAdjacentElement('beforebegin', code_editor.dom);
+   disasm_viewer = createEditorView(createEditorState("", true)),
+   document.getElementById('disassembly_div').insertAdjacentElement('beforeend', disasm_viewer.dom);
    initApp();
 });
 

@@ -35,6 +35,15 @@ pipeline {
          }
       }
 
+      stage('Build site bundle') {
+         steps {
+            dir('roland_site') {
+               sh 'npm install'
+               sh 'npx rollup editor.js -o cm6.bundle.js -p @rollup/plugin-node-resolve -p @rollup/plugin-terser --output.name cm6'
+            }
+         }
+      }
+
       stage('Deploy Site') {
          when {
             expression { env.BRANCH_NAME == "master" }
@@ -45,7 +54,7 @@ pipeline {
                   sh 'cp ../../rolandc_web/pkg/rolandc_web.js .'
                   sh 'cp ../../rolandc_web/pkg/rolandc_web_bg.wasm .'
                }
-               sh 'cp -r ../rolandc_web/lib .'
+               sh 'cp ../rolandc_web/cm6.bundle.js .'
                sh 'cp ../rolandc_web/index.html .'
                sh 'cp ../rolandc_web/index.js .'
                sh 'cp ../rolandc_web/stylesheet.css .'

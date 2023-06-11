@@ -3,9 +3,10 @@ rolandc/target
 **/*.wasm
 **/*.wat
 **/*.profraw
-roland-vscode/node_modules
+**/*.bundle.js
+**/node_modules/
 roland-vscode/out
-roland-vscode/*.vsix
+**/*.vsix
 roland-vscode/rolandc_lsp
 roland-vscode/rolandc_lsp.exe
 scratch.rol
