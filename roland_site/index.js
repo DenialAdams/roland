@@ -42,9 +42,9 @@ window.initApp = async function initApp() {
 };
 
 window.addEventListener('DOMContentLoaded', (event) => {
-   code_editor = createEditorView(createEditorState(HELLO_WORLD, false)),
+   code_editor = createEditorView(createEditorState(HELLO_WORLD, false));
    document.getElementById('buttons').insertAdjacentElement('beforebegin', code_editor.dom);
-   disasm_viewer = createEditorView(createEditorState("", true)),
+   disasm_viewer = createEditorView(createEditorState("", true));
    document.getElementById('disassembly_div').insertAdjacentElement('beforeend', disasm_viewer.dom);
    initApp();
 });
@@ -52,10 +52,14 @@ window.addEventListener('DOMContentLoaded', (event) => {
 window.compileUpdateAll = async function compileUpdateAll() {
    let output_frame = document.getElementById("out_frame");
    output_frame.textContent = "Compiling...";
-   disasm_viewer.getDoc().setValue('');
+   disasm_viewer.dispatch({
+      changes: {from: 0, to: cm.state.doc.length, insert: ''}
+   });
    let compilation_output = compile_and_update_all(code_editor.getDoc().getValue());
    if (compilation_output != null) {
-      disasm_viewer.getDoc().setValue(compilation_output.disasm);
+      disasm_viewer.dispatch({
+         changes: {from: 0, to: cm.state.doc.length, insert: compilation_output.disasm}
+      });
       let headers = new Headers({
          'Content-Type': 'application/wasm'
       });
@@ -97,7 +101,7 @@ window.toggleDisassembly = async function toggleDisassembly() {
       document.getElementById('disassembly_div').setAttribute('hidden', '');
       document.getElementById('out_frame').removeAttribute('hidden');
    }
-   disasm_viewer.refresh();
+   disasm_viewer.requestMeasure();
 }
 
 function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
