@@ -2,12 +2,6 @@ pipeline {
    agent any
 
    stages {
-      stage('Clean') {
-         steps {
-            sh 'cargo clean'
-         }
-      }
-
       stage('Wasm Build') {
          steps {
             dir('rolandc_web') {
