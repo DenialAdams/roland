@@ -48,10 +48,10 @@ pipeline {
                   sh 'cp ../../rolandc_web/pkg/rolandc_web.js .'
                   sh 'cp ../../rolandc_web/pkg/rolandc_web_bg.wasm .'
                }
-               sh 'cp ../rolandc_web/cm6.bundle.js .'
-               sh 'cp ../rolandc_web/index.html .'
-               sh 'cp ../rolandc_web/index.js .'
-               sh 'cp ../rolandc_web/stylesheet.css .'
+               sh 'cp ../rolandc_site/cm6.bundle.js .'
+               sh 'cp ../rolandc_site/index.html .'
+               sh 'cp ../rolandc_site/index.js .'
+               sh 'cp ../rolandc_site/stylesheet.css .'
                sh 'cp ../target/x86_64-pc-windows-gnu/release/rolandc_cli.exe ./rolandc.exe'
                sh 'cp ../target/x86_64-unknown-linux-musl/release/rolandc_cli ./rolandc'
                sshagent (credentials: ['jenkins-ssh-nfs']) {
