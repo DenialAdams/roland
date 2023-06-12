@@ -1,0 +1,6 @@
+proc main() {
+    let y = [1, 2, "x".pointer~, 4][0];
+    let z: u8 = [1, 2, "x".pointer~, 4][0];
+}
+__END__
+run:
