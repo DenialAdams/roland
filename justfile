@@ -3,10 +3,10 @@ release_text := if env_var_or_default("DEBUG", "false") == "true" { "debug" } el
 
 test path="tests/":
    cargo build {{release_flag}} --bin rolandc_cli
-   cargo run {{release_flag}} --bin roland_test_runner -- --cli {{justfile_directory()}}/target/{{release_text}}/rolandc_cli {{path}}
+   cargo run --release --bin roland_test_runner -- --cli {{justfile_directory()}}/target/{{release_text}}/rolandc_cli {{path}}
 test-overwrite:
    cargo build {{release_flag}} --bin rolandc_cli
-   cargo run {{release_flag}} --bin roland_test_runner -- --cli {{justfile_directory()}}/target/{{release_text}}/rolandc_cli tests/ --overwrite-error-files
+   cargo run --release --bin roland_test_runner -- --cli {{justfile_directory()}}/target/{{release_text}}/rolandc_cli tests/ --overwrite-error-files
 samples:
    cargo run {{release_flag}} --bin rolandc_cli -- --wasm4 samples/wasm4/spunky/cart.rol
    cargo run {{release_flag}} --bin rolandc_cli -- --wasm4 samples/wasm4/endless-runner/cart.rol
