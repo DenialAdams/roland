@@ -3,7 +3,7 @@ use indexmap::IndexMap;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcImplSource, Program,
-   Statement, StatementId, StatementNode, VariableId, UnOp,
+   Statement, StatementId, StatementNode, UnOp, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
 use crate::type_data::ExpressionType;
@@ -207,7 +207,10 @@ fn vv_expr(
 
          // If this is an rvalue, we need to store this array in memory to do the indexing
          // and hence hoist here.
-         if !array_expression.expression.is_lvalue(expressions, vv_context.global_info) {
+         if !array_expression
+            .expression
+            .is_lvalue(expressions, vv_context.global_info)
+         {
             vv_context.declare_temp_and_mark_expr_for_hoisting(*array, expressions, current_statement);
          }
       }
@@ -248,7 +251,11 @@ fn vv_expr(
       Expression::UnaryOperator(op, expr) => {
          vv_expr(*expr, vv_context, expressions, current_statement);
 
-         if *op == UnOp::AddressOf && !expressions[*expr].expression.is_lvalue(expressions, vv_context.global_info) {
+         if *op == UnOp::AddressOf
+            && !expressions[*expr]
+               .expression
+               .is_lvalue(expressions, vv_context.global_info)
+         {
             vv_context.declare_temp_and_mark_expr_for_hoisting(*expr, expressions, current_statement);
          }
       }
@@ -263,7 +270,10 @@ fn vv_expr(
       Expression::FieldAccess(_field_names, expr) => {
          vv_expr(*expr, vv_context, expressions, current_statement);
 
-         if !expressions[*expr].expression.is_lvalue(expressions, vv_context.global_info) {
+         if !expressions[*expr]
+            .expression
+            .is_lvalue(expressions, vv_context.global_info)
+         {
             vv_context.declare_temp_and_mark_expr_for_hoisting(*expr, expressions, current_statement);
          }
       }

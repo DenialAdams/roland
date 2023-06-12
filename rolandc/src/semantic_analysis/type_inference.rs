@@ -23,8 +23,6 @@ fn unknowns_are_compatible(x: TypeVariable, y: TypeVariable, validation_context:
    }
 }
 
-// Returns false if the types being inferred are incompatible
-// Inference may still not be possible for other reasons
 fn inference_is_possible(
    current_type: &ExpressionType,
    potential_type: &ExpressionType,
@@ -36,11 +34,16 @@ fn inference_is_possible(
          _ => false,
       },
       ExpressionType::Unknown(x) => {
+         let data = validation_context.type_variables.get_data(*x);
+
+         if data.known_type.is_some() {
+            return false;
+         }
+
          if let ExpressionType::Unknown(y) = potential_type {
             return unknowns_are_compatible(*x, *y, validation_context);
          }
 
-         let data = validation_context.type_variables.get_data(*x);
          match data.constraint {
             TypeConstraint::None => true,
             TypeConstraint::Float => {
@@ -76,37 +79,36 @@ pub fn try_set_inferred_type(
 }
 
 fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validation_context: &mut ValidationContext) {
-   debug_assert!(inference_is_possible(
-      validation_context.ast.expressions[expr_index]
-         .exp_type
-         .as_ref()
-         .unwrap(),
-      e_type,
-      validation_context,
-   ));
-
    // TODO: dummy expr?
    let the_expr = std::mem::replace(
       &mut validation_context.ast.expressions[expr_index].expression,
       Expression::UnitLiteral,
    );
    match &the_expr {
-      Expression::BoundFcnLiteral(_, _) => unreachable!(),
-      Expression::Cast { .. } => unreachable!(),
-      Expression::BoolLiteral(_) => unreachable!(),
       Expression::IntLiteral { .. } | Expression::FloatLiteral(_) => {
+         let my_tv = match validation_context.ast.expressions[expr_index]
+            .exp_type
+            .as_ref()
+            .unwrap()
+         {
+            ExpressionType::Unknown(x) => *x,
+            _ => unreachable!(),
+         };
          if let ExpressionType::Unknown(e_tv) = e_type {
-            let my_tv = match validation_context.ast.expressions[expr_index]
-               .exp_type
-               .as_ref()
-               .unwrap()
-            {
-               ExpressionType::Unknown(x) => *x,
-               _ => unreachable!(),
-            };
             debug_assert!(unknowns_are_compatible(my_tv, *e_tv, validation_context));
             validation_context.type_variables.union(my_tv, *e_tv);
          } else {
+            debug_assert!(validation_context
+               .type_variables
+               .get_data(my_tv)
+               .known_type
+               .as_ref()
+               .map_or(true, |x| x == e_type));
+            validation_context
+               .type_variables
+               .get_data_mut(my_tv)
+               .known_type
+               .get_or_insert_with(|| e_type.clone());
             validation_context.unknown_literals.remove(&expr_index);
          }
          *validation_context.ast.expressions[expr_index]
@@ -114,7 +116,6 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             .as_mut()
             .unwrap() = e_type.clone();
       }
-      Expression::StringLiteral(_) => unreachable!(),
       Expression::BinaryOperator { lhs, rhs, .. } => {
          set_inferred_type(e_type, *lhs, validation_context);
          set_inferred_type(e_type, *rhs, validation_context);
@@ -147,7 +148,6 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             .as_mut()
             .unwrap() = e_type.clone();
       }
-      Expression::UnitLiteral => unreachable!(),
       Expression::Variable(_) => {
          // Variable could have any of the following types:
          // - an unknown type directly
@@ -165,12 +165,12 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          )
          .unwrap();
 
-         let outer_representative = validation_context.type_variables.find(my_tv);
-
          if let Some(e_tv) = e_type.get_type_variable_of_unknown_type() {
             debug_assert!(unknowns_are_compatible(my_tv, e_tv, validation_context));
             validation_context.type_variables.union(my_tv, e_tv);
          } else {
+            let outer_representative = validation_context.type_variables.find(my_tv);
+
             // Update existing variables immediately, so that future uses can't change the inferred type
             // (Is this a performance problem? It's obviously awkward, but straightforward)
             for var_in_scope in validation_context.variable_types.values_mut() {
@@ -185,10 +185,17 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
                }
             }
 
+            debug_assert!(validation_context
+               .type_variables
+               .get_data(my_tv)
+               .known_type
+               .as_ref()
+               .map_or(true, |x| x == incoming_definition));
             validation_context
                .type_variables
-               .get_data_mut(outer_representative)
-               .known_type = Some(incoming_definition);
+               .get_data_mut(my_tv)
+               .known_type
+               .get_or_insert_with(|| incoming_definition.clone());
          }
 
          *validation_context.ast.expressions[expr_index]
@@ -196,11 +203,6 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             .as_mut()
             .unwrap() = e_type.clone();
       }
-      Expression::UnresolvedVariable(_) => unreachable!(),
-      Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::ProcedureCall { .. } => unreachable!(),
-      Expression::StructLiteral(_, _) => unreachable!(),
-      Expression::FieldAccess(_, _) => unreachable!(),
       Expression::ArrayLiteral(exprs) => {
          let ExpressionType::Array(target_elem_type, _) = e_type else { unreachable!() };
 
@@ -210,35 +212,63 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
 
          // It's important that we don't override the length here; that can't be inferred
          match &mut validation_context.ast.expressions[expr_index].exp_type {
-            Some(ExpressionType::Array(a_type, _)) => **a_type = target_elem_type.deref().clone(),
+            Some(ExpressionType::Array(a_type, _)) => {
+               if target_elem_type.get_type_variable_of_unknown_type().is_none() {
+                  let (my_tv, incoming_definition) =
+                     get_type_variable_of_unknown_type_and_associated_e_type(a_type, target_elem_type).unwrap();
+
+                  debug_assert!(validation_context
+                     .type_variables
+                     .get_data(my_tv)
+                     .known_type
+                     .as_ref()
+                     .map_or(true, |x| x == incoming_definition));
+                  validation_context
+                     .type_variables
+                     .get_data_mut(my_tv)
+                     .known_type
+                     .get_or_insert_with(|| incoming_definition.clone());
+                  validation_context.unknown_literals.remove(&expr_index);
+               }
+
+               **a_type = target_elem_type.deref().clone();
+            }
             _ => unreachable!(),
          }
-
-         validation_context.unknown_literals.remove(&expr_index);
       }
       Expression::ArrayIndex { array, index: _index } => {
          let ExpressionType::Array(_, real_array_len) = validation_context.ast.expressions[*array].exp_type.as_ref().unwrap() else {
             unreachable!()
          };
          let array_type = ExpressionType::Array(Box::new(e_type.clone()), *real_array_len);
-         set_inferred_type(&array_type, *array, validation_context);
+         try_set_inferred_type(&array_type, *array, validation_context);
          *validation_context.ast.expressions[expr_index]
             .exp_type
             .as_mut()
             .unwrap() = e_type.clone();
       }
+      Expression::StringLiteral(_) => unreachable!(),
       Expression::EnumLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedVariable(_) => unreachable!(),
+      Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+      Expression::ProcedureCall { .. } => unreachable!(),
+      Expression::StructLiteral(_, _) => unreachable!(),
+      Expression::FieldAccess(_, _) => unreachable!(),
+      Expression::UnitLiteral => unreachable!(),
+      Expression::BoundFcnLiteral(_, _) => unreachable!(),
+      Expression::Cast { .. } => unreachable!(),
+      Expression::BoolLiteral(_) => unreachable!(),
    }
    validation_context.ast.expressions[expr_index].expression = the_expr;
 }
 
-fn get_type_variable_of_unknown_type_and_associated_e_type(
+fn get_type_variable_of_unknown_type_and_associated_e_type<'b>(
    unknown_type: &ExpressionType,
-   type_coming_in: &ExpressionType,
-) -> Option<(TypeVariable, ExpressionType)> {
+   type_coming_in: &'b ExpressionType,
+) -> Option<(TypeVariable, &'b ExpressionType)> {
    // Strip down the provided type to get its associated type variable
    match (unknown_type, type_coming_in) {
-      (ExpressionType::Unknown(x), y) => Some((*x, y.clone())),
+      (ExpressionType::Unknown(x), y) => Some((*x, y)),
       (ExpressionType::Array(unknown_type_inner, _), ExpressionType::Array(type_coming_in_inner, _)) => {
          get_type_variable_of_unknown_type_and_associated_e_type(unknown_type_inner, type_coming_in_inner)
       }

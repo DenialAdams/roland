@@ -394,6 +394,9 @@ pub fn type_and_check_validity(
 
    for (id, procedure) in program.procedures.iter_mut() {
       let ProcImplSource::Body(block) = &procedure.proc_impl else {continue;};
+      if validation_context.interner.lookup(procedure.definition.name.str) == "main" {
+         println!("break");
+      }
       validation_context.cur_procedure_info = program.procedure_info.get(id);
 
       let num_globals = validation_context.variable_types.len();
@@ -1637,6 +1640,10 @@ fn get_type(
             try_set_inferred_type(&borrowed_type, elems[i], validation_context);
             validation_context.ast.expressions[elems[i - 1]].exp_type = Some(borrowed_type);
 
+            let borrowed_type = validation_context.ast.expressions[elems[i]].exp_type.take().unwrap();
+            try_set_inferred_type(&borrowed_type, elems[i - 1], validation_context);
+            validation_context.ast.expressions[elems[i]].exp_type = Some(borrowed_type);
+
             let last_elem_expr = &validation_context.ast.expressions[elems[i - 1]];
             let this_elem_expr = &validation_context.ast.expressions[elems[i]];
 
@@ -1692,7 +1699,13 @@ fn get_type(
             validation_context.unknown_literals.insert(expr_index);
             ExpressionType::Array(Box::new(ExpressionType::Unknown(new_type_variable)), 0)
          } else {
-            let a_type = validation_context.ast.expressions[elems[0]].exp_type.clone().unwrap();
+            // We specifically want to type the array with the last element, because we have accumulated type information while iterating the literal
+            // For instance: [2, 2, 2u8, 3]
+            // In this example, the first element will have a type variable that should resolve to u8, but the last element will already be u8
+            let a_type = validation_context.ast.expressions[*elems.last().unwrap()]
+               .exp_type
+               .clone()
+               .unwrap();
             let t_len = elems.len().try_into().unwrap(); // unwrap should always succeed due to error check above
             ExpressionType::Array(Box::new(a_type), t_len)
          }

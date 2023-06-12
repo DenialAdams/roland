@@ -23,11 +23,14 @@ coverage:
    RUSTFLAGS=-Cinstrument-coverage cargo build --bin rolandc_cli
    cargo tarpaulin --skip-clean --implicit-test-threads --follow-exec --engine llvm --command build --bin roland_test_runner -o html -- {{justfile_directory()}}/tests/ --cli {{justfile_directory()}}/target/debug/rolandc_cli
    {{env_var_or_default("BROWSER", "firefox")}} "{{justfile_directory()}}/tarpaulin-report.html#rolandc/src"
+[no-cd]
 rolandc *args:
-   cd {{invocation_directory()}} && cargo run {{release_flag}} --bin rolandc_cli -- {{args}}
+   cargo run {{release_flag}} --bin rolandc_cli -- {{args}}
+[no-cd]
 rolandc_dhat *args:
-   cd {{invocation_directory()}} && cargo run --profile dhat --bin rolandc_cli --features dhat-heap -- {{args}}
+   cargo run --profile dhat --bin rolandc_cli --features dhat-heap -- {{args}}
+[no-cd]
 rolandc_flame *args:
-   cd {{invocation_directory()}} && cargo flamegraph --profile dhat --freq 50700 --bin rolandc_cli -- {{args}}
+   cargo flamegraph --profile dhat --freq 50700 --bin rolandc_cli -- {{args}}
 prepare-release kind="patch":
    cd roland-vscode && npm version {{kind}}
