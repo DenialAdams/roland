@@ -462,6 +462,10 @@ pub fn type_and_check_validity(
          }
       }
 
+      if err_manager.errors.is_empty() {
+         error_on_unknown_literals(err_manager, &mut validation_context);
+      }
+
       for proc in program.procedures.values_mut() {
          for lt in proc.locals.values_mut() {
             let Some(tv) = lt.get_type_variable_of_unknown_type() else { continue; };
@@ -473,10 +477,6 @@ pub fn type_and_check_validity(
             };
          }
       }
-   }
-
-   if err_manager.errors.is_empty() {
-      error_on_unknown_literals(err_manager, &mut validation_context);
    }
 
    program.struct_size_info = validation_context.struct_size_info;
