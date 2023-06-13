@@ -7,9 +7,6 @@ use crate::parse::{Expression, ExpressionId};
 use crate::type_data::{ExpressionType, IntType};
 
 fn unknowns_are_compatible(x: TypeVariable, y: TypeVariable, validation_context: &ValidationContext) -> bool {
-   let x = validation_context.type_variables.find(x);
-   let y = validation_context.type_variables.find(y);
-
    let x_data = validation_context.type_variables.get_data(x);
    let y_data = validation_context.type_variables.get_data(y);
 
