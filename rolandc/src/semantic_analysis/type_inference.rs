@@ -151,8 +151,8 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
       Expression::Variable(_) => {
          // Variable could have any of the following types:
          // - an unknown type directly
-         // - a pointer to an unkown type
-         // - an array of an unkown type
+         // - a pointer to an unknown type
+         // - an array of an unknown type
          // (and recursive variants: an array of arrays of pointers to an unknown type...)
          // We must take care to preserve the existing type structure.
 
@@ -169,10 +169,12 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             debug_assert!(unknowns_are_compatible(my_tv, e_tv, validation_context));
             validation_context.type_variables.union(my_tv, e_tv);
          } else {
-            let outer_representative = validation_context.type_variables.find(my_tv);
+            let my_tv = validation_context.type_variables.find(my_tv);
 
-            // Update existing variables immediately, so that future uses can't change the inferred type
+            // Update existing variables immediately, so that error messages have good types
+            // (this should _not_ affect correctness.)
             // (Is this a performance problem? It's obviously awkward, but straightforward)
+            // (The alternative would be to update the type lazily)
             for var_in_scope in validation_context.variable_types.values_mut() {
                let Some(inner_tv) = var_in_scope.var_type.get_type_variable_of_unknown_type() else {
                   continue;
@@ -180,7 +182,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
 
                let representative = validation_context.type_variables.find(inner_tv);
 
-               if representative == outer_representative {
+               if representative == my_tv {
                   *var_in_scope.var_type.get_unknown_portion_of_type().unwrap() = incoming_definition.clone();
                }
             }

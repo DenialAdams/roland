@@ -1,0 +1,10 @@
+proc main() {
+   let x = [1, 2, -3][0];
+   // This should not compile
+   let y: u32 = x;
+}
+__END__
+compile:
+Declared type u32 does not match actual expression type ?? Signed Int
+↳ expression @ line 4, column 17 [tests/inference/array_type_inference_5.rol]
+↳ declared type @ line 4, column 11 [tests/inference/array_type_inference_5.rol]

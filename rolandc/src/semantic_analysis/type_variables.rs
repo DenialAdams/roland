@@ -14,6 +14,19 @@ pub enum TypeConstraint {
    None,
 }
 
+fn union_constraints(a: TypeConstraint, b: TypeConstraint) -> TypeConstraint {
+   match (a, b) {
+      (TypeConstraint::None, _) => b,
+      (_, TypeConstraint::None) => a,
+      (TypeConstraint::Int, TypeConstraint::SignedInt) => TypeConstraint::SignedInt,
+      (TypeConstraint::SignedInt, TypeConstraint::Int) => TypeConstraint::SignedInt,
+      _ => {
+         debug_assert!(a == b);
+         a
+      }
+   }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeVariableData {
    pub constraint: TypeConstraint,
@@ -66,8 +79,23 @@ impl TypeVariableManager {
       TypeVariable(self.disjoint_set.find(x.0))
    }
 
-   pub fn union(&self, x: TypeVariable, y: TypeVariable) {
+   pub fn union(&mut self, x: TypeVariable, y: TypeVariable) {
+      let new_constraint = union_constraints(self.get_data(x).constraint, self.get_data(y).constraint);
+      let known_type = {
+         match (self.get_data_mut(x).known_type.take(), self.get_data_mut(y).known_type.take()) {
+            (None, None) => None,
+            (None, r @ Some(_)) => r,
+            (l @ Some(_), None) => l,
+            (l @ Some(_), r @ Some(_)) => {
+               debug_assert!(l == r);
+               l
+            },
+        }
+      };
       self.disjoint_set.union(x.0, y.0);
+      let new_data = self.get_data_mut(x);
+      new_data.constraint = new_constraint;
+      new_data.known_type = known_type;
    }
 
    pub fn get_data(&self, x: TypeVariable) -> &TypeVariableData {
