@@ -14,7 +14,7 @@ fn unknowns_are_compatible(x: TypeVariable, y: TypeVariable, validation_context:
       (x, y) if x == y => true,
       (TypeConstraint::None, _) => true,
       (_, TypeConstraint::None) => true,
-      (TypeConstraint::Int, TypeConstraint::SignedInt | TypeConstraint::Int) => true,
+      (TypeConstraint::Int, TypeConstraint::SignedInt) => true,
       (TypeConstraint::SignedInt, TypeConstraint::Int) => true,
       _ => false,
    }
