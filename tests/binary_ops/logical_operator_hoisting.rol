@@ -1,0 +1,24 @@
+struct S {
+    foo: bool,
+    bar: bool,
+}
+
+proc main() {
+    let z = a() and b().bar;
+}
+
+proc a() -> bool {
+    println("a");
+    return false;
+}
+
+proc b() -> S {
+    println("b");
+    return S {
+        foo: true,
+        bar: true
+    };
+}
+__END__
+run:
+a
