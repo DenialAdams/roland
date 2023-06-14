@@ -106,15 +106,7 @@ fn defer_statement(statement: StatementId, defer_ctx: &mut DeferContext, ast: &m
          defer_block(if_block, defer_ctx, ast);
          defer_statement(*else_statement, defer_ctx, ast, current_statement);
       }
-      Statement::For {
-         induction_var_name: _,
-         range_start: _,
-         range_end: _,
-         body: block,
-         range_inclusive: _,
-         induction_var: _,
-      }
-      | Statement::Loop(block) => {
+      Statement::Loop(block) => {
          let old = defer_ctx.num_stmts_at_loop_begin;
          defer_ctx.num_stmts_at_loop_begin = defer_ctx.deferred_stmts.len();
          defer_block(block, defer_ctx, ast);
@@ -127,6 +119,7 @@ fn defer_statement(statement: StatementId, defer_ctx: &mut DeferContext, ast: &m
       Statement::Assignment(_, _) => (),
       Statement::Expression(_) => (),
       Statement::VariableDeclaration(_, _, _, _) => (),
+      Statement::For { .. } => unreachable!(),
    }
    ast.statements[statement].statement = the_statement;
 }
@@ -151,16 +144,6 @@ fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool) -> StatementId {
       Statement::Loop(bn) => {
          deep_clone_block(bn, ast);
       }
-      Statement::For {
-         range_start: start,
-         range_end: end,
-         body: bn,
-         ..
-      } => {
-         *start = deep_clone_expr(*start, &mut ast.expressions);
-         *end = deep_clone_expr(*end, &mut ast.expressions);
-         deep_clone_block(bn, ast);
-      }
       Statement::Continue => (),
       Statement::Break => (),
       Statement::Defer(stmt) => {
@@ -178,6 +161,7 @@ fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool) -> StatementId {
          *expr = deep_clone_expr(*expr, &mut ast.expressions);
       }
       Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
+      Statement::For { .. } => unreachable!(),
    }
    ast.statements.insert(cloned)
 }
@@ -206,7 +190,6 @@ fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool) -> Expr
       Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
       Expression::UnitLiteral => (),
-      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::Variable(_) => (),
       Expression::BinaryOperator { lhs, rhs, .. } => {
          *lhs = deep_clone_expr(*lhs, expressions);
@@ -228,6 +211,7 @@ fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool) -> Expr
       }
       Expression::EnumLiteral(_, _) => (),
       Expression::BoundFcnLiteral(_, _) => (),
+      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
    }
    expressions.insert(cloned)
 }

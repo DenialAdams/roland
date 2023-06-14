@@ -394,9 +394,6 @@ pub fn type_and_check_validity(
 
    for (id, procedure) in program.procedures.iter_mut() {
       let ProcImplSource::Body(block) = &procedure.proc_impl else {continue;};
-      if validation_context.interner.lookup(procedure.definition.name.str) == "main" {
-         println!("break");
-      }
       validation_context.cur_procedure_info = program.procedure_info.get(id);
 
       let num_globals = validation_context.variable_types.len();

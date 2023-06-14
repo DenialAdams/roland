@@ -261,45 +261,9 @@ fn deep_clone_stmt(
             variable_replacements,
          );
       }
-      Statement::For {
-         induction_var_name: _,
-         range_start: start,
-         range_end: end,
-         body: bn,
-         range_inclusive: _,
-         induction_var: var,
-      } => {
-         *start = deep_clone_expr(
-            *start,
-            &mut ast.expressions,
-            concrete_types,
-            type_parameters,
-            depth,
-            worklist,
-            variable_replacements,
-         );
-         *end = deep_clone_expr(
-            *end,
-            &mut ast.expressions,
-            concrete_types,
-            type_parameters,
-            depth,
-            worklist,
-            variable_replacements,
-         );
-         deep_clone_block(
-            bn,
-            ast,
-            concrete_types,
-            type_parameters,
-            depth,
-            worklist,
-            variable_replacements,
-         );
-         *var = variable_replacements.get(var).copied().unwrap();
-      }
       Statement::Continue => (),
       Statement::Break => (),
+      Statement::For { .. } => unreachable!(),
       Statement::Defer(_) => unreachable!(),
       Statement::Expression(expr) => {
          *expr = deep_clone_expr(

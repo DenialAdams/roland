@@ -135,18 +135,6 @@ fn regalloc_statement(stmt: StatementId, ctx: &mut RegallocCtx, ast: &AstPool) {
       Statement::Loop(body) => {
          regalloc_block(body, ctx, ast);
       }
-      Statement::For {
-         range_start,
-         range_end,
-         body,
-         induction_var,
-         ..
-      } => {
-         regalloc_expr(*range_start, ctx, ast);
-         regalloc_expr(*range_end, ctx, ast);
-         regalloc_block(body, ctx, ast);
-         regalloc_var(*induction_var, ctx);
-      }
       Statement::Assignment(lhs, rhs) => {
          regalloc_expr(*lhs, ctx, ast);
          regalloc_expr(*rhs, ctx, ast);
@@ -156,6 +144,7 @@ fn regalloc_statement(stmt: StatementId, ctx: &mut RegallocCtx, ast: &AstPool) {
       }
       Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
       Statement::Defer(_) => unreachable!(),
+      Statement::For { .. } => unreachable!(),
    }
 }
 

@@ -27,6 +27,7 @@ mod defer;
 mod disjoint_set;
 pub mod error_handling;
 mod expression_hoisting;
+mod for_loop_lowering;
 mod imports;
 pub mod interner;
 mod lex;
@@ -171,6 +172,8 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
+
+   for_loop_lowering::lower_fors(&mut ctx.program);
 
    defer::process_defer_statements(&mut ctx.program);
 

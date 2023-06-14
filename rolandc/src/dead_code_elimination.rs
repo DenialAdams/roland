@@ -90,21 +90,6 @@ fn mark_reachable_stmt(stmt: StatementId, ast: &AstPool, ctx: &mut DceCtx) {
       Statement::Loop(bn) => {
          mark_reachable_block(bn, ast, ctx);
       }
-      Statement::For {
-         induction_var_name: _,
-         range_start: start,
-         range_end: end,
-         body: bn,
-         range_inclusive: _,
-         induction_var: _,
-      } => {
-         mark_reachable_expr(*start, ast, ctx);
-         mark_reachable_expr(*end, ast, ctx);
-         mark_reachable_block(bn, ast, ctx);
-      }
-      Statement::Continue => (),
-      Statement::Break => (),
-      Statement::Defer(_) => unreachable!(),
       Statement::Expression(expr) => {
          mark_reachable_expr(*expr, ast, ctx);
       }
@@ -116,7 +101,11 @@ fn mark_reachable_stmt(stmt: StatementId, ast: &AstPool, ctx: &mut DceCtx) {
       Statement::Return(expr) => {
          mark_reachable_expr(*expr, ast, ctx);
       }
+      Statement::Continue => (),
+      Statement::Break => (),
       Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
+      Statement::Defer(_) => unreachable!(),
+      Statement::For { .. } => unreachable!(),
    }
 }
 

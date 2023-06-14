@@ -844,81 +844,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
             emit_statement(statement, generation_context);
          }
       }
-      Statement::For {
-         induction_var_name: _,
-         range_start: start,
-         range_end: end,
-         body: bn,
-         range_inclusive: inclusive,
-         induction_var: start_var_id,
-      } => {
-         let start_expr = &generation_context.ast.expressions[*start];
-
-         let (wasm_type, signed) = match start_expr.exp_type.as_ref().unwrap() {
-            ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
-            _ => unreachable!(),
-         };
-
-         debug_assert!(!*inclusive); // unimplemented
-
-         generation_context.stack_of_loop_jump_offsets.push(0);
-         generation_context
-            .active_fcn
-            .instruction(&Instruction::Block(BlockType::Empty)); // b
-         generation_context
-            .active_fcn
-            .instruction(&Instruction::Loop(BlockType::Empty));
-         generation_context
-            .active_fcn
-            .instruction(&Instruction::Block(BlockType::Empty)); // bi
-
-         // Check and break if needed
-         {
-            do_emit_and_load_lval(*start, generation_context);
-            do_emit_and_load_lval(*end, generation_context);
-            match (wasm_type, signed) {
-               (ValType::I64, true) => generation_context.active_fcn.instruction(&Instruction::I64GeS),
-               (ValType::I64, false) => generation_context.active_fcn.instruction(&Instruction::I64GeU),
-               (ValType::I32, true) => generation_context.active_fcn.instruction(&Instruction::I32GeS),
-               (ValType::I32, false) => generation_context.active_fcn.instruction(&Instruction::I32GeU),
-               _ => unreachable!(),
-            };
-
-            generation_context
-               .active_fcn
-               .instruction(&Instruction::If(BlockType::Empty));
-            // then
-            generation_context.active_fcn.instruction(&Instruction::Br(3));
-            // finish if
-            generation_context.active_fcn.instruction(&Instruction::End);
-         }
-         for statement in bn.statements.iter().copied() {
-            emit_statement(statement, generation_context);
-         }
-         generation_context.active_fcn.instruction(&Instruction::End); // end block bi
-
-         // Increment
-         {
-            get_stack_address_of_local(*start_var_id, generation_context);
-            do_emit_and_load_lval(*start, generation_context);
-            match wasm_type {
-               ValType::I64 => {
-                  generation_context.active_fcn.instruction(&Instruction::I64Const(1));
-                  generation_context.active_fcn.instruction(&Instruction::I64Add);
-               }
-               ValType::I32 => {
-                  generation_context.active_fcn.instruction(&Instruction::I32Const(1));
-                  generation_context.active_fcn.instruction(&Instruction::I32Add);
-               }
-               _ => unreachable!(),
-            }
-            store_var(*start_var_id, start_expr.exp_type.as_ref().unwrap(), generation_context);
-         }
-         generation_context.active_fcn.instruction(&Instruction::Br(0));
-         generation_context.active_fcn.instruction(&Instruction::End);
-         generation_context.active_fcn.instruction(&Instruction::End);
-         generation_context.stack_of_loop_jump_offsets.pop();
-      }
+      Statement::For { .. } => unreachable!(),
       Statement::Loop(bn) => {
          generation_context.stack_of_loop_jump_offsets.push(0);
          generation_context
@@ -927,21 +853,17 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
          generation_context
             .active_fcn
             .instruction(&Instruction::Loop(BlockType::Empty));
-         generation_context
-            .active_fcn
-            .instruction(&Instruction::Block(BlockType::Empty));
          for statement in bn.statements.iter().copied() {
             emit_statement(statement, generation_context);
          }
-         generation_context.active_fcn.instruction(&Instruction::End); // end block bi
          generation_context.active_fcn.instruction(&Instruction::Br(0));
          generation_context.active_fcn.instruction(&Instruction::End); // end loop
-         generation_context.active_fcn.instruction(&Instruction::End); // end block b
+         generation_context.active_fcn.instruction(&Instruction::End); // end block
          generation_context.stack_of_loop_jump_offsets.pop();
       }
       Statement::Break => {
          generation_context.active_fcn.instruction(&Instruction::Br(
-            2 + generation_context.stack_of_loop_jump_offsets.last().unwrap(),
+            1 + generation_context.stack_of_loop_jump_offsets.last().unwrap(),
          ));
       }
       Statement::Continue => {
@@ -2177,17 +2099,6 @@ fn simple_load_mem(val_type: &ExpressionType, generation_context: &mut Generatio
             .instruction(&Instruction::I32Load8U(null_mem_arg())),
          _ => unreachable!(),
       };
-   }
-}
-
-fn store_var(var: VariableId, val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   match generation_context.var_to_reg.get(&var).cloned() {
-      Some(reg_range) => {
-         for a_reg in reg_range.rev() {
-            generation_context.active_fcn.instruction(&Instruction::LocalSet(a_reg));
-         }
-      }
-      None => store_mem(val_type, generation_context),
    }
 }
 
