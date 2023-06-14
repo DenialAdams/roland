@@ -1673,8 +1673,6 @@ pub fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &E
       Expression::IntLiteral { .. } => false,
       Expression::FloatLiteral(_) => false,
       Expression::UnitLiteral | Expression::BoundFcnLiteral(_, _) => false,
-      Expression::UnresolvedVariable(_) => unreachable!(),
-      Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::Variable(_) => false,
       Expression::BinaryOperator { lhs, rhs, .. } => {
          expression_could_have_side_effects(*lhs, expressions) || expression_could_have_side_effects(*rhs, expressions)
@@ -1686,5 +1684,7 @@ pub fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &E
       Expression::FieldAccess(_, expr) => expression_could_have_side_effects(*expr, expressions),
       Expression::Cast { expr, .. } => expression_could_have_side_effects(*expr, expressions),
       Expression::EnumLiteral(_, _) => false,
+      Expression::UnresolvedVariable(_) => unreachable!(),
+      Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
    }
 }
