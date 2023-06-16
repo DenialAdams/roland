@@ -1,6 +1,6 @@
 proc main() {
     let x: u8 = 1;
-    // We wnly want one error, and it should be here
+    // We only want one error, and it should be here
     defer x / 0;
     if x == 1 {
         return; 
