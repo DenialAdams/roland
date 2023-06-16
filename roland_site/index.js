@@ -1,5 +1,5 @@
 import { createEditorState, createEditorView } from './cm6.bundle.js';
-import { start, compile_and_update_all, default as init } from './pkg/rolandc_wasm.js';
+import { start, compile_and_update_all, default as init } from './pkg/rolandc_web.js';
 
 const FIB =
 `proc main() {
