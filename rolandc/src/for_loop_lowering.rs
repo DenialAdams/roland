@@ -27,16 +27,16 @@ pub fn lower_fors(program: &mut Program) {
    }
 }
 
-fn lower_block(block: &mut BlockNode, defer_ctx: &mut LowerForContext, ast: &mut AstPool) {
-   let fors_before = defer_ctx.for_stmts.len();
+fn lower_block(block: &mut BlockNode, ctx: &mut LowerForContext, ast: &mut AstPool) {
+   let fors_before = ctx.for_stmts.len();
    for (current_stmt, statement) in block.statements.iter().copied().enumerate() {
-      lower_statement(statement, defer_ctx, ast);
+      lower_statement(statement, ctx, ast);
       if matches!(ast.statements[statement].statement, Statement::For { .. }) {
-         defer_ctx.for_stmts.push(current_stmt);
+         ctx.for_stmts.push(current_stmt);
       }
    }
 
-   for insertion_point in defer_ctx.for_stmts.drain(fors_before..).rev() {
+   for insertion_point in ctx.for_stmts.drain(fors_before..).rev() {
       let for_stmt = block.statements[insertion_point];
 
       let for_location = ast.statements[for_stmt].location;
@@ -48,7 +48,6 @@ fn lower_block(block: &mut BlockNode, defer_ctx: &mut LowerForContext, ast: &mut
          let lhs = ast.expressions.insert(ExpressionNode {
             expression: Expression::Variable(induction_var),
             exp_type: lhs_type,
-            // TODO: it would be nice if this location was x in "for x ..."
             location: ast.expressions[range_start].location,
          });
          ast.statements.insert(StatementNode {
@@ -59,10 +58,9 @@ fn lower_block(block: &mut BlockNode, defer_ctx: &mut LowerForContext, ast: &mut
 
       // End assignment
       let (end_assign, end_var) = {
-         let var_id = *defer_ctx.next_variable;
-         *defer_ctx.next_variable = defer_ctx.next_variable.next();
-         defer_ctx
-            .cur_procedure_locals
+         let var_id = *ctx.next_variable;
+         *ctx.next_variable = ctx.next_variable.next();
+         ctx.cur_procedure_locals
             .insert(var_id, ast.expressions[range_end].exp_type.clone().unwrap());
 
          let lhs_type = ast.expressions[range_end].exp_type.clone();
@@ -186,16 +184,16 @@ fn lower_block(block: &mut BlockNode, defer_ctx: &mut LowerForContext, ast: &mut
    }
 }
 
-fn lower_statement(statement: StatementId, defer_ctx: &mut LowerForContext, ast: &mut AstPool) {
+fn lower_statement(statement: StatementId, ctx: &mut LowerForContext, ast: &mut AstPool) {
    // TODO: dummy stmt?
    let mut the_statement = std::mem::replace(&mut ast.statements[statement].statement, Statement::Break);
    match &mut the_statement {
       Statement::Block(block) => {
-         lower_block(block, defer_ctx, ast);
+         lower_block(block, ctx, ast);
       }
       Statement::IfElse(_, if_block, else_statement) => {
-         lower_block(if_block, defer_ctx, ast);
-         lower_statement(*else_statement, defer_ctx, ast);
+         lower_block(if_block, ctx, ast);
+         lower_statement(*else_statement, ctx, ast);
       }
       Statement::For {
          induction_var_name: _,
@@ -205,13 +203,24 @@ fn lower_statement(statement: StatementId, defer_ctx: &mut LowerForContext, ast:
          range_inclusive: _,
          induction_var: _,
       } => {
-         lower_block(block, defer_ctx, ast);
+         lower_block(block, ctx, ast);
       }
       Statement::Loop(block) => {
-         lower_block(block, defer_ctx, ast);
+         lower_block(block, ctx, ast);
       }
       Statement::Defer(the_stmt) => {
-         lower_statement(*the_stmt, defer_ctx, ast);
+         if matches!(ast.statements[*the_stmt].statement, Statement::For { .. }) {
+            let location = ast.statements[*the_stmt].location;
+            let new_block = ast.statements.insert(StatementNode {
+               statement: Statement::Block(BlockNode {
+                  statements: vec![*the_stmt],
+                  location,
+               }),
+               location,
+            });
+            *the_stmt = new_block;
+         }
+         lower_statement(*the_stmt, ctx, ast);
       }
       Statement::Return(_) => (),
       Statement::Break | Statement::Continue => (),

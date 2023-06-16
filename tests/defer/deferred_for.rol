@@ -1,0 +1,25 @@
+proc a() -> u8 {
+    println("a");
+    return 0;
+}
+
+proc b() -> u8 {
+    println("b");
+    return 1;
+}
+
+proc c() {
+    println("c");
+}
+
+proc main() {
+    defer for x in a()..b() {
+
+    }
+    c();
+}
+__END__
+run:
+c
+a
+b
