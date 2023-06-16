@@ -17,8 +17,6 @@
 #![allow(clippy::result_unit_err)] // This is based on a notion of public that doesn't really apply for me
 #![allow(clippy::needless_bitwise_bool)] // Sometimes I just don't want branches, man
 #![allow(clippy::let_underscore_untyped)] // looks weird with no let
-#![feature(hash_drain_filter)]
-#![feature(drain_filter)]
 
 mod compile_consts;
 mod constant_folding;

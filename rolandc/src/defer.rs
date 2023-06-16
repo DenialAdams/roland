@@ -68,15 +68,15 @@ fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, ast: &mut As
 
    defer_ctx.deferred_stmts.truncate(deferred_stmts_before);
 
-   block.statements.drain_filter(|x| {
+   block.statements.retain(|x| {
       if let Statement::Defer(stmt_id) = ast.statements[*x].statement {
          // todo: this is a shallow delete of the stmt
          // we should probably delete deeply or not delete it at all
          ast.statements.remove(stmt_id);
          ast.statements.remove(*x);
-         true
-      } else {
          false
+      } else {
+         true
       }
    });
 }

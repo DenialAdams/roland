@@ -1526,7 +1526,7 @@ fn get_type(
                }
 
                // Missing field check
-               unmatched_fields.drain_filter(|x| defined_struct.default_values.contains_key(x));
+               unmatched_fields.retain(|x| !defined_struct.default_values.contains_key(x));
                if !unmatched_fields.is_empty() {
                   let unmatched_fields_str: Vec<&str> = unmatched_fields
                      .iter()

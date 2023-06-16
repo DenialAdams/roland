@@ -281,7 +281,7 @@ fn vv_expr(
       Expression::FloatLiteral(_) => (),
       Expression::BoundFcnLiteral(_, _) => (),
       Expression::UnitLiteral => (),
-      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::Variable(_) => (),
+      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
    }
 }
