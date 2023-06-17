@@ -2,8 +2,8 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
-   AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcImplSource, Program,
-   Statement, StatementId, StatementNode, UnOp, VariableId,
+   AstPool, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcImplSource,
+   Program, Statement, StatementId, StatementNode, UnOp, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
 use crate::type_data::ExpressionType;
@@ -27,10 +27,11 @@ struct StmtAction {
 #[derive(Copy, Clone, PartialEq)]
 enum HoistReason {
    Must,
-   IfOtherHoisting
+   IfOtherHoisting,
 }
 
 enum Action {
+   HoistLogical { expr: ExpressionId },
    Hoist { expr: ExpressionId },
    Delete,
 }
@@ -49,11 +50,12 @@ impl VvContext<'_> {
       if reason == HoistReason::Must {
          self.statements_that_need_hoisting.insert(current_stmt);
       }
+      // nocheckin: is pending hoists even needed anymore?
       if !self.pending_hoists.insert(expr_id) {
          return;
       }
       self.statement_actions.push(StmtAction {
-         action: Action::Hoist { expr: expr_id, },
+         action: Action::Hoist { expr: expr_id },
          stmt_anchor: current_stmt,
       });
    }
@@ -86,58 +88,153 @@ pub fn expression_hoisting(program: &mut Program) {
 }
 
 fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool) {
-   let before_vv_len = vv_context.statement_actions.len();
-   let before_pending_hoists = vv_context.pending_hoists.len();
-   let before_stmts_that_need_hoisting = vv_context.statements_that_need_hoisting.len();
-   for (current_stmt, statement) in block.statements.iter().copied().enumerate() {
-      vv_statement(statement, vv_context, ast, current_stmt);
-   }
-
-   let this_block_stmts_that_need_hoisting = vv_context.statements_that_need_hoisting.split_off(before_stmts_that_need_hoisting);
-   for vv in vv_context.statement_actions.drain(before_vv_len..).rev() {
-      match vv.action {
-         Action::Hoist { expr } => {
-            if !this_block_stmts_that_need_hoisting.contains(&vv.stmt_anchor) {
-               continue;
-            }
-            let temp = {
-               let var_id = vv_context.next_variable;
-               vv_context.next_variable = vv_context.next_variable.next();
-               vv_context
-                  .cur_procedure_locals
-                  .insert(var_id, ast.expressions[expr].exp_type.clone().unwrap());
-               var_id
-            };
-
-            let (vv_assignment_stmt, loc) = {
-               let et = ast.expressions[expr].exp_type.clone();
-               let el = ast.expressions[expr].location;
-               let lhs = ast.expressions.insert(ExpressionNode {
-                  expression: Expression::Variable(temp),
-                  exp_type: et,
-                  location: el,
+   let mut needs_doing = true;
+   while std::mem::replace(&mut needs_doing, false) {
+      let before_vv_len = vv_context.statement_actions.len();
+      let before_pending_hoists = vv_context.pending_hoists.len();
+      let before_stmts_that_need_hoisting = vv_context.statements_that_need_hoisting.len();
+      for (current_stmt, statement) in block.statements.iter().copied().enumerate() {
+         vv_statement(statement, vv_context, ast, current_stmt);
+      }
+   
+      let this_block_stmts_that_need_hoisting = vv_context
+         .statements_that_need_hoisting
+         .split_off(before_stmts_that_need_hoisting);
+      for vv in vv_context.statement_actions.drain(before_vv_len..).rev() {
+         match vv.action {
+            Action::Hoist { expr } => {
+               if !this_block_stmts_that_need_hoisting.contains(&vv.stmt_anchor) {
+                  continue;
+               }
+   
+               let temp = {
+                  let var_id = vv_context.next_variable;
+                  vv_context.next_variable = vv_context.next_variable.next();
+                  vv_context
+                     .cur_procedure_locals
+                     .insert(var_id, ast.expressions[expr].exp_type.clone().unwrap());
+                  var_id
+               };
+   
+               let (vv_assignment_stmt, loc) = {
+                  let et = ast.expressions[expr].exp_type.clone();
+                  let el = ast.expressions[expr].location;
+                  let lhs = ast.expressions.insert(ExpressionNode {
+                     expression: Expression::Variable(temp),
+                     exp_type: et,
+                     location: el,
+                  });
+                  let rhs = ast.expressions.insert(ast.expressions[expr].clone());
+                  (Statement::Assignment(lhs, rhs), el)
+               };
+   
+               let new_id = ast.statements.insert(StatementNode {
+                  statement: vv_assignment_stmt,
+                  location: loc,
                });
-               let rhs = ast.expressions.insert(ast.expressions[expr].clone());
-               (Statement::Assignment(lhs, rhs), el)
-            };
+               block.statements.insert(vv.stmt_anchor, new_id);
+               ast.expressions[expr].expression = Expression::Variable(temp);
+            }
+            Action::HoistLogical { expr } => {
+               if !this_block_stmts_that_need_hoisting.contains(&vv.stmt_anchor) {
+                  continue;
+               }
+   
+               let el = ast.expressions[expr].location;
+               let (operator, lhs, rhs) = {
+                  let Expression::BinaryOperator { operator, lhs, rhs } = &ast.expressions[expr].expression else { unreachable!() };
+                  (*operator, *lhs, *rhs)
+               };
+   
+               let temp = {
+                  let var_id = vv_context.next_variable;
+                  vv_context.next_variable = vv_context.next_variable.next();
+                  vv_context
+                     .cur_procedure_locals
+                     .insert(var_id, ast.expressions[expr].exp_type.clone().unwrap());
+                  var_id
+               };
+   
+               let temp_use_node = ExpressionNode {
+                  expression: Expression::Variable(temp),
+                  exp_type: Some(ExpressionType::Bool),
+                  location: el,
+               };
+   
+               // t = A;
+               let initial_assign = {
+                  let assign_lhs = ast.expressions.insert(temp_use_node.clone());
+                  let assign_rhs = lhs;
+                  ast.statements.insert(StatementNode {
+                     statement: Statement::Assignment(assign_lhs, assign_rhs),
+                     location: el,
+                  })
+               };
 
-            let new_id = ast.statements.insert(StatementNode {
-               statement: vv_assignment_stmt,
-               location: loc,
-            });
-            block.statements.insert(vv.stmt_anchor, new_id);
-            ast.expressions[expr].expression = Expression::Variable(temp);
-         }
-         Action::Delete => {
-            let removed_stmt_id = block.statements.remove(vv.stmt_anchor);
-            ast.statements.remove(removed_stmt_id);
+               let if_condition = match operator {
+                  BinOp::LogicalAnd => {
+                     ast.expressions.insert(temp_use_node.clone())
+                  }
+                  BinOp::LogicalOr => {
+                     let var_use = ast.expressions.insert(temp_use_node.clone());
+                     ast.expressions.insert(ExpressionNode {
+                        expression: Expression::UnaryOperator(UnOp::Negate, var_use),
+                        exp_type: Some(ExpressionType::Bool),
+                        location: el,
+                     })
+                  }
+                  _ => unreachable!(),
+               };
+
+               let if_stmt = {
+                  let t_equals_b_assign = {
+                     let assign_lhs = ast.expressions.insert(temp_use_node);
+                     let assign_rhs = rhs;
+                     ast.statements.insert(StatementNode {
+                        statement: Statement::Assignment(assign_lhs, assign_rhs),
+                        location: el,
+                     })
+                  };
+
+                  let else_branch = ast.statements.insert(StatementNode {
+                     statement: Statement::Block(BlockNode {
+                        statements: vec![],
+                        location: el,
+                     }),
+                     location: el,
+                  });
+                  ast.statements.insert(StatementNode {
+                     statement: Statement::IfElse(
+                        if_condition,
+                        BlockNode {
+                           statements: vec![t_equals_b_assign],
+                           location: el,
+                        },
+                        else_branch,
+                     ),
+                     location: el,
+                  })
+               };
+   
+               block
+                  .statements
+                  .splice(vv.stmt_anchor..vv.stmt_anchor, [initial_assign, if_stmt]);
+   
+               ast.expressions[expr].expression = Expression::Variable(temp);
+
+               needs_doing = true;
+            }
+            Action::Delete => {
+               let removed_stmt_id = block.statements.remove(vv.stmt_anchor);
+               ast.statements.remove(removed_stmt_id);
+            }
          }
       }
+      // The same expression id shouldn't appear in the AST twice,
+      // so we can simply truncate instead of splitting of as we do for
+      // the list of statement block indices
+      vv_context.pending_hoists.truncate(before_pending_hoists);
    }
-   // The same expression id shouldn't appear in the AST twice,
-   // so we can simply truncate instead of splitting of as we do for
-   // the list of statement block indices
-   vv_context.pending_hoists.truncate(before_pending_hoists);
 }
 
 fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut AstPool, current_statement: usize) {
@@ -225,7 +322,8 @@ fn vv_expr(
          if any_named_arg {
             for arg in args.iter() {
                if expression_could_have_side_effects(arg.expr, expressions) {
-                  vv_context.mark_expr_for_hoisting(arg.expr, current_statement, HoistReason::Must);
+                  vv_context.statements_that_need_hoisting.insert(current_statement);
+                  break;
                }
             }
          }
@@ -235,16 +333,21 @@ fn vv_expr(
             ExpressionType::ProcedurePointer { .. }
          ) && expression_could_have_side_effects(*proc_expr, expressions)
          {
-            vv_context.mark_expr_for_hoisting(*proc_expr, current_statement, HoistReason::Must);
+            vv_context.statements_that_need_hoisting.insert(current_statement);
          }
       }
-      Expression::BinaryOperator {
-         operator: _operator,
-         lhs,
-         rhs,
-      } => {
-         vv_expr(*lhs, vv_context, expressions, current_statement, false);
-         vv_expr(*rhs, vv_context, expressions, current_statement, false);
+      Expression::BinaryOperator { operator, lhs, rhs } => {
+         if *operator == BinOp::LogicalAnd || *operator == BinOp::LogicalOr {
+            let inserted = vv_context.pending_hoists.insert(expr_index);
+            debug_assert!(inserted);
+            vv_context.statement_actions.push(StmtAction {
+               action: Action::HoistLogical { expr: expr_index },
+               stmt_anchor: current_statement,
+            });
+         } else {
+            vv_expr(*lhs, vv_context, expressions, current_statement, false);
+            vv_expr(*rhs, vv_context, expressions, current_statement, false);
+         }
       }
       Expression::UnaryOperator(op, expr) => {
          vv_expr(*expr, vv_context, expressions, current_statement, false);
@@ -261,7 +364,7 @@ fn vv_expr(
          for (_, expr) in field_exprs.iter() {
             vv_expr(*expr, vv_context, expressions, current_statement, false);
             if expression_could_have_side_effects(*expr, expressions) {
-               vv_context.mark_expr_for_hoisting(*expr, current_statement, HoistReason::Must);
+               vv_context.statements_that_need_hoisting.insert(current_statement);
             }
          }
       }
