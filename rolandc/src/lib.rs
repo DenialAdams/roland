@@ -29,6 +29,7 @@ mod for_loop_lowering;
 mod imports;
 pub mod interner;
 mod lex;
+mod logical_op_lowering;
 mod monomorphization;
 pub mod parse;
 mod pre_wasm_lowering;
@@ -179,6 +180,8 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
+
+   logical_op_lowering::lower_logical_ops(&mut ctx.program);
 
    expression_hoisting::expression_hoisting(&mut ctx.program);
 

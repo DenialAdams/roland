@@ -468,6 +468,35 @@ fn deep_clone_expr(
             variable_replacements,
          );
       }
+      Expression::IfX(a, b, c) => {
+         *a = deep_clone_expr(
+            *a,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
+         *b = deep_clone_expr(
+            *b,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
+         *c = deep_clone_expr(
+            *c,
+            expressions,
+            concrete_types,
+            type_parameters,
+            depth,
+            worklist,
+            variable_replacements,
+         );
+      }
       Expression::EnumLiteral(_, _) => (),
       Expression::BoundFcnLiteral(id, generic_args) => {
          for garg in generic_args.iter_mut() {

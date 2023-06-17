@@ -170,6 +170,11 @@ fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool) -> StatementId {
 fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool) -> ExpressionId {
    let mut cloned = expressions[expr].clone();
    match &mut cloned.expression {
+      Expression::IfX(a, b, c) => {
+         *a = deep_clone_expr(*a, expressions);
+         *b = deep_clone_expr(*b, expressions);
+         *c = deep_clone_expr(*c, expressions);
+      }
       Expression::ProcedureCall { proc_expr, args } => {
          *proc_expr = deep_clone_expr(*proc_expr, expressions);
          for arg in args.iter_mut() {

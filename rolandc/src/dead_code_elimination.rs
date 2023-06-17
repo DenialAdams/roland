@@ -157,6 +157,11 @@ fn mark_reachable_expr(expr: ExpressionId, ast: &AstPool, ctx: &mut DceCtx) {
       Expression::Cast { expr, .. } => {
          mark_reachable_expr(*expr, ast, ctx);
       }
+      Expression::IfX(a, b, c) => {
+         mark_reachable_expr(*a, ast, ctx);
+         mark_reachable_expr(*b, ast, ctx);
+         mark_reachable_expr(*c, ast, ctx);
+      }
       Expression::EnumLiteral(_, _) => (),
       Expression::BoundFcnLiteral(id, _) => {
          ctx.worklist.push(WorkItem::Procedure(*id));

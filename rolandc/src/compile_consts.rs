@@ -123,6 +123,11 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
       Expression::UnitLiteral,
    );
    match &the_expr {
+      Expression::IfX(a, b, c) => {
+         cg_expr(*a, cg_context, err_manager);
+         cg_expr(*b, cg_context, err_manager);
+         cg_expr(*c, cg_context, err_manager);
+      }
       Expression::Variable(x) => {
          if cg_context.consts_being_processed.contains(x) {
             let loc = cg_context.all_consts[x].0;

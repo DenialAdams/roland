@@ -1214,6 +1214,23 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
    let expr_node = &generation_context.ast.expressions[expr_index];
    match &expr_node.expression {
       Expression::UnitLiteral => (),
+      Expression::IfX(a, b, c) => {
+         do_emit_and_load_lval(*a, generation_context);
+         // This could be the full type_to_wasm_type,
+         // but we currently only insert IfX in a context where we know it's a bool,
+         // so meh
+         let wasm_val_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
+         generation_context
+            .active_fcn
+            .instruction(&Instruction::If(BlockType::Result(wasm_val_type)));
+         // then
+         do_emit_and_load_lval(*b, generation_context);
+         // else
+         generation_context.active_fcn.instruction(&Instruction::Else);
+         do_emit_and_load_lval(*c, generation_context);
+         // finish if
+         generation_context.active_fcn.instruction(&Instruction::End);
+      }
       Expression::BoundFcnLiteral(proc_id, _bound_type_params) => {
          if let ExpressionType::ProcedurePointer { .. } = expr_node.exp_type.as_ref().unwrap() {
             emit_procedure_pointer_index(*proc_id, generation_context);
@@ -1255,40 +1272,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          generation_context
             .active_fcn
             .instruction(&Instruction::I32Const(*len as i32));
-      }
-      Expression::BinaryOperator {
-         operator: BinOp::LogicalAnd,
-         lhs,
-         rhs,
-      } => {
-         do_emit_and_load_lval(*lhs, generation_context);
-         generation_context
-            .active_fcn
-            .instruction(&Instruction::If(BlockType::Result(ValType::I32)));
-         // then
-         do_emit_and_load_lval(*rhs, generation_context);
-         // else
-         generation_context.active_fcn.instruction(&Instruction::Else);
-         generation_context.active_fcn.instruction(&Instruction::I32Const(0));
-         // finish if
-         generation_context.active_fcn.instruction(&Instruction::End);
-      }
-      Expression::BinaryOperator {
-         operator: BinOp::LogicalOr,
-         lhs,
-         rhs,
-      } => {
-         do_emit_and_load_lval(*lhs, generation_context);
-         generation_context
-            .active_fcn
-            .instruction(&Instruction::If(BlockType::Result(ValType::I32)));
-         // then
-         generation_context.active_fcn.instruction(&Instruction::I32Const(1));
-         // else
-         generation_context.active_fcn.instruction(&Instruction::Else);
-         do_emit_and_load_lval(*rhs, generation_context);
-         // finish if
-         generation_context.active_fcn.instruction(&Instruction::End);
       }
       Expression::BinaryOperator { operator, lhs, rhs } => {
          do_emit_and_load_lval(*lhs, generation_context);

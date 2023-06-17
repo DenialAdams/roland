@@ -734,6 +734,26 @@ fn fold_expr_inner(
          }
       }
       Expression::EnumLiteral(_, _) => None,
+      Expression::IfX(a, b, c) => {
+         try_fold_and_replace_expr(*a, err_manager, folding_context, interner);
+         try_fold_and_replace_expr(*b, err_manager, folding_context, interner);
+         try_fold_and_replace_expr(*c, err_manager, folding_context, interner);
+
+         if expression_could_have_side_effects(*a, &folding_context.ast.expressions)
+            || expression_could_have_side_effects(*b, &folding_context.ast.expressions)
+            || expression_could_have_side_effects(*c, &folding_context.ast.expressions)
+         {
+            None
+         } else if let Some(Literal::Bool(val)) = extract_literal(&folding_context.ast.expressions[*a]) {
+            if val {
+               Some(folding_context.ast.expressions[*b].expression.clone())
+            } else {
+               Some(folding_context.ast.expressions[*c].expression.clone())
+            }
+         } else {
+            None
+         }
+      }
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
    }
@@ -1677,6 +1697,11 @@ pub fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &E
          .any(|x| expression_could_have_side_effects(x.1, expressions)),
       Expression::FieldAccess(_, expr) => expression_could_have_side_effects(*expr, expressions),
       Expression::Cast { expr, .. } => expression_could_have_side_effects(*expr, expressions),
+      Expression::IfX(a, b, c) => {
+         expression_could_have_side_effects(*a, expressions)
+            || expression_could_have_side_effects(*b, expressions)
+            || expression_could_have_side_effects(*c, expressions)
+      }
       Expression::EnumLiteral(_, _) => false,
       Expression::BoolLiteral(_) => false,
       Expression::StringLiteral(_) => false,

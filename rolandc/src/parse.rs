@@ -223,6 +223,7 @@ pub enum Expression {
    EnumLiteral(StrNode, StrNode),
    UnresolvedProcLiteral(StrNode, Vec<GenericArgumentNode>),
    BoundFcnLiteral(ProcedureId, Box<[GenericArgumentNode]>),
+   IfX(ExpressionId, ExpressionId, ExpressionId),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

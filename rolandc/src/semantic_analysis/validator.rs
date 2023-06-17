@@ -1793,6 +1793,7 @@ fn get_type(
             ExpressionType::CompileError
          }
       }
+      Expression::IfX(_, _, _) => unreachable!(),
    }
 }
 

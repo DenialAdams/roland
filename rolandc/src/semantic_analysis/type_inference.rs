@@ -246,6 +246,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             .as_mut()
             .unwrap() = e_type.clone();
       }
+      Expression::IfX(_, _, _) => unreachable!(),
       Expression::StringLiteral(_) => unreachable!(),
       Expression::EnumLiteral(_, _) => unreachable!(),
       Expression::UnresolvedVariable(_) => unreachable!(),

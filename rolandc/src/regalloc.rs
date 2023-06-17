@@ -176,6 +176,11 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
          regalloc_expr(*lhs, ctx, ast);
          regalloc_expr(*rhs, ctx, ast);
       }
+      Expression::IfX(a, b, c) => {
+         regalloc_expr(*a, ctx, ast);
+         regalloc_expr(*b, ctx, ast);
+         regalloc_expr(*c, ctx, ast);
+      }
       Expression::StructLiteral(_, exprs) => {
          for expr in exprs.iter().map(|x| x.1) {
             regalloc_expr(expr, ctx, ast);
