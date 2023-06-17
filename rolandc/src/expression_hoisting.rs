@@ -93,10 +93,11 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool
       vv_statement(statement, vv_context, ast, current_stmt);
    }
 
+   let this_block_stmts_that_need_hoisting = vv_context.statements_that_need_hoisting.split_off(before_stmts_that_need_hoisting);
    for vv in vv_context.statement_actions.drain(before_vv_len..).rev() {
       match vv.action {
          Action::Hoist { expr } => {
-            if !vv_context.statements_that_need_hoisting.contains(&vv.stmt_anchor) {
+            if !this_block_stmts_that_need_hoisting.contains(&vv.stmt_anchor) {
                continue;
             }
             let temp = {
@@ -133,8 +134,10 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool
          }
       }
    }
+   // The same expression id shouldn't appear in the AST twice,
+   // so we can simply truncate instead of splitting of as we do for
+   // the list of statement block indices
    vv_context.pending_hoists.truncate(before_pending_hoists);
-   vv_context.statements_that_need_hoisting.truncate(before_stmts_that_need_hoisting);
 }
 
 fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut AstPool, current_statement: usize) {
