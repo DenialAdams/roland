@@ -9,9 +9,8 @@ proc main() {
    // Again with signed types
    assert(F64_INFINITY as i64 == I64_MAX);
    assert(F64_INFINITY as i32 == I32_MAX);
-   // This currently doesn't work...
-   //assert(F64_INFINITY as i16 == I8_MAX);
-   //assert(F64_INFINITY as i8 == I8_MAX);
+   assert(F64_INFINITY as i16 == I16_MAX);
+   assert(F64_INFINITY as i8 == I8_MAX);
 
    // Opposite direction
    assert(F64_NEG_INFINITY as u64 == U64_MIN);
@@ -22,9 +21,8 @@ proc main() {
    // Signed, opposite
    assert(F64_NEG_INFINITY as i64 == I64_MIN);
    assert(F64_NEG_INFINITY as i32 == I32_MIN);
-   // Again, doesn't work
-   //assert(F64_NEG_INFINITY as i16 == I16_MIN);
-   //assert(F64_NEG_INFINITY as i8 == I8_MIN);
+   assert(F64_NEG_INFINITY as i16 == I16_MIN);
+   assert(F64_NEG_INFINITY as i8 == I8_MIN);
 }
 __END__
 run:

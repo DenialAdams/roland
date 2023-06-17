@@ -213,6 +213,8 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 ) -> Result<Vec<u8>, CompilationError> {
    compile_for_errors(ctx, user_program_ep, config)?;
 
+   pre_wasm_lowering::replace_nonnative_casts(&mut ctx.program, &ctx.interner);
+
    dead_code_elimination::delete_unreachable_procedures_and_globals(&mut ctx.program, &mut ctx.interner, config.target);
 
    pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program);
