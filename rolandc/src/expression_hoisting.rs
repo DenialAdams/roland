@@ -308,7 +308,11 @@ fn vv_expr(
       Expression::Variable(_) => (),
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
    }
-   if expression_could_have_side_effects(expr_index, expressions) && !top {
+
+   // assumption: procedure call is the only leaf node with side effects, and always has side effects
+   // If we eventually decide to come up with a list of pure procedure calls, this needs to be updated
+   // @PureCalls
+   if matches!(expressions[expr_index].expression, Expression::ProcedureCall { .. }) && !top {
       vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::IfOtherHoisting);
    }
 }
