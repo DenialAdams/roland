@@ -97,6 +97,8 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool
    let this_block_stmts_that_need_hoisting = vv_context
       .statements_that_need_hoisting
       .split_off(before_stmts_that_need_hoisting);
+
+   let mut new_ifs = vec![];
    for vv in vv_context.statement_actions.drain(before_vv_len..).rev() {
       match vv.action {
          Action::Hoist { expr } => {
@@ -113,23 +115,63 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool
                var_id
             };
 
-            let (vv_assignment_stmt, loc) = {
-               let et = ast.expressions[expr].exp_type.clone();
-               let el = ast.expressions[expr].location;
-               let lhs = ast.expressions.insert(ExpressionNode {
-                  expression: Expression::Variable(temp),
-                  exp_type: et,
-                  location: el,
-               });
-               let rhs = ast.expressions.insert(ast.expressions[expr].clone());
-               (Statement::Assignment(lhs, rhs), el)
+            let location = ast.expressions[expr].location;
+
+            let temp_expression_node = ExpressionNode {
+               expression: Expression::Variable(temp),
+               exp_type: ast.expressions[expr].exp_type.clone(),
+               location,
             };
 
-            let new_id = ast.statements.insert(StatementNode {
-               statement: vv_assignment_stmt,
-               location: loc,
-            });
-            block.statements.insert(vv.stmt_anchor, new_id);
+            if let Expression::IfX(a, b, c) = ast.expressions[expr].expression {
+               let then_block = {
+                  let temp_equals_b = {
+                     let lhs = ast.expressions.insert(temp_expression_node.clone());
+                     ast.statements.insert(StatementNode {
+                        statement: Statement::Assignment(lhs, b),
+                        location,
+                     })
+                  };
+                  BlockNode {
+                     statements: vec![temp_equals_b],
+                     location,
+                  }
+               };
+               let else_stmt = {
+                  let temp_equals_c = {
+                     let lhs = ast.expressions.insert(temp_expression_node.clone());
+                     ast.statements.insert(StatementNode {
+                        statement: Statement::Assignment(lhs, c),
+                        location,
+                     })
+                  };
+                  ast.statements.insert(StatementNode {
+                     statement: Statement::Block(BlockNode {
+                        statements: vec![temp_equals_c],
+                        location,
+                     }),
+                     location,
+                  })
+               };
+               let if_stmt = {
+                  ast.statements.insert(StatementNode {
+                     statement: Statement::IfElse(a, then_block, else_stmt),
+                     location,
+                  })
+               };
+               new_ifs.push(if_stmt);
+               block.statements.insert(vv.stmt_anchor, if_stmt);
+            } else {
+               let temp_assign = {
+                  let lhs = ast.expressions.insert(temp_expression_node);
+                  let rhs = ast.expressions.insert(ast.expressions[expr].clone());
+                  ast.statements.insert(StatementNode {
+                     statement: Statement::Assignment(lhs, rhs),
+                     location,
+                  })
+               };
+               block.statements.insert(vv.stmt_anchor, temp_assign);
+            }
             ast.expressions[expr].expression = Expression::Variable(temp);
          }
          Action::Delete => {
@@ -138,10 +180,30 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool
          }
       }
    }
+
    // The same expression id shouldn't appear in the AST twice,
    // so we can simply truncate instead of splitting of as we do for
    // the list of statement block indices
    vv_context.pending_hoists.truncate(before_pending_hoists);
+
+   for if_stmt in new_ifs {
+      let else_s = {
+         // TODO: dummy stmt?
+         let mut the_statement = std::mem::replace(&mut ast.statements[if_stmt].statement, Statement::Break);
+         let Statement::IfElse(_, then_b, else_s) = &mut the_statement else { unreachable!() };
+         let else_s = *else_s;
+         vv_block(then_b, vv_context, ast);
+         ast.statements[if_stmt].statement = the_statement;
+         else_s
+      };
+      {
+         // TODO: dummy stmt?
+         let mut the_statement = std::mem::replace(&mut ast.statements[else_s].statement, Statement::Break);
+         let Statement::Block(bn) = &mut the_statement else { unreachable!() };
+         vv_block(bn, vv_context, ast);
+         ast.statements[else_s].statement = the_statement;
+      }
+   }
 }
 
 fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut AstPool, current_statement: usize) {
@@ -303,9 +365,20 @@ fn vv_expr(
          }
       }
       Expression::IfX(a, b, c) => {
+         // IfX is hoisted specially, because it needs to become an if statement.
+         // We still need to visit our children to see if we have to hoist this statement,
+         // but we don't actually want to hoist C because that tree will be hoisted to the wrong spot
+         // So what we do is we descend into C to allow for marking "this statement needs to be hoisted"
+         // but then we pretend it didn't happen. Then, during hoisting we descend into the consequent/else
+         // blocks that we create to do the marking and hoisting. Simple.
          vv_expr(*a, vv_context, expressions, current_statement, false);
+         let before_len = vv_context.statement_actions.len();
+         let before_marked = vv_context.pending_hoists.len();
          vv_expr(*b, vv_context, expressions, current_statement, false);
          vv_expr(*c, vv_context, expressions, current_statement, false);
+         vv_context.statement_actions.truncate(before_len);
+         vv_context.pending_hoists.truncate(before_marked);
+         vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::IfOtherHoisting);
       }
       Expression::EnumLiteral(_, _) => (),
       Expression::BoolLiteral(_) => (),

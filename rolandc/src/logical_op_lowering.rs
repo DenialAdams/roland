@@ -20,8 +20,22 @@ pub fn lower_logical_ops(program: &mut Program) {
       };
 
       let (then_br, else_br) = match operator {
-         BinOp::LogicalAnd => (rhs, program.ast.expressions.insert(ExpressionNode { expression: Expression::BoolLiteral(false), exp_type: Some(ExpressionType::Bool), location, })),
-         BinOp::LogicalOr => (program.ast.expressions.insert(ExpressionNode { expression: Expression::BoolLiteral(true), exp_type: Some(ExpressionType::Bool), location, }), rhs),
+         BinOp::LogicalAnd => (
+            rhs,
+            program.ast.expressions.insert(ExpressionNode {
+               expression: Expression::BoolLiteral(false),
+               exp_type: Some(ExpressionType::Bool),
+               location,
+            }),
+         ),
+         BinOp::LogicalOr => (
+            program.ast.expressions.insert(ExpressionNode {
+               expression: Expression::BoolLiteral(true),
+               exp_type: Some(ExpressionType::Bool),
+               location,
+            }),
+            rhs,
+         ),
          _ => unreachable!(),
       };
 
