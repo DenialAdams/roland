@@ -4,6 +4,7 @@ proc main () {
    let other_val = ifx true 0 else x;
 
    let val_nested = ifx false x else ifx true 11 else 10;
+   let val_nested_swap = ifx true ifx true 11 else 10 else x;
 }
 __END__
 run:
