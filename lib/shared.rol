@@ -55,10 +55,7 @@ proc assert(condition: bool) {
 }
 
 proc bool_to_string(b: bool) -> String {
-   if b {
-      return "true";
-   }
-   return "false";
+   return ifx b "true" else "false";
 }
 
 proc f32_to_i8(x: f32) -> i8 {

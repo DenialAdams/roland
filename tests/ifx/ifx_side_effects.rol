@@ -8,6 +8,9 @@ proc main () {
    ifx !a() b() else c();
    // d().y requires hoisting, so lets make sure we dont mess that up
    ifx true 10 else d().y;
+
+   // nested ifx
+   ifx !a() b() else ifx e() b() else c();
 }
 
 proc a() -> bool {
@@ -30,9 +33,17 @@ proc d() -> Foo {
       y: 20
    };
 }
+
+proc e() -> bool {
+   println("e");
+   return false;
+}
 __END__
 run:
 a
 b
 a
+c
+a
+e
 c
