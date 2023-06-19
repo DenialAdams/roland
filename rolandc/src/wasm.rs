@@ -1216,13 +1216,14 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       Expression::UnitLiteral => (),
       Expression::IfX(a, b, c) => {
          do_emit_and_load_lval(*a, generation_context);
-         // This could be the full type_to_wasm_type,
-         // but we currently only insert IfX in a context where we know it's a bool,
-         // so meh
-         let wasm_val_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
+         let ifx_type = generation_context.type_manager.register_or_find_type(
+            &[],
+            expr_node.exp_type.as_ref().unwrap(),
+            generation_context.struct_info,
+         );
          generation_context
             .active_fcn
-            .instruction(&Instruction::If(BlockType::Result(wasm_val_type)));
+            .instruction(&Instruction::If(BlockType::FunctionType(ifx_type)));
          // then
          do_emit_and_load_lval(*b, generation_context);
          // else

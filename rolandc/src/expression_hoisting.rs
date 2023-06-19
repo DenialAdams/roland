@@ -367,8 +367,8 @@ fn vv_expr(
       Expression::IfX(a, b, c) => {
          // IfX is hoisted specially, because it needs to become an if statement.
          // We still need to visit our children to see if we have to hoist this statement,
-         // but we don't actually want to hoist C because that tree will be hoisted to the wrong spot
-         // So what we do is we descend into C to allow for marking "this statement needs to be hoisted"
+         // but we don't actually want to hoist B/C because that tree will be hoisted to the wrong spot
+         // So what we do is we descend into B/C to allow for marking "this statement needs to be hoisted"
          // but then we pretend it didn't happen. Then, during hoisting we descend into the consequent/else
          // blocks that we create to do the marking and hoisting. Simple.
          vv_expr(*a, vv_context, expressions, current_statement, false);

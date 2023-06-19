@@ -683,7 +683,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             rolandc_error!(
                err_manager,
                en.location,
-               "Value of if expression must be a bool; got {}",
+               "Type of if condition must be a bool; got {}",
                en.exp_type.as_ref().unwrap().as_roland_type_info(
                   validation_context.interner,
                   validation_context.procedure_info,
@@ -1793,7 +1793,65 @@ fn get_type(
             ExpressionType::CompileError
          }
       }
-      Expression::IfX(_, _, _) => unreachable!(),
+      Expression::IfX(a, b, c) => {
+         type_expression(err_manager, *a, validation_context);
+         type_expression(err_manager, *b, validation_context);
+         type_expression(err_manager, *c, validation_context);
+
+         try_set_inferred_type(
+            &validation_context.ast.expressions[*b].exp_type.clone().unwrap(),
+            *c,
+            validation_context,
+         );
+         try_set_inferred_type(
+            &validation_context.ast.expressions[*c].exp_type.clone().unwrap(),
+            *b,
+            validation_context,
+         );
+
+         let en = &validation_context.ast.expressions[*a];
+         let if_exp_type = en.exp_type.as_ref().unwrap();
+         if if_exp_type != &ExpressionType::Bool && !if_exp_type.is_error() {
+            rolandc_error!(
+               err_manager,
+               en.location,
+               "Type of ifx condition must be a bool; got {}",
+               en.exp_type.as_ref().unwrap().as_roland_type_info(
+                  validation_context.interner,
+                  validation_context.procedure_info,
+                  &validation_context.type_variables
+               )
+            );
+         }
+
+         let then_expr = &validation_context.ast.expressions[*b];
+         let then_type = then_expr.exp_type.as_ref().unwrap();
+         let else_expr = &validation_context.ast.expressions[*c];
+         let else_type = else_expr.exp_type.as_ref().unwrap();
+         if then_type == else_type {
+            then_type.clone()
+         } else {
+            rolandc_error_w_details!(
+               err_manager,
+               &[
+                  (then_expr.location, "then expression"),
+                  (else_expr.location, "else expression")
+               ],
+               "ifx requires then and else expressions to have identical types; instead got {} and {}",
+               then_type.as_roland_type_info(
+                  validation_context.interner,
+                  validation_context.procedure_info,
+                  &validation_context.type_variables
+               ),
+               else_type.as_roland_type_info(
+                  validation_context.interner,
+                  validation_context.procedure_info,
+                  &validation_context.type_variables
+               )
+            );
+            ExpressionType::CompileError
+         }
+      },
    }
 }
 

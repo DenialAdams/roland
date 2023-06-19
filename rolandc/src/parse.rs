@@ -435,6 +435,7 @@ fn token_starts_expression(token: Token) -> bool {
          | Token::Amp
          | Token::Identifier(_)
          | Token::Minus
+         | Token::KeywordIfx
    )
 }
 
@@ -1420,6 +1421,19 @@ fn pratt(
             expect(l, parse_context, Token::CloseParen)?;
             new_lhs
          }
+      }
+      Token::KeywordIfx => {
+         let _ = l.next();
+         let condition = parse_expression(l, parse_context, false, expressions)?;
+         let consequent = parse_expression(l, parse_context, false, expressions)?;
+         expect(l, parse_context, Token::KeywordElse)?;
+         let otherwise = parse_expression(l, parse_context, false, expressions)?;
+         let combined_location = merge_locations(begin_source, expressions[otherwise].location);
+         wrap(
+            Expression::IfX(condition, consequent, otherwise),
+            combined_location,
+            expressions,
+         )
       }
       Token::OpenSquareBracket => {
          let _ = l.next();

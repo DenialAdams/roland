@@ -34,6 +34,7 @@ pub enum Token {
    KeywordBuiltin,
    KeywordImport,
    KeywordWhere,
+   KeywordIfx,
    OpenBrace,
    CloseBrace,
    OpenParen,
@@ -102,6 +103,7 @@ impl Token {
          Token::KeywordBuiltin => "keyword 'builtin'",
          Token::KeywordImport => "keyword 'import'",
          Token::KeywordWhere => "keyword 'where'",
+         Token::KeywordIfx => "keyword 'ifx'",
          Token::OpenBrace => "token '{'",
          Token::CloseBrace => "token '}'",
          Token::OpenParen => "token '('",
@@ -185,6 +187,7 @@ fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
       "builtin" => Token::KeywordBuiltin,
       "import" => Token::KeywordImport,
       "where" => Token::KeywordWhere,
+      "ifx" => Token::KeywordIfx,
       other => Token::Identifier(interner.intern(other)),
    }
 }

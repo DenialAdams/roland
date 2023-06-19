@@ -1,0 +1,7 @@
+proc main () {
+   let x: u8 = 10;
+   let val = ifx true x else 0;
+   let other_val = ifx true 0 else x;
+}
+__END__
+run:

@@ -1,0 +1,38 @@
+struct Foo {
+   x: u32,
+   y: u32,
+}
+
+proc main () {
+   ifx a() b() else c();
+   ifx !a() b() else c();
+   // d().y requires hoisting, so lets make sure we dont mess that up
+   ifx true 10 else d().y;
+}
+
+proc a() -> bool {
+   println("a");
+   return true;
+}
+
+proc b() {
+   println("b");
+}
+
+proc c() {
+   println("c");
+}
+
+proc d() -> Foo {
+   println("d");
+   return Foo {
+      x: 10,
+      y: 20
+   };
+}
+__END__
+run:
+a
+b
+a
+c

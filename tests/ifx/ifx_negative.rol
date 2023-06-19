@@ -1,0 +1,11 @@
+proc main() {
+   ifx 10 true else false;
+   ifx true 10 else 1.0;
+}
+__END__
+compile:
+Type of ifx condition must be a bool; got ?? Int
+↳ line 2, column 8 [tests/ifx/ifx_negative.rol]
+ifx requires then and else expressions to have identical types; instead got ?? Int and ?? Float
+↳ then expression @ line 3, column 13 [tests/ifx/ifx_negative.rol]
+↳ else expression @ line 3, column 21 [tests/ifx/ifx_negative.rol]
