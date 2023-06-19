@@ -1851,7 +1851,7 @@ fn get_type(
             );
             ExpressionType::CompileError
          }
-      },
+      }
    }
 }
 
