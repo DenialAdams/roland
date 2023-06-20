@@ -213,7 +213,8 @@ pub enum Expression {
       rhs: ExpressionId,
    },
    UnaryOperator(UnOp, ExpressionId),
-   StructLiteral(StrNode, Box<[(StrId, ExpressionId)]>),
+   UnresolvedStructLiteral(StrNode, Box<[(StrId, Option<ExpressionId>)]>),
+   StructLiteral(StrNode, IndexMap<StrId, Option<ExpressionId>>),
    FieldAccess(Vec<StrId>, ExpressionId),
    Cast {
       cast_type: CastType,
@@ -1362,14 +1363,19 @@ fn pratt(
             )
          } else if !if_head && l.peek_token() == Token::OpenBrace {
             let _ = l.next();
-            let mut fields = vec![];
+            let mut fields: Vec<(StrId, Option<ExpressionId>)> = vec![];
             let close_brace = loop {
                if l.peek_token() == Token::CloseBrace {
                   break l.next();
                }
                let identifier = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
                let _ = expect(l, parse_context, Token::Colon)?;
-               let val = parse_expression(l, parse_context, false, expressions)?;
+               let val = if l.peek_token() == Token::TripleUnderscore {
+                  let _ = l.next();
+                  None
+               } else {
+                  Some(parse_expression(l, parse_context, false, expressions)?)
+               };
                fields.push((identifier, val));
                if l.peek_token() == Token::CloseBrace {
                   break l.next();
@@ -1389,7 +1395,7 @@ fn pratt(
             };
             let combined_location = merge_locations(begin_source, close_brace.source_info);
             wrap(
-               Expression::StructLiteral(
+               Expression::UnresolvedStructLiteral(
                   StrNode {
                      str: s,
                      location: begin_source,

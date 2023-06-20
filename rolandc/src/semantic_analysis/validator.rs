@@ -936,6 +936,71 @@ fn type_expression(
                Expression::BoundFcnLiteral(proc_id, std::mem::take(g_args).into_boxed_slice());
          }
       }
+      Expression::UnresolvedStructLiteral(struct_name, fields) => {
+         // nocheckin: it's weird this is only looking for struct types and not all types
+         if let Some(defined_struct) = validation_context.struct_info.get(&struct_name.str) {
+            validation_context
+                  .source_to_definition
+                  .insert(struct_name.location, defined_struct.location);
+            let defined_fields = &defined_struct.field_types;
+            let mut unmatched_fields: HashSet<StrId> = defined_fields.keys().copied().collect();
+            for field_name in fields.iter().map(|x| x.0) {
+               // Extraneous field check
+               let Some(defined_type_node) = defined_fields.get(&field_name) else {
+                        rolandc_error_w_details!(
+                           err_manager,
+                           &[
+                              (expr_location, "struct instantiated"),
+                              (defined_struct.location, "struct defined"),
+                           ],
+                           "`{}` is not a known field of struct `{}`",
+                           validation_context.interner.lookup(field_name),
+                           validation_context.interner.lookup(struct_name.str),
+                        );
+                        continue;
+                     };
+               let defined_type = &defined_type_node.e_type;
+   
+               // Duplicate field check
+               if !unmatched_fields.remove(&field_name) {
+                  rolandc_error_w_details!(
+                     err_manager,
+                     &[
+                        (expr_location, "struct instantiated"),
+                        (defined_struct.location, "struct defined"),
+                     ],
+                     "`{}` is a valid field of struct `{}`, but is duplicated",
+                     validation_context.interner.lookup(field_name),
+                     validation_context.interner.lookup(struct_name.str),
+                  );
+               }
+            }
+
+            // Missing field check
+            unmatched_fields.retain(|x| !defined_struct.default_values.contains_key(x));
+            if !unmatched_fields.is_empty() {
+               let unmatched_fields_str: Vec<&str> = unmatched_fields
+                  .iter()
+                  .map(|x| validation_context.interner.lookup(*x))
+                  .collect();
+               rolandc_error_w_details!(
+                  err_manager,
+                  &[
+                     (expr_location, "struct instantiated"),
+                     (defined_struct.location, "struct defined"),
+                  ],
+                  "Literal of struct `{}` is missing fields [{}]",
+                  validation_context.interner.lookup(struct_name.str),
+                  unmatched_fields_str.join(", "),
+               );
+            }
+
+            // nocheckin. This is not as good as before, because if we have duplicate fields, we will only typecheck the first one
+            let fields_map: IndexMap<StrId, Option<ExpressionId>> = fields.into_iter().map(|x| (x.0, x.1)).collect();
+            validation_context.ast.expressions[expr_index].expression =
+               Expression::StructLiteral(struct_name.clone(), fields_map);
+         }
+      }
       _ => (),
    }
 
@@ -1393,6 +1458,15 @@ fn get_type(
          );
          ExpressionType::CompileError
       }
+      Expression::UnresolvedStructLiteral(name, fields) => {
+         rolandc_error!(
+            err_manager,
+            expr_location,
+            "Encountered construction of undefined struct `{}`",
+            validation_context.interner.lookup(name.str)
+         );
+         ExpressionType::CompileError
+      }
       Expression::Variable(_) => unreachable!(),
       Expression::ProcedureCall { proc_expr, args } => {
          type_expression(err_manager, *proc_expr, validation_context);
@@ -1450,112 +1524,62 @@ fn get_type(
          resulting_type
       }
       Expression::StructLiteral(struct_name, fields) => {
+         for field in fields.values().flatten() {
+            type_expression(err_manager, *field, validation_context);
+         }
+
+         let defined_struct = validation_context.struct_info.get(&struct_name.str).unwrap();
+         let defined_fields = &defined_struct.field_types;
+
          for field in fields.iter() {
-            type_expression(err_manager, field.1, validation_context);
-         }
-
-         match validation_context.struct_info.get(&struct_name.str) {
-            Some(defined_struct) => {
-               validation_context
-                  .source_to_definition
-                  .insert(struct_name.location, defined_struct.location);
-               let defined_fields = &defined_struct.field_types;
-
-               let mut unmatched_fields: HashSet<StrId> = defined_fields.keys().copied().collect();
-               for field in fields.iter() {
-                  // Extraneous field check
-                  let Some(defined_type_node) = defined_fields.get(&field.0) else {
-                     rolandc_error_w_details!(
-                        err_manager,
-                        &[
-                           (expr_location, "struct instantiated"),
-                           (defined_struct.location, "struct defined"),
-                        ],
-                        "`{}` is not a known field of struct `{}`",
-                        validation_context.interner.lookup(field.0),
-                        validation_context.interner.lookup(struct_name.str),
-                     );
-                     continue;
-                  };
-                  let defined_type = &defined_type_node.e_type;
-
-                  // Duplicate field check
-                  if !unmatched_fields.remove(&field.0) {
-                     rolandc_error_w_details!(
-                        err_manager,
-                        &[
-                           (expr_location, "struct instantiated"),
-                           (defined_struct.location, "struct defined"),
-                        ],
-                        "`{}` is a valid field of struct `{}`, but is duplicated",
-                        validation_context.interner.lookup(field.0),
-                        validation_context.interner.lookup(struct_name.str),
-                     );
-                  }
-
-                  try_set_inferred_type(defined_type, field.1, validation_context);
-
-                  let field_expr = &validation_context.ast.expressions[field.1];
-
-                  if field_expr.exp_type.as_ref().unwrap() != defined_type
-                     && !field_expr.exp_type.as_ref().unwrap().is_error()
-                  {
-                     let field_1_type_str = field_expr.exp_type.as_ref().unwrap().as_roland_type_info(
-                        validation_context.interner,
-                        validation_context.procedure_info,
-                        &validation_context.type_variables,
-                     );
-                     let defined_type_str = defined_type.as_roland_type_info(
-                        validation_context.interner,
-                        validation_context.procedure_info,
-                        &validation_context.type_variables,
-                     );
-                     rolandc_error_w_details!(
-                        err_manager,
-                        &[
-                           (field_expr.location, "field value"),
-                           (defined_struct.location, "struct defined"),
-                        ],
-                        "For field `{}` of struct `{}`, encountered value of type {} when we expected {}",
-                        validation_context.interner.lookup(field.0),
-                        validation_context.interner.lookup(struct_name.str),
-                        field_1_type_str,
-                        defined_type_str,
-                     );
-                  }
-               }
-
-               // Missing field check
-               unmatched_fields.retain(|x| !defined_struct.default_values.contains_key(x));
-               if !unmatched_fields.is_empty() {
-                  let unmatched_fields_str: Vec<&str> = unmatched_fields
-                     .iter()
-                     .map(|x| validation_context.interner.lookup(*x))
-                     .collect();
-                  rolandc_error_w_details!(
-                     err_manager,
-                     &[
-                        (expr_location, "struct instantiated"),
-                        (defined_struct.location, "struct defined"),
-                     ],
-                     "Literal of struct `{}` is missing fields [{}]",
-                     validation_context.interner.lookup(struct_name.str),
-                     unmatched_fields_str.join(", "),
-                  );
-               }
-
-               ExpressionType::Struct(struct_name.str)
-            }
-            None => {
-               rolandc_error!(
+            let Some(field_val_expr) = *field.1 else { continue; };
+            let Some(defined_type_node) = defined_fields.get(field.0) else {
+               rolandc_error_w_details!(
                   err_manager,
-                  expr_location,
-                  "Encountered construction of undefined struct `{}`",
-                  validation_context.interner.lookup(struct_name.str)
+                  &[
+                     (expr_location, "struct instantiated"),
+                     (defined_struct.location, "struct defined"),
+                  ],
+                  "`{}` is not a known field of struct `{}`",
+                  validation_context.interner.lookup(*field.0),
+                  validation_context.interner.lookup(struct_name.str),
                );
-               ExpressionType::CompileError
+               continue;
+            };
+            let defined_type = &defined_type_node.e_type;
+            try_set_inferred_type(defined_type, field_val_expr, validation_context);
+
+            let field_expr = &validation_context.ast.expressions[field_val_expr];
+
+            if field_expr.exp_type.as_ref().unwrap() != defined_type
+               && !field_expr.exp_type.as_ref().unwrap().is_error()
+            {
+               let field_1_type_str = field_expr.exp_type.as_ref().unwrap().as_roland_type_info(
+                  validation_context.interner,
+                  validation_context.procedure_info,
+                  &validation_context.type_variables,
+               );
+               let defined_type_str = defined_type.as_roland_type_info(
+                  validation_context.interner,
+                  validation_context.procedure_info,
+                  &validation_context.type_variables,
+               );
+               rolandc_error_w_details!(
+                  err_manager,
+                  &[
+                     (field_expr.location, "field value"),
+                     (defined_struct.location, "struct defined"),
+                  ],
+                  "For field `{}` of struct `{}`, encountered value of type {} when we expected {}",
+                  validation_context.interner.lookup(*field.0),
+                  validation_context.interner.lookup(struct_name.str),
+                  field_1_type_str,
+                  defined_type_str,
+               );
             }
          }
+
+         ExpressionType::Struct(struct_name.str)
       }
       Expression::FieldAccess(fields, lhs) => {
          type_expression(err_manager, *lhs, validation_context);

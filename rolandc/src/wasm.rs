@@ -1096,11 +1096,10 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
       }
       Expression::StructLiteral(s_name, fields) => {
          // We need to emit this in the proper order!!
-         let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
          let si = generation_context.struct_info.get(&s_name.str).unwrap();
          let ssi = generation_context.struct_size_info.get(&s_name.str).unwrap();
          for (field, next_field) in si.field_types.iter().zip(si.field_types.keys().skip(1)) {
-            let value_of_field = map.get(field.0).copied().unwrap();
+            let value_of_field = fields.get(field.0).copied().unwrap();
             literal_as_bytes(buf, value_of_field, generation_context);
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
             let next_offset = ssi.field_offsets_mem.get(next_field).unwrap();
@@ -1116,7 +1115,7 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
             }
          }
          if let Some(last_field) = si.field_types.iter().last() {
-            let value_of_field = map.get(last_field.0).copied().unwrap();
+            let value_of_field = fields.get(last_field.0).copied().unwrap();
             literal_as_bytes(buf, value_of_field, generation_context);
             let this_offset = ssi.field_offsets_mem.get(last_field.0).unwrap();
             let next_offset = ssi.mem_size;
@@ -1194,10 +1193,9 @@ fn literal_as_wasm_consts(
       }
       Expression::StructLiteral(s_name, fields) => {
          // We need to emit this in the proper order!!
-         let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
          let si = generation_context.struct_info.get(&s_name.str).unwrap();
          for field in si.field_types.iter() {
-            let value_of_field = map.get(field.0).copied().unwrap();
+            let value_of_field = fields.get(field.0).copied().unwrap();
             literal_as_wasm_consts(buf, value_of_field, generation_context);
          }
       }
@@ -1721,9 +1719,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             get_stack_address_of_local(*id, generation_context);
          }
       }
-      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => {
-         unreachable!()
-      }
       Expression::ProcedureCall { proc_expr, args } => {
          if !matches!(
             generation_context.ast.expressions[*proc_expr].exp_type,
@@ -1780,15 +1775,21 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          };
       }
       Expression::StructLiteral(s_name, fields) => {
-         let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
          let si = generation_context.struct_info.get(&s_name.str).unwrap();
          for field in si.field_types.iter() {
-            if let Some(value_of_field) = map.get(field.0).copied() {
-               do_emit_and_load_lval(value_of_field, generation_context);
-            } else {
-               // Must be a default value
-               let default_value = si.default_values.get(field.0).copied().unwrap();
-               do_emit(default_value, generation_context);
+            match fields.get(field.0).copied() {
+               Some(Some(value_of_field)) => {
+                  do_emit_and_load_lval(value_of_field, generation_context);
+               }
+               Some(None) => {
+                  // Must be a default value
+                  let default_value = si.default_values.get(field.0).copied().unwrap();
+                  do_emit(default_value, generation_context);
+               }
+               None => {
+                  // nocheckin
+                  // wat do
+               }
             }
          }
       }
@@ -1880,6 +1881,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             calculate_offset(*array, *index, generation_context);
          }
       }
+      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
    }
 }
 

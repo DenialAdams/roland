@@ -204,8 +204,8 @@ fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool) -> Expr
          *operand = deep_clone_expr(*operand, expressions);
       }
       Expression::StructLiteral(_, field_exprs) => {
-         for field_expr in field_exprs.iter_mut() {
-            field_expr.1 = deep_clone_expr(field_expr.1, expressions);
+         for field_expr in field_exprs.values_mut().flatten() {
+            *field_expr = deep_clone_expr(*field_expr, expressions);
          }
       }
       Expression::FieldAccess(_, base) => {
@@ -217,6 +217,7 @@ fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool) -> Expr
       Expression::EnumLiteral(_, _) => (),
       Expression::BoundFcnLiteral(_, _) => (),
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
    }
    expressions.insert(cloned)
 }

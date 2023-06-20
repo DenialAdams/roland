@@ -133,7 +133,6 @@ fn mark_reachable_expr(expr: ExpressionId, ast: &AstPool, ctx: &mut DceCtx) {
       Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
       Expression::UnitLiteral => (),
-      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::Variable(var_id) => {
          if ctx.global_info.contains_key(var_id) {
             ctx.worklist.push(WorkItem::Static(*var_id));
@@ -147,8 +146,8 @@ fn mark_reachable_expr(expr: ExpressionId, ast: &AstPool, ctx: &mut DceCtx) {
          mark_reachable_expr(*operand, ast, ctx);
       }
       Expression::StructLiteral(_, field_exprs) => {
-         for field_expr in field_exprs.iter() {
-            mark_reachable_expr(field_expr.1, ast, ctx);
+         for field_expr in field_exprs.values().flatten() {
+            mark_reachable_expr(*field_expr, ast, ctx);
          }
       }
       Expression::FieldAccess(_, base) => {
@@ -166,5 +165,7 @@ fn mark_reachable_expr(expr: ExpressionId, ast: &AstPool, ctx: &mut DceCtx) {
       Expression::BoundFcnLiteral(id, _) => {
          ctx.worklist.push(WorkItem::Procedure(*id));
       }
+      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
    }
 }

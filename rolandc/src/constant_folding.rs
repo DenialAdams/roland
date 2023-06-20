@@ -636,7 +636,7 @@ fn fold_expr_inner(
          }
       }
       Expression::StructLiteral(_, field_exprs) => {
-         for (_, expr) in field_exprs.iter() {
+         for expr in field_exprs.iter().flat_map(|x| x.1) {
             try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
          }
 
@@ -684,9 +684,7 @@ fn fold_expr_inner(
             for field_name in field_names.iter().take(field_names.len() - 1) {
                match &inner_expr_node.expression {
                   Expression::StructLiteral(_, fields) => {
-                     // We want O(1) field access in other places- consider unifying, perhaps at parse time? TODO
-                     let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
-                     inner_expr_node = &folding_context.ast.expressions[map.get(field_name).copied().unwrap()];
+                     inner_expr_node = &folding_context.ast.expressions[fields.get(field_name).unwrap().unwrap()];
                   }
                   _ => return None,
                }
@@ -702,10 +700,8 @@ fn fold_expr_inner(
                   })
                }
                Expression::StructLiteral(_, fields) => {
-                  // We want O(1) field access in other places- consider unifying, perhaps at parse time? TODO
-                  let map: HashMap<StrId, ExpressionId> = fields.iter().map(|x| (x.0, x.1)).collect();
                   let inner_node_expression = folding_context.ast.expressions
-                     [*map.get(field_names.last().unwrap()).unwrap()]
+                     [fields.get(field_names.last().unwrap()).unwrap().unwrap()]
                   .expression
                   .clone();
                   Some(inner_node_expression)
@@ -756,6 +752,7 @@ fn fold_expr_inner(
       }
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
    }
 }
 
@@ -812,8 +809,8 @@ pub fn is_const(expr: &Expression, expressions: &ExpressionPool) -> bool {
          .all(|x| is_const(&expressions[x].expression, expressions)),
       Expression::StructLiteral(_, exprs) => exprs
          .iter()
-         .copied()
-         .all(|(_, x)| is_const(&expressions[x].expression, expressions)),
+         .flat_map(|(_, x)| x)
+         .all(|x| is_const(&expressions[*x].expression, expressions)),
       Expression::StringLiteral(_) => true,
       _ => false,
    }
@@ -1694,7 +1691,8 @@ pub fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &E
       Expression::UnaryOperator(_, expr) => expression_could_have_side_effects(*expr, expressions),
       Expression::StructLiteral(_, fields) => fields
          .iter()
-         .any(|x| expression_could_have_side_effects(x.1, expressions)),
+         .flat_map(|(_, x)| x)
+         .any(|x| expression_could_have_side_effects(*x, expressions)),
       Expression::FieldAccess(_, expr) => expression_could_have_side_effects(*expr, expressions),
       Expression::Cast { expr, .. } => expression_could_have_side_effects(*expr, expressions),
       Expression::IfX(a, b, c) => {
@@ -1711,5 +1709,6 @@ pub fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &E
       Expression::Variable(_) => false,
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
    }
 }

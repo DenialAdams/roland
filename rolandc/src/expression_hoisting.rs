@@ -49,7 +49,6 @@ impl VvContext<'_> {
       if reason == HoistReason::Must {
          self.statements_that_need_hoisting.insert(current_stmt);
       }
-      // nocheckin: is pending hoists even needed anymore?
       if !self.pending_hoists.insert(expr_id) {
          return;
       }
@@ -321,7 +320,7 @@ fn vv_expr(
          }
       }
       Expression::StructLiteral(_, field_exprs) => {
-         for (_, expr) in field_exprs.iter() {
+         for expr in field_exprs.values().flatten() {
             vv_expr(*expr, vv_context, expressions, current_statement, false);
             if expression_could_have_side_effects(*expr, expressions) {
                vv_context.statements_that_need_hoisting.insert(current_statement);
@@ -389,6 +388,7 @@ fn vv_expr(
       Expression::UnitLiteral => (),
       Expression::Variable(_) => (),
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
    }
 
    // assumption: procedure call is the only leaf node with side effects, and always has side effects
