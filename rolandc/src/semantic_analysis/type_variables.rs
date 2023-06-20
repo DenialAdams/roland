@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::disjoint_set::DisjointSet;
 use crate::type_data::ExpressionType;
 
@@ -51,7 +49,7 @@ impl TypeVariableData {
 }
 
 pub struct TypeVariableManager {
-   type_variable_data: HashMap<usize, TypeVariableData>,
+   type_variable_data: Vec<TypeVariableData>,
    disjoint_set: DisjointSet,
 }
 
@@ -59,7 +57,7 @@ impl TypeVariableManager {
    pub fn new() -> TypeVariableManager {
       TypeVariableManager {
          disjoint_set: DisjointSet::new(),
-         type_variable_data: HashMap::new(),
+         type_variable_data: Vec::new(),
       }
    }
 
@@ -103,11 +101,11 @@ impl TypeVariableManager {
 
    pub fn get_data(&self, x: TypeVariable) -> &TypeVariableData {
       let rep = self.find(x);
-      self.type_variable_data.get(&rep.0).unwrap()
+      &self.type_variable_data[rep.0]
    }
 
    pub fn get_data_mut(&mut self, x: TypeVariable) -> &mut TypeVariableData {
       let rep = self.find(x);
-      self.type_variable_data.get_mut(&rep.0).unwrap()
+      &mut self.type_variable_data[rep.0]
    }
 }
