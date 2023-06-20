@@ -51,11 +51,7 @@ impl Interner {
 
    #[must_use]
    pub fn reverse_lookup(&self, name: &str) -> Option<StrId> {
-      if let Some(&id) = self.map.get(name) {
-         Some(StrId(id))
-      } else {
-         None
-      }
+      self.map.get(name).map(|x| StrId(*x))
    }
 
    unsafe fn alloc(&mut self, name: &str) -> &'static str {
