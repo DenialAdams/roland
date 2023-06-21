@@ -1095,12 +1095,15 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
          buf.extend(len.to_le_bytes());
       }
       Expression::StructLiteral(s_name, fields) => {
-         // We need to emit this in the proper order!!
          let si = generation_context.struct_info.get(&s_name.str).unwrap();
          let ssi = generation_context.struct_size_info.get(&s_name.str).unwrap();
          for (field, next_field) in si.field_types.iter().zip(si.field_types.keys().skip(1)) {
             let value_of_field = fields.get(field.0).copied().unwrap();
-            literal_as_bytes(buf, value_of_field, generation_context);
+            if let Some(val) = value_of_field {
+               literal_as_bytes(buf, val, generation_context);
+            } else {
+               type_as_zero_bytes(buf, &field.1.e_type, generation_context);
+            }
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
             let next_offset = ssi.field_offsets_mem.get(next_field).unwrap();
             let padding_bytes = next_offset
@@ -1116,7 +1119,11 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
          }
          if let Some(last_field) = si.field_types.iter().last() {
             let value_of_field = fields.get(last_field.0).copied().unwrap();
-            literal_as_bytes(buf, value_of_field, generation_context);
+            if let Some(val) = value_of_field {
+               literal_as_bytes(buf, val, generation_context);
+            } else {
+               type_as_zero_bytes(buf, &last_field.1.e_type, generation_context);
+            }
             let this_offset = ssi.field_offsets_mem.get(last_field.0).unwrap();
             let next_offset = ssi.mem_size;
             let padding_bytes = next_offset
@@ -1136,6 +1143,85 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
             literal_as_bytes(buf, *expr, generation_context);
          }
       }
+      _ => unreachable!(),
+   }
+}
+
+fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, generation_context: &GenerationContext) {
+   match expr_type {
+      ExpressionType::Array(et, len) => {
+         for _ in 0..*len {
+            type_as_zero_bytes(buf, et, generation_context);
+         }
+      }
+      ExpressionType::Bool => {
+         buf.extend(0u8.to_le_bytes());
+      }
+      ExpressionType::Float(x) => {
+         match x.width {
+            FloatWidth::Eight => {
+               buf.extend(0.0f64.to_bits().to_le_bytes());
+            }
+            FloatWidth::Four => {
+               buf.extend(0.0f32.to_bits().to_le_bytes());
+            }
+         }
+      }
+      ExpressionType::Int(x) => {
+         match x.width {
+            IntWidth::Eight => {
+               buf.extend(0u64.to_le_bytes());
+            }
+            IntWidth::Four => {
+               buf.extend(0u32.to_le_bytes());
+            }
+            IntWidth::Two => {
+               buf.extend(0u16.to_le_bytes());
+            }
+            IntWidth::One => {
+               buf.extend(0u8.to_le_bytes());
+            }
+            IntWidth::Pointer => unreachable!(),
+         };
+      }
+      ExpressionType::ProcedurePointer { .. } => {
+         buf.extend(0u32.to_le_bytes());
+      }
+      ExpressionType::Struct(id) => {
+         let si = generation_context.struct_info.get(id).unwrap();
+         let ssi = generation_context.struct_size_info.get(id).unwrap();
+         for (field, next_field) in si.field_types.iter().zip(si.field_types.keys().skip(1)) {
+            type_as_zero_bytes(buf, &field.1.e_type, generation_context);
+            let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
+            let next_offset = ssi.field_offsets_mem.get(next_field).unwrap();
+            let padding_bytes = next_offset
+               - this_offset
+               - sizeof_type_mem(
+                  &field.1.e_type,
+                  generation_context.enum_info,
+                  generation_context.struct_size_info,
+               );
+            for _ in 0..padding_bytes {
+               buf.push(0);
+            }
+         }
+         if let Some(last_field) = si.field_types.iter().last() {
+            type_as_zero_bytes(buf, &last_field.1.e_type, generation_context);
+            let this_offset = ssi.field_offsets_mem.get(last_field.0).unwrap();
+            let next_offset = ssi.mem_size;
+            let padding_bytes = next_offset
+               - this_offset
+               - sizeof_type_mem(
+                  &last_field.1.e_type,
+                  generation_context.enum_info,
+                  generation_context.struct_size_info,
+               );
+            for _ in 0..padding_bytes {
+               buf.push(0);
+            }
+         }
+      }
+      ExpressionType::Unit => (),
       _ => unreachable!(),
    }
 }
@@ -1192,11 +1278,14 @@ fn literal_as_wasm_consts(
          buf.push(ConstExpr::i32_const(*len as i32));
       }
       Expression::StructLiteral(s_name, fields) => {
-         // We need to emit this in the proper order!!
          let si = generation_context.struct_info.get(&s_name.str).unwrap();
          for field in si.field_types.iter() {
             let value_of_field = fields.get(field.0).copied().unwrap();
-            literal_as_wasm_consts(buf, value_of_field, generation_context);
+            if let Some(val) = value_of_field {
+               literal_as_wasm_consts(buf, val, generation_context);
+            } else {
+               type_as_zero_wasm_consts(buf, &field.1.e_type, generation_context);
+            }
          }
       }
       Expression::ArrayLiteral(exprs) => {
@@ -1204,6 +1293,99 @@ fn literal_as_wasm_consts(
             literal_as_wasm_consts(buf, *expr, generation_context);
          }
       }
+      _ => unreachable!(),
+   }
+}
+
+fn type_as_zero_wasm_consts(buf: &mut Vec<ConstExpr>,
+   expr_type: &ExpressionType,
+   generation_context: &mut GenerationContext,) {
+   match expr_type {
+      ExpressionType::Array(et, len) => {
+         for _ in 0..*len {
+            type_as_zero_wasm_consts(buf, et, generation_context);
+         }
+      }
+      ExpressionType::Bool => {
+         buf.push(ConstExpr::i32_const(0));
+      }
+      ExpressionType::Float(x) => {
+         match x.width {
+            FloatWidth::Eight => {
+               buf.push(ConstExpr::f64_const(0.0));
+            }
+            FloatWidth::Four => {
+               buf.push(ConstExpr::f32_const(0.0));
+            }
+         }
+      }
+      ExpressionType::Int(x) => {
+         match x.width {
+            IntWidth::Eight => {
+               buf.push(ConstExpr::i64_const(0));
+            }
+            IntWidth::Four | IntWidth::Two | IntWidth::One => {
+               buf.push(ConstExpr::i32_const(0));
+            }
+            IntWidth::Pointer => unreachable!(),
+         };
+      }
+      ExpressionType::ProcedurePointer { .. } => {
+         buf.push(ConstExpr::i32_const(0));
+      }
+      ExpressionType::Struct(id) => {
+         let si = generation_context.struct_info.get(id).unwrap();
+         for field in si.field_types.iter() {
+            type_as_zero_wasm_consts(buf, &field.1.e_type, generation_context);
+         }
+      }
+      ExpressionType::Unit => (),
+      _ => unreachable!(),
+   }
+}
+
+fn type_as_zero_wasm_instructions(expr_type: &ExpressionType,
+   generation_context: &mut GenerationContext,) {
+   match expr_type {
+      ExpressionType::Array(et, len) => {
+         for _ in 0..*len {
+            type_as_zero_wasm_instructions(et, generation_context);
+         }
+      }
+      ExpressionType::Bool => {
+         generation_context.active_fcn.instruction(&Instruction::I32Const(0));
+      }
+      ExpressionType::Float(x) => {
+         match x.width {
+            FloatWidth::Eight => {
+               generation_context.active_fcn.instruction(&Instruction::F64Const(0.0));
+            }
+            FloatWidth::Four => {
+               generation_context.active_fcn.instruction(&Instruction::F32Const(0.0));
+            }
+         }
+      }
+      ExpressionType::Int(x) => {
+         match x.width {
+            IntWidth::Eight => {
+               generation_context.active_fcn.instruction(&Instruction::I64Const(0));
+            }
+            IntWidth::Four | IntWidth::Two | IntWidth::One => {
+               generation_context.active_fcn.instruction(&Instruction::I32Const(0));
+            }
+            IntWidth::Pointer => unreachable!(),
+         };
+      }
+      ExpressionType::ProcedurePointer { .. } => {
+         generation_context.active_fcn.instruction(&Instruction::I32Const(0));
+      }
+      ExpressionType::Struct(id) => {
+         let si = generation_context.struct_info.get(id).unwrap();
+         for field in si.field_types.iter() {
+            type_as_zero_wasm_instructions(&field.1.e_type, generation_context);
+         }
+      }
+      ExpressionType::Unit => (),
       _ => unreachable!(),
    }
 }
@@ -1782,13 +1964,14 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                   do_emit_and_load_lval(value_of_field, generation_context);
                }
                Some(None) => {
+                  // This is clearly not uninitialized, but this is the best I can do
+                  // with the way I've written everything right now
+                  type_as_zero_wasm_instructions(&field.1.e_type, generation_context);
+               }
+               None => {
                   // Must be a default value
                   let default_value = si.default_values.get(field.0).copied().unwrap();
                   do_emit(default_value, generation_context);
-               }
-               None => {
-                  // nocheckin
-                  // wat do
                }
             }
          }

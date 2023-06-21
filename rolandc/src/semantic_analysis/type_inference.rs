@@ -265,6 +265,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
       Expression::BoundFcnLiteral(_, _) => unreachable!(),
       Expression::Cast { .. } => unreachable!(),
       Expression::BoolLiteral(_) => unreachable!(),
+      Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
    }
    validation_context.ast.expressions[expr_index].expression = the_expr;
 }
