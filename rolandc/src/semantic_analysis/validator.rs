@@ -1857,7 +1857,7 @@ fn get_type(
             ExpressionType::CompileError
          }
       }
-      Expression::StructLiteral(struct_name, fields) => unreachable!(),
+      Expression::StructLiteral(_, _) => unreachable!(),
    }
 }
 
