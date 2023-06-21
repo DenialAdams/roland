@@ -182,8 +182,8 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
          regalloc_expr(*c, ctx, ast);
       }
       Expression::StructLiteral(_, exprs) => {
-         for expr in exprs.iter().map(|x| x.1) {
-            regalloc_expr(expr, ctx, ast);
+         for expr in exprs.values().flatten() {
+            regalloc_expr(*expr, ctx, ast);
          }
       }
       Expression::FieldAccess(_, base_expr) => {
@@ -222,6 +222,7 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
       Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
    }
 }
 

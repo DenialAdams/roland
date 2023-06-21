@@ -1,0 +1,15 @@
+struct S {
+    foo: bool,
+    bar: u32,
+}
+
+static A: S = S { foo: true, bar: ___ };
+
+proc main() {
+    let x = S { foo: true, bar: ___ };
+    x.bar;
+    S { foo: true, bar: ___ }.bar;
+    assert(A.bar == 0);
+}
+__END__
+run:

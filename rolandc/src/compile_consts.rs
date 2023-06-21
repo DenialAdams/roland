@@ -144,7 +144,9 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
             cg_const(*x, cg_context, err_manager);
          }
       }
-      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
       Expression::ArrayIndex { array, index } => {
          cg_expr(*array, cg_context, err_manager);
          cg_expr(*index, cg_context, err_manager);
@@ -167,7 +169,7 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
          cg_expr(*expr, cg_context, err_manager);
       }
       Expression::StructLiteral(_, field_exprs) => {
-         for (_, expr) in field_exprs.iter() {
+         for expr in field_exprs.values().flatten() {
             cg_expr(*expr, cg_context, err_manager);
          }
       }

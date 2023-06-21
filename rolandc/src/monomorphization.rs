@@ -394,7 +394,6 @@ fn deep_clone_expr(
       Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
       Expression::UnitLiteral => (),
-      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::Variable(var) => {
          if let Some(new_var) = variable_replacements.get(var).copied() {
             *var = new_var;
@@ -433,9 +432,9 @@ fn deep_clone_expr(
          );
       }
       Expression::StructLiteral(_, field_exprs) => {
-         for field_expr in field_exprs.iter_mut() {
-            field_expr.1 = deep_clone_expr(
-               field_expr.1,
+         for field_expr in field_exprs.values_mut().flatten() {
+            *field_expr = deep_clone_expr(
+               *field_expr,
                expressions,
                concrete_types,
                type_parameters,
@@ -516,6 +515,8 @@ fn deep_clone_expr(
             });
          }
       }
+      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
    }
    expressions.insert(cloned)
 }
