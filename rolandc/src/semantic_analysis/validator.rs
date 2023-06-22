@@ -1441,7 +1441,7 @@ fn get_type(
                      try_set_inferred_type(defined_type, field_val, validation_context);
 
                      let field_expr = &validation_context.ast.expressions[field_val];
-   
+
                      if field_expr.exp_type.as_ref().unwrap() != defined_type
                         && !field_expr.exp_type.as_ref().unwrap().is_error()
                      {

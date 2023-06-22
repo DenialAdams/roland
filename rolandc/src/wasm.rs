@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::ops::Range;
 
 use indexmap::{IndexMap, IndexSet};
 use wasm_encoder::{
@@ -44,7 +43,7 @@ struct GenerationContext<'a> {
    procedure_to_table_index: IndexSet<ProcedureId>,
    procedure_indices: IndexSet<ProcedureId>,
    stack_of_loop_jump_offsets: Vec<u32>,
-   var_to_reg: IndexMap<VariableId, Range<u32>>,
+   var_to_reg: IndexMap<VariableId, Vec<u32>>,
 }
 
 impl GenerationContext<'_> {
@@ -483,8 +482,6 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
                &initial_val,
             );
          }
-
-         debug_assert!(globals.len() == generation_context.var_to_reg.get(global.0).unwrap().end);
       }
 
       globals
@@ -824,14 +821,16 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
          let val_type = generation_context.ast.expressions[*en].exp_type.as_ref().unwrap();
          if let Some((is_global, range)) = get_registers_for_expr(*len, generation_context) {
             if is_global {
-               for a_reg in range.rev() {
+               for a_reg in range.iter().rev() {
                   generation_context
                      .active_fcn
-                     .instruction(&Instruction::GlobalSet(a_reg));
+                     .instruction(&Instruction::GlobalSet(*a_reg));
                }
             } else {
-               for a_reg in range.rev() {
-                  generation_context.active_fcn.instruction(&Instruction::LocalSet(a_reg));
+               for a_reg in range.iter().rev() {
+                  generation_context
+                     .active_fcn
+                     .instruction(&Instruction::LocalSet(*a_reg));
                }
             }
          } else {
@@ -922,7 +921,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
    }
 }
 
-fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &GenerationContext) -> Option<(bool, Range<u32>)> {
+fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &GenerationContext) -> Option<(bool, Vec<u32>)> {
    let node = &generation_context.ast.expressions[expr_id];
    match &node.expression {
       Expression::Variable(v) => generation_context
@@ -981,10 +980,7 @@ fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &Generation
             generation_context.struct_size_info,
          );
 
-         let mut final_range = base_range;
-
-         final_range.start += value_offset;
-         final_range.end = final_range.start + last_field_size_values;
+         let final_range = base_range[value_offset as usize..(value_offset + last_field_size_values) as usize].to_vec();
 
          Some((is_global, final_range))
       }
@@ -992,8 +988,6 @@ fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &Generation
          let (is_global, base_range) = get_registers_for_expr(*array, generation_context)?;
 
          if let Expression::IntLiteral { val: x, .. } = generation_context.ast.expressions[*index].expression {
-            let mut final_range = base_range;
-
             // Safe assert due to inference and constant folding validating this
             let val_32 = u32::try_from(x).unwrap();
             let sizeof_inner = match &generation_context.ast.expressions[*array].exp_type {
@@ -1003,8 +997,8 @@ fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &Generation
                _ => unreachable!(),
             };
 
-            final_range.start += sizeof_inner * val_32;
-            final_range.end = final_range.start + sizeof_inner;
+            let final_range =
+               base_range[(sizeof_inner * val_32) as usize..((sizeof_inner * val_32) + sizeof_inner) as usize].to_vec();
 
             Some((is_global, final_range))
          } else {
@@ -1157,16 +1151,14 @@ fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, generation_
       ExpressionType::Bool => {
          buf.extend(0u8.to_le_bytes());
       }
-      ExpressionType::Float(x) => {
-         match x.width {
-            FloatWidth::Eight => {
-               buf.extend(0.0f64.to_bits().to_le_bytes());
-            }
-            FloatWidth::Four => {
-               buf.extend(0.0f32.to_bits().to_le_bytes());
-            }
+      ExpressionType::Float(x) => match x.width {
+         FloatWidth::Eight => {
+            buf.extend(0.0f64.to_bits().to_le_bytes());
          }
-      }
+         FloatWidth::Four => {
+            buf.extend(0.0f32.to_bits().to_le_bytes());
+         }
+      },
       ExpressionType::Int(x) => {
          match x.width {
             IntWidth::Eight => {
@@ -1297,9 +1289,11 @@ fn literal_as_wasm_consts(
    }
 }
 
-fn type_as_zero_wasm_consts(buf: &mut Vec<ConstExpr>,
+fn type_as_zero_wasm_consts(
+   buf: &mut Vec<ConstExpr>,
    expr_type: &ExpressionType,
-   generation_context: &mut GenerationContext,) {
+   generation_context: &mut GenerationContext,
+) {
    match expr_type {
       ExpressionType::Array(et, len) => {
          for _ in 0..*len {
@@ -1309,16 +1303,14 @@ fn type_as_zero_wasm_consts(buf: &mut Vec<ConstExpr>,
       ExpressionType::Bool => {
          buf.push(ConstExpr::i32_const(0));
       }
-      ExpressionType::Float(x) => {
-         match x.width {
-            FloatWidth::Eight => {
-               buf.push(ConstExpr::f64_const(0.0));
-            }
-            FloatWidth::Four => {
-               buf.push(ConstExpr::f32_const(0.0));
-            }
+      ExpressionType::Float(x) => match x.width {
+         FloatWidth::Eight => {
+            buf.push(ConstExpr::f64_const(0.0));
          }
-      }
+         FloatWidth::Four => {
+            buf.push(ConstExpr::f32_const(0.0));
+         }
+      },
       ExpressionType::Int(x) => {
          match x.width {
             IntWidth::Eight => {
@@ -1344,8 +1336,7 @@ fn type_as_zero_wasm_consts(buf: &mut Vec<ConstExpr>,
    }
 }
 
-fn type_as_zero_wasm_instructions(expr_type: &ExpressionType,
-   generation_context: &mut GenerationContext,) {
+fn type_as_zero_wasm_instructions(expr_type: &ExpressionType, generation_context: &mut GenerationContext) {
    match expr_type {
       ExpressionType::Array(et, len) => {
          for _ in 0..*len {
@@ -1355,16 +1346,14 @@ fn type_as_zero_wasm_instructions(expr_type: &ExpressionType,
       ExpressionType::Bool => {
          generation_context.active_fcn.instruction(&Instruction::I32Const(0));
       }
-      ExpressionType::Float(x) => {
-         match x.width {
-            FloatWidth::Eight => {
-               generation_context.active_fcn.instruction(&Instruction::F64Const(0.0));
-            }
-            FloatWidth::Four => {
-               generation_context.active_fcn.instruction(&Instruction::F32Const(0.0));
-            }
+      ExpressionType::Float(x) => match x.width {
+         FloatWidth::Eight => {
+            generation_context.active_fcn.instruction(&Instruction::F64Const(0.0));
          }
-      }
+         FloatWidth::Four => {
+            generation_context.active_fcn.instruction(&Instruction::F32Const(0.0));
+         }
+      },
       ExpressionType::Int(x) => {
          match x.width {
             IntWidth::Eight => {

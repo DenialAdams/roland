@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::ops::Range;
 
 use indexmap::IndexMap;
 use slotmap::SecondaryMap;
@@ -8,23 +7,57 @@ use wasm_encoder::ValType;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, Statement,
-   StatementId, UnOp, VariableId,
+   StatementId, StatementPool, UnOp, VariableId,
 };
 use crate::wasm::type_to_wasm_type;
 use crate::{Program, Target};
 
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+struct ProgramIndex {
+   stmt: usize,
+}
+
+impl PartialOrd for ProgramIndex {
+   fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+      Some(self.cmp(other))
+   }
+}
+
+impl Ord for ProgramIndex {
+   fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+      self.stmt.cmp(&other.stmt)
+   }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+struct LiveRange {
+   begin: ProgramIndex,
+   end: ProgramIndex,
+}
+
 struct RegallocCtx {
    escaping_vars: HashSet<VariableId>,
+   live_ranges: IndexMap<VariableId, LiveRange>,
+   current_loc: ProgramIndex,
+   current_block_range: LiveRange,
+   in_a_loop: bool,
 }
 
 pub struct RegallocResult {
-   pub var_to_reg: IndexMap<VariableId, Range<u32>>,
+   pub var_to_reg: IndexMap<VariableId, Vec<u32>>,
    pub procedure_registers: SecondaryMap<ProcedureId, Vec<ValType>>,
 }
 
 pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> RegallocResult {
    let mut ctx = RegallocCtx {
       escaping_vars: HashSet::new(),
+      live_ranges: IndexMap::new(),
+      current_loc: ProgramIndex { stmt: 0 },
+      current_block_range: LiveRange {
+         begin: ProgramIndex { stmt: 0 },
+         end: ProgramIndex { stmt: 0 },
+      },
+      in_a_loop: false,
    };
 
    let mut result = RegallocResult {
@@ -32,6 +65,8 @@ pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> 
       procedure_registers: SecondaryMap::with_capacity(program.procedures.len()),
    };
 
+   let mut active: Vec<VariableId> = Vec::new();
+   let mut free_registers: IndexMap<ValType, Vec<u32>> = IndexMap::new();
    let mut t_buf: Vec<ValType> = Vec::new();
 
    for (proc_id, procedure) in program.procedures.iter() {
@@ -39,10 +74,20 @@ pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> 
       let all_registers = result.procedure_registers.get_mut(proc_id).unwrap();
       let mut total_registers = 0;
 
+      free_registers.clear();
+
       let ProcImplSource::Body(block) = &procedure.proc_impl else {continue;};
 
+      ctx.current_loc = ProgramIndex { stmt: 0 };
+      ctx.live_ranges.clear();
       regalloc_block(block, &mut ctx, &program.ast);
 
+      ctx.live_ranges.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
+
+      active.clear();
+
+      // All parameters start in registers because that's how WASM
+      // (and Roland's calling convention) work.
       for param in procedure.definition.parameters.iter() {
          let var = param.var_id;
          let typ = &param.p_type.e_type;
@@ -60,10 +105,10 @@ pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> 
             continue;
          }
 
-         result.var_to_reg.insert(var, reg..total_registers);
+         result.var_to_reg.insert(var, (reg..total_registers).collect());
       }
 
-      for (var, typ) in procedure.locals.iter() {
+      for (var, range) in ctx.live_ranges.iter() {
          if result.var_to_reg.contains_key(var) {
             // (This local is a parameter, which inherently has a register)
             continue;
@@ -74,15 +119,43 @@ pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> 
             continue;
          }
 
+         if program.global_info.contains_key(var) {
+            // We consider globals to live during the entire lifetime of the program
+            // TODO we really should just not put these in the live range map at all
+            continue;
+         }
+
+         for expired_var in active.extract_if(|v| ctx.live_ranges.get(v).unwrap().end < range.begin) {
+            t_buf.clear();
+            type_to_wasm_type(
+               procedure.locals.get(&expired_var).unwrap(),
+               &mut t_buf,
+               &program.struct_info,
+            );
+            for (t_val, reg) in t_buf.drain(..).zip(result.var_to_reg.get(&expired_var).unwrap()) {
+               free_registers.entry(t_val).or_default().push(*reg);
+            }
+         }
+
          t_buf.clear();
-         type_to_wasm_type(typ, &mut t_buf, &program.struct_info);
+         type_to_wasm_type(procedure.locals.get(var).unwrap(), &mut t_buf, &program.struct_info);
 
-         let reg = total_registers;
-         total_registers += t_buf.len() as u32;
+         let mut var_registers = Vec::with_capacity(t_buf.len());
+         for t_val in t_buf.drain(..) {
+            let reg = if let Some(reg) = free_registers.entry(t_val).or_default().pop() {
+               reg
+            } else {
+               all_registers.push(t_val);
+               let reg = total_registers;
+               total_registers += 1;
+               reg
+            };
 
-         result.var_to_reg.insert(*var, reg..total_registers);
+            var_registers.push(reg);
+         }
 
-         all_registers.extend_from_slice(&t_buf);
+         result.var_to_reg.insert(*var, var_registers.clone());
+         active.push(*var);
       }
    }
 
@@ -106,15 +179,39 @@ pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> 
       let reg = num_global_registers;
       num_global_registers += t_buf.len() as u32;
 
-      result.var_to_reg.insert(*global.0, reg..num_global_registers);
+      result
+         .var_to_reg
+         .insert(*global.0, (reg..num_global_registers).collect());
    }
 
    result
 }
 
 fn regalloc_block(block: &BlockNode, ctx: &mut RegallocCtx, ast: &AstPool) {
+   let saved_block_range = ctx.current_block_range;
+   ctx.current_block_range.begin.stmt = ctx.current_loc.stmt;
+   ctx.current_block_range.end.stmt = ctx.current_loc.stmt + block_len(block, &ast.statements);
    for statement in block.statements.iter().copied() {
       regalloc_statement(statement, ctx, ast);
+      ctx.current_loc.stmt += 1;
+   }
+   ctx.current_block_range = saved_block_range;
+}
+
+fn block_len(block: &BlockNode, ast: &StatementPool) -> usize {
+   block.statements.iter().map(|x| block_len_stmt(*x, ast)).sum()
+}
+
+fn block_len_stmt(stmt: StatementId, ast: &StatementPool) -> usize {
+   match &ast[stmt].statement {
+      Statement::Block(inner) | Statement::Loop(inner) => {
+         1 + block_len(inner, ast)
+      }
+      Statement::IfElse(_, then_block, else_stmt) => {
+         let then_block_len = block_len(then_block, ast);
+         1 + then_block_len + block_len_stmt(*else_stmt, ast)
+      }
+      _ => 1,
    }
 }
 
@@ -133,7 +230,9 @@ fn regalloc_statement(stmt: StatementId, ctx: &mut RegallocCtx, ast: &AstPool) {
          regalloc_statement(*else_statement, ctx, ast);
       }
       Statement::Loop(body) => {
+         let old_loop_val = std::mem::replace(&mut ctx.in_a_loop, true);
          regalloc_block(body, ctx, ast);
+         ctx.in_a_loop = old_loop_val;
       }
       Statement::Assignment(lhs, rhs) => {
          regalloc_expr(*lhs, ctx, ast);
@@ -226,8 +325,23 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
    }
 }
 
-fn regalloc_var(_var: VariableId, _ctx: &mut RegallocCtx) {
-   // In the future, we might do some liveness analysis here.
+fn regalloc_var(var: VariableId, ctx: &mut RegallocCtx) {
+   let (current_use_begin, current_use_end) = if ctx.in_a_loop {
+      (ctx.current_block_range.begin, ctx.current_block_range.end)
+   } else {
+      (ctx.current_loc, ctx.current_loc)
+   };
+   if let Some(existing_range) = ctx.live_ranges.get_mut(&var) {
+      existing_range.end = current_use_end;
+   } else {
+      ctx.live_ranges.insert(
+         var,
+         LiveRange {
+            begin: current_use_begin,
+            end: current_use_end,
+         },
+      );
+   }
 }
 
 fn get_var_from_use(expr: ExpressionId, expressions: &ExpressionPool) -> Option<VariableId> {
