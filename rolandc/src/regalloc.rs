@@ -9,6 +9,7 @@ use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, Statement,
    StatementId, StatementPool, UnOp, VariableId,
 };
+use crate::semantic_analysis::GlobalInfo;
 use crate::wasm::type_to_wasm_type;
 use crate::{Program, Target};
 
@@ -35,12 +36,12 @@ struct LiveRange {
    end: ProgramIndex,
 }
 
-struct RegallocCtx {
+struct RegallocCtx<'a> {
    escaping_vars: HashSet<VariableId>,
    live_ranges: IndexMap<VariableId, LiveRange>,
    current_loc: ProgramIndex,
-   current_block_range: LiveRange,
-   in_a_loop: bool,
+   current_loop_range: Option<LiveRange>,
+   globals: &'a IndexMap<VariableId, GlobalInfo>
 }
 
 pub struct RegallocResult {
@@ -53,11 +54,8 @@ pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> 
       escaping_vars: HashSet::new(),
       live_ranges: IndexMap::new(),
       current_loc: ProgramIndex { stmt: 0 },
-      current_block_range: LiveRange {
-         begin: ProgramIndex { stmt: 0 },
-         end: ProgramIndex { stmt: 0 },
-      },
-      in_a_loop: false,
+      current_loop_range: None,
+      globals: &program.global_info
    };
 
    let mut result = RegallocResult {
@@ -116,12 +114,6 @@ pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> 
 
          if ctx.escaping_vars.contains(var) {
             // address is observed, variable must live on the stack
-            continue;
-         }
-
-         if program.global_info.contains_key(var) {
-            // We consider globals to live during the entire lifetime of the program
-            // TODO we really should just not put these in the live range map at all
             continue;
          }
 
@@ -188,14 +180,10 @@ pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> 
 }
 
 fn regalloc_block(block: &BlockNode, ctx: &mut RegallocCtx, ast: &AstPool) {
-   let saved_block_range = ctx.current_block_range;
-   ctx.current_block_range.begin.stmt = ctx.current_loc.stmt;
-   ctx.current_block_range.end.stmt = ctx.current_loc.stmt + block_len(block, &ast.statements);
    for statement in block.statements.iter().copied() {
       regalloc_statement(statement, ctx, ast);
       ctx.current_loc.stmt += 1;
    }
-   ctx.current_block_range = saved_block_range;
 }
 
 fn block_len(block: &BlockNode, ast: &StatementPool) -> usize {
@@ -230,9 +218,16 @@ fn regalloc_statement(stmt: StatementId, ctx: &mut RegallocCtx, ast: &AstPool) {
          regalloc_statement(*else_statement, ctx, ast);
       }
       Statement::Loop(body) => {
-         let old_loop_val = std::mem::replace(&mut ctx.in_a_loop, true);
+         let outermost_loop = if ctx.current_loop_range.is_none() {
+            ctx.current_loop_range = Some(LiveRange { begin: ctx.current_loc, end: ProgramIndex { stmt: ctx.current_loc.stmt + block_len(body, &ast.statements) }});
+            true
+         } else {
+            false
+         };
          regalloc_block(body, ctx, ast);
-         ctx.in_a_loop = old_loop_val;
+         if outermost_loop {
+            ctx.current_loop_range = None;
+         }
       }
       Statement::Assignment(lhs, rhs) => {
          regalloc_expr(*lhs, ctx, ast);
@@ -326,11 +321,16 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
 }
 
 fn regalloc_var(var: VariableId, ctx: &mut RegallocCtx) {
-   let (current_use_begin, current_use_end) = if ctx.in_a_loop {
-      (ctx.current_block_range.begin, ctx.current_block_range.end)
+   if ctx.globals.contains_key(&var) {
+      return;
+   }
+
+   let (current_use_begin, current_use_end) = if let Some(loop_range) = ctx.current_loop_range {
+      (loop_range.begin, loop_range.end)
    } else {
       (ctx.current_loc, ctx.current_loc)
    };
+
    if let Some(existing_range) = ctx.live_ranges.get_mut(&var) {
       existing_range.end = current_use_end;
    } else {
