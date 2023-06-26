@@ -652,8 +652,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       code_section.function(&generation_context.active_fcn);
    }
 
-   let mut needed_store_fns = IndexSet::new();
-   std::mem::swap(&mut needed_store_fns, &mut generation_context.needed_store_fns);
+   let needed_store_fns = std::mem::take(&mut generation_context.needed_store_fns);
    for e_type in needed_store_fns {
       generation_context.active_fcn = Function::new_with_locals_types([]);
 

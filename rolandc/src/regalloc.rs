@@ -14,9 +14,7 @@ use crate::wasm::type_to_wasm_type;
 use crate::{Program, Target};
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
-struct ProgramIndex {
-   stmt: usize,
-}
+struct ProgramIndex(usize);
 
 impl PartialOrd for ProgramIndex {
    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -26,7 +24,7 @@ impl PartialOrd for ProgramIndex {
 
 impl Ord for ProgramIndex {
    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-      self.stmt.cmp(&other.stmt)
+      self.0.cmp(&other.0)
    }
 }
 
@@ -41,7 +39,7 @@ struct RegallocCtx<'a> {
    live_ranges: IndexMap<VariableId, LiveRange>,
    current_loc: ProgramIndex,
    current_loop_range: Option<LiveRange>,
-   globals: &'a IndexMap<VariableId, GlobalInfo>
+   globals: &'a IndexMap<VariableId, GlobalInfo>,
 }
 
 pub struct RegallocResult {
@@ -53,9 +51,9 @@ pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> 
    let mut ctx = RegallocCtx {
       escaping_vars: HashSet::new(),
       live_ranges: IndexMap::new(),
-      current_loc: ProgramIndex { stmt: 0 },
+      current_loc: ProgramIndex(0),
       current_loop_range: None,
-      globals: &program.global_info
+      globals: &program.global_info,
    };
 
    let mut result = RegallocResult {
@@ -76,7 +74,7 @@ pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> 
 
       let ProcImplSource::Body(block) = &procedure.proc_impl else {continue;};
 
-      ctx.current_loc = ProgramIndex { stmt: 0 };
+      ctx.current_loc = ProgramIndex(0);
       ctx.live_ranges.clear();
       regalloc_block(block, &mut ctx, &program.ast);
 
@@ -182,7 +180,7 @@ pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> 
 fn regalloc_block(block: &BlockNode, ctx: &mut RegallocCtx, ast: &AstPool) {
    for statement in block.statements.iter().copied() {
       regalloc_statement(statement, ctx, ast);
-      ctx.current_loc.stmt += 1;
+      ctx.current_loc.0 += 1;
    }
 }
 
@@ -192,9 +190,7 @@ fn block_len(block: &BlockNode, ast: &StatementPool) -> usize {
 
 fn block_len_stmt(stmt: StatementId, ast: &StatementPool) -> usize {
    match &ast[stmt].statement {
-      Statement::Block(inner) | Statement::Loop(inner) => {
-         1 + block_len(inner, ast)
-      }
+      Statement::Block(inner) | Statement::Loop(inner) => 1 + block_len(inner, ast),
       Statement::IfElse(_, then_block, else_stmt) => {
          let then_block_len = block_len(then_block, ast);
          1 + then_block_len + block_len_stmt(*else_stmt, ast)
@@ -219,7 +215,10 @@ fn regalloc_statement(stmt: StatementId, ctx: &mut RegallocCtx, ast: &AstPool) {
       }
       Statement::Loop(body) => {
          let outermost_loop = if ctx.current_loop_range.is_none() {
-            ctx.current_loop_range = Some(LiveRange { begin: ctx.current_loc, end: ProgramIndex { stmt: ctx.current_loc.stmt + block_len(body, &ast.statements) }});
+            ctx.current_loop_range = Some(LiveRange {
+               begin: ctx.current_loc,
+               end: ProgramIndex(ctx.current_loc.0 + block_len(body, &ast.statements)),
+            });
             true
          } else {
             false
