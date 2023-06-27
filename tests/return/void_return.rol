@@ -1,19 +1,12 @@
 proc main() {
    a();
-   b();
    println("finished");
 }
 
-proc a() -> () {
+proc a() -> unit {
    let x: i16 = 5 + 5;
    return;
    println("never reached");
-}
-
-proc b() {
-   let x: i16 = -10 + -10;
-   return ();
-   println("also never reached");
 }
 __END__
 run:

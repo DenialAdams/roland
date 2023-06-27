@@ -1,10 +1,10 @@
 proc main() {
-   let x = ();
+   let x = unit();
    foo(x);
    println("hello");
 }
 
-proc foo(x: ()) {
+proc foo(x: unit) {
 
 }
 __END__

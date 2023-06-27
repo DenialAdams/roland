@@ -1,5 +1,5 @@
 proc main() {
-   let my_zst = ();
+   let my_zst = unit();
    let x = &my_zst;
    let y = x~;
    println("ok");

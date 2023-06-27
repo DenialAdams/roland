@@ -1,7 +1,7 @@
 struct Bar{}
 
 proc main() {
-	let x: Bar = () transmute Bar;
+	let x: Bar = unit() transmute Bar;
 }
 __END__
 run:

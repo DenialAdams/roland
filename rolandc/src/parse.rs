@@ -1219,11 +1219,6 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
             return Err(());
          }
       }
-      Token::OpenParen => {
-         let _ = l.next();
-         let close_token = expect(l, parse_context, Token::CloseParen)?;
-         (close_token.source_info, ExpressionType::Unit)
-      }
       Token::Exclam => {
          let token = l.next();
          (token.source_info, ExpressionType::Never)
@@ -1277,6 +1272,7 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
                "u8" => crate::type_data::U8_TYPE,
                "f32" => crate::type_data::F32_TYPE,
                "f64" => crate::type_data::F64_TYPE,
+               "unit" => ExpressionType::Unit,
                _ => ExpressionType::Unresolved(type_s),
             },
          )
@@ -1418,15 +1414,9 @@ fn pratt(
       }
       Token::OpenParen => {
          let _ = l.next();
-         if l.peek_token() == Token::CloseParen {
-            let end_token = l.next();
-            let combined_location = merge_locations(begin_source, end_token.source_info);
-            wrap(Expression::UnitLiteral, combined_location, expressions)
-         } else {
-            let new_lhs = pratt(l, parse_context, 0, false, expressions)?;
-            expect(l, parse_context, Token::CloseParen)?;
-            new_lhs
-         }
+         let new_lhs = pratt(l, parse_context, 0, false, expressions)?;
+         expect(l, parse_context, Token::CloseParen)?;
+         new_lhs
       }
       Token::KeywordIfx => {
          let _ = l.next();

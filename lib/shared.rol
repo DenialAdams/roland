@@ -93,3 +93,7 @@ proc f64_to_i16(x: f64) -> i16 {
    }
    return x as i16;
 }
+
+proc unit() -> unit {
+
+}

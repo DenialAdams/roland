@@ -1,7 +1,7 @@
 proc main() {
    let a: u64 = 10;
    let b: u8 = 20;
-   let c = &b transmute &() transmute &u64;
+   let c = &b transmute &unit transmute &u64;
    println("OK");
 }
 __END__

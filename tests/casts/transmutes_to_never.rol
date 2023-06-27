@@ -7,9 +7,9 @@ struct Bar {
 }
 
 proc main() {
-   () transmute Foo;
-   () transmute !;
-   () transmute [!; 1];
+   unit() transmute Foo;
+   unit() transmute !;
+   unit() transmute [!; 1];
    let int: usize = 0xCAFEBABE;
    int transmute &!;
    int transmute Bar;
