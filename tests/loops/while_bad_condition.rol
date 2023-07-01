@@ -1,0 +1,9 @@
+proc main() {
+    while 10 {
+
+    }
+}
+__END__
+compile:
+Type of while condition must be a bool; got ?? Int
+↳ line 2, column 11 [tests/loops/while_bad_condition.rol]

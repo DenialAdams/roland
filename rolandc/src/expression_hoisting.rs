@@ -248,7 +248,7 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
             });
          }
       }
-      Statement::For { .. } => unreachable!(),
+      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
       Statement::Defer(_) => unreachable!(),
    }
    ast.statements[statement].statement = the_statement;

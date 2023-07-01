@@ -285,6 +285,7 @@ pub enum Statement {
       range_inclusive: bool,
       induction_var: VariableId,
    },
+   While(ExpressionId, BlockNode),
    Continue,
    Break,
    Defer(StatementId),
@@ -823,6 +824,7 @@ fn parse_block(l: &mut Lexer, parse_context: &mut ParseContext, ast: &mut AstPoo
                // Token unambiguously begins a new statement
                Token::KeywordLet
                | Token::KeywordFor
+               | Token::KeywordWhile
                | Token::KeywordBreak
                | Token::KeywordContinue
                | Token::KeywordDefer
@@ -1003,6 +1005,7 @@ fn parse_blocky_statement(
          };
          let end_en = parse_expression(l, parse_context, true, &mut ast.expressions)?;
          let new_block = parse_block(l, parse_context, ast)?;
+         let combined_location = merge_locations(for_token.source_info, new_block.location);
          let id = ast.statements.insert(StatementNode {
             statement: Statement::For {
                induction_var_name: variable_name,
@@ -1012,16 +1015,27 @@ fn parse_blocky_statement(
                range_inclusive: inclusive,
                induction_var: VariableId::first(),
             },
-            location: for_token.source_info,
+            location: combined_location,
          });
          Ok(Some(id))
+      }
+      Token::KeywordWhile => {
+         let while_token = l.next();
+         let condition = parse_expression(l, parse_context, true, &mut ast.expressions)?;
+         let body = parse_block(l, parse_context, ast)?;
+         let combined_location = merge_locations(while_token.source_info, body.location);
+         Ok(Some(ast.statements.insert(StatementNode {
+            statement: Statement::While(condition, body),
+            location: combined_location,
+         })))
       }
       Token::KeywordLoop => {
          let loop_token = l.next();
          let new_block = parse_block(l, parse_context, ast)?;
+         let combined_location = merge_locations(loop_token.source_info, new_block.location);
          let id = ast.statements.insert(StatementNode {
             statement: Statement::Loop(new_block),
-            location: loop_token.source_info,
+            location: combined_location,
          });
          Ok(Some(id))
       }

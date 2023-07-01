@@ -148,7 +148,7 @@ pub fn fold_statement(
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
       }
       Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
-      Statement::For { .. } => unreachable!(),
+      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
       Statement::Defer(_) => unreachable!(),
    }
    folding_context.ast.statements[statement].statement = the_statement;

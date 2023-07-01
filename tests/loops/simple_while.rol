@@ -1,0 +1,16 @@
+proc main() {
+    let x = false;
+    while x {
+        println("we should never enter this loop");
+    }
+
+    x = true;
+    while x {
+        println("we entered the loop");
+        break;
+        unreachable();
+    }
+}
+__END__
+run:
+we entered the loop

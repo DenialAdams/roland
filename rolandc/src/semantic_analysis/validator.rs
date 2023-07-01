@@ -647,6 +647,26 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
 
          fall_out_of_scope(err_manager, validation_context, vars_before);
       }
+      Statement::While(cond, bn) => {
+         type_expression(err_manager, *cond, validation_context);
+
+         let cond_node = &validation_context.ast.expressions[*cond];
+         let cond_type = cond_node.exp_type.as_ref().unwrap();
+         if cond_type != &ExpressionType::Bool && !cond_type.is_error() {
+            rolandc_error!(
+               err_manager,
+               cond_node.location,
+               "Type of while condition must be a bool; got {}",
+               cond_node.exp_type.as_ref().unwrap().as_roland_type_info(
+                  validation_context.interner,
+                  validation_context.procedure_info,
+                  &validation_context.type_variables
+               )
+            );
+         }
+
+         type_loop_block(err_manager, bn, validation_context);
+      }
       Statement::Loop(bn) => {
          type_loop_block(err_manager, bn, validation_context);
       }
@@ -657,6 +677,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             Statement::Assignment(_, _)
             | Statement::Block(_)
             | Statement::Loop(_)
+            | Statement::While(_, _)
             | Statement::For { .. }
             | Statement::Expression(_)
             | Statement::IfElse(_, _, _) => (),

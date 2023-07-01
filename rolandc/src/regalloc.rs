@@ -237,7 +237,7 @@ fn regalloc_statement(stmt: StatementId, ctx: &mut RegallocCtx, ast: &AstPool) {
       }
       Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
       Statement::Defer(_) => unreachable!(),
-      Statement::For { .. } => unreachable!(),
+      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
    }
 }
 

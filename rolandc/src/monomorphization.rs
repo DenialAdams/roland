@@ -263,7 +263,7 @@ fn deep_clone_stmt(
       }
       Statement::Continue => (),
       Statement::Break => (),
-      Statement::For { .. } => unreachable!(),
+      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
       Statement::Defer(_) => unreachable!(),
       Statement::Expression(expr) => {
          *expr = deep_clone_expr(

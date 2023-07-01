@@ -842,7 +842,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
             emit_statement(statement, generation_context);
          }
       }
-      Statement::For { .. } => unreachable!(),
+      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
       Statement::Loop(bn) => {
          generation_context.stack_of_loop_jump_offsets.push(0);
          generation_context

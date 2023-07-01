@@ -119,7 +119,7 @@ fn defer_statement(statement: StatementId, defer_ctx: &mut DeferContext, ast: &m
       Statement::Assignment(_, _) => (),
       Statement::Expression(_) => (),
       Statement::VariableDeclaration(_, _, _, _) => (),
-      Statement::For { .. } => unreachable!(),
+      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
    }
    ast.statements[statement].statement = the_statement;
 }
@@ -161,7 +161,7 @@ fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool) -> StatementId {
          *expr = deep_clone_expr(*expr, &mut ast.expressions);
       }
       Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
-      Statement::For { .. } => unreachable!(),
+      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
    }
    ast.statements.insert(cloned)
 }
