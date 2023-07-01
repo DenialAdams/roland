@@ -119,7 +119,9 @@ You can make your own strings just like you can create an instance of any struct
 
 ### Looping
 
-Roland currently supports two ways to loop. The first way is just by declaring a `loop` block that will inifinitely loop until broken out of:
+There are three ways to loop in Roland.
+
+The first way is just by declaring a `loop` block that will inifinitely loop until broken out of:
 
 ```roland
 loop {
@@ -127,7 +129,15 @@ loop {
 }
 ```
 
-The second is to loop over a range of values:
+The second way is by looping until a condition evaluates to false:
+
+```roland
+while x {
+   // ...
+}
+```
+
+And finally, you can loop over a range of values:
 
 ```roland
 let my_array = [true, false, true];
