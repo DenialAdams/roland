@@ -4,7 +4,7 @@ import { start, compile_and_update_all, default as init } from './pkg/rolandc_we
 const FIB =
 `proc main() {
    let x = fib(9);
-   println(int_to_string(x));
+   println(uint_to_string(x));
 }
 
 proc fib(n: u64) -> u64 {

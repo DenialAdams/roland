@@ -3,7 +3,7 @@ enum Foo : u32 {
 }
 
 proc main() {
-   println(int_to_string(sizeof$<Foo>() as u64));
+   println(uint_to_string(sizeof$<Foo>() as u64));
 }
 __END__
 run:

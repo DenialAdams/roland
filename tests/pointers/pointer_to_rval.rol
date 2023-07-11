@@ -7,11 +7,11 @@ proc main() {
 }
 
 proc foo(x: &u64) {
-   println(int_to_string(x~));
+   println(uint_to_string(x~));
 }
 
 proc bar(y: &&&u64) {
-   println(int_to_string(y~~~));
+   println(uint_to_string(y~~~));
 }
 
 __END__

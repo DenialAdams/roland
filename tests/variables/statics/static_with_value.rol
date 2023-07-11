@@ -1,7 +1,7 @@
 static X: u64 = 123456;
 
 proc main() {
-   println(int_to_string(X));
+   println(uint_to_string(X));
 }
 __END__
 run:

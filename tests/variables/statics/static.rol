@@ -5,8 +5,8 @@ static COMPOUND: [u64; 10] = ___;
 proc main() {
    X = 10;
    COMPOUND[5] = 123;
-   println(int_to_string(X));
-   println(int_to_string(COMPOUND[5]));
+   println(uint_to_string(X));
+   println(uint_to_string(COMPOUND[5]));
 }
 __END__
 run:

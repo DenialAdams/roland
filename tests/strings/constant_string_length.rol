@@ -1,6 +1,6 @@
 const X: usize = "foo".length;
 proc main() {
-    println(int_to_string(X as u64));
+    println(uint_to_string(X as u64));
 }
 __END__
 run:

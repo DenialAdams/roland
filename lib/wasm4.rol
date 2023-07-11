@@ -118,15 +118,18 @@ proc uint_to_string(value: u32, buf: &[u8; 10]) -> String {
 proc int_to_string(value: i32, buf: &[u8; 11]) -> String {
    if value == I32_MIN {
       return "-2147483648";
-   } else {
+   } else if value < 0 {
+      buf~[0] = "-".pointer~;
       let adjusted_buf = buf transmute usize;
       adjusted_buf = adjusted_buf + 1;
 
       let ustring = uint_to_string(-value as u32, adjusted_buf transmute &[u8; 10]);
 
       return String {
-         length: ustring.length,
+         length: ustring.length + 1,
          pointer: &buf~[0],
       };
+   } else {
+      return uint_to_string(-value as u32, buf transmute &[u8; 10]);
    }
 }

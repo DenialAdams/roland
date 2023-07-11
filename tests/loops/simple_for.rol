@@ -2,7 +2,7 @@ proc main() {
    let len: usize = 4;
    let x: [u64; 4] = [123, 456, 789, 0];
    for i in 0..len {
-      println(int_to_string(x[i]));
+      println(uint_to_string(x[i]));
    }
 }
 __END__

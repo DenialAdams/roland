@@ -3,7 +3,7 @@ proc main() {
    let y = &x;
    let z = &x;
    let a: u64 = y~ + z~;
-   println(int_to_string(a));
+   println(uint_to_string(a));
 }
 __END__
 run:
