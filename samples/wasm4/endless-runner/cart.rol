@@ -163,6 +163,6 @@ proc update() {
    // Draw UI
    {
       text("SCORE: ", 2, 2);
-      text(int_to_string((PLAYER_X / 10.0) as u32, &SCORE_BUF), 47, 2);
+      text(uint_to_string((PLAYER_X / 10.0) as u32, &SCORE_BUF), 47, 2);
    }
 }

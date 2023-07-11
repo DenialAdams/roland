@@ -543,7 +543,7 @@ proc update() {
       }
    }
 
-   //trace(int_to_string(PLAYER_POSITIONS[p].y as u32, &SCORE_BUF));
+   //trace(uint_to_string(PLAYER_POSITIONS[p].y as u32, &SCORE_BUF));
 
    // Draw UI
    {
@@ -551,7 +551,7 @@ proc update() {
       // use black (color 1) as text color, and white (color 4) as the background.
       DRAW_COLORS~ = 0x3241;
       text("SCORE: ", 2, 2);
-      text(int_to_string(SCORE, &SCORE_BUF), 47, 2);
+      text(uint_to_string(SCORE, &SCORE_BUF), 47, 2);
       DRAW_COLORS~ = tmp;
       if GAME_OVER {
          draw_game_over_text();

@@ -91,7 +91,7 @@ proc count_digits(value: u32) -> u8 {
    return 0;
 }
 
-proc int_to_string(value: u32, buf: &[u8; 10]) -> String {
+proc uint_to_string(value: u32, buf: &[u8; 10]) -> String {
    let total_len = count_digits(value) as usize;
    let next_digit: u8 = 0;
    let i: usize = 0;
@@ -113,4 +113,20 @@ proc int_to_string(value: u32, buf: &[u8; 10]) -> String {
       length: i,
       pointer: &buf~[0],
    };
+}
+
+proc int_to_string(value: i32, buf: &[u8; 11]) -> String {
+   if value == I32_MIN {
+      return "-2147483648";
+   } else {
+      let adjusted_buf = buf transmute usize;
+      adjusted_buf = adjusted_buf + 1;
+
+      let ustring = uint_to_string(-value as u32, adjusted_buf transmute &[u8; 10]);
+
+      return String {
+         length: ustring.length,
+         pointer: &buf~[0],
+      };
+   }
 }
