@@ -1,7 +1,7 @@
 proc main() {
-   let x = sizeof$foo();
+   let x = sizeof$<foo>();
 }
 __END__
 compile:
 Undeclared type foo
-↳ line 2, column 18 [tests/generics/unresolved_generic_type.rol]
+↳ line 2, column 20 [tests/generics/unresolved_generic_type.rol]

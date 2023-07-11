@@ -1,12 +1,12 @@
 proc main() {
-   foo$u8();
-   foo$u16();
+   foo$<u8>();
+   foo$<u16>();
 }
 
 // This is like error_in_specialization.rol, but more evil because we report multiple errors at the same source location
 // Maybe the error manager should de-dup errors?
 
-proc foo$T() -> u64 {
+proc foo<T>() -> u64 {
    return 1 / 0;
 }
 __END__

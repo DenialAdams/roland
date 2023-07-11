@@ -1,9 +1,9 @@
 proc main() {
-   let x = foo$bool();
+   let x = foo$<bool>();
 }
 
-proc foo$T() {
-   foo$proc(T)();
+proc foo<T>() {
+   foo$<proc(T)>();
 }
 __END__
 compile:

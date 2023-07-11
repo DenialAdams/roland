@@ -1,4 +1,4 @@
-builtin proc num_variants$T() -> u64 where T: Enum;
+builtin proc num_variants<T>() -> u64 where T: Enum;
 
 builtin proc sqrt(x: f64) -> f64;
 builtin proc sqrt_32(x: f32) -> f32;
@@ -8,8 +8,8 @@ builtin proc sqrt_32(x: f32) -> f32;
 
 builtin proc unreachable() -> !;
 
-builtin proc sizeof$T() -> usize;
-builtin proc alignof$T() -> usize;
+builtin proc sizeof<T>() -> usize;
+builtin proc alignof<T>() -> usize;
 
 builtin proc proc_name() -> String;
 

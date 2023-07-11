@@ -1,5 +1,5 @@
 const X: usize = Y;
-const Y: usize = Z.length + sizeof$u64();
+const Y: usize = Z.length + sizeof$<u64>();
 const Z: [u64; 2] = [0, 0];
 
 static A: usize = X;

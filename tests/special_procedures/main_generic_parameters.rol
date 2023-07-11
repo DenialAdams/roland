@@ -1,4 +1,4 @@
-proc main$T() {
+proc main<T>() {
 
 }
 __END__

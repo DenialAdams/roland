@@ -1,7 +1,7 @@
 proc main() {}
 
-proc foo$T(x: T) {
-    foo$T(x);
+proc foo<T>(x: T) {
+    foo$<T>(x);
 }
 __END__
 compile:

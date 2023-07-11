@@ -1,9 +1,9 @@
 proc main() {
-   id$bool(false);
-   id$u64(10);
+   id$<bool>(false);
+   id$<u64>(10);
 }
 
-proc id$T(x: T) -> T {
+proc id<T>(x: T) -> T {
    return x;
 }
 

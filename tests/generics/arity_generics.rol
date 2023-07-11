@@ -1,6 +1,6 @@
 proc main() {
    let x = sizeof();
-   let y = sizeof$i64$i32();
+   let y = sizeof$<i64, i32>();
 }
 __END__
 compile:

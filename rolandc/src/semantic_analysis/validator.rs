@@ -15,7 +15,7 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    statement_always_returns, ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode,
-   ExpressionTypeNode, GenericArgumentNode, ProcImplSource, ProcedureId, Program, Statement, StatementId, StrNode,
+   ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId, StrNode,
    UnOp, VariableId,
 };
 use crate::semantic_analysis::EnumInfo;
@@ -936,14 +936,14 @@ fn type_expression(
       Expression::UnresolvedProcLiteral(name, g_args) => {
          for g_arg in g_args.iter_mut() {
             if resolve_type(
-               &mut g_arg.gtype,
+               &mut g_arg.e_type,
                validation_context.enum_info,
                validation_context.struct_info,
                validation_context.cur_procedure_info.map(|x| &x.type_parameters),
             )
             .is_err()
             {
-               let etype_str = g_arg.gtype.as_roland_type_info(
+               let etype_str = g_arg.e_type.as_roland_type_info(
                   validation_context.interner,
                   validation_context.procedure_info,
                   &validation_context.type_variables,
@@ -2026,7 +2026,7 @@ fn check_procedure_item(
    callee_proc_info: &ProcedureInfo,
    our_proc_info: Option<&ProcedureInfo>,
    location: SourceInfo,
-   type_arguments: &[GenericArgumentNode],
+   type_arguments: &[ExpressionTypeNode],
    interner: &Interner,
    procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
    err_manager: &mut ErrorManager,
@@ -2043,7 +2043,7 @@ fn check_procedure_item(
       return ExpressionType::CompileError;
    }
    for (g_arg, constraints) in type_arguments.iter().zip(callee_proc_info.type_parameters.values()) {
-      match g_arg.gtype {
+      match g_arg.e_type {
          ExpressionType::Unresolved(_) => {
             // We have already errored on this argument
          }
@@ -2060,7 +2060,7 @@ fn check_procedure_item(
                   g_arg.location,
                   "For procedure `{}`, encountered generic argument of type {} which does not meet the constraints {}",
                   interner.lookup(callee_proc_name),
-                  g_arg.gtype.as_roland_type_info_notv(interner, procedure_info),
+                  g_arg.e_type.as_roland_type_info_notv(interner, procedure_info),
                   constraints_we_do_not_meet.join(", "),
                );
             }
@@ -2068,8 +2068,8 @@ fn check_procedure_item(
          _ => {
             for constraint in constraints {
                let constraint_met = match interner.lookup(*constraint) {
-                  "Enum" => matches!(g_arg.gtype, ExpressionType::Enum(_)),
-                  "Float" => matches!(g_arg.gtype, ExpressionType::Float(_)),
+                  "Enum" => matches!(g_arg.e_type, ExpressionType::Enum(_)),
+                  "Float" => matches!(g_arg.e_type, ExpressionType::Float(_)),
                   _ => unreachable!(),
                };
                if !constraint_met {
@@ -2078,7 +2078,7 @@ fn check_procedure_item(
                                        g_arg.location,
                                        "For procedure `{}`, encountered generic argument of type {} which does not meet the constraint `{}`",
                                        interner.lookup(callee_proc_name),
-                                       g_arg.gtype.as_roland_type_info_notv(interner, procedure_info),
+                                       g_arg.e_type.as_roland_type_info_notv(interner, procedure_info),
                                        interner.lookup(*constraint),
                                     );
                }
@@ -2090,7 +2090,7 @@ fn check_procedure_item(
       callee_proc_id,
       type_arguments
          .iter()
-         .map(|x| x.gtype.clone())
+         .map(|x| x.e_type.clone())
          .collect::<Vec<_>>()
          .into_boxed_slice(),
    )

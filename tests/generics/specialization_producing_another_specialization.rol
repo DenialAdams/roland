@@ -1,16 +1,16 @@
 enum Color {R,G,B}
 
 proc main() {
-   let x = foo$Color();
+   let x = foo$<Color>();
    println_bool(x == 3);
 }
 
-proc foo$T() -> u64 where T: Enum {
-   return bar$T();
+proc foo<T>() -> u64 where T: Enum {
+   return bar$<T>();
 }
 
-proc bar$T() -> u64 where T: Enum {
-   return num_variants$T();
+proc bar<T>() -> u64 where T: Enum {
+   return num_variants$<T>();
 }
 
 __END__

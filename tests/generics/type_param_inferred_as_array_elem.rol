@@ -1,8 +1,8 @@
 proc main() {
-   foo$usize(10);
+   foo$<usize>(10);
 }
 
-proc foo$T(x: T) {
+proc foo<T>(x: T) {
 	let z = [];
    // this gives an (expected) error, but doesn't crash
    z[0] = x;

@@ -1,10 +1,10 @@
 proc main() {
     let a = [false, true];
-    let b = bar$bool(&a);
+    let b = bar$<bool>(&a);
     println_bool(b~);
 }
 
-proc bar$T(x: &[T; 2]) -> &T {
+proc bar<T>(x: &[T; 2]) -> &T {
     return &x~[1];
 }
 __END__

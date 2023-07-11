@@ -35,7 +35,7 @@ pub fn monomorphize(program: &mut Program, err_manager: &mut ErrorManager) {
          }
 
          // This is a call to a generic function inside of a generic function - we'll come back to these.
-         if generic_args.iter().any(|x| !x.gtype.is_concrete()) {
+         if generic_args.iter().any(|x| !x.e_type.is_concrete()) {
             continue;
          }
 
@@ -44,7 +44,7 @@ pub fn monomorphize(program: &mut Program, err_manager: &mut ErrorManager) {
                *id,
                generic_args
                   .iter()
-                  .map(|x| x.gtype.clone())
+                  .map(|x| x.e_type.clone())
                   .collect::<Vec<_>>()
                   .into_boxed_slice(),
             ),
@@ -120,7 +120,7 @@ pub fn monomorphize(program: &mut Program, err_manager: &mut ErrorManager) {
 
          let gargs = generic_args
             .iter()
-            .map(|x| x.gtype.clone())
+            .map(|x| x.e_type.clone())
             .collect::<Vec<_>>()
             .into_boxed_slice();
 
@@ -499,7 +499,7 @@ fn deep_clone_expr(
       Expression::EnumLiteral(_, _) => (),
       Expression::BoundFcnLiteral(id, generic_args) => {
          for garg in generic_args.iter_mut() {
-            map_generic_to_concrete(&mut garg.gtype, concrete_types, type_parameters);
+            map_generic_to_concrete(&mut garg.e_type, concrete_types, type_parameters);
          }
          if !generic_args.is_empty() {
             worklist.push(SpecializationWorkItem {
@@ -507,7 +507,7 @@ fn deep_clone_expr(
                   *id,
                   generic_args
                      .iter()
-                     .map(|x| x.gtype.clone())
+                     .map(|x| x.e_type.clone())
                      .collect::<Vec<_>>()
                      .into_boxed_slice(),
                ),

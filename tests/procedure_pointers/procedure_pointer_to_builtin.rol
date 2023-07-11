@@ -1,5 +1,5 @@
 proc main() {
-   let y = &sizeof$u64;
+   let y = &sizeof$<u64>;
 }
 __END__
 compile:

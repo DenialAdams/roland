@@ -62,7 +62,7 @@ fn lower_single_expression(expression_node: &mut ExpressionNode, enum_info: &Ind
       }
       Expression::BoundFcnLiteral(_, generic_args) => {
          for g_arg in generic_args.iter_mut() {
-            lower_type(&mut g_arg.gtype, enum_info);
+            lower_type(&mut g_arg.e_type, enum_info);
          }
       }
       _ => (),

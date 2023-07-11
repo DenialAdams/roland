@@ -1,9 +1,9 @@
 proc main() {
     println(proc_name());
-    foo$u8(10);
+    foo$<u8>(10);
 }
 
-proc foo$T(x: T) {
+proc foo<T>(x: T) {
     // Generic procedure should still have name available
     println(proc_name());
 }

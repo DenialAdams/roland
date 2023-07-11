@@ -1,9 +1,9 @@
-proc foo$T(x: T) -> T {
+proc foo<T>(x: T) -> T {
    return x;
 }
 
 proc main() {
-   let y: proc(bool) -> bool = &foo$bool;
+   let y: proc(bool) -> bool = &foo$<bool>;
    println_bool(y(true));
 }
 __END__

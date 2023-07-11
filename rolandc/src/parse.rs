@@ -116,7 +116,7 @@ pub struct StaticNode {
    pub location: SourceInfo,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ExpressionTypeNode {
    pub e_type: ExpressionType,
    pub location: SourceInfo,
@@ -222,8 +222,8 @@ pub enum Expression {
       expr: ExpressionId,
    },
    EnumLiteral(StrNode, StrNode),
-   UnresolvedProcLiteral(StrNode, Vec<GenericArgumentNode>),
-   BoundFcnLiteral(ProcedureId, Box<[GenericArgumentNode]>),
+   UnresolvedProcLiteral(StrNode, Vec<ExpressionTypeNode>),
+   BoundFcnLiteral(ProcedureId, Box<[ExpressionTypeNode]>),
    IfX(ExpressionId, ExpressionId, ExpressionId),
 }
 
@@ -231,12 +231,6 @@ pub enum Expression {
 pub struct ArgumentNode {
    pub name: Option<StrId>,
    pub expr: ExpressionId,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct GenericArgumentNode {
-   pub gtype: ExpressionType,
-   pub location: SourceInfo,
 }
 
 impl Expression {
@@ -639,12 +633,11 @@ fn parse_string(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<StrNo
 
 fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<ProcedureDefinition, ()> {
    let procedure_name = parse_identifier(l, parse_context)?;
-   let mut generic_parameters = vec![];
-   while l.peek_token() == Token::Dollar {
-      let _ = l.next();
-      let gtype_definition = parse_identifier(l, parse_context)?;
-      generic_parameters.push(gtype_definition);
-   }
+   let generic_parameters = if l.peek_token() == Token::LessThan {
+      parse_generic_parameters(l, parse_context)?
+   } else {
+      vec![]
+   };
    expect(l, parse_context, Token::OpenParen)?;
    let parameters = parse_parameters(l, parse_context)?;
    let close_paren = expect(l, parse_context, Token::CloseParen)?;
@@ -1128,18 +1121,39 @@ fn parse_parameters(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<V
    Ok(parameters)
 }
 
-fn parse_generic_arguments(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Vec<GenericArgumentNode>, ()> {
+fn parse_generic_arguments(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Vec<ExpressionTypeNode>, ()> {
+   expect(l, parse_context, Token::Dollar)?;
+   expect(l, parse_context, Token::LessThan)?;
+
    let mut generic_arguments = vec![];
 
-   while l.peek_token() == Token::Dollar {
-      let dollar = l.next();
-      let gtype = parse_type(l, parse_context)?;
-      let combined_location = merge_locations(dollar.source_info, gtype.location);
-      generic_arguments.push(GenericArgumentNode {
-         gtype: gtype.e_type,
-         location: combined_location,
-      });
+   while l.peek_token() != Token::GreaterThan && l.peek_token() != Token::Eof {
+      generic_arguments.push(parse_type(l, parse_context)?);
+      if l.peek_token() == Token::GreaterThan {
+         break;
+      }
+      expect(l, parse_context, Token::Comma)?;
    }
+
+   expect(l, parse_context, Token::GreaterThan)?;
+
+   Ok(generic_arguments)
+}
+
+fn parse_generic_parameters(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Vec<StrNode>, ()> {
+   expect(l, parse_context, Token::LessThan)?;
+
+   let mut generic_arguments = vec![];
+
+   while l.peek_token() != Token::GreaterThan && l.peek_token() != Token::Eof {
+      generic_arguments.push(parse_identifier(l, parse_context)?);
+      if l.peek_token() == Token::GreaterThan {
+         break;
+      }
+      expect(l, parse_context, Token::Comma)?;
+   }
+
+   expect(l, parse_context, Token::GreaterThan)?;
 
    Ok(generic_arguments)
 }

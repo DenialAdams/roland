@@ -1,8 +1,8 @@
 proc main() {
-   foo$f64(1.0);
+   foo$<f64>(1.0);
 }
 
-proc foo$T(x: T) -> u32 where T: Float {
+proc foo<T>(x: T) -> u32 where T: Float {
    return x as u32;
 }
 

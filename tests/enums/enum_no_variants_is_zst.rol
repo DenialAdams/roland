@@ -2,8 +2,8 @@ enum Foo {}
 struct Bar {}
 
 proc main() {
-   println(int_to_string(sizeof$Foo() as u64));
-   println(int_to_string(sizeof$Bar() as u64));
+   println(int_to_string(sizeof$<Foo>() as u64));
+   println(int_to_string(sizeof$<Bar>() as u64));
 }
 __END__
 run:
