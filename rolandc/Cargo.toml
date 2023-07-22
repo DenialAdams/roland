@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 unicode-ident = "1"
-indexmap = "1"
+indexmap = "2"
 include_dir = "0.7"
-wasm-encoder = "0.29"
+wasm-encoder = "0.31"
 slotmap = "1"
