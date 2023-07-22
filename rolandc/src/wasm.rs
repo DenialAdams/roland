@@ -695,7 +695,6 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
          elem.active(
             Some(0),
             &ConstExpr::i32_const(0),
-            RefType::FUNCREF,
             Elements::Functions(&elements),
          );
       }
