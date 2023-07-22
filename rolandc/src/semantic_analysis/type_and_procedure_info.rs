@@ -76,7 +76,7 @@ fn recursive_struct_check(
 pub fn populate_type_and_procedure_info(
    program: &mut Program,
    err_manager: &mut ErrorManager,
-   interner: &mut Interner,
+   interner: &Interner,
    config: &CompilationConfig,
 ) {
    let mut dupe_check = HashSet::new();

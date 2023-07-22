@@ -47,7 +47,7 @@ fn fold_expr_id(
    constant_folding::try_fold_and_replace_expr(expr_id, err_manager, &mut fc, interner);
 }
 
-pub fn compile_consts(program: &mut Program, interner: &mut Interner, err_manager: &mut ErrorManager) {
+pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &mut ErrorManager) {
    // There is an effective second compilation pipeline for constants. This is because:
    // 1) Lowering constants is something we need to do for compilation
    // 2) Constants can form a DAG of dependency, such that we need to lower them in the right order

@@ -869,7 +869,7 @@ fn fall_out_of_scope(
    }
 }
 
-fn type_loop_block(err_manager: &mut ErrorManager, bn: &mut BlockNode, validation_context: &mut ValidationContext) {
+fn type_loop_block(err_manager: &mut ErrorManager, bn: &BlockNode, validation_context: &mut ValidationContext) {
    validation_context.loop_depth += 1;
    type_block(err_manager, bn, validation_context);
    validation_context.loop_depth -= 1;

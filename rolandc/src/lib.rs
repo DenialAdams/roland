@@ -154,7 +154,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    semantic_analysis::type_and_procedure_info::populate_type_and_procedure_info(
       &mut ctx.program,
       &mut ctx.err_manager,
-      &mut ctx.interner,
+      &ctx.interner,
       config,
    );
 
@@ -177,7 +177,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
 
    defer::process_defer_statements(&mut ctx.program);
 
-   compile_consts::compile_consts(&mut ctx.program, &mut ctx.interner, &mut ctx.err_manager);
+   compile_consts::compile_consts(&mut ctx.program, &ctx.interner, &mut ctx.err_manager);
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
