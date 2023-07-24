@@ -329,8 +329,8 @@ fn regalloc_var(var: VariableId, ctx: &mut RegallocCtx) {
    }
 
    if let Some(existing_range) = ctx.live_ranges.get_mut(&var) {
+      debug_assert!(existing_range.end >= ctx.current_loc);
       existing_range.begin = std::cmp::min(existing_range.begin, ctx.current_loc);
-      existing_range.end = std::cmp::max(existing_range.end, ctx.current_loc);
    } else {
       ctx.live_ranges.insert(
          var,
