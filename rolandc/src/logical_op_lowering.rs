@@ -5,17 +5,21 @@ use crate::Program;
 pub fn lower_logical_ops(program: &mut Program) {
    let mut logical_ops: Vec<ExpressionId> = vec![];
    for (expression, v) in program.ast.expressions.iter() {
-      let Expression::BinaryOperator { operator: BinOp::LogicalAnd | BinOp::LogicalOr, .. } = &v.expression else {
-          continue;
-       };
+      let Expression::BinaryOperator {
+         operator: BinOp::LogicalAnd | BinOp::LogicalOr,
+         ..
+      } = &v.expression
+      else {
+         continue;
+      };
       logical_ops.push(expression);
    }
    for id in logical_ops {
       let location = program.ast.expressions[id].location;
       let (operator, lhs, rhs) = {
          let Expression::BinaryOperator { operator, lhs, rhs } = &program.ast.expressions[id].expression else {
-                continue;
-             };
+            continue;
+         };
          (*operator, *lhs, *rhs)
       };
 

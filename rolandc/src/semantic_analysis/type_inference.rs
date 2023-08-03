@@ -211,7 +211,9 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             .unwrap() = e_type.clone();
       }
       Expression::ArrayLiteral(exprs) => {
-         let ExpressionType::Array(target_elem_type, _) = e_type else { unreachable!() };
+         let ExpressionType::Array(target_elem_type, _) = e_type else {
+            unreachable!()
+         };
 
          for expr in exprs.iter() {
             set_inferred_type(target_elem_type, *expr, validation_context);
@@ -244,7 +246,9 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          }
       }
       Expression::ArrayIndex { array, index: _index } => {
-         let ExpressionType::Array(_, real_array_len) = validation_context.ast.expressions[*array].exp_type.as_ref().unwrap() else {
+         let ExpressionType::Array(_, real_array_len) =
+            validation_context.ast.expressions[*array].exp_type.as_ref().unwrap()
+         else {
             unreachable!()
          };
          let array_type = ExpressionType::Array(Box::new(e_type.clone()), *real_array_len);

@@ -30,6 +30,7 @@ mod for_loop_lowering;
 mod imports;
 pub mod interner;
 mod lex;
+mod linearize;
 mod logical_op_lowering;
 mod monomorphization;
 pub mod parse;
@@ -234,7 +235,7 @@ fn lex_and_parse(
    program: &mut Program,
 ) -> Result<Vec<ImportNode>, CompilationError> {
    let Ok(tokens) = lex::lex(s, source_path, err_manager, interner) else {
-      return Err(CompilationError::Lex)
+      return Err(CompilationError::Lex);
    };
    match parse::astify(tokens, err_manager, interner, program) {
       Err(()) => Err(CompilationError::Parse),

@@ -169,7 +169,9 @@ fn clone_procedure(
       &procedure_info.type_parameters,
    );
 
-   let ProcImplSource::Body(block) = &mut cloned.proc_impl else { unreachable!() };
+   let ProcImplSource::Body(block) = &mut cloned.proc_impl else {
+      unreachable!()
+   };
    deep_clone_block(
       block,
       ast,

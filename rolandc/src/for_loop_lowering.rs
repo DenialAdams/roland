@@ -179,7 +179,9 @@ fn lower_block(block: &mut BlockNode, ctx: &mut LowerForContext, ast: &mut AstPo
                })
             };
 
-            let Statement::For { ref mut body, .. } = ast.statements[for_stmt].statement else { unreachable!() };
+            let Statement::For { ref mut body, .. } = ast.statements[for_stmt].statement else {
+               unreachable!()
+            };
             let mut body = std::mem::replace(
                body,
                BlockNode {
@@ -221,7 +223,9 @@ fn lower_block(block: &mut BlockNode, ctx: &mut LowerForContext, ast: &mut AstPo
                })
             };
 
-            let Statement::While(_, ref mut body) = ast.statements[for_stmt].statement else { unreachable!() };
+            let Statement::While(_, ref mut body) = ast.statements[for_stmt].statement else {
+               unreachable!()
+            };
             let mut body = std::mem::replace(
                body,
                BlockNode {

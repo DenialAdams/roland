@@ -189,7 +189,9 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool
       let else_s = {
          // TODO: dummy stmt?
          let mut the_statement = std::mem::replace(&mut ast.statements[if_stmt].statement, Statement::Break);
-         let Statement::IfElse(_, then_b, else_s) = &mut the_statement else { unreachable!() };
+         let Statement::IfElse(_, then_b, else_s) = &mut the_statement else {
+            unreachable!()
+         };
          let else_s = *else_s;
          vv_block(then_b, vv_context, ast);
          ast.statements[if_stmt].statement = the_statement;
@@ -198,7 +200,9 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool
       {
          // TODO: dummy stmt?
          let mut the_statement = std::mem::replace(&mut ast.statements[else_s].statement, Statement::Break);
-         let Statement::Block(bn) = &mut the_statement else { unreachable!() };
+         let Statement::Block(bn) = &mut the_statement else {
+            unreachable!()
+         };
          vv_block(bn, vv_context, ast);
          ast.statements[else_s].statement = the_statement;
       }

@@ -5,6 +5,7 @@ authors = ["Richard McCormack <brick@brick.codes>"]
 edition = "2021"
 
 [dependencies]
+arrayvec = "0.7"
 unicode-ident = "1"
 indexmap = "2"
 include_dir = "0.7"

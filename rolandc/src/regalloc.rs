@@ -5,6 +5,7 @@ use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
+use crate::linearize::linearize;
 use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, Statement,
    StatementId, StatementPool, UnOp, VariableId,
@@ -47,7 +48,9 @@ pub struct RegallocResult {
    pub procedure_registers: SecondaryMap<ProcedureId, Vec<ValType>>,
 }
 
-pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> RegallocResult {
+pub fn assign_variables_to_wasm_registers(program: &mut Program, target: Target) -> RegallocResult {
+   let _ = linearize(program);
+
    let mut ctx = RegallocCtx {
       escaping_vars: HashSet::new(),
       live_ranges: IndexMap::new(),
@@ -73,7 +76,9 @@ pub fn assign_variables_to_wasm_registers(program: &Program, target: Target) -> 
 
       free_registers.clear();
 
-      let ProcImplSource::Body(block) = &procedure.proc_impl else {continue;};
+      let ProcImplSource::Body(block) = &procedure.proc_impl else {
+         continue;
+      };
 
       ctx.current_loc = ProgramIndex(block_len(block, &program.ast.statements));
       ctx.live_ranges.clear();
@@ -193,9 +198,7 @@ fn block_len(block: &BlockNode, ast: &StatementPool) -> usize {
 fn block_len_stmt(stmt: StatementId, ast: &StatementPool) -> usize {
    1 + match &ast[stmt].statement {
       Statement::Block(inner) | Statement::Loop(inner) => block_len(inner, ast),
-      Statement::IfElse(_, then_block, else_stmt) => {
-         block_len(then_block, ast) + block_len_stmt(*else_stmt, ast)
-      }
+      Statement::IfElse(_, then_block, else_stmt) => block_len(then_block, ast) + block_len_stmt(*else_stmt, ast),
       _ => 0,
    }
 }

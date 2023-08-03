@@ -544,7 +544,9 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
    }
 
    for (proc_id, procedure) in program.procedures.iter() {
-      let ProcImplSource::Body(block) = &procedure.proc_impl else { continue; };
+      let ProcImplSource::Body(block) = &procedure.proc_impl else {
+         continue;
+      };
       generation_context.active_fcn =
          Function::new_with_locals_types(regalloc_result.procedure_registers.remove(proc_id).unwrap());
       generation_context.local_offsets_mem.clear();
@@ -692,11 +694,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
             .iter()
             .map(|x| generation_context.procedure_indices.get_index_of(x).unwrap() as u32)
             .collect::<Vec<_>>();
-         elem.active(
-            Some(0),
-            &ConstExpr::i32_const(0),
-            Elements::Functions(&elements),
-         );
+         elem.active(Some(0), &ConstExpr::i32_const(0), Elements::Functions(&elements));
       }
 
       (table, elem)
@@ -929,7 +927,11 @@ fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &Generation
          .map(|x| (generation_context.globals.contains(v), x)),
       Expression::FieldAccess(fields, e) => {
          let (is_global, base_range) = get_registers_for_expr(*e, generation_context)?;
-         let ExpressionType::Struct(mut struct_name) = generation_context.ast.expressions[*e].exp_type.as_ref().unwrap() else { unreachable!() };
+         let ExpressionType::Struct(mut struct_name) =
+            generation_context.ast.expressions[*e].exp_type.as_ref().unwrap()
+         else {
+            unreachable!()
+         };
 
          let mut value_offset = 0;
 
@@ -1969,7 +1971,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             field_names: &[StrId],
             generation_context: &mut GenerationContext,
          ) {
-            let ExpressionType::Struct(mut struct_name) = lhs_type else { unreachable!() };
+            let ExpressionType::Struct(mut struct_name) = lhs_type else {
+               unreachable!()
+            };
             let mut mem_offset = 0;
 
             for field_name in field_names.iter().take(field_names.len() - 1) {
