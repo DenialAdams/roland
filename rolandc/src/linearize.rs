@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use arrayvec::ArrayVec;
 use slotmap::SecondaryMap;
 
-use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{AstPool, BlockNode, ExpressionId, ProcImplSource, ProcedureId, Statement, StatementId, StatementNode};
 use crate::Program;
 
@@ -16,7 +15,7 @@ enum CfgInstruction {
 
 struct BasicBlock {
    instructions: Vec<CfgInstruction>,
-   preds: Vec<usize>,
+   predecessors: HashSet<usize>,
 }
 
 impl BasicBlock {
@@ -61,7 +60,7 @@ pub fn linearize(program: &mut Program) {
 
       ctx.bbs.push(BasicBlock {
          instructions: vec![],
-         preds: vec![],
+         predecessors: HashSet::new(),
       });
       ctx.current_block = 0;
 
@@ -70,12 +69,13 @@ pub fn linearize(program: &mut Program) {
 
       // TODO: this simplification will not remove the starting basic block, even when it could
       // (but maybe we always want a start and end basic block in the long term anyway)
+      // TODO: can we do this without the outer loop?
       let mut did_something = true;
       while did_something {
          did_something = false;
 
          for node in 0..ctx.bbs.len() {
-            if ctx.bbs[node].instructions.len() != 1 || ctx.bbs[node].preds.is_empty() {
+            if ctx.bbs[node].instructions.len() != 1 || ctx.bbs[node].predecessors.is_empty() {
                continue;
             }
 
@@ -85,9 +85,13 @@ pub fn linearize(program: &mut Program) {
                continue;
             };
 
-            did_something = true;
-            let preds = std::mem::take(&mut ctx.bbs[node].preds);
+            let preds = std::mem::take(&mut ctx.bbs[node].predecessors);
             for pred in preds {
+               if pred == node {
+                  ctx.bbs[node].predecessors.insert(pred);
+                  continue;
+               }
+               did_something = true;
                let mut new_jump = None;
                let last_in_pred = ctx.bbs[pred].instructions.last_mut().unwrap();
                match last_in_pred {
@@ -122,6 +126,7 @@ pub fn linearize(program: &mut Program) {
                if let Some(target) = new_jump {
                   ctx.bbs[pred].instructions.push(CfgInstruction::Jump(target));
                }
+               ctx.bbs[dest].predecessors.insert(pred);
             }
          }
       }
@@ -187,28 +192,28 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
          let afterwards_dest = then_dest + 2;
          ctx.bbs.push(BasicBlock {
             instructions: vec![],
-            preds: vec![],
+            predecessors: HashSet::new(),
          });
          ctx.bbs.push(BasicBlock {
             instructions: vec![],
-            preds: vec![],
+            predecessors: HashSet::new(),
          });
          ctx.bbs.push(BasicBlock {
             instructions: vec![],
-            preds: vec![],
+            predecessors: HashSet::new(),
          });
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::ConditionalJump(*condition, then_dest, else_dest));
-         ctx.bbs[then_dest].preds.push(ctx.current_block);
-         ctx.bbs[else_dest].preds.push(ctx.current_block);
+         ctx.bbs[then_dest].predecessors.insert(ctx.current_block);
+         ctx.bbs[else_dest].predecessors.insert(ctx.current_block);
 
          ctx.current_block = then_dest;
          if !linearize_block(ctx, consequent, ast) {
             ctx.bbs[ctx.current_block]
                .instructions
                .push(CfgInstruction::Jump(afterwards_dest));
-            ctx.bbs[afterwards_dest].preds.push(ctx.current_block);
+            ctx.bbs[afterwards_dest].predecessors.insert(ctx.current_block);
          }
 
          ctx.current_block = else_dest;
@@ -216,7 +221,7 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
             ctx.bbs[ctx.current_block]
                .instructions
                .push(CfgInstruction::Jump(afterwards_dest));
-            ctx.bbs[afterwards_dest].preds.push(ctx.current_block);
+            ctx.bbs[afterwards_dest].predecessors.insert(ctx.current_block);
          }
 
          ctx.current_block = afterwards_dest;
@@ -230,29 +235,29 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
          ctx.break_target = ctx.continue_target + 1;
          ctx.bbs.push(BasicBlock {
             instructions: vec![],
-            preds: vec![],
+            predecessors: HashSet::new(),
          });
          ctx.bbs.push(BasicBlock {
             instructions: vec![],
-            preds: vec![],
+            predecessors: HashSet::new(),
          });
 
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(ctx.continue_target));
-         ctx.bbs[ctx.continue_target].preds.push(ctx.current_block);
+         ctx.bbs[ctx.continue_target].predecessors.insert(ctx.current_block);
          ctx.current_block = ctx.continue_target;
 
          if !linearize_block(ctx, bn, ast) {
             ctx.bbs[ctx.current_block]
                .instructions
                .push(CfgInstruction::Jump(ctx.continue_target));
-            ctx.bbs[ctx.continue_target].preds.push(ctx.current_block);
+            ctx.bbs[ctx.continue_target].predecessors.insert(ctx.current_block);
          }
          ctx.current_block = ctx.bbs.len() - 1;
          ctx.bbs.push(BasicBlock {
             instructions: vec![],
-            preds: vec![],
+            predecessors: HashSet::new(),
          });
 
          ctx.continue_target = old_cont_target;
@@ -262,14 +267,14 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(ctx.break_target));
-         ctx.bbs[ctx.break_target].preds.push(ctx.current_block);
+         ctx.bbs[ctx.break_target].predecessors.insert(ctx.current_block);
          return true;
       }
       Statement::Continue => {
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(ctx.continue_target));
-         ctx.bbs[ctx.break_target].preds.push(ctx.continue_target);
+         ctx.bbs[ctx.break_target].predecessors.insert(ctx.continue_target);
          return true;
       }
       Statement::Block(bn) => {
