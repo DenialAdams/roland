@@ -4,15 +4,15 @@ use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
+use crate::backend::linearize::linearize;
+use crate::backend::wasm::type_to_wasm_type;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::interner::Interner;
-use crate::linearize::linearize;
 use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, Statement,
    StatementId, StatementPool, UnOp, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
-use crate::wasm::type_to_wasm_type;
 use crate::{Program, Target};
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -49,7 +49,11 @@ pub struct RegallocResult {
    pub procedure_registers: SecondaryMap<ProcedureId, Vec<ValType>>,
 }
 
-pub fn assign_variables_to_wasm_registers(program: &mut Program, interner: &Interner, target: Target) -> RegallocResult {
+pub fn assign_variables_to_wasm_registers(
+   program: &mut Program,
+   interner: &Interner,
+   target: Target,
+) -> RegallocResult {
    let _ = linearize(program, interner);
 
    let mut ctx = RegallocCtx {

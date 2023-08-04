@@ -7,6 +7,7 @@ use wasm_encoder::{
    RefType, TableSection, TableType, TypeSection, ValType,
 };
 
+use crate::backend::regalloc;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -18,7 +19,7 @@ use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
 };
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I32_TYPE};
-use crate::{regalloc, Target};
+use crate::Target;
 
 const MINIMUM_STACK_FRAME_SIZE: u32 = 0;
 

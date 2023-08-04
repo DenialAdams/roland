@@ -19,6 +19,7 @@
 #![allow(clippy::let_underscore_untyped)] // looks weird with no let
 #![feature(extract_if)]
 
+mod backend;
 mod compile_consts;
 mod constant_folding;
 mod dead_code_elimination;
@@ -30,17 +31,14 @@ mod for_loop_lowering;
 mod imports;
 pub mod interner;
 mod lex;
-mod linearize;
 mod logical_op_lowering;
 mod monomorphization;
 pub mod parse;
 mod pre_wasm_lowering;
-mod regalloc;
 mod semantic_analysis;
 mod size_info;
 pub mod source_info;
 pub mod type_data;
-mod wasm;
 
 use std::borrow::Cow;
 use std::fmt::Display;
@@ -224,7 +222,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program);
 
-   Ok(wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, config.target))
+   Ok(backend::emit_wasm(&mut ctx.program, &mut ctx.interner, config.target))
 }
 
 fn lex_and_parse(

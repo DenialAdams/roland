@@ -4,19 +4,21 @@ use arrayvec::ArrayVec;
 use slotmap::SecondaryMap;
 
 use crate::interner::Interner;
-use crate::parse::{AstPool, BlockNode, ExpressionId, ProcImplSource, ProcedureId, Statement, StatementId, StatementNode};
+use crate::parse::{
+   AstPool, BlockNode, ExpressionId, ProcImplSource, ProcedureId, Statement, StatementId, StatementNode,
+};
 use crate::Program;
 
 // TODO: This is pretty bulky. Ideally this would be size <= 8 for storage in the BB.
-enum CfgInstruction {
+pub enum CfgInstruction {
    RolandStmt(StatementId),
    ConditionalJump(ExpressionId, usize, usize),
    Jump(usize),
 }
 
-struct BasicBlock {
-   instructions: Vec<CfgInstruction>,
-   predecessors: HashSet<usize>,
+pub struct BasicBlock {
+   pub instructions: Vec<CfgInstruction>,
+   pub predecessors: HashSet<usize>,
 }
 
 impl BasicBlock {
@@ -46,7 +48,98 @@ struct Ctx {
    continue_target: usize,
 }
 
-pub fn linearize(program: &mut Program, interner: &Interner) {
+fn simplify_cfg(cfg: &mut [BasicBlock], ast: &mut AstPool) {
+   // TODO: this simplification will not remove the starting basic block, even when it could
+   // (but maybe we always want a start and end basic block in the long term anyway)
+   // TODO: can we do this without the outer loop?
+   let mut did_something = true;
+   while did_something {
+      did_something = false;
+
+      for node in 0..cfg.len() {
+         if cfg[node].instructions.len() != 1 || cfg[node].predecessors.is_empty() {
+            continue;
+         }
+
+         let dest = if let Some(CfgInstruction::Jump(dest)) = cfg[node].instructions.last() {
+            *dest
+         } else {
+            continue;
+         };
+
+         let preds = std::mem::take(&mut cfg[node].predecessors);
+         for pred in preds {
+            if pred == node {
+               cfg[node].predecessors.insert(pred);
+               continue;
+            }
+            did_something = true;
+            let mut new_jump = None;
+            let last_in_pred = cfg[pred].instructions.last_mut().unwrap();
+            match last_in_pred {
+               CfgInstruction::RolandStmt(_) => unreachable!(),
+               CfgInstruction::ConditionalJump(cond_expr, x, y) => {
+                  if *x == node {
+                     *x = dest;
+                  } else {
+                     debug_assert!(*y == node);
+                     *y = dest;
+                  }
+                  if *x == *y {
+                     // We do NOT skip doing this even if the expression doesn't have side effects
+                     // That's because as of the time of writing, this CFG does not replace the AST, it just lives next to it
+                     // I don't want the CFG to mismatch the AST, even in a semantic preserving way,
+                     // because we are going to generate code from this AST naively and so if we delete a use that impacts register allocation
+                     // something bad could happen or something. In the long term, we want the CFG generation to be a real thing in the compiler pipeline
+                     // that can do whatever it wants.
+                     let cond_stmt = ast.statements.insert(StatementNode {
+                        statement: Statement::Expression(*cond_expr),
+                        location: ast.expressions[*cond_expr].location,
+                     });
+                     new_jump = Some(*x);
+                     *last_in_pred = CfgInstruction::RolandStmt(cond_stmt);
+                  }
+               }
+               CfgInstruction::Jump(x) => {
+                  debug_assert!(*x == node);
+                  *x = dest;
+               }
+            }
+            if let Some(target) = new_jump {
+               cfg[pred].instructions.push(CfgInstruction::Jump(target));
+            }
+            cfg[dest].predecessors.insert(pred);
+         }
+      }
+   }
+}
+
+fn dump_program_cfg(all_cfg: &ProgramCfg, interner: &Interner, program: &Program) {
+   let mut f = std::fs::File::create("cfg.dot").unwrap();
+   for (proc, cfg) in all_cfg.iter() {
+      use std::io::Write;
+      writeln!(
+         f,
+         "digraph {} {{",
+         interner.lookup(program.procedures[proc].definition.name.str)
+      )
+      .unwrap();
+      for node in post_order(cfg) {
+         let successors = cfg[node].successors();
+         for succ in successors.iter() {
+            writeln!(f, "\"{}\" -> \"{}\"", bb_id_to_label(node), bb_id_to_label(*succ)).unwrap();
+         }
+         if successors.is_empty() {
+            writeln!(f, "\"{}\"", bb_id_to_label(node)).unwrap();
+         }
+      }
+      writeln!(f, "}}").unwrap();
+   }
+}
+
+pub type ProgramCfg = SecondaryMap<ProcedureId, Vec<BasicBlock>>;
+
+pub fn linearize(program: &mut Program, interner: &Interner) -> ProgramCfg {
    let mut ctx = Ctx {
       bbs: vec![],
       current_block: 0,
@@ -67,89 +160,14 @@ pub fn linearize(program: &mut Program, interner: &Interner) {
 
       let _ = linearize_block(&mut ctx, body, &program.ast);
 
-
-      // TODO: this simplification will not remove the starting basic block, even when it could
-      // (but maybe we always want a start and end basic block in the long term anyway)
-      // TODO: can we do this without the outer loop?
-      let mut did_something = true;
-      while did_something {
-         did_something = false;
-
-         for node in 0..ctx.bbs.len() {
-            if ctx.bbs[node].instructions.len() != 1 || ctx.bbs[node].predecessors.is_empty() {
-               continue;
-            }
-
-            let dest = if let Some(CfgInstruction::Jump(dest)) = ctx.bbs[node].instructions.last() {
-               *dest
-            } else {
-               continue;
-            };
-
-            let preds = std::mem::take(&mut ctx.bbs[node].predecessors);
-            for pred in preds {
-               if pred == node {
-                  ctx.bbs[node].predecessors.insert(pred);
-                  continue;
-               }
-               did_something = true;
-               let mut new_jump = None;
-               let last_in_pred = ctx.bbs[pred].instructions.last_mut().unwrap();
-               match last_in_pred {
-                  CfgInstruction::RolandStmt(_) => unreachable!(),
-                  CfgInstruction::ConditionalJump(cond_expr, x, y) => {
-                     if *x == node {
-                        *x = dest;
-                     } else {
-                        debug_assert!(*y == node);
-                        *y = dest;
-                     }
-                     if *x == *y {
-                        // We do NOT skip doing this even if the expression doesn't have side effects
-                        // That's because as of the time of writing, this CFG does not replace the AST, it just lives next to it
-                        // I don't want the CFG to mismatch the AST, even in a semantic preserving way,
-                        // because we are going to generate code from this AST naively and so if we delete a use that impacts register allocation
-                        // something bad could happen or something. In the long term, we want the CFG generation to be a real thing in the compiler pipeline
-                        // that can do whatever it wants.
-                        let cond_stmt = program.ast.statements.insert(StatementNode {
-                            statement: Statement::Expression(*cond_expr),
-                            location: program.ast.expressions[*cond_expr].location,
-                        });
-                        new_jump = Some(*x);
-                        *last_in_pred = CfgInstruction::RolandStmt(cond_stmt);
-                     }
-                  }
-                  CfgInstruction::Jump(x) => {
-                     debug_assert!(*x == node);
-                     *x = dest;
-                  },
-               }
-               if let Some(target) = new_jump {
-                  ctx.bbs[pred].instructions.push(CfgInstruction::Jump(target));
-               }
-               ctx.bbs[dest].predecessors.insert(pred);
-            }
-         }
-      }
+      simplify_cfg(&mut ctx.bbs, &mut program.ast);
 
       all_cfg.insert(proc.0, std::mem::take(&mut ctx.bbs));
    }
 
-   let mut f = std::fs::File::create("cfg.dot").unwrap();
-   for (proc, cfg) in all_cfg.iter() {
-      use std::io::Write;
-      writeln!(f, "digraph {} {{", interner.lookup(program.procedures[proc].definition.name.str)).unwrap();
-      for node in post_order(cfg) {
-         let successors = cfg[node].successors();
-         for succ in successors.iter() {
-            writeln!(f, "\"{}\" -> \"{}\"", bb_id_to_label(node), bb_id_to_label(*succ)).unwrap();
-         }
-         if successors.is_empty() {
-            writeln!(f, "\"{}\"", bb_id_to_label(node)).unwrap();
-         }
-      }
-      writeln!(f, "}}").unwrap();
-   }
+   dump_program_cfg(&all_cfg, interner, program);
+
+   all_cfg
 }
 
 fn bb_id_to_label(bb_id: usize) -> String {
