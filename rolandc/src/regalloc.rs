@@ -5,6 +5,7 @@ use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
+use crate::interner::Interner;
 use crate::linearize::linearize;
 use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, Statement,
@@ -48,8 +49,8 @@ pub struct RegallocResult {
    pub procedure_registers: SecondaryMap<ProcedureId, Vec<ValType>>,
 }
 
-pub fn assign_variables_to_wasm_registers(program: &mut Program, target: Target) -> RegallocResult {
-   let _ = linearize(program);
+pub fn assign_variables_to_wasm_registers(program: &mut Program, interner: &Interner, target: Target) -> RegallocResult {
+   let _ = linearize(program, interner);
 
    let mut ctx = RegallocCtx {
       escaping_vars: HashSet::new(),

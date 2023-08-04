@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use arrayvec::ArrayVec;
 use slotmap::SecondaryMap;
 
+use crate::interner::Interner;
 use crate::parse::{AstPool, BlockNode, ExpressionId, ProcImplSource, ProcedureId, Statement, StatementId, StatementNode};
 use crate::Program;
 
@@ -45,7 +46,7 @@ struct Ctx {
    continue_target: usize,
 }
 
-pub fn linearize(program: &mut Program) {
+pub fn linearize(program: &mut Program, interner: &Interner) {
    let mut ctx = Ctx {
       bbs: vec![],
       current_block: 0,
@@ -135,20 +136,28 @@ pub fn linearize(program: &mut Program) {
    }
 
    let mut f = std::fs::File::create("cfg.dot").unwrap();
-   for (_proc, cfg) in all_cfg.iter() {
+   for (proc, cfg) in all_cfg.iter() {
       use std::io::Write;
-      //writeln!(f, "digraph {} {{", program.procedures[proc].definition.name.str).unwrap();
-      writeln!(f, "digraph temp {{").unwrap();
+      writeln!(f, "digraph {} {{", interner.lookup(program.procedures[proc].definition.name.str)).unwrap();
       for node in post_order(cfg) {
          let successors = cfg[node].successors();
          for succ in successors.iter() {
-            writeln!(f, "{} -> {}", (node + 65) as u8 as char, (succ + 65) as u8 as char).unwrap();
+            writeln!(f, "\"{}\" -> \"{}\"", bb_id_to_label(node), bb_id_to_label(*succ)).unwrap();
          }
          if successors.is_empty() {
-            writeln!(f, "{}", (node + 65) as u8 as char).unwrap();
+            writeln!(f, "\"{}\"", bb_id_to_label(node)).unwrap();
          }
       }
       writeln!(f, "}}").unwrap();
+   }
+}
+
+fn bb_id_to_label(bb_id: usize) -> String {
+   let tformed = (bb_id + 65) as u8 as char;
+   if tformed == '\\' {
+      String::from("\\\\")
+   } else {
+      String::from(tformed)
    }
 }
 
@@ -254,11 +263,7 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
                .push(CfgInstruction::Jump(ctx.continue_target));
             ctx.bbs[ctx.continue_target].predecessors.insert(ctx.current_block);
          }
-         ctx.current_block = ctx.bbs.len() - 1;
-         ctx.bbs.push(BasicBlock {
-            instructions: vec![],
-            predecessors: HashSet::new(),
-         });
+         ctx.current_block = ctx.break_target;
 
          ctx.continue_target = old_cont_target;
          ctx.break_target = old_break_target;
