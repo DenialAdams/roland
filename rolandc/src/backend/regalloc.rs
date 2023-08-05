@@ -4,15 +4,15 @@ use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
+use super::liveness::liveness;
 use crate::backend::linearize::linearize;
 use crate::backend::wasm::type_to_wasm_type;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::interner::Interner;
 use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, Statement,
-   StatementId, StatementPool, UnOp, VariableId,
+   StatementId, UnOp, VariableId,
 };
-use crate::semantic_analysis::GlobalInfo;
 use crate::{Program, Target};
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -36,12 +36,8 @@ struct LiveRange {
    end: ProgramIndex,
 }
 
-struct RegallocCtx<'a> {
-   current_live_vars: HashSet<VariableId>,
+struct RegallocCtx {
    escaping_vars: HashSet<VariableId>,
-   live_ranges: IndexMap<VariableId, LiveRange>,
-   current_loc: ProgramIndex,
-   globals: &'a IndexMap<VariableId, GlobalInfo>,
 }
 
 pub struct RegallocResult {
@@ -54,15 +50,10 @@ pub fn assign_variables_to_wasm_registers(
    interner: &Interner,
    target: Target,
 ) -> RegallocResult {
-   let _ = linearize(program, interner);
+   let program_cfg = linearize(program, interner);
 
    let mut ctx = RegallocCtx {
       escaping_vars: HashSet::new(),
-      live_ranges: IndexMap::new(),
-      current_loc: ProgramIndex(0),
-      globals: &program.global_info,
-
-      current_live_vars: HashSet::new(),
    };
 
    let mut result = RegallocResult {
@@ -85,12 +76,11 @@ pub fn assign_variables_to_wasm_registers(
          continue;
       };
 
-      ctx.current_loc = ProgramIndex(block_len(block, &program.ast.statements));
-      ctx.live_ranges.clear();
-      ctx.current_live_vars.clear();
-      regalloc_block(block, &mut ctx, &program.ast);
+      liveness(&program_cfg[proc_id], &program.global_info);
+      mark_escaping_vars_block(block, &mut ctx, &program.ast);
 
-      ctx.live_ranges.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
+      let mut live_ranges: IndexMap<VariableId, LiveRange> = IndexMap::new();
+      live_ranges.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
 
       active.clear();
 
@@ -116,7 +106,7 @@ pub fn assign_variables_to_wasm_registers(
          result.var_to_reg.insert(var, (reg..total_registers).collect());
       }
 
-      for (var, range) in ctx.live_ranges.iter() {
+      for (var, range) in live_ranges.iter() {
          if result.var_to_reg.contains_key(var) {
             // (This local is a parameter, which inherently has a register)
             continue;
@@ -127,7 +117,7 @@ pub fn assign_variables_to_wasm_registers(
             continue;
          }
 
-         for expired_var in active.extract_if(|v| ctx.live_ranges.get(v).unwrap().end < range.begin) {
+         for expired_var in active.extract_if(|v| live_ranges.get(v).unwrap().end < range.begin) {
             t_buf.clear();
             type_to_wasm_type(
                procedure.locals.get(&expired_var).unwrap(),
@@ -189,63 +179,35 @@ pub fn assign_variables_to_wasm_registers(
    result
 }
 
-fn regalloc_block(block: &BlockNode, ctx: &mut RegallocCtx, ast: &AstPool) {
+fn mark_escaping_vars_block(block: &BlockNode, ctx: &mut RegallocCtx, ast: &AstPool) {
    for statement in block.statements.iter().rev().copied() {
-      ctx.current_loc.0 -= 1;
-      regalloc_statement(statement, ctx, ast);
+      mark_escaping_vars_statement(statement, ctx, ast);
    }
 }
 
-fn block_len(block: &BlockNode, ast: &StatementPool) -> usize {
-   block.statements.iter().map(|x| block_len_stmt(*x, ast)).sum()
-}
-
-fn block_len_stmt(stmt: StatementId, ast: &StatementPool) -> usize {
-   1 + match &ast[stmt].statement {
-      Statement::Block(inner) | Statement::Loop(inner) => block_len(inner, ast),
-      Statement::IfElse(_, then_block, else_stmt) => block_len(then_block, ast) + block_len_stmt(*else_stmt, ast),
-      _ => 0,
-   }
-}
-
-fn regalloc_statement(stmt: StatementId, ctx: &mut RegallocCtx, ast: &AstPool) {
+fn mark_escaping_vars_statement(stmt: StatementId, ctx: &mut RegallocCtx, ast: &AstPool) {
    match &ast.statements[stmt].statement {
       Statement::Return(expr) => {
-         regalloc_expr(*expr, ctx, ast);
+         mark_escaping_vars_expr(*expr, ctx, ast);
       }
       Statement::Break | Statement::Continue => (),
       Statement::Block(block) => {
-         regalloc_block(block, ctx, ast);
+         mark_escaping_vars_block(block, ctx, ast);
       }
       Statement::IfElse(if_expr, if_block, else_statement) => {
-         let live_vars_out = ctx.current_live_vars.clone();
-         let mut live_vars_in = HashSet::new();
-         // we're travelling in reverse order, so ensure we go else branch -> if branch
-         regalloc_statement(*else_statement, ctx, ast);
-         live_vars_in.extend(&ctx.current_live_vars);
-         ctx.current_live_vars = live_vars_out;
-         regalloc_block(if_block, ctx, ast);
-         live_vars_in.extend(&ctx.current_live_vars);
-         ctx.current_live_vars = live_vars_in;
-         regalloc_expr(*if_expr, ctx, ast);
+         mark_escaping_vars_expr(*if_expr, ctx, ast);
+         mark_escaping_vars_block(if_block, ctx, ast);
+         mark_escaping_vars_statement(*else_statement, ctx, ast);
       }
       Statement::Loop(body) => {
-         let loop_end = ctx.current_loc;
-         regalloc_block(body, ctx, ast);
-         for live_var in ctx.current_live_vars.iter() {
-            let existing_range = ctx.live_ranges.get_mut(live_var).unwrap();
-            existing_range.end = std::cmp::max(existing_range.end, loop_end);
-         }
+         mark_escaping_vars_block(body, ctx, ast);
       }
       Statement::Assignment(lhs, rhs) => {
-         regalloc_expr(*lhs, ctx, ast);
-         if let Expression::Variable(v) = ast.expressions[*lhs].expression {
-            ctx.current_live_vars.remove(&v);
-         }
-         regalloc_expr(*rhs, ctx, ast);
+         mark_escaping_vars_expr(*lhs, ctx, ast);
+         mark_escaping_vars_expr(*rhs, ctx, ast);
       }
       Statement::Expression(expr) => {
-         regalloc_expr(*expr, ctx, ast);
+         mark_escaping_vars_expr(*expr, ctx, ast);
       }
       Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
       Statement::Defer(_) => unreachable!(),
@@ -253,23 +215,23 @@ fn regalloc_statement(stmt: StatementId, ctx: &mut RegallocCtx, ast: &AstPool) {
    }
 }
 
-fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
+fn mark_escaping_vars_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
    match &ast.expressions[in_expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
-         regalloc_expr(*proc_expr, ctx, ast);
+         mark_escaping_vars_expr(*proc_expr, ctx, ast);
 
          for val in args.iter().map(|x| x.expr) {
-            regalloc_expr(val, ctx, ast);
+            mark_escaping_vars_expr(val, ctx, ast);
          }
       }
       Expression::ArrayLiteral(vals) => {
          for val in vals.iter().copied() {
-            regalloc_expr(val, ctx, ast);
+            mark_escaping_vars_expr(val, ctx, ast);
          }
       }
       Expression::ArrayIndex { array, index } => {
-         regalloc_expr(*array, ctx, ast);
-         regalloc_expr(*index, ctx, ast);
+         mark_escaping_vars_expr(*array, ctx, ast);
+         mark_escaping_vars_expr(*index, ctx, ast);
 
          if let Some(v) = get_var_from_use(*array, &ast.expressions) {
             if !matches!(ast.expressions[*index].expression, Expression::IntLiteral { .. }) {
@@ -278,24 +240,24 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
          }
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
-         regalloc_expr(*lhs, ctx, ast);
-         regalloc_expr(*rhs, ctx, ast);
+         mark_escaping_vars_expr(*lhs, ctx, ast);
+         mark_escaping_vars_expr(*rhs, ctx, ast);
       }
       Expression::IfX(a, b, c) => {
-         regalloc_expr(*a, ctx, ast);
-         regalloc_expr(*b, ctx, ast);
-         regalloc_expr(*c, ctx, ast);
+         mark_escaping_vars_expr(*a, ctx, ast);
+         mark_escaping_vars_expr(*b, ctx, ast);
+         mark_escaping_vars_expr(*c, ctx, ast);
       }
       Expression::StructLiteral(_, exprs) => {
          for expr in exprs.values().flatten() {
-            regalloc_expr(*expr, ctx, ast);
+            mark_escaping_vars_expr(*expr, ctx, ast);
          }
       }
       Expression::FieldAccess(_, base_expr) => {
-         regalloc_expr(*base_expr, ctx, ast);
+         mark_escaping_vars_expr(*base_expr, ctx, ast);
       }
       Expression::Cast { expr, cast_type, .. } => {
-         regalloc_expr(*expr, ctx, ast);
+         mark_escaping_vars_expr(*expr, ctx, ast);
 
          if *cast_type == CastType::Transmute
             && !is_wasm_compatible_rval_transmute(
@@ -309,16 +271,14 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
          }
       }
       Expression::UnaryOperator(op, expr) => {
-         regalloc_expr(*expr, ctx, ast);
+         mark_escaping_vars_expr(*expr, ctx, ast);
          if *op == UnOp::AddressOf {
             if let Some(v) = get_var_from_use(*expr, &ast.expressions) {
                ctx.escaping_vars.insert(v);
             }
          }
       }
-      Expression::Variable(var) => {
-         regalloc_var(*var, ctx);
-      }
+      Expression::Variable(_) => (),
       Expression::EnumLiteral(_, _) => (),
       Expression::BoundFcnLiteral(_, _) => (),
       Expression::BoolLiteral(_) => (),
@@ -329,27 +289,6 @@ fn regalloc_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
    }
-}
-
-fn regalloc_var(var: VariableId, ctx: &mut RegallocCtx) {
-   if ctx.globals.contains_key(&var) {
-      return;
-   }
-
-   if let Some(existing_range) = ctx.live_ranges.get_mut(&var) {
-      debug_assert!(existing_range.end >= ctx.current_loc);
-      existing_range.begin = std::cmp::min(existing_range.begin, ctx.current_loc);
-   } else {
-      ctx.live_ranges.insert(
-         var,
-         LiveRange {
-            begin: ctx.current_loc,
-            end: ctx.current_loc,
-         },
-      );
-   }
-
-   ctx.current_live_vars.insert(var);
 }
 
 fn get_var_from_use(expr: ExpressionId, expressions: &ExpressionPool) -> Option<VariableId> {
