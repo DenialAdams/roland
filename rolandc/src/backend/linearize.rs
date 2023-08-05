@@ -45,7 +45,7 @@ const CFG_START_NODE: usize = 0;
 const CFG_END_NODE: usize = 1;
 
 pub struct Cfg {
-   bbs: Vec<BasicBlock>,
+   pub bbs: Vec<BasicBlock>,
 }
 
 struct Ctx {
@@ -115,6 +115,7 @@ fn simplify_cfg(cfg: &mut [BasicBlock], ast: &mut AstPool) {
                }
             }
             cfg[dest].predecessors.insert(pred);
+            cfg[dest].predecessors.remove(&node);
          }
       }
    }
