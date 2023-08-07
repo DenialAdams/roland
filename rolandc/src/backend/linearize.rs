@@ -183,7 +183,7 @@ pub fn linearize(program: &mut Program, interner: &Interner) -> ProgramCfg {
       );
    }
 
-   dump_program_cfg(&all_cfg, interner, program);
+   //dump_program_cfg(&all_cfg, interner, program);
 
    all_cfg
 }
