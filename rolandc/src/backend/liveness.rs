@@ -68,10 +68,9 @@ pub fn liveness(procedure_vars: &IndexMap<VariableId, ExpressionType>, cfg: &Cfg
          let s = &mut state[node_id];
          let old_live_in = std::mem::replace(&mut s.live_in, bitbox![0; procedure_vars.len()]);
          s.live_in |= &s.gen;
-         s.live_in |= (s.live_out.clone() ^ &s.kill);
+         s.live_in |= s.live_out.clone() & !s.kill.clone();
    
          if old_live_in != s.live_in {
-            dbg!(old_live_in ^ &s.live_in);
             worklist.extend(&cfg.bbs[node_id].predecessors);
          }
       }
