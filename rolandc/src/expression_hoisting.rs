@@ -181,7 +181,7 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool
    }
 
    // The same expression id shouldn't appear in the AST twice,
-   // so we can simply truncate instead of splitting of as we do for
+   // so we can simply truncate instead of splitting off as we do for
    // the list of statement block indices
    vv_context.pending_hoists.truncate(before_pending_hoists);
 

@@ -2,18 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 use indexmap::{IndexMap, IndexSet};
 
-use super::linearize::{Cfg, CFG_END_NODE};
+use super::linearize::{Cfg, CfgInstruction};
 use crate::backend::linearize::post_order;
 use crate::parse::{AstPool, Expression, ExpressionId, Statement, StatementId, VariableId};
-
-fn choose_from_worklist(w: &mut IndexSet<usize>) -> Option<usize> {
-   if w.contains(&CFG_END_NODE) {
-      w.remove(&CFG_END_NODE);
-      return Some(CFG_END_NODE);
-   }
-
-   w.pop()
-}
 
 // TODO: bitsets. related, we shouldn't use VariableIds as bitset key,
 // but instead the index into the procedure.locals variable table corresponding
@@ -21,20 +12,13 @@ fn choose_from_worklist(w: &mut IndexSet<usize>) -> Option<usize> {
 #[derive(Clone)]
 struct LivenessState {
    live_in: HashSet<VariableId>,  //TODO: bitset
-   live_out: HashSet<VariableId>, //TODO: bitset
+   live_out: HashSet<VariableId>, //TODO: bitset, i think i can remove this
    gen: HashSet<VariableId>,      //TODO: bitset
    kill: HashSet<VariableId>,     //TODO: bitset
 }
 
 #[must_use]
 pub fn liveness(cfg: &Cfg, ast: &AstPool) -> IndexMap<ProgramIndex, HashSet<VariableId>> {
-   // We will:
-   //   1) Perform dataflow analysis on the CFG
-   //   2) Propagate the final result locally within basic blocks
-   //   3) Prepare and return a mapping of variables to their live interval
-   // At some point we may want to factor 3 out, since we only need that for linear scan,
-   // and then we can have the option for graph coloring
-
    // Dataflow Analyis on the CFG
    let mut state = vec![
       LivenessState {
@@ -50,35 +34,42 @@ pub fn liveness(cfg: &Cfg, ast: &AstPool) -> IndexMap<ProgramIndex, HashSet<Vari
       let s = &mut state[i];
       for instruction in bb.instructions.iter().rev() {
          match instruction {
-            super::linearize::CfgInstruction::RolandStmt(stmt) => {
+            CfgInstruction::RolandStmt(stmt) => {
                gen_kill_for_stmt(*stmt, &mut s.gen, &mut s.kill, ast);
             }
-            super::linearize::CfgInstruction::ConditionalJump(_, _, _) => (),
-            super::linearize::CfgInstruction::Jump(_) => (),
+            CfgInstruction::ConditionalJump(expr, _, _) => {
+               gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast);
+            },
+            CfgInstruction::Jump(_) => (),
          }
       }
    }
 
-   let mut worklist: IndexSet<usize> = post_order(cfg).into_iter().collect();
-   while let Some(node_id) = choose_from_worklist(&mut worklist) {
-      let s = &mut state[node_id];
-      let old_live_in = std::mem::take(&mut s.live_in);
-      s.live_in.extend(&s.gen);
-      s.live_in.extend(s.live_out.difference(&s.kill));
+   let mut worklist: IndexSet<usize> = post_order(cfg).into_iter().rev().collect();
+   while let Some(node_id) = worklist.pop() {
+      // Update live_out
+      {
+         let mut new_live_out = std::mem::take(&mut state[node_id].live_out);
+         new_live_out.clear();
+         for successor in cfg.bbs[node_id].successors() {
+            let successor_s = &state[successor];
+            new_live_out.extend(&successor_s.live_in);
+         }
 
-      if old_live_in != s.live_in {
-         worklist.extend(&cfg.bbs[node_id].predecessors);
+         state[node_id].live_out = new_live_out;
       }
 
-      let mut new_live_out = std::mem::take(&mut s.live_out);
-      new_live_out.clear();
-      for successor in cfg.bbs[node_id].successors() {
-         let successor_s = &state[successor];
-         new_live_out.extend(&successor_s.live_in);
+      // Update live_in
+      {
+         let s = &mut state[node_id];
+         let old_live_in = std::mem::take(&mut s.live_in);
+         s.live_in.extend(&s.gen);
+         s.live_in.extend(s.live_out.difference(&s.kill));
+   
+         if old_live_in != s.live_in {
+            worklist.extend(&cfg.bbs[node_id].predecessors);
+         }
       }
-
-      let s = &mut state[node_id];
-      s.live_out = new_live_out;
    }
 
    // Construct the final results
@@ -93,11 +84,14 @@ pub fn liveness(cfg: &Cfg, ast: &AstPool) -> IndexMap<ProgramIndex, HashSet<Vari
          for (i, instruction) in bb.instructions.iter().enumerate().rev() {
             let pi = ProgramIndex(rpo_index, i);
             let var_to_kill = match instruction {
-               super::linearize::CfgInstruction::RolandStmt(stmt) => {
+               CfgInstruction::RolandStmt(stmt) => {
                   update_live_variables_for_stmt(*stmt, &mut current_live_variables, ast)
                }
-               super::linearize::CfgInstruction::ConditionalJump(_, _, _) => None,
-               super::linearize::CfgInstruction::Jump(_) => None,
+               CfgInstruction::ConditionalJump(expr, _, _) => {
+                  update_live_variables_for_expr(*expr, &mut current_live_variables, ast);
+                  None
+               },
+               CfgInstruction::Jump(_) => None,
             };
             all_liveness.insert(pi, current_live_variables.clone());
             if let Some(v) = var_to_kill {
