@@ -49,18 +49,19 @@ pub fn assign_variables_to_wasm_registers(
          continue;
       };
 
-      let proc_liveness = liveness(&program_cfg[proc_id], &program.ast);
+      let proc_liveness = liveness(&procedure.locals, &program_cfg[proc_id], &program.ast);
       mark_escaping_vars_block(block, &mut escaping_vars, &program.ast);
 
       let mut live_intervals: IndexMap<VariableId, LiveInterval> = IndexMap::new();
       for (pi, live_vars) in proc_liveness.iter() {
-         for var in live_vars.iter() {
-            if let Some(existing_range) = live_intervals.get_mut(var) {
+         for local_index in live_vars.iter_ones() {
+            let var = procedure.locals.get_index(local_index).map(|x| *x.0).unwrap();
+            if let Some(existing_range) = live_intervals.get_mut(&var) {
                existing_range.begin = std::cmp::min(existing_range.begin, *pi);
                existing_range.end = std::cmp::max(existing_range.end, *pi);
             } else {
                live_intervals.insert(
-                  *var,
+                  var,
                   LiveInterval {
                      begin: *pi,
                      end: *pi,
