@@ -19,7 +19,7 @@ use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
 };
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I32_TYPE};
-use crate::Target;
+use crate::{Target, CompilationConfig};
 
 const MINIMUM_STACK_FRAME_SIZE: u32 = 0;
 
@@ -289,7 +289,7 @@ impl TypeManager {
 // 0-l literals
 // l-s statics
 // s+ program stack (local variables and parameters are pushed here during runtime)
-pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target) -> Vec<u8> {
+pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &CompilationConfig) -> Vec<u8> {
    // This will come in handy later, allowing us to avoid padding.
    // Do it now, because we will iterate globals in regalloc and we want it to be consistent
    program.global_info.sort_by(|_k_1, v_1, _k_2, v_2| {
@@ -301,7 +301,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       )
    });
 
-   let mut regalloc_result = regalloc::assign_variables_to_wasm_registers(program, interner, target);
+   let mut regalloc_result = regalloc::assign_variables_to_wasm_registers(program, interner, config);
 
    let mut generation_context = GenerationContext {
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
@@ -338,7 +338,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       let type_index = generation_context
          .type_manager
          .register_or_find_type_by_definition(&external_procedure.definition, generation_context.struct_info);
-      match target {
+      match config.target {
          Target::Lib => (),
          Target::Wasm4 | Target::Microw8 => {
             import_section.import(
@@ -362,7 +362,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
 
    // the base memory offset varies per platform;
    // on wasm-4/microw8, we don't own all of the memory!
-   let mut offset: u32 = match target {
+   let mut offset: u32 = match config.target {
       Target::Wasi | Target::Lib => 0x0,
       Target::Wasm4 => 0x19a0,
       Target::Microw8 => 0x14000,
@@ -702,7 +702,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
    };
 
    // target specific imports/exports
-   match target {
+   match config.target {
       Target::Lib => (),
       Target::Wasm4 => {
          import_section.import(

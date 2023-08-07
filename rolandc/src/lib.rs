@@ -207,6 +207,7 @@ pub struct CompilationConfig {
    pub target: Target,
    pub include_std: bool,
    pub i_am_std: bool,
+   pub dump_debugging_info: bool,
 }
 
 pub fn compile<'a, FR: FileResolver<'a>>(
@@ -222,7 +223,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program);
 
-   Ok(backend::emit_wasm(&mut ctx.program, &mut ctx.interner, config.target))
+   Ok(backend::emit_wasm(&mut ctx.program, &mut ctx.interner, config))
 }
 
 fn lex_and_parse(

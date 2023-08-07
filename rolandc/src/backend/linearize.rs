@@ -143,7 +143,7 @@ fn dump_program_cfg(all_cfg: &ProgramCfg, interner: &Interner, program: &Program
 
 pub type ProgramCfg = SecondaryMap<ProcedureId, Cfg>;
 
-pub fn linearize(program: &mut Program, interner: &Interner) -> ProgramCfg {
+pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool) -> ProgramCfg {
    let mut ctx = Ctx {
       bbs: vec![],
       current_block: 0,
@@ -183,7 +183,9 @@ pub fn linearize(program: &mut Program, interner: &Interner) -> ProgramCfg {
       );
    }
 
-   //dump_program_cfg(&all_cfg, interner, program);
+   if dump_cfg {
+      dump_program_cfg(&all_cfg, interner, program);
+   }
 
    all_cfg
 }

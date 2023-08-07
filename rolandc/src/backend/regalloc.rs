@@ -13,11 +13,7 @@ use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, Statement,
    StatementId, UnOp, VariableId,
 };
-use crate::{Program, Target};
-
-struct RegallocCtx {
-   escaping_vars: HashSet<VariableId>,
-}
+use crate::{Program, Target, CompilationConfig};
 
 pub struct RegallocResult {
    pub var_to_reg: IndexMap<VariableId, Vec<u32>>,
@@ -27,13 +23,11 @@ pub struct RegallocResult {
 pub fn assign_variables_to_wasm_registers(
    program: &mut Program,
    interner: &Interner,
-   target: Target,
+   config: &CompilationConfig,
 ) -> RegallocResult {
-   let program_cfg = linearize(program, interner);
+   let program_cfg = linearize(program, interner, config.dump_debugging_info);
 
-   let mut ctx = RegallocCtx {
-      escaping_vars: HashSet::new(),
-   };
+   let mut escaping_vars = HashSet::new();
 
    let mut result = RegallocResult {
       var_to_reg: IndexMap::new(),
@@ -56,7 +50,7 @@ pub fn assign_variables_to_wasm_registers(
       };
 
       let proc_liveness = liveness(&program_cfg[proc_id], &program.ast);
-      mark_escaping_vars_block(block, &mut ctx, &program.ast);
+      mark_escaping_vars_block(block, &mut escaping_vars, &program.ast);
 
       let mut live_intervals: IndexMap<VariableId, LiveInterval> = IndexMap::new();
       for (pi, live_vars) in proc_liveness.iter() {
@@ -91,7 +85,7 @@ pub fn assign_variables_to_wasm_registers(
          let reg = total_registers;
          total_registers += t_buf.len() as u32;
 
-         if ctx.escaping_vars.contains(&var) {
+         if escaping_vars.contains(&var) {
             // address is observed, variable must live on the stack.
             // however, this var is a parameter, so we still need to offset
             // the register count
@@ -113,7 +107,7 @@ pub fn assign_variables_to_wasm_registers(
             continue;
          }
 
-         if ctx.escaping_vars.contains(var) {
+         if escaping_vars.contains(var) {
             // address is observed, variable must live on the stack
             continue;
          }
@@ -152,7 +146,7 @@ pub fn assign_variables_to_wasm_registers(
       }
    }
 
-   if target == Target::Wasm4 {
+   if config.target == Target::Wasm4 {
       // Force global variables to live in memory for WASM4, because globals
       // are not synchronized by the netplay engine
       return result;
@@ -162,7 +156,7 @@ pub fn assign_variables_to_wasm_registers(
    for global in program.global_info.iter() {
       debug_assert!(!result.var_to_reg.contains_key(global.0));
 
-      if ctx.escaping_vars.contains(global.0) {
+      if escaping_vars.contains(global.0) {
          continue;
       }
 
@@ -180,35 +174,35 @@ pub fn assign_variables_to_wasm_registers(
    result
 }
 
-fn mark_escaping_vars_block(block: &BlockNode, ctx: &mut RegallocCtx, ast: &AstPool) {
+fn mark_escaping_vars_block(block: &BlockNode, escaping_vars: &mut HashSet<VariableId>, ast: &AstPool) {
    for statement in block.statements.iter().rev().copied() {
-      mark_escaping_vars_statement(statement, ctx, ast);
+      mark_escaping_vars_statement(statement, escaping_vars, ast);
    }
 }
 
-fn mark_escaping_vars_statement(stmt: StatementId, ctx: &mut RegallocCtx, ast: &AstPool) {
+fn mark_escaping_vars_statement(stmt: StatementId, escaping_vars: &mut HashSet<VariableId>, ast: &AstPool) {
    match &ast.statements[stmt].statement {
       Statement::Return(expr) => {
-         mark_escaping_vars_expr(*expr, ctx, ast);
+         mark_escaping_vars_expr(*expr, escaping_vars, ast);
       }
       Statement::Break | Statement::Continue => (),
       Statement::Block(block) => {
-         mark_escaping_vars_block(block, ctx, ast);
+         mark_escaping_vars_block(block, escaping_vars, ast);
       }
       Statement::IfElse(if_expr, if_block, else_statement) => {
-         mark_escaping_vars_expr(*if_expr, ctx, ast);
-         mark_escaping_vars_block(if_block, ctx, ast);
-         mark_escaping_vars_statement(*else_statement, ctx, ast);
+         mark_escaping_vars_expr(*if_expr, escaping_vars, ast);
+         mark_escaping_vars_block(if_block, escaping_vars, ast);
+         mark_escaping_vars_statement(*else_statement, escaping_vars, ast);
       }
       Statement::Loop(body) => {
-         mark_escaping_vars_block(body, ctx, ast);
+         mark_escaping_vars_block(body, escaping_vars, ast);
       }
       Statement::Assignment(lhs, rhs) => {
-         mark_escaping_vars_expr(*lhs, ctx, ast);
-         mark_escaping_vars_expr(*rhs, ctx, ast);
+         mark_escaping_vars_expr(*lhs, escaping_vars, ast);
+         mark_escaping_vars_expr(*rhs, escaping_vars, ast);
       }
       Statement::Expression(expr) => {
-         mark_escaping_vars_expr(*expr, ctx, ast);
+         mark_escaping_vars_expr(*expr, escaping_vars, ast);
       }
       Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
       Statement::Defer(_) => unreachable!(),
@@ -216,49 +210,49 @@ fn mark_escaping_vars_statement(stmt: StatementId, ctx: &mut RegallocCtx, ast: &
    }
 }
 
-fn mark_escaping_vars_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &AstPool) {
+fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<VariableId>, ast: &AstPool) {
    match &ast.expressions[in_expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
-         mark_escaping_vars_expr(*proc_expr, ctx, ast);
+         mark_escaping_vars_expr(*proc_expr, escaping_vars, ast);
 
          for val in args.iter().map(|x| x.expr) {
-            mark_escaping_vars_expr(val, ctx, ast);
+            mark_escaping_vars_expr(val, escaping_vars, ast);
          }
       }
       Expression::ArrayLiteral(vals) => {
          for val in vals.iter().copied() {
-            mark_escaping_vars_expr(val, ctx, ast);
+            mark_escaping_vars_expr(val, escaping_vars, ast);
          }
       }
       Expression::ArrayIndex { array, index } => {
-         mark_escaping_vars_expr(*array, ctx, ast);
-         mark_escaping_vars_expr(*index, ctx, ast);
+         mark_escaping_vars_expr(*array, escaping_vars, ast);
+         mark_escaping_vars_expr(*index, escaping_vars, ast);
 
          if let Some(v) = get_var_from_use(*array, &ast.expressions) {
             if !matches!(ast.expressions[*index].expression, Expression::IntLiteral { .. }) {
-               ctx.escaping_vars.insert(v);
+               escaping_vars.insert(v);
             }
          }
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
-         mark_escaping_vars_expr(*lhs, ctx, ast);
-         mark_escaping_vars_expr(*rhs, ctx, ast);
+         mark_escaping_vars_expr(*lhs, escaping_vars, ast);
+         mark_escaping_vars_expr(*rhs, escaping_vars, ast);
       }
       Expression::IfX(a, b, c) => {
-         mark_escaping_vars_expr(*a, ctx, ast);
-         mark_escaping_vars_expr(*b, ctx, ast);
-         mark_escaping_vars_expr(*c, ctx, ast);
+         mark_escaping_vars_expr(*a, escaping_vars, ast);
+         mark_escaping_vars_expr(*b, escaping_vars, ast);
+         mark_escaping_vars_expr(*c, escaping_vars, ast);
       }
       Expression::StructLiteral(_, exprs) => {
          for expr in exprs.values().flatten() {
-            mark_escaping_vars_expr(*expr, ctx, ast);
+            mark_escaping_vars_expr(*expr, escaping_vars, ast);
          }
       }
       Expression::FieldAccess(_, base_expr) => {
-         mark_escaping_vars_expr(*base_expr, ctx, ast);
+         mark_escaping_vars_expr(*base_expr, escaping_vars, ast);
       }
       Expression::Cast { expr, cast_type, .. } => {
-         mark_escaping_vars_expr(*expr, ctx, ast);
+         mark_escaping_vars_expr(*expr, escaping_vars, ast);
 
          if *cast_type == CastType::Transmute
             && !is_wasm_compatible_rval_transmute(
@@ -267,15 +261,15 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, ctx: &mut RegallocCtx, ast: &A
             )
          {
             if let Some(v) = get_var_from_use(*expr, &ast.expressions) {
-               ctx.escaping_vars.insert(v);
+               escaping_vars.insert(v);
             }
          }
       }
       Expression::UnaryOperator(op, expr) => {
-         mark_escaping_vars_expr(*expr, ctx, ast);
+         mark_escaping_vars_expr(*expr, escaping_vars, ast);
          if *op == UnOp::AddressOf {
             if let Some(v) = get_var_from_use(*expr, &ast.expressions) {
-               ctx.escaping_vars.insert(v);
+               escaping_vars.insert(v);
             }
          }
       }

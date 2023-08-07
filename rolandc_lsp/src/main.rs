@@ -162,6 +162,7 @@ impl Backend {
             target,
             include_std: !matches!(mode, WorkspaceMode::StdLib),
             i_am_std: matches!(mode, WorkspaceMode::StdLib),
+            dump_debugging_info: false,
          };
          (root_file_path, config)
       };

@@ -35,6 +35,7 @@ pub fn compile_wasm4(source_code: &str) -> Result<Vec<u8>, String> {
       target: rolandc::Target::Wasm4,
       include_std: true,
       i_am_std: false,
+      dump_debugging_info: false,
    };
 
    let compile_result =
@@ -80,6 +81,7 @@ pub fn compile_and_update_all(source_code: &str) -> Option<CompilationOutput> {
       target: rolandc::Target::Wasi,
       include_std: true,
       i_am_std: false,
+      dump_debugging_info: false,
    };
 
    let compile_result =

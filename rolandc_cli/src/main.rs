@@ -32,6 +32,7 @@ struct Opts {
    output: Option<PathBuf>,
    wasm4: bool,
    microw8: bool,
+   dump_debugging_info: bool,
 }
 
 fn parse_path(s: &std::ffi::OsStr) -> Result<std::path::PathBuf, &'static str> {
@@ -55,6 +56,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
    let opts = Opts {
       wasm4: pargs.contains("--wasm4"),
       microw8: pargs.contains("--microw8"),
+      dump_debugging_info: pargs.contains("--dump-debugging-info"),
       output: pargs.opt_value_from_os_str("--output", parse_path)?,
       source_file: pargs.free_from_os_str(parse_path)?,
    };
@@ -111,6 +113,7 @@ fn main() {
       target,
       include_std: true,
       i_am_std: false,
+      dump_debugging_info: opts.dump_debugging_info,
    };
 
    let compile_result = rolandc::compile::<CliFileResolver>(
