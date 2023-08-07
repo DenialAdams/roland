@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
-use super::liveness::liveness;
+use super::liveness::{liveness, ProgramIndex};
 use crate::backend::linearize::linearize;
 use crate::backend::wasm::type_to_wasm_type;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
@@ -14,27 +14,6 @@ use crate::parse::{
    StatementId, UnOp, VariableId,
 };
 use crate::{Program, Target};
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
-struct ProgramIndex(usize);
-
-impl PartialOrd for ProgramIndex {
-   fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-      Some(self.cmp(other))
-   }
-}
-
-impl Ord for ProgramIndex {
-   fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-      self.0.cmp(&other.0)
-   }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
-struct LiveRange {
-   begin: ProgramIndex,
-   end: ProgramIndex,
-}
 
 struct RegallocCtx {
    escaping_vars: HashSet<VariableId>,
@@ -76,11 +55,27 @@ pub fn assign_variables_to_wasm_registers(
          continue;
       };
 
-      liveness(&program_cfg[proc_id], &program.global_info);
+      let proc_liveness = liveness(&program_cfg[proc_id], &program.ast);
       mark_escaping_vars_block(block, &mut ctx, &program.ast);
 
-      let mut live_ranges: IndexMap<VariableId, LiveRange> = IndexMap::new();
-      live_ranges.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
+      let mut live_intervals: IndexMap<VariableId, LiveInterval> = IndexMap::new();
+      for (pi, live_vars) in proc_liveness.iter() {
+         for var in live_vars.iter() {
+            if let Some(existing_range) = live_intervals.get_mut(var) {
+               existing_range.begin = std::cmp::min(existing_range.begin, *pi);
+               existing_range.end = std::cmp::max(existing_range.end, *pi);
+            } else {
+               live_intervals.insert(
+                  *var,
+                  LiveInterval {
+                     begin: *pi,
+                     end: *pi,
+                  },
+               );
+            }
+         }
+      }
+      live_intervals.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
 
       active.clear();
 
@@ -106,9 +101,15 @@ pub fn assign_variables_to_wasm_registers(
          result.var_to_reg.insert(var, (reg..total_registers).collect());
       }
 
-      for (var, range) in live_ranges.iter() {
+      for (var, range) in live_intervals.iter() {
          if result.var_to_reg.contains_key(var) {
-            // (This local is a parameter, which inherently has a register)
+            // We have already assigned this var to a register, which means it must be a parameter
+            continue;
+         }
+
+         if program.global_info.contains_key(var) {
+            // var is a global, so lacking any inter-procedural analysis we must consider it live for the whole program
+            // (handled below)
             continue;
          }
 
@@ -117,7 +118,7 @@ pub fn assign_variables_to_wasm_registers(
             continue;
          }
 
-         for expired_var in active.extract_if(|v| live_ranges.get(v).unwrap().end < range.begin) {
+         for expired_var in active.extract_if(|v| live_intervals.get(v).unwrap().end < range.begin) {
             t_buf.clear();
             type_to_wasm_type(
                procedure.locals.get(&expired_var).unwrap(),
@@ -298,4 +299,10 @@ fn get_var_from_use(expr: ExpressionId, expressions: &ExpressionPool) -> Option<
       Expression::ArrayIndex { array, .. } => get_var_from_use(*array, expressions),
       _ => None,
    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+pub struct LiveInterval {
+   pub begin: ProgramIndex,
+   pub end: ProgramIndex,
 }

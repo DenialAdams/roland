@@ -22,7 +22,7 @@ pub struct BasicBlock {
 }
 
 impl BasicBlock {
-   fn successors(&self) -> ArrayVec<usize, 2> {
+   pub fn successors(&self) -> ArrayVec<usize, 2> {
       let mut buf = ArrayVec::new();
       if let Some(x) = self.instructions.last() {
          match x {
@@ -41,8 +41,8 @@ impl BasicBlock {
    }
 }
 
-const CFG_START_NODE: usize = 0;
-const CFG_END_NODE: usize = 1;
+pub const CFG_START_NODE: usize = 0;
+pub const CFG_END_NODE: usize = 1;
 
 pub struct Cfg {
    pub bbs: Vec<BasicBlock>,
@@ -136,9 +136,6 @@ fn dump_program_cfg(all_cfg: &ProgramCfg, interner: &Interner, program: &Program
          for succ in successors.iter() {
             writeln!(f, "\"{}\" -> \"{}\"", bb_id_to_label(node), bb_id_to_label(*succ)).unwrap();
          }
-         if successors.is_empty() {
-            writeln!(f, "\"{}\"", bb_id_to_label(node)).unwrap();
-         }
       }
       writeln!(f, "}}").unwrap();
    }
@@ -205,20 +202,20 @@ fn bb_id_to_label(bb_id: usize) -> String {
    }
 }
 
-fn post_order(cfg: &Cfg) -> Vec<usize> {
+pub fn post_order(cfg: &Cfg) -> Vec<usize> {
    let mut visited = HashSet::new();
    let mut post_order = vec![];
-   dfs(&cfg.bbs, CFG_START_NODE, &mut visited, &mut post_order);
+   post_order_inner(&cfg.bbs, CFG_START_NODE, &mut visited, &mut post_order);
    post_order
 }
 
-fn dfs(cfg: &[BasicBlock], node: usize, visited: &mut HashSet<usize>, post_order: &mut Vec<usize>) {
+fn post_order_inner(cfg: &[BasicBlock], node: usize, visited: &mut HashSet<usize>, post_order: &mut Vec<usize>) {
    let successors = cfg[node].successors();
 
    visited.insert(node);
    for succ in successors {
       if !visited.contains(&succ) {
-         dfs(cfg, succ, visited, post_order);
+         post_order_inner(cfg, succ, visited, post_order);
       }
    }
 
