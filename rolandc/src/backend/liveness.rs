@@ -8,9 +8,6 @@ use crate::backend::linearize::post_order;
 use crate::parse::{AstPool, Expression, ExpressionId, Statement, StatementId, VariableId};
 use crate::type_data::ExpressionType;
 
-// TODO: bitsets. related, we shouldn't use VariableIds as bitset key,
-// but instead the index into the procedure.locals variable table corresponding
-// to that VariableId (so that the bitset key is dense.)
 #[derive(Clone)]
 struct LivenessState {
    live_in: BitBox,  //TODO: bitset
@@ -52,6 +49,8 @@ pub fn liveness(procedure_vars: &IndexMap<VariableId, ExpressionType>, cfg: &Cfg
 
    let mut worklist: IndexSet<usize> = post_order(cfg).into_iter().rev().collect();
    while let Some(node_id) = worklist.pop() {
+      // TODO: There is a lot of cloning and creating new bitboxes in here that we probably don't need
+
       // Update live_out
       {
          let mut new_live_out = bitbox![0; procedure_vars.len()];
@@ -68,7 +67,7 @@ pub fn liveness(procedure_vars: &IndexMap<VariableId, ExpressionType>, cfg: &Cfg
          let s = &mut state[node_id];
          let old_live_in = std::mem::replace(&mut s.live_in, bitbox![0; procedure_vars.len()]);
          s.live_in |= &s.gen;
-         s.live_in |= s.live_out.clone() & !s.kill.clone();
+         s.live_in |= s.live_out.clone() & !(s.kill.clone());
    
          if old_live_in != s.live_in {
             worklist.extend(&cfg.bbs[node_id].predecessors);
