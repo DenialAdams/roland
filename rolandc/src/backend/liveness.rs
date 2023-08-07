@@ -89,17 +89,20 @@ pub fn liveness(cfg: &Cfg, ast: &AstPool) -> IndexMap<ProgramIndex, HashSet<Vari
       let Some(rpo_index) = node_id_to_rpo_index.get(&node_id).copied() else { continue; };
       let s = &state[node_id];
       {
-         let mut live_variables = s.live_out.clone();
+         let mut current_live_variables = s.live_out.clone();
          for (i, instruction) in bb.instructions.iter().enumerate().rev() {
             let pi = ProgramIndex(rpo_index, i);
-            match instruction {
+            let var_to_kill = match instruction {
                super::linearize::CfgInstruction::RolandStmt(stmt) => {
-                  update_live_variables_for_stmt(*stmt, &mut live_variables, ast);
+                  update_live_variables_for_stmt(*stmt, &mut current_live_variables, ast)
                }
-               super::linearize::CfgInstruction::ConditionalJump(_, _, _) => (),
-               super::linearize::CfgInstruction::Jump(_) => (),
+               super::linearize::CfgInstruction::ConditionalJump(_, _, _) => None,
+               super::linearize::CfgInstruction::Jump(_) => None,
+            };
+            all_liveness.insert(pi, current_live_variables.clone());
+            if let Some(v) = var_to_kill {
+               current_live_variables.remove(&v);
             }
-            all_liveness.insert(pi, live_variables.clone());
          }
       }
    }
@@ -107,19 +110,21 @@ pub fn liveness(cfg: &Cfg, ast: &AstPool) -> IndexMap<ProgramIndex, HashSet<Vari
    all_liveness
 }
 
-fn update_live_variables_for_stmt(stmt: StatementId, current_live_variables: &mut HashSet<VariableId>, ast: &AstPool) {
+fn update_live_variables_for_stmt(stmt: StatementId, current_live_variables: &mut HashSet<VariableId>, ast: &AstPool) -> Option<VariableId> {
    match &ast.statements[stmt].statement {
       Statement::Assignment(lhs, rhs) => {
          update_live_variables_for_expr(*rhs, current_live_variables, ast);
          update_live_variables_for_expr(*lhs, current_live_variables, ast);
          if let Expression::Variable(v) = ast.expressions[*lhs].expression {
-            current_live_variables.remove(&v);
+            return Some(v);
          }
       }
       Statement::Expression(expr) => update_live_variables_for_expr(*expr, current_live_variables, ast),
       Statement::Return(expr) => update_live_variables_for_expr(*expr, current_live_variables, ast),
       _ => unreachable!(),
    }
+
+   None
 }
 
 fn update_live_variables_for_expr(expr: ExpressionId, current_live_variables: &mut HashSet<VariableId>, ast: &AstPool) {
