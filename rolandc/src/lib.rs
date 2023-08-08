@@ -19,6 +19,7 @@
 #![allow(clippy::let_underscore_untyped)] // looks weird with no let
 #![feature(extract_if)]
 
+mod backend;
 mod compile_consts;
 mod constant_folding;
 mod dead_code_elimination;
@@ -34,12 +35,10 @@ mod logical_op_lowering;
 mod monomorphization;
 pub mod parse;
 mod pre_wasm_lowering;
-mod regalloc;
 mod semantic_analysis;
 mod size_info;
 pub mod source_info;
 pub mod type_data;
-mod wasm;
 
 use std::borrow::Cow;
 use std::fmt::Display;
@@ -208,6 +207,7 @@ pub struct CompilationConfig {
    pub target: Target,
    pub include_std: bool,
    pub i_am_std: bool,
+   pub dump_debugging_info: bool,
 }
 
 pub fn compile<'a, FR: FileResolver<'a>>(
@@ -223,7 +223,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program);
 
-   Ok(wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, config.target))
+   Ok(backend::emit_wasm(&mut ctx.program, &mut ctx.interner, config))
 }
 
 fn lex_and_parse(
@@ -234,7 +234,7 @@ fn lex_and_parse(
    program: &mut Program,
 ) -> Result<Vec<ImportNode>, CompilationError> {
    let Ok(tokens) = lex::lex(s, source_path, err_manager, interner) else {
-      return Err(CompilationError::Lex)
+      return Err(CompilationError::Lex);
    };
    match parse::astify(tokens, err_manager, interner, program) {
       Err(()) => Err(CompilationError::Parse),

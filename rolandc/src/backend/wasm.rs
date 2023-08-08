@@ -7,6 +7,7 @@ use wasm_encoder::{
    RefType, TableSection, TableType, TypeSection, ValType,
 };
 
+use crate::backend::regalloc;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -18,7 +19,7 @@ use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
 };
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I32_TYPE};
-use crate::{regalloc, Target};
+use crate::{CompilationConfig, Target};
 
 const MINIMUM_STACK_FRAME_SIZE: u32 = 0;
 
@@ -288,7 +289,7 @@ impl TypeManager {
 // 0-l literals
 // l-s statics
 // s+ program stack (local variables and parameters are pushed here during runtime)
-pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target) -> Vec<u8> {
+pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &CompilationConfig) -> Vec<u8> {
    // This will come in handy later, allowing us to avoid padding.
    // Do it now, because we will iterate globals in regalloc and we want it to be consistent
    program.global_info.sort_by(|_k_1, v_1, _k_2, v_2| {
@@ -300,7 +301,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       )
    });
 
-   let mut regalloc_result = regalloc::assign_variables_to_wasm_registers(program, target);
+   let mut regalloc_result = regalloc::assign_variables_to_wasm_registers(program, interner, config);
 
    let mut generation_context = GenerationContext {
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
@@ -337,7 +338,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
       let type_index = generation_context
          .type_manager
          .register_or_find_type_by_definition(&external_procedure.definition, generation_context.struct_info);
-      match target {
+      match config.target {
          Target::Lib => (),
          Target::Wasm4 | Target::Microw8 => {
             import_section.import(
@@ -361,7 +362,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
 
    // the base memory offset varies per platform;
    // on wasm-4/microw8, we don't own all of the memory!
-   let mut offset: u32 = match target {
+   let mut offset: u32 = match config.target {
       Target::Wasi | Target::Lib => 0x0,
       Target::Wasm4 => 0x19a0,
       Target::Microw8 => 0x14000,
@@ -544,7 +545,9 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
    }
 
    for (proc_id, procedure) in program.procedures.iter() {
-      let ProcImplSource::Body(block) = &procedure.proc_impl else { continue; };
+      let ProcImplSource::Body(block) = &procedure.proc_impl else {
+         continue;
+      };
       generation_context.active_fcn =
          Function::new_with_locals_types(regalloc_result.procedure_registers.remove(proc_id).unwrap());
       generation_context.local_offsets_mem.clear();
@@ -692,18 +695,14 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, target: Target)
             .iter()
             .map(|x| generation_context.procedure_indices.get_index_of(x).unwrap() as u32)
             .collect::<Vec<_>>();
-         elem.active(
-            Some(0),
-            &ConstExpr::i32_const(0),
-            Elements::Functions(&elements),
-         );
+         elem.active(Some(0), &ConstExpr::i32_const(0), Elements::Functions(&elements));
       }
 
       (table, elem)
    };
 
    // target specific imports/exports
-   match target {
+   match config.target {
       Target::Lib => (),
       Target::Wasm4 => {
          import_section.import(
@@ -929,7 +928,11 @@ fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &Generation
          .map(|x| (generation_context.globals.contains(v), x)),
       Expression::FieldAccess(fields, e) => {
          let (is_global, base_range) = get_registers_for_expr(*e, generation_context)?;
-         let ExpressionType::Struct(mut struct_name) = generation_context.ast.expressions[*e].exp_type.as_ref().unwrap() else { unreachable!() };
+         let ExpressionType::Struct(mut struct_name) =
+            generation_context.ast.expressions[*e].exp_type.as_ref().unwrap()
+         else {
+            unreachable!()
+         };
 
          let mut value_offset = 0;
 
@@ -1969,7 +1972,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             field_names: &[StrId],
             generation_context: &mut GenerationContext,
          ) {
-            let ExpressionType::Struct(mut struct_name) = lhs_type else { unreachable!() };
+            let ExpressionType::Struct(mut struct_name) = lhs_type else {
+               unreachable!()
+            };
             let mut mem_offset = 0;
 
             for field_name in field_names.iter().take(field_names.len() - 1) {

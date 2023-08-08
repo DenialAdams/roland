@@ -271,6 +271,13 @@ pub enum Statement {
    Assignment(ExpressionId, ExpressionId),
    Block(BlockNode),
    Loop(BlockNode),
+   Continue,
+   Break,
+   Expression(ExpressionId),
+   IfElse(ExpressionId, BlockNode, StatementId),
+   Return(ExpressionId),
+
+   // The following statements exist only transiently
    For {
       induction_var_name: StrNode,
       range_start: ExpressionId,
@@ -280,13 +287,8 @@ pub enum Statement {
       induction_var: VariableId,
    },
    While(ExpressionId, BlockNode),
-   Continue,
-   Break,
-   Defer(StatementId),
-   Expression(ExpressionId),
-   IfElse(ExpressionId, BlockNode, StatementId),
-   Return(ExpressionId),
    VariableDeclaration(StrNode, Option<ExpressionId>, Option<ExpressionTypeNode>, VariableId),
+   Defer(StatementId),
 }
 
 // For lack of a better place...
@@ -354,6 +356,7 @@ pub struct Program {
    pub procedure_name_table: HashMap<StrId, ProcedureId>, // TODO: this doesn't need to live on Program
    pub struct_size_info: HashMap<StrId, SizeInfo>,
    pub next_variable: VariableId,
+   // Finally, the CFG representation of the program is built late in the pipeline
 }
 
 // SlotMaps are deterministic, but the order that you get after clearing it is not the same as you would get

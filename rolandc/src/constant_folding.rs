@@ -203,7 +203,9 @@ fn fold_expr_inner(
          let array = &folding_context.ast.expressions[*array];
          let index = &folding_context.ast.expressions[*index];
 
-         let Some(ExpressionType::Array(_, len)) = array.exp_type else { unreachable!() };
+         let Some(ExpressionType::Array(_, len)) = array.exp_type else {
+            unreachable!()
+         };
 
          // TODO @FixedPointerWidth
          if let Some(Literal::Uint32(v)) = extract_literal(index) {

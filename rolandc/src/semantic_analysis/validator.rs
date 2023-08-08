@@ -15,8 +15,7 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    statement_always_returns, ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode,
-   ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId, StrNode,
-   UnOp, VariableId,
+   ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId, StrNode, UnOp, VariableId,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, mem_alignment, sizeof_type_mem};
@@ -393,7 +392,9 @@ pub fn type_and_check_validity(
    }
 
    for (id, procedure) in program.procedures.iter_mut() {
-      let ProcImplSource::Body(block) = &procedure.proc_impl else {continue;};
+      let ProcImplSource::Body(block) = &procedure.proc_impl else {
+         continue;
+      };
       validation_context.cur_procedure_info = program.procedure_info.get(id);
 
       let num_globals = validation_context.variable_types.len();
@@ -468,7 +469,9 @@ pub fn type_and_check_validity(
 
       for proc in program.procedures.values_mut() {
          for lt in proc.locals.values_mut() {
-            let Some(tv) = lt.get_type_variable_of_unknown_type() else { continue; };
+            let Some(tv) = lt.get_type_variable_of_unknown_type() else {
+               continue;
+            };
 
             if let Some(t) = validation_context.type_variables.get_data(tv).known_type.as_ref() {
                *lt.get_unknown_portion_of_type().unwrap() = t.clone();
