@@ -1,5 +1,5 @@
 use crate::interner::Interner;
-use crate::{Program, CompilationConfig};
+use crate::{CompilationConfig, Program};
 
 mod linearize;
 mod liveness;

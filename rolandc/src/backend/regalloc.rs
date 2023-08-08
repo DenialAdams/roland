@@ -13,7 +13,7 @@ use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, Statement,
    StatementId, UnOp, VariableId,
 };
-use crate::{Program, Target, CompilationConfig};
+use crate::{CompilationConfig, Program, Target};
 
 pub struct RegallocResult {
    pub var_to_reg: IndexMap<VariableId, Vec<u32>>,
@@ -60,13 +60,7 @@ pub fn assign_variables_to_wasm_registers(
                existing_range.begin = std::cmp::min(existing_range.begin, *pi);
                existing_range.end = std::cmp::max(existing_range.end, *pi);
             } else {
-               live_intervals.insert(
-                  var,
-                  LiveInterval {
-                     begin: *pi,
-                     end: *pi,
-                  },
-               );
+               live_intervals.insert(var, LiveInterval { begin: *pi, end: *pi });
             }
          }
       }

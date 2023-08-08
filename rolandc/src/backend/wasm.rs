@@ -19,7 +19,7 @@ use crate::size_info::{
    aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm, SizeInfo,
 };
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I32_TYPE};
-use crate::{Target, CompilationConfig};
+use crate::{CompilationConfig, Target};
 
 const MINIMUM_STACK_FRAME_SIZE: u32 = 0;
 

@@ -10,14 +10,18 @@ use crate::type_data::ExpressionType;
 
 #[derive(Clone)]
 struct LivenessState {
-   live_in: BitBox,  //TODO: bitset
-   live_out: BitBox, //TODO: bitset, i think i can remove this
-   gen: BitBox,      //TODO: bitset
-   kill: BitBox,     //TODO: bitset
+   live_in: BitBox,
+   live_out: BitBox,
+   gen: BitBox,
+   kill: BitBox,
 }
 
 #[must_use]
-pub fn liveness(procedure_vars: &IndexMap<VariableId, ExpressionType>, cfg: &Cfg, ast: &AstPool) -> IndexMap<ProgramIndex, BitBox> {
+pub fn liveness(
+   procedure_vars: &IndexMap<VariableId, ExpressionType>,
+   cfg: &Cfg,
+   ast: &AstPool,
+) -> IndexMap<ProgramIndex, BitBox> {
    // Dataflow Analyis on the CFG
    let mut state = vec![
       LivenessState {
@@ -41,7 +45,7 @@ pub fn liveness(procedure_vars: &IndexMap<VariableId, ExpressionType>, cfg: &Cfg
             }
             CfgInstruction::ConditionalJump(expr, _, _) => {
                gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, &var_to_dense);
-            },
+            }
             CfgInstruction::Jump(_) => (),
          }
       }
@@ -68,7 +72,7 @@ pub fn liveness(procedure_vars: &IndexMap<VariableId, ExpressionType>, cfg: &Cfg
          let old_live_in = std::mem::replace(&mut s.live_in, bitbox![0; procedure_vars.len()]);
          s.live_in |= &s.gen;
          s.live_in |= s.live_out.clone() & !(s.kill.clone());
-   
+
          if old_live_in != s.live_in {
             worklist.extend(&cfg.bbs[node_id].predecessors);
          }
@@ -77,13 +81,21 @@ pub fn liveness(procedure_vars: &IndexMap<VariableId, ExpressionType>, cfg: &Cfg
 
    // Construct the final results
    let mut all_liveness: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
-   let node_id_to_rpo_index: HashMap<usize, usize> = post_order(cfg).iter().copied().rev().enumerate().map(|(x, y)| (y, x)).collect();
+   let node_id_to_rpo_index: HashMap<usize, usize> = post_order(cfg)
+      .iter()
+      .copied()
+      .rev()
+      .enumerate()
+      .map(|(x, y)| (y, x))
+      .collect();
    for (node_id, bb) in cfg.bbs.iter().enumerate() {
       // Nodes not present in the RPO are dead code, and so we will not mark them as having any live range
-      let Some(rpo_index) = node_id_to_rpo_index.get(&node_id).copied() else { continue; };
+      let Some(rpo_index) = node_id_to_rpo_index.get(&node_id).copied() else {
+         continue;
+      };
       let s = &state[node_id];
       {
-         let mut current_live_variables= s.live_out.clone();
+         let mut current_live_variables = s.live_out.clone();
          for (i, instruction) in bb.instructions.iter().enumerate().rev() {
             let pi = ProgramIndex(rpo_index, i);
             let var_to_kill = match instruction {
@@ -93,7 +105,7 @@ pub fn liveness(procedure_vars: &IndexMap<VariableId, ExpressionType>, cfg: &Cfg
                CfgInstruction::ConditionalJump(expr, _, _) => {
                   update_live_variables_for_expr(*expr, &mut current_live_variables, ast, &var_to_dense);
                   None
-               },
+               }
                CfgInstruction::Jump(_) => None,
             };
             all_liveness.insert(pi, current_live_variables.clone());
@@ -109,7 +121,12 @@ pub fn liveness(procedure_vars: &IndexMap<VariableId, ExpressionType>, cfg: &Cfg
    all_liveness
 }
 
-fn update_live_variables_for_stmt(stmt: StatementId, current_live_variables: &mut BitBox, ast: &AstPool, var_to_dense: &HashMap<VariableId, usize>) -> Option<VariableId> {
+fn update_live_variables_for_stmt(
+   stmt: StatementId,
+   current_live_variables: &mut BitBox,
+   ast: &AstPool,
+   var_to_dense: &HashMap<VariableId, usize>,
+) -> Option<VariableId> {
    match &ast.statements[stmt].statement {
       Statement::Assignment(lhs, rhs) => {
          update_live_variables_for_expr(*rhs, current_live_variables, ast, var_to_dense);
@@ -126,7 +143,12 @@ fn update_live_variables_for_stmt(stmt: StatementId, current_live_variables: &mu
    None
 }
 
-fn update_live_variables_for_expr(expr: ExpressionId, current_live_variables: &mut BitBox, ast: &AstPool, var_to_dense: &HashMap<VariableId, usize>) {
+fn update_live_variables_for_expr(
+   expr: ExpressionId,
+   current_live_variables: &mut BitBox,
+   ast: &AstPool,
+   var_to_dense: &HashMap<VariableId, usize>,
+) {
    match &ast.expressions[expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
          update_live_variables_for_expr(*proc_expr, current_live_variables, ast, var_to_dense);
@@ -184,7 +206,13 @@ fn update_live_variables_for_expr(expr: ExpressionId, current_live_variables: &m
    }
 }
 
-fn gen_kill_for_stmt(stmt: StatementId, gen: &mut BitBox, kill: &mut BitBox, ast: &AstPool, var_to_dense: &HashMap<VariableId, usize>) {
+fn gen_kill_for_stmt(
+   stmt: StatementId,
+   gen: &mut BitBox,
+   kill: &mut BitBox,
+   ast: &AstPool,
+   var_to_dense: &HashMap<VariableId, usize>,
+) {
    match &ast.statements[stmt].statement {
       Statement::Assignment(lhs, rhs) => {
          gen_for_expr(*rhs, gen, kill, ast, var_to_dense);
@@ -202,7 +230,13 @@ fn gen_kill_for_stmt(stmt: StatementId, gen: &mut BitBox, kill: &mut BitBox, ast
    }
 }
 
-fn gen_for_expr(expr: ExpressionId, gen: &mut BitBox, kill: &mut BitBox, ast: &AstPool, var_to_dense: &HashMap<VariableId, usize>) {
+fn gen_for_expr(
+   expr: ExpressionId,
+   gen: &mut BitBox,
+   kill: &mut BitBox,
+   ast: &AstPool,
+   var_to_dense: &HashMap<VariableId, usize>,
+) {
    match &ast.expressions[expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
          gen_for_expr(*proc_expr, gen, kill, ast, var_to_dense);
