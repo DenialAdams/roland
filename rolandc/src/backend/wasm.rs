@@ -7,6 +7,7 @@ use wasm_encoder::{
    RefType, TableSection, TableType, TypeSection, ValType,
 };
 
+use super::linearize::{Cfg, CFG_START_NODE};
 use crate::backend::regalloc;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
@@ -301,7 +302,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       )
    });
 
-   let mut regalloc_result = regalloc::assign_variables_to_wasm_registers(program, interner, config);
+   let mut regalloc_result = regalloc::assign_variables_to_wasm_registers(program, config);
 
    let mut generation_context = GenerationContext {
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
@@ -628,10 +629,10 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
          }
       }
 
-      for statement in block.statements.iter().copied() {
-         emit_statement(statement, &mut generation_context);
-      }
+      let cfg = &program.cfg[proc_id];
+      emit_bb(cfg, CFG_START_NODE, &mut generation_context);
 
+      // nocheckin decide what to do with this
       if block
          .statements
          .last()
@@ -810,6 +811,38 @@ fn compare_type_alignment(
    compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
 }
 
+fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
+   for instr in cfg.bbs[bb].instructions.iter() {
+      match instr {
+         super::linearize::CfgInstruction::RolandStmt(s) => emit_statement(*s, generation_context),
+         super::linearize::CfgInstruction::ConditionalJump(expr, then, otherwise) => {
+            do_emit_and_load_lval(*expr, generation_context);
+            if let Some(jo) = generation_context.stack_of_loop_jump_offsets.last_mut() {
+               *jo += 1;
+            }
+            generation_context
+               .active_fcn
+               .instruction(&Instruction::If(BlockType::Empty));
+            // then
+            emit_bb(cfg, *then, generation_context);
+            // else
+            generation_context.active_fcn.instruction(&Instruction::Else);
+            emit_bb(cfg, *otherwise, generation_context);
+            // finish if
+            generation_context.active_fcn.instruction(&Instruction::End);
+            if let Some(jo) = generation_context.stack_of_loop_jump_offsets.last_mut() {
+               *jo -= 1;
+            }
+         }
+         super::linearize::CfgInstruction::Jump(dest) => {
+            // a return, break, or continue
+            // this should have been handled by virtue of the fact that we leave those around as roland statements
+            emit_bb(cfg, *dest, generation_context);
+         }
+      }
+   }
+}
+
 fn emit_statement(statement: StatementId, generation_context: &mut GenerationContext) {
    match &generation_context.ast.statements[statement].statement {
       Statement::Assignment(len, en) => {
@@ -878,27 +911,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
             generation_context.active_fcn.instruction(&Instruction::Drop);
          }
       }
-      Statement::IfElse(en, block_1, block_2) => {
-         do_emit_and_load_lval(*en, generation_context);
-         if let Some(jo) = generation_context.stack_of_loop_jump_offsets.last_mut() {
-            *jo += 1;
-         }
-         generation_context
-            .active_fcn
-            .instruction(&Instruction::If(BlockType::Empty));
-         // then
-         for statement in block_1.statements.iter().copied() {
-            emit_statement(statement, generation_context);
-         }
-         // else
-         generation_context.active_fcn.instruction(&Instruction::Else);
-         emit_statement(*block_2, generation_context);
-         // finish if
-         generation_context.active_fcn.instruction(&Instruction::End);
-         if let Some(jo) = generation_context.stack_of_loop_jump_offsets.last_mut() {
-            *jo -= 1;
-         }
-      }
+      Statement::IfElse(_, _, _) => unreachable!(),
       Statement::Return(en) => {
          do_emit_and_load_lval(*en, generation_context);
 

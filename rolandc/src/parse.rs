@@ -5,6 +5,7 @@ use indexmap::{IndexMap, IndexSet};
 use slotmap::{new_key_type, SecondaryMap, SlotMap};
 
 use super::lex::{SourceToken, Token};
+use crate::backend::linearize::ProgramCfg;
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
@@ -356,7 +357,9 @@ pub struct Program {
    pub procedure_name_table: HashMap<StrId, ProcedureId>, // TODO: this doesn't need to live on Program
    pub struct_size_info: HashMap<StrId, SizeInfo>,
    pub next_variable: VariableId,
+
    // Finally, the CFG representation of the program is built late in the pipeline
+   pub cfg: ProgramCfg,
 }
 
 // SlotMaps are deterministic, but the order that you get after clearing it is not the same as you would get
@@ -397,6 +400,7 @@ impl Program {
             expressions: ExpressionPool::with_key(),
             statements: StatementPool::with_key(),
          },
+         cfg: ProgramCfg::new(),
       }
    }
 

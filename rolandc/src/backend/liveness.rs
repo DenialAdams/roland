@@ -137,6 +137,7 @@ fn update_live_variables_for_stmt(
       }
       Statement::Expression(expr) => update_live_variables_for_expr(*expr, current_live_variables, ast, var_to_dense),
       Statement::Return(expr) => update_live_variables_for_expr(*expr, current_live_variables, ast, var_to_dense),
+      Statement::Break | Statement::Continue => (),
       _ => unreachable!(),
    }
 
@@ -226,6 +227,7 @@ fn gen_kill_for_stmt(
       }
       Statement::Expression(expr) => gen_for_expr(*expr, gen, kill, ast, var_to_dense),
       Statement::Return(expr) => gen_for_expr(*expr, gen, kill, ast, var_to_dense),
+      Statement::Break | Statement::Continue => (),
       _ => unreachable!(),
    }
 }

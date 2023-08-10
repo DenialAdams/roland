@@ -10,12 +10,14 @@ use crate::parse::{
 use crate::Program;
 
 // TODO: This is pretty bulky. Ideally this would be size <= 8 for storage in the BB.
+#[derive(Clone)]
 pub enum CfgInstruction {
    RolandStmt(StatementId),
    ConditionalJump(ExpressionId, usize, usize),
    Jump(usize),
 }
 
+#[derive(Clone)]
 pub struct BasicBlock {
    pub instructions: Vec<CfgInstruction>,
    pub predecessors: HashSet<usize>,
@@ -44,6 +46,7 @@ impl BasicBlock {
 pub const CFG_START_NODE: usize = 0;
 pub const CFG_END_NODE: usize = 1;
 
+#[derive(Clone)]
 pub struct Cfg {
    pub bbs: Vec<BasicBlock>,
 }
@@ -301,6 +304,7 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
          ctx.current_block = ctx.continue_target;
 
          if !linearize_block(ctx, bn, ast) {
+            // nocheckin: need a "continue" marker here for the backend to consume
             ctx.bbs[ctx.current_block]
                .instructions
                .push(CfgInstruction::Jump(ctx.continue_target));
@@ -314,11 +318,17 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
       Statement::Break => {
          ctx.bbs[ctx.current_block]
             .instructions
+            .push(CfgInstruction::RolandStmt(stmt));
+         ctx.bbs[ctx.current_block]
+            .instructions
             .push(CfgInstruction::Jump(ctx.break_target));
          ctx.bbs[ctx.break_target].predecessors.insert(ctx.current_block);
          return true;
       }
       Statement::Continue => {
+         ctx.bbs[ctx.current_block]
+            .instructions
+            .push(CfgInstruction::RolandStmt(stmt));
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(ctx.continue_target));
@@ -331,7 +341,6 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
          }
       }
       Statement::Return(_) => {
-         // TODO: is this a good representation?
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::RolandStmt(stmt));
