@@ -31,34 +31,37 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
    let mut t_buf: Vec<ValType> = Vec::new();
 
    for (proc_id, procedure) in program.procedures.iter() {
+      active.clear();
+      free_registers.clear();
+
       result.procedure_registers.insert(proc_id, Vec::new());
       let all_registers = result.procedure_registers.get_mut(proc_id).unwrap();
       let mut total_registers = 0;
 
-      free_registers.clear();
 
       let ProcImplSource::Body(block) = &procedure.proc_impl else {
          continue;
       };
 
-      let proc_liveness = liveness(&procedure.locals, &program.cfg[proc_id], &program.ast);
       mark_escaping_vars_block(block, &mut escaping_vars, &program.ast);
 
-      let mut live_intervals: IndexMap<VariableId, LiveInterval> = IndexMap::new();
-      for (pi, live_vars) in proc_liveness.iter() {
-         for local_index in live_vars.iter_ones() {
-            let var = procedure.locals.get_index(local_index).map(|x| *x.0).unwrap();
-            if let Some(existing_range) = live_intervals.get_mut(&var) {
-               existing_range.begin = std::cmp::min(existing_range.begin, *pi);
-               existing_range.end = std::cmp::max(existing_range.end, *pi);
-            } else {
-               live_intervals.insert(var, LiveInterval { begin: *pi, end: *pi });
+      let mut live_intervals: IndexMap<VariableId, LiveInterval> = IndexMap::with_capacity(procedure.locals.len());
+      {
+         let proc_liveness = liveness(&procedure.locals, &program.cfg[proc_id], &program.ast);
+
+         for (pi, live_vars) in proc_liveness.iter() {
+            for local_index in live_vars.iter_ones() {
+               let var = procedure.locals.get_index(local_index).map(|x| *x.0).unwrap();
+               if let Some(existing_range) = live_intervals.get_mut(&var) {
+                  existing_range.begin = std::cmp::min(existing_range.begin, *pi);
+                  existing_range.end = std::cmp::max(existing_range.end, *pi);
+               } else {
+                  live_intervals.insert(var, LiveInterval { begin: *pi, end: *pi });
+               }
             }
          }
+         live_intervals.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
       }
-      live_intervals.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
-
-      active.clear();
 
       // All parameters start in registers because that's how WASM
       // (and Roland's calling convention) work.
