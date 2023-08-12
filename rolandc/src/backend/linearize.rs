@@ -179,23 +179,18 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool) -> 
             .copied()
             .map_or(false, |x| statement_always_returns(x, &program.ast))
          {
-            if !matches!(
-               program.ast.statements[body.statements.last().copied().unwrap()].statement,
-               Statement::Return(_)
-            ) {
-               let return_expr = program.ast.expressions.insert(ExpressionNode {
-                  expression: Expression::UnitLiteral,
-                  exp_type: Some(ExpressionType::Never),
-                  location,
-               });
-               let return_stmt = program.ast.statements.insert(StatementNode {
-                  statement: Statement::Return(return_expr),
-                  location,
-               });
-               ctx.bbs[ctx.current_block]
-                  .instructions
-                  .push(CfgInstruction::RolandStmt(return_stmt));
-            }
+            let return_expr = program.ast.expressions.insert(ExpressionNode {
+               expression: Expression::UnitLiteral,
+               exp_type: Some(ExpressionType::Never),
+               location,
+            });
+            let return_stmt = program.ast.statements.insert(StatementNode {
+               statement: Statement::Return(return_expr),
+               location,
+            });
+            ctx.bbs[ctx.current_block]
+               .instructions
+               .push(CfgInstruction::RolandStmt(return_stmt));
          } else {
             let return_expr = program.ast.expressions.insert(ExpressionNode {
                expression: Expression::UnitLiteral,
