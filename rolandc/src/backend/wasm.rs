@@ -890,11 +890,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
          }
       }
       Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
-      Statement::Block(bn) => {
-         for statement in bn.statements.iter().copied() {
-            emit_statement(statement, generation_context);
-         }
-      }
+      Statement::Block(_) => unreachable!(),
       Statement::For { .. } | Statement::While(_, _) => unreachable!(),
       Statement::Loop(_) => unreachable!(),
       Statement::Break => {
