@@ -5,10 +5,8 @@ use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
 use super::liveness::{liveness, ProgramIndex};
-use crate::backend::linearize::linearize;
 use crate::backend::wasm::type_to_wasm_type;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
-use crate::interner::Interner;
 use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, Statement,
    StatementId, UnOp, VariableId,
@@ -20,13 +18,7 @@ pub struct RegallocResult {
    pub procedure_registers: SecondaryMap<ProcedureId, Vec<ValType>>,
 }
 
-pub fn assign_variables_to_wasm_registers(
-   program: &mut Program,
-   interner: &Interner,
-   config: &CompilationConfig,
-) -> RegallocResult {
-   let program_cfg = linearize(program, interner, config.dump_debugging_info);
-
+pub fn assign_variables_to_wasm_registers(program: &Program, config: &CompilationConfig) -> RegallocResult {
    let mut escaping_vars = HashSet::new();
 
    let mut result = RegallocResult {
@@ -46,7 +38,6 @@ pub fn assign_variables_to_wasm_registers(
       let all_registers = result.procedure_registers.get_mut(proc_id).unwrap();
       let mut total_registers = 0;
 
-
       let ProcImplSource::Body(block) = &procedure.proc_impl else {
          continue;
       };
@@ -55,7 +46,7 @@ pub fn assign_variables_to_wasm_registers(
 
       let mut live_intervals: IndexMap<VariableId, LiveInterval> = IndexMap::with_capacity(procedure.locals.len());
       {
-         let proc_liveness = liveness(&procedure.locals, &program_cfg[proc_id], &program.ast);
+         let proc_liveness = liveness(&procedure.locals, &program.cfg[proc_id], &program.ast);
 
          for (pi, live_vars) in proc_liveness.iter() {
             for local_index in live_vars.iter_ones() {

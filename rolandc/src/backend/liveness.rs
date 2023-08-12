@@ -43,10 +43,10 @@ pub fn liveness(
             CfgInstruction::RolandStmt(stmt) => {
                gen_kill_for_stmt(*stmt, &mut s.gen, &mut s.kill, ast, &var_to_dense);
             }
-            CfgInstruction::ConditionalJump(expr, _, _) => {
+            CfgInstruction::IfElse(expr, _, _, _) | CfgInstruction::ConditionalJump(expr, _, _) => {
                gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, &var_to_dense);
             }
-            CfgInstruction::Jump(_) => (),
+            _ => (),
          }
       }
    }
@@ -102,11 +102,11 @@ pub fn liveness(
                CfgInstruction::RolandStmt(stmt) => {
                   update_live_variables_for_stmt(*stmt, &mut current_live_variables, ast, &var_to_dense)
                }
-               CfgInstruction::ConditionalJump(expr, _, _) => {
+               CfgInstruction::IfElse(expr, _, _, _) | CfgInstruction::ConditionalJump(expr, _, _) => {
                   update_live_variables_for_expr(*expr, &mut current_live_variables, ast, &var_to_dense);
                   None
                }
-               CfgInstruction::Jump(_) => None,
+               _ => None,
             };
             all_liveness.insert(pi, current_live_variables.clone());
             if let Some(v) = var_to_kill {
@@ -137,6 +137,7 @@ fn update_live_variables_for_stmt(
       }
       Statement::Expression(expr) => update_live_variables_for_expr(*expr, current_live_variables, ast, var_to_dense),
       Statement::Return(expr) => update_live_variables_for_expr(*expr, current_live_variables, ast, var_to_dense),
+      Statement::Break | Statement::Continue => (),
       _ => unreachable!(),
    }
 
@@ -226,6 +227,7 @@ fn gen_kill_for_stmt(
       }
       Statement::Expression(expr) => gen_for_expr(*expr, gen, kill, ast, var_to_dense),
       Statement::Return(expr) => gen_for_expr(*expr, gen, kill, ast, var_to_dense),
+      Statement::Break | Statement::Continue => (),
       _ => unreachable!(),
    }
 }

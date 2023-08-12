@@ -1,0 +1,18 @@
+proc sideeffect() -> bool {
+   println("bbb");
+   return true;
+}
+
+proc main() {
+   if sideeffect() {
+      // ...
+   }
+
+   if !sideeffect() {
+      // ...
+   }
+}
+__END__
+run:
+bbb
+bbb

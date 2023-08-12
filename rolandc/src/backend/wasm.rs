@@ -7,12 +7,13 @@ use wasm_encoder::{
    RefType, TableSection, TableType, TypeSection, ValType,
 };
 
+use super::linearize::{Cfg, CfgInstruction, CFG_START_NODE};
 use crate::backend::regalloc;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   statement_always_returns, AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureDefinition,
-   ProcedureId, Program, Statement, StatementId, UnOp, VariableId,
+   AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureDefinition, ProcedureId, Program,
+   Statement, StatementId, UnOp, VariableId,
 };
 use crate::semantic_analysis::{EnumInfo, GlobalKind, StructInfo};
 use crate::size_info::{
@@ -301,7 +302,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       )
    });
 
-   let mut regalloc_result = regalloc::assign_variables_to_wasm_registers(program, interner, config);
+   let mut regalloc_result = regalloc::assign_variables_to_wasm_registers(program, config);
 
    let mut generation_context = GenerationContext {
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
@@ -545,7 +546,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
    }
 
    for (proc_id, procedure) in program.procedures.iter() {
-      let ProcImplSource::Body(block) = &procedure.proc_impl else {
+      let Some(cfg) = program.cfg.get(proc_id) else {
          continue;
       };
       generation_context.active_fcn =
@@ -628,27 +629,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
          }
       }
 
-      for statement in block.statements.iter().copied() {
-         emit_statement(statement, &mut generation_context);
-      }
-
-      if block
-         .statements
-         .last()
-         .copied()
-         .map_or(false, |x| statement_always_returns(x, generation_context.ast))
-      {
-         // No need to adjust stack; it was done in the return statement
-         if !matches!(
-            generation_context.ast.statements[block.statements.last().copied().unwrap()].statement,
-            Statement::Return(_)
-         ) {
-            // Roland can be smarter than WASM permits, hence we make this explicit to avoid tripping stack violations
-            generation_context.active_fcn.instruction(&Instruction::Unreachable);
-         }
-      } else {
-         adjust_stack_function_exit(&mut generation_context);
-      }
+      emit_bb(cfg, CFG_START_NODE, &mut generation_context);
 
       generation_context.active_fcn.instruction(&Instruction::End);
 
@@ -810,6 +791,60 @@ fn compare_type_alignment(
    compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
 }
 
+fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
+   for instr in cfg.bbs[bb].instructions.iter() {
+      match instr {
+         CfgInstruction::IfElse(condition, then, otherwise, merge) => {
+            do_emit_and_load_lval(*condition, generation_context);
+            if let Some(jo) = generation_context.stack_of_loop_jump_offsets.last_mut() {
+               *jo += 1;
+            }
+            generation_context
+               .active_fcn
+               .instruction(&Instruction::If(BlockType::Empty));
+            // then
+            emit_bb(cfg, *then, generation_context);
+            // else
+            generation_context.active_fcn.instruction(&Instruction::Else);
+            emit_bb(cfg, *otherwise, generation_context);
+            // finish if
+            generation_context.active_fcn.instruction(&Instruction::End);
+
+            if let Some(jo) = generation_context.stack_of_loop_jump_offsets.last_mut() {
+               *jo -= 1;
+            }
+
+            emit_bb(cfg, *merge, generation_context);
+
+            return;
+         }
+         CfgInstruction::Loop(entry, break_target) => {
+            generation_context.stack_of_loop_jump_offsets.push(0);
+            generation_context
+               .active_fcn
+               .instruction(&Instruction::Block(BlockType::Empty));
+            generation_context
+               .active_fcn
+               .instruction(&Instruction::Loop(BlockType::Empty));
+
+            emit_bb(cfg, *entry, generation_context);
+
+            generation_context.active_fcn.instruction(&Instruction::End); // end loop
+            generation_context.active_fcn.instruction(&Instruction::End); // end block
+            generation_context.stack_of_loop_jump_offsets.pop();
+
+            emit_bb(cfg, *break_target, generation_context);
+
+            return;
+         }
+         CfgInstruction::RolandStmt(s) => {
+            emit_statement(*s, generation_context);
+         }
+         CfgInstruction::ConditionalJump(_, _, _) | CfgInstruction::Jump(_) => (),
+      }
+   }
+}
+
 fn emit_statement(statement: StatementId, generation_context: &mut GenerationContext) {
    match &generation_context.ast.statements[statement].statement {
       Statement::Assignment(len, en) => {
@@ -835,28 +870,9 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
          }
       }
       Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
-      Statement::Block(bn) => {
-         for statement in bn.statements.iter().copied() {
-            emit_statement(statement, generation_context);
-         }
-      }
+      Statement::Block(_) => unreachable!(),
       Statement::For { .. } | Statement::While(_, _) => unreachable!(),
-      Statement::Loop(bn) => {
-         generation_context.stack_of_loop_jump_offsets.push(0);
-         generation_context
-            .active_fcn
-            .instruction(&Instruction::Block(BlockType::Empty));
-         generation_context
-            .active_fcn
-            .instruction(&Instruction::Loop(BlockType::Empty));
-         for statement in bn.statements.iter().copied() {
-            emit_statement(statement, generation_context);
-         }
-         generation_context.active_fcn.instruction(&Instruction::Br(0));
-         generation_context.active_fcn.instruction(&Instruction::End); // end loop
-         generation_context.active_fcn.instruction(&Instruction::End); // end block
-         generation_context.stack_of_loop_jump_offsets.pop();
-      }
+      Statement::Loop(_) => unreachable!(),
       Statement::Break => {
          generation_context.active_fcn.instruction(&Instruction::Br(
             1 + generation_context.stack_of_loop_jump_offsets.last().unwrap(),
@@ -878,27 +894,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
             generation_context.active_fcn.instruction(&Instruction::Drop);
          }
       }
-      Statement::IfElse(en, block_1, block_2) => {
-         do_emit_and_load_lval(*en, generation_context);
-         if let Some(jo) = generation_context.stack_of_loop_jump_offsets.last_mut() {
-            *jo += 1;
-         }
-         generation_context
-            .active_fcn
-            .instruction(&Instruction::If(BlockType::Empty));
-         // then
-         for statement in block_1.statements.iter().copied() {
-            emit_statement(statement, generation_context);
-         }
-         // else
-         generation_context.active_fcn.instruction(&Instruction::Else);
-         emit_statement(*block_2, generation_context);
-         // finish if
-         generation_context.active_fcn.instruction(&Instruction::End);
-         if let Some(jo) = generation_context.stack_of_loop_jump_offsets.last_mut() {
-            *jo -= 1;
-         }
-      }
+      Statement::IfElse(_, _, _) => unreachable!(),
       Statement::Return(en) => {
          do_emit_and_load_lval(*en, generation_context);
 

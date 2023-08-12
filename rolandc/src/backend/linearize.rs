@@ -3,19 +3,26 @@ use std::collections::HashSet;
 use arrayvec::ArrayVec;
 use slotmap::SecondaryMap;
 
+use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
 use crate::parse::{
-   AstPool, BlockNode, ExpressionId, ProcImplSource, ProcedureId, Statement, StatementId, StatementNode,
+   statement_always_returns, AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ProcImplSource, ProcedureId,
+   Statement, StatementId, StatementNode,
 };
+use crate::type_data::ExpressionType;
 use crate::Program;
 
 // TODO: This is pretty bulky. Ideally this would be size <= 8 for storage in the BB.
+#[derive(Clone)]
 pub enum CfgInstruction {
    RolandStmt(StatementId),
    ConditionalJump(ExpressionId, usize, usize),
    Jump(usize),
+   IfElse(ExpressionId, usize, usize, usize), // Condition, Then, Else, Merge
+   Loop(usize, usize),                        // Continue, Break
 }
 
+#[derive(Clone)]
 pub struct BasicBlock {
    pub instructions: Vec<CfgInstruction>,
    pub predecessors: HashSet<usize>,
@@ -34,6 +41,7 @@ impl BasicBlock {
             CfgInstruction::Jump(x) => {
                buf.push(*x);
             }
+            _ => unreachable!(),
          }
       }
 
@@ -44,6 +52,7 @@ impl BasicBlock {
 pub const CFG_START_NODE: usize = 0;
 pub const CFG_END_NODE: usize = 1;
 
+#[derive(Clone)]
 pub struct Cfg {
    pub bbs: Vec<BasicBlock>,
 }
@@ -80,7 +89,6 @@ fn simplify_cfg(cfg: &mut [BasicBlock], ast: &mut AstPool) {
             }
             let last_in_pred = cfg[pred].instructions.pop().unwrap();
             match last_in_pred {
-               CfgInstruction::RolandStmt(_) => unreachable!(),
                CfgInstruction::ConditionalJump(cond_expr, mut x, mut y) => {
                   if x == node {
                      did_something |= x != dest;
@@ -91,17 +99,13 @@ fn simplify_cfg(cfg: &mut [BasicBlock], ast: &mut AstPool) {
                      y = dest;
                   }
                   if x == y {
-                     // We do NOT skip doing this even if the expression doesn't have side effects
-                     // That's because as of the time of writing, this CFG does not replace the AST, it just lives next to it
-                     // I don't want the CFG to mismatch the AST, even in a semantic preserving way,
-                     // because we are going to generate code from this AST naively and so if we delete a use that impacts register allocation
-                     // something bad could happen or something. In the long term, we want the CFG generation to be a real thing in the compiler pipeline
-                     // that can do whatever it wants.
-                     let cond_stmt = ast.statements.insert(StatementNode {
-                        statement: Statement::Expression(cond_expr),
-                        location: ast.expressions[cond_expr].location,
-                     });
-                     cfg[pred].instructions.push(CfgInstruction::RolandStmt(cond_stmt));
+                     if expression_could_have_side_effects(cond_expr, &ast.expressions) {
+                        let cond_stmt = ast.statements.insert(StatementNode {
+                           statement: Statement::Expression(cond_expr),
+                           location: ast.expressions[cond_expr].location,
+                        });
+                        cfg[pred].instructions.push(CfgInstruction::RolandStmt(cond_stmt));
+                     }
                      cfg[pred].instructions.push(CfgInstruction::Jump(dest));
                   } else {
                      cfg[pred]
@@ -113,6 +117,7 @@ fn simplify_cfg(cfg: &mut [BasicBlock], ast: &mut AstPool) {
                   did_something |= x != dest;
                   cfg[pred].instructions.push(CfgInstruction::Jump(dest));
                }
+               _ => unreachable!(),
             }
             cfg[dest].predecessors.insert(pred);
             cfg[dest].predecessors.remove(&node);
@@ -166,11 +171,50 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool) -> 
       });
       ctx.current_block = CFG_START_NODE;
 
-      if !linearize_block(&mut ctx, body, &program.ast) {
-         ctx.bbs[ctx.current_block]
-            .instructions
-            .push(CfgInstruction::Jump(CFG_END_NODE));
-         ctx.bbs[CFG_END_NODE].predecessors.insert(ctx.current_block);
+      if !linearize_block(&mut ctx, body, &mut program.ast) {
+         let location = proc.1.location;
+         if body
+            .statements
+            .last()
+            .copied()
+            .map_or(false, |x| statement_always_returns(x, &program.ast))
+         {
+            if !matches!(
+               program.ast.statements[body.statements.last().copied().unwrap()].statement,
+               Statement::Return(_)
+            ) {
+               let return_expr = program.ast.expressions.insert(ExpressionNode {
+                  expression: Expression::UnitLiteral,
+                  exp_type: Some(ExpressionType::Never),
+                  location,
+               });
+               let return_stmt = program.ast.statements.insert(StatementNode {
+                  statement: Statement::Return(return_expr),
+                  location,
+               });
+               ctx.bbs[ctx.current_block]
+                  .instructions
+                  .push(CfgInstruction::RolandStmt(return_stmt));
+            }
+         } else {
+            let return_expr = program.ast.expressions.insert(ExpressionNode {
+               expression: Expression::UnitLiteral,
+               exp_type: Some(ExpressionType::Unit),
+               location,
+            });
+            let return_stmt = program.ast.statements.insert(StatementNode {
+               statement: Statement::Return(return_expr),
+               location,
+            });
+            ctx.bbs[ctx.current_block]
+               .instructions
+               .push(CfgInstruction::RolandStmt(return_stmt));
+
+            ctx.bbs[ctx.current_block]
+               .instructions
+               .push(CfgInstruction::Jump(CFG_END_NODE));
+            ctx.bbs[CFG_END_NODE].predecessors.insert(ctx.current_block);
+         }
       }
 
       simplify_cfg(&mut ctx.bbs, &mut program.ast);
@@ -225,7 +269,7 @@ fn post_order_inner(cfg: &[BasicBlock], node: usize, visited: &mut HashSet<usize
 }
 
 #[must_use]
-fn linearize_block(ctx: &mut Ctx, block: &BlockNode, ast: &AstPool) -> bool {
+fn linearize_block(ctx: &mut Ctx, block: &BlockNode, ast: &mut AstPool) -> bool {
    for stmt in block.statements.iter() {
       if linearize_stmt(ctx, *stmt, ast) {
          return true;
@@ -236,8 +280,10 @@ fn linearize_block(ctx: &mut Ctx, block: &BlockNode, ast: &AstPool) -> bool {
 }
 
 #[must_use]
-fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
-   match &ast.statements[stmt].statement {
+fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool) -> bool {
+   // TODO: dummy stmt?
+   let borrowed_stmt = std::mem::replace(&mut ast.statements[stmt].statement, Statement::Break);
+   let sealed = match &borrowed_stmt {
       Statement::IfElse(condition, consequent, alternative) => {
          let then_dest = ctx.bbs.len();
          let else_dest = then_dest + 1;
@@ -254,6 +300,12 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
             instructions: vec![],
             predecessors: HashSet::new(),
          });
+         ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::IfElse(
+            *condition,
+            then_dest,
+            else_dest,
+            afterwards_dest,
+         ));
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::ConditionalJump(*condition, then_dest, else_dest));
@@ -277,7 +329,8 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
          }
 
          ctx.current_block = afterwards_dest;
-         // TODO: push region labels?
+
+         false
       }
       Statement::Loop(bn) => {
          let old_cont_target = ctx.continue_target;
@@ -296,11 +349,22 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
 
          ctx.bbs[ctx.current_block]
             .instructions
+            .push(CfgInstruction::Loop(ctx.continue_target, ctx.break_target));
+
+         ctx.bbs[ctx.current_block]
+            .instructions
             .push(CfgInstruction::Jump(ctx.continue_target));
          ctx.bbs[ctx.continue_target].predecessors.insert(ctx.current_block);
          ctx.current_block = ctx.continue_target;
 
          if !linearize_block(ctx, bn, ast) {
+            let continue_stmt = ast.statements.insert(StatementNode {
+               statement: Statement::Continue,
+               location: ast.statements[stmt].location,
+            });
+            ctx.bbs[ctx.current_block]
+               .instructions
+               .push(CfgInstruction::RolandStmt(continue_stmt));
             ctx.bbs[ctx.current_block]
                .instructions
                .push(CfgInstruction::Jump(ctx.continue_target));
@@ -310,43 +374,48 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
 
          ctx.continue_target = old_cont_target;
          ctx.break_target = old_break_target;
+
+         false
       }
       Statement::Break => {
          ctx.bbs[ctx.current_block]
             .instructions
+            .push(CfgInstruction::RolandStmt(stmt));
+         ctx.bbs[ctx.current_block]
+            .instructions
             .push(CfgInstruction::Jump(ctx.break_target));
          ctx.bbs[ctx.break_target].predecessors.insert(ctx.current_block);
-         return true;
+         true
       }
       Statement::Continue => {
          ctx.bbs[ctx.current_block]
             .instructions
+            .push(CfgInstruction::RolandStmt(stmt));
+         ctx.bbs[ctx.current_block]
+            .instructions
             .push(CfgInstruction::Jump(ctx.continue_target));
          ctx.bbs[ctx.continue_target].predecessors.insert(ctx.current_block);
-         return true;
+         true
       }
-      Statement::Block(bn) => {
-         if linearize_block(ctx, bn, ast) {
-            return true;
-         }
-      }
+      Statement::Block(bn) => linearize_block(ctx, bn, ast),
       Statement::Return(_) => {
-         // TODO: is this a good representation?
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::RolandStmt(stmt));
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(CFG_END_NODE));
-         ctx.bbs[CFG_END_NODE].predecessors.insert(ctx.continue_target);
-         return true;
+         ctx.bbs[CFG_END_NODE].predecessors.insert(ctx.current_block);
+         true
       }
       _ => {
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::RolandStmt(stmt));
+         false
       }
-   }
+   };
+   ast.statements[stmt].statement = borrowed_stmt;
 
-   false
+   sealed
 }
