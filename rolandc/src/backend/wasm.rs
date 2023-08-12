@@ -12,8 +12,8 @@ use crate::backend::regalloc;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   statement_always_returns, AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureDefinition,
-   ProcedureId, Program, Statement, StatementId, UnOp, VariableId,
+   AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureDefinition, ProcedureId, Program,
+   Statement, StatementId, UnOp, VariableId,
 };
 use crate::semantic_analysis::{EnumInfo, GlobalKind, StructInfo};
 use crate::size_info::{
