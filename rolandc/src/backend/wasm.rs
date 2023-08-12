@@ -835,6 +835,8 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
             }
 
             emit_bb(cfg, *merge, generation_context);
+
+            return;
          },
          CfgInstruction::Loop(entry, break_target) => {
             generation_context.stack_of_loop_jump_offsets.push(0);
@@ -852,6 +854,8 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
             generation_context.stack_of_loop_jump_offsets.pop();
 
             emit_bb(cfg, *break_target, generation_context);
+
+            return;
          }
          CfgInstruction::RolandStmt(s) => {
             emit_statement(*s, generation_context);

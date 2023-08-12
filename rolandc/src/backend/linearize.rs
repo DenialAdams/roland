@@ -96,9 +96,7 @@ fn simplify_cfg(cfg: &mut [BasicBlock], ast: &mut AstPool) {
                      did_something |= y != dest;
                      y = dest;
                   }
-                  if x == y && cfg!(feature = "cfg_simplify_conditional_jumps") {
-                     // see side_effects_after_control_flow_simplification.rol for a test that fails if this branch were live
-                     // when we no longer have to preserve tree-like instructions in the IR for wasm codegen, we should turn this on
+                  if x == y {
                      if expression_could_have_side_effects(cond_expr, &ast.expressions) {
                         let cond_stmt = ast.statements.insert(StatementNode {
                            statement: Statement::Expression(cond_expr),
