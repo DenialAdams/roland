@@ -46,7 +46,7 @@ pub fn liveness(
             CfgInstruction::ConditionalJump(expr, _, _) => {
                gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, &var_to_dense);
             }
-            CfgInstruction::Jump(_) => (),
+            _ => (),
          }
       }
    }
@@ -106,7 +106,7 @@ pub fn liveness(
                   update_live_variables_for_expr(*expr, &mut current_live_variables, ast, &var_to_dense);
                   None
                }
-               CfgInstruction::Jump(_) => None,
+               _ => None,
             };
             all_liveness.insert(pi, current_live_variables.clone());
             if let Some(v) = var_to_kill {

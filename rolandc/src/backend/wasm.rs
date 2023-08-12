@@ -7,7 +7,7 @@ use wasm_encoder::{
    RefType, TableSection, TableType, TypeSection, ValType,
 };
 
-use super::linearize::{Cfg, CFG_START_NODE};
+use super::linearize::{Cfg, CFG_START_NODE, CfgInstruction};
 use crate::backend::regalloc;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
@@ -814,9 +814,8 @@ fn compare_type_alignment(
 fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
    for instr in cfg.bbs[bb].instructions.iter() {
       match instr {
-         super::linearize::CfgInstruction::RolandStmt(s) => emit_statement(*s, generation_context),
-         super::linearize::CfgInstruction::ConditionalJump(expr, then, otherwise) => {
-            do_emit_and_load_lval(*expr, generation_context);
+         CfgInstruction::IfElse(condition, then, otherwise, merge) => {
+            do_emit_and_load_lval(*condition, generation_context);
             if let Some(jo) = generation_context.stack_of_loop_jump_offsets.last_mut() {
                *jo += 1;
             }
@@ -830,15 +829,35 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
             emit_bb(cfg, *otherwise, generation_context);
             // finish if
             generation_context.active_fcn.instruction(&Instruction::End);
+
             if let Some(jo) = generation_context.stack_of_loop_jump_offsets.last_mut() {
                *jo -= 1;
             }
+
+            emit_bb(cfg, *merge, generation_context);
+         },
+         CfgInstruction::Loop(entry, break_target) => {
+            generation_context.stack_of_loop_jump_offsets.push(0);
+            generation_context
+               .active_fcn
+               .instruction(&Instruction::Block(BlockType::Empty));
+            generation_context
+               .active_fcn
+               .instruction(&Instruction::Loop(BlockType::Empty));
+   
+            emit_bb(cfg, *entry, generation_context);
+
+            generation_context.active_fcn.instruction(&Instruction::Br(0));
+            generation_context.active_fcn.instruction(&Instruction::End); // end loop
+            generation_context.active_fcn.instruction(&Instruction::End); // end block
+            generation_context.stack_of_loop_jump_offsets.pop();
+
+            emit_bb(cfg, *break_target, generation_context);
          }
-         super::linearize::CfgInstruction::Jump(dest) => {
-            // a return, break, or continue
-            // this should have been handled by virtue of the fact that we leave those around as roland statements
-            emit_bb(cfg, *dest, generation_context);
-         }
+         CfgInstruction::RolandStmt(s) => {
+            emit_statement(*s, generation_context);
+         },
+         CfgInstruction::ConditionalJump(_, _, _) | CfgInstruction::Jump(_) => (),
       }
    }
 }
@@ -874,22 +893,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
          }
       }
       Statement::For { .. } | Statement::While(_, _) => unreachable!(),
-      Statement::Loop(bn) => {
-         generation_context.stack_of_loop_jump_offsets.push(0);
-         generation_context
-            .active_fcn
-            .instruction(&Instruction::Block(BlockType::Empty));
-         generation_context
-            .active_fcn
-            .instruction(&Instruction::Loop(BlockType::Empty));
-         for statement in bn.statements.iter().copied() {
-            emit_statement(statement, generation_context);
-         }
-         generation_context.active_fcn.instruction(&Instruction::Br(0));
-         generation_context.active_fcn.instruction(&Instruction::End); // end loop
-         generation_context.active_fcn.instruction(&Instruction::End); // end block
-         generation_context.stack_of_loop_jump_offsets.pop();
-      }
+      Statement::Loop(_) => unreachable!(),
       Statement::Break => {
          generation_context.active_fcn.instruction(&Instruction::Br(
             1 + generation_context.stack_of_loop_jump_offsets.last().unwrap(),

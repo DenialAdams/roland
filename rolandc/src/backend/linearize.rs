@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use arrayvec::ArrayVec;
 use slotmap::SecondaryMap;
 
+use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
 use crate::parse::{
    AstPool, BlockNode, ExpressionId, ProcImplSource, ProcedureId, Statement, StatementId, StatementNode,
@@ -15,6 +16,8 @@ pub enum CfgInstruction {
    RolandStmt(StatementId),
    ConditionalJump(ExpressionId, usize, usize),
    Jump(usize),
+   IfElse(ExpressionId, usize, usize, usize), // Condition, Then, Else, Merge
+   Loop(usize, usize), // Continue, Break
 }
 
 #[derive(Clone)]
@@ -36,6 +39,7 @@ impl BasicBlock {
             CfgInstruction::Jump(x) => {
                buf.push(*x);
             }
+            _ => unreachable!(),
          }
       }
 
@@ -83,7 +87,6 @@ fn simplify_cfg(cfg: &mut [BasicBlock], ast: &mut AstPool) {
             }
             let last_in_pred = cfg[pred].instructions.pop().unwrap();
             match last_in_pred {
-               CfgInstruction::RolandStmt(_) => unreachable!(),
                CfgInstruction::ConditionalJump(cond_expr, mut x, mut y) => {
                   if x == node {
                      did_something |= x != dest;
@@ -93,18 +96,16 @@ fn simplify_cfg(cfg: &mut [BasicBlock], ast: &mut AstPool) {
                      did_something |= y != dest;
                      y = dest;
                   }
-                  if x == y {
-                     // We do NOT skip doing this even if the expression doesn't have side effects
-                     // That's because as of the time of writing, this CFG does not replace the AST, it just lives next to it
-                     // I don't want the CFG to mismatch the AST, even in a semantic preserving way,
-                     // because we are going to generate code from this AST naively and so if we delete a use that impacts register allocation
-                     // something bad could happen or something. In the long term, we want the CFG generation to be a real thing in the compiler pipeline
-                     // that can do whatever it wants.
-                     let cond_stmt = ast.statements.insert(StatementNode {
-                        statement: Statement::Expression(cond_expr),
-                        location: ast.expressions[cond_expr].location,
-                     });
-                     cfg[pred].instructions.push(CfgInstruction::RolandStmt(cond_stmt));
+                  if x == y && cfg!(feature = "cfg_simplify_conditional_jumps") {
+                     // see side_effects_after_control_flow_simplification.rol for a test that fails if this branch were live
+                     // when we no longer have to preserve tree-like instructions in the IR for wasm codegen, we should turn this on
+                     if expression_could_have_side_effects(cond_expr, &ast.expressions) {
+                        let cond_stmt = ast.statements.insert(StatementNode {
+                           statement: Statement::Expression(cond_expr),
+                           location: ast.expressions[cond_expr].location,
+                        });
+                        cfg[pred].instructions.push(CfgInstruction::RolandStmt(cond_stmt));
+                     }
                      cfg[pred].instructions.push(CfgInstruction::Jump(dest));
                   } else {
                      cfg[pred]
@@ -116,6 +117,7 @@ fn simplify_cfg(cfg: &mut [BasicBlock], ast: &mut AstPool) {
                   did_something |= x != dest;
                   cfg[pred].instructions.push(CfgInstruction::Jump(dest));
                }
+               _ => unreachable!(),
             }
             cfg[dest].predecessors.insert(pred);
             cfg[dest].predecessors.remove(&node);
@@ -259,6 +261,9 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
          });
          ctx.bbs[ctx.current_block]
             .instructions
+            .push(CfgInstruction::IfElse(*condition, then_dest, else_dest, afterwards_dest));
+         ctx.bbs[ctx.current_block]
+            .instructions
             .push(CfgInstruction::ConditionalJump(*condition, then_dest, else_dest));
          ctx.bbs[then_dest].predecessors.insert(ctx.current_block);
          ctx.bbs[else_dest].predecessors.insert(ctx.current_block);
@@ -280,7 +285,6 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
          }
 
          ctx.current_block = afterwards_dest;
-         // TODO: push region labels?
       }
       Statement::Loop(bn) => {
          let old_cont_target = ctx.continue_target;
@@ -296,6 +300,10 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
             instructions: vec![],
             predecessors: HashSet::new(),
          });
+
+         ctx.bbs[ctx.current_block]
+            .instructions
+            .push(CfgInstruction::Loop(ctx.continue_target, ctx.break_target));
 
          ctx.bbs[ctx.current_block]
             .instructions
