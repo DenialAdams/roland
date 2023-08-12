@@ -7,7 +7,7 @@ use wasm_encoder::{
    RefType, TableSection, TableType, TypeSection, ValType,
 };
 
-use super::linearize::{Cfg, CFG_START_NODE, CfgInstruction};
+use super::linearize::{Cfg, CfgInstruction, CFG_START_NODE};
 use crate::backend::regalloc;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
@@ -546,7 +546,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
    }
 
    for (proc_id, procedure) in program.procedures.iter() {
-      let ProcImplSource::Body(block) = &procedure.proc_impl else {
+      let Some(cfg) = program.cfg.get(proc_id) else {
          continue;
       };
       generation_context.active_fcn =
@@ -629,27 +629,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
          }
       }
 
-      let cfg = &program.cfg[proc_id];
       emit_bb(cfg, CFG_START_NODE, &mut generation_context);
-
-      // TODO ???
-      if block
-         .statements
-         .last()
-         .copied()
-         .map_or(false, |x| statement_always_returns(x, generation_context.ast))
-      {
-         // No need to adjust stack; it was done in the return statement
-         if !matches!(
-            generation_context.ast.statements[block.statements.last().copied().unwrap()].statement,
-            Statement::Return(_)
-         ) {
-            // Roland can be smarter than WASM permits, hence we make this explicit to avoid tripping stack violations
-            generation_context.active_fcn.instruction(&Instruction::Unreachable);
-         }
-      } else {
-         adjust_stack_function_exit(&mut generation_context);
-      }
 
       generation_context.active_fcn.instruction(&Instruction::End);
 
@@ -837,7 +817,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
             emit_bb(cfg, *merge, generation_context);
 
             return;
-         },
+         }
          CfgInstruction::Loop(entry, break_target) => {
             generation_context.stack_of_loop_jump_offsets.push(0);
             generation_context
@@ -846,7 +826,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
             generation_context
                .active_fcn
                .instruction(&Instruction::Loop(BlockType::Empty));
-   
+
             emit_bb(cfg, *entry, generation_context);
 
             generation_context.active_fcn.instruction(&Instruction::End); // end loop
@@ -859,7 +839,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
          }
          CfgInstruction::RolandStmt(s) => {
             emit_statement(*s, generation_context);
-         },
+         }
          CfgInstruction::ConditionalJump(_, _, _) | CfgInstruction::Jump(_) => (),
       }
    }

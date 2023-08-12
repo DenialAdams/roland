@@ -102,8 +102,7 @@ pub fn liveness(
                CfgInstruction::RolandStmt(stmt) => {
                   update_live_variables_for_stmt(*stmt, &mut current_live_variables, ast, &var_to_dense)
                }
-               CfgInstruction::IfElse(expr, _, _, _) |
-               CfgInstruction::ConditionalJump(expr, _, _) => {
+               CfgInstruction::IfElse(expr, _, _, _) | CfgInstruction::ConditionalJump(expr, _, _) => {
                   update_live_variables_for_expr(*expr, &mut current_live_variables, ast, &var_to_dense);
                   None
                }
