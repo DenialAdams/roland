@@ -17,7 +17,7 @@ pub enum CfgInstruction {
    ConditionalJump(ExpressionId, usize, usize),
    Jump(usize),
    IfElse(ExpressionId, usize, usize, usize), // Condition, Then, Else, Merge
-   Loop(usize, usize), // Continue, Break
+   Loop(usize, usize),                        // Continue, Break
 }
 
 #[derive(Clone)]
@@ -171,7 +171,7 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool) -> 
       });
       ctx.current_block = CFG_START_NODE;
 
-      if !linearize_block(&mut ctx, body, &program.ast) {
+      if !linearize_block(&mut ctx, body, &mut program.ast) {
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(CFG_END_NODE));
@@ -230,7 +230,7 @@ fn post_order_inner(cfg: &[BasicBlock], node: usize, visited: &mut HashSet<usize
 }
 
 #[must_use]
-fn linearize_block(ctx: &mut Ctx, block: &BlockNode, ast: &AstPool) -> bool {
+fn linearize_block(ctx: &mut Ctx, block: &BlockNode, ast: &mut AstPool) -> bool {
    for stmt in block.statements.iter() {
       if linearize_stmt(ctx, *stmt, ast) {
          return true;
@@ -241,8 +241,10 @@ fn linearize_block(ctx: &mut Ctx, block: &BlockNode, ast: &AstPool) -> bool {
 }
 
 #[must_use]
-fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
-   match &ast.statements[stmt].statement {
+fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool) -> bool {
+   // TODO: dummy stmt?
+   let borrowed_stmt = std::mem::replace(&mut ast.statements[stmt].statement, Statement::Break);
+   let sealed = match &borrowed_stmt {
       Statement::IfElse(condition, consequent, alternative) => {
          let then_dest = ctx.bbs.len();
          let else_dest = then_dest + 1;
@@ -259,9 +261,12 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
             instructions: vec![],
             predecessors: HashSet::new(),
          });
-         ctx.bbs[ctx.current_block]
-            .instructions
-            .push(CfgInstruction::IfElse(*condition, then_dest, else_dest, afterwards_dest));
+         ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::IfElse(
+            *condition,
+            then_dest,
+            else_dest,
+            afterwards_dest,
+         ));
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::ConditionalJump(*condition, then_dest, else_dest));
@@ -285,6 +290,8 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
          }
 
          ctx.current_block = afterwards_dest;
+
+         false
       }
       Statement::Loop(bn) => {
          let old_cont_target = ctx.continue_target;
@@ -312,7 +319,13 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
          ctx.current_block = ctx.continue_target;
 
          if !linearize_block(ctx, bn, ast) {
-            // nocheckin: need a "continue" marker here for the backend to consume
+            let continue_stmt = ast.statements.insert(StatementNode {
+               statement: Statement::Continue,
+               location: ast.statements[stmt].location,
+            });
+            ctx.bbs[ctx.current_block]
+               .instructions
+               .push(CfgInstruction::RolandStmt(continue_stmt));
             ctx.bbs[ctx.current_block]
                .instructions
                .push(CfgInstruction::Jump(ctx.continue_target));
@@ -322,6 +335,8 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
 
          ctx.continue_target = old_cont_target;
          ctx.break_target = old_break_target;
+
+         false
       }
       Statement::Break => {
          ctx.bbs[ctx.current_block]
@@ -331,7 +346,7 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
             .instructions
             .push(CfgInstruction::Jump(ctx.break_target));
          ctx.bbs[ctx.break_target].predecessors.insert(ctx.current_block);
-         return true;
+         true
       }
       Statement::Continue => {
          ctx.bbs[ctx.current_block]
@@ -341,13 +356,9 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
             .instructions
             .push(CfgInstruction::Jump(ctx.continue_target));
          ctx.bbs[ctx.continue_target].predecessors.insert(ctx.current_block);
-         return true;
+         true
       }
-      Statement::Block(bn) => {
-         if linearize_block(ctx, bn, ast) {
-            return true;
-         }
-      }
+      Statement::Block(bn) => linearize_block(ctx, bn, ast),
       Statement::Return(_) => {
          ctx.bbs[ctx.current_block]
             .instructions
@@ -355,15 +366,17 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &AstPool) -> bool {
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(CFG_END_NODE));
-         ctx.bbs[CFG_END_NODE].predecessors.insert(ctx.continue_target);
-         return true;
+         ctx.bbs[CFG_END_NODE].predecessors.insert(ctx.current_block);
+         true
       }
       _ => {
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::RolandStmt(stmt));
+         false
       }
-   }
+   };
+   ast.statements[stmt].statement = borrowed_stmt;
 
-   false
+   sealed
 }

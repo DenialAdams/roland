@@ -4,6 +4,7 @@ proc main() {
     //c();
     //d();
     e();
+    f();
     println("ok");
 }
 

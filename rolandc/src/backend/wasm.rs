@@ -632,7 +632,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       let cfg = &program.cfg[proc_id];
       emit_bb(cfg, CFG_START_NODE, &mut generation_context);
 
-      // nocheckin decide what to do with this
+      // TODO ???
       if block
          .statements
          .last()
@@ -847,7 +847,6 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
    
             emit_bb(cfg, *entry, generation_context);
 
-            generation_context.active_fcn.instruction(&Instruction::Br(0));
             generation_context.active_fcn.instruction(&Instruction::End); // end loop
             generation_context.active_fcn.instruction(&Instruction::End); // end block
             generation_context.stack_of_loop_jump_offsets.pop();

@@ -38,7 +38,6 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
       let all_registers = result.procedure_registers.get_mut(proc_id).unwrap();
       let mut total_registers = 0;
 
-
       let ProcImplSource::Body(block) = &procedure.proc_impl else {
          continue;
       };
