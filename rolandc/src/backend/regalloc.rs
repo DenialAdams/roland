@@ -90,12 +90,6 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
             continue;
          }
 
-         if program.global_info.contains_key(var) {
-            // var is a global, so lacking any inter-procedural analysis we must consider it live for the whole program
-            // (handled below)
-            continue;
-         }
-
          if escaping_vars.contains(var) {
             // address is observed, variable must live on the stack
             continue;
