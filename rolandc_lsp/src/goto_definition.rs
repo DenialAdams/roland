@@ -50,12 +50,10 @@ pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationCon
 
       if let ExpressionType::Unresolved(id) = parsed_type.e_type.get_type_or_type_being_pointed_to() {
          // These nodes should never be resolved
-         return ctx
-            .program
-            .struct_info
-            .get(id)
-            .map(|x| x.location)
-            .or_else(|| ctx.program.enum_info.get(id).map(|x| x.location));
+         return None
+            .or_else(|| ctx.program.user_defined_types.struct_info.get(id).map(|x| x.location))
+            .or_else(|| ctx.program.user_defined_types.enum_info.get(id).map(|x| x.location))
+            .or_else(|| ctx.program.user_defined_types.union_info.get(id).map(|x| x.location));
       }
    }
 

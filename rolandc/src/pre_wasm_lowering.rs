@@ -73,30 +73,36 @@ fn lower_single_expression(expression_node: &mut ExpressionNode, enum_info: &Ind
 
 pub fn lower_enums_and_pointers(program: &mut Program) {
    for e in program.ast.expressions.values_mut() {
-      lower_single_expression(e, &program.enum_info);
+      lower_single_expression(e, &program.user_defined_types.enum_info);
    }
 
-   // We omit lowering the types in program.structs and program.statics,
-   // as they should no longer be read.
-
-   for struct_info in program.struct_info.iter_mut() {
+   for struct_info in program.user_defined_types.struct_info.iter_mut() {
       for field_type in struct_info.1.field_types.values_mut() {
-         lower_type(&mut field_type.e_type, &program.enum_info);
+         lower_type(&mut field_type.e_type, &program.user_defined_types.enum_info);
+      }
+   }
+
+   for union_info in program.user_defined_types.union_info.iter_mut() {
+      for field_type in union_info.1.field_types.values_mut() {
+         lower_type(&mut field_type.e_type, &program.user_defined_types.enum_info);
       }
    }
 
    for procedure in program.procedures.values_mut() {
-      lower_type(&mut procedure.definition.ret_type.e_type, &program.enum_info);
+      lower_type(
+         &mut procedure.definition.ret_type.e_type,
+         &program.user_defined_types.enum_info,
+      );
       for param in procedure.definition.parameters.iter_mut() {
-         lower_type(&mut param.p_type.e_type, &program.enum_info);
+         lower_type(&mut param.p_type.e_type, &program.user_defined_types.enum_info);
       }
       for var_type in procedure.locals.values_mut() {
-         lower_type(var_type, &program.enum_info);
+         lower_type(var_type, &program.user_defined_types.enum_info);
       }
    }
 
    for a_global in program.global_info.iter_mut() {
-      lower_type(&mut a_global.1.expr_type.e_type, &program.enum_info);
+      lower_type(&mut a_global.1.expr_type.e_type, &program.user_defined_types.enum_info);
    }
 }
 

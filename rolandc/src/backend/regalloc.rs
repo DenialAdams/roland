@@ -69,7 +69,7 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
          let typ = &param.p_type.e_type;
 
          t_buf.clear();
-         type_to_wasm_type(typ, &mut t_buf, &program.struct_info);
+         type_to_wasm_type(typ, &mut t_buf, &program.user_defined_types.struct_info);
 
          let reg = total_registers;
          total_registers += t_buf.len() as u32;
@@ -100,7 +100,7 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
             type_to_wasm_type(
                procedure.locals.get(&expired_var).unwrap(),
                &mut t_buf,
-               &program.struct_info,
+               &program.user_defined_types.struct_info,
             );
             for (t_val, reg) in t_buf.drain(..).zip(result.var_to_reg.get(&expired_var).unwrap()) {
                free_registers.entry(t_val).or_default().push(*reg);
@@ -108,7 +108,11 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
          }
 
          t_buf.clear();
-         type_to_wasm_type(procedure.locals.get(var).unwrap(), &mut t_buf, &program.struct_info);
+         type_to_wasm_type(
+            procedure.locals.get(var).unwrap(),
+            &mut t_buf,
+            &program.user_defined_types.struct_info,
+         );
 
          let mut var_registers = Vec::with_capacity(t_buf.len());
          for t_val in t_buf.drain(..) {
@@ -144,7 +148,7 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
       }
 
       t_buf.clear();
-      type_to_wasm_type(&global.1.expr_type.e_type, &mut t_buf, &program.struct_info);
+      type_to_wasm_type(&global.1.expr_type.e_type, &mut t_buf, &program.user_defined_types.struct_info);
 
       let reg = num_global_registers;
       num_global_registers += t_buf.len() as u32;

@@ -76,6 +76,7 @@ pub enum ExpressionType {
    Bool,
    Unit,
    Struct(StrId),
+   Union(StrId),
    Array(Box<ExpressionType>, u32),
    Pointer(Box<ExpressionType>),
    CompileError,

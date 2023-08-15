@@ -5,7 +5,7 @@ use slotmap::SecondaryMap;
 
 use self::type_variables::TypeVariableManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{AstPool, ExpressionId, ExpressionTypeNode, ProcedureId, StrNode, VariableId};
+use crate::parse::{AstPool, ExpressionId, ExpressionTypeNode, ProcedureId, StrNode, UserDefinedTypeInfo, VariableId};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
@@ -42,6 +42,12 @@ pub struct StructInfo {
    pub location: SourceInfo,
 }
 
+#[derive(Clone)]
+pub struct UnionInfo {
+   pub field_types: IndexMap<StrId, ExpressionTypeNode>,
+   pub location: SourceInfo,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum GlobalKind {
    Static,
@@ -75,8 +81,7 @@ pub struct ValidationContext<'a> {
    pub target: Target,
    pub procedure_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
    pub proc_name_table: &'a HashMap<StrId, ProcedureId>,
-   pub enum_info: &'a IndexMap<StrId, EnumInfo>,
-   pub struct_info: &'a IndexMap<StrId, StructInfo>,
+   pub user_defined_types: &'a UserDefinedTypeInfo,
    pub global_info: &'a IndexMap<VariableId, GlobalInfo>,
    pub cur_procedure_info: Option<&'a ProcedureInfo>,
    pub variable_types: IndexMap<StrId, VariableDetails>,

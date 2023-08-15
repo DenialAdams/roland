@@ -6,6 +6,6 @@ proc main() {
 }
 __END__
 compile:
-Enum and struct share the same name `Foo`
-↳ enum defined @ line 2, column 1 [tests/conflicting_definitions/enum_struct_same_name.rol]
-↳ struct defined @ line 1, column 1 [tests/conflicting_definitions/enum_struct_same_name.rol]
+Encountered duplicate types with the same name `Foo`
+↳ first type defined @ line 2, column 1 [tests/conflicting_definitions/enum_struct_same_name.rol]
+↳ second type defined @ line 1, column 1 [tests/conflicting_definitions/enum_struct_same_name.rol]

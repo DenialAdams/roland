@@ -7,7 +7,7 @@ use slotmap::SecondaryMap;
 
 use super::type_inference::try_set_inferred_type;
 use super::type_variables::{TypeConstraint, TypeVariableManager};
-use super::{GlobalKind, ProcedureInfo, StructInfo, ValidationContext, VariableDetails, VariableKind};
+use super::{GlobalKind, ProcedureInfo, ValidationContext, VariableDetails, VariableKind};
 use crate::error_handling::error_handling_macros::{
    rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn,
 };
@@ -15,9 +15,9 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    statement_always_returns, ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode,
-   ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId, StrNode, UnOp, VariableId,
+   ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId, StrNode, UnOp,
+   UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::EnumInfo;
 use crate::size_info::{calculate_struct_size_info, mem_alignment, sizeof_type_mem};
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, IntType, F32_TYPE, F64_TYPE, I32_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE};
@@ -146,12 +146,11 @@ fn any_match(type_validations: &[TypeValidator], et: &ExpressionType, validation
 
 pub fn resolve_type(
    v_type: &mut ExpressionType,
-   ei: &IndexMap<StrId, EnumInfo>,
-   si: &IndexMap<StrId, StructInfo>,
+   udt: &UserDefinedTypeInfo,
    type_params: Option<&IndexMap<StrId, IndexSet<StrId>>>,
 ) -> Result<(), ()> {
    match v_type {
-      ExpressionType::Pointer(vt) => resolve_type(vt, ei, si, type_params),
+      ExpressionType::Pointer(vt) => resolve_type(vt, udt, type_params),
       ExpressionType::Never => Ok(()),
       ExpressionType::Unknown(_) => Ok(()),
       ExpressionType::Int(_) => Ok(()),
@@ -159,7 +158,8 @@ pub fn resolve_type(
       ExpressionType::Bool => Ok(()),
       ExpressionType::Unit => Ok(()),
       ExpressionType::Struct(_) => Ok(()),
-      ExpressionType::Array(exp, _) => resolve_type(exp, ei, si, type_params),
+      ExpressionType::Union(_) => Ok(()),
+      ExpressionType::Array(exp, _) => resolve_type(exp, udt, type_params),
       ExpressionType::CompileError => Ok(()),
       ExpressionType::Enum(_) => Ok(()),
       ExpressionType::ProcedurePointer {
@@ -168,9 +168,9 @@ pub fn resolve_type(
       } => {
          let mut failed_to_resolve = false;
          for parameter in parameters.iter_mut() {
-            failed_to_resolve |= resolve_type(parameter, ei, si, type_params).is_err();
+            failed_to_resolve |= resolve_type(parameter, udt, type_params).is_err();
          }
-         failed_to_resolve |= resolve_type(ret_val, ei, si, type_params).is_err();
+         failed_to_resolve |= resolve_type(ret_val, udt, type_params).is_err();
          if failed_to_resolve {
             Err(())
          } else {
@@ -180,11 +180,14 @@ pub fn resolve_type(
       ExpressionType::GenericParam(_) => Ok(()),
       ExpressionType::ProcedureItem(_, _) => Ok(()), // This type contains other types, but this type itself can never be written down. It should always be valid
       ExpressionType::Unresolved(x) => {
-         if ei.contains_key(x) {
+         if udt.enum_info.contains_key(x) {
             *v_type = ExpressionType::Enum(*x);
             Ok(())
-         } else if si.contains_key(x) {
+         } else if udt.struct_info.contains_key(x) {
             *v_type = ExpressionType::Struct(*x);
+            Ok(())
+         } else if udt.union_info.contains_key(x) {
+            *v_type = todo!();
             Ok(())
          } else if type_params.map_or(false, |tp| tp.contains_key(x)) {
             *v_type = ExpressionType::GenericParam(*x);
@@ -207,8 +210,7 @@ pub fn type_and_check_validity(
       variable_types: IndexMap::new(),
       procedure_info: &program.procedure_info,
       proc_name_table: &program.procedure_name_table,
-      enum_info: &program.enum_info,
-      struct_info: &program.struct_info,
+      user_defined_types: &program.user_defined_types,
       global_info: &program.global_info,
       cur_procedure_info: None,
       loop_depth: 0,
@@ -323,12 +325,12 @@ pub fn type_and_check_validity(
 
    validation_context
       .struct_size_info
-      .reserve(validation_context.struct_info.len());
-   for s in validation_context.struct_info.iter() {
+      .reserve(validation_context.user_defined_types.struct_info.len());
+   for s in validation_context.user_defined_types.struct_info.iter() {
       calculate_struct_size_info(
          *s.0,
-         validation_context.enum_info,
-         validation_context.struct_info,
+         &validation_context.user_defined_types.enum_info,
+         &validation_context.user_defined_types.struct_info,
          &mut validation_context.struct_size_info,
       );
 
@@ -755,8 +757,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             // Failure to resolve is handled below
             let _ = resolve_type(
                &mut v.e_type,
-               validation_context.enum_info,
-               validation_context.struct_info,
+               validation_context.user_defined_types,
                validation_context.cur_procedure_info.map(|x| &x.type_parameters),
             );
             if let Some(enid) = opt_enid {
@@ -900,8 +901,7 @@ fn type_expression(
       Expression::Cast { target_type, .. } => {
          if resolve_type(
             target_type,
-            validation_context.enum_info,
-            validation_context.struct_info,
+            validation_context.user_defined_types,
             validation_context.cur_procedure_info.map(|x| &x.type_parameters),
          )
          .is_err()
@@ -940,8 +940,7 @@ fn type_expression(
          for g_arg in g_args.iter_mut() {
             if resolve_type(
                &mut g_arg.e_type,
-               validation_context.enum_info,
-               validation_context.struct_info,
+               validation_context.user_defined_types,
                validation_context.cur_procedure_info.map(|x| &x.type_parameters),
             )
             .is_err()
@@ -1037,7 +1036,14 @@ fn get_type(
                try_set_inferred_type(&U32_TYPE, *expr_id, validation_context);
             } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Enum(_)) {
                let enum_base_type = match target_type {
-                  ExpressionType::Enum(x) => &validation_context.enum_info.get(x).unwrap().base_type,
+                  ExpressionType::Enum(x) => {
+                     &validation_context
+                        .user_defined_types
+                        .enum_info
+                        .get(x)
+                        .unwrap()
+                        .base_type
+                  }
                   _ => unreachable!(),
                };
                try_set_inferred_type(enum_base_type, *expr_id, validation_context);
@@ -1101,12 +1107,12 @@ fn get_type(
 
                let size_source = sizeof_type_mem(
                   e_type,
-                  validation_context.enum_info,
+                  &validation_context.user_defined_types.enum_info,
                   &validation_context.struct_size_info,
                );
                let size_target = sizeof_type_mem(
                   target_type,
-                  validation_context.enum_info,
+                  &validation_context.user_defined_types.enum_info,
                   &validation_context.struct_size_info,
                );
 
@@ -1120,12 +1126,12 @@ fn get_type(
                } else if size_source == size_target {
                   let alignment_source = mem_alignment(
                      e_type.get_type_or_type_being_pointed_to(),
-                     validation_context.enum_info,
+                     &validation_context.user_defined_types.enum_info,
                      &validation_context.struct_size_info,
                   );
                   let alignment_target = mem_alignment(
                      target_type.get_type_or_type_being_pointed_to(),
-                     validation_context.enum_info,
+                     &validation_context.user_defined_types.enum_info,
                      &validation_context.struct_size_info,
                   );
 
@@ -1422,7 +1428,7 @@ fn get_type(
             type_expression(err_manager, field_val, validation_context);
          }
 
-         match validation_context.struct_info.get(&struct_name.str) {
+         match validation_context.user_defined_types.struct_info.get(&struct_name.str) {
             Some(defined_struct) => {
                validation_context
                   .source_to_definition
@@ -1599,7 +1605,12 @@ fn get_type(
             let field = remaining_fields[0];
             match lhs_type {
                ExpressionType::Struct(struct_name) => {
-                  let struct_fields = &validation_context.struct_info.get(&struct_name).unwrap().field_types;
+                  let struct_fields = &validation_context
+                     .user_defined_types
+                     .struct_info
+                     .get(&struct_name)
+                     .unwrap()
+                     .field_types;
                   if let Some(new_t_node) = struct_fields.get(&field) {
                      lhs_type = new_t_node.e_type.clone();
                   } else {
@@ -1791,7 +1802,7 @@ fn get_type(
          }
       }
       Expression::EnumLiteral(x, v) => {
-         if let Some(enum_info) = validation_context.enum_info.get(&x.str) {
+         if let Some(enum_info) = validation_context.user_defined_types.enum_info.get(&x.str) {
             validation_context
                .source_to_definition
                .insert(x.location, enum_info.location);

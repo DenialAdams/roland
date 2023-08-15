@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::ops::{BitAnd, BitOr, BitXor};
 
-use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_warn};
@@ -10,9 +9,9 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    AstPool, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcImplSource,
-   ProcedureId, Program, Statement, StatementId, UnOp, VariableId,
+   ProcedureId, Program, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::{EnumInfo, ProcedureInfo, StructInfo};
+use crate::semantic_analysis::ProcedureInfo;
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::{
@@ -23,9 +22,8 @@ use crate::type_data::{
 pub struct FoldingContext<'a> {
    pub ast: &'a mut AstPool,
    pub procedure_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
-   pub struct_info: &'a IndexMap<StrId, StructInfo>,
+   pub user_defined_types: &'a UserDefinedTypeInfo,
    pub struct_size_info: &'a HashMap<StrId, SizeInfo>,
-   pub enum_info: &'a IndexMap<StrId, EnumInfo>,
    pub const_replacements: &'a HashMap<VariableId, ExpressionId>,
    pub current_proc_name: Option<StrId>,
 }
@@ -40,9 +38,8 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
    let mut folding_context = FoldingContext {
       ast: &mut program.ast,
       procedure_info: &program.procedure_info,
-      struct_info: &program.struct_info,
+      user_defined_types: &program.user_defined_types,
       struct_size_info: &program.struct_union_size_info,
-      enum_info: &program.enum_info,
       const_replacements: &const_replacements,
       current_proc_name: None,
    };
@@ -62,7 +59,7 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
       }
    }
 
-   for si in program.struct_info.iter() {
+   for si in program.user_defined_types.struct_info.iter() {
       for field_with_default in si.1.default_values.iter() {
          try_fold_and_replace_expr(*field_with_default.1, err_manager, &mut folding_context, interner);
          let v = &folding_context.ast.expressions[*field_with_default.1];
@@ -660,6 +657,7 @@ fn fold_expr_inner(
                   match next_exp_type {
                      ExpressionType::Struct(s) => {
                         next_exp_type = &folding_context
+                           .user_defined_types
                            .struct_info
                            .get(s)
                            .unwrap()
@@ -767,7 +765,8 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
    match interner.lookup(proc_name) {
       "proc_name" => fc.current_proc_name.map(Expression::StringLiteral),
       "sizeof" => {
-         let type_size = crate::size_info::sizeof_type_mem(&generic_args[0], fc.enum_info, fc.struct_size_info);
+         let type_size =
+            crate::size_info::sizeof_type_mem(&generic_args[0], &fc.user_defined_types.enum_info, fc.struct_size_info);
 
          Some(Expression::IntLiteral {
             val: u64::from(type_size),
@@ -775,7 +774,8 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
          })
       }
       "alignof" => {
-         let type_alignment = crate::size_info::mem_alignment(&generic_args[0], fc.enum_info, fc.struct_size_info);
+         let type_alignment =
+            crate::size_info::mem_alignment(&generic_args[0], &fc.user_defined_types.enum_info, fc.struct_size_info);
 
          Some(Expression::IntLiteral {
             val: u64::from(type_alignment),
@@ -784,7 +784,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
       }
       "num_variants" => {
          let num_variants = match generic_args[0] {
-            ExpressionType::Enum(enum_name) => fc.enum_info.get(&enum_name).unwrap().variants.len(),
+            ExpressionType::Enum(enum_name) => fc.user_defined_types.enum_info.get(&enum_name).unwrap().variants.len(),
             _ => unreachable!(),
          };
 

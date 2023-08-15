@@ -10,7 +10,7 @@ use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
 use crate::lex::Lexer;
-use crate::semantic_analysis::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo};
+use crate::semantic_analysis::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo, UnionInfo};
 use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
@@ -342,15 +342,23 @@ new_key_type! { pub struct StaticId; }
 new_key_type! { pub struct ProcedureId; }
 
 #[derive(Clone)]
+pub struct UserDefinedTypeInfo {
+   pub enum_info: IndexMap<StrId, EnumInfo>,
+   pub struct_info: IndexMap<StrId, StructInfo>,
+   pub union_info: IndexMap<StrId, UnionInfo>,
+}
+
+#[derive(Clone)]
 pub struct Program {
+   pub ast: AstPool,
+
    // These fields are populated by the parser
    pub procedures: SlotMap<ProcedureId, ProcedureNode>,
-   pub enums: Vec<EnumNode>,
-   pub structs: Vec<StructNode>,
-   pub unions: Vec<UnionNode>,
-   pub consts: Vec<ConstNode>,
-   pub statics: Vec<StaticNode>,
-   pub ast: AstPool,
+   pub enums: Vec<EnumNode>,     // killed during info population
+   pub structs: Vec<StructNode>, // killed during info population
+   pub unions: Vec<UnionNode>,   // killed during info population
+   pub statics: Vec<StaticNode>, // killed during info population
+   pub consts: Vec<ConstNode>,   // killed after AST constant folding
 
    // (only read by the language server)
    pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
@@ -358,15 +366,14 @@ pub struct Program {
 
    // These fields are populated during semantic analysis
    pub literals: IndexSet<StrId>,
-   pub enum_info: IndexMap<StrId, EnumInfo>,
-   pub struct_info: IndexMap<StrId, StructInfo>,
    pub global_info: IndexMap<VariableId, GlobalInfo>,
    pub procedure_info: SecondaryMap<ProcedureId, ProcedureInfo>,
    pub procedure_name_table: HashMap<StrId, ProcedureId>, // TODO: this doesn't need to live on Program
    pub struct_union_size_info: HashMap<StrId, SizeInfo>,
+   pub user_defined_types: UserDefinedTypeInfo,
    pub next_variable: VariableId,
 
-   // Finally, the CFG representation of the program is built late in the pipeline
+   // Finally, the CFG representation of the program is built and used in the backend
    pub cfg: ProgramCfg,
 }
 
@@ -397,8 +404,11 @@ impl Program {
          statics: Vec::new(),
          parsed_types: Vec::new(),
          literals: IndexSet::new(),
-         enum_info: IndexMap::new(),
-         struct_info: IndexMap::new(),
+         user_defined_types: UserDefinedTypeInfo {
+            enum_info: IndexMap::new(),
+            struct_info: IndexMap::new(),
+            union_info: IndexMap::new(),
+         },
          global_info: IndexMap::new(),
          procedure_info: SecondaryMap::new(),
          procedure_name_table: HashMap::new(),
@@ -422,8 +432,9 @@ impl Program {
       self.statics.clear();
       self.parsed_types.clear();
       self.literals.clear();
-      self.enum_info.clear();
-      self.struct_info.clear();
+      self.user_defined_types.enum_info.clear();
+      self.user_defined_types.struct_info.clear();
+      self.user_defined_types.union_info.clear();
       self.global_info.clear();
       reset_secondarymap(&mut self.procedure_info);
       self.procedure_name_table.clear();
@@ -783,11 +794,7 @@ fn parse_struct(
    })
 }
 
-fn parse_union(
-   l: &mut Lexer,
-   parse_context: &mut ParseContext,
-   source_info: SourceInfo,
-) -> Result<UnionNode, ()> {
+fn parse_union(l: &mut Lexer, parse_context: &mut ParseContext, source_info: SourceInfo) -> Result<UnionNode, ()> {
    let struct_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
    expect(l, parse_context, Token::OpenBrace)?;
    let mut fields: Vec<(StrId, ExpressionTypeNode)> = vec![];
@@ -821,7 +828,6 @@ fn parse_union(
       location: merge_locations(source_info, close_brace.source_info),
    })
 }
-
 
 fn parse_enum(l: &mut Lexer, parse_context: &mut ParseContext, source_info: SourceInfo) -> Result<EnumNode, ()> {
    let enum_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
