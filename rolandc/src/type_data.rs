@@ -195,6 +195,7 @@ impl ExpressionType {
          | ExpressionType::Unit
          | ExpressionType::Never
          | ExpressionType::Struct(_)
+         | ExpressionType::Union(_)
          | ExpressionType::ProcedureItem(_, _)
          | ExpressionType::ProcedurePointer { .. }
          | ExpressionType::Enum(_) => true,
@@ -288,6 +289,7 @@ impl ExpressionType {
             Cow::Borrowed("String")
          }
          ExpressionType::Struct(x) => Cow::Owned(format!("Struct {}", interner.lookup(*x))),
+         ExpressionType::Union(x) => Cow::Owned(format!("Struct {}", interner.lookup(*x))),
          ExpressionType::Enum(x) => Cow::Owned(format!("Enum {}", interner.lookup(*x))),
          ExpressionType::Array(i_type, length) => Cow::Owned(format!(
             "[{}; {}]",
@@ -372,6 +374,7 @@ impl ExpressionType {
          ExpressionType::Never => Cow::Borrowed("!"),
          ExpressionType::CompileError => Cow::Borrowed("ERROR"),
          ExpressionType::Struct(x) => Cow::Borrowed(interner.lookup(*x)),
+         ExpressionType::Union(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::Enum(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::Array(i_type, length) => Cow::Owned(format!(
             "[{}; {}]",
