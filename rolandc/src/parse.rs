@@ -93,6 +93,13 @@ pub struct StructNode {
 }
 
 #[derive(Clone)]
+pub struct UnionNode {
+   pub name: StrId,
+   pub fields: Vec<(StrId, ExpressionTypeNode)>,
+   pub location: SourceInfo,
+}
+
+#[derive(Clone)]
 pub struct EnumNode {
    pub name: StrId,
    pub requested_size: Option<ExpressionTypeNode>,
@@ -337,9 +344,10 @@ new_key_type! { pub struct ProcedureId; }
 #[derive(Clone)]
 pub struct Program {
    // These fields are populated by the parser
-   pub enums: Vec<EnumNode>,
    pub procedures: SlotMap<ProcedureId, ProcedureNode>,
+   pub enums: Vec<EnumNode>,
    pub structs: Vec<StructNode>,
+   pub unions: Vec<UnionNode>,
    pub consts: Vec<ConstNode>,
    pub statics: Vec<StaticNode>,
    pub ast: AstPool,
@@ -355,7 +363,7 @@ pub struct Program {
    pub global_info: IndexMap<VariableId, GlobalInfo>,
    pub procedure_info: SecondaryMap<ProcedureId, ProcedureInfo>,
    pub procedure_name_table: HashMap<StrId, ProcedureId>, // TODO: this doesn't need to live on Program
-   pub struct_size_info: HashMap<StrId, SizeInfo>,
+   pub struct_union_size_info: HashMap<StrId, SizeInfo>,
    pub next_variable: VariableId,
 
    // Finally, the CFG representation of the program is built late in the pipeline
@@ -381,9 +389,10 @@ impl Program {
    #[must_use]
    pub fn new() -> Program {
       Program {
-         enums: Vec::new(),
          procedures: SlotMap::with_key(),
+         enums: Vec::new(),
          structs: Vec::new(),
+         unions: Vec::new(),
          consts: Vec::new(),
          statics: Vec::new(),
          parsed_types: Vec::new(),
@@ -393,7 +402,7 @@ impl Program {
          global_info: IndexMap::new(),
          procedure_info: SecondaryMap::new(),
          procedure_name_table: HashMap::new(),
-         struct_size_info: HashMap::new(),
+         struct_union_size_info: HashMap::new(),
          source_to_definition: IndexMap::new(),
          next_variable: VariableId::first(),
          ast: AstPool {
@@ -405,9 +414,10 @@ impl Program {
    }
 
    pub fn clear(&mut self) {
-      self.enums.clear();
       reset_slotmap(&mut self.procedures);
+      self.enums.clear();
       self.structs.clear();
+      self.unions.clear();
       self.consts.clear();
       self.statics.clear();
       self.parsed_types.clear();
@@ -417,7 +427,7 @@ impl Program {
       self.global_info.clear();
       reset_secondarymap(&mut self.procedure_info);
       self.procedure_name_table.clear();
-      self.struct_size_info.clear();
+      self.struct_union_size_info.clear();
       self.source_to_definition.clear();
       reset_slotmap(&mut self.ast.expressions);
       reset_slotmap(&mut self.ast.statements);
@@ -488,6 +498,11 @@ fn parse_top_level_items(
             let s = parse_struct(lexer, parse_context, def.source_info, &mut ast.expressions)?;
             top.structs.push(s);
          }
+         Token::KeywordUnionDef => {
+            let def = lexer.next();
+            let s = parse_union(lexer, parse_context, def.source_info)?;
+            top.unions.push(s);
+         }
          Token::KeywordEnumDef => {
             let def = lexer.next();
             let s = parse_enum(lexer, parse_context, def.source_info)?;
@@ -549,6 +564,7 @@ fn parse_top_level_items(
 struct TopLevelItems<'a> {
    procedures: &'a mut SlotMap<ProcedureId, ProcedureNode>,
    structs: &'a mut Vec<StructNode>,
+   unions: &'a mut Vec<UnionNode>,
    enums: &'a mut Vec<EnumNode>,
    consts: &'a mut Vec<ConstNode>,
    statics: &'a mut Vec<StaticNode>,
@@ -570,6 +586,7 @@ pub fn astify(
    let mut top = TopLevelItems {
       procedures: &mut program.procedures,
       structs: &mut program.structs,
+      unions: &mut program.unions,
       enums: &mut program.enums,
       consts: &mut program.consts,
       statics: &mut program.statics,
@@ -586,6 +603,7 @@ pub fn astify(
             | Token::KeywordStatic
             | Token::KeywordImport
             | Token::KeywordStructDef
+            | Token::KeywordUnionDef
             | Token::KeywordEnumDef
             | Token::KeywordBuiltin
             | Token::KeywordExtern => break,
@@ -764,6 +782,46 @@ fn parse_struct(
       location: merge_locations(source_info, close_brace.source_info),
    })
 }
+
+fn parse_union(
+   l: &mut Lexer,
+   parse_context: &mut ParseContext,
+   source_info: SourceInfo,
+) -> Result<UnionNode, ()> {
+   let struct_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
+   expect(l, parse_context, Token::OpenBrace)?;
+   let mut fields: Vec<(StrId, ExpressionTypeNode)> = vec![];
+   let close_brace = loop {
+      if l.peek_token() == Token::CloseBrace {
+         break l.next();
+      }
+      let identifier = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
+      let _ = expect(l, parse_context, Token::Colon)?;
+      let f_type = parse_type(l, parse_context)?;
+
+      fields.push((extract_identifier(identifier.token), f_type));
+
+      if l.peek_token() == Token::CloseBrace {
+         break l.next();
+      } else if let Token::Identifier(x) = l.peek_token() {
+         rolandc_error!(
+            &mut parse_context.err_manager,
+            l.peek_source(),
+            "While parsing definition of union `{}`, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?",
+            parse_context.interner.lookup(struct_name),
+            parse_context.interner.lookup(x),
+         );
+         return Result::Err(());
+      }
+      expect(l, parse_context, Token::Comma)?;
+   };
+   Ok(UnionNode {
+      name: struct_name,
+      fields,
+      location: merge_locations(source_info, close_brace.source_info),
+   })
+}
+
 
 fn parse_enum(l: &mut Lexer, parse_context: &mut ParseContext, source_info: SourceInfo) -> Result<EnumNode, ()> {
    let enum_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);

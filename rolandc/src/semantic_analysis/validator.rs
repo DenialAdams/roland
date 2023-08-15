@@ -482,7 +482,7 @@ pub fn type_and_check_validity(
       }
    }
 
-   program.struct_size_info = validation_context.struct_size_info;
+   program.struct_union_size_info = validation_context.struct_size_info;
    program.source_to_definition = validation_context.source_to_definition;
    program.next_variable = validation_context.next_var_dont_access;
 }

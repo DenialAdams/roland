@@ -298,7 +298,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
          &v_1.expr_type.e_type,
          &v_2.expr_type.e_type,
          &program.enum_info,
-         &program.struct_size_info,
+         &program.struct_union_size_info,
       )
    });
 
@@ -313,7 +313,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       local_offsets_mem: HashMap::new(),
       needed_store_fns: IndexSet::new(),
       struct_info: &program.struct_info,
-      struct_size_info: &program.struct_size_info,
+      struct_size_info: &program.struct_union_size_info,
       enum_info: &program.enum_info,
       sum_sizeof_locals_mem: 0,
       ast: &program.ast,

@@ -70,7 +70,7 @@ pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &
       const_replacements: &mut const_replacements,
       struct_info: &program.struct_info,
       enum_info: &program.enum_info,
-      struct_size_info: &program.struct_size_info,
+      struct_size_info: &program.struct_union_size_info,
       interner,
    };
 

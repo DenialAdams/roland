@@ -41,7 +41,7 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
       ast: &mut program.ast,
       procedure_info: &program.procedure_info,
       struct_info: &program.struct_info,
-      struct_size_info: &program.struct_size_info,
+      struct_size_info: &program.struct_union_size_info,
       enum_info: &program.enum_info,
       const_replacements: &const_replacements,
       current_proc_name: None,
