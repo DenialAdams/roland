@@ -187,7 +187,7 @@ pub fn resolve_type(
             *v_type = ExpressionType::Struct(*x);
             Ok(())
          } else if udt.union_info.contains_key(x) {
-            *v_type = todo!();
+            *v_type = ExpressionType::Union(*x);
             Ok(())
          } else if type_params.map_or(false, |tp| tp.contains_key(x)) {
             *v_type = ExpressionType::GenericParam(*x);

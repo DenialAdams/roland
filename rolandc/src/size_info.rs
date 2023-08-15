@@ -13,6 +13,8 @@ pub struct SizeInfo {
    pub strictest_alignment: u32,
    pub field_offsets_mem: HashMap<StrId, u32>,
    pub field_offsets_values: HashMap<StrId, u32>,
+   // nocheckin: what to do with union that contains never type?
+   // i think we must disallow this
    pub contains_never_type: bool,
 }
 
