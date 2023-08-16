@@ -33,6 +33,10 @@ pub fn calculate_struct_size_info(
    struct_info: &IndexMap<StrId, StructInfo>,
    struct_size_info: &mut HashMap<StrId, SizeInfo>,
 ) {
+   if struct_size_info.contains_key(s) {
+      return;
+   }
+
    let mut sum_mem = 0;
    let mut sum_values = 0;
    let mut strictest_alignment = 1;
@@ -50,16 +54,12 @@ pub fn calculate_struct_size_info(
       let next_field_t = &next_field_t.e_type;
 
       if let ExpressionType::Struct(s) = field_t {
-         if !struct_size_info.contains_key(s) {
-            calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
-         }
+         calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
          contains_never_type |= struct_size_info.get(s).unwrap().contains_never_type;
       }
 
       if let ExpressionType::Struct(s) = next_field_t {
-         if !struct_size_info.contains_key(s) {
-            calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
-         }
+         calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
       }
 
       field_offsets_mem.insert(*field_name, sum_mem);
@@ -82,9 +82,7 @@ pub fn calculate_struct_size_info(
       let last_field_t = &last_field_t_node.e_type;
 
       if let ExpressionType::Struct(s) = last_field_t {
-         if !struct_size_info.contains_key(s) {
-            calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
-         }
+         calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
          contains_never_type |= struct_size_info.get(s).unwrap().contains_never_type;
       }
 

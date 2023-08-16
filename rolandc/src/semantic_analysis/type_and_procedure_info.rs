@@ -47,6 +47,7 @@ fn recursive_struct_union_check(
 
    for struct_field in struct_or_union_fields.iter().flat_map(|x| match &x.1.e_type {
       ExpressionType::Struct(x) => Some(*x),
+      ExpressionType::Union(x) => Some(*x),
       // Types should be fully resolved at this point, but may not be if there is an error in the program
       // (in that case, it's fine to ignore it as we'll already error out)
       ExpressionType::Unresolved(x) => Some(*x),
