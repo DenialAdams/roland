@@ -222,7 +222,7 @@ pub enum Expression {
    UnaryOperator(UnOp, ExpressionId),
    UnresolvedStructLiteral(StrNode, Box<[(StrId, Option<ExpressionId>)]>),
    StructLiteral(StrNode, IndexMap<StrId, Option<ExpressionId>>),
-   FieldAccess(Vec<StrId>, ExpressionId),
+   FieldAccess(StrId, ExpressionId),
    Cast {
       cast_type: CastType,
       target_type: ExpressionType,
@@ -1620,19 +1620,12 @@ fn pratt(
          | Token::ShiftLeft
          | Token::ShiftRight) => x,
          Token::Period => {
-            let mut fields = vec![];
-            let mut last_location;
-            loop {
-               let _ = l.next();
-               let ident_token = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
-               last_location = ident_token.source_info;
-               fields.push(extract_identifier(ident_token.token));
-               if l.peek_token() != Token::Period {
-                  break;
-               }
-            }
+            let _ = l.next();
+            let ident_token = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
+            let last_location = ident_token.source_info;
+            let field = extract_identifier(ident_token.token);
             let combined_location = merge_locations(begin_source, last_location);
-            lhs = wrap(Expression::FieldAccess(fields, lhs), combined_location, expressions);
+            lhs = wrap(Expression::FieldAccess(field, lhs), combined_location, expressions);
             continue;
          }
          _ => break,

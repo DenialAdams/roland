@@ -867,10 +867,6 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
             store_mem(val_type, generation_context);
          }
       }
-      Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
-      Statement::Block(_) => unreachable!(),
-      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
-      Statement::Loop(_) => unreachable!(),
       Statement::Break => {
          generation_context.active_fcn.instruction(&Instruction::Br(
             1 + generation_context.stack_of_loop_jump_offsets.last().unwrap(),
@@ -881,7 +877,6 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
             *generation_context.stack_of_loop_jump_offsets.last().unwrap(),
          ));
       }
-      Statement::Defer(_) => unreachable!(),
       Statement::Expression(en) => {
          do_emit_and_load_lval(*en, generation_context);
          for _ in 0..sizeof_type_values(
@@ -892,7 +887,6 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
             generation_context.active_fcn.instruction(&Instruction::Drop);
          }
       }
-      Statement::IfElse(_, _, _) => unreachable!(),
       Statement::Return(en) => {
          do_emit_and_load_lval(*en, generation_context);
 
@@ -909,6 +903,12 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
             generation_context.active_fcn.instruction(&Instruction::Return);
          }
       }
+      Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
+      Statement::Block(_) => unreachable!(),
+      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
+      Statement::Loop(_) => unreachable!(),
+      Statement::IfElse(_, _, _) => unreachable!(),
+      Statement::Defer(_) => unreachable!(),
    }
 }
 
@@ -920,48 +920,32 @@ fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &Generation
          .get(v)
          .cloned()
          .map(|x| (generation_context.globals.contains(v), x)),
-      Expression::FieldAccess(fields, e) => {
+      Expression::FieldAccess(field, e) => {
          let (is_global, base_range) = get_registers_for_expr(*e, generation_context)?;
-         let ExpressionType::Struct(mut struct_name) =
+         let ExpressionType::Struct(struct_name) =
             generation_context.ast.expressions[*e].exp_type.as_ref().unwrap()
          else {
             unreachable!()
          };
-
-         let mut value_offset = 0;
-
-         for field_name in fields.iter().take(fields.len() - 1) {
-            let si = generation_context
-               .user_defined_types
-               .struct_info
-               .get(&struct_name)
-               .unwrap();
-            value_offset += si.size.as_ref().unwrap().field_offsets_values.get(field_name).unwrap();
-            struct_name = match si.field_types.get(field_name).map(|x| &x.e_type) {
-               Some(ExpressionType::Struct(x)) => *x,
-               _ => unreachable!(),
-            };
-         }
-
-         let last_field_name = fields.last().unwrap();
-         let last_si = generation_context
+   
+         let si = generation_context
             .user_defined_types
             .struct_info
-            .get(&struct_name)
+            .get(struct_name)
             .unwrap();
-         value_offset += last_si
+         let value_offset = si
             .size
             .as_ref()
             .unwrap()
             .field_offsets_values
-            .get(last_field_name)
+            .get(field)
             .unwrap();
 
-         let last_field_type = &last_si.field_types.get(last_field_name).unwrap().e_type;
+         let last_field_type = &si.field_types.get(field).unwrap().e_type;
 
          let last_field_size_values = sizeof_type_values(last_field_type, &generation_context.user_defined_types.enum_info, &generation_context.user_defined_types.struct_info);
 
-         let final_range = base_range[value_offset as usize..(value_offset + last_field_size_values) as usize].to_vec();
+         let final_range = base_range[*value_offset as usize..(value_offset + last_field_size_values) as usize].to_vec();
 
          Some((is_global, final_range))
       }
@@ -1963,44 +1947,29 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             }
          }
       }
-      Expression::FieldAccess(field_names, lhs_id) => {
+      Expression::FieldAccess(field_name, lhs_id) => {
          fn calculate_offset(
             lhs_type: &ExpressionType,
-            field_names: &[StrId],
+            field_name: StrId,
             generation_context: &mut GenerationContext,
          ) {
-            let ExpressionType::Struct(mut struct_name) = lhs_type else {
+            let ExpressionType::Struct(struct_name) = lhs_type else {
                unreachable!()
             };
-            let mut mem_offset = 0;
 
-            for field_name in field_names.iter().take(field_names.len() - 1) {
-               let si = generation_context
-                  .user_defined_types
-                  .struct_info
-                  .get(&struct_name)
-                  .unwrap();
-               mem_offset += si.size.as_ref().unwrap().field_offsets_mem.get(field_name).unwrap();
-               struct_name = match si.field_types.get(field_name).map(|x| &x.e_type) {
-                  Some(ExpressionType::Struct(x)) => *x,
-                  _ => unreachable!(),
-               };
-            }
-
-            let last_field_name = field_names.last().unwrap();
-            mem_offset += generation_context
+            let mem_offset = generation_context
                .user_defined_types
                .struct_info
-               .get(&struct_name)
+               .get(struct_name)
                .unwrap()
                .size
                .as_ref()
                .unwrap()
                .field_offsets_mem
-               .get(last_field_name)
+               .get(&field_name)
                .unwrap();
 
-            generation_context.emit_const_add_i32(mem_offset);
+            generation_context.emit_const_add_i32(*mem_offset);
          }
 
          let lhs = &generation_context.ast.expressions[*lhs_id];
@@ -2011,7 +1980,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
 
          do_emit(*lhs_id, generation_context);
          if get_registers_for_expr(*lhs_id, generation_context).is_none() {
-            calculate_offset(lhs.exp_type.as_ref().unwrap(), field_names, generation_context);
+            calculate_offset(lhs.exp_type.as_ref().unwrap(), *field_name, generation_context);
          }
       }
       Expression::ArrayLiteral(exprs) => {

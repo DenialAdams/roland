@@ -638,7 +638,7 @@ fn fold_expr_inner(
 
          None
       }
-      Expression::FieldAccess(field_names, expr) => {
+      Expression::FieldAccess(field_name, expr) => {
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
 
          if expression_could_have_side_effects(*expr, &folding_context.ast.expressions) {
@@ -648,59 +648,21 @@ fn fold_expr_inner(
 
             // Handle the case where we're getting the length of an array
             // (only requires type information, no constant expressions)
-            {
-               let mut next_exp_type = expr.exp_type.as_ref().unwrap();
-               for field_name in field_names.iter() {
-                  match next_exp_type {
-                     ExpressionType::Struct(s) => {
-                        next_exp_type = &folding_context
-                           .user_defined_types
-                           .struct_info
-                           .get(s)
-                           .unwrap()
-                           .field_types
-                           .get(field_name)
-                           .unwrap()
-                           .e_type;
-                     }
-                     ExpressionType::Union(s) => {
-                        next_exp_type = &folding_context
-                           .user_defined_types
-                           .union_info
-                           .get(s)
-                           .unwrap()
-                           .field_types
-                           .get(field_name)
-                           .unwrap()
-                           .e_type;
-                     }
-                     ExpressionType::Array(_, len) => {
-                        // Arrays only have one possible field, length
-                        return Some(Expression::IntLiteral {
-                           val: u64::from(*len),
-                           synthetic: true,
-                        });
-                     }
-                     _ => unreachable!(),
-                  }
+            match expr.exp_type.as_ref().unwrap() {
+               ExpressionType::Array(_, len) => {
+                  // Arrays only have one possible field, length
+                  return Some(Expression::IntLiteral {
+                     val: u64::from(*len),
+                     synthetic: true,
+                  });
                }
+               ExpressionType::Struct(_) | ExpressionType::Union(_) => (),
+               _ => unreachable!(),
             }
 
-            let mut inner_expr_node = expr;
-
-            // drill to innermost struct
-            for field_name in field_names.iter().take(field_names.len() - 1) {
-               match &inner_expr_node.expression {
-                  Expression::StructLiteral(_, fields) => {
-                     inner_expr_node = &folding_context.ast.expressions[fields.get(field_name).unwrap().unwrap()];
-                  }
-                  _ => return None,
-               }
-            }
-
-            match &inner_expr_node.expression {
+            match &expr.expression {
                Expression::StringLiteral(literal_val)
-                  if interner.lookup(field_names.last().copied().unwrap()) == "length" =>
+                  if interner.lookup(*field_name) == "length" =>
                {
                   Some(Expression::IntLiteral {
                      val: interner.lookup(*literal_val).len() as u64,
@@ -709,7 +671,7 @@ fn fold_expr_inner(
                }
                Expression::StructLiteral(_, fields) => {
                   let inner_node_expression = folding_context.ast.expressions
-                     [fields.get(field_names.last().unwrap()).unwrap().unwrap()]
+                     [fields.get(field_name).unwrap().unwrap()]
                   .expression
                   .clone();
                   Some(inner_node_expression)

@@ -1573,89 +1573,82 @@ fn get_type(
          validation_context.ast.expressions[*proc_expr].exp_type = Some(the_type);
          resulting_type
       }
-      Expression::FieldAccess(fields, lhs) => {
+      Expression::FieldAccess(field, lhs) => {
+         let field = *field;
          type_expression(err_manager, *lhs, validation_context);
 
          let lhs = &validation_context.ast.expressions[*lhs];
          let mut lhs_type = lhs.exp_type.as_ref().unwrap().clone();
-         let mut remaining_fields = fields.as_slice();
 
          let length_token = validation_context.interner.reverse_lookup("length");
 
-         while !remaining_fields.is_empty() {
-            let field = remaining_fields[0];
-            match lhs_type {
-               ExpressionType::Struct(struct_name) => {
-                  let struct_fields = &validation_context
-                     .user_defined_types
-                     .struct_info
-                     .get(&struct_name)
-                     .unwrap()
-                     .field_types;
-                  if let Some(new_t_node) = struct_fields.get(&field) {
-                     lhs_type = new_t_node.e_type.clone();
-                  } else {
-                     rolandc_error!(
-                        err_manager,
-                        expr_location,
-                        "Struct `{}` does not have a field `{}`",
-                        validation_context.interner.lookup(struct_name),
-                        validation_context.interner.lookup(field),
-                     );
-                     lhs_type = ExpressionType::CompileError;
-                  }
-               }
-               ExpressionType::Union(union_name) => {
-                  let union_fields = &validation_context.user_defined_types.union_info.get(&union_name).unwrap().field_types;
-                  if let Some(new_t_node) = union_fields.get(&field) {
-                     lhs_type = new_t_node.e_type.clone();
-                  } else {
-                     rolandc_error!(
-                        err_manager,
-                        expr_location,
-                        "Union `{}` does not have a field `{}`",
-                        validation_context.interner.lookup(union_name),
-                        validation_context.interner.lookup(field),
-                     );
-                     lhs_type = ExpressionType::CompileError;
-                  }
-               }
-               ExpressionType::Array(_, _) => {
-                  if Some(field) == length_token {
-                     lhs_type = USIZE_TYPE;
-                  } else {
-                     rolandc_error!(
-                        err_manager,
-                        expr_location,
-                        "Array does not have a field `{}`. Hint: Array types have a single field `length`",
-                        validation_context.interner.lookup(*fields.first().unwrap()),
-                     );
-                     lhs_type = ExpressionType::CompileError;
-                  }
-               }
-               ExpressionType::CompileError => {
-                  lhs_type = ExpressionType::CompileError;
-               }
-               other_type => {
+         match lhs_type {
+            ExpressionType::Struct(struct_name) => {
+               let struct_fields = &validation_context
+                  .user_defined_types
+                  .struct_info
+                  .get(&struct_name)
+                  .unwrap()
+                  .field_types;
+               if let Some(new_t_node) = struct_fields.get(&field) {
+                  lhs_type = new_t_node.e_type.clone();
+               } else {
                   rolandc_error!(
                      err_manager,
                      expr_location,
-                     "Encountered field access on type {}; only structs and arrays have fields",
-                     other_type.as_roland_type_info(
-                        validation_context.interner,
-                        validation_context.procedure_info,
-                        &validation_context.type_variables
-                     )
+                     "Struct `{}` does not have a field `{}`",
+                     validation_context.interner.lookup(struct_name),
+                     validation_context.interner.lookup(field),
                   );
                   lhs_type = ExpressionType::CompileError;
                }
             }
-            remaining_fields = if remaining_fields.is_empty() {
-               &[]
-            } else {
-               &remaining_fields[1..]
-            };
+            ExpressionType::Union(union_name) => {
+               let union_fields = &validation_context.user_defined_types.union_info.get(&union_name).unwrap().field_types;
+               if let Some(new_t_node) = union_fields.get(&field) {
+                  lhs_type = new_t_node.e_type.clone();
+               } else {
+                  rolandc_error!(
+                     err_manager,
+                     expr_location,
+                     "Union `{}` does not have a field `{}`",
+                     validation_context.interner.lookup(union_name),
+                     validation_context.interner.lookup(field),
+                  );
+                  lhs_type = ExpressionType::CompileError;
+               }
+            }
+            ExpressionType::Array(_, _) => {
+               if Some(field) == length_token {
+                  lhs_type = USIZE_TYPE;
+               } else {
+                  rolandc_error!(
+                     err_manager,
+                     expr_location,
+                     "Array does not have a field `{}`. Hint: Array types have a single field `length`",
+                     validation_context.interner.lookup(field),
+                  );
+                  lhs_type = ExpressionType::CompileError;
+               }
+            }
+            ExpressionType::CompileError => {
+               lhs_type = ExpressionType::CompileError;
+            }
+            other_type => {
+               rolandc_error!(
+                  err_manager,
+                  expr_location,
+                  "Encountered field access on type {}; only structs and arrays have fields",
+                  other_type.as_roland_type_info(
+                     validation_context.interner,
+                     validation_context.procedure_info,
+                     &validation_context.type_variables
+                  )
+               );
+               lhs_type = ExpressionType::CompileError;
+            }
          }
+
          lhs_type
       }
       Expression::ArrayLiteral(elems) => {
