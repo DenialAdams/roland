@@ -11,7 +11,6 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
 use crate::lex::Lexer;
 use crate::semantic_analysis::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo, UnionInfo};
-use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 
@@ -369,7 +368,6 @@ pub struct Program {
    pub global_info: IndexMap<VariableId, GlobalInfo>,
    pub procedure_info: SecondaryMap<ProcedureId, ProcedureInfo>,
    pub procedure_name_table: HashMap<StrId, ProcedureId>, // TODO: this doesn't need to live on Program
-   pub struct_union_size_info: HashMap<StrId, SizeInfo>,
    pub user_defined_types: UserDefinedTypeInfo,
    pub next_variable: VariableId,
 
@@ -412,7 +410,6 @@ impl Program {
          global_info: IndexMap::new(),
          procedure_info: SecondaryMap::new(),
          procedure_name_table: HashMap::new(),
-         struct_union_size_info: HashMap::new(),
          source_to_definition: IndexMap::new(),
          next_variable: VariableId::first(),
          ast: AstPool {
@@ -438,7 +435,6 @@ impl Program {
       self.global_info.clear();
       reset_secondarymap(&mut self.procedure_info);
       self.procedure_name_table.clear();
-      self.struct_union_size_info.clear();
       self.source_to_definition.clear();
       reset_slotmap(&mut self.ast.expressions);
       reset_slotmap(&mut self.ast.statements);

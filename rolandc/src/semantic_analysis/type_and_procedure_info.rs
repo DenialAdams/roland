@@ -1,4 +1,4 @@
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::ops::BitOrAssign;
 
 use indexmap::{IndexMap, IndexSet};
@@ -9,6 +9,7 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{ExpressionTypeNode, ProcImplSource, UserDefinedTypeInfo};
 use crate::semantic_analysis::validator::resolve_type;
+use crate::size_info::calculate_struct_size_info;
 use crate::source_info::{SourceInfo, SourcePath};
 use crate::type_data::{ExpressionType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
 use crate::{CompilationConfig, Program};
@@ -68,13 +69,25 @@ fn recursive_struct_union_check(
       is_recursive |= struct_info
          .get(&struct_field)
          .map_or(RecursiveStructCheckResult::NotRecursive, |si| {
-            recursive_struct_union_check(base_name, seen_structs_or_unions, &si.field_types, struct_info, union_info)
+            recursive_struct_union_check(
+               base_name,
+               seen_structs_or_unions,
+               &si.field_types,
+               struct_info,
+               union_info,
+            )
          });
 
       is_recursive |= union_info
          .get(&struct_field)
          .map_or(RecursiveStructCheckResult::NotRecursive, |si| {
-            recursive_struct_union_check(base_name, seen_structs_or_unions, &si.field_types, struct_info, union_info)
+            recursive_struct_union_check(
+               base_name,
+               seen_structs_or_unions,
+               &si.field_types,
+               struct_info,
+               union_info,
+            )
          });
    }
 
@@ -237,6 +250,7 @@ fn populate_user_defined_type_info(
             field_types: field_map,
             default_values: default_value_map,
             location: a_struct.location,
+            size: None,
          },
       );
    }
@@ -595,6 +609,21 @@ pub fn populate_type_and_procedure_info(
             interner.lookup(definition.name.str),
          );
       }
+   }
+
+   // We must return now before calculating sizes
+   // (or we'll blow up on recursive types)
+   if !err_manager.errors.is_empty() {
+      return;
+   }
+
+   for i in 0..program.user_defined_types.struct_info.len() {
+      let s = program.user_defined_types.struct_info.get_index(i).unwrap().0;
+      calculate_struct_size_info(
+         *s,
+         &program.user_defined_types.enum_info,
+         &mut program.user_defined_types.struct_info,
+      );
    }
 }
 

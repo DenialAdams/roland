@@ -12,7 +12,6 @@ use crate::parse::{
    ProcedureId, Program, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::ProcedureInfo;
-use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::{
    ExpressionType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
@@ -23,7 +22,6 @@ pub struct FoldingContext<'a> {
    pub ast: &'a mut AstPool,
    pub procedure_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
    pub user_defined_types: &'a UserDefinedTypeInfo,
-   pub struct_size_info: &'a HashMap<StrId, SizeInfo>,
    pub const_replacements: &'a HashMap<VariableId, ExpressionId>,
    pub current_proc_name: Option<StrId>,
 }
@@ -39,7 +37,6 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
       ast: &mut program.ast,
       procedure_info: &program.procedure_info,
       user_defined_types: &program.user_defined_types,
-      struct_size_info: &program.struct_union_size_info,
       const_replacements: &const_replacements,
       current_proc_name: None,
    };
@@ -765,8 +762,11 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
    match interner.lookup(proc_name) {
       "proc_name" => fc.current_proc_name.map(Expression::StringLiteral),
       "sizeof" => {
-         let type_size =
-            crate::size_info::sizeof_type_mem(&generic_args[0], &fc.user_defined_types.enum_info, fc.struct_size_info);
+         let type_size = crate::size_info::sizeof_type_mem(
+            &generic_args[0],
+            &fc.user_defined_types.enum_info,
+            &fc.user_defined_types.struct_info,
+         );
 
          Some(Expression::IntLiteral {
             val: u64::from(type_size),
@@ -774,8 +774,11 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
          })
       }
       "alignof" => {
-         let type_alignment =
-            crate::size_info::mem_alignment(&generic_args[0], &fc.user_defined_types.enum_info, fc.struct_size_info);
+         let type_alignment = crate::size_info::mem_alignment(
+            &generic_args[0],
+            &fc.user_defined_types.enum_info,
+            &fc.user_defined_types.struct_info,
+         );
 
          Some(Expression::IntLiteral {
             val: u64::from(type_alignment),

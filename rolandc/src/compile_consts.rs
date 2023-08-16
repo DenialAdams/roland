@@ -8,7 +8,6 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{AstPool, Expression, ExpressionId, ProcedureId, Program, UserDefinedTypeInfo, VariableId};
 use crate::semantic_analysis::ProcedureInfo;
-use crate::size_info::SizeInfo;
 use crate::source_info::SourceInfo;
 
 struct CgContext<'a> {
@@ -18,7 +17,6 @@ struct CgContext<'a> {
    const_replacements: &'a mut HashMap<VariableId, ExpressionId>,
    procedure_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
    user_defined_types: &'a UserDefinedTypeInfo,
-   struct_size_info: &'a HashMap<StrId, SizeInfo>,
    interner: &'a Interner,
 }
 
@@ -28,7 +26,6 @@ fn fold_expr_id(
    ast: &mut AstPool,
    procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
    user_defined_types: &UserDefinedTypeInfo,
-   struct_size_info: &HashMap<StrId, SizeInfo>,
    const_replacements: &HashMap<VariableId, ExpressionId>,
    interner: &Interner,
 ) {
@@ -36,7 +33,6 @@ fn fold_expr_id(
       ast,
       procedure_info,
       user_defined_types,
-      struct_size_info,
       const_replacements,
       current_proc_name: None,
    };
@@ -65,7 +61,6 @@ pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &
       consts_being_processed: &mut consts_being_processed,
       const_replacements: &mut const_replacements,
       user_defined_types: &program.user_defined_types,
-      struct_size_info: &program.struct_union_size_info,
       interner,
    };
 
@@ -90,7 +85,6 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
       cg_context.ast,
       cg_context.procedure_info,
       cg_context.user_defined_types,
-      cg_context.struct_size_info,
       cg_context.const_replacements,
       cg_context.interner,
    );

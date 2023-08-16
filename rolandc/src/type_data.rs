@@ -1,14 +1,13 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::collections::HashMap;
 
+use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 
 use crate::interner::{Interner, StrId};
 use crate::parse::ProcedureId;
 use crate::semantic_analysis::type_variables::{TypeConstraint, TypeVariable, TypeVariableManager};
-use crate::semantic_analysis::ProcedureInfo;
-use crate::size_info::SizeInfo;
+use crate::semantic_analysis::{ProcedureInfo, StructInfo};
 
 pub const U8_TYPE: ExpressionType = ExpressionType::Int(IntType {
    signed: false,
@@ -225,10 +224,18 @@ impl ExpressionType {
    }
 
    #[must_use]
-   pub fn is_or_contains_never(&self, struct_size_info: &HashMap<StrId, SizeInfo>) -> bool {
+   pub fn is_or_contains_never(&self, struct_size_info: &IndexMap<StrId, StructInfo>) -> bool {
       match self {
          ExpressionType::Never => true,
-         ExpressionType::Struct(s) => struct_size_info.get(s).unwrap().contains_never_type,
+         ExpressionType::Struct(s) => {
+            struct_size_info
+               .get(s)
+               .unwrap()
+               .size
+               .as_ref()
+               .unwrap()
+               .contains_never_type
+         }
          ExpressionType::Array(inner_t, _) => inner_t.is_or_contains_never(struct_size_info),
          ExpressionType::Pointer(inner_t) => inner_t.is_or_contains_never(struct_size_info),
          _ => false,

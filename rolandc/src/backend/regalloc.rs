@@ -148,7 +148,11 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
       }
 
       t_buf.clear();
-      type_to_wasm_type(&global.1.expr_type.e_type, &mut t_buf, &program.user_defined_types.struct_info);
+      type_to_wasm_type(
+         &global.1.expr_type.e_type,
+         &mut t_buf,
+         &program.user_defined_types.struct_info,
+      );
 
       let reg = num_global_registers;
       num_global_registers += t_buf.len() as u32;

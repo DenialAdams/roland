@@ -18,7 +18,7 @@ use crate::parse::{
    ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId, StrNode, UnOp,
    UserDefinedTypeInfo, VariableId,
 };
-use crate::size_info::{calculate_struct_size_info, mem_alignment, sizeof_type_mem};
+use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, IntType, F32_TYPE, F64_TYPE, I32_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE};
 use crate::Target;
@@ -210,7 +210,7 @@ pub fn type_and_check_validity(
       variable_types: IndexMap::new(),
       procedure_info: &program.procedure_info,
       proc_name_table: &program.procedure_name_table,
-      user_defined_types: &program.user_defined_types,
+      user_defined_types: &mut program.user_defined_types,
       global_info: &program.global_info,
       cur_procedure_info: None,
       loop_depth: 0,
@@ -323,17 +323,7 @@ pub fn type_and_check_validity(
       }
    }
 
-   validation_context
-      .struct_size_info
-      .reserve(validation_context.user_defined_types.struct_info.len());
    for s in validation_context.user_defined_types.struct_info.iter() {
-      calculate_struct_size_info(
-         *s.0,
-         &validation_context.user_defined_types.enum_info,
-         &validation_context.user_defined_types.struct_info,
-         &mut validation_context.struct_size_info,
-      );
-
       for (field_name, &default_expr) in s.1.default_values.iter() {
          type_expression(err_manager, default_expr, &mut validation_context);
 
@@ -484,7 +474,6 @@ pub fn type_and_check_validity(
       }
    }
 
-   program.struct_union_size_info = validation_context.struct_size_info;
    program.source_to_definition = validation_context.source_to_definition;
    program.next_variable = validation_context.next_var_dont_access;
 }
@@ -794,7 +783,10 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                   &validation_context.type_variables,
                   err_manager,
                );
-            } else if dt_val.e_type.is_or_contains_never(&validation_context.struct_size_info) {
+            } else if dt_val
+               .e_type
+               .is_or_contains_never(&validation_context.user_defined_types.struct_info)
+            {
                rolandc_error!(
                   err_manager,
                   id.location,
@@ -1108,15 +1100,15 @@ fn get_type(
                let size_source = sizeof_type_mem(
                   e_type,
                   &validation_context.user_defined_types.enum_info,
-                  &validation_context.struct_size_info,
+                  &validation_context.user_defined_types.struct_info,
                );
                let size_target = sizeof_type_mem(
                   target_type,
                   &validation_context.user_defined_types.enum_info,
-                  &validation_context.struct_size_info,
+                  &validation_context.user_defined_types.struct_info,
                );
 
-               if target_type.is_or_contains_never(&validation_context.struct_size_info) {
+               if target_type.is_or_contains_never(&validation_context.user_defined_types.struct_info) {
                   rolandc_error!(
                      err_manager,
                      expr_location,
@@ -1127,12 +1119,12 @@ fn get_type(
                   let alignment_source = mem_alignment(
                      e_type.get_type_or_type_being_pointed_to(),
                      &validation_context.user_defined_types.enum_info,
-                     &validation_context.struct_size_info,
+                     &validation_context.user_defined_types.struct_info,
                   );
                   let alignment_target = mem_alignment(
                      target_type.get_type_or_type_being_pointed_to(),
                      &validation_context.user_defined_types.enum_info,
-                     &validation_context.struct_size_info,
+                     &validation_context.user_defined_types.struct_info,
                   );
 
                   let e_is_pointer_to_unit =

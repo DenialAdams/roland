@@ -30,12 +30,19 @@ pub fn aligned_address(v: u32, a: u32) -> u32 {
 pub fn calculate_struct_size_info(
    name: StrId,
    enum_info: &IndexMap<StrId, EnumInfo>,
-   struct_info: &IndexMap<StrId, StructInfo>,
-   struct_size_info: &mut HashMap<StrId, SizeInfo>,
+   struct_info: &mut IndexMap<StrId, StructInfo>,
 ) {
-   if struct_size_info.contains_key(&name) {
+   if struct_info.get(&name).unwrap().size.is_some() {
       return;
    }
+
+   let ft = std::mem::take(&mut struct_info.get_mut(&name).unwrap().field_types);
+   for field_t in ft.values() {
+      if let ExpressionType::Struct(s) = field_t.e_type {
+         calculate_struct_size_info(s, enum_info, struct_info);
+      }
+   }
+   struct_info.get_mut(&name).unwrap().field_types = ft;
 
    let mut sum_mem = 0;
    let mut sum_values = 0;
@@ -54,64 +61,52 @@ pub fn calculate_struct_size_info(
       let next_field_t = &next_field_t.e_type;
 
       if let ExpressionType::Struct(s) = field_t {
-         calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
-         contains_never_type |= struct_size_info.get(s).unwrap().contains_never_type;
-      }
-
-      if let ExpressionType::Struct(s) = next_field_t {
-         calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
+         contains_never_type |= struct_info.get(s).unwrap().size.as_ref().unwrap().contains_never_type;
       }
 
       field_offsets_mem.insert(*field_name, sum_mem);
       field_offsets_values.insert(*field_name, sum_values);
 
-      let our_mem_size = sizeof_type_mem(field_t, enum_info, struct_size_info);
+      let our_mem_size = sizeof_type_mem(field_t, enum_info, struct_info);
       // We align our size with the alignment of the next field to account for potential padding
-      let next_mem_alignment = mem_alignment(next_field_t, enum_info, struct_size_info);
+      let next_mem_alignment = mem_alignment(next_field_t, enum_info, struct_info);
 
       // todo: Check this addition for overflow?
       sum_mem += aligned_address(our_mem_size, next_mem_alignment);
-      sum_values += sizeof_type_values(field_t, enum_info, struct_size_info);
+      sum_values += sizeof_type_values(field_t, enum_info, struct_info);
 
-      strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(field_t, enum_info, struct_size_info));
+      strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(field_t, enum_info, struct_info));
 
-      contains_never_type |= field_t.is_or_contains_never(struct_size_info);
+      contains_never_type |= field_t.is_or_contains_never(struct_info);
    }
 
    if let Some((last_field_name, last_field_t_node)) = struct_info.get(&name).unwrap().field_types.iter().last() {
       let last_field_t = &last_field_t_node.e_type;
 
       if let ExpressionType::Struct(s) = last_field_t {
-         calculate_struct_size_info(*s, enum_info, struct_info, struct_size_info);
-         contains_never_type |= struct_size_info.get(s).unwrap().contains_never_type;
+         contains_never_type |= struct_info.get(s).unwrap().size.as_ref().unwrap().contains_never_type;
       }
 
       field_offsets_mem.insert(*last_field_name, sum_mem);
       field_offsets_values.insert(*last_field_name, sum_values);
 
-      sum_mem += sizeof_type_mem(last_field_t, enum_info, struct_size_info);
-      sum_values += sizeof_type_values(last_field_t, enum_info, struct_size_info);
-      strictest_alignment = std::cmp::max(
-         strictest_alignment,
-         mem_alignment(last_field_t, enum_info, struct_size_info),
-      );
-      contains_never_type |= last_field_t.is_or_contains_never(struct_size_info);
+      sum_mem += sizeof_type_mem(last_field_t, enum_info, struct_info);
+      sum_values += sizeof_type_values(last_field_t, enum_info, struct_info);
+      strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(last_field_t, enum_info, struct_info));
+      contains_never_type |= last_field_t.is_or_contains_never(struct_info);
    }
 
-   struct_size_info.insert(
-      name,
-      SizeInfo {
-         mem_size: aligned_address(sum_mem, strictest_alignment),
-         values_size: sum_values,
-         strictest_alignment,
-         field_offsets_mem,
-         field_offsets_values,
-         contains_never_type,
-      },
-   );
+   struct_info.get_mut(&name).unwrap().size = Some(SizeInfo {
+      mem_size: aligned_address(sum_mem, strictest_alignment),
+      values_size: sum_values,
+      strictest_alignment,
+      field_offsets_mem,
+      field_offsets_values,
+      contains_never_type,
+   });
 }
 
-pub fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
+pub fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) -> u32 {
    match e {
       ExpressionType::Unresolved(_) => unreachable!(),
       ExpressionType::Unknown(_) => unreachable!(),
@@ -136,7 +131,7 @@ pub fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &Ha
       ExpressionType::Never => 1,
       ExpressionType::ProcedurePointer { .. } => 4, // @FixedPointerWidth
       ExpressionType::ProcedureItem(_, _) => 1,
-      ExpressionType::Struct(x) => si.get(x).unwrap().strictest_alignment,
+      ExpressionType::Struct(x) => si.get(x).unwrap().size.as_ref().unwrap().strictest_alignment,
       ExpressionType::Array(a_type, _len) => mem_alignment(a_type, ei, si),
       ExpressionType::CompileError => unreachable!(),
       ExpressionType::GenericParam(_) => unreachable!(),
@@ -145,7 +140,7 @@ pub fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &Ha
 }
 
 /// The size of a type, in number of WASM values
-pub fn sizeof_type_values(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
+pub fn sizeof_type_values(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) -> u32 {
    match e {
       ExpressionType::Unresolved(_) => unreachable!(),
       ExpressionType::Unknown(_) => unreachable!(),
@@ -159,7 +154,7 @@ pub fn sizeof_type_values(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si
       ExpressionType::Bool => 1,
       ExpressionType::Unit => 0,
       ExpressionType::Never => 0,
-      ExpressionType::Struct(x) => si.get(x).unwrap().values_size,
+      ExpressionType::Struct(x) => si.get(x).unwrap().size.as_ref().unwrap().values_size,
       ExpressionType::Array(a_type, len) => sizeof_type_values(a_type, ei, si) * (*len),
       ExpressionType::ProcedurePointer { .. } => 1,
       ExpressionType::ProcedureItem(_, _) => 0,
@@ -170,7 +165,7 @@ pub fn sizeof_type_values(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si
 }
 
 /// The size of a type, in bytes, as it's stored in local memory (minimum size 4 bytes)
-pub fn sizeof_type_wasm(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
+pub fn sizeof_type_wasm(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) -> u32 {
    if sizeof_type_mem(e, ei, si) == 0 {
       0
    } else {
@@ -179,7 +174,7 @@ pub fn sizeof_type_wasm(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: 
 }
 
 /// The size of a type as it's stored in memory
-pub fn sizeof_type_mem(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &HashMap<StrId, SizeInfo>) -> u32 {
+pub fn sizeof_type_mem(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) -> u32 {
    match e {
       ExpressionType::Unresolved(_) => unreachable!(),
       ExpressionType::Unknown(_) => unreachable!(),
@@ -203,7 +198,7 @@ pub fn sizeof_type_mem(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &
       ExpressionType::Never => 0,
       ExpressionType::ProcedurePointer { .. } => 4, // @FixedPointerWidth
       ExpressionType::ProcedureItem(_, _) => 0,
-      ExpressionType::Struct(x) => si.get(x).unwrap().mem_size,
+      ExpressionType::Struct(x) => si.get(x).unwrap().size.as_ref().unwrap().mem_size,
       ExpressionType::Array(a_type, len) => sizeof_type_mem(a_type, ei, si) * (*len),
       ExpressionType::GenericParam(_) => unreachable!(),
       ExpressionType::CompileError => unreachable!(),

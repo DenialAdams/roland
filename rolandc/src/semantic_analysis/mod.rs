@@ -40,6 +40,8 @@ pub struct StructInfo {
    pub field_types: IndexMap<StrId, ExpressionTypeNode>,
    pub default_values: IndexMap<StrId, ExpressionId>,
    pub location: SourceInfo,
+   // nocheckin todo: can we drop this option?
+   pub size: Option<SizeInfo>,
 }
 
 #[derive(Clone)]
