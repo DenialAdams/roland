@@ -14,8 +14,14 @@ pub struct StructSizeInfo {
    pub strictest_alignment: u32,
    pub field_offsets_mem: HashMap<StrId, u32>,
    pub field_offsets_values: HashMap<StrId, u32>,
-   // nocheckin: what to do with union that contains never type?
-   // i think we must disallow this
+   pub contains_never_type: bool,
+}
+
+#[derive(Clone)]
+pub struct UnionSizeInfo {
+   pub mem_size: u32,
+   pub mem_alignment: u32,
+   // nocheckin error on this case on every union field access
    pub contains_never_type: bool,
 }
 
@@ -28,6 +34,60 @@ pub fn aligned_address(v: u32, a: u32) -> u32 {
    }
 }
 
+pub fn calculate_union_size_info(name: StrId, udt: &mut UserDefinedTypeInfo) {
+   if udt.union_info.get(&name).unwrap().size.is_some() {
+      return;
+   }
+
+   let ft = std::mem::take(&mut udt.union_info.get_mut(&name).unwrap().field_types);
+   for field_t in ft.values() {
+      match field_t.e_type {
+         ExpressionType::Struct(s) => calculate_struct_size_info(s, udt),
+         ExpressionType::Union(s) => calculate_union_size_info(s, udt),
+         _ => (),
+      }
+   }
+   udt.union_info.get_mut(&name).unwrap().field_types = ft;
+
+   let mut our_mem_size = 0;
+   let mut our_mem_alignment = 1;
+   let mut contains_never_type = false;
+
+   for field_t in udt.union_info.get(&name).unwrap().field_types.values() {
+      let field_t = &field_t.e_type;
+
+      if let ExpressionType::Struct(s) = field_t {
+         contains_never_type |= udt
+            .struct_info
+            .get(s)
+            .unwrap()
+            .size
+            .as_ref()
+            .unwrap()
+            .contains_never_type;
+      } else if let ExpressionType::Union(s) = field_t {
+         contains_never_type |= udt
+            .union_info
+            .get(s)
+            .unwrap()
+            .size
+            .as_ref()
+            .unwrap()
+            .contains_never_type;
+      }
+
+      our_mem_size = std::cmp::max(our_mem_size, sizeof_type_mem(field_t, udt));
+      our_mem_alignment = std::cmp::max(our_mem_alignment, mem_alignment(field_t, udt));
+   }
+
+
+   udt.union_info.get_mut(&name).unwrap().size = Some(UnionSizeInfo {
+      mem_size: aligned_address(our_mem_size, our_mem_alignment),
+      mem_alignment: our_mem_alignment,
+      contains_never_type,
+   });
+}
+
 pub fn calculate_struct_size_info(name: StrId, udt: &mut UserDefinedTypeInfo) {
    if udt.struct_info.get(&name).unwrap().size.is_some() {
       return;
@@ -35,8 +95,10 @@ pub fn calculate_struct_size_info(name: StrId, udt: &mut UserDefinedTypeInfo) {
 
    let ft = std::mem::take(&mut udt.struct_info.get_mut(&name).unwrap().field_types);
    for field_t in ft.values() {
-      if let ExpressionType::Struct(s) = field_t.e_type {
-         calculate_struct_size_info(s, udt);
+      match field_t.e_type {
+         ExpressionType::Struct(s) => calculate_struct_size_info(s, udt),
+         ExpressionType::Union(s) => calculate_union_size_info(s, udt),
+         _ => (),
       }
    }
    udt.struct_info.get_mut(&name).unwrap().field_types = ft;
@@ -67,6 +129,15 @@ pub fn calculate_struct_size_info(name: StrId, udt: &mut UserDefinedTypeInfo) {
             .as_ref()
             .unwrap()
             .contains_never_type;
+      } else if let ExpressionType::Union(s) = field_t {
+         contains_never_type |= udt
+            .union_info
+            .get(s)
+            .unwrap()
+            .size
+            .as_ref()
+            .unwrap()
+            .contains_never_type;
       }
 
       field_offsets_mem.insert(*field_name, sum_mem);
@@ -91,6 +162,15 @@ pub fn calculate_struct_size_info(name: StrId, udt: &mut UserDefinedTypeInfo) {
       if let ExpressionType::Struct(s) = last_field_t {
          contains_never_type |= udt
             .struct_info
+            .get(s)
+            .unwrap()
+            .size
+            .as_ref()
+            .unwrap()
+            .contains_never_type;
+      } else if let ExpressionType::Union(s) = last_field_t {
+         contains_never_type |= udt
+            .union_info
             .get(s)
             .unwrap()
             .size
@@ -180,7 +260,7 @@ pub fn sizeof_type_values(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si
       ExpressionType::ProcedureItem(_, _) => 0,
       ExpressionType::GenericParam(_) => unreachable!(),
       ExpressionType::CompileError => unreachable!(),
-      ExpressionType::Union(_) => todo!("nocheckin"),
+      ExpressionType::Union(_) => 1,
    }
 }
 

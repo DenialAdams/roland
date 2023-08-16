@@ -9,7 +9,7 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{ExpressionTypeNode, ProcImplSource, UserDefinedTypeInfo};
 use crate::semantic_analysis::validator::resolve_type;
-use crate::size_info::calculate_struct_size_info;
+use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
 use crate::source_info::{SourceInfo, SourcePath};
 use crate::type_data::{ExpressionType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
 use crate::{CompilationConfig, Program};
@@ -276,6 +276,7 @@ fn populate_user_defined_type_info(
          UnionInfo {
             field_types: field_map,
             location: a_union.location,
+            size: None,
          },
       );
    }
@@ -620,6 +621,11 @@ pub fn populate_type_and_procedure_info(
    for i in 0..program.user_defined_types.struct_info.len() {
       let s = program.user_defined_types.struct_info.get_index(i).unwrap().0;
       calculate_struct_size_info(*s, &mut program.user_defined_types);
+   }
+
+   for i in 0..program.user_defined_types.union_info.len() {
+      let s = program.user_defined_types.union_info.get_index(i).unwrap().0;
+      calculate_union_size_info(*s, &mut program.user_defined_types);
    }
 }
 

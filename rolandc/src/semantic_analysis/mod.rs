@@ -6,7 +6,7 @@ use slotmap::SecondaryMap;
 use self::type_variables::TypeVariableManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{AstPool, ExpressionId, ExpressionTypeNode, ProcedureId, StrNode, UserDefinedTypeInfo, VariableId};
-use crate::size_info::StructSizeInfo;
+use crate::size_info::{StructSizeInfo, UnionSizeInfo};
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 use crate::Target;
@@ -48,6 +48,7 @@ pub struct StructInfo {
 pub struct UnionInfo {
    pub field_types: IndexMap<StrId, ExpressionTypeNode>,
    pub location: SourceInfo,
+   pub size: Option<UnionSizeInfo>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
