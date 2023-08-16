@@ -1605,6 +1605,21 @@ fn get_type(
                      lhs_type = ExpressionType::CompileError;
                   }
                }
+               ExpressionType::Union(union_name) => {
+                  let union_fields = &validation_context.user_defined_types.union_info.get(&union_name).unwrap().field_types;
+                  if let Some(new_t_node) = union_fields.get(&field) {
+                     lhs_type = new_t_node.e_type.clone();
+                  } else {
+                     rolandc_error!(
+                        err_manager,
+                        expr_location,
+                        "Union `{}` does not have a field `{}`",
+                        validation_context.interner.lookup(union_name),
+                        validation_context.interner.lookup(field),
+                     );
+                     lhs_type = ExpressionType::CompileError;
+                  }
+               }
                ExpressionType::Array(_, _) => {
                   if Some(field) == length_token {
                      lhs_type = USIZE_TYPE;

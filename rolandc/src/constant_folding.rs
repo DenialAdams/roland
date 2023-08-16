@@ -663,6 +663,17 @@ fn fold_expr_inner(
                            .unwrap()
                            .e_type;
                      }
+                     ExpressionType::Union(s) => {
+                        next_exp_type = &folding_context
+                           .user_defined_types
+                           .union_info
+                           .get(s)
+                           .unwrap()
+                           .field_types
+                           .get(field_name)
+                           .unwrap()
+                           .e_type;
+                     }
                      ExpressionType::Array(_, len) => {
                         // Arrays only have one possible field, length
                         return Some(Expression::IntLiteral {
