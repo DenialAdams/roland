@@ -1638,7 +1638,7 @@ fn get_type(
                rolandc_error!(
                   err_manager,
                   expr_location,
-                  "Encountered field access on type {}; only structs and arrays have fields",
+                  "Encountered field access on type {}; only structs, unions, and arrays have fields",
                   other_type.as_roland_type_info(
                      validation_context.interner,
                      validation_context.procedure_info,
