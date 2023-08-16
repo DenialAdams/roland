@@ -1953,23 +1953,35 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             field_name: StrId,
             generation_context: &mut GenerationContext,
          ) {
-            let ExpressionType::Struct(struct_name) = lhs_type else {
-               unreachable!()
+            let mem_offset = match lhs_type {
+               ExpressionType::Struct(s) => {
+                  *generation_context
+                  .user_defined_types
+                  .struct_info
+                  .get(s)
+                  .unwrap()
+                  .size
+                  .as_ref()
+                  .unwrap()
+                  .field_offsets_mem
+                  .get(&field_name)
+                  .unwrap()
+               }
+               ExpressionType::Union(s) => {
+                  let accessed_type = &generation_context
+                     .user_defined_types
+                     .union_info
+                     .get(s)
+                     .unwrap()
+                     .field_types
+                     .get(&field_name)
+                     .unwrap().e_type;
+                  sizeof_type_mem(accessed_type, generation_context.user_defined_types)
+               }
+               _ => unreachable!(),
             };
 
-            let mem_offset = generation_context
-               .user_defined_types
-               .struct_info
-               .get(struct_name)
-               .unwrap()
-               .size
-               .as_ref()
-               .unwrap()
-               .field_offsets_mem
-               .get(&field_name)
-               .unwrap();
-
-            generation_context.emit_const_add_i32(*mem_offset);
+            generation_context.emit_const_add_i32(mem_offset);
          }
 
          let lhs = &generation_context.ast.expressions[*lhs_id];
@@ -1980,6 +1992,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
 
          do_emit(*lhs_id, generation_context);
          if get_registers_for_expr(*lhs_id, generation_context).is_none() {
+            // nocheckin: we are now emitting multiple const add i32s when we should just emit one
+            // a post-pass peephole on the IR could fix this, as well as converting set+get to tee
             calculate_offset(lhs.exp_type.as_ref().unwrap(), *field_name, generation_context);
          }
       }
