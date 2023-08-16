@@ -33,7 +33,7 @@ pub fn calculate_struct_size_info(
    struct_info: &IndexMap<StrId, StructInfo>,
    struct_size_info: &mut HashMap<StrId, SizeInfo>,
 ) {
-   if struct_size_info.contains_key(s) {
+   if struct_size_info.contains_key(&name) {
       return;
    }
 
@@ -136,10 +136,11 @@ pub fn mem_alignment(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &Ha
       ExpressionType::Never => 1,
       ExpressionType::ProcedurePointer { .. } => 4, // @FixedPointerWidth
       ExpressionType::ProcedureItem(_, _) => 1,
-      ExpressionType::CompileError => unreachable!(),
       ExpressionType::Struct(x) => si.get(x).unwrap().strictest_alignment,
       ExpressionType::Array(a_type, _len) => mem_alignment(a_type, ei, si),
+      ExpressionType::CompileError => unreachable!(),
       ExpressionType::GenericParam(_) => unreachable!(),
+      ExpressionType::Union(_) => todo!("nocheckin"),
    }
 }
 
@@ -158,12 +159,13 @@ pub fn sizeof_type_values(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si
       ExpressionType::Bool => 1,
       ExpressionType::Unit => 0,
       ExpressionType::Never => 0,
-      ExpressionType::CompileError => unreachable!(),
       ExpressionType::Struct(x) => si.get(x).unwrap().values_size,
       ExpressionType::Array(a_type, len) => sizeof_type_values(a_type, ei, si) * (*len),
       ExpressionType::ProcedurePointer { .. } => 1,
       ExpressionType::ProcedureItem(_, _) => 0,
       ExpressionType::GenericParam(_) => unreachable!(),
+      ExpressionType::CompileError => unreachable!(),
+      ExpressionType::Union(_) => todo!("nocheckin"),
    }
 }
 
@@ -201,9 +203,10 @@ pub fn sizeof_type_mem(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &
       ExpressionType::Never => 0,
       ExpressionType::ProcedurePointer { .. } => 4, // @FixedPointerWidth
       ExpressionType::ProcedureItem(_, _) => 0,
-      ExpressionType::CompileError => unreachable!(),
       ExpressionType::Struct(x) => si.get(x).unwrap().mem_size,
       ExpressionType::Array(a_type, len) => sizeof_type_mem(a_type, ei, si) * (*len),
       ExpressionType::GenericParam(_) => unreachable!(),
+      ExpressionType::CompileError => unreachable!(),
+      ExpressionType::Union(_) => todo!("nocheckin"),
    }
 }
