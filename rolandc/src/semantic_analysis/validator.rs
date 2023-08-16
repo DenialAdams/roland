@@ -1096,16 +1096,8 @@ fn get_type(
                   return ExpressionType::CompileError;
                }
 
-               let size_source = sizeof_type_mem(
-                  e_type,
-                  &validation_context.user_defined_types.enum_info,
-                  &validation_context.user_defined_types.struct_info,
-               );
-               let size_target = sizeof_type_mem(
-                  target_type,
-                  &validation_context.user_defined_types.enum_info,
-                  &validation_context.user_defined_types.struct_info,
-               );
+               let size_source = sizeof_type_mem(e_type, validation_context.user_defined_types);
+               let size_target = sizeof_type_mem(target_type, validation_context.user_defined_types);
 
                if target_type.is_or_contains_never(&validation_context.user_defined_types.struct_info) {
                   rolandc_error!(
@@ -1117,13 +1109,11 @@ fn get_type(
                } else if size_source == size_target {
                   let alignment_source = mem_alignment(
                      e_type.get_type_or_type_being_pointed_to(),
-                     &validation_context.user_defined_types.enum_info,
-                     &validation_context.user_defined_types.struct_info,
+                     validation_context.user_defined_types,
                   );
                   let alignment_target = mem_alignment(
                      target_type.get_type_or_type_being_pointed_to(),
-                     &validation_context.user_defined_types.enum_info,
-                     &validation_context.user_defined_types.struct_info,
+                     validation_context.user_defined_types,
                   );
 
                   let e_is_pointer_to_unit =

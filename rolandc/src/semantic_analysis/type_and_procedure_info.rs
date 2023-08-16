@@ -619,11 +619,7 @@ pub fn populate_type_and_procedure_info(
 
    for i in 0..program.user_defined_types.struct_info.len() {
       let s = program.user_defined_types.struct_info.get_index(i).unwrap().0;
-      calculate_struct_size_info(
-         *s,
-         &program.user_defined_types.enum_info,
-         &mut program.user_defined_types.struct_info,
-      );
+      calculate_struct_size_info(*s, &mut program.user_defined_types);
    }
 }
 

@@ -6,7 +6,7 @@ use slotmap::SecondaryMap;
 use self::type_variables::TypeVariableManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{AstPool, ExpressionId, ExpressionTypeNode, ProcedureId, StrNode, UserDefinedTypeInfo, VariableId};
-use crate::size_info::SizeInfo;
+use crate::size_info::StructSizeInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 use crate::Target;
@@ -41,7 +41,7 @@ pub struct StructInfo {
    pub default_values: IndexMap<StrId, ExpressionId>,
    pub location: SourceInfo,
    // nocheckin todo: can we drop this option?
-   pub size: Option<SizeInfo>,
+   pub size: Option<StructSizeInfo>,
 }
 
 #[derive(Clone)]

@@ -762,11 +762,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
    match interner.lookup(proc_name) {
       "proc_name" => fc.current_proc_name.map(Expression::StringLiteral),
       "sizeof" => {
-         let type_size = crate::size_info::sizeof_type_mem(
-            &generic_args[0],
-            &fc.user_defined_types.enum_info,
-            &fc.user_defined_types.struct_info,
-         );
+         let type_size = crate::size_info::sizeof_type_mem(&generic_args[0], fc.user_defined_types);
 
          Some(Expression::IntLiteral {
             val: u64::from(type_size),
@@ -774,11 +770,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
          })
       }
       "alignof" => {
-         let type_alignment = crate::size_info::mem_alignment(
-            &generic_args[0],
-            &fc.user_defined_types.enum_info,
-            &fc.user_defined_types.struct_info,
-         );
+         let type_alignment = crate::size_info::mem_alignment(&generic_args[0], fc.user_defined_types);
 
          Some(Expression::IntLiteral {
             val: u64::from(type_alignment),

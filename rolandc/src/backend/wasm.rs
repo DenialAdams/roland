@@ -15,7 +15,7 @@ use crate::parse::{
    AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureDefinition, ProcedureId, Program,
    Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::{EnumInfo, GlobalKind, StructInfo};
+use crate::semantic_analysis::{GlobalKind, StructInfo};
 use crate::size_info::{aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm};
 use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I32_TYPE};
 use crate::{CompilationConfig, Target};
@@ -155,16 +155,8 @@ fn dynamic_move_locals_of_type_to_dest(
                &sub_field.e_type,
                generation_context,
             );
-            let alignment_of_next = mem_alignment(
-               &next_sub_field.e_type,
-               &generation_context.user_defined_types.enum_info,
-               &generation_context.user_defined_types.struct_info,
-            );
-            let this_size = sizeof_type_mem(
-               &sub_field.e_type,
-               &generation_context.user_defined_types.enum_info,
-               &generation_context.user_defined_types.struct_info,
-            );
+            let alignment_of_next = mem_alignment(&next_sub_field.e_type, generation_context.user_defined_types);
+            let this_size = sizeof_type_mem(&sub_field.e_type, generation_context.user_defined_types);
             // we've already accounted for the size, but adding padding if necessary
             *offset += aligned_address(this_size, alignment_of_next) - this_size;
          }
@@ -194,11 +186,7 @@ fn dynamic_move_locals_of_type_to_dest(
                .as_ref()
                .unwrap()
                .strictest_alignment;
-            let this_size = sizeof_type_mem(
-               &last_sub_field.e_type,
-               &generation_context.user_defined_types.enum_info,
-               &generation_context.user_defined_types.struct_info,
-            );
+            let this_size = sizeof_type_mem(&last_sub_field.e_type, generation_context.user_defined_types);
             // we've already accounted for the size, but adding padding if necessary
             *offset += aligned_address(this_size, alignment_of_next) - this_size;
          }
@@ -216,11 +204,7 @@ fn dynamic_move_locals_of_type_to_dest(
             .instruction(&Instruction::LocalGet(*local_index));
          simple_store_mem(field, generation_context);
          *local_index += 1;
-         *offset += sizeof_type_mem(
-            field,
-            &generation_context.user_defined_types.enum_info,
-            &generation_context.user_defined_types.struct_info,
-         );
+         *offset += sizeof_type_mem(field, generation_context.user_defined_types);
       }
    }
 }
@@ -320,8 +304,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       compare_type_alignment(
          &v_1.expr_type.e_type,
          &v_2.expr_type.e_type,
-         &program.user_defined_types.enum_info,
-         &program.user_defined_types.struct_info,
+         &program.user_defined_types,
       )
    });
 
@@ -412,11 +395,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
          .iter()
          .find(|x| !generation_context.var_to_reg.contains_key(x.0))
       {
-         mem_alignment(
-            &v.1.expr_type.e_type,
-            &generation_context.user_defined_types.enum_info,
-            &generation_context.user_defined_types.struct_info,
-         )
+         mem_alignment(&v.1.expr_type.e_type, generation_context.user_defined_types)
       } else {
          1
       };
@@ -432,11 +411,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       debug_assert!(static_details.kind != GlobalKind::Const);
       generation_context.static_addresses.insert(*static_var, offset);
 
-      offset += sizeof_type_mem(
-         &static_details.expr_type.e_type,
-         &generation_context.user_defined_types.enum_info,
-         &generation_context.user_defined_types.struct_info,
-      );
+      offset += sizeof_type_mem(&static_details.expr_type.e_type, generation_context.user_defined_types);
    }
 
    let mut buf = vec![];
@@ -584,16 +559,8 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
          .iter()
          .filter(|x| !generation_context.var_to_reg.contains_key(x.0))
          .map(|x| {
-            let alignment = mem_alignment(
-               x.1,
-               &generation_context.user_defined_types.enum_info,
-               &generation_context.user_defined_types.struct_info,
-            );
-            let size = sizeof_type_mem(
-               x.1,
-               &generation_context.user_defined_types.enum_info,
-               &generation_context.user_defined_types.struct_info,
-            );
+            let alignment = mem_alignment(x.1, generation_context.user_defined_types);
+            let size = sizeof_type_mem(x.1, generation_context.user_defined_types);
             (*x.0, (alignment, size))
          })
          .collect();
@@ -811,14 +778,13 @@ fn compare_alignment(alignment_1: u32, sizeof_1: u32, alignment_2: u32, sizeof_2
 fn compare_type_alignment(
    e_1: &ExpressionType,
    e_2: &ExpressionType,
-   enum_info: &IndexMap<StrId, EnumInfo>,
-   si: &IndexMap<StrId, StructInfo>,
+   udt: &UserDefinedTypeInfo
 ) -> std::cmp::Ordering {
-   let alignment_1 = mem_alignment(e_1, enum_info, si);
-   let alignment_2 = mem_alignment(e_2, enum_info, si);
+   let alignment_1 = mem_alignment(e_1, udt);
+   let alignment_2 = mem_alignment(e_2, udt);
 
-   let sizeof_1 = sizeof_type_mem(e_1, enum_info, si);
-   let sizeof_2 = sizeof_type_mem(e_1, enum_info, si);
+   let sizeof_1 = sizeof_type_mem(e_1, udt);
+   let sizeof_2 = sizeof_type_mem(e_1, udt);
 
    compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
 }
@@ -993,11 +959,7 @@ fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &Generation
 
          let last_field_type = &last_si.field_types.get(last_field_name).unwrap().e_type;
 
-         let last_field_size_values = sizeof_type_values(
-            last_field_type,
-            &generation_context.user_defined_types.enum_info,
-            &generation_context.user_defined_types.struct_info,
-         );
+         let last_field_size_values = sizeof_type_values(last_field_type, &generation_context.user_defined_types.enum_info, &generation_context.user_defined_types.struct_info);
 
          let final_range = base_range[value_offset as usize..(value_offset + last_field_size_values) as usize].to_vec();
 
@@ -1136,8 +1098,7 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
                - this_offset
                - sizeof_type_mem(
                   &field.1.e_type,
-                  &generation_context.user_defined_types.enum_info,
-                  &generation_context.user_defined_types.struct_info,
+                  generation_context.user_defined_types,
                );
             for _ in 0..padding_bytes {
                buf.push(0);
@@ -1156,8 +1117,7 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
                - this_offset
                - sizeof_type_mem(
                   &last_field.1.e_type,
-                  &generation_context.user_defined_types.enum_info,
-                  &generation_context.user_defined_types.struct_info,
+                  generation_context.user_defined_types,
                );
             for _ in 0..padding_bytes {
                buf.push(0);
@@ -1222,8 +1182,7 @@ fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, generation_
                - this_offset
                - sizeof_type_mem(
                   &field.1.e_type,
-                  &generation_context.user_defined_types.enum_info,
-                  &generation_context.user_defined_types.struct_info,
+                  generation_context.user_defined_types,
                );
             for _ in 0..padding_bytes {
                buf.push(0);
@@ -1237,8 +1196,7 @@ fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, generation_
                - this_offset
                - sizeof_type_mem(
                   &last_field.1.e_type,
-                  &generation_context.user_defined_types.enum_info,
-                  &generation_context.user_defined_types.struct_info,
+                  generation_context.user_defined_types,
                );
             for _ in 0..padding_bytes {
                buf.push(0);
@@ -2066,8 +2024,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             let sizeof_inner = match &generation_context.ast.expressions[array].exp_type {
                Some(ExpressionType::Array(x, _)) => sizeof_type_mem(
                   x,
-                  &generation_context.user_defined_types.enum_info,
-                  &generation_context.user_defined_types.struct_info,
+                  generation_context.user_defined_types,
                ),
                _ => unreachable!(),
             };
@@ -2160,13 +2117,7 @@ fn complex_load_mem(mut offset: u32, val_type: &ExpressionType, generation_conte
          let si = generation_context.user_defined_types.struct_info.get(x).unwrap();
          for (field_name, field) in si.field_types.iter() {
             let field_offset = si.size.as_ref().unwrap().field_offsets_mem.get(field_name).unwrap();
-            match sizeof_type_values(
-               &field.e_type,
-               &generation_context.user_defined_types.enum_info,
-               &generation_context.user_defined_types.struct_info,
-            )
-            .cmp(&1)
-            {
+            match sizeof_type_values(&field.e_type, &generation_context.user_defined_types.enum_info, &generation_context.user_defined_types.struct_info).cmp(&1) {
                std::cmp::Ordering::Less => (),
                std::cmp::Ordering::Equal => {
                   generation_context
@@ -2183,13 +2134,7 @@ fn complex_load_mem(mut offset: u32, val_type: &ExpressionType, generation_conte
       }
       ExpressionType::Array(a_type, len) => {
          for _ in 0..*len {
-            match sizeof_type_values(
-               a_type,
-               &generation_context.user_defined_types.enum_info,
-               &generation_context.user_defined_types.struct_info,
-            )
-            .cmp(&1)
-            {
+            match sizeof_type_values(a_type, &generation_context.user_defined_types.enum_info, &generation_context.user_defined_types.struct_info).cmp(&1) {
                std::cmp::Ordering::Less => (),
                std::cmp::Ordering::Equal => {
                   generation_context
@@ -2203,11 +2148,7 @@ fn complex_load_mem(mut offset: u32, val_type: &ExpressionType, generation_conte
                }
             }
 
-            offset += sizeof_type_mem(
-               a_type,
-               &generation_context.user_defined_types.enum_info,
-               &generation_context.user_defined_types.struct_info,
-            );
+            offset += sizeof_type_mem(a_type, generation_context.user_defined_types);
          }
       }
       _ => unreachable!(),
@@ -2223,11 +2164,7 @@ fn simple_load_mem(val_type: &ExpressionType, generation_context: &mut Generatio
          // (there should only be one if we're in simple_load)
          for (_, field_type_node) in si.field_types.iter() {
             let field_type = &field_type_node.e_type;
-            match sizeof_type_values(
-               field_type,
-               &generation_context.user_defined_types.enum_info,
-               &generation_context.user_defined_types.struct_info,
-            ) {
+            match sizeof_type_values(field_type, &generation_context.user_defined_types.enum_info, &generation_context.user_defined_types.struct_info) {
                0 => continue,
                1 => return simple_load_mem(field_type, generation_context),
                _ => unreachable!(),
@@ -2249,12 +2186,10 @@ fn simple_load_mem(val_type: &ExpressionType, generation_context: &mut Generatio
       generation_context.active_fcn.instruction(&Instruction::Drop);
    } else if sizeof_type_mem(
       val_type,
-      &generation_context.user_defined_types.enum_info,
-      &generation_context.user_defined_types.struct_info,
+      generation_context.user_defined_types,
    ) == sizeof_type_wasm(
       val_type,
-      &generation_context.user_defined_types.enum_info,
-      &generation_context.user_defined_types.struct_info,
+      generation_context.user_defined_types,
    ) {
       match type_to_wasm_type_basic(val_type) {
          ValType::I64 => generation_context
@@ -2336,11 +2271,7 @@ fn simple_store_mem(val_type: &ExpressionType, generation_context: &mut Generati
          // (there should only be one if we're in simple_store)
          for (_, field_type_node) in si.field_types.iter() {
             let field_type = &field_type_node.e_type;
-            match sizeof_type_values(
-               field_type,
-               &generation_context.user_defined_types.enum_info,
-               &generation_context.user_defined_types.struct_info,
-            ) {
+            match sizeof_type_values(field_type, &generation_context.user_defined_types.enum_info, &generation_context.user_defined_types.struct_info) {
                0 => continue,
                1 => return simple_store_mem(field_type, generation_context),
                _ => unreachable!(),
@@ -2354,12 +2285,10 @@ fn simple_store_mem(val_type: &ExpressionType, generation_context: &mut Generati
    }
    if sizeof_type_mem(
       val_type,
-      &generation_context.user_defined_types.enum_info,
-      &generation_context.user_defined_types.struct_info,
+      generation_context.user_defined_types,
    ) == sizeof_type_wasm(
       val_type,
-      &generation_context.user_defined_types.enum_info,
-      &generation_context.user_defined_types.struct_info,
+      generation_context.user_defined_types,
    ) {
       match type_to_wasm_type_basic(val_type) {
          ValType::I64 => generation_context

@@ -227,15 +227,7 @@ impl ExpressionType {
    pub fn is_or_contains_never(&self, struct_info: &IndexMap<StrId, StructInfo>) -> bool {
       match self {
          ExpressionType::Never => true,
-         ExpressionType::Struct(s) => {
-            struct_info
-               .get(s)
-               .unwrap()
-               .size
-               .as_ref()
-               .unwrap()
-               .contains_never_type
-         }
+         ExpressionType::Struct(s) => struct_info.get(s).unwrap().size.as_ref().unwrap().contains_never_type,
          ExpressionType::Array(inner_t, _) => inner_t.is_or_contains_never(struct_info),
          ExpressionType::Pointer(inner_t) => inner_t.is_or_contains_never(struct_info),
          _ => false,
