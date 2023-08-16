@@ -2116,6 +2116,7 @@ fn complex_load_mem(mut offset: u32, val_type: &ExpressionType, generation_conte
          }
       }
       ExpressionType::Array(a_type, len) => {
+         let elem_size = sizeof_type_mem(a_type, generation_context.user_defined_types);
          for _ in 0..*len {
             match sizeof_type_values(a_type, &generation_context.user_defined_types.enum_info, &generation_context.user_defined_types.struct_info).cmp(&1) {
                std::cmp::Ordering::Less => (),
@@ -2131,7 +2132,7 @@ fn complex_load_mem(mut offset: u32, val_type: &ExpressionType, generation_conte
                }
             }
 
-            offset += sizeof_type_mem(a_type, generation_context.user_defined_types);
+            offset += elem_size;
          }
       }
       _ => unreachable!(),
