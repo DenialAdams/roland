@@ -216,7 +216,6 @@ pub fn type_and_check_validity(
       loop_depth: 0,
       unknown_literals: IndexSet::new(),
       ast: &mut program.ast,
-      struct_size_info: HashMap::new(),
       type_variables: super::TypeVariableManager::new(),
       cur_procedure_locals: IndexMap::new(),
       source_to_definition: std::mem::replace(&mut program.source_to_definition, IndexMap::new()),

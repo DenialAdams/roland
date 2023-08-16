@@ -90,7 +90,6 @@ pub struct ValidationContext<'a> {
    pub loop_depth: u64,
    pub unknown_literals: IndexSet<ExpressionId>,
    pub ast: &'a mut AstPool,
-   pub struct_size_info: HashMap<StrId, SizeInfo>,
    pub type_variables: TypeVariableManager,
    pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,
    pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
