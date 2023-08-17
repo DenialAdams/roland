@@ -235,7 +235,7 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo) -> u32 {
       ExpressionType::Array(a_type, _len) => mem_alignment(a_type, udt),
       ExpressionType::CompileError => unreachable!(),
       ExpressionType::GenericParam(_) => unreachable!(),
-      ExpressionType::Union(_) => todo!("nocheckin"),
+      ExpressionType::Union(x) => udt.union_info.get(x).unwrap().size.as_ref().unwrap().mem_alignment,
    }
 }
 
@@ -303,6 +303,6 @@ pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo) -> u32 {
       ExpressionType::Array(a_type, len) => sizeof_type_mem(a_type, udt) * (*len),
       ExpressionType::GenericParam(_) => unreachable!(),
       ExpressionType::CompileError => unreachable!(),
-      ExpressionType::Union(_) => todo!("nocheckin"),
+      ExpressionType::Union(x) => udt.union_info.get(x).unwrap().size.as_ref().unwrap().mem_size,
    }
 }

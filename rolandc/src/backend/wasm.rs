@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use arrayvec::ArrayVec;
 use indexmap::{IndexMap, IndexSet};
 use wasm_encoder::{
    BlockType, CodeSection, ConstExpr, DataSection, ElementSection, Elements, EntityType, ExportSection, Function,
@@ -41,7 +42,7 @@ struct GenerationContext<'a> {
    procedure_to_table_index: IndexSet<ProcedureId>,
    procedure_indices: IndexSet<ProcedureId>,
    stack_of_loop_jump_offsets: Vec<u32>,
-   var_to_reg: IndexMap<VariableId, Vec<u32>>,
+   var_to_reg: IndexMap<VariableId, ArrayVec<u32, 1>>,
 }
 
 impl GenerationContext<'_> {
@@ -97,6 +98,7 @@ fn type_to_wasm_type_basic(t: &ExpressionType) -> ValType {
       },
       ExpressionType::Bool => ValType::I32,
       ExpressionType::ProcedurePointer { .. } => ValType::I32,
+      ExpressionType::Union(_) => ValType::I32,
       x => {
          unreachable!("{:?}", x);
       }
@@ -912,7 +914,7 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
    }
 }
 
-fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &GenerationContext) -> Option<(bool, Vec<u32>)> {
+fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &GenerationContext) -> Option<(bool, ArrayVec<u32, 1>)> {
    let node = &generation_context.ast.expressions[expr_id];
    match &node.expression {
       Expression::Variable(v) => generation_context
@@ -920,58 +922,6 @@ fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &Generation
          .get(v)
          .cloned()
          .map(|x| (generation_context.globals.contains(v), x)),
-      Expression::FieldAccess(field, e) => {
-         let (is_global, base_range) = get_registers_for_expr(*e, generation_context)?;
-         let ExpressionType::Struct(struct_name) =
-            generation_context.ast.expressions[*e].exp_type.as_ref().unwrap()
-         else {
-            unreachable!()
-         };
-   
-         let si = generation_context
-            .user_defined_types
-            .struct_info
-            .get(struct_name)
-            .unwrap();
-         let value_offset = si
-            .size
-            .as_ref()
-            .unwrap()
-            .field_offsets_values
-            .get(field)
-            .unwrap();
-
-         let last_field_type = &si.field_types.get(field).unwrap().e_type;
-
-         let last_field_size_values = sizeof_type_values(last_field_type, &generation_context.user_defined_types.enum_info, &generation_context.user_defined_types.struct_info);
-
-         let final_range = base_range[*value_offset as usize..(value_offset + last_field_size_values) as usize].to_vec();
-
-         Some((is_global, final_range))
-      }
-      Expression::ArrayIndex { array, index } => {
-         let (is_global, base_range) = get_registers_for_expr(*array, generation_context)?;
-
-         if let Expression::IntLiteral { val: x, .. } = generation_context.ast.expressions[*index].expression {
-            // Safe assert due to inference and constant folding validating this
-            let val_32 = u32::try_from(x).unwrap();
-            let sizeof_inner = match &generation_context.ast.expressions[*array].exp_type {
-               Some(ExpressionType::Array(x, _)) => sizeof_type_values(
-                  x,
-                  &generation_context.user_defined_types.enum_info,
-                  &generation_context.user_defined_types.struct_info,
-               ),
-               _ => unreachable!(),
-            };
-
-            let final_range =
-               base_range[(sizeof_inner * val_32) as usize..((sizeof_inner * val_32) + sizeof_inner) as usize].to_vec();
-
-            Some((is_global, final_range))
-         } else {
-            None
-         }
-      }
       _ => None,
    }
 }
@@ -2157,6 +2107,11 @@ fn simple_load_mem(val_type: &ExpressionType, generation_context: &mut Generatio
       }
       ExpressionType::Array(inner_type, _len) => {
          return simple_load_mem(inner_type, generation_context);
+      }
+      ExpressionType::Union(_) => {
+         // Leave the address on the stack
+         // The only time we "load" a union should be to pass it by ref
+         return;
       }
       _ => (),
    }

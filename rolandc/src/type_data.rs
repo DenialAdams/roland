@@ -224,6 +224,11 @@ impl ExpressionType {
    }
 
    #[must_use]
+   pub fn is_aggregate(&self) -> bool {
+      matches!(self, ExpressionType::Array(_, _) | ExpressionType::Struct(_) | ExpressionType::Union(_))
+   }
+
+   #[must_use]
    pub fn is_or_contains_never(&self, struct_info: &IndexMap<StrId, StructInfo>) -> bool {
       match self {
          ExpressionType::Never => true,
