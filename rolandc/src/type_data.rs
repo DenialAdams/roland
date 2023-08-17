@@ -1,13 +1,12 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
 
-use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 
 use crate::interner::{Interner, StrId};
-use crate::parse::ProcedureId;
+use crate::parse::{ProcedureId, UserDefinedTypeInfo};
 use crate::semantic_analysis::type_variables::{TypeConstraint, TypeVariable, TypeVariableManager};
-use crate::semantic_analysis::{ProcedureInfo, StructInfo};
+use crate::semantic_analysis::ProcedureInfo;
 
 pub const U8_TYPE: ExpressionType = ExpressionType::Int(IntType {
    signed: false,
@@ -229,12 +228,13 @@ impl ExpressionType {
    }
 
    #[must_use]
-   pub fn is_or_contains_never(&self, struct_info: &IndexMap<StrId, StructInfo>) -> bool {
+   pub fn is_or_contains_never(&self, udt: &UserDefinedTypeInfo) -> bool {
       match self {
          ExpressionType::Never => true,
-         ExpressionType::Struct(s) => struct_info.get(s).unwrap().size.as_ref().unwrap().contains_never_type,
-         ExpressionType::Array(inner_t, _) => inner_t.is_or_contains_never(struct_info),
-         ExpressionType::Pointer(inner_t) => inner_t.is_or_contains_never(struct_info),
+         ExpressionType::Struct(s) => udt.struct_info.get(s).unwrap().size.as_ref().unwrap().contains_never_type,
+         ExpressionType::Union(s) => udt.union_info.get(s).unwrap().size.as_ref().unwrap().contains_never_type,
+         ExpressionType::Array(inner_t, _) => inner_t.is_or_contains_never(udt),
+         ExpressionType::Pointer(inner_t) => inner_t.is_or_contains_never(udt),
          _ => false,
       }
    }

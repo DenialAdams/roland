@@ -1,0 +1,21 @@
+union U {
+   x: u16,
+   y: u8,
+}
+
+proc main() {
+   let foo: U = ___;
+   foo.x = 256;
+   println(uint_to_string(foo.x as u64));
+   println(uint_to_string(foo.y as u64));
+   pass(foo);
+}
+
+proc pass(a: U) {
+   println(uint_to_string(a.x as u64));
+   println(uint_to_string(a.y as u64));
+}
+__END__
+run:
+256
+0

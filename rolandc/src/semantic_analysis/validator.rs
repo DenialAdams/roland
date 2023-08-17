@@ -784,7 +784,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                );
             } else if dt_val
                .e_type
-               .is_or_contains_never(&validation_context.user_defined_types.struct_info)
+               .is_or_contains_never(validation_context.user_defined_types)
             {
                rolandc_error!(
                   err_manager,
@@ -1099,7 +1099,7 @@ fn get_type(
                let size_source = sizeof_type_mem(e_type, validation_context.user_defined_types);
                let size_target = sizeof_type_mem(target_type, validation_context.user_defined_types);
 
-               if target_type.is_or_contains_never(&validation_context.user_defined_types.struct_info) {
+               if target_type.is_or_contains_never(validation_context.user_defined_types) {
                   rolandc_error!(
                      err_manager,
                      expr_location,
