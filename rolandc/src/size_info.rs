@@ -21,7 +21,6 @@ pub struct StructSizeInfo {
 pub struct UnionSizeInfo {
    pub mem_size: u32,
    pub mem_alignment: u32,
-   // nocheckin error on this case on every union field access
    pub contains_never_type: bool,
 }
 

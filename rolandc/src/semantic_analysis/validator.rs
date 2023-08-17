@@ -789,7 +789,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                rolandc_error!(
                   err_manager,
                   id.location,
-                  "Variables of the never type, a pointer to the never type, or a struct containing the never type can't be uninitialized",
+                  "Variables of the never type, a pointer to the never type, or a struct or union containing the never type can't be uninitialized",
                );
             }
 
@@ -1103,7 +1103,7 @@ fn get_type(
                   rolandc_error!(
                      err_manager,
                      expr_location,
-                     "Transmuting to the never type, a pointer to the never type, or a struct containing the never type isn't supported",
+                     "Transmuting to the never type, a pointer to the never type, or a struct or union containing the never type isn't supported",
                   );
                   ExpressionType::CompileError
                } else if size_source == size_target {
