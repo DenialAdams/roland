@@ -1941,11 +1941,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             .is_lvalue_disregard_consts(&generation_context.ast.expressions));
 
          do_emit(*lhs_id, generation_context);
-         if get_registers_for_expr(*lhs_id, generation_context).is_none() {
-            // nocheckin: we are now emitting multiple const add i32s when we should just emit one
-            // a post-pass peephole on the IR could fix this, as well as converting set+get to tee
-            calculate_offset(lhs.exp_type.as_ref().unwrap(), *field_name, generation_context);
-         }
+         // TODO: for an expression like foo.bar.baz, we will emit 3 const adds, when they should be fused
+         calculate_offset(lhs.exp_type.as_ref().unwrap(), *field_name, generation_context);
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
@@ -1979,9 +1976,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             .is_lvalue_disregard_consts(&generation_context.ast.expressions));
 
          do_emit(*array, generation_context);
-         if get_registers_for_expr(*array, generation_context).is_none() {
-            calculate_offset(*array, *index, generation_context);
-         }
+         calculate_offset(*array, *index, generation_context);
       }
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::UnresolvedStructLiteral(_, _) => unreachable!(),

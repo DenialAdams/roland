@@ -281,7 +281,7 @@ fn populate_user_defined_type_info(
       );
    }
 
-   // nocheckin the clone is downright silly now
+   // TODO: this clone is horrific. just for borrowck.
    let cloned_udt = udt.clone();
    for struct_i in udt.struct_info.iter_mut() {
       for (field, etn) in struct_i.1.field_types.iter_mut() {
