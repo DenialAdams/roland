@@ -2094,8 +2094,8 @@ fn simple_load_mem(val_type: &ExpressionType, generation_context: &mut Generatio
          return simple_load_mem(inner_type, generation_context);
       }
       ExpressionType::Union(_) => {
-         // Leave the address on the stack
-         // The only time we "load" a union should be to pass it by ref
+         // Leave the address on the stack - there is no value representation of unions
+         // (Storing code understands this)
          return;
       }
       _ => (),
