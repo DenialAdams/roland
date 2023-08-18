@@ -8,6 +8,9 @@ proc main() {
    foo.x = 256;
    println(uint_to_string(foo.x as u64));
    println(uint_to_string(foo.y as u64));
+   let bar = foo;
+   println(uint_to_string(bar.x as u64));
+   println(uint_to_string(bar.y as u64));
    pass(foo);
 }
 
@@ -17,5 +20,9 @@ proc pass(a: U) {
 }
 __END__
 run:
+256
+0
+256
+0
 256
 0

@@ -1917,17 +1917,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                   .get(&field_name)
                   .unwrap()
                }
-               ExpressionType::Union(s) => {
-                  let accessed_type = &generation_context
-                     .user_defined_types
-                     .union_info
-                     .get(s)
-                     .unwrap()
-                     .field_types
-                     .get(&field_name)
-                     .unwrap().e_type;
-                  sizeof_type_mem(accessed_type, generation_context.user_defined_types)
-               }
+               ExpressionType::Union(_) => 0,
                _ => unreachable!(),
             };
 
@@ -2214,6 +2204,12 @@ fn simple_store_mem(val_type: &ExpressionType, generation_context: &mut Generati
       }
       ExpressionType::Array(inner_type, _len) => {
          return simple_store_mem(inner_type, generation_context);
+      }
+      ExpressionType::Union(_) => {
+         let size = sizeof_type_mem(val_type, generation_context.user_defined_types);
+         generation_context.active_fcn.instruction(&Instruction::I32Const(size as i32));
+         generation_context.active_fcn.instruction(&Instruction::MemoryCopy { src_mem: 0, dst_mem: 0});
+         return;
       }
       _ => (),
    }
