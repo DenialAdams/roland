@@ -1,15 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
-use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 
 use crate::constant_folding::{self, FoldingContext};
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{AstPool, Expression, ExpressionId, ProcedureId, Program, VariableId};
-use crate::semantic_analysis::{EnumInfo, ProcedureInfo, StructInfo};
-use crate::size_info::SizeInfo;
+use crate::parse::{AstPool, Expression, ExpressionId, ProcedureId, Program, UserDefinedTypeInfo, VariableId};
+use crate::semantic_analysis::ProcedureInfo;
 use crate::source_info::SourceInfo;
 
 struct CgContext<'a> {
@@ -18,9 +16,7 @@ struct CgContext<'a> {
    consts_being_processed: &'a mut HashSet<VariableId>,
    const_replacements: &'a mut HashMap<VariableId, ExpressionId>,
    procedure_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
-   struct_info: &'a IndexMap<StrId, StructInfo>,
-   enum_info: &'a IndexMap<StrId, EnumInfo>,
-   struct_size_info: &'a HashMap<StrId, SizeInfo>,
+   user_defined_types: &'a UserDefinedTypeInfo,
    interner: &'a Interner,
 }
 
@@ -29,18 +25,14 @@ fn fold_expr_id(
    err_manager: &mut ErrorManager,
    ast: &mut AstPool,
    procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
-   struct_info: &IndexMap<StrId, StructInfo>,
-   struct_size_info: &HashMap<StrId, SizeInfo>,
-   enum_info: &IndexMap<StrId, EnumInfo>,
+   user_defined_types: &UserDefinedTypeInfo,
    const_replacements: &HashMap<VariableId, ExpressionId>,
    interner: &Interner,
 ) {
    let mut fc = FoldingContext {
       ast,
       procedure_info,
-      struct_info,
-      struct_size_info,
-      enum_info,
+      user_defined_types,
       const_replacements,
       current_proc_name: None,
    };
@@ -68,9 +60,7 @@ pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &
       all_consts: &all_consts,
       consts_being_processed: &mut consts_being_processed,
       const_replacements: &mut const_replacements,
-      struct_info: &program.struct_info,
-      enum_info: &program.enum_info,
-      struct_size_info: &program.struct_size_info,
+      user_defined_types: &program.user_defined_types,
       interner,
    };
 
@@ -94,9 +84,7 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
       err_manager,
       cg_context.ast,
       cg_context.procedure_info,
-      cg_context.struct_info,
-      cg_context.struct_size_info,
-      cg_context.enum_info,
+      cg_context.user_defined_types,
       cg_context.const_replacements,
       cg_context.interner,
    );

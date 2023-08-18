@@ -1,0 +1,13 @@
+union X {
+   foo: u8,
+}
+
+proc main() {
+   let a: X = ___;
+   a.foo = 10;
+   a.bar;
+}
+__END__
+compile:
+Union `X` does not have a field `bar`
+↳ line 8, column 4 [tests/unions/bad_field_access.rol]

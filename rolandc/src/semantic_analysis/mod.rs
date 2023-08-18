@@ -5,8 +5,8 @@ use slotmap::SecondaryMap;
 
 use self::type_variables::TypeVariableManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{AstPool, ExpressionId, ExpressionTypeNode, ProcedureId, StrNode, VariableId};
-use crate::size_info::SizeInfo;
+use crate::parse::{AstPool, ExpressionId, ExpressionTypeNode, ProcedureId, StrNode, UserDefinedTypeInfo, VariableId};
+use crate::size_info::{StructSizeInfo, UnionSizeInfo};
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 use crate::Target;
@@ -40,6 +40,14 @@ pub struct StructInfo {
    pub field_types: IndexMap<StrId, ExpressionTypeNode>,
    pub default_values: IndexMap<StrId, ExpressionId>,
    pub location: SourceInfo,
+   pub size: Option<StructSizeInfo>,
+}
+
+#[derive(Clone)]
+pub struct UnionInfo {
+   pub field_types: IndexMap<StrId, ExpressionTypeNode>,
+   pub location: SourceInfo,
+   pub size: Option<UnionSizeInfo>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -75,15 +83,13 @@ pub struct ValidationContext<'a> {
    pub target: Target,
    pub procedure_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
    pub proc_name_table: &'a HashMap<StrId, ProcedureId>,
-   pub enum_info: &'a IndexMap<StrId, EnumInfo>,
-   pub struct_info: &'a IndexMap<StrId, StructInfo>,
+   pub user_defined_types: &'a UserDefinedTypeInfo,
    pub global_info: &'a IndexMap<VariableId, GlobalInfo>,
    pub cur_procedure_info: Option<&'a ProcedureInfo>,
    pub variable_types: IndexMap<StrId, VariableDetails>,
    pub loop_depth: u64,
    pub unknown_literals: IndexSet<ExpressionId>,
    pub ast: &'a mut AstPool,
-   pub struct_size_info: HashMap<StrId, SizeInfo>,
    pub type_variables: TypeVariableManager,
    pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,
    pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,

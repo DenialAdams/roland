@@ -7,7 +7,7 @@ use slotmap::SecondaryMap;
 
 use super::type_inference::try_set_inferred_type;
 use super::type_variables::{TypeConstraint, TypeVariableManager};
-use super::{GlobalKind, ProcedureInfo, StructInfo, ValidationContext, VariableDetails, VariableKind};
+use super::{GlobalKind, ProcedureInfo, ValidationContext, VariableDetails, VariableKind};
 use crate::error_handling::error_handling_macros::{
    rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn,
 };
@@ -15,10 +15,10 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    statement_always_returns, ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode,
-   ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId, StrNode, UnOp, VariableId,
+   ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId, StrNode, UnOp,
+   UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::EnumInfo;
-use crate::size_info::{calculate_struct_size_info, mem_alignment, sizeof_type_mem};
+use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, IntType, F32_TYPE, F64_TYPE, I32_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE};
 use crate::Target;
@@ -146,12 +146,11 @@ fn any_match(type_validations: &[TypeValidator], et: &ExpressionType, validation
 
 pub fn resolve_type(
    v_type: &mut ExpressionType,
-   ei: &IndexMap<StrId, EnumInfo>,
-   si: &IndexMap<StrId, StructInfo>,
+   udt: &UserDefinedTypeInfo,
    type_params: Option<&IndexMap<StrId, IndexSet<StrId>>>,
 ) -> Result<(), ()> {
    match v_type {
-      ExpressionType::Pointer(vt) => resolve_type(vt, ei, si, type_params),
+      ExpressionType::Pointer(vt) => resolve_type(vt, udt, type_params),
       ExpressionType::Never => Ok(()),
       ExpressionType::Unknown(_) => Ok(()),
       ExpressionType::Int(_) => Ok(()),
@@ -159,7 +158,8 @@ pub fn resolve_type(
       ExpressionType::Bool => Ok(()),
       ExpressionType::Unit => Ok(()),
       ExpressionType::Struct(_) => Ok(()),
-      ExpressionType::Array(exp, _) => resolve_type(exp, ei, si, type_params),
+      ExpressionType::Union(_) => Ok(()),
+      ExpressionType::Array(exp, _) => resolve_type(exp, udt, type_params),
       ExpressionType::CompileError => Ok(()),
       ExpressionType::Enum(_) => Ok(()),
       ExpressionType::ProcedurePointer {
@@ -168,9 +168,9 @@ pub fn resolve_type(
       } => {
          let mut failed_to_resolve = false;
          for parameter in parameters.iter_mut() {
-            failed_to_resolve |= resolve_type(parameter, ei, si, type_params).is_err();
+            failed_to_resolve |= resolve_type(parameter, udt, type_params).is_err();
          }
-         failed_to_resolve |= resolve_type(ret_val, ei, si, type_params).is_err();
+         failed_to_resolve |= resolve_type(ret_val, udt, type_params).is_err();
          if failed_to_resolve {
             Err(())
          } else {
@@ -180,11 +180,14 @@ pub fn resolve_type(
       ExpressionType::GenericParam(_) => Ok(()),
       ExpressionType::ProcedureItem(_, _) => Ok(()), // This type contains other types, but this type itself can never be written down. It should always be valid
       ExpressionType::Unresolved(x) => {
-         if ei.contains_key(x) {
+         if udt.enum_info.contains_key(x) {
             *v_type = ExpressionType::Enum(*x);
             Ok(())
-         } else if si.contains_key(x) {
+         } else if udt.struct_info.contains_key(x) {
             *v_type = ExpressionType::Struct(*x);
+            Ok(())
+         } else if udt.union_info.contains_key(x) {
+            *v_type = ExpressionType::Union(*x);
             Ok(())
          } else if type_params.map_or(false, |tp| tp.contains_key(x)) {
             *v_type = ExpressionType::GenericParam(*x);
@@ -207,14 +210,12 @@ pub fn type_and_check_validity(
       variable_types: IndexMap::new(),
       procedure_info: &program.procedure_info,
       proc_name_table: &program.procedure_name_table,
-      enum_info: &program.enum_info,
-      struct_info: &program.struct_info,
+      user_defined_types: &mut program.user_defined_types,
       global_info: &program.global_info,
       cur_procedure_info: None,
       loop_depth: 0,
       unknown_literals: IndexSet::new(),
       ast: &mut program.ast,
-      struct_size_info: HashMap::new(),
       type_variables: super::TypeVariableManager::new(),
       cur_procedure_locals: IndexMap::new(),
       source_to_definition: std::mem::replace(&mut program.source_to_definition, IndexMap::new()),
@@ -321,17 +322,7 @@ pub fn type_and_check_validity(
       }
    }
 
-   validation_context
-      .struct_size_info
-      .reserve(validation_context.struct_info.len());
-   for s in validation_context.struct_info.iter() {
-      calculate_struct_size_info(
-         *s.0,
-         validation_context.enum_info,
-         validation_context.struct_info,
-         &mut validation_context.struct_size_info,
-      );
-
+   for s in validation_context.user_defined_types.struct_info.iter() {
       for (field_name, &default_expr) in s.1.default_values.iter() {
          type_expression(err_manager, default_expr, &mut validation_context);
 
@@ -482,7 +473,6 @@ pub fn type_and_check_validity(
       }
    }
 
-   program.struct_size_info = validation_context.struct_size_info;
    program.source_to_definition = validation_context.source_to_definition;
    program.next_variable = validation_context.next_var_dont_access;
 }
@@ -755,8 +745,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             // Failure to resolve is handled below
             let _ = resolve_type(
                &mut v.e_type,
-               validation_context.enum_info,
-               validation_context.struct_info,
+               validation_context.user_defined_types,
                validation_context.cur_procedure_info.map(|x| &x.type_parameters),
             );
             if let Some(enid) = opt_enid {
@@ -793,11 +782,14 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                   &validation_context.type_variables,
                   err_manager,
                );
-            } else if dt_val.e_type.is_or_contains_never(&validation_context.struct_size_info) {
+            } else if dt_val
+               .e_type
+               .is_or_contains_never(validation_context.user_defined_types)
+            {
                rolandc_error!(
                   err_manager,
                   id.location,
-                  "Variables of the never type, a pointer to the never type, or a struct containing the never type can't be uninitialized",
+                  "Variables of the never type, a pointer to the never type, or a struct or union containing the never type can't be uninitialized",
                );
             }
 
@@ -900,8 +892,7 @@ fn type_expression(
       Expression::Cast { target_type, .. } => {
          if resolve_type(
             target_type,
-            validation_context.enum_info,
-            validation_context.struct_info,
+            validation_context.user_defined_types,
             validation_context.cur_procedure_info.map(|x| &x.type_parameters),
          )
          .is_err()
@@ -940,8 +931,7 @@ fn type_expression(
          for g_arg in g_args.iter_mut() {
             if resolve_type(
                &mut g_arg.e_type,
-               validation_context.enum_info,
-               validation_context.struct_info,
+               validation_context.user_defined_types,
                validation_context.cur_procedure_info.map(|x| &x.type_parameters),
             )
             .is_err()
@@ -1037,7 +1027,14 @@ fn get_type(
                try_set_inferred_type(&U32_TYPE, *expr_id, validation_context);
             } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Enum(_)) {
                let enum_base_type = match target_type {
-                  ExpressionType::Enum(x) => &validation_context.enum_info.get(x).unwrap().base_type,
+                  ExpressionType::Enum(x) => {
+                     &validation_context
+                        .user_defined_types
+                        .enum_info
+                        .get(x)
+                        .unwrap()
+                        .base_type
+                  }
                   _ => unreachable!(),
                };
                try_set_inferred_type(enum_base_type, *expr_id, validation_context);
@@ -1099,34 +1096,24 @@ fn get_type(
                   return ExpressionType::CompileError;
                }
 
-               let size_source = sizeof_type_mem(
-                  e_type,
-                  validation_context.enum_info,
-                  &validation_context.struct_size_info,
-               );
-               let size_target = sizeof_type_mem(
-                  target_type,
-                  validation_context.enum_info,
-                  &validation_context.struct_size_info,
-               );
+               let size_source = sizeof_type_mem(e_type, validation_context.user_defined_types);
+               let size_target = sizeof_type_mem(target_type, validation_context.user_defined_types);
 
-               if target_type.is_or_contains_never(&validation_context.struct_size_info) {
+               if target_type.is_or_contains_never(validation_context.user_defined_types) {
                   rolandc_error!(
                      err_manager,
                      expr_location,
-                     "Transmuting to the never type, a pointer to the never type, or a struct containing the never type isn't supported",
+                     "Transmuting to the never type, a pointer to the never type, or a struct or union containing the never type isn't supported",
                   );
                   ExpressionType::CompileError
                } else if size_source == size_target {
                   let alignment_source = mem_alignment(
                      e_type.get_type_or_type_being_pointed_to(),
-                     validation_context.enum_info,
-                     &validation_context.struct_size_info,
+                     validation_context.user_defined_types,
                   );
                   let alignment_target = mem_alignment(
                      target_type.get_type_or_type_being_pointed_to(),
-                     validation_context.enum_info,
-                     &validation_context.struct_size_info,
+                     validation_context.user_defined_types,
                   );
 
                   let e_is_pointer_to_unit =
@@ -1422,7 +1409,7 @@ fn get_type(
             type_expression(err_manager, field_val, validation_context);
          }
 
-         match validation_context.struct_info.get(&struct_name.str) {
+         match validation_context.user_defined_types.struct_info.get(&struct_name.str) {
             Some(defined_struct) => {
                validation_context
                   .source_to_definition
@@ -1586,69 +1573,82 @@ fn get_type(
          validation_context.ast.expressions[*proc_expr].exp_type = Some(the_type);
          resulting_type
       }
-      Expression::FieldAccess(fields, lhs) => {
+      Expression::FieldAccess(field, lhs) => {
+         let field = *field;
          type_expression(err_manager, *lhs, validation_context);
 
          let lhs = &validation_context.ast.expressions[*lhs];
          let mut lhs_type = lhs.exp_type.as_ref().unwrap().clone();
-         let mut remaining_fields = fields.as_slice();
 
          let length_token = validation_context.interner.reverse_lookup("length");
 
-         while !remaining_fields.is_empty() {
-            let field = remaining_fields[0];
-            match lhs_type {
-               ExpressionType::Struct(struct_name) => {
-                  let struct_fields = &validation_context.struct_info.get(&struct_name).unwrap().field_types;
-                  if let Some(new_t_node) = struct_fields.get(&field) {
-                     lhs_type = new_t_node.e_type.clone();
-                  } else {
-                     rolandc_error!(
-                        err_manager,
-                        expr_location,
-                        "Struct `{}` does not have a field `{}`",
-                        validation_context.interner.lookup(struct_name),
-                        validation_context.interner.lookup(field),
-                     );
-                     lhs_type = ExpressionType::CompileError;
-                  }
-               }
-               ExpressionType::Array(_, _) => {
-                  if Some(field) == length_token {
-                     lhs_type = USIZE_TYPE;
-                  } else {
-                     rolandc_error!(
-                        err_manager,
-                        expr_location,
-                        "Array does not have a field `{}`. Hint: Array types have a single field `length`",
-                        validation_context.interner.lookup(*fields.first().unwrap()),
-                     );
-                     lhs_type = ExpressionType::CompileError;
-                  }
-               }
-               ExpressionType::CompileError => {
-                  lhs_type = ExpressionType::CompileError;
-               }
-               other_type => {
+         match lhs_type {
+            ExpressionType::Struct(struct_name) => {
+               let struct_fields = &validation_context
+                  .user_defined_types
+                  .struct_info
+                  .get(&struct_name)
+                  .unwrap()
+                  .field_types;
+               if let Some(new_t_node) = struct_fields.get(&field) {
+                  lhs_type = new_t_node.e_type.clone();
+               } else {
                   rolandc_error!(
                      err_manager,
                      expr_location,
-                     "Encountered field access on type {}; only structs and arrays have fields",
-                     other_type.as_roland_type_info(
-                        validation_context.interner,
-                        validation_context.procedure_info,
-                        &validation_context.type_variables
-                     )
+                     "Struct `{}` does not have a field `{}`",
+                     validation_context.interner.lookup(struct_name),
+                     validation_context.interner.lookup(field),
                   );
                   lhs_type = ExpressionType::CompileError;
                }
             }
-            remaining_fields = if remaining_fields.is_empty() {
-               &[]
-            } else {
-               &remaining_fields[1..]
-            };
+            ExpressionType::Union(union_name) => {
+               let union_fields = &validation_context.user_defined_types.union_info.get(&union_name).unwrap().field_types;
+               if let Some(new_t_node) = union_fields.get(&field) {
+                  lhs_type = new_t_node.e_type.clone();
+               } else {
+                  rolandc_error!(
+                     err_manager,
+                     expr_location,
+                     "Union `{}` does not have a field `{}`",
+                     validation_context.interner.lookup(union_name),
+                     validation_context.interner.lookup(field),
+                  );
+                  lhs_type = ExpressionType::CompileError;
+               }
+            }
+            ExpressionType::Array(_, _) => {
+               if Some(field) == length_token {
+                  lhs_type = USIZE_TYPE;
+               } else {
+                  rolandc_error!(
+                     err_manager,
+                     expr_location,
+                     "Array does not have a field `{}`. Hint: Array types have a single field `length`",
+                     validation_context.interner.lookup(field),
+                  );
+                  lhs_type = ExpressionType::CompileError;
+               }
+            }
+            ExpressionType::CompileError => {
+               lhs_type = ExpressionType::CompileError;
+            }
+            other_type => {
+               rolandc_error!(
+                  err_manager,
+                  expr_location,
+                  "Encountered field access on type {}; only structs, unions, and arrays have fields",
+                  other_type.as_roland_type_info(
+                     validation_context.interner,
+                     validation_context.procedure_info,
+                     &validation_context.type_variables
+                  )
+               );
+               lhs_type = ExpressionType::CompileError;
+            }
          }
+
          lhs_type
       }
       Expression::ArrayLiteral(elems) => {
@@ -1791,7 +1791,7 @@ fn get_type(
          }
       }
       Expression::EnumLiteral(x, v) => {
-         if let Some(enum_info) = validation_context.enum_info.get(&x.str) {
+         if let Some(enum_info) = validation_context.user_defined_types.enum_info.get(&x.str) {
             validation_context
                .source_to_definition
                .insert(x.location, enum_info.location);

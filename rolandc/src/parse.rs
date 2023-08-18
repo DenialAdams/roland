@@ -10,8 +10,7 @@ use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
 use crate::lex::Lexer;
-use crate::semantic_analysis::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo};
-use crate::size_info::SizeInfo;
+use crate::semantic_analysis::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo, UnionInfo};
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 
@@ -89,6 +88,13 @@ pub struct ParameterNode {
 pub struct StructNode {
    pub name: StrId,
    pub fields: Vec<(StrId, ExpressionTypeNode, Option<ExpressionId>)>,
+   pub location: SourceInfo,
+}
+
+#[derive(Clone)]
+pub struct UnionNode {
+   pub name: StrId,
+   pub fields: Vec<(StrId, ExpressionTypeNode)>,
    pub location: SourceInfo,
 }
 
@@ -216,7 +222,7 @@ pub enum Expression {
    UnaryOperator(UnOp, ExpressionId),
    UnresolvedStructLiteral(StrNode, Box<[(StrId, Option<ExpressionId>)]>),
    StructLiteral(StrNode, IndexMap<StrId, Option<ExpressionId>>),
-   FieldAccess(Vec<StrId>, ExpressionId),
+   FieldAccess(StrId, ExpressionId),
    Cast {
       cast_type: CastType,
       target_type: ExpressionType,
@@ -335,14 +341,23 @@ new_key_type! { pub struct StaticId; }
 new_key_type! { pub struct ProcedureId; }
 
 #[derive(Clone)]
+pub struct UserDefinedTypeInfo {
+   pub enum_info: IndexMap<StrId, EnumInfo>,
+   pub struct_info: IndexMap<StrId, StructInfo>,
+   pub union_info: IndexMap<StrId, UnionInfo>,
+}
+
+#[derive(Clone)]
 pub struct Program {
-   // These fields are populated by the parser
-   pub enums: Vec<EnumNode>,
-   pub procedures: SlotMap<ProcedureId, ProcedureNode>,
-   pub structs: Vec<StructNode>,
-   pub consts: Vec<ConstNode>,
-   pub statics: Vec<StaticNode>,
    pub ast: AstPool,
+
+   // These fields are populated by the parser
+   pub procedures: SlotMap<ProcedureId, ProcedureNode>,
+   pub enums: Vec<EnumNode>,     // killed during info population
+   pub structs: Vec<StructNode>, // killed during info population
+   pub unions: Vec<UnionNode>,   // killed during info population
+   pub statics: Vec<StaticNode>, // killed during info population
+   pub consts: Vec<ConstNode>,   // killed after AST constant folding
 
    // (only read by the language server)
    pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
@@ -350,15 +365,13 @@ pub struct Program {
 
    // These fields are populated during semantic analysis
    pub literals: IndexSet<StrId>,
-   pub enum_info: IndexMap<StrId, EnumInfo>,
-   pub struct_info: IndexMap<StrId, StructInfo>,
    pub global_info: IndexMap<VariableId, GlobalInfo>,
    pub procedure_info: SecondaryMap<ProcedureId, ProcedureInfo>,
    pub procedure_name_table: HashMap<StrId, ProcedureId>, // TODO: this doesn't need to live on Program
-   pub struct_size_info: HashMap<StrId, SizeInfo>,
+   pub user_defined_types: UserDefinedTypeInfo,
    pub next_variable: VariableId,
 
-   // Finally, the CFG representation of the program is built late in the pipeline
+   // Finally, the CFG representation of the program is built and used in the backend
    pub cfg: ProgramCfg,
 }
 
@@ -381,19 +394,22 @@ impl Program {
    #[must_use]
    pub fn new() -> Program {
       Program {
-         enums: Vec::new(),
          procedures: SlotMap::with_key(),
+         enums: Vec::new(),
          structs: Vec::new(),
+         unions: Vec::new(),
          consts: Vec::new(),
          statics: Vec::new(),
          parsed_types: Vec::new(),
          literals: IndexSet::new(),
-         enum_info: IndexMap::new(),
-         struct_info: IndexMap::new(),
+         user_defined_types: UserDefinedTypeInfo {
+            enum_info: IndexMap::new(),
+            struct_info: IndexMap::new(),
+            union_info: IndexMap::new(),
+         },
          global_info: IndexMap::new(),
          procedure_info: SecondaryMap::new(),
          procedure_name_table: HashMap::new(),
-         struct_size_info: HashMap::new(),
          source_to_definition: IndexMap::new(),
          next_variable: VariableId::first(),
          ast: AstPool {
@@ -405,19 +421,20 @@ impl Program {
    }
 
    pub fn clear(&mut self) {
-      self.enums.clear();
       reset_slotmap(&mut self.procedures);
+      self.enums.clear();
       self.structs.clear();
+      self.unions.clear();
       self.consts.clear();
       self.statics.clear();
       self.parsed_types.clear();
       self.literals.clear();
-      self.enum_info.clear();
-      self.struct_info.clear();
+      self.user_defined_types.enum_info.clear();
+      self.user_defined_types.struct_info.clear();
+      self.user_defined_types.union_info.clear();
       self.global_info.clear();
       reset_secondarymap(&mut self.procedure_info);
       self.procedure_name_table.clear();
-      self.struct_size_info.clear();
       self.source_to_definition.clear();
       reset_slotmap(&mut self.ast.expressions);
       reset_slotmap(&mut self.ast.statements);
@@ -488,6 +505,11 @@ fn parse_top_level_items(
             let s = parse_struct(lexer, parse_context, def.source_info, &mut ast.expressions)?;
             top.structs.push(s);
          }
+         Token::KeywordUnionDef => {
+            let def = lexer.next();
+            let s = parse_union(lexer, parse_context, def.source_info)?;
+            top.unions.push(s);
+         }
          Token::KeywordEnumDef => {
             let def = lexer.next();
             let s = parse_enum(lexer, parse_context, def.source_info)?;
@@ -549,6 +571,7 @@ fn parse_top_level_items(
 struct TopLevelItems<'a> {
    procedures: &'a mut SlotMap<ProcedureId, ProcedureNode>,
    structs: &'a mut Vec<StructNode>,
+   unions: &'a mut Vec<UnionNode>,
    enums: &'a mut Vec<EnumNode>,
    consts: &'a mut Vec<ConstNode>,
    statics: &'a mut Vec<StaticNode>,
@@ -570,6 +593,7 @@ pub fn astify(
    let mut top = TopLevelItems {
       procedures: &mut program.procedures,
       structs: &mut program.structs,
+      unions: &mut program.unions,
       enums: &mut program.enums,
       consts: &mut program.consts,
       statics: &mut program.statics,
@@ -586,6 +610,7 @@ pub fn astify(
             | Token::KeywordStatic
             | Token::KeywordImport
             | Token::KeywordStructDef
+            | Token::KeywordUnionDef
             | Token::KeywordEnumDef
             | Token::KeywordBuiltin
             | Token::KeywordExtern => break,
@@ -759,6 +784,41 @@ fn parse_struct(
       expect(l, parse_context, Token::Comma)?;
    };
    Ok(StructNode {
+      name: struct_name,
+      fields,
+      location: merge_locations(source_info, close_brace.source_info),
+   })
+}
+
+fn parse_union(l: &mut Lexer, parse_context: &mut ParseContext, source_info: SourceInfo) -> Result<UnionNode, ()> {
+   let struct_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
+   expect(l, parse_context, Token::OpenBrace)?;
+   let mut fields: Vec<(StrId, ExpressionTypeNode)> = vec![];
+   let close_brace = loop {
+      if l.peek_token() == Token::CloseBrace {
+         break l.next();
+      }
+      let identifier = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
+      let _ = expect(l, parse_context, Token::Colon)?;
+      let f_type = parse_type(l, parse_context)?;
+
+      fields.push((extract_identifier(identifier.token), f_type));
+
+      if l.peek_token() == Token::CloseBrace {
+         break l.next();
+      } else if let Token::Identifier(x) = l.peek_token() {
+         rolandc_error!(
+            &mut parse_context.err_manager,
+            l.peek_source(),
+            "While parsing definition of union `{}`, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?",
+            parse_context.interner.lookup(struct_name),
+            parse_context.interner.lookup(x),
+         );
+         return Result::Err(());
+      }
+      expect(l, parse_context, Token::Comma)?;
+   };
+   Ok(UnionNode {
       name: struct_name,
       fields,
       location: merge_locations(source_info, close_brace.source_info),
@@ -1560,19 +1620,12 @@ fn pratt(
          | Token::ShiftLeft
          | Token::ShiftRight) => x,
          Token::Period => {
-            let mut fields = vec![];
-            let mut last_location;
-            loop {
-               let _ = l.next();
-               let ident_token = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
-               last_location = ident_token.source_info;
-               fields.push(extract_identifier(ident_token.token));
-               if l.peek_token() != Token::Period {
-                  break;
-               }
-            }
+            let _ = l.next();
+            let ident_token = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
+            let last_location = ident_token.source_info;
+            let field = extract_identifier(ident_token.token);
             let combined_location = merge_locations(begin_source, last_location);
-            lhs = wrap(Expression::FieldAccess(fields, lhs), combined_location, expressions);
+            lhs = wrap(Expression::FieldAccess(field, lhs), combined_location, expressions);
             continue;
          }
          _ => break,

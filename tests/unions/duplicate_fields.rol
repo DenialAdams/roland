@@ -1,0 +1,10 @@
+union Foo {
+   x: u8,
+   x: u16,
+}
+
+proc main() {}
+__END__
+compile:
+Union `Foo` has a duplicate field `x`
+↳ line 1, column 1 [tests/unions/duplicate_fields.rol]

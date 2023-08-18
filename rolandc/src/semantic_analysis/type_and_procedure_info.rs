@@ -1,14 +1,15 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ops::BitOrAssign;
 
 use indexmap::{IndexMap, IndexSet};
 
-use super::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo};
+use super::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo, UnionInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{ExpressionTypeNode, ProcImplSource};
+use crate::parse::{ExpressionTypeNode, ProcImplSource, UserDefinedTypeInfo};
 use crate::semantic_analysis::validator::resolve_type;
+use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
 use crate::source_info::{SourceInfo, SourcePath};
 use crate::type_data::{ExpressionType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
 use crate::{CompilationConfig, Program};
@@ -36,16 +37,18 @@ impl BitOrAssign for RecursiveStructCheckResult {
    }
 }
 
-fn recursive_struct_check(
+fn recursive_struct_union_check(
    base_name: StrId,
-   seen_structs: &mut HashSet<StrId>,
-   struct_fields: &IndexMap<StrId, ExpressionTypeNode>,
+   seen_structs_or_unions: &mut HashSet<StrId>,
+   struct_or_union_fields: &IndexMap<StrId, ExpressionTypeNode>,
    struct_info: &IndexMap<StrId, StructInfo>,
+   union_info: &IndexMap<StrId, UnionInfo>,
 ) -> RecursiveStructCheckResult {
    let mut is_recursive = RecursiveStructCheckResult::NotRecursive;
 
-   for struct_field in struct_fields.iter().flat_map(|x| match &x.1.e_type {
+   for struct_field in struct_or_union_fields.iter().flat_map(|x| match &x.1.e_type {
       ExpressionType::Struct(x) => Some(*x),
+      ExpressionType::Union(x) => Some(*x),
       // Types should be fully resolved at this point, but may not be if there is an error in the program
       // (in that case, it's fine to ignore it as we'll already error out)
       ExpressionType::Unresolved(x) => Some(*x),
@@ -56,34 +59,77 @@ fn recursive_struct_check(
          break;
       }
 
-      if seen_structs.contains(&struct_field) {
+      if seen_structs_or_unions.contains(&struct_field) {
          is_recursive = RecursiveStructCheckResult::ContainsRecursiveStruct;
          continue;
       }
 
-      seen_structs.insert(struct_field);
+      seen_structs_or_unions.insert(struct_field);
 
       is_recursive |= struct_info
          .get(&struct_field)
          .map_or(RecursiveStructCheckResult::NotRecursive, |si| {
-            recursive_struct_check(base_name, seen_structs, &si.field_types, struct_info)
+            recursive_struct_union_check(
+               base_name,
+               seen_structs_or_unions,
+               &si.field_types,
+               struct_info,
+               union_info,
+            )
+         });
+
+      is_recursive |= union_info
+         .get(&struct_field)
+         .map_or(RecursiveStructCheckResult::NotRecursive, |si| {
+            recursive_struct_union_check(
+               base_name,
+               seen_structs_or_unions,
+               &si.field_types,
+               struct_info,
+               union_info,
+            )
          });
    }
 
    is_recursive
 }
 
-pub fn populate_type_and_procedure_info(
+fn insert_or_error_duplicated(
+   all_types: &mut HashMap<StrId, SourceInfo>,
+   err_manager: &mut ErrorManager,
+   name: StrId,
+   location: SourceInfo,
+   interner: &Interner,
+) {
+   if let Some(existing_declaration) = all_types.insert(name, location) {
+      rolandc_error_w_details!(
+         err_manager,
+         &[
+            (existing_declaration, "first type defined"),
+            (location, "second type defined")
+         ],
+         "Encountered duplicate types with the same name `{}`",
+         interner.lookup(name)
+      );
+   }
+}
+
+fn populate_user_defined_type_info(
    program: &mut Program,
    err_manager: &mut ErrorManager,
    interner: &Interner,
-   config: &CompilationConfig,
-) {
-   let mut dupe_check = HashSet::new();
+) -> UserDefinedTypeInfo {
+   let mut udt = UserDefinedTypeInfo {
+      enum_info: IndexMap::new(),
+      struct_info: IndexMap::new(),
+      union_info: IndexMap::new(),
+   };
 
-   for a_enum in program.enums.iter() {
+   let mut dupe_check = HashSet::new();
+   let mut all_types = HashMap::new();
+
+   for a_enum in program.enums.drain(..) {
       dupe_check.clear();
-      dupe_check.reserve(a_enum.variants.len());
       for variant in a_enum.variants.iter() {
          if !dupe_check.insert(variant.str) {
             rolandc_error!(
@@ -166,24 +212,15 @@ pub fn populate_type_and_procedure_info(
          ExpressionType::Unit
       };
 
-      if let Some(old_enum) = program.enum_info.insert(
+      insert_or_error_duplicated(&mut all_types, err_manager, a_enum.name, a_enum.location, interner);
+      udt.enum_info.insert(
          a_enum.name,
          EnumInfo {
             variants: a_enum.variants.iter().map(|x| (x.str, x.location)).collect(),
             location: a_enum.location,
             base_type,
          },
-      ) {
-         rolandc_error_w_details!(
-            err_manager,
-            &[
-               (old_enum.location, "first enum defined"),
-               (a_enum.location, "second enum defined")
-            ],
-            "Encountered duplicate enums with the same name `{}`",
-            interner.lookup(a_enum.name)
-         );
-      }
+      );
    }
 
    for a_struct in program.structs.drain(..) {
@@ -206,44 +243,49 @@ pub fn populate_type_and_procedure_info(
          }
       }
 
-      if let Some(old_struct) = program.struct_info.insert(
+      insert_or_error_duplicated(&mut all_types, err_manager, a_struct.name, a_struct.location, interner);
+      udt.struct_info.insert(
          a_struct.name,
          StructInfo {
             field_types: field_map,
             default_values: default_value_map,
             location: a_struct.location,
+            size: None,
          },
-      ) {
-         rolandc_error_w_details!(
-            err_manager,
-            &[
-               (old_struct.location, "first struct defined"),
-               (a_struct.location, "second struct defined")
-            ],
-            "Encountered duplicate structs with the same name `{}`",
-            interner.lookup(a_struct.name)
-         );
-      }
+      );
    }
 
-   // This clone is only necessary for rust's borrowing rules;
-   // if hot we can try a different approach
-   let cloned_struct_info = program.struct_info.clone();
-   for struct_i in program.struct_info.iter_mut() {
-      if let Some(enum_i) = program.enum_info.get(struct_i.0) {
-         rolandc_error_w_details!(
-            err_manager,
-            &[
-               (enum_i.location, "enum defined"),
-               (struct_i.1.location, "struct defined")
-            ],
-            "Enum and struct share the same name `{}`",
-            interner.lookup(*struct_i.0)
-         );
+   for a_union in program.unions.drain(..) {
+      let mut field_map = IndexMap::with_capacity(a_union.fields.len());
+
+      for field in a_union.fields.iter() {
+         if field_map.insert(field.0, field.1.clone()).is_some() {
+            rolandc_error!(
+               err_manager,
+               a_union.location,
+               "Union `{}` has a duplicate field `{}`",
+               interner.lookup(a_union.name),
+               interner.lookup(field.0),
+            );
+         }
       }
 
+      insert_or_error_duplicated(&mut all_types, err_manager, a_union.name, a_union.location, interner);
+      udt.union_info.insert(
+         a_union.name,
+         UnionInfo {
+            field_types: field_map,
+            location: a_union.location,
+            size: None,
+         },
+      );
+   }
+
+   // TODO: this clone is horrific. just for borrowck.
+   let cloned_udt = udt.clone();
+   for struct_i in udt.struct_info.iter_mut() {
       for (field, etn) in struct_i.1.field_types.iter_mut() {
-         if resolve_type(&mut etn.e_type, &program.enum_info, &cloned_struct_info, None).is_ok() {
+         if resolve_type(&mut etn.e_type, &cloned_udt, None).is_ok() {
             continue;
          }
 
@@ -259,15 +301,27 @@ pub fn populate_type_and_procedure_info(
       }
    }
 
+   udt
+}
+
+pub fn populate_type_and_procedure_info(
+   program: &mut Program,
+   err_manager: &mut ErrorManager,
+   interner: &Interner,
+   config: &CompilationConfig,
+) {
+   program.user_defined_types = populate_user_defined_type_info(program, err_manager, interner);
+
    // Check for recursive structs only after we've attempted to resolve all of the field types
-   let mut seen_structs = HashSet::new();
-   for struct_i in program.struct_info.iter() {
-      seen_structs.clear();
-      if recursive_struct_check(
+   let mut seen_structs_or_unions = HashSet::new();
+   for struct_i in program.user_defined_types.struct_info.iter() {
+      seen_structs_or_unions.clear();
+      if recursive_struct_union_check(
          *struct_i.0,
-         &mut seen_structs,
+         &mut seen_structs_or_unions,
          &struct_i.1.field_types,
-         &program.struct_info,
+         &program.user_defined_types.struct_info,
+         &program.user_defined_types.union_info,
       ) == RecursiveStructCheckResult::ContainsSelf
       {
          rolandc_error!(
@@ -279,11 +333,30 @@ pub fn populate_type_and_procedure_info(
       }
    }
 
+   for union_i in program.user_defined_types.union_info.iter() {
+      seen_structs_or_unions.clear();
+      if recursive_struct_union_check(
+         *union_i.0,
+         &mut seen_structs_or_unions,
+         &union_i.1.field_types,
+         &program.user_defined_types.struct_info,
+         &program.user_defined_types.union_info,
+      ) == RecursiveStructCheckResult::ContainsSelf
+      {
+         rolandc_error!(
+            err_manager,
+            union_i.1.location,
+            "Union `{}` contains itself, which isn't allowed as it would result in an infinitely large struct",
+            interner.lookup(*union_i.0),
+         );
+      }
+   }
+
    for const_node in program.consts.iter_mut() {
       let const_type = &mut const_node.const_type.e_type;
       let si = &const_node.location;
 
-      if resolve_type(const_type, &program.enum_info, &program.struct_info, None).is_err() {
+      if resolve_type(const_type, &program.user_defined_types, None).is_err() {
          let static_type_str = const_type.as_roland_type_info_notv(interner, &program.procedure_info);
          rolandc_error!(
             err_manager,
@@ -319,14 +392,7 @@ pub fn populate_type_and_procedure_info(
    }
 
    for mut static_node in program.statics.drain(..) {
-      if resolve_type(
-         &mut static_node.static_type.e_type,
-         &program.enum_info,
-         &program.struct_info,
-         None,
-      )
-      .is_err()
-      {
+      if resolve_type(&mut static_node.static_type.e_type, &program.user_defined_types, None).is_err() {
          let static_type_str = static_node
             .static_type
             .e_type
@@ -363,13 +429,13 @@ pub fn populate_type_and_procedure_info(
       program.next_variable = program.next_variable.next();
    }
 
+   let mut dupe_check = HashSet::new();
    for (id, definition, source_location, proc_impl_source) in program
       .procedures
       .iter_mut()
       .map(|(id, x)| (id, &mut x.definition, x.location, &x.proc_impl))
    {
       dupe_check.clear();
-      dupe_check.reserve(definition.parameters.len());
 
       if matches!(proc_impl_source, ProcImplSource::Builtin) && !source_is_std(source_location, config) {
          rolandc_error!(
@@ -474,8 +540,7 @@ pub fn populate_type_and_procedure_info(
       for parameter in definition.parameters.iter_mut() {
          if resolve_type(
             &mut parameter.p_type.e_type,
-            &program.enum_info,
-            &program.struct_info,
+            &program.user_defined_types,
             Some(&type_parameters_with_constraints),
          )
          .is_err()
@@ -497,8 +562,7 @@ pub fn populate_type_and_procedure_info(
 
       if resolve_type(
          &mut definition.ret_type.e_type,
-         &program.enum_info,
-         &program.struct_info,
+         &program.user_defined_types,
          Some(&type_parameters_with_constraints),
       )
       .is_err()
@@ -546,6 +610,22 @@ pub fn populate_type_and_procedure_info(
             interner.lookup(definition.name.str),
          );
       }
+   }
+
+   // We must return now before calculating sizes
+   // (or we'll blow up on recursive types)
+   if !err_manager.errors.is_empty() {
+      return;
+   }
+
+   for i in 0..program.user_defined_types.struct_info.len() {
+      let s = program.user_defined_types.struct_info.get_index(i).unwrap().0;
+      calculate_struct_size_info(*s, &mut program.user_defined_types);
+   }
+
+   for i in 0..program.user_defined_types.union_info.len() {
+      let s = program.user_defined_types.union_info.get_index(i).unwrap().0;
+      calculate_union_size_info(*s, &mut program.user_defined_types);
    }
 }
 

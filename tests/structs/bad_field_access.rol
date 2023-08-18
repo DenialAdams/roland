@@ -27,9 +27,9 @@ proc main() {
 }
 __END__
 compile:
-Encountered field access on type bool; only structs and arrays have fields
+Encountered field access on type bool; only structs, unions, and arrays have fields
 ↳ line 20, column 12 [tests/structs/bad_field_access.rol]
-Encountered field access on type u8; only structs and arrays have fields
+Encountered field access on type u8; only structs, unions, and arrays have fields
 ↳ line 22, column 12 [tests/structs/bad_field_access.rol]
 Struct `X` does not have a field `baz`
 ↳ line 24, column 12 [tests/structs/bad_field_access.rol]

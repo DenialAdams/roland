@@ -1,14 +1,12 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::collections::HashMap;
 
 use slotmap::SecondaryMap;
 
 use crate::interner::{Interner, StrId};
-use crate::parse::ProcedureId;
+use crate::parse::{ProcedureId, UserDefinedTypeInfo};
 use crate::semantic_analysis::type_variables::{TypeConstraint, TypeVariable, TypeVariableManager};
 use crate::semantic_analysis::ProcedureInfo;
-use crate::size_info::SizeInfo;
 
 pub const U8_TYPE: ExpressionType = ExpressionType::Int(IntType {
    signed: false,
@@ -76,6 +74,7 @@ pub enum ExpressionType {
    Bool,
    Unit,
    Struct(StrId),
+   Union(StrId),
    Array(Box<ExpressionType>, u32),
    Pointer(Box<ExpressionType>),
    CompileError,
@@ -194,6 +193,7 @@ impl ExpressionType {
          | ExpressionType::Unit
          | ExpressionType::Never
          | ExpressionType::Struct(_)
+         | ExpressionType::Union(_)
          | ExpressionType::ProcedureItem(_, _)
          | ExpressionType::ProcedurePointer { .. }
          | ExpressionType::Enum(_) => true,
@@ -223,12 +223,18 @@ impl ExpressionType {
    }
 
    #[must_use]
-   pub fn is_or_contains_never(&self, struct_size_info: &HashMap<StrId, SizeInfo>) -> bool {
+   pub fn is_aggregate(&self) -> bool {
+      matches!(self, ExpressionType::Array(_, _) | ExpressionType::Struct(_) | ExpressionType::Union(_))
+   }
+
+   #[must_use]
+   pub fn is_or_contains_never(&self, udt: &UserDefinedTypeInfo) -> bool {
       match self {
          ExpressionType::Never => true,
-         ExpressionType::Struct(s) => struct_size_info.get(s).unwrap().contains_never_type,
-         ExpressionType::Array(inner_t, _) => inner_t.is_or_contains_never(struct_size_info),
-         ExpressionType::Pointer(inner_t) => inner_t.is_or_contains_never(struct_size_info),
+         ExpressionType::Struct(s) => udt.struct_info.get(s).unwrap().size.as_ref().unwrap().contains_never_type,
+         ExpressionType::Union(s) => udt.union_info.get(s).unwrap().size.as_ref().unwrap().contains_never_type,
+         ExpressionType::Array(inner_t, _) => inner_t.is_or_contains_never(udt),
+         ExpressionType::Pointer(inner_t) => inner_t.is_or_contains_never(udt),
          _ => false,
       }
    }
@@ -287,6 +293,7 @@ impl ExpressionType {
             Cow::Borrowed("String")
          }
          ExpressionType::Struct(x) => Cow::Owned(format!("Struct {}", interner.lookup(*x))),
+         ExpressionType::Union(x) => Cow::Owned(format!("Struct {}", interner.lookup(*x))),
          ExpressionType::Enum(x) => Cow::Owned(format!("Enum {}", interner.lookup(*x))),
          ExpressionType::Array(i_type, length) => Cow::Owned(format!(
             "[{}; {}]",
@@ -371,6 +378,7 @@ impl ExpressionType {
          ExpressionType::Never => Cow::Borrowed("!"),
          ExpressionType::CompileError => Cow::Borrowed("ERROR"),
          ExpressionType::Struct(x) => Cow::Borrowed(interner.lookup(*x)),
+         ExpressionType::Union(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::Enum(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::Array(i_type, length) => Cow::Owned(format!(
             "[{}; {}]",

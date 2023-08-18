@@ -1,0 +1,10 @@
+union X {
+}
+
+proc main() {
+   let empty_thing: X = ___;
+   println_bool(true);
+}
+__END__
+run:
+true

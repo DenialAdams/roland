@@ -7,6 +7,6 @@ struct Foo{}
 struct Foo{}
 __END__
 compile:
-Encountered duplicate structs with the same name `Foo`
-↳ first struct defined @ line 5, column 1 [tests/conflicting_definitions/duplicate_struct.rol]
-↳ second struct defined @ line 7, column 1 [tests/conflicting_definitions/duplicate_struct.rol]
+Encountered duplicate types with the same name `Foo`
+↳ first type defined @ line 5, column 1 [tests/conflicting_definitions/duplicate_struct.rol]
+↳ second type defined @ line 7, column 1 [tests/conflicting_definitions/duplicate_struct.rol]
