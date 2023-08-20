@@ -132,7 +132,7 @@ pub fn replace_nonnative_casts(program: &mut Program, interner: &Interner) {
    for replacement in replacements {
       let pid = program.ast.expressions.insert(replacement.1);
       let Expression::Cast { expr: castee, .. } = &program.ast.expressions[replacement.0].expression else {
-         continue;
+         unreachable!();
       };
       program.ast.expressions[replacement.0].expression = Expression::ProcedureCall {
          proc_expr: pid,

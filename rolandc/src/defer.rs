@@ -82,7 +82,6 @@ fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, ast: &mut As
 }
 
 fn defer_statement(statement: StatementId, defer_ctx: &mut DeferContext, ast: &mut AstPool, current_statement: usize) {
-   // TODO: dummy stmt?
    let mut the_statement = std::mem::replace(&mut ast.statements[statement].statement, Statement::Break);
    match &mut the_statement {
       Statement::Return(_) => {

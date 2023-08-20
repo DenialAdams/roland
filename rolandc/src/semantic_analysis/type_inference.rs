@@ -76,7 +76,6 @@ pub fn try_set_inferred_type(
 }
 
 fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validation_context: &mut ValidationContext) {
-   // TODO: dummy expr?
    let the_expr = std::mem::replace(
       &mut validation_context.ast.expressions[expr_index].expression,
       Expression::UnitLiteral,

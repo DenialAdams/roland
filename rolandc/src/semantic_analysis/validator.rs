@@ -480,7 +480,6 @@ pub fn type_and_check_validity(
 fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, validation_context: &mut ValidationContext) {
    let stmt_loc = validation_context.ast.statements[statement].location;
 
-   // TODO: dummy stmt?
    let mut the_statement = std::mem::replace(
       &mut validation_context.ast.statements[statement].statement,
       Statement::Break,
@@ -953,7 +952,6 @@ fn type_expression(
       _ => (),
    }
 
-   // TODO: dummy expr?
    let mut the_expr = std::mem::replace(
       &mut validation_context.ast.expressions[expr_index].expression,
       Expression::UnitLiteral,

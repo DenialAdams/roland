@@ -276,7 +276,6 @@ fn linearize_block(ctx: &mut Ctx, block: &BlockNode, ast: &mut AstPool) -> bool 
 
 #[must_use]
 fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool) -> bool {
-   // TODO: dummy stmt?
    let borrowed_stmt = std::mem::replace(&mut ast.statements[stmt].statement, Statement::Break);
    let sealed = match &borrowed_stmt {
       Statement::IfElse(condition, consequent, alternative) => {

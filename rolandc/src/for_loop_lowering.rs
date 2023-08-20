@@ -243,7 +243,6 @@ fn lower_block(block: &mut BlockNode, ctx: &mut LowerForContext, ast: &mut AstPo
 }
 
 fn lower_statement(statement: StatementId, ctx: &mut LowerForContext, ast: &mut AstPool) {
-   // TODO: dummy stmt?
    let mut the_statement = std::mem::replace(&mut ast.statements[statement].statement, Statement::Break);
    match &mut the_statement {
       Statement::Block(block) => {

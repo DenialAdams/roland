@@ -96,7 +96,6 @@ pub fn fold_statement(
    folding_context: &mut FoldingContext,
    interner: &Interner,
 ) {
-   // TODO: dummy stmt?
    let the_statement = std::mem::replace(
       &mut folding_context.ast.statements[statement].statement,
       Statement::Break,
@@ -166,7 +165,6 @@ fn fold_expr(
    folding_context: &mut FoldingContext,
    interner: &Interner,
 ) -> Option<Expression> {
-   // TODO: dummy expr?
    let the_expr = std::mem::replace(
       &mut folding_context.ast.expressions[expr_index],
       ExpressionNode {
