@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use bitvec::prelude::*;
 use indexmap::{IndexMap, IndexSet};
 
-use super::linearize::{Cfg, CfgInstruction};
+use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE};
 use crate::backend::linearize::post_order;
 use crate::parse::{AstPool, Expression, ExpressionId, Statement, StatementId, VariableId};
 use crate::type_data::ExpressionType;
@@ -51,6 +51,7 @@ pub fn liveness(
       }
    }
 
+   // we want to go backwards, which is post_order, but since we are popping we must reverse
    let mut worklist: IndexSet<usize> = post_order(cfg).into_iter().rev().collect();
    while let Some(node_id) = worklist.pop() {
       // TODO: There is a lot of cloning and creating new bitboxes in here that we probably don't need
@@ -99,6 +100,10 @@ pub fn liveness(
       .map(|(x, y)| (y, x))
       .collect();
    for (node_id, bb) in cfg.bbs.iter().enumerate() {
+      if node_id == CFG_END_NODE {
+         // slightly faster to skip this node which by construction has no instructions
+         continue;
+      }
       // Nodes not present in the RPO are dead code, and so we will not mark them as having any live range
       let Some(rpo_index) = node_id_to_rpo_index.get(&node_id).copied() else {
          continue;
