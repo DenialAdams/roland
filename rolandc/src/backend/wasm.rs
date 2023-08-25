@@ -777,11 +777,7 @@ fn compare_alignment(alignment_1: u32, sizeof_1: u32, alignment_2: u32, sizeof_2
       .then(required_padding_1.cmp(&required_padding_2))
 }
 
-fn compare_type_alignment(
-   e_1: &ExpressionType,
-   e_2: &ExpressionType,
-   udt: &UserDefinedTypeInfo
-) -> std::cmp::Ordering {
+fn compare_type_alignment(e_1: &ExpressionType, e_2: &ExpressionType, udt: &UserDefinedTypeInfo) -> std::cmp::Ordering {
    let alignment_1 = mem_alignment(e_1, udt);
    let alignment_2 = mem_alignment(e_2, udt);
 
@@ -914,7 +910,10 @@ fn emit_statement(statement: StatementId, generation_context: &mut GenerationCon
    }
 }
 
-fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &GenerationContext) -> Option<(bool, ArrayVec<u32, 1>)> {
+fn get_registers_for_expr(
+   expr_id: ExpressionId,
+   generation_context: &GenerationContext,
+) -> Option<(bool, ArrayVec<u32, 1>)> {
    let node = &generation_context.ast.expressions[expr_id];
    match &node.expression {
       Expression::Variable(v) => generation_context
@@ -1028,12 +1027,8 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
             }
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
             let next_offset = ssi.field_offsets_mem.get(next_field).unwrap();
-            let padding_bytes = next_offset
-               - this_offset
-               - sizeof_type_mem(
-                  &field.1.e_type,
-                  generation_context.user_defined_types,
-               );
+            let padding_bytes =
+               next_offset - this_offset - sizeof_type_mem(&field.1.e_type, generation_context.user_defined_types);
             for _ in 0..padding_bytes {
                buf.push(0);
             }
@@ -1047,12 +1042,8 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
             }
             let this_offset = ssi.field_offsets_mem.get(last_field.0).unwrap();
             let next_offset = ssi.mem_size;
-            let padding_bytes = next_offset
-               - this_offset
-               - sizeof_type_mem(
-                  &last_field.1.e_type,
-                  generation_context.user_defined_types,
-               );
+            let padding_bytes =
+               next_offset - this_offset - sizeof_type_mem(&last_field.1.e_type, generation_context.user_defined_types);
             for _ in 0..padding_bytes {
                buf.push(0);
             }
@@ -1112,12 +1103,8 @@ fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, generation_
             type_as_zero_bytes(buf, &field.1.e_type, generation_context);
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
             let next_offset = ssi.field_offsets_mem.get(next_field).unwrap();
-            let padding_bytes = next_offset
-               - this_offset
-               - sizeof_type_mem(
-                  &field.1.e_type,
-                  generation_context.user_defined_types,
-               );
+            let padding_bytes =
+               next_offset - this_offset - sizeof_type_mem(&field.1.e_type, generation_context.user_defined_types);
             for _ in 0..padding_bytes {
                buf.push(0);
             }
@@ -1126,12 +1113,8 @@ fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, generation_
             type_as_zero_bytes(buf, &last_field.1.e_type, generation_context);
             let this_offset = ssi.field_offsets_mem.get(last_field.0).unwrap();
             let next_offset = ssi.mem_size;
-            let padding_bytes = next_offset
-               - this_offset
-               - sizeof_type_mem(
-                  &last_field.1.e_type,
-                  generation_context.user_defined_types,
-               );
+            let padding_bytes =
+               next_offset - this_offset - sizeof_type_mem(&last_field.1.e_type, generation_context.user_defined_types);
             for _ in 0..padding_bytes {
                buf.push(0);
             }
@@ -1898,14 +1881,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          }
       }
       Expression::FieldAccess(field_name, lhs_id) => {
-         fn calculate_offset(
-            lhs_type: &ExpressionType,
-            field_name: StrId,
-            generation_context: &mut GenerationContext,
-         ) {
+         fn calculate_offset(lhs_type: &ExpressionType, field_name: StrId, generation_context: &mut GenerationContext) {
             let mem_offset = match lhs_type {
-               ExpressionType::Struct(s) => {
-                  *generation_context
+               ExpressionType::Struct(s) => *generation_context
                   .user_defined_types
                   .struct_info
                   .get(s)
@@ -1915,8 +1893,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                   .unwrap()
                   .field_offsets_mem
                   .get(&field_name)
-                  .unwrap()
-               }
+                  .unwrap(),
                ExpressionType::Union(_) => 0,
                _ => unreachable!(),
             };
@@ -1942,10 +1919,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       Expression::ArrayIndex { array, index } => {
          fn calculate_offset(array: ExpressionId, index_e: ExpressionId, generation_context: &mut GenerationContext) {
             let sizeof_inner = match &generation_context.ast.expressions[array].exp_type {
-               Some(ExpressionType::Array(x, _)) => sizeof_type_mem(
-                  x,
-                  generation_context.user_defined_types,
-               ),
+               Some(ExpressionType::Array(x, _)) => sizeof_type_mem(x, generation_context.user_defined_types),
                _ => unreachable!(),
             };
 
@@ -2035,7 +2009,13 @@ fn complex_load_mem(mut offset: u32, val_type: &ExpressionType, generation_conte
          let si = generation_context.user_defined_types.struct_info.get(x).unwrap();
          for (field_name, field) in si.field_types.iter() {
             let field_offset = si.size.as_ref().unwrap().field_offsets_mem.get(field_name).unwrap();
-            match sizeof_type_values(&field.e_type, &generation_context.user_defined_types.enum_info, &generation_context.user_defined_types.struct_info).cmp(&1) {
+            match sizeof_type_values(
+               &field.e_type,
+               &generation_context.user_defined_types.enum_info,
+               &generation_context.user_defined_types.struct_info,
+            )
+            .cmp(&1)
+            {
                std::cmp::Ordering::Less => (),
                std::cmp::Ordering::Equal => {
                   generation_context
@@ -2053,7 +2033,13 @@ fn complex_load_mem(mut offset: u32, val_type: &ExpressionType, generation_conte
       ExpressionType::Array(a_type, len) => {
          let elem_size = sizeof_type_mem(a_type, generation_context.user_defined_types);
          for _ in 0..*len {
-            match sizeof_type_values(a_type, &generation_context.user_defined_types.enum_info, &generation_context.user_defined_types.struct_info).cmp(&1) {
+            match sizeof_type_values(
+               a_type,
+               &generation_context.user_defined_types.enum_info,
+               &generation_context.user_defined_types.struct_info,
+            )
+            .cmp(&1)
+            {
                std::cmp::Ordering::Less => (),
                std::cmp::Ordering::Equal => {
                   generation_context
@@ -2083,7 +2069,11 @@ fn simple_load_mem(val_type: &ExpressionType, generation_context: &mut Generatio
          // (there should only be one if we're in simple_load)
          for (_, field_type_node) in si.field_types.iter() {
             let field_type = &field_type_node.e_type;
-            match sizeof_type_values(field_type, &generation_context.user_defined_types.enum_info, &generation_context.user_defined_types.struct_info) {
+            match sizeof_type_values(
+               field_type,
+               &generation_context.user_defined_types.enum_info,
+               &generation_context.user_defined_types.struct_info,
+            ) {
                0 => continue,
                1 => return simple_load_mem(field_type, generation_context),
                _ => unreachable!(),
@@ -2108,13 +2098,9 @@ fn simple_load_mem(val_type: &ExpressionType, generation_context: &mut Generatio
    {
       // Drop the load address; nothing to load
       generation_context.active_fcn.instruction(&Instruction::Drop);
-   } else if sizeof_type_mem(
-      val_type,
-      generation_context.user_defined_types,
-   ) == sizeof_type_wasm(
-      val_type,
-      generation_context.user_defined_types,
-   ) {
+   } else if sizeof_type_mem(val_type, generation_context.user_defined_types)
+      == sizeof_type_wasm(val_type, generation_context.user_defined_types)
+   {
       match type_to_wasm_type_basic(val_type) {
          ValType::I64 => generation_context
             .active_fcn
@@ -2195,7 +2181,11 @@ fn simple_store_mem(val_type: &ExpressionType, generation_context: &mut Generati
          // (there should only be one if we're in simple_store)
          for (_, field_type_node) in si.field_types.iter() {
             let field_type = &field_type_node.e_type;
-            match sizeof_type_values(field_type, &generation_context.user_defined_types.enum_info, &generation_context.user_defined_types.struct_info) {
+            match sizeof_type_values(
+               field_type,
+               &generation_context.user_defined_types.enum_info,
+               &generation_context.user_defined_types.struct_info,
+            ) {
                0 => continue,
                1 => return simple_store_mem(field_type, generation_context),
                _ => unreachable!(),
@@ -2207,19 +2197,19 @@ fn simple_store_mem(val_type: &ExpressionType, generation_context: &mut Generati
       }
       ExpressionType::Union(_) => {
          let size = sizeof_type_mem(val_type, generation_context.user_defined_types);
-         generation_context.active_fcn.instruction(&Instruction::I32Const(size as i32));
-         generation_context.active_fcn.instruction(&Instruction::MemoryCopy { src_mem: 0, dst_mem: 0});
+         generation_context
+            .active_fcn
+            .instruction(&Instruction::I32Const(size as i32));
+         generation_context
+            .active_fcn
+            .instruction(&Instruction::MemoryCopy { src_mem: 0, dst_mem: 0 });
          return;
       }
       _ => (),
    }
-   if sizeof_type_mem(
-      val_type,
-      generation_context.user_defined_types,
-   ) == sizeof_type_wasm(
-      val_type,
-      generation_context.user_defined_types,
-   ) {
+   if sizeof_type_mem(val_type, generation_context.user_defined_types)
+      == sizeof_type_wasm(val_type, generation_context.user_defined_types)
+   {
       match type_to_wasm_type_basic(val_type) {
          ValType::I64 => generation_context
             .active_fcn

@@ -60,7 +60,6 @@ pub fn calculate_union_size_info(name: StrId, udt: &mut UserDefinedTypeInfo) {
       our_mem_alignment = std::cmp::max(our_mem_alignment, mem_alignment(field_t, udt));
    }
 
-
    udt.union_info.get_mut(&name).unwrap().size = Some(UnionSizeInfo {
       mem_size: aligned_address(our_mem_size, our_mem_alignment),
       mem_alignment: our_mem_alignment,

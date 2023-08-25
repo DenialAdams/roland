@@ -1602,7 +1602,12 @@ fn get_type(
                }
             }
             ExpressionType::Union(union_name) => {
-               let union_fields = &validation_context.user_defined_types.union_info.get(&union_name).unwrap().field_types;
+               let union_fields = &validation_context
+                  .user_defined_types
+                  .union_info
+                  .get(&union_name)
+                  .unwrap()
+                  .field_types;
                if let Some(new_t_node) = union_fields.get(&field) {
                   lhs_type = new_t_node.e_type.clone();
                } else {

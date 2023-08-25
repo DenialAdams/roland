@@ -659,19 +659,16 @@ fn fold_expr_inner(
             }
 
             match &expr.expression {
-               Expression::StringLiteral(literal_val)
-                  if interner.lookup(*field_name) == "length" =>
-               {
+               Expression::StringLiteral(literal_val) if interner.lookup(*field_name) == "length" => {
                   Some(Expression::IntLiteral {
                      val: interner.lookup(*literal_val).len() as u64,
                      synthetic: true,
                   })
                }
                Expression::StructLiteral(_, fields) => {
-                  let inner_node_expression = folding_context.ast.expressions
-                     [fields.get(field_name).unwrap().unwrap()]
-                  .expression
-                  .clone();
+                  let inner_node_expression = folding_context.ast.expressions[fields.get(field_name).unwrap().unwrap()]
+                     .expression
+                     .clone();
                   Some(inner_node_expression)
                }
                Expression::ArrayLiteral(_) => unreachable!(), // covered by type check above
