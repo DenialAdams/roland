@@ -123,8 +123,8 @@ pub fn replace_nonnative_casts(program: &mut Program, interner: &Interner) {
       };
       let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
       let new_proc_expr = ExpressionNode {
-         expression: Expression::BoundFcnLiteral(proc_id, vec![].into_boxed_slice()),
-         exp_type: Some(ExpressionType::ProcedureItem(proc_id, vec![].into_boxed_slice())),
+         expression: Expression::BoundFcnLiteral(proc_id, Box::new([])),
+         exp_type: Some(ExpressionType::ProcedureItem(proc_id, Box::new([]))),
          location: v.location,
       };
       replacements.push((expression, new_proc_expr));
@@ -136,11 +136,10 @@ pub fn replace_nonnative_casts(program: &mut Program, interner: &Interner) {
       };
       program.ast.expressions[replacement.0].expression = Expression::ProcedureCall {
          proc_expr: pid,
-         args: vec![ArgumentNode {
+         args: Box::new([ArgumentNode {
             name: None,
             expr: *castee,
-         }]
-         .into_boxed_slice(),
+         }]),
       };
    }
 }

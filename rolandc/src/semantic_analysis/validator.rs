@@ -922,7 +922,7 @@ fn type_expression(
          None => {
             if let Some(proc_id) = validation_context.proc_name_table.get(&id.str).copied() {
                validation_context.ast.expressions[expr_index].expression =
-                  Expression::BoundFcnLiteral(proc_id, vec![].into_boxed_slice());
+                  Expression::BoundFcnLiteral(proc_id, Box::new([]));
             }
          }
       },
