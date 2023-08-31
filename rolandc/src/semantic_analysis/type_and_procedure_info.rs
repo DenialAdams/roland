@@ -300,6 +300,23 @@ fn populate_user_defined_type_info(
          );
       }
    }
+   for union_i in udt.union_info.iter_mut() {
+      for (field, etn) in union_i.1.field_types.iter_mut() {
+         if resolve_type(&mut etn.e_type, &cloned_udt, None).is_ok() {
+            continue;
+         }
+
+         let etype_str = etn.e_type.as_roland_type_info_notv(interner, &program.procedure_info);
+         rolandc_error_w_details!(
+            err_manager,
+            &[(union_i.1.location, "union defined")],
+            "Field `{}` of union `{}` is of undeclared type `{}`",
+            interner.lookup(*field),
+            interner.lookup(*union_i.0),
+            etype_str,
+         );
+      }
+   }
 
    udt
 }
