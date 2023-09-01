@@ -59,12 +59,10 @@ fn recursive_struct_union_check(
          break;
       }
 
-      if seen_structs_or_unions.contains(&struct_field) {
+      if !seen_structs_or_unions.insert(struct_field) {
          is_recursive = RecursiveStructCheckResult::ContainsRecursiveStruct;
          continue;
       }
-
-      seen_structs_or_unions.insert(struct_field);
 
       is_recursive |= struct_info
          .get(&struct_field)
