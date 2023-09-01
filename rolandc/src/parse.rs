@@ -228,7 +228,7 @@ pub enum Expression {
       target_type: ExpressionType,
       expr: ExpressionId,
    },
-   EnumLiteral(EnumId, StrNode),
+   EnumLiteral(EnumId, StrId),
    UnresolvedEnumLiteral(StrNode, StrNode),
    UnresolvedProcLiteral(StrNode, Vec<ExpressionTypeNode>),
    BoundFcnLiteral(ProcedureId, Box<[ExpressionTypeNode]>),

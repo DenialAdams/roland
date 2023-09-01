@@ -210,6 +210,16 @@ pub fn type_and_check_validity(
    interner: &mut Interner,
    target: Target,
 ) {
+   let string_struct_id = {
+      let udt_id = program
+         .user_defined_type_name_table
+         .get(&interner.reverse_lookup("String").unwrap())
+         .unwrap();
+      let UserDefinedTypeId::Struct(s_id) = udt_id else {
+         unreachable!()
+      };
+      *s_id
+   };
    let mut validation_context = ValidationContext {
       target,
       variable_types: IndexMap::new(),
@@ -226,6 +236,7 @@ pub fn type_and_check_validity(
       cur_procedure_locals: IndexMap::new(),
       source_to_definition: std::mem::replace(&mut program.source_to_definition, IndexMap::new()),
       interner,
+      string_struct_id,
       next_var_dont_access: program.next_variable,
    };
 
@@ -1014,15 +1025,7 @@ fn get_type(
          ExpressionType::Unknown(new_type_variable)
       }
       Expression::StringLiteral(_) => {
-         // nocheckin this sucks and also will just break. lets do this lookup once and put the string_struct_Id on the validationcontext
-         let udt_id = validation_context
-            .user_defined_type_name_table
-            .get(&validation_context.interner.intern("String"))
-            .unwrap();
-         let UserDefinedTypeId::Struct(s_id) = udt_id else {
-            unreachable!()
-         };
-         ExpressionType::Struct(*s_id)
+         ExpressionType::Struct(validation_context.string_struct_id)
       }
       Expression::Cast {
          cast_type,
@@ -1452,10 +1455,22 @@ fn get_type(
 
          match validation_context.user_defined_type_name_table.get(&struct_name.str) {
             Some(UserDefinedTypeId::Enum(_)) => {
-               todo!() //nocheckin
+               rolandc_error!(
+                  err_manager,
+                  expr_location,
+                  "Attempted to instantiate enum `{}` as a struct",
+                  validation_context.interner.lookup(struct_name.str),
+               );
+               ExpressionType::CompileError
             }
             Some(UserDefinedTypeId::Union(_)) => {
-               todo!() //nocheckin
+               rolandc_error!(
+                  err_manager,
+                  expr_location,
+                  "Attempted to instantiate union `{}` as a struct",
+                  validation_context.interner.lookup(struct_name.str),
+               );
+               ExpressionType::CompileError
             }
             Some(UserDefinedTypeId::Struct(defined_struct)) => {
                let si = validation_context
@@ -1840,10 +1855,22 @@ fn get_type(
       Expression::UnresolvedEnumLiteral(x, v) => {
          match validation_context.user_defined_type_name_table.get(&x.str) {
             Some(UserDefinedTypeId::Struct(_)) => {
-               todo!() //nocheckin
+               rolandc_error!(
+                  err_manager,
+                  x.location,
+                  "Attempted to instantiate struct `{}` as an enum",
+                  validation_context.interner.lookup(x.str),
+               );
+               ExpressionType::CompileError
             }
             Some(UserDefinedTypeId::Union(_)) => {
-               todo!() //nocheckin
+               rolandc_error!(
+                  err_manager,
+                  x.location,
+                  "Attempted to instantiate union `{}` as an enum",
+                  validation_context.interner.lookup(x.str),
+               );
+               ExpressionType::CompileError
             }
             Some(UserDefinedTypeId::Enum(eid)) => {
                let enum_info = validation_context.user_defined_types.enum_info.get(*eid).unwrap();
@@ -1854,7 +1881,7 @@ fn get_type(
                   validation_context
                      .source_to_definition
                      .insert(v.location, *variant_location);
-                  *expr = Expression::EnumLiteral(*eid, v.clone()); //nocheckin this can probably just be a strId and remove clone
+                  *expr = Expression::EnumLiteral(*eid, v.str);
                   ExpressionType::Enum(*eid)
                } else {
                   rolandc_error!(

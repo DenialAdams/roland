@@ -248,7 +248,8 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          .insert(a_union.name, UserDefinedTypeId::Union(union_id));
    }
 
-   let cloned_udt = program.user_defined_types.clone(); // nocheckin. have some ideas. leave a comment
+   // horrendous clone. we can probably avoid it if resolve_type returned the types that could not be resolved and then we actually give a good message that way anyway
+   let cloned_udt = program.user_defined_types.clone();
    for struct_i in program.user_defined_types.struct_info.values_mut() {
       for (field, etn) in struct_i.field_types.iter_mut() {
          if resolve_type(&mut etn.e_type, &program.user_defined_type_name_table, None).is_ok() {

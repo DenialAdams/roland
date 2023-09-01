@@ -43,7 +43,7 @@ fn lower_single_expression(expression_node: &mut ExpressionNode, enum_info: &Slo
          let replacement_expr = match ei.base_type {
             ExpressionType::Unit => Expression::UnitLiteral,
             ExpressionType::Int(_) => {
-               let val = ei.variants.get_index_of(&b.str).unwrap();
+               let val = ei.variants.get_index_of(b).unwrap();
                Expression::IntLiteral {
                   val: val as u64,
                   synthetic: true,

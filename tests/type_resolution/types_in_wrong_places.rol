@@ -1,0 +1,26 @@
+struct S {
+}
+
+union U {
+}
+
+enum E {
+   A,
+}
+
+proc main() {
+   S::A;
+   U::A;
+   E { };
+   U { };
+}
+__END__
+compile:
+Attempted to instantiate struct `S` as an enum
+↳ line 12, column 4 [tests/type_resolution/types_in_wrong_places.rol]
+Attempted to instantiate union `U` as an enum
+↳ line 13, column 4 [tests/type_resolution/types_in_wrong_places.rol]
+Attempted to instantiate enum `E` as a struct
+↳ line 14, column 4 [tests/type_resolution/types_in_wrong_places.rol]
+Attempted to instantiate union `U` as a struct
+↳ line 15, column 4 [tests/type_resolution/types_in_wrong_places.rol]

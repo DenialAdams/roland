@@ -6,7 +6,8 @@ use slotmap::SecondaryMap;
 use self::type_variables::TypeVariableManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, ExpressionId, ExpressionTypeNode, ProcedureId, StrNode, UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
+   AstPool, ExpressionId, ExpressionTypeNode, ProcedureId, StrNode, StructId, UserDefinedTypeId, UserDefinedTypeInfo,
+   VariableId,
 };
 use crate::size_info::{StructSizeInfo, UnionSizeInfo};
 use crate::source_info::SourceInfo;
@@ -100,6 +101,7 @@ pub struct ValidationContext<'a> {
    pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,
    pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
    pub interner: &'a mut Interner,
+   pub string_struct_id: StructId,
    next_var_dont_access: VariableId,
 }
 
