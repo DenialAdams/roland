@@ -167,10 +167,6 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
          &program.user_defined_types.struct_info,
       );
 
-      if t_buf.len() > 1 {
-         continue;
-      }
-
       let reg = num_global_registers;
       num_global_registers += t_buf.len() as u32;
 
