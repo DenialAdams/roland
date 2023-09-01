@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::ops::BitOrAssign;
 
 use indexmap::{IndexMap, IndexSet};
 
@@ -14,79 +13,55 @@ use crate::source_info::{SourceInfo, SourcePath};
 use crate::type_data::{ExpressionType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
 use crate::{CompilationConfig, Program};
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum RecursiveStructCheckResult {
-   NotRecursive,
-   // The struct doesn't contain itself directly or indirectly, but it contains a struct that does
-   ContainsRecursiveStruct,
-   ContainsSelf,
-}
-
-impl BitOrAssign for RecursiveStructCheckResult {
-   fn bitor_assign(&mut self, rhs: Self) {
-      *self = match (&self, rhs) {
-         (RecursiveStructCheckResult::ContainsSelf, _) => RecursiveStructCheckResult::ContainsSelf,
-         (RecursiveStructCheckResult::ContainsRecursiveStruct, RecursiveStructCheckResult::ContainsSelf) => {
-            RecursiveStructCheckResult::ContainsSelf
-         }
-         (RecursiveStructCheckResult::ContainsRecursiveStruct, _) => {
-            RecursiveStructCheckResult::ContainsRecursiveStruct
-         }
-         (RecursiveStructCheckResult::NotRecursive, _) => rhs,
-      };
-   }
-}
-
 fn recursive_struct_union_check(
    base_name: StrId,
    seen_structs_or_unions: &mut HashSet<StrId>,
    struct_or_union_fields: &IndexMap<StrId, ExpressionTypeNode>,
    struct_info: &IndexMap<StrId, StructInfo>,
    union_info: &IndexMap<StrId, UnionInfo>,
-) -> RecursiveStructCheckResult {
-   let mut is_recursive = RecursiveStructCheckResult::NotRecursive;
+) -> bool {
+   let mut is_recursive = false;
 
-   for struct_field in struct_or_union_fields.iter().flat_map(|x| match &x.1.e_type {
-      ExpressionType::Struct(x) => Some(*x),
-      ExpressionType::Union(x) => Some(*x),
-      // Types should be fully resolved at this point, but may not be if there is an error in the program
-      // (in that case, it's fine to ignore it as we'll already error out)
-      ExpressionType::Unresolved(x) => Some(*x),
-      _ => None,
-   }) {
-      if struct_field == base_name {
-         is_recursive = RecursiveStructCheckResult::ContainsSelf;
-         break;
-      }
+   for field in struct_or_union_fields.iter() {
+      match &field.1.e_type {
+         ExpressionType::Struct(x) => {
+            if *x == base_name {
+               is_recursive = true;
+               break;
+            }
 
-      if !seen_structs_or_unions.insert(struct_field) {
-         is_recursive = RecursiveStructCheckResult::ContainsRecursiveStruct;
-         continue;
-      }
+            if !seen_structs_or_unions.insert(*x) {
+               continue;
+            }
 
-      is_recursive |= struct_info
-         .get(&struct_field)
-         .map_or(RecursiveStructCheckResult::NotRecursive, |si| {
-            recursive_struct_union_check(
+            is_recursive |= recursive_struct_union_check(
                base_name,
                seen_structs_or_unions,
-               &si.field_types,
+               &struct_info.get(x).unwrap().field_types,
                struct_info,
                union_info,
-            )
-         });
+            );
+         }
+         ExpressionType::Union(x) => {
+            if *x == base_name {
+               is_recursive = true;
+               break;
+            }
 
-      is_recursive |= union_info
-         .get(&struct_field)
-         .map_or(RecursiveStructCheckResult::NotRecursive, |si| {
-            recursive_struct_union_check(
+            if !seen_structs_or_unions.insert(*x) {
+               continue;
+            }
+
+            is_recursive |= recursive_struct_union_check(
                base_name,
                seen_structs_or_unions,
-               &si.field_types,
+               &union_info.get(x).unwrap().field_types,
                struct_info,
                union_info,
-            )
-         });
+            );
+         }
+         _ => continue,
+      }
    }
 
    is_recursive
@@ -325,7 +300,7 @@ pub fn populate_type_and_procedure_info(
          &struct_i.1.field_types,
          &program.user_defined_types.struct_info,
          &program.user_defined_types.union_info,
-      ) == RecursiveStructCheckResult::ContainsSelf
+      )
       {
          rolandc_error!(
             err_manager,
@@ -344,7 +319,7 @@ pub fn populate_type_and_procedure_info(
          &union_i.1.field_types,
          &program.user_defined_types.struct_info,
          &program.user_defined_types.union_info,
-      ) == RecursiveStructCheckResult::ContainsSelf
+      )
       {
          rolandc_error!(
             err_manager,
