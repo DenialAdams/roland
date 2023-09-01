@@ -7,7 +7,7 @@ use super::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo, UnionIn
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{ExpressionTypeNode, ProcImplSource, UserDefinedTypeInfo};
+use crate::parse::{ExpressionTypeNode, ProcImplSource};
 use crate::semantic_analysis::validator::resolve_type;
 use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
 use crate::source_info::{SourceInfo, SourcePath};
@@ -114,17 +114,7 @@ fn insert_or_error_duplicated(
    }
 }
 
-fn populate_user_defined_type_info(
-   program: &mut Program,
-   err_manager: &mut ErrorManager,
-   interner: &Interner,
-) -> UserDefinedTypeInfo {
-   let mut udt = UserDefinedTypeInfo {
-      enum_info: IndexMap::new(),
-      struct_info: IndexMap::new(),
-      union_info: IndexMap::new(),
-   };
-
+fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut ErrorManager, interner: &Interner) {
    let mut dupe_check = HashSet::new();
    let mut all_types = HashMap::new();
 
@@ -213,7 +203,7 @@ fn populate_user_defined_type_info(
       };
 
       insert_or_error_duplicated(&mut all_types, err_manager, a_enum.name, a_enum.location, interner);
-      udt.enum_info.insert(
+      program.user_defined_types.enum_info.insert(
          a_enum.name,
          EnumInfo {
             variants: a_enum.variants.iter().map(|x| (x.str, x.location)).collect(),
@@ -244,7 +234,7 @@ fn populate_user_defined_type_info(
       }
 
       insert_or_error_duplicated(&mut all_types, err_manager, a_struct.name, a_struct.location, interner);
-      udt.struct_info.insert(
+      program.user_defined_types.struct_info.insert(
          a_struct.name,
          StructInfo {
             field_types: field_map,
@@ -271,7 +261,7 @@ fn populate_user_defined_type_info(
       }
 
       insert_or_error_duplicated(&mut all_types, err_manager, a_union.name, a_union.location, interner);
-      udt.union_info.insert(
+      program.user_defined_types.union_info.insert(
          a_union.name,
          UnionInfo {
             field_types: field_map,
@@ -282,8 +272,8 @@ fn populate_user_defined_type_info(
    }
 
    // TODO: this clone is horrific. just for borrowck.
-   let cloned_udt = udt.clone();
-   for struct_i in udt.struct_info.iter_mut() {
+   let cloned_udt = program.user_defined_types.clone();
+   for struct_i in program.user_defined_types.struct_info.iter_mut() {
       for (field, etn) in struct_i.1.field_types.iter_mut() {
          if resolve_type(&mut etn.e_type, &cloned_udt, None).is_ok() {
             continue;
@@ -300,7 +290,7 @@ fn populate_user_defined_type_info(
          );
       }
    }
-   for union_i in udt.union_info.iter_mut() {
+   for union_i in program.user_defined_types.union_info.iter_mut() {
       for (field, etn) in union_i.1.field_types.iter_mut() {
          if resolve_type(&mut etn.e_type, &cloned_udt, None).is_ok() {
             continue;
@@ -317,8 +307,6 @@ fn populate_user_defined_type_info(
          );
       }
    }
-
-   udt
 }
 
 pub fn populate_type_and_procedure_info(
@@ -327,7 +315,7 @@ pub fn populate_type_and_procedure_info(
    interner: &Interner,
    config: &CompilationConfig,
 ) {
-   program.user_defined_types = populate_user_defined_type_info(program, err_manager, interner);
+   populate_user_defined_type_info(program, err_manager, interner);
 
    // Check for recursive structs only after we've attempted to resolve all of the field types
    let mut seen_structs_or_unions = HashSet::new();
