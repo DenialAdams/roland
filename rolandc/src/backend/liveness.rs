@@ -102,22 +102,12 @@ pub fn liveness(
 
    // Construct the final results
    let mut all_liveness: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
-   let node_id_to_rpo_index: HashMap<usize, usize> = post_order(cfg)
-      .iter()
-      .copied()
-      .rev()
-      .enumerate()
-      .map(|(x, y)| (y, x))
-      .collect();
-   for (node_id, bb) in cfg.bbs.iter().enumerate() {
+   for (rpo_index, node_id) in post_order(cfg).iter().copied().rev().enumerate() {
       if node_id == CFG_END_NODE {
          // slightly faster to skip this node which by construction has no instructions
          continue;
       }
-      // Nodes not present in the RPO are dead code, and so we will not mark them as having any live range
-      let Some(rpo_index) = node_id_to_rpo_index.get(&node_id).copied() else {
-         continue;
-      };
+      let bb = &cfg.bbs[node_id];
       let s = &state[node_id];
       {
          let mut current_live_variables = s.live_out.clone();
