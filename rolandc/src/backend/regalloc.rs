@@ -79,7 +79,7 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
             continue;
          }
 
-         if escaping_vars.contains(&var) || t_buf.len() > 1 {
+         if escaping_vars.contains(&var) {
             // address is observed, variable must live on the stack.
             // however, this var is a parameter, so we still need to offset
             // the register count
@@ -122,10 +122,6 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
             &mut t_buf,
             &program.user_defined_types.struct_info,
          );
-
-         if t_buf.len() > 1 {
-            continue;
-         }
 
          let mut var_registers = ArrayVec::new();
          for t_val in t_buf.drain(..) {
