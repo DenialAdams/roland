@@ -272,6 +272,11 @@
                "match": "\\b(struct)\\b"
             },
             {
+               "comment": "union keyword",
+               "name": "keyword.declaration.union.roland storage.type.roland",
+               "match": "\\b(struct)\\b"
+            },
+            {
                "comment": "other keywords",
                "name": "keyword.other.roland",
                "match": "\\b(in|transmute|as|named|extern|builtin|import|where|defer|ifx)\\b"
