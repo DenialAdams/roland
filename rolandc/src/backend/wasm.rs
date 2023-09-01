@@ -15,7 +15,7 @@ use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureDefinition, ProcedureId, Program,
-   Statement, StatementId, StructId, UnOp, UserDefinedTypeInfo, VariableId,
+   StructId, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::{GlobalKind, StructInfo};
 use crate::size_info::{aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm};
@@ -834,80 +834,66 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
 
             return;
          }
-         CfgInstruction::RolandStmt(s) => {
-            emit_statement(*s, generation_context);
+         CfgInstruction::Assignment(len, en) => {
+            do_emit(*len, generation_context);
+            do_emit_and_load_lval(*en, generation_context);
+            let val_type = generation_context.ast.expressions[*en].exp_type.as_ref().unwrap();
+            if let Some((is_global, range)) = get_registers_for_expr(*len, generation_context) {
+               if is_global {
+                  for a_reg in range.iter().rev() {
+                     generation_context
+                        .active_fcn
+                        .instruction(&Instruction::GlobalSet(*a_reg));
+                  }
+               } else {
+                  for a_reg in range.iter().rev() {
+                     generation_context
+                        .active_fcn
+                        .instruction(&Instruction::LocalSet(*a_reg));
+                  }
+               }
+            } else {
+               store_mem(val_type, generation_context);
+            }
+         }
+         CfgInstruction::Break => {
+            generation_context.active_fcn.instruction(&Instruction::Br(
+               1 + generation_context.stack_of_loop_jump_offsets.last().unwrap(),
+            ));
+         }
+         CfgInstruction::Continue => {
+            generation_context.active_fcn.instruction(&Instruction::Br(
+               *generation_context.stack_of_loop_jump_offsets.last().unwrap(),
+            ));
+         }
+         CfgInstruction::Expression(en) => {
+            do_emit_and_load_lval(*en, generation_context);
+            for _ in 0..sizeof_type_values(
+               generation_context.ast.expressions[*en].exp_type.as_ref().unwrap(),
+               &generation_context.user_defined_types.enum_info,
+               &generation_context.user_defined_types.struct_info,
+            ) {
+               generation_context.active_fcn.instruction(&Instruction::Drop);
+            }
+         }
+         CfgInstruction::Return(en) => {
+            do_emit_and_load_lval(*en, generation_context);
+
+            if generation_context.ast.expressions[*en]
+               .exp_type
+               .as_ref()
+               .unwrap()
+               .is_never()
+            {
+               // WASM has strict rules about the stack - we need a literal "unreachable" to bypass them
+               generation_context.active_fcn.instruction(&Instruction::Unreachable);
+            } else {
+               adjust_stack_function_exit(generation_context);
+               generation_context.active_fcn.instruction(&Instruction::Return);
+            }
          }
          CfgInstruction::ConditionalJump(_, _, _) | CfgInstruction::Jump(_) => (),
       }
-   }
-}
-
-fn emit_statement(statement: StatementId, generation_context: &mut GenerationContext) {
-   match &generation_context.ast.statements[statement].statement {
-      Statement::Assignment(len, en) => {
-         do_emit(*len, generation_context);
-         do_emit_and_load_lval(*en, generation_context);
-         let val_type = generation_context.ast.expressions[*en].exp_type.as_ref().unwrap();
-         if let Some((is_global, range)) = get_registers_for_expr(*len, generation_context) {
-            if is_global {
-               for a_reg in range.iter().rev() {
-                  generation_context
-                     .active_fcn
-                     .instruction(&Instruction::GlobalSet(*a_reg));
-               }
-            } else {
-               for a_reg in range.iter().rev() {
-                  generation_context
-                     .active_fcn
-                     .instruction(&Instruction::LocalSet(*a_reg));
-               }
-            }
-         } else {
-            store_mem(val_type, generation_context);
-         }
-      }
-      Statement::Break => {
-         generation_context.active_fcn.instruction(&Instruction::Br(
-            1 + generation_context.stack_of_loop_jump_offsets.last().unwrap(),
-         ));
-      }
-      Statement::Continue => {
-         generation_context.active_fcn.instruction(&Instruction::Br(
-            *generation_context.stack_of_loop_jump_offsets.last().unwrap(),
-         ));
-      }
-      Statement::Expression(en) => {
-         do_emit_and_load_lval(*en, generation_context);
-         for _ in 0..sizeof_type_values(
-            generation_context.ast.expressions[*en].exp_type.as_ref().unwrap(),
-            &generation_context.user_defined_types.enum_info,
-            &generation_context.user_defined_types.struct_info,
-         ) {
-            generation_context.active_fcn.instruction(&Instruction::Drop);
-         }
-      }
-      Statement::Return(en) => {
-         do_emit_and_load_lval(*en, generation_context);
-
-         if generation_context.ast.expressions[*en]
-            .exp_type
-            .as_ref()
-            .unwrap()
-            .is_never()
-         {
-            // WASM has strict rules about the stack - we need a literal "unreachable" to bypass them
-            generation_context.active_fcn.instruction(&Instruction::Unreachable);
-         } else {
-            adjust_stack_function_exit(generation_context);
-            generation_context.active_fcn.instruction(&Instruction::Return);
-         }
-      }
-      Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
-      Statement::Block(_) => unreachable!(),
-      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
-      Statement::Loop(_) => unreachable!(),
-      Statement::IfElse(_, _, _) => unreachable!(),
-      Statement::Defer(_) => unreachable!(),
    }
 }
 

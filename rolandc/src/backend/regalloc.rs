@@ -5,12 +5,12 @@ use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
+use super::linearize::{Cfg, CfgInstruction};
 use super::liveness::{liveness, ProgramIndex};
 use crate::backend::wasm::type_to_wasm_type;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::parse::{
-   AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, Statement,
-   StatementId, UnOp, VariableId,
+   AstPool, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, UnOp, VariableId,
 };
 use crate::{CompilationConfig, Program, Target};
 
@@ -39,11 +39,11 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
       let all_registers = result.procedure_registers.get_mut(proc_id).unwrap();
       let mut total_registers = 0;
 
-      let ProcImplSource::Body(block) = &procedure.proc_impl else {
+      if !matches!(&procedure.proc_impl, ProcImplSource::Body(_)) {
          continue;
-      };
+      }
 
-      mark_escaping_vars_block(block, &mut escaping_vars, &program.ast);
+      mark_escaping_vars_cfg(&program.cfg[proc_id], &mut escaping_vars, &program.ast);
 
       let mut live_intervals: IndexMap<VariableId, LiveInterval> = IndexMap::with_capacity(procedure.locals.len());
       {
@@ -178,39 +178,29 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
    result
 }
 
-fn mark_escaping_vars_block(block: &BlockNode, escaping_vars: &mut HashSet<VariableId>, ast: &AstPool) {
-   for statement in block.statements.iter().rev().copied() {
-      mark_escaping_vars_statement(statement, escaping_vars, ast);
-   }
-}
-
-fn mark_escaping_vars_statement(stmt: StatementId, escaping_vars: &mut HashSet<VariableId>, ast: &AstPool) {
-   match &ast.statements[stmt].statement {
-      Statement::Return(expr) => {
-         mark_escaping_vars_expr(*expr, escaping_vars, ast);
+fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, ast: &AstPool) {
+   for block in cfg.bbs.iter() {
+      for instr in block.instructions.iter() {
+         match instr {
+            CfgInstruction::Assignment(lhs, rhs) => {
+               mark_escaping_vars_expr(*lhs, escaping_vars, ast);
+               mark_escaping_vars_expr(*rhs, escaping_vars, ast);
+            }
+            CfgInstruction::Expression(e) => {
+               mark_escaping_vars_expr(*e, escaping_vars, ast);
+            }
+            CfgInstruction::ConditionalJump(e, _, _) => {
+               mark_escaping_vars_expr(*e, escaping_vars, ast);
+            }
+            CfgInstruction::Return(e) => {
+               mark_escaping_vars_expr(*e, escaping_vars, ast);
+            }
+            CfgInstruction::IfElse(e, _, _, _) => {
+               mark_escaping_vars_expr(*e, escaping_vars, ast);
+            }
+            _ => (),
+         }
       }
-      Statement::Break | Statement::Continue => (),
-      Statement::Block(block) => {
-         mark_escaping_vars_block(block, escaping_vars, ast);
-      }
-      Statement::IfElse(if_expr, if_block, else_statement) => {
-         mark_escaping_vars_expr(*if_expr, escaping_vars, ast);
-         mark_escaping_vars_block(if_block, escaping_vars, ast);
-         mark_escaping_vars_statement(*else_statement, escaping_vars, ast);
-      }
-      Statement::Loop(body) => {
-         mark_escaping_vars_block(body, escaping_vars, ast);
-      }
-      Statement::Assignment(lhs, rhs) => {
-         mark_escaping_vars_expr(*lhs, escaping_vars, ast);
-         mark_escaping_vars_expr(*rhs, escaping_vars, ast);
-      }
-      Statement::Expression(expr) => {
-         mark_escaping_vars_expr(*expr, escaping_vars, ast);
-      }
-      Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
-      Statement::Defer(_) => unreachable!(),
-      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
    }
 }
 

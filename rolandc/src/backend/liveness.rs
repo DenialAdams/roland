@@ -5,7 +5,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE};
 use crate::backend::linearize::post_order;
-use crate::parse::{AstPool, Expression, ExpressionId, Statement, StatementId, VariableId};
+use crate::parse::{AstPool, Expression, ExpressionId, VariableId};
 use crate::type_data::ExpressionType;
 
 #[derive(Clone)]
@@ -40,13 +40,23 @@ pub fn liveness(
       let s = &mut state[i];
       for instruction in bb.instructions.iter().rev() {
          match instruction {
-            CfgInstruction::RolandStmt(stmt) => {
-               gen_kill_for_stmt(*stmt, &mut s.gen, &mut s.kill, ast, &var_to_dense);
+            CfgInstruction::Assignment(lhs, rhs) => {
+               gen_for_expr(*rhs, &mut s.gen, &mut s.kill, ast, &var_to_dense);
+               gen_for_expr(*lhs, &mut s.gen, &mut s.kill, ast, &var_to_dense);
+               if let Expression::Variable(v) = ast.expressions[*lhs].expression {
+                  if let Some(di) = var_to_dense.get(&v).copied() {
+                     s.gen.set(di, false);
+                     s.kill.set(di, true);
+                  }
+               }
             }
+            CfgInstruction::Expression(expr) => gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, &var_to_dense),
+            CfgInstruction::Return(expr) => gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, &var_to_dense),
+            CfgInstruction::Break | CfgInstruction::Continue => (),
             CfgInstruction::IfElse(expr, _, _, _) | CfgInstruction::ConditionalJump(expr, _, _) => {
                gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, &var_to_dense);
             }
-            _ => (),
+            CfgInstruction::Jump(_) | CfgInstruction::Loop(_, _) => (),
          }
       }
    }
@@ -114,8 +124,22 @@ pub fn liveness(
          for (i, instruction) in bb.instructions.iter().enumerate().rev() {
             let pi = ProgramIndex(rpo_index, i);
             let var_to_kill = match instruction {
-               CfgInstruction::RolandStmt(stmt) => {
-                  update_live_variables_for_stmt(*stmt, &mut current_live_variables, ast, &var_to_dense)
+               CfgInstruction::Assignment(lhs, rhs) => {
+                  update_live_variables_for_expr(*rhs, &mut current_live_variables, ast, &var_to_dense);
+                  update_live_variables_for_expr(*lhs, &mut current_live_variables, ast, &var_to_dense);
+                  if let Expression::Variable(v) = ast.expressions[*lhs].expression {
+                     Some(v)
+                  } else {
+                     None
+                  }
+               }
+               CfgInstruction::Expression(expr) => {
+                  update_live_variables_for_expr(*expr, &mut current_live_variables, ast, &var_to_dense);
+                  None
+               }
+               CfgInstruction::Return(expr) => {
+                  update_live_variables_for_expr(*expr, &mut current_live_variables, ast, &var_to_dense);
+                  None
                }
                CfgInstruction::IfElse(expr, _, _, _) | CfgInstruction::ConditionalJump(expr, _, _) => {
                   update_live_variables_for_expr(*expr, &mut current_live_variables, ast, &var_to_dense);
@@ -134,29 +158,6 @@ pub fn liveness(
    }
 
    all_liveness
-}
-
-fn update_live_variables_for_stmt(
-   stmt: StatementId,
-   current_live_variables: &mut BitBox,
-   ast: &AstPool,
-   var_to_dense: &HashMap<VariableId, usize>,
-) -> Option<VariableId> {
-   match &ast.statements[stmt].statement {
-      Statement::Assignment(lhs, rhs) => {
-         update_live_variables_for_expr(*rhs, current_live_variables, ast, var_to_dense);
-         update_live_variables_for_expr(*lhs, current_live_variables, ast, var_to_dense);
-         if let Expression::Variable(v) = ast.expressions[*lhs].expression {
-            return Some(v);
-         }
-      }
-      Statement::Expression(expr) => update_live_variables_for_expr(*expr, current_live_variables, ast, var_to_dense),
-      Statement::Return(expr) => update_live_variables_for_expr(*expr, current_live_variables, ast, var_to_dense),
-      Statement::Break | Statement::Continue => (),
-      _ => unreachable!(),
-   }
-
-   None
 }
 
 fn update_live_variables_for_expr(
@@ -219,31 +220,6 @@ fn update_live_variables_for_expr(
       Expression::FloatLiteral(_) => (),
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
-   }
-}
-
-fn gen_kill_for_stmt(
-   stmt: StatementId,
-   gen: &mut BitBox,
-   kill: &mut BitBox,
-   ast: &AstPool,
-   var_to_dense: &HashMap<VariableId, usize>,
-) {
-   match &ast.statements[stmt].statement {
-      Statement::Assignment(lhs, rhs) => {
-         gen_for_expr(*rhs, gen, kill, ast, var_to_dense);
-         gen_for_expr(*lhs, gen, kill, ast, var_to_dense);
-         if let Expression::Variable(v) = ast.expressions[*lhs].expression {
-            if let Some(di) = var_to_dense.get(&v).copied() {
-               gen.set(di, false);
-               kill.set(di, true);
-            }
-         }
-      }
-      Statement::Expression(expr) => gen_for_expr(*expr, gen, kill, ast, var_to_dense),
-      Statement::Return(expr) => gen_for_expr(*expr, gen, kill, ast, var_to_dense),
-      Statement::Break | Statement::Continue => (),
-      _ => unreachable!(),
    }
 }
 

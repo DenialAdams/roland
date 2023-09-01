@@ -7,7 +7,7 @@ use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
 use crate::parse::{
    statement_always_returns, AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ProcImplSource, ProcedureId,
-   Statement, StatementId, StatementNode,
+   Statement, StatementId,
 };
 use crate::type_data::ExpressionType;
 use crate::Program;
@@ -15,9 +15,13 @@ use crate::Program;
 // TODO: This is pretty bulky. Ideally this would be size <= 8 for storage in the BB.
 #[derive(Clone)]
 pub enum CfgInstruction {
-   RolandStmt(StatementId),
+   Assignment(ExpressionId, ExpressionId),
+   Expression(ExpressionId),
    ConditionalJump(ExpressionId, usize, usize),
    Jump(usize),
+   Break,
+   Continue,
+   Return(ExpressionId),
    IfElse(ExpressionId, usize, usize, usize), // Condition, Then, Else, Merge
    Loop(usize, usize),                        // Continue, Break
 }
@@ -33,7 +37,6 @@ impl BasicBlock {
       let mut buf = ArrayVec::new();
       if let Some(x) = self.instructions.last() {
          match x {
-            CfgInstruction::RolandStmt(_) => {}
             CfgInstruction::ConditionalJump(_, a, b) => {
                buf.push(*a);
                buf.push(*b);
@@ -41,7 +44,7 @@ impl BasicBlock {
             CfgInstruction::Jump(x) => {
                buf.push(*x);
             }
-            _ => unreachable!(),
+            _ => (),
          }
       }
 
@@ -64,7 +67,7 @@ struct Ctx {
    continue_target: usize,
 }
 
-fn simplify_cfg(cfg: &mut [BasicBlock], ast: &mut AstPool) {
+fn simplify_cfg(cfg: &mut [BasicBlock], ast: &AstPool) {
    // TODO: can we do this without the outer loop? can't find any theoretical references
    let mut did_something = true;
    while did_something {
@@ -100,11 +103,7 @@ fn simplify_cfg(cfg: &mut [BasicBlock], ast: &mut AstPool) {
                   }
                   if x == y {
                      if expression_could_have_side_effects(cond_expr, &ast.expressions) {
-                        let cond_stmt = ast.statements.insert(StatementNode {
-                           statement: Statement::Expression(cond_expr),
-                           location: ast.expressions[cond_expr].location,
-                        });
-                        cfg[pred].instructions.push(CfgInstruction::RolandStmt(cond_stmt));
+                        cfg[pred].instructions.push(CfgInstruction::Expression(cond_expr));
                      }
                      cfg[pred].instructions.push(CfgInstruction::Jump(dest));
                   } else {
@@ -184,26 +183,18 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool) -> 
                exp_type: Some(ExpressionType::Never),
                location,
             });
-            let return_stmt = program.ast.statements.insert(StatementNode {
-               statement: Statement::Return(return_expr),
-               location,
-            });
             ctx.bbs[ctx.current_block]
                .instructions
-               .push(CfgInstruction::RolandStmt(return_stmt));
+               .push(CfgInstruction::Return(return_expr));
          } else {
             let return_expr = program.ast.expressions.insert(ExpressionNode {
                expression: Expression::UnitLiteral,
                exp_type: Some(ExpressionType::Unit),
                location,
             });
-            let return_stmt = program.ast.statements.insert(StatementNode {
-               statement: Statement::Return(return_expr),
-               location,
-            });
             ctx.bbs[ctx.current_block]
                .instructions
-               .push(CfgInstruction::RolandStmt(return_stmt));
+               .push(CfgInstruction::Return(return_expr));
 
             ctx.bbs[ctx.current_block]
                .instructions
@@ -212,7 +203,7 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool) -> 
          }
       }
 
-      simplify_cfg(&mut ctx.bbs, &mut program.ast);
+      simplify_cfg(&mut ctx.bbs, &program.ast);
 
       all_cfg.insert(
          proc.0,
@@ -352,13 +343,7 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool) -> bool {
          ctx.current_block = ctx.continue_target;
 
          if !linearize_block(ctx, bn, ast) {
-            let continue_stmt = ast.statements.insert(StatementNode {
-               statement: Statement::Continue,
-               location: ast.statements[stmt].location,
-            });
-            ctx.bbs[ctx.current_block]
-               .instructions
-               .push(CfgInstruction::RolandStmt(continue_stmt));
+            ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Continue);
             ctx.bbs[ctx.current_block]
                .instructions
                .push(CfgInstruction::Jump(ctx.continue_target));
@@ -372,9 +357,7 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool) -> bool {
          false
       }
       Statement::Break => {
-         ctx.bbs[ctx.current_block]
-            .instructions
-            .push(CfgInstruction::RolandStmt(stmt));
+         ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Break);
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(ctx.break_target));
@@ -382,9 +365,7 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool) -> bool {
          true
       }
       Statement::Continue => {
-         ctx.bbs[ctx.current_block]
-            .instructions
-            .push(CfgInstruction::RolandStmt(stmt));
+         ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Continue);
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(ctx.continue_target));
@@ -392,22 +373,27 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool) -> bool {
          true
       }
       Statement::Block(bn) => linearize_block(ctx, bn, ast),
-      Statement::Return(_) => {
-         ctx.bbs[ctx.current_block]
-            .instructions
-            .push(CfgInstruction::RolandStmt(stmt));
+      Statement::Return(e) => {
+         ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Return(*e));
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(CFG_END_NODE));
          ctx.bbs[CFG_END_NODE].predecessors.insert(ctx.current_block);
          true
       }
-      _ => {
+      Statement::Expression(e) => {
          ctx.bbs[ctx.current_block]
             .instructions
-            .push(CfgInstruction::RolandStmt(stmt));
+            .push(CfgInstruction::Expression(*e));
          false
       }
+      Statement::Assignment(lhs, rhs) => {
+         ctx.bbs[ctx.current_block]
+            .instructions
+            .push(CfgInstruction::Assignment(*lhs, *rhs));
+         false
+      }
+      _ => unreachable!(),
    };
    ast.statements[stmt].statement = borrowed_stmt;
 
