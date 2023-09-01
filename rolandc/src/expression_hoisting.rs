@@ -389,7 +389,7 @@ fn vv_expr(
       Expression::UnitLiteral => (),
       Expression::Variable(_) => (),
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 
    // assumption: procedure call is the only leaf node with side effects, and always has side effects

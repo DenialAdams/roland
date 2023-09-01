@@ -1,12 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use indexmap::{IndexMap, IndexSet};
+use slotmap::SlotMap;
 
 use super::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo, UnionInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{ExpressionTypeNode, ProcImplSource};
+use crate::parse::{ExpressionTypeNode, ProcImplSource, StructId, UnionId, UserDefinedTypeId};
 use crate::semantic_analysis::validator::resolve_type;
 use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
 use crate::source_info::{SourceInfo, SourcePath};
@@ -14,48 +15,48 @@ use crate::type_data::{ExpressionType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
 use crate::{CompilationConfig, Program};
 
 fn recursive_struct_union_check(
-   base_name: StrId,
-   seen_structs_or_unions: &mut HashSet<StrId>,
+   base_id: UserDefinedTypeId,
+   seen_structs_or_unions: &mut HashSet<UserDefinedTypeId>,
    struct_or_union_fields: &IndexMap<StrId, ExpressionTypeNode>,
-   struct_info: &IndexMap<StrId, StructInfo>,
-   union_info: &IndexMap<StrId, UnionInfo>,
+   struct_info: &SlotMap<StructId, StructInfo>,
+   union_info: &SlotMap<UnionId, UnionInfo>,
 ) -> bool {
    let mut is_recursive = false;
 
    for field in struct_or_union_fields.iter() {
       match &field.1.e_type {
          ExpressionType::Struct(x) => {
-            if *x == base_name {
+            if UserDefinedTypeId::Struct(*x) == base_id {
                is_recursive = true;
                break;
             }
 
-            if !seen_structs_or_unions.insert(*x) {
+            if !seen_structs_or_unions.insert(UserDefinedTypeId::Struct(*x)) {
                continue;
             }
 
             is_recursive |= recursive_struct_union_check(
-               base_name,
+               base_id,
                seen_structs_or_unions,
-               &struct_info.get(x).unwrap().field_types,
+               &struct_info.get(*x).unwrap().field_types,
                struct_info,
                union_info,
             );
          }
          ExpressionType::Union(x) => {
-            if *x == base_name {
+            if UserDefinedTypeId::Union(*x) == base_id {
                is_recursive = true;
                break;
             }
 
-            if !seen_structs_or_unions.insert(*x) {
+            if !seen_structs_or_unions.insert(UserDefinedTypeId::Union(*x)) {
                continue;
             }
 
             is_recursive |= recursive_struct_union_check(
-               base_name,
+               base_id,
                seen_structs_or_unions,
-               &union_info.get(x).unwrap().field_types,
+               &union_info.get(*x).unwrap().field_types,
                struct_info,
                union_info,
             );
@@ -176,14 +177,15 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       };
 
       insert_or_error_duplicated(&mut all_types, err_manager, a_enum.name, a_enum.location, interner);
-      program.user_defined_types.enum_info.insert(
-         a_enum.name,
-         EnumInfo {
-            variants: a_enum.variants.iter().map(|x| (x.str, x.location)).collect(),
-            location: a_enum.location,
-            base_type,
-         },
-      );
+      let enum_id = program.user_defined_types.enum_info.insert(EnumInfo {
+         variants: a_enum.variants.iter().map(|x| (x.str, x.location)).collect(),
+         location: a_enum.location,
+         name: a_enum.name,
+         base_type,
+      });
+      program
+         .user_defined_type_name_table
+         .insert(a_enum.name, UserDefinedTypeId::Enum(enum_id));
    }
 
    for a_struct in program.structs.drain(..) {
@@ -207,15 +209,16 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       }
 
       insert_or_error_duplicated(&mut all_types, err_manager, a_struct.name, a_struct.location, interner);
-      program.user_defined_types.struct_info.insert(
-         a_struct.name,
-         StructInfo {
-            field_types: field_map,
-            default_values: default_value_map,
-            location: a_struct.location,
-            size: None,
-         },
-      );
+      let struct_id = program.user_defined_types.struct_info.insert(StructInfo {
+         field_types: field_map,
+         default_values: default_value_map,
+         location: a_struct.location,
+         size: None,
+         name: a_struct.name,
+      });
+      program
+         .user_defined_type_name_table
+         .insert(a_struct.name, UserDefinedTypeId::Struct(struct_id));
    }
 
    for a_union in program.unions.drain(..) {
@@ -234,48 +237,52 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       }
 
       insert_or_error_duplicated(&mut all_types, err_manager, a_union.name, a_union.location, interner);
-      program.user_defined_types.union_info.insert(
-         a_union.name,
-         UnionInfo {
-            field_types: field_map,
-            location: a_union.location,
-            size: None,
-         },
-      );
+      let union_id = program.user_defined_types.union_info.insert(UnionInfo {
+         field_types: field_map,
+         location: a_union.location,
+         size: None,
+         name: a_union.name,
+      });
+      program
+         .user_defined_type_name_table
+         .insert(a_union.name, UserDefinedTypeId::Union(union_id));
    }
 
-   // TODO: this clone is horrific. just for borrowck.
-   let cloned_udt = program.user_defined_types.clone();
-   for struct_i in program.user_defined_types.struct_info.iter_mut() {
-      for (field, etn) in struct_i.1.field_types.iter_mut() {
-         if resolve_type(&mut etn.e_type, &cloned_udt, None).is_ok() {
+   let cloned_udt = program.user_defined_types.clone(); // nocheckin. have some ideas. leave a comment
+   for struct_i in program.user_defined_types.struct_info.values_mut() {
+      for (field, etn) in struct_i.field_types.iter_mut() {
+         if resolve_type(&mut etn.e_type, &program.user_defined_type_name_table, None).is_ok() {
             continue;
          }
 
-         let etype_str = etn.e_type.as_roland_type_info_notv(interner, &program.procedure_info);
+         let etype_str = etn
+            .e_type
+            .as_roland_type_info_notv(interner, &cloned_udt, &program.procedure_info);
          rolandc_error_w_details!(
             err_manager,
-            &[(struct_i.1.location, "struct defined")],
+            &[(struct_i.location, "struct defined")],
             "Field `{}` of struct `{}` is of undeclared type `{}`",
             interner.lookup(*field),
-            interner.lookup(*struct_i.0),
+            interner.lookup(struct_i.name),
             etype_str,
          );
       }
    }
-   for union_i in program.user_defined_types.union_info.iter_mut() {
-      for (field, etn) in union_i.1.field_types.iter_mut() {
-         if resolve_type(&mut etn.e_type, &cloned_udt, None).is_ok() {
+   for union_i in program.user_defined_types.union_info.values_mut() {
+      for (field, etn) in union_i.field_types.iter_mut() {
+         if resolve_type(&mut etn.e_type, &program.user_defined_type_name_table, None).is_ok() {
             continue;
          }
 
-         let etype_str = etn.e_type.as_roland_type_info_notv(interner, &program.procedure_info);
+         let etype_str = etn
+            .e_type
+            .as_roland_type_info_notv(interner, &cloned_udt, &program.procedure_info);
          rolandc_error_w_details!(
             err_manager,
-            &[(union_i.1.location, "union defined")],
+            &[(union_i.location, "union defined")],
             "Field `{}` of union `{}` is of undeclared type `{}`",
             interner.lookup(*field),
-            interner.lookup(*union_i.0),
+            interner.lookup(union_i.name),
             etype_str,
          );
       }
@@ -295,18 +302,17 @@ pub fn populate_type_and_procedure_info(
    for struct_i in program.user_defined_types.struct_info.iter() {
       seen_structs_or_unions.clear();
       if recursive_struct_union_check(
-         *struct_i.0,
+         UserDefinedTypeId::Struct(struct_i.0),
          &mut seen_structs_or_unions,
          &struct_i.1.field_types,
          &program.user_defined_types.struct_info,
          &program.user_defined_types.union_info,
-      )
-      {
+      ) {
          rolandc_error!(
             err_manager,
             struct_i.1.location,
             "Struct `{}` contains itself, which isn't allowed as it would result in an infinitely large struct",
-            interner.lookup(*struct_i.0),
+            interner.lookup(struct_i.1.name),
          );
       }
    }
@@ -314,18 +320,17 @@ pub fn populate_type_and_procedure_info(
    for union_i in program.user_defined_types.union_info.iter() {
       seen_structs_or_unions.clear();
       if recursive_struct_union_check(
-         *union_i.0,
+         UserDefinedTypeId::Union(union_i.0),
          &mut seen_structs_or_unions,
          &union_i.1.field_types,
          &program.user_defined_types.struct_info,
          &program.user_defined_types.union_info,
-      )
-      {
+      ) {
          rolandc_error!(
             err_manager,
             union_i.1.location,
             "Union `{}` contains itself, which isn't allowed as it would result in an infinitely large struct",
-            interner.lookup(*union_i.0),
+            interner.lookup(union_i.1.name),
          );
       }
    }
@@ -334,8 +339,9 @@ pub fn populate_type_and_procedure_info(
       let const_type = &mut const_node.const_type.e_type;
       let si = &const_node.location;
 
-      if resolve_type(const_type, &program.user_defined_types, None).is_err() {
-         let static_type_str = const_type.as_roland_type_info_notv(interner, &program.procedure_info);
+      if resolve_type(const_type, &program.user_defined_type_name_table, None).is_err() {
+         let static_type_str =
+            const_type.as_roland_type_info_notv(interner, &program.user_defined_types, &program.procedure_info);
          rolandc_error!(
             err_manager,
             const_node.const_type.location,
@@ -370,11 +376,18 @@ pub fn populate_type_and_procedure_info(
    }
 
    for mut static_node in program.statics.drain(..) {
-      if resolve_type(&mut static_node.static_type.e_type, &program.user_defined_types, None).is_err() {
-         let static_type_str = static_node
-            .static_type
-            .e_type
-            .as_roland_type_info_notv(interner, &program.procedure_info);
+      if resolve_type(
+         &mut static_node.static_type.e_type,
+         &program.user_defined_type_name_table,
+         None,
+      )
+      .is_err()
+      {
+         let static_type_str = static_node.static_type.e_type.as_roland_type_info_notv(
+            interner,
+            &program.user_defined_types,
+            &program.procedure_info,
+         );
          rolandc_error!(
             err_manager,
             static_node.static_type.location,
@@ -518,15 +531,16 @@ pub fn populate_type_and_procedure_info(
       for parameter in definition.parameters.iter_mut() {
          if resolve_type(
             &mut parameter.p_type.e_type,
-            &program.user_defined_types,
+            &program.user_defined_type_name_table,
             Some(&type_parameters_with_constraints),
          )
          .is_err()
          {
-            let etype_str = parameter
-               .p_type
-               .e_type
-               .as_roland_type_info_notv(interner, &program.procedure_info);
+            let etype_str = parameter.p_type.e_type.as_roland_type_info_notv(
+               interner,
+               &program.user_defined_types,
+               &program.procedure_info,
+            );
             rolandc_error!(
                err_manager,
                parameter.p_type.location,
@@ -540,15 +554,16 @@ pub fn populate_type_and_procedure_info(
 
       if resolve_type(
          &mut definition.ret_type.e_type,
-         &program.user_defined_types,
+         &program.user_defined_type_name_table,
          Some(&type_parameters_with_constraints),
       )
       .is_err()
       {
-         let etype_str = definition
-            .ret_type
-            .e_type
-            .as_roland_type_info_notv(interner, &program.procedure_info);
+         let etype_str = definition.ret_type.e_type.as_roland_type_info_notv(
+            interner,
+            &program.user_defined_types,
+            &program.procedure_info,
+         );
          rolandc_error!(
             err_manager,
             definition.ret_type.location,
@@ -596,14 +611,14 @@ pub fn populate_type_and_procedure_info(
       return;
    }
 
-   for i in 0..program.user_defined_types.struct_info.len() {
-      let s = program.user_defined_types.struct_info.get_index(i).unwrap().0;
-      calculate_struct_size_info(*s, &mut program.user_defined_types);
+   let ids: Vec<StructId> = program.user_defined_types.struct_info.keys().collect();
+   for id in ids {
+      calculate_struct_size_info(id, &mut program.user_defined_types);
    }
 
-   for i in 0..program.user_defined_types.union_info.len() {
-      let s = program.user_defined_types.union_info.get_index(i).unwrap().0;
-      calculate_union_size_info(*s, &mut program.user_defined_types);
+   let ids: Vec<UnionId> = program.user_defined_types.union_info.keys().collect();
+   for id in ids {
+      calculate_union_size_info(id, &mut program.user_defined_types);
    }
 }
 

@@ -216,7 +216,7 @@ fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool) -> Expr
       Expression::EnumLiteral(_, _) => (),
       Expression::BoundFcnLiteral(_, _) => (),
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
    expressions.insert(cloned)
 }

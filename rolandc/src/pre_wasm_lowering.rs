@@ -1,14 +1,14 @@
-use indexmap::IndexMap;
+use slotmap::SlotMap;
 
-use crate::interner::{Interner, StrId};
-use crate::parse::{ArgumentNode, Expression, ExpressionNode, Program};
+use crate::interner::Interner;
+use crate::parse::{ArgumentNode, EnumId, Expression, ExpressionNode, Program};
 use crate::semantic_analysis::EnumInfo;
 use crate::type_data::{ExpressionType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I8_TYPE, USIZE_TYPE};
 
-fn lower_type(the_type: &mut ExpressionType, enum_info: &IndexMap<StrId, EnumInfo>) {
+fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInfo>) {
    match the_type {
       ExpressionType::Enum(a) => {
-         *the_type = enum_info.get(a).unwrap().base_type.clone();
+         *the_type = enum_info.get(*a).unwrap().base_type.clone();
       }
       ExpressionType::Array(inner_type, _) => {
          lower_type(inner_type, enum_info);
@@ -36,10 +36,10 @@ fn lower_type(the_type: &mut ExpressionType, enum_info: &IndexMap<StrId, EnumInf
    }
 }
 
-fn lower_single_expression(expression_node: &mut ExpressionNode, enum_info: &IndexMap<StrId, EnumInfo>) {
+fn lower_single_expression(expression_node: &mut ExpressionNode, enum_info: &SlotMap<EnumId, EnumInfo>) {
    match &mut expression_node.expression {
       Expression::EnumLiteral(a, b) => {
-         let ei = enum_info.get(&a.str).unwrap();
+         let ei = enum_info.get(*a).unwrap();
          let replacement_expr = match ei.base_type {
             ExpressionType::Unit => Expression::UnitLiteral,
             ExpressionType::Int(_) => {

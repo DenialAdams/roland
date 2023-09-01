@@ -221,14 +221,15 @@ pub enum Expression {
    },
    UnaryOperator(UnOp, ExpressionId),
    UnresolvedStructLiteral(StrNode, Box<[(StrId, Option<ExpressionId>)]>),
-   StructLiteral(StrNode, IndexMap<StrId, Option<ExpressionId>>),
+   StructLiteral(StructId, IndexMap<StrId, Option<ExpressionId>>),
    FieldAccess(StrId, ExpressionId),
    Cast {
       cast_type: CastType,
       target_type: ExpressionType,
       expr: ExpressionId,
    },
-   EnumLiteral(StrNode, StrNode),
+   EnumLiteral(EnumId, StrNode),
+   UnresolvedEnumLiteral(StrNode, StrNode),
    UnresolvedProcLiteral(StrNode, Vec<ExpressionTypeNode>),
    BoundFcnLiteral(ProcedureId, Box<[ExpressionTypeNode]>),
    IfX(ExpressionId, ExpressionId, ExpressionId),
@@ -339,15 +340,24 @@ pub struct BlockNode {
 
 new_key_type! { pub struct StaticId; }
 new_key_type! { pub struct ProcedureId; }
+new_key_type! { pub struct UnionId; }
+new_key_type! { pub struct StructId; }
+new_key_type! { pub struct EnumId; }
 
-#[derive(Clone)]
-pub struct UserDefinedTypeInfo {
-   pub enum_info: IndexMap<StrId, EnumInfo>,
-   pub struct_info: IndexMap<StrId, StructInfo>,
-   pub union_info: IndexMap<StrId, UnionInfo>,
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+pub enum UserDefinedTypeId {
+   Struct(StructId),
+   Union(UnionId),
+   Enum(EnumId),
 }
 
 #[derive(Clone)]
+pub struct UserDefinedTypeInfo {
+   pub enum_info: SlotMap<EnumId, EnumInfo>,
+   pub struct_info: SlotMap<StructId, StructInfo>,
+   pub union_info: SlotMap<UnionId, UnionInfo>,
+}
+
 pub struct Program {
    pub ast: AstPool,
 
@@ -367,6 +377,7 @@ pub struct Program {
    pub literals: IndexSet<StrId>,
    pub global_info: IndexMap<VariableId, GlobalInfo>,
    pub procedure_info: SecondaryMap<ProcedureId, ProcedureInfo>,
+   pub user_defined_type_name_table: HashMap<StrId, UserDefinedTypeId>,
    pub procedure_name_table: HashMap<StrId, ProcedureId>, // TODO: this doesn't need to live on Program
    pub user_defined_types: UserDefinedTypeInfo,
    pub next_variable: VariableId,
@@ -403,13 +414,14 @@ impl Program {
          parsed_types: Vec::new(),
          literals: IndexSet::new(),
          user_defined_types: UserDefinedTypeInfo {
-            enum_info: IndexMap::new(),
-            struct_info: IndexMap::new(),
-            union_info: IndexMap::new(),
+            enum_info: SlotMap::with_key(),
+            struct_info: SlotMap::with_key(),
+            union_info: SlotMap::with_key(),
          },
          global_info: IndexMap::new(),
          procedure_info: SecondaryMap::new(),
          procedure_name_table: HashMap::new(),
+         user_defined_type_name_table: HashMap::new(),
          source_to_definition: IndexMap::new(),
          next_variable: VariableId::first(),
          ast: AstPool {
@@ -429,11 +441,12 @@ impl Program {
       self.statics.clear();
       self.parsed_types.clear();
       self.literals.clear();
-      self.user_defined_types.enum_info.clear();
-      self.user_defined_types.struct_info.clear();
-      self.user_defined_types.union_info.clear();
+      reset_slotmap(&mut self.user_defined_types.enum_info);
+      reset_slotmap(&mut self.user_defined_types.struct_info);
+      reset_slotmap(&mut self.user_defined_types.union_info);
       self.global_info.clear();
       reset_secondarymap(&mut self.procedure_info);
+      self.user_defined_type_name_table.clear();
       self.procedure_name_table.clear();
       self.source_to_definition.clear();
       reset_slotmap(&mut self.ast.expressions);
@@ -1442,7 +1455,7 @@ fn pratt(
             let variant = parse_identifier(l, parse_context)?;
             let combined_location = merge_locations(begin_source, variant.location);
             wrap(
-               Expression::EnumLiteral(
+               Expression::UnresolvedEnumLiteral(
                   StrNode {
                      str: s,
                      location: begin_source,

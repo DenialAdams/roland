@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use rolandc::interner::Interner;
+use rolandc::parse::UserDefinedTypeId;
 use rolandc::source_info::{SourceInfo, SourcePosition};
 use rolandc::type_data::ExpressionType;
 use rolandc::CompilationContext;
@@ -48,12 +49,16 @@ pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationCon
          continue;
       }
 
-      if let ExpressionType::Unresolved(id) = parsed_type.e_type.get_type_or_type_being_pointed_to() {
+      if let ExpressionType::Unresolved(str) = parsed_type.e_type.get_type_or_type_being_pointed_to() {
          // These nodes should never be resolved
-         return None
-            .or_else(|| ctx.program.user_defined_types.struct_info.get(id).map(|x| x.location))
-            .or_else(|| ctx.program.user_defined_types.enum_info.get(id).map(|x| x.location))
-            .or_else(|| ctx.program.user_defined_types.union_info.get(id).map(|x| x.location));
+         return match ctx.program.user_defined_type_name_table.get(str) {
+            Some(UserDefinedTypeId::Enum(x)) => ctx.program.user_defined_types.enum_info.get(*x).map(|x| x.location),
+            Some(UserDefinedTypeId::Struct(x)) => {
+               ctx.program.user_defined_types.struct_info.get(*x).map(|x| x.location)
+            }
+            Some(UserDefinedTypeId::Union(x)) => ctx.program.user_defined_types.union_info.get(*x).map(|x| x.location),
+            None => None,
+         };
       }
    }
 

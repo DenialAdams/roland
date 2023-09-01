@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use indexmap::IndexMap;
+use slotmap::SlotMap;
 
 use crate::interner::StrId;
-use crate::parse::UserDefinedTypeInfo;
+use crate::parse::{EnumId, StructId, UnionId, UserDefinedTypeInfo};
 use crate::semantic_analysis::{EnumInfo, StructInfo};
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
 
@@ -33,12 +33,12 @@ pub fn aligned_address(v: u32, a: u32) -> u32 {
    }
 }
 
-pub fn calculate_union_size_info(name: StrId, udt: &mut UserDefinedTypeInfo) {
-   if udt.union_info.get(&name).unwrap().size.is_some() {
+pub fn calculate_union_size_info(id: UnionId, udt: &mut UserDefinedTypeInfo) {
+   if udt.union_info.get(id).unwrap().size.is_some() {
       return;
    }
 
-   let ft = std::mem::take(&mut udt.union_info.get_mut(&name).unwrap().field_types);
+   let ft = std::mem::take(&mut udt.union_info.get_mut(id).unwrap().field_types);
    for field_t in ft.values() {
       match field_t.e_type {
          ExpressionType::Struct(s) => calculate_struct_size_info(s, udt),
@@ -46,13 +46,13 @@ pub fn calculate_union_size_info(name: StrId, udt: &mut UserDefinedTypeInfo) {
          _ => (),
       }
    }
-   udt.union_info.get_mut(&name).unwrap().field_types = ft;
+   udt.union_info.get_mut(id).unwrap().field_types = ft;
 
    let mut our_mem_size = 0;
    let mut our_mem_alignment = 1;
    let mut contains_never_type = false;
 
-   for field_t in udt.union_info.get(&name).unwrap().field_types.values() {
+   for field_t in udt.union_info.get(id).unwrap().field_types.values() {
       let field_t = &field_t.e_type;
 
       contains_never_type |= field_t.is_or_contains_never(udt);
@@ -60,19 +60,19 @@ pub fn calculate_union_size_info(name: StrId, udt: &mut UserDefinedTypeInfo) {
       our_mem_alignment = std::cmp::max(our_mem_alignment, mem_alignment(field_t, udt));
    }
 
-   udt.union_info.get_mut(&name).unwrap().size = Some(UnionSizeInfo {
+   udt.union_info.get_mut(id).unwrap().size = Some(UnionSizeInfo {
       mem_size: aligned_address(our_mem_size, our_mem_alignment),
       mem_alignment: our_mem_alignment,
       contains_never_type,
    });
 }
 
-pub fn calculate_struct_size_info(name: StrId, udt: &mut UserDefinedTypeInfo) {
-   if udt.struct_info.get(&name).unwrap().size.is_some() {
+pub fn calculate_struct_size_info(id: StructId, udt: &mut UserDefinedTypeInfo) {
+   if udt.struct_info.get(id).unwrap().size.is_some() {
       return;
    }
 
-   let ft = std::mem::take(&mut udt.struct_info.get_mut(&name).unwrap().field_types);
+   let ft = std::mem::take(&mut udt.struct_info.get_mut(id).unwrap().field_types);
    for field_t in ft.values() {
       match field_t.e_type {
          ExpressionType::Struct(s) => calculate_struct_size_info(s, udt),
@@ -80,21 +80,21 @@ pub fn calculate_struct_size_info(name: StrId, udt: &mut UserDefinedTypeInfo) {
          _ => (),
       }
    }
-   udt.struct_info.get_mut(&name).unwrap().field_types = ft;
+   udt.struct_info.get_mut(id).unwrap().field_types = ft;
 
    let mut sum_mem = 0;
    let mut sum_values = 0;
    let mut strictest_alignment = 1;
-   let mut field_offsets_mem = HashMap::with_capacity(udt.struct_info.get(&name).unwrap().field_types.len());
-   let mut field_offsets_values = HashMap::with_capacity(udt.struct_info.get(&name).unwrap().field_types.len());
+   let mut field_offsets_mem = HashMap::with_capacity(udt.struct_info.get(id).unwrap().field_types.len());
+   let mut field_offsets_values = HashMap::with_capacity(udt.struct_info.get(id).unwrap().field_types.len());
    let mut contains_never_type = false;
    for ((field_name, field_t), next_field_t) in udt
       .struct_info
-      .get(&name)
+      .get(id)
       .unwrap()
       .field_types
       .iter()
-      .zip(udt.struct_info.get(&name).unwrap().field_types.values().skip(1))
+      .zip(udt.struct_info.get(id).unwrap().field_types.values().skip(1))
    {
       let field_t = &field_t.e_type;
       let next_field_t = &next_field_t.e_type;
@@ -115,13 +115,13 @@ pub fn calculate_struct_size_info(name: StrId, udt: &mut UserDefinedTypeInfo) {
       contains_never_type |= field_t.is_or_contains_never(udt);
    }
 
-   if let Some((last_field_name, last_field_t_node)) = udt.struct_info.get(&name).unwrap().field_types.iter().last() {
+   if let Some((last_field_name, last_field_t_node)) = udt.struct_info.get(id).unwrap().field_types.iter().last() {
       let last_field_t = &last_field_t_node.e_type;
 
       if let ExpressionType::Struct(s) = last_field_t {
          contains_never_type |= udt
             .struct_info
-            .get(s)
+            .get(*s)
             .unwrap()
             .size
             .as_ref()
@@ -130,7 +130,7 @@ pub fn calculate_struct_size_info(name: StrId, udt: &mut UserDefinedTypeInfo) {
       } else if let ExpressionType::Union(s) = last_field_t {
          contains_never_type |= udt
             .union_info
-            .get(s)
+            .get(*s)
             .unwrap()
             .size
             .as_ref()
@@ -147,7 +147,7 @@ pub fn calculate_struct_size_info(name: StrId, udt: &mut UserDefinedTypeInfo) {
       contains_never_type |= last_field_t.is_or_contains_never(udt);
    }
 
-   udt.struct_info.get_mut(&name).unwrap().size = Some(StructSizeInfo {
+   udt.struct_info.get_mut(id).unwrap().size = Some(StructSizeInfo {
       mem_size: aligned_address(sum_mem, strictest_alignment),
       values_size: sum_values,
       strictest_alignment,
@@ -162,7 +162,7 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo) -> u32 {
       ExpressionType::Unresolved(_) => unreachable!(),
       ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Enum(x) => {
-         let base_type = &udt.enum_info.get(x).unwrap().base_type;
+         let base_type = &udt.enum_info.get(*x).unwrap().base_type;
          mem_alignment(base_type, udt)
       }
       ExpressionType::Int(x) => match x.width {
@@ -184,7 +184,7 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo) -> u32 {
       ExpressionType::ProcedureItem(_, _) => 1,
       ExpressionType::Struct(x) => {
          udt.struct_info
-            .get(x)
+            .get(*x)
             .unwrap()
             .size
             .as_ref()
@@ -194,17 +194,21 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo) -> u32 {
       ExpressionType::Array(a_type, _len) => mem_alignment(a_type, udt),
       ExpressionType::CompileError => unreachable!(),
       ExpressionType::GenericParam(_) => unreachable!(),
-      ExpressionType::Union(x) => udt.union_info.get(x).unwrap().size.as_ref().unwrap().mem_alignment,
+      ExpressionType::Union(x) => udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_alignment,
    }
 }
 
 /// The size of a type, in number of WASM values
-pub fn sizeof_type_values(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si: &IndexMap<StrId, StructInfo>) -> u32 {
+pub fn sizeof_type_values(
+   e: &ExpressionType,
+   ei: &SlotMap<EnumId, EnumInfo>,
+   si: &SlotMap<StructId, StructInfo>,
+) -> u32 {
    match e {
       ExpressionType::Unresolved(_) => unreachable!(),
       ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Enum(x) => {
-         let base_type = &ei.get(x).unwrap().base_type;
+         let base_type = &ei.get(*x).unwrap().base_type;
          sizeof_type_values(base_type, ei, si)
       }
       ExpressionType::Int(_) => 1,
@@ -213,7 +217,7 @@ pub fn sizeof_type_values(e: &ExpressionType, ei: &IndexMap<StrId, EnumInfo>, si
       ExpressionType::Bool => 1,
       ExpressionType::Unit => 0,
       ExpressionType::Never => 0,
-      ExpressionType::Struct(x) => si.get(x).unwrap().size.as_ref().unwrap().values_size,
+      ExpressionType::Struct(x) => si.get(*x).unwrap().size.as_ref().unwrap().values_size,
       ExpressionType::Array(a_type, len) => sizeof_type_values(a_type, ei, si) * (*len),
       ExpressionType::ProcedurePointer { .. } => 1,
       ExpressionType::ProcedureItem(_, _) => 0,
@@ -239,7 +243,7 @@ pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo) -> u32 {
       ExpressionType::Unresolved(_) => unreachable!(),
       ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Enum(x) => {
-         let base_type = &udt.enum_info.get(x).unwrap().base_type;
+         let base_type = &udt.enum_info.get(*x).unwrap().base_type;
          sizeof_type_mem(base_type, udt)
       }
       ExpressionType::Int(x) => match x.width {
@@ -258,10 +262,10 @@ pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo) -> u32 {
       ExpressionType::Never => 0,
       ExpressionType::ProcedurePointer { .. } => 4, // @FixedPointerWidth
       ExpressionType::ProcedureItem(_, _) => 0,
-      ExpressionType::Struct(x) => udt.struct_info.get(x).unwrap().size.as_ref().unwrap().mem_size,
+      ExpressionType::Struct(x) => udt.struct_info.get(*x).unwrap().size.as_ref().unwrap().mem_size,
       ExpressionType::Array(a_type, len) => sizeof_type_mem(a_type, udt) * (*len),
       ExpressionType::GenericParam(_) => unreachable!(),
       ExpressionType::CompileError => unreachable!(),
-      ExpressionType::Union(x) => udt.union_info.get(x).unwrap().size.as_ref().unwrap().mem_size,
+      ExpressionType::Union(x) => udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_size,
    }
 }

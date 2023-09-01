@@ -15,7 +15,7 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    statement_always_returns, ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode,
-   ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId, StrNode, UnOp,
+   ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId, StrNode, UnOp, UserDefinedTypeId,
    UserDefinedTypeInfo, VariableId,
 };
 use crate::size_info::{mem_alignment, sizeof_type_mem};
@@ -146,11 +146,11 @@ fn any_match(type_validations: &[TypeValidator], et: &ExpressionType, validation
 
 pub fn resolve_type(
    v_type: &mut ExpressionType,
-   udt: &UserDefinedTypeInfo,
+   type_name_table: &HashMap<StrId, UserDefinedTypeId>,
    type_params: Option<&IndexMap<StrId, IndexSet<StrId>>>,
 ) -> Result<(), ()> {
    match v_type {
-      ExpressionType::Pointer(vt) => resolve_type(vt, udt, type_params),
+      ExpressionType::Pointer(vt) => resolve_type(vt, type_name_table, type_params),
       ExpressionType::Never => Ok(()),
       ExpressionType::Unknown(_) => Ok(()),
       ExpressionType::Int(_) => Ok(()),
@@ -159,7 +159,7 @@ pub fn resolve_type(
       ExpressionType::Unit => Ok(()),
       ExpressionType::Struct(_) => Ok(()),
       ExpressionType::Union(_) => Ok(()),
-      ExpressionType::Array(exp, _) => resolve_type(exp, udt, type_params),
+      ExpressionType::Array(exp, _) => resolve_type(exp, type_name_table, type_params),
       ExpressionType::CompileError => Ok(()),
       ExpressionType::Enum(_) => Ok(()),
       ExpressionType::ProcedurePointer {
@@ -168,9 +168,9 @@ pub fn resolve_type(
       } => {
          let mut failed_to_resolve = false;
          for parameter in parameters.iter_mut() {
-            failed_to_resolve |= resolve_type(parameter, udt, type_params).is_err();
+            failed_to_resolve |= resolve_type(parameter, type_name_table, type_params).is_err();
          }
-         failed_to_resolve |= resolve_type(ret_val, udt, type_params).is_err();
+         failed_to_resolve |= resolve_type(ret_val, type_name_table, type_params).is_err();
          if failed_to_resolve {
             Err(())
          } else {
@@ -179,23 +179,28 @@ pub fn resolve_type(
       }
       ExpressionType::GenericParam(_) => Ok(()),
       ExpressionType::ProcedureItem(_, _) => Ok(()), // This type contains other types, but this type itself can never be written down. It should always be valid
-      ExpressionType::Unresolved(x) => {
-         if udt.enum_info.contains_key(x) {
-            *v_type = ExpressionType::Enum(*x);
+      ExpressionType::Unresolved(x) => match type_name_table.get(x) {
+         Some(UserDefinedTypeId::Enum(y)) => {
+            *v_type = ExpressionType::Enum(*y);
             Ok(())
-         } else if udt.struct_info.contains_key(x) {
-            *v_type = ExpressionType::Struct(*x);
-            Ok(())
-         } else if udt.union_info.contains_key(x) {
-            *v_type = ExpressionType::Union(*x);
-            Ok(())
-         } else if type_params.map_or(false, |tp| tp.contains_key(x)) {
-            *v_type = ExpressionType::GenericParam(*x);
-            Ok(())
-         } else {
-            Err(())
          }
-      }
+         Some(UserDefinedTypeId::Union(y)) => {
+            *v_type = ExpressionType::Union(*y);
+            Ok(())
+         }
+         Some(UserDefinedTypeId::Struct(y)) => {
+            *v_type = ExpressionType::Struct(*y);
+            Ok(())
+         }
+         None => {
+            if type_params.map_or(false, |tp| tp.contains_key(x)) {
+               *v_type = ExpressionType::GenericParam(*x);
+               Ok(())
+            } else {
+               Err(())
+            }
+         }
+      },
    }
 }
 
@@ -210,6 +215,7 @@ pub fn type_and_check_validity(
       variable_types: IndexMap::new(),
       procedure_info: &program.procedure_info,
       proc_name_table: &program.procedure_name_table,
+      user_defined_type_name_table: &program.user_defined_type_name_table,
       user_defined_types: &mut program.user_defined_types,
       global_info: &program.global_info,
       cur_procedure_info: None,
@@ -283,6 +289,7 @@ pub fn type_and_check_validity(
                      .iter()
                      .map(|x| x.as_roland_type_info_like_source(
                         validation_context.interner,
+                        validation_context.user_defined_types,
                         validation_context.procedure_info
                      ))
                      .collect::<Vec<_>>()
@@ -306,9 +313,11 @@ pub fn type_and_check_validity(
                   "`{}` is a special procedure for this target ({}) and must return {}",
                   validation_context.interner.lookup(special_proc.name),
                   validation_context.target,
-                  special_proc
-                     .return_type
-                     .as_roland_type_info_like_source(validation_context.interner, validation_context.procedure_info),
+                  special_proc.return_type.as_roland_type_info_like_source(
+                     validation_context.interner,
+                     validation_context.user_defined_types,
+                     validation_context.procedure_info
+                  ),
                );
             }
          }
@@ -333,6 +342,7 @@ pub fn type_and_check_validity(
             declared_type,
             &validation_context.ast.expressions[default_expr],
             validation_context.interner,
+            validation_context.user_defined_types,
             validation_context.procedure_info,
             &validation_context.type_variables,
             err_manager,
@@ -351,6 +361,7 @@ pub fn type_and_check_validity(
          &p_const.const_type,
          p_const_expr,
          validation_context.interner,
+         validation_context.user_defined_types,
          validation_context.procedure_info,
          &validation_context.type_variables,
          err_manager,
@@ -376,6 +387,7 @@ pub fn type_and_check_validity(
          &p_static.expr_type,
          p_static_expr,
          validation_context.interner,
+         validation_context.user_defined_types,
          validation_context.procedure_info,
          &validation_context.type_variables,
          err_manager,
@@ -421,6 +433,7 @@ pub fn type_and_check_validity(
          (x, _) => {
             let x_str = x.as_roland_type_info(
                validation_context.interner,
+               validation_context.user_defined_types,
                validation_context.procedure_info,
                &validation_context.type_variables,
             );
@@ -516,11 +529,13 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                "Left hand side of assignment has type {} which does not match the type of the right hand side {}",
                lhs_type.as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                ),
                rhs_type.as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                ),
@@ -615,11 +630,13 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                   "Start and end of range must be integer types of the same kind; got types `{}` and `{}`",
                   start_expr.exp_type.as_ref().unwrap().as_roland_type_info(
                      validation_context.interner,
+                     validation_context.user_defined_types,
                      validation_context.procedure_info,
                      &validation_context.type_variables
                   ),
                   end_expr.exp_type.as_ref().unwrap().as_roland_type_info(
                      validation_context.interner,
+                     validation_context.user_defined_types,
                      validation_context.procedure_info,
                      &validation_context.type_variables
                   ),
@@ -651,6 +668,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                "Type of while condition must be a bool; got {}",
                cond_node.exp_type.as_ref().unwrap().as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                )
@@ -699,6 +717,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                "Type of if condition must be a bool; got {}",
                en.exp_type.as_ref().unwrap().as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                )
@@ -724,11 +743,13 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                "Value of return statement must match declared return type {}; got {}",
                cur_procedure_info.ret_type.as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                ),
                en.exp_type.as_ref().unwrap().as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                )
@@ -744,7 +765,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             // Failure to resolve is handled below
             let _ = resolve_type(
                &mut v.e_type,
-               validation_context.user_defined_types,
+               validation_context.user_defined_type_name_table,
                validation_context.cur_procedure_info.map(|x| &x.type_parameters),
             );
             if let Some(enid) = opt_enid {
@@ -760,6 +781,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
          {
             let dt_str = dt.as_ref().unwrap().e_type.as_roland_type_info(
                validation_context.interner,
+               validation_context.user_defined_types,
                validation_context.procedure_info,
                &validation_context.type_variables,
             );
@@ -777,6 +799,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                   dt_val,
                   en,
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables,
                   err_manager,
@@ -891,7 +914,7 @@ fn type_expression(
       Expression::Cast { target_type, .. } => {
          if resolve_type(
             target_type,
-            validation_context.user_defined_types,
+            validation_context.user_defined_type_name_table,
             validation_context.cur_procedure_info.map(|x| &x.type_parameters),
          )
          .is_err()
@@ -902,6 +925,7 @@ fn type_expression(
                "Undeclared type `{}`",
                target_type.as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                ),
@@ -930,13 +954,14 @@ fn type_expression(
          for g_arg in g_args.iter_mut() {
             if resolve_type(
                &mut g_arg.e_type,
-               validation_context.user_defined_types,
+               validation_context.user_defined_type_name_table,
                validation_context.cur_procedure_info.map(|x| &x.type_parameters),
             )
             .is_err()
             {
                let etype_str = g_arg.e_type.as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables,
                );
@@ -988,7 +1013,17 @@ fn get_type(
             .new_type_variable(TypeConstraint::Float);
          ExpressionType::Unknown(new_type_variable)
       }
-      Expression::StringLiteral(_) => ExpressionType::Struct(validation_context.interner.intern("String")),
+      Expression::StringLiteral(_) => {
+         // nocheckin this sucks and also will just break. lets do this lookup once and put the string_struct_Id on the validationcontext
+         let udt_id = validation_context
+            .user_defined_type_name_table
+            .get(&validation_context.interner.intern("String"))
+            .unwrap();
+         let UserDefinedTypeId::Struct(s_id) = udt_id else {
+            unreachable!()
+         };
+         ExpressionType::Struct(*s_id)
+      }
       Expression::Cast {
          cast_type,
          target_type,
@@ -1029,7 +1064,7 @@ fn get_type(
                      &validation_context
                         .user_defined_types
                         .enum_info
-                        .get(x)
+                        .get(*x)
                         .unwrap()
                         .base_type
                   }
@@ -1072,11 +1107,13 @@ fn get_type(
                      "As encountered an operand of type {} which can not be cast to type {}",
                      e_type.as_roland_type_info(
                         validation_context.interner,
+                        validation_context.user_defined_types,
                         validation_context.procedure_info,
                         &validation_context.type_variables
                      ),
                      target_type.as_roland_type_info(
                         validation_context.interner,
+                        validation_context.user_defined_types,
                         validation_context.procedure_info,
                         &validation_context.type_variables
                      ),
@@ -1125,8 +1162,8 @@ fn get_type(
                         err_manager,
                         e.location,
                         "Transmute encountered an operand of type {}, which can't be transmuted to type {} as the alignment requirements would not be met ({} vs {})",
-                        e_type.as_roland_type_info(validation_context.interner, validation_context.procedure_info, &validation_context.type_variables),
-                        target_type.as_roland_type_info(validation_context.interner, validation_context.procedure_info, &validation_context.type_variables),
+                        e_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedure_info, &validation_context.type_variables),
+                        target_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedure_info, &validation_context.type_variables),
                         alignment_source,
                         alignment_target,
                      );
@@ -1139,8 +1176,8 @@ fn get_type(
                      err_manager,
                      e.location,
                      "Transmute encountered an operand of type {} which can't be transmuted to type {} as the sizes do not match ({} vs {})",
-                     e_type.as_roland_type_info(validation_context.interner, validation_context.procedure_info, &validation_context.type_variables),
-                     target_type.as_roland_type_info(validation_context.interner, validation_context.procedure_info, &validation_context.type_variables),
+                     e_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedure_info, &validation_context.type_variables),
+                     target_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedure_info, &validation_context.type_variables),
                      size_source,
                      size_target,
                   );
@@ -1202,6 +1239,7 @@ fn get_type(
                correct_arg_types,
                lhs_type.as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                )
@@ -1216,6 +1254,7 @@ fn get_type(
                correct_arg_types,
                rhs_type.as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                )
@@ -1232,11 +1271,13 @@ fn get_type(
                operator,
                lhs_type.as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                ),
                rhs_type.as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                )
@@ -1356,6 +1397,7 @@ fn get_type(
                un_op,
                e.exp_type.as_ref().unwrap().as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                )
@@ -1378,6 +1420,7 @@ fn get_type(
                expr_location,
                type_arguments,
                validation_context.interner,
+               validation_context.user_defined_types,
                validation_context.procedure_info,
                err_manager,
             )
@@ -1407,12 +1450,24 @@ fn get_type(
             type_expression(err_manager, field_val, validation_context);
          }
 
-         match validation_context.user_defined_types.struct_info.get(&struct_name.str) {
-            Some(defined_struct) => {
+         match validation_context.user_defined_type_name_table.get(&struct_name.str) {
+            Some(UserDefinedTypeId::Enum(_)) => {
+               todo!() //nocheckin
+            }
+            Some(UserDefinedTypeId::Union(_)) => {
+               todo!() //nocheckin
+            }
+            Some(UserDefinedTypeId::Struct(defined_struct)) => {
+               let si = validation_context
+                  .user_defined_types
+                  .struct_info
+                  .get(*defined_struct)
+                  .unwrap();
+
                validation_context
                   .source_to_definition
-                  .insert(struct_name.location, defined_struct.location);
-               let defined_fields = &defined_struct.field_types;
+                  .insert(struct_name.location, si.location);
+               let defined_fields = &si.field_types;
 
                let mut unmatched_fields: HashSet<StrId> = defined_fields.keys().copied().collect();
                for field in fields.iter() {
@@ -1420,10 +1475,7 @@ fn get_type(
                   let Some(defined_type_node) = defined_fields.get(&field.0) else {
                      rolandc_error_w_details!(
                         err_manager,
-                        &[
-                           (expr_location, "struct instantiated"),
-                           (defined_struct.location, "struct defined"),
-                        ],
+                        &[(expr_location, "struct instantiated"), (si.location, "struct defined"),],
                         "`{}` is not a known field of struct `{}`",
                         validation_context.interner.lookup(field.0),
                         validation_context.interner.lookup(struct_name.str),
@@ -1436,10 +1488,7 @@ fn get_type(
                   if !unmatched_fields.remove(&field.0) {
                      rolandc_error_w_details!(
                         err_manager,
-                        &[
-                           (expr_location, "struct instantiated"),
-                           (defined_struct.location, "struct defined"),
-                        ],
+                        &[(expr_location, "struct instantiated"), (si.location, "struct defined"),],
                         "`{}` is a valid field of struct `{}`, but is duplicated",
                         validation_context.interner.lookup(field.0),
                         validation_context.interner.lookup(struct_name.str),
@@ -1456,20 +1505,19 @@ fn get_type(
                      {
                         let field_1_type_str = field_expr.exp_type.as_ref().unwrap().as_roland_type_info(
                            validation_context.interner,
+                           validation_context.user_defined_types,
                            validation_context.procedure_info,
                            &validation_context.type_variables,
                         );
                         let defined_type_str = defined_type.as_roland_type_info(
                            validation_context.interner,
+                           validation_context.user_defined_types,
                            validation_context.procedure_info,
                            &validation_context.type_variables,
                         );
                         rolandc_error_w_details!(
                            err_manager,
-                           &[
-                              (field_expr.location, "field value"),
-                              (defined_struct.location, "struct defined"),
-                           ],
+                           &[(field_expr.location, "field value"), (si.location, "struct defined"),],
                            "For field `{}` of struct `{}`, encountered value of type {} when we expected {}",
                            validation_context.interner.lookup(field.0),
                            validation_context.interner.lookup(struct_name.str),
@@ -1481,7 +1529,7 @@ fn get_type(
                }
 
                // Missing field check
-               unmatched_fields.retain(|x| !defined_struct.default_values.contains_key(x));
+               unmatched_fields.retain(|x| !si.default_values.contains_key(x));
                if !unmatched_fields.is_empty() {
                   let unmatched_fields_str: Vec<&str> = unmatched_fields
                      .iter()
@@ -1489,20 +1537,16 @@ fn get_type(
                      .collect();
                   rolandc_error_w_details!(
                      err_manager,
-                     &[
-                        (expr_location, "struct instantiated"),
-                        (defined_struct.location, "struct defined"),
-                     ],
+                     &[(expr_location, "struct instantiated"), (si.location, "struct defined"),],
                      "Literal of struct `{}` is missing fields [{}]",
                      validation_context.interner.lookup(struct_name.str),
                      unmatched_fields_str.join(", "),
                   );
                }
 
-               let sid = struct_name.str;
-               *expr = Expression::StructLiteral(struct_name.clone(), fields.iter().map(|x| (x.0, x.1)).collect());
+               *expr = Expression::StructLiteral(*defined_struct, fields.iter().map(|x| (x.0, x.1)).collect());
 
-               ExpressionType::Struct(sid)
+               ExpressionType::Struct(*defined_struct)
             }
             None => {
                rolandc_error!(
@@ -1561,6 +1605,7 @@ fn get_type(
                   "Attempting to invoke a procedure on non-procedure type {}",
                   bad_type.as_roland_type_info(
                      validation_context.interner,
+                     validation_context.user_defined_types,
                      validation_context.procedure_info,
                      &validation_context.type_variables
                   ),
@@ -1581,41 +1626,35 @@ fn get_type(
          let length_token = validation_context.interner.reverse_lookup("length");
 
          match lhs_type {
-            ExpressionType::Struct(struct_name) => {
-               let struct_fields = &validation_context
+            ExpressionType::Struct(struct_id) => {
+               let si = validation_context
                   .user_defined_types
                   .struct_info
-                  .get(&struct_name)
-                  .unwrap()
-                  .field_types;
-               if let Some(new_t_node) = struct_fields.get(&field) {
+                  .get(struct_id)
+                  .unwrap();
+               if let Some(new_t_node) = si.field_types.get(&field) {
                   lhs_type = new_t_node.e_type.clone();
                } else {
                   rolandc_error!(
                      err_manager,
                      expr_location,
                      "Struct `{}` does not have a field `{}`",
-                     validation_context.interner.lookup(struct_name),
+                     validation_context.interner.lookup(si.name),
                      validation_context.interner.lookup(field),
                   );
                   lhs_type = ExpressionType::CompileError;
                }
             }
-            ExpressionType::Union(union_name) => {
-               let union_fields = &validation_context
-                  .user_defined_types
-                  .union_info
-                  .get(&union_name)
-                  .unwrap()
-                  .field_types;
-               if let Some(new_t_node) = union_fields.get(&field) {
+            ExpressionType::Union(union_id) => {
+               let ui = validation_context.user_defined_types.union_info.get(union_id).unwrap();
+               if let Some(new_t_node) = ui.field_types.get(&field) {
                   lhs_type = new_t_node.e_type.clone();
                } else {
                   rolandc_error!(
                      err_manager,
                      expr_location,
                      "Union `{}` does not have a field `{}`",
-                     validation_context.interner.lookup(union_name),
+                     validation_context.interner.lookup(ui.name),
                      validation_context.interner.lookup(field),
                   );
                   lhs_type = ExpressionType::CompileError;
@@ -1644,6 +1683,7 @@ fn get_type(
                   "Encountered field access on type {}; only structs, unions, and arrays have fields",
                   other_type.as_roland_type_info(
                      validation_context.interner,
+                     validation_context.user_defined_types,
                      validation_context.procedure_info,
                      &validation_context.type_variables
                   )
@@ -1692,12 +1732,14 @@ fn get_type(
                   i - 1,
                   last_elem_expr.exp_type.as_ref().unwrap().as_roland_type_info(
                      validation_context.interner,
+                     validation_context.user_defined_types,
                      validation_context.procedure_info,
                      &validation_context.type_variables
                   ),
                   i,
                   this_elem_expr.exp_type.as_ref().unwrap().as_roland_type_info(
                      validation_context.interner,
+                     validation_context.user_defined_types,
                      validation_context.procedure_info,
                      &validation_context.type_variables
                   ),
@@ -1757,6 +1799,7 @@ fn get_type(
                "Attempted to index an array with a value of type {}, which is not usize",
                index_expression.exp_type.as_ref().unwrap().as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                ),
@@ -1771,7 +1814,7 @@ fn get_type(
                   err_manager,
                   expr_location,
                   "Attempted to index expression of type {}, which is not an array type. Hint: Dereference this pointer with ~",
-                  x.as_roland_type_info(validation_context.interner, validation_context.procedure_info, &validation_context.type_variables),
+                  x.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedure_info, &validation_context.type_variables),
                );
 
                ExpressionType::CompileError
@@ -1783,6 +1826,7 @@ fn get_type(
                   "Attempted to index expression of type {}, which is not an array type",
                   x.as_roland_type_info(
                      validation_context.interner,
+                     validation_context.user_defined_types,
                      validation_context.procedure_info,
                      &validation_context.type_variables
                   ),
@@ -1793,36 +1837,47 @@ fn get_type(
             None => unreachable!(),
          }
       }
-      Expression::EnumLiteral(x, v) => {
-         if let Some(enum_info) = validation_context.user_defined_types.enum_info.get(&x.str) {
-            validation_context
-               .source_to_definition
-               .insert(x.location, enum_info.location);
-            if let Some(variant_location) = enum_info.variants.get(&v.str) {
+      Expression::UnresolvedEnumLiteral(x, v) => {
+         match validation_context.user_defined_type_name_table.get(&x.str) {
+            Some(UserDefinedTypeId::Struct(_)) => {
+               todo!() //nocheckin
+            }
+            Some(UserDefinedTypeId::Union(_)) => {
+               todo!() //nocheckin
+            }
+            Some(UserDefinedTypeId::Enum(eid)) => {
+               let enum_info = validation_context.user_defined_types.enum_info.get(*eid).unwrap();
                validation_context
                   .source_to_definition
-                  .insert(v.location, *variant_location);
-               ExpressionType::Enum(x.str)
-            } else {
+                  .insert(x.location, enum_info.location);
+               if let Some(variant_location) = enum_info.variants.get(&v.str) {
+                  validation_context
+                     .source_to_definition
+                     .insert(v.location, *variant_location);
+                  *expr = Expression::EnumLiteral(*eid, v.clone()); //nocheckin this can probably just be a strId and remove clone
+                  ExpressionType::Enum(*eid)
+               } else {
+                  rolandc_error!(
+                     err_manager,
+                     v.location,
+                     "Attempted to instantiate unknown variant `{}` of enum `{}`",
+                     validation_context.interner.lookup(v.str),
+                     validation_context.interner.lookup(x.str),
+                  );
+
+                  ExpressionType::CompileError
+               }
+            }
+            None => {
                rolandc_error!(
                   err_manager,
-                  v.location,
-                  "Attempted to instantiate unknown variant `{}` of enum `{}`",
-                  validation_context.interner.lookup(v.str),
+                  x.location,
+                  "Attempted to instantiate enum `{}`, which does not exist",
                   validation_context.interner.lookup(x.str),
                );
 
                ExpressionType::CompileError
             }
-         } else {
-            rolandc_error!(
-               err_manager,
-               x.location,
-               "Attempted to instantiate enum `{}`, which does not exist",
-               validation_context.interner.lookup(x.str),
-            );
-
-            ExpressionType::CompileError
          }
       }
       Expression::IfX(a, b, c) => {
@@ -1850,6 +1905,7 @@ fn get_type(
                "Type of ifx condition must be a bool; got {}",
                en.exp_type.as_ref().unwrap().as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                )
@@ -1872,11 +1928,13 @@ fn get_type(
                "ifx requires then and else expressions to have identical types; instead got {} and {}",
                then_type.as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                ),
                else_type.as_roland_type_info(
                   validation_context.interner,
+                  validation_context.user_defined_types,
                   validation_context.procedure_info,
                   &validation_context.type_variables
                )
@@ -1884,7 +1942,7 @@ fn get_type(
             ExpressionType::CompileError
          }
       }
-      Expression::StructLiteral(_, _) => unreachable!(),
+      Expression::StructLiteral(_, _) | Expression::EnumLiteral(_, _) => unreachable!(),
    }
 }
 
@@ -1963,11 +2021,13 @@ fn check_procedure_call(
          if *actual_type != *expected && !actual_type.is_error() {
             let actual_type_str = actual_type.as_roland_type_info(
                validation_context.interner,
+               validation_context.user_defined_types,
                validation_context.procedure_info,
                &validation_context.type_variables,
             );
             let expected_type_str = expected.as_roland_type_info(
                validation_context.interner,
+               validation_context.user_defined_types,
                validation_context.procedure_info,
                &validation_context.type_variables,
             );
@@ -2005,11 +2065,13 @@ fn check_procedure_call(
          if *actual_type != *expected && !actual_type.is_error() {
             let actual_type_str = actual_type.as_roland_type_info(
                validation_context.interner,
+               validation_context.user_defined_types,
                validation_context.procedure_info,
                &validation_context.type_variables,
             );
             let expected_type_str = expected.as_roland_type_info(
                validation_context.interner,
+               validation_context.user_defined_types,
                validation_context.procedure_info,
                &validation_context.type_variables,
             );
@@ -2034,6 +2096,7 @@ fn check_procedure_item(
    location: SourceInfo,
    type_arguments: &[ExpressionTypeNode],
    interner: &Interner,
+   udt: &UserDefinedTypeInfo,
    procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
    err_manager: &mut ErrorManager,
 ) -> ExpressionType {
@@ -2066,7 +2129,7 @@ fn check_procedure_item(
                   g_arg.location,
                   "For procedure `{}`, encountered generic argument of type {} which does not meet the constraints {}",
                   interner.lookup(callee_proc_name),
-                  g_arg.e_type.as_roland_type_info_notv(interner, procedure_info),
+                  g_arg.e_type.as_roland_type_info_notv(interner, udt, procedure_info),
                   constraints_we_do_not_meet.join(", "),
                );
             }
@@ -2084,7 +2147,7 @@ fn check_procedure_item(
                                        g_arg.location,
                                        "For procedure `{}`, encountered generic argument of type {} which does not meet the constraint `{}`",
                                        interner.lookup(callee_proc_name),
-                                       g_arg.e_type.as_roland_type_info_notv(interner, procedure_info),
+                                       g_arg.e_type.as_roland_type_info_notv(interner, udt, procedure_info),
                                        interner.lookup(*constraint),
                                     );
                }
@@ -2106,6 +2169,7 @@ fn check_type_declared_vs_actual(
    declared: &ExpressionTypeNode,
    actual: &ExpressionNode,
    interner: &Interner,
+   udt: &UserDefinedTypeInfo,
    procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
    type_variable_info: &TypeVariableManager,
    err_manager: &mut ErrorManager,
@@ -2125,10 +2189,10 @@ fn check_type_declared_vs_actual(
    let actual_type = actual.exp_type.as_ref().unwrap();
    let declared_type = &declared.e_type;
    if declared_type != actual_type && !actual_type.is_error() && !actual_type.is_never() {
-      let actual_type_str = actual_type.as_roland_type_info(interner, procedure_info, type_variable_info);
+      let actual_type_str = actual_type.as_roland_type_info(interner, udt, procedure_info, type_variable_info);
       let declared_type_str = declared
          .e_type
-         .as_roland_type_info(interner, procedure_info, type_variable_info);
+         .as_roland_type_info(interner, udt, procedure_info, type_variable_info);
       let locations = &[(actual.location, "expression"), (declared.location, "declared type")];
 
       if address_of_actual_matches_dt(actual_type, declared_type) {

@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use slotmap::SecondaryMap;
 
 use crate::interner::{Interner, StrId};
-use crate::parse::{ProcedureId, UserDefinedTypeInfo};
+use crate::parse::{EnumId, ProcedureId, StructId, UnionId, UserDefinedTypeInfo};
 use crate::semantic_analysis::type_variables::{TypeConstraint, TypeVariable, TypeVariableManager};
 use crate::semantic_analysis::ProcedureInfo;
 
@@ -73,12 +73,12 @@ pub enum ExpressionType {
    Float(FloatType),
    Bool,
    Unit,
-   Struct(StrId),
-   Union(StrId),
+   Struct(StructId),
+   Union(UnionId),
    Array(Box<ExpressionType>, u32),
    Pointer(Box<ExpressionType>),
    CompileError,
-   Enum(StrId),
+   Enum(EnumId),
    ProcedureItem(ProcedureId, Box<[ExpressionType]>),
    ProcedurePointer {
       parameters: Box<[ExpressionType]>,
@@ -236,7 +236,7 @@ impl ExpressionType {
          ExpressionType::Never => true,
          ExpressionType::Struct(s) => {
             udt.struct_info
-               .get(s)
+               .get(*s)
                .unwrap()
                .size
                .as_ref()
@@ -245,7 +245,7 @@ impl ExpressionType {
          }
          ExpressionType::Union(s) => {
             udt.union_info
-               .get(s)
+               .get(*s)
                .unwrap()
                .size
                .as_ref()
@@ -262,16 +262,18 @@ impl ExpressionType {
    pub fn as_roland_type_info<'i>(
       &self,
       interner: &'i Interner,
+      udt: &UserDefinedTypeInfo,
       procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
       type_variable_info: &TypeVariableManager,
    ) -> Cow<'i, str> {
-      self.as_roland_type_info_inner(interner, procedure_info, Some(type_variable_info))
+      self.as_roland_type_info_inner(interner, udt, procedure_info, Some(type_variable_info))
    }
 
    #[must_use]
    fn as_roland_type_info_inner<'i>(
       &self,
       interner: &'i Interner,
+      udt: &UserDefinedTypeInfo,
       procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
       type_variable_info: Option<&TypeVariableManager>,
    ) -> Cow<'i, str> {
@@ -308,20 +310,29 @@ impl ExpressionType {
          ExpressionType::Unit => Cow::Borrowed("()"),
          ExpressionType::Never => Cow::Borrowed("!"),
          ExpressionType::CompileError => Cow::Borrowed("ERROR"),
-         ExpressionType::Struct(x) if interner.reverse_lookup("String").map_or(false, |sid| sid == *x) => {
-            Cow::Borrowed("String")
+         ExpressionType::Struct(x) => {
+            let name = interner.lookup(udt.struct_info.get(*x).unwrap().name);
+            if name == "String" {
+               Cow::Borrowed("String")
+            } else {
+               Cow::Owned(format!("Struct {}", name))
+            }
          }
-         ExpressionType::Struct(x) => Cow::Owned(format!("Struct {}", interner.lookup(*x))),
-         ExpressionType::Union(x) => Cow::Owned(format!("Struct {}", interner.lookup(*x))),
-         ExpressionType::Enum(x) => Cow::Owned(format!("Enum {}", interner.lookup(*x))),
+         ExpressionType::Union(x) => Cow::Owned(format!(
+            "Union {}",
+            interner.lookup(udt.union_info.get(*x).unwrap().name)
+         )),
+         ExpressionType::Enum(x) => {
+            Cow::Owned(format!("Enum {}", interner.lookup(udt.enum_info.get(*x).unwrap().name)))
+         }
          ExpressionType::Array(i_type, length) => Cow::Owned(format!(
             "[{}; {}]",
-            i_type.as_roland_type_info_inner(interner, procedure_info, type_variable_info),
+            i_type.as_roland_type_info_inner(interner, udt, procedure_info, type_variable_info),
             length
          )),
          ExpressionType::Pointer(i_type) => Cow::Owned(format!(
             "&{}",
-            i_type.as_roland_type_info_inner(interner, procedure_info, type_variable_info)
+            i_type.as_roland_type_info_inner(interner, udt, procedure_info, type_variable_info)
          )),
          ExpressionType::Unresolved(x) | ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::ProcedurePointer {
@@ -330,13 +341,13 @@ impl ExpressionType {
          } => {
             let params: String = parameters
                .iter()
-               .map(|x| x.as_roland_type_info_inner(interner, procedure_info, type_variable_info))
+               .map(|x| x.as_roland_type_info_inner(interner, udt, procedure_info, type_variable_info))
                .collect::<Vec<_>>()
                .join(", ");
             Cow::Owned(format!(
                "proc({}) -> {}",
                params,
-               ret_val.as_roland_type_info_inner(interner, procedure_info, type_variable_info)
+               ret_val.as_roland_type_info_inner(interner, udt, procedure_info, type_variable_info)
             ))
          }
          ExpressionType::ProcedureItem(proc_id, type_arguments) => {
@@ -346,7 +357,7 @@ impl ExpressionType {
             } else {
                let type_argument_string = type_arguments
                   .iter()
-                  .map(|x| x.as_roland_type_info_like_source(interner, procedure_info))
+                  .map(|x| x.as_roland_type_info_like_source(interner, udt, procedure_info))
                   .collect::<Vec<_>>()
                   .join("$");
                Cow::Owned(format!(
@@ -363,15 +374,17 @@ impl ExpressionType {
    pub fn as_roland_type_info_notv<'i>(
       &self,
       interner: &'i Interner,
+      udt: &UserDefinedTypeInfo,
       procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
    ) -> Cow<'i, str> {
-      self.as_roland_type_info_inner(interner, procedure_info, None)
+      self.as_roland_type_info_inner(interner, udt, procedure_info, None)
    }
 
    #[must_use]
    pub fn as_roland_type_info_like_source<'i>(
       &self,
       interner: &'i Interner,
+      udt: &UserDefinedTypeInfo,
       procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
    ) -> Cow<'i, str> {
       match self {
@@ -396,17 +409,17 @@ impl ExpressionType {
          ExpressionType::Unit => Cow::Borrowed("()"),
          ExpressionType::Never => Cow::Borrowed("!"),
          ExpressionType::CompileError => Cow::Borrowed("ERROR"),
-         ExpressionType::Struct(x) => Cow::Borrowed(interner.lookup(*x)),
-         ExpressionType::Union(x) => Cow::Borrowed(interner.lookup(*x)),
-         ExpressionType::Enum(x) => Cow::Borrowed(interner.lookup(*x)),
+         ExpressionType::Struct(x) => Cow::Borrowed(interner.lookup(udt.struct_info.get(*x).unwrap().name)),
+         ExpressionType::Union(x) => Cow::Borrowed(interner.lookup(udt.union_info.get(*x).unwrap().name)),
+         ExpressionType::Enum(x) => Cow::Borrowed(interner.lookup(udt.enum_info.get(*x).unwrap().name)),
          ExpressionType::Array(i_type, length) => Cow::Owned(format!(
             "[{}; {}]",
-            i_type.as_roland_type_info_like_source(interner, procedure_info),
+            i_type.as_roland_type_info_like_source(interner, udt, procedure_info),
             length
          )),
          ExpressionType::Pointer(i_type) => Cow::Owned(format!(
             "&{}",
-            i_type.as_roland_type_info_notv(interner, procedure_info)
+            i_type.as_roland_type_info_notv(interner, udt, procedure_info)
          )),
          ExpressionType::Unresolved(x) | ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::ProcedurePointer {
@@ -415,13 +428,13 @@ impl ExpressionType {
          } => {
             let params: String = parameters
                .iter()
-               .map(|x| x.as_roland_type_info_like_source(interner, procedure_info))
+               .map(|x| x.as_roland_type_info_like_source(interner, udt, procedure_info))
                .collect::<Vec<_>>()
                .join(", ");
             Cow::Owned(format!(
                "proc({}) -> {}",
                params,
-               ret_val.as_roland_type_info_like_source(interner, procedure_info)
+               ret_val.as_roland_type_info_like_source(interner, udt, procedure_info)
             ))
          }
          ExpressionType::ProcedureItem(_, _) => unreachable!(),

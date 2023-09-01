@@ -8,8 +8,8 @@ use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_warn};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcImplSource,
-   ProcedureId, Program, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
+   AstPool, BinOp, BlockNode, CastType, EnumId, Expression, ExpressionId, ExpressionNode, ExpressionPool,
+   ProcImplSource, ProcedureId, Program, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::ProcedureInfo;
 use crate::source_info::SourceInfo;
@@ -281,7 +281,11 @@ fn fold_expr_inner(
                   err_manager,
                   expr_to_fold_location,
                   "Literal of type {} has value `{}` which would immediately over/underflow",
-                  expr_type.as_roland_type_info_notv(interner, folding_context.procedure_info),
+                  expr_type.as_roland_type_info_notv(
+                     interner,
+                     folding_context.user_defined_types,
+                     folding_context.procedure_info
+                  ),
                   val as i64
                );
             } else {
@@ -289,7 +293,11 @@ fn fold_expr_inner(
                   err_manager,
                   expr_to_fold_location,
                   "Literal of type {} has value `{}` which would immediately over/underflow",
-                  expr_type.as_roland_type_info_notv(interner, folding_context.procedure_info),
+                  expr_type.as_roland_type_info_notv(
+                     interner,
+                     folding_context.user_defined_types,
+                     folding_context.procedure_info
+                  ),
                   val
                );
             }
@@ -580,11 +588,11 @@ fn fold_expr_inner(
                      err_manager,
                      expr_to_fold_location,
                      "Literal of type {} has value `-{}` which would immediately underflow",
-                     f_expr
-                        .exp_type
-                        .as_ref()
-                        .unwrap()
-                        .as_roland_type_info_notv(interner, folding_context.procedure_info),
+                     f_expr.exp_type.as_ref().unwrap().as_roland_type_info_notv(
+                        interner,
+                        folding_context.user_defined_types,
+                        folding_context.procedure_info
+                     ),
                      *x,
                   );
                   return None;
@@ -717,7 +725,7 @@ fn fold_expr_inner(
       }
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 }
 
@@ -747,7 +755,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
       }
       "num_variants" => {
          let num_variants = match generic_args[0] {
-            ExpressionType::Enum(enum_name) => fc.user_defined_types.enum_info.get(&enum_name).unwrap().variants.len(),
+            ExpressionType::Enum(enum_id) => fc.user_defined_types.enum_info.get(enum_id).unwrap().variants.len(),
             _ => unreachable!(),
          };
 
@@ -794,7 +802,7 @@ enum Literal {
    Float64(f64),
    Float32(f32),
    Bool(bool),
-   Enum(StrId, StrId),
+   Enum(EnumId, StrId),
    Unit,
 }
 
@@ -1625,7 +1633,7 @@ fn extract_literal(expr_node: &ExpressionNode) -> Option<Literal> {
          _ => unreachable!(),
       },
       Expression::BoolLiteral(x) => Some(Literal::Bool(*x)),
-      Expression::EnumLiteral(x, y) => Some(Literal::Enum(x.str, y.str)),
+      Expression::EnumLiteral(x, y) => Some(Literal::Enum(*x, y.str)),
       Expression::UnitLiteral => Some(Literal::Unit),
       _ => None,
    }
@@ -1674,6 +1682,6 @@ pub fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &E
       Expression::Variable(_) => false,
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 }
