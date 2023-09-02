@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
-use super::linearize::{Cfg, CfgInstruction};
+use super::linearize::{Cfg, CfgInstruction, post_order};
 use super::liveness::{liveness, ProgramIndex};
 use crate::backend::wasm::type_to_wasm_type;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
@@ -179,8 +179,8 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
 }
 
 fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, ast: &AstPool) {
-   for block in cfg.bbs.iter() {
-      for instr in block.instructions.iter() {
+   for bb in post_order(cfg) {
+      for instr in cfg.bbs[bb].instructions.iter() {
          match instr {
             CfgInstruction::Assignment(lhs, rhs) => {
                mark_escaping_vars_expr(*lhs, escaping_vars, ast);
