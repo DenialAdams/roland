@@ -307,7 +307,7 @@ fn vv_expr(
             vv_context.statements_that_need_hoisting.insert(current_statement);
          }
 
-         if expressions[expr_index].exp_type.as_ref().unwrap().is_or_contains_union(vv_context.user_defined_type_info) {
+         if expressions[expr_index].exp_type.as_ref().unwrap().is_or_contains_union(vv_context.user_defined_type_info) && !top {
             vv_context.statements_that_need_hoisting.insert(current_statement);
          }
       }
