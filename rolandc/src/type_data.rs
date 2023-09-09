@@ -259,6 +259,25 @@ impl ExpressionType {
    }
 
    #[must_use]
+   pub fn is_or_contains_union(&self, udt: &UserDefinedTypeInfo) -> bool {
+      match self {
+         ExpressionType::Struct(s) => {
+            udt.struct_info
+               .get(*s)
+               .unwrap()
+               .size
+               .as_ref()
+               .unwrap()
+               .contains_union_type
+         }
+         ExpressionType::Union(_) => true,
+         ExpressionType::Array(inner_t, _) => inner_t.is_or_contains_union(udt),
+         ExpressionType::Pointer(inner_t) => inner_t.is_or_contains_union(udt),
+         _ => false,
+      }
+   }
+
+   #[must_use]
    pub fn as_roland_type_info<'i>(
       &self,
       interner: &'i Interner,

@@ -3,7 +3,7 @@ use indexmap::{IndexMap, IndexSet};
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcImplSource, Program,
-   Statement, StatementId, StatementNode, UnOp, VariableId,
+   Statement, StatementId, StatementNode, UnOp, VariableId, UserDefinedTypeInfo,
 };
 use crate::semantic_analysis::GlobalInfo;
 use crate::type_data::ExpressionType;
@@ -42,6 +42,7 @@ struct VvContext<'a> {
    next_variable: VariableId,
    statement_actions: Vec<StmtAction>,
    statements_that_need_hoisting: IndexSet<usize>,
+   user_defined_type_info: &'a UserDefinedTypeInfo,
 }
 
 impl VvContext<'_> {
@@ -73,6 +74,7 @@ pub fn expression_hoisting(program: &mut Program) {
       next_variable: program.next_variable,
       statement_actions: Vec::new(),
       statements_that_need_hoisting: IndexSet::new(),
+      user_defined_type_info: &program.user_defined_types,
    };
 
    for procedure in program.procedures.values_mut() {
@@ -302,6 +304,10 @@ fn vv_expr(
             ExpressionType::ProcedurePointer { .. }
          ) && expression_could_have_side_effects(*proc_expr, expressions)
          {
+            vv_context.statements_that_need_hoisting.insert(current_statement);
+         }
+
+         if expressions[expr_index].exp_type.as_ref().unwrap().is_or_contains_union(vv_context.user_defined_type_info) {
             vv_context.statements_that_need_hoisting.insert(current_statement);
          }
       }

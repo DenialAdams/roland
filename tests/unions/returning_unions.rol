@@ -1,0 +1,24 @@
+proc main() {
+   // Second union return will trample over first union return if not done carefully
+   validate(return_union(10), return_union(100));
+}
+
+proc validate(x: U, y: U) {
+   println_bool(x.x == 10);
+   println_bool(y.x == 100);
+}
+
+union U {
+   x: i64,
+   y: f64,
+}
+
+proc return_union(v: i64) -> U {
+   let x: U = ___;
+   x.x = v;
+   return x;
+}
+__END__
+run:
+true
+true
