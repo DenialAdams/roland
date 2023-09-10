@@ -55,7 +55,7 @@ pipeline {
                sh 'cp ../target/x86_64-pc-windows-gnu/release/rolandc_cli.exe ./rolandc.exe'
                sh 'cp ../target/x86_64-unknown-linux-musl/release/rolandc_cli ./rolandc'
                sshagent (credentials: ['jenkins-ssh-nfs']) {
-                  sh 'rsync -avr -e "ssh -l flandoo_brickcodes -o StrictHostKeyChecking=no" --exclude ".git" --exclude "pkg@tmp" . ssh.phx.nearlyfreespeech.net:/home/public/roland'
+                  sh 'rsync -avr -e "ssh -l flandoo_brickcodes -o StrictHostKeyChecking=no" --exclude ".git" --exclude "pkg@tmp" . ssh.nyc1.nearlyfreespeech.net:/home/public/roland'
                }
             }
          }
