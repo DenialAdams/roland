@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
-use super::linearize::{Cfg, CfgInstruction, post_order};
+use super::linearize::{post_order, Cfg, CfgInstruction};
 use super::liveness::{liveness, ProgramIndex};
 use crate::backend::wasm::type_to_wasm_type;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;

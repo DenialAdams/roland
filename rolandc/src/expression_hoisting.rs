@@ -3,7 +3,7 @@ use indexmap::{IndexMap, IndexSet};
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcImplSource, Program,
-   Statement, StatementId, StatementNode, UnOp, VariableId, UserDefinedTypeInfo,
+   Statement, StatementId, StatementNode, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
 use crate::type_data::ExpressionType;
@@ -307,7 +307,13 @@ fn vv_expr(
             vv_context.statements_that_need_hoisting.insert(current_statement);
          }
 
-         if expressions[expr_index].exp_type.as_ref().unwrap().is_or_contains_union(vv_context.user_defined_type_info) && !top {
+         if expressions[expr_index]
+            .exp_type
+            .as_ref()
+            .unwrap()
+            .is_or_contains_union(vv_context.user_defined_type_info)
+            && !top
+         {
             vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
          } else if !top {
             // assumption: procedure call always has side effects
