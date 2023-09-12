@@ -308,7 +308,12 @@ fn vv_expr(
          }
 
          if expressions[expr_index].exp_type.as_ref().unwrap().is_or_contains_union(vv_context.user_defined_type_info) && !top {
-            vv_context.statements_that_need_hoisting.insert(current_statement);
+            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+         } else if !top {
+            // assumption: procedure call always has side effects
+            // If we eventually decide to come up with a list of pure procedure calls, this needs to be updated
+            // @PureCalls
+            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::IfOtherHoisting);
          }
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
@@ -396,12 +401,5 @@ fn vv_expr(
       Expression::Variable(_) => (),
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
-   }
-
-   // assumption: procedure call is the only leaf node with side effects, and always has side effects
-   // If we eventually decide to come up with a list of pure procedure calls, this needs to be updated
-   // @PureCalls
-   if matches!(expressions[expr_index].expression, Expression::ProcedureCall { .. }) && !top {
-      vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::IfOtherHoisting);
    }
 }
