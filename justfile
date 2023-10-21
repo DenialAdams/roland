@@ -32,5 +32,9 @@ rolandc_dhat *args:
 [no-cd]
 rolandc_flame *args:
    cargo flamegraph --profile dhat --freq 50700 --bin rolandc_cli -- {{args}}
+[no-cd]
+rolandc_samply *args:
+   cargo build --profile dhat
+   samply record -r 10000 {{justfile_directory()}}/target/dhat/rolandc_cli {{args}}
 prepare-release kind="patch":
    cd roland-vscode && npm version {{kind}}

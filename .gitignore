@@ -16,3 +16,4 @@ perf.data
 perf.data.old
 flamegraph.svg
 cfg.dot
+profile.json
