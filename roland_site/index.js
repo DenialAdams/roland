@@ -71,7 +71,7 @@ window.compileUpdateAll = async function compileUpdateAll() {
       let wasi_polyfill = { fd_write: fd_write_polyfill };
       let result;
       try {
-         result = await WebAssembly.instantiateStreaming(response, { wasi_unstable: wasi_polyfill });
+         result = await WebAssembly.instantiateStreaming(response, { wasi_snapshot_preview1: wasi_polyfill });
       } catch (err) {
          if (err instanceof WebAssembly.LinkError) {
             output_frame.textContent = err.message;

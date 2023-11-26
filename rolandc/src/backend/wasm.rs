@@ -358,7 +358,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
          }
          Target::Wasi => {
             import_section.import(
-               "wasi_unstable",
+               "wasi_snapshot_preview1",
                interner.lookup(external_procedure.definition.name.str),
                EntityType::Function(type_index),
             );
