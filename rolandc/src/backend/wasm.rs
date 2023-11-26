@@ -6,7 +6,7 @@ use slotmap::SlotMap;
 use wasm_encoder::{
    BlockType, CodeSection, ConstExpr, DataSection, ElementSection, Elements, EntityType, ExportSection, Function,
    FunctionSection, GlobalSection, GlobalType, ImportSection, Instruction, MemArg, MemorySection, MemoryType, Module,
-   RefType, TableSection, TableType, TypeSection, ValType,
+   RefType, TableSection, TableType, TypeSection, ValType, NameSection, NameMap,
 };
 
 use super::linearize::{Cfg, CfgInstruction, CFG_START_NODE};
@@ -743,7 +743,23 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       }
    }
 
+   let name_section = {
+      let mut name_section = NameSection::new();
+
+      let mut function_names = NameMap::new();
+      for (i, roland_proc_id) in generation_context.procedure_indices.iter().copied().enumerate() {
+         let name_str = interner.lookup(program.procedures.get(roland_proc_id).unwrap().definition.name.str);
+         function_names.append(i as u32, name_str);
+      }
+
+      name_section.functions(&function_names);
+
+      name_section
+   };
+
+
    let mut module = Module::new();
+
    module.section(&generation_context.type_manager.type_section);
    module.section(&import_section);
    module.section(&function_section);
@@ -756,6 +772,8 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
    // datacount section
    module.section(&code_section);
    module.section(&data_section);
+
+   module.section(&name_section);
 
    module.finish()
 }
