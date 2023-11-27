@@ -63,7 +63,8 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
          live_intervals.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
       }
 
-      // All parameters start in registers because that's how things are for now.
+      // All non-aggregate parameters start in registers because that's how WASM
+      // (and Roland's calling convention) work.
       for param in procedure.definition.parameters.iter() {
          let var = param.var_id;
          let typ = &param.p_type.e_type;
