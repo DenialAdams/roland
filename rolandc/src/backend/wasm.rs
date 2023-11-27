@@ -433,24 +433,27 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
 
    let mut t_buf = Vec::new();
    let mut global_c = Vec::new();
-   let global_section = {
+   let (global_section, global_names) = {
       let mut globals = GlobalSection::new();
+      let mut global_names = NameMap::new();
       globals.global(
          GlobalType {
             val_type: wasm_encoder::ValType::I32,
             mutable: true,
          },
          &ConstExpr::i32_const(offset as i32),
-      ); // sp
+      );
+      global_names.append(0, "stack_pointer");
       globals.global(
          GlobalType {
             val_type: wasm_encoder::ValType::I32,
             mutable: true,
          },
          &ConstExpr::i32_const(0),
-      ); // mem_address
+      );
+      global_names.append(1, "scratch_memory_address");
 
-      for global in program.global_info.iter() {
+      for (i, global) in program.global_info.iter().enumerate() {
          if !generation_context.var_to_reg.contains_key(global.0) {
             continue;
          }
@@ -487,10 +490,11 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
                },
                &initial_val,
             );
+            global_names.append(2 + i as u32, interner.lookup(program.global_info.get(global.0).unwrap().name));
          }
       }
 
-      globals
+      (globals, global_names)
    };
 
    for (id, builtin_procedure) in program
@@ -751,8 +755,9 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
          let name_str = interner.lookup(program.procedures.get(roland_proc_id).unwrap().definition.name.str);
          function_names.append(i as u32, name_str);
       }
-
       name_section.functions(&function_names);
+
+      name_section.globals(&global_names);
 
       name_section
    };
