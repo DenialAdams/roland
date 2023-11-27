@@ -63,8 +63,7 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
          live_intervals.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
       }
 
-      // All parameters start in registers because that's how WASM
-      // (and Roland's calling convention) work.
+      // All parameters start in registers because that's how things are for now.
       for param in procedure.definition.parameters.iter() {
          let var = param.var_id;
          let typ = &param.p_type.e_type;
@@ -148,7 +147,7 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
       return result;
    }
 
-   let mut num_global_registers = 2; // Skip the base pointer, mem address globals
+   let mut num_global_registers = 2; // Skip the stack pointer, scratch mem address globals
    for global in program.global_info.iter() {
       debug_assert!(!result.var_to_reg.contains_key(global.0));
 
