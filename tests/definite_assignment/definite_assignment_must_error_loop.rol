@@ -9,5 +9,5 @@ proc main() {
     x;
 }__END__
 compile:
-Variable may not be assigned at this use
+Variable may not have been assigned at this use
 ↳ line 9, column 5 [tests/definite_assignment/definite_assignment_must_error_loop.rol]
