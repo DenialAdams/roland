@@ -330,7 +330,7 @@ pub fn populate_type_and_procedure_info(
          rolandc_error!(
             err_manager,
             union_i.1.location,
-            "Union `{}` contains itself, which isn't allowed as it would result in an infinitely large struct",
+            "Union `{}` contains itself, which isn't allowed as it would result in an infinitely large union",
             interner.lookup(union_i.1.name),
          );
       }
