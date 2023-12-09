@@ -3,7 +3,7 @@ union X {
 }
 
 proc main() {
-   let a: X = ___;
+   let a: X;
    a.foo = 10;
    a.bar;
 }

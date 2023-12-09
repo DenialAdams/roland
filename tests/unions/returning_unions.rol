@@ -14,7 +14,7 @@ union U {
 }
 
 proc return_union(v: i64) -> U {
-   let x: U = ___;
+   let x: U;
    x.x = v;
    return x;
 }
