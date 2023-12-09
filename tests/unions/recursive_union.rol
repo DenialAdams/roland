@@ -16,7 +16,7 @@ __END__
 compile:
 Struct `S` contains itself, which isn't allowed as it would result in an infinitely large struct
 ↳ line 12, column 1 [tests/unions/recursive_union.rol]
-Union `U` contains itself, which isn't allowed as it would result in an infinitely large struct
+Union `U` contains itself, which isn't allowed as it would result in an infinitely large union
 ↳ line 4, column 1 [tests/unions/recursive_union.rol]
-Union `X` contains itself, which isn't allowed as it would result in an infinitely large struct
+Union `X` contains itself, which isn't allowed as it would result in an infinitely large union
 ↳ line 8, column 1 [tests/unions/recursive_union.rol]
