@@ -14,6 +14,7 @@ use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 use crate::Target;
 
+pub mod definite_assignment;
 pub mod type_and_procedure_info;
 pub mod type_inference;
 pub mod type_variables;

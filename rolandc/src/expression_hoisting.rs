@@ -2,8 +2,8 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
-   AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcImplSource, Program,
-   Statement, StatementId, StatementNode, UnOp, UserDefinedTypeInfo, VariableId,
+   AstPool, BlockNode, CastType, DeclarationValue, Expression, ExpressionId, ExpressionNode, ExpressionPool,
+   ProcImplSource, Program, Statement, StatementId, StatementNode, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
 use crate::type_data::ExpressionType;
@@ -235,7 +235,7 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
          vv_expr(*expr, vv_context, &ast.expressions, current_statement, true);
       }
       Statement::VariableDeclaration(str_node, opt_expr, _, var_id) => {
-         if let Some(expr) = opt_expr {
+         if let DeclarationValue::Expr(expr) = opt_expr {
             vv_expr(*expr, vv_context, &ast.expressions, current_statement, true);
             let lhs_type = vv_context.cur_procedure_locals.get(var_id).cloned();
             let lhs = ast.expressions.insert(ExpressionNode {

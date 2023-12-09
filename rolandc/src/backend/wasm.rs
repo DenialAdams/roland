@@ -6,7 +6,7 @@ use slotmap::SlotMap;
 use wasm_encoder::{
    BlockType, CodeSection, ConstExpr, DataSection, ElementSection, Elements, EntityType, ExportSection, Function,
    FunctionSection, GlobalSection, GlobalType, ImportSection, Instruction, MemArg, MemorySection, MemoryType, Module,
-   RefType, TableSection, TableType, TypeSection, ValType, NameSection, NameMap,
+   NameMap, NameSection, RefType, TableSection, TableType, TypeSection, ValType,
 };
 
 use super::linearize::{Cfg, CfgInstruction, CFG_START_NODE};
@@ -490,7 +490,10 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
                },
                &initial_val,
             );
-            global_names.append(2 + i as u32, interner.lookup(program.global_info.get(global.0).unwrap().name));
+            global_names.append(
+               2 + i as u32,
+               interner.lookup(program.global_info.get(global.0).unwrap().name),
+            );
          }
       }
 
@@ -761,7 +764,6 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
 
       name_section
    };
-
 
    let mut module = Module::new();
 

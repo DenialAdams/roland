@@ -12,7 +12,7 @@ struct LowerForContext<'a> {
    cur_procedure_locals: &'a mut IndexMap<VariableId, ExpressionType>,
 }
 
-pub fn lower_fors(program: &mut Program) {
+pub fn lower_fors_and_whiles(program: &mut Program) {
    let mut ctx = LowerForContext {
       cur_procedure_locals: &mut IndexMap::new(),
       next_variable: &mut program.next_variable,

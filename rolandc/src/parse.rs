@@ -275,6 +275,13 @@ pub struct StatementNode {
 }
 
 #[derive(Clone)]
+pub enum DeclarationValue {
+   Expr(ExpressionId),
+   Uninit,
+   None,
+}
+
+#[derive(Clone)]
 pub enum Statement {
    Assignment(ExpressionId, ExpressionId),
    Block(BlockNode),
@@ -295,7 +302,7 @@ pub enum Statement {
       induction_var: VariableId,
    },
    While(ExpressionId, BlockNode),
-   VariableDeclaration(StrNode, Option<ExpressionId>, Option<ExpressionTypeNode>, VariableId),
+   VariableDeclaration(StrNode, DeclarationValue, Option<ExpressionTypeNode>, VariableId),
    Defer(StatementId),
 }
 
@@ -1009,12 +1016,16 @@ fn parse_semicolon_terminated_statement(
             let _ = l.next();
             declared_type = Some(parse_type(l, parse_context)?);
          }
-         expect(l, parse_context, Token::Assignment)?;
-         let e = if l.peek_token() == Token::TripleUnderscore {
-            let _ = l.next();
-            None
+         let e = if l.peek_token() == Token::Semicolon {
+            DeclarationValue::None
          } else {
-            Some(parse_expression(l, parse_context, false, &mut ast.expressions)?)
+            expect(l, parse_context, Token::Assignment)?;
+            if l.peek_token() == Token::TripleUnderscore {
+               let _ = l.next();
+               DeclarationValue::Uninit
+            } else {
+               DeclarationValue::Expr(parse_expression(l, parse_context, false, &mut ast.expressions)?)
+            }
          };
          Statement::VariableDeclaration(variable_name, e, declared_type, VariableId::first())
       }

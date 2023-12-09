@@ -14,9 +14,9 @@ use crate::error_handling::error_handling_macros::{
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   statement_always_returns, ArgumentNode, BinOp, BlockNode, CastType, Expression, ExpressionId, ExpressionNode,
-   ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId, StrNode, UnOp, UserDefinedTypeId,
-   UserDefinedTypeInfo, VariableId,
+   statement_always_returns, ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression, ExpressionId,
+   ExpressionNode, ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId, StrNode, UnOp,
+   UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
 };
 use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::source_info::SourceInfo;
@@ -768,7 +768,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
          }
       }
       Statement::VariableDeclaration(id, opt_enid, dt, var_id) => {
-         if let Some(enid) = opt_enid {
+         if let DeclarationValue::Expr(enid) = opt_enid {
             type_expression(err_manager, *enid, validation_context);
          }
 
@@ -779,12 +779,16 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                validation_context.user_defined_type_name_table,
                validation_context.cur_procedure_info.map(|x| &x.type_parameters),
             );
-            if let Some(enid) = opt_enid {
+            if let DeclarationValue::Expr(enid) = opt_enid {
                try_set_inferred_type(&v.e_type, *enid, validation_context);
             }
          }
 
-         let opt_en = opt_enid.map(|enid| &validation_context.ast.expressions[enid]);
+         let opt_en = match opt_enid {
+            DeclarationValue::Expr(enid) => Some(&validation_context.ast.expressions[*enid]),
+            DeclarationValue::Uninit => None,
+            DeclarationValue::None => None,
+         };
 
          let result_type = if dt
             .as_ref()

@@ -27,11 +27,11 @@ mod defer;
 mod disjoint_set;
 pub mod error_handling;
 mod expression_hoisting;
-mod for_loop_lowering;
 mod imports;
 pub mod interner;
 mod lex;
 mod logical_op_lowering;
+mod loop_lowering;
 mod monomorphization;
 pub mod parse;
 mod pre_wasm_lowering;
@@ -49,7 +49,7 @@ use error_handling::ErrorManager;
 use interner::Interner;
 use parse::ImportNode;
 pub use parse::Program;
-use semantic_analysis::GlobalKind;
+use semantic_analysis::{definite_assignment, GlobalKind};
 use source_info::SourcePath;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -172,11 +172,14 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       return Err(CompilationError::Semantic);
    }
 
-   for_loop_lowering::lower_fors(&mut ctx.program);
+   loop_lowering::lower_fors_and_whiles(&mut ctx.program);
 
    defer::process_defer_statements(&mut ctx.program);
 
+   definite_assignment::ensure_variables_definitely_assigned(&ctx.program, &mut ctx.err_manager);
+
    compile_consts::compile_consts(&mut ctx.program, &ctx.interner, &mut ctx.err_manager);
+
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
