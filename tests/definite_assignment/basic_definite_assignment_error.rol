@@ -6,4 +6,4 @@ proc main() {
 __END__
 compile:
 Variable may not be assigned at this use
-↳ line 3, column 5 [tests/definite_assignment/basic.rol]
+↳ line 3, column 5 [tests/definite_assignment/basic_definite_assignment_error.rol]
