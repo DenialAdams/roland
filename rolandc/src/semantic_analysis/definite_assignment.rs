@@ -102,7 +102,7 @@ fn ensure_expression_does_not_use_unassigned_variable(
    match &en.expression {
       Expression::Variable(var_id) => {
          if unassigned_vars.contains(var_id) {
-            rolandc_error!(err_manager, en.location, "Variable may be unassigned before use");
+            rolandc_error!(err_manager, en.location, "Variable may not be assigned at this use");
             // To avoid spamming with errors, pretend it has been assigned
             unassigned_vars.remove(var_id);
          }

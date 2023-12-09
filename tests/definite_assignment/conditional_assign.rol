@@ -1,0 +1,15 @@
+proc main() {
+    let x: bool;
+    if true {
+        x = true;
+    } else {
+        if true {
+            x = false;
+        } else {
+            x = true;
+        }
+    }
+    x;
+}
+__END__
+run:

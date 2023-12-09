@@ -1,0 +1,9 @@
+proc main() {
+    let x: bool;
+    x;
+    x; // should only get error at first use
+}
+__END__
+compile:
+Variable may not be assigned at this use
+↳ line 3, column 5 [tests/definite_assignment/basic.rol]
