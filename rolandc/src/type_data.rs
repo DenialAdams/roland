@@ -231,7 +231,7 @@ impl ExpressionType {
    }
 
    #[must_use]
-   pub fn is_or_contains_never(&self, udt: &UserDefinedTypeInfo) -> bool {
+   pub fn is_or_contains_or_points_to_never(&self, udt: &UserDefinedTypeInfo) -> bool {
       match self {
          ExpressionType::Never => true,
          ExpressionType::Struct(s) => {
@@ -252,8 +252,8 @@ impl ExpressionType {
                .unwrap()
                .contains_never_type
          }
-         ExpressionType::Array(inner_t, _) => inner_t.is_or_contains_never(udt),
-         ExpressionType::Pointer(inner_t) => inner_t.is_or_contains_never(udt),
+         ExpressionType::Array(inner_t, _) => inner_t.is_or_contains_or_points_to_never(udt),
+         ExpressionType::Pointer(inner_t) => inner_t.is_or_contains_or_points_to_never(udt),
          _ => false,
       }
    }
@@ -272,7 +272,6 @@ impl ExpressionType {
          }
          ExpressionType::Union(_) => true,
          ExpressionType::Array(inner_t, _) => inner_t.is_or_contains_union(udt),
-         ExpressionType::Pointer(inner_t) => inner_t.is_or_contains_union(udt),
          _ => false,
       }
    }

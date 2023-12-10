@@ -1,5 +1,7 @@
 proc main() {
    // Second union return will trample over first union return if not done carefully
+   // (A function returning a union just returns a stack memory address --
+   //  we must load that memory immediately before calling another function and clobber the stack)
    validate(return_union(10), return_union(100));
 }
 
