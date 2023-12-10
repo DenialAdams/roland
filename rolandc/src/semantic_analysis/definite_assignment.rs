@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::parse::{
-   AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, Statement, StatementId, VariableId,
+   AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, Statement, StatementId, VariableId, statement_always_returns,
 };
 use crate::type_data::ExpressionType;
 use crate::Program;
@@ -29,14 +29,18 @@ pub fn ensure_variables_definitely_assigned(program: &Program, err_manager: &mut
 }
 
 fn ensure_all_variables_assigned_in_block(
-   proc_body: &BlockNode,
+   block: &BlockNode,
    unassigned_vars: &mut HashSet<VariableId>,
    var_types: &IndexMap<VariableId, ExpressionType>,
    pool: &AstPool,
    err_manager: &mut ErrorManager,
 ) {
-   for stmt_id in proc_body.statements.iter().copied() {
+   for stmt_id in block.statements.iter().copied() {
       ensure_all_variables_assigned_in_stmt(stmt_id, unassigned_vars, var_types, pool, err_manager);
+      if statement_always_returns(stmt_id, pool) {
+         unassigned_vars.clear();
+         return;
+      }
    }
 }
 
@@ -98,9 +102,13 @@ fn ensure_all_variables_assigned_in_stmt(
       }
       Statement::Expression(e) => {
          ensure_expression_does_not_use_unassigned_variable(*e, unassigned_vars, pool, err_manager);
+         if *pool.expressions[*e].exp_type.as_ref().unwrap() == ExpressionType::Never {
+            unassigned_vars.clear();
+         }
       }
       Statement::Return(e) => {
          ensure_expression_does_not_use_unassigned_variable(*e, unassigned_vars, pool, err_manager);
+         unassigned_vars.clear();
       }
       Statement::Continue => (),
       Statement::Break => (),

@@ -1,0 +1,13 @@
+proc main() {
+    let x: bool;
+    if true {
+        return;
+    } else if true {
+        unreachable();
+    } else {
+        x = false;
+    }
+    x;
+}
+__END__
+run:
