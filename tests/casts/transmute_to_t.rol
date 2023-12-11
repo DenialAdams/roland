@@ -1,0 +1,8 @@
+proc main() {
+}
+proc foo<T>() {
+   let x = true transmute T;
+}__END__
+compile:
+Transmute to a type parameter is currently unsupported
+↳ line 4, column 12 [tests/casts/transmute_to_t.rol]
