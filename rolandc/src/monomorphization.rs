@@ -35,7 +35,10 @@ pub fn monomorphize(program: &mut Program, err_manager: &mut ErrorManager) {
          }
 
          // This is a call to a generic function inside of a generic function - we'll come back to these.
-         if generic_args.iter().any(|x| !x.e_type.is_concrete()) {
+         if generic_args
+            .iter()
+            .any(|x| x.e_type.is_or_contains_or_points_to_generic())
+         {
             continue;
          }
 

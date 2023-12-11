@@ -97,3 +97,12 @@ proc f64_to_i16(x: f64) -> i16 {
 proc unit() -> unit {
 
 }
+
+proc zeroed<T>() -> T {
+   let x: T = ___;
+   let y = &x transmute &u8;
+   for i in 0..sizeof$<T>() {
+      ((y transmute usize + i) transmute &u8)~ = 0;
+   }
+   return x;
+}

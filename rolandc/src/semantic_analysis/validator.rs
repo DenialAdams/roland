@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Display;
 use std::ops::Deref;
 
 use indexmap::{IndexMap, IndexSet};
@@ -1127,11 +1128,21 @@ fn get_type(
                }
             }
             CastType::Transmute => {
-               if !e_type.is_concrete() {
+               if e_type.size_is_unknown() {
                   rolandc_error!(
                      err_manager,
                      e.location,
                      "Transmute encountered an operand whose size is not yet known",
+                  );
+                  return ExpressionType::CompileError;
+               }
+
+               if target_type.size_is_unknown() {
+                  // This can only happen if the target is a type argument
+                  rolandc_error!(
+                     err_manager,
+                     e.location,
+                     "Transmute to a type parameter is currently unsupported",
                   );
                   return ExpressionType::CompileError;
                }
@@ -1147,22 +1158,53 @@ fn get_type(
                   );
                   ExpressionType::CompileError
                } else if size_source == size_target {
-                  let alignment_source = mem_alignment(
-                     e_type.get_type_or_type_being_pointed_to(),
-                     validation_context.user_defined_types,
-                  );
-                  let alignment_target = mem_alignment(
-                     target_type.get_type_or_type_being_pointed_to(),
-                     validation_context.user_defined_types,
-                  );
+                  #[derive(PartialEq)]
+                  enum AlignOrUnknown {
+                     Alignment(u32),
+                     Unknown,
+                  }
+                  impl Display for AlignOrUnknown {
+                     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        match self {
+                           AlignOrUnknown::Alignment(x) => x.fmt(f),
+                           AlignOrUnknown::Unknown => f.write_str("?"),
+                        }
+                     }
+                  }
+                  impl PartialOrd for AlignOrUnknown {
+                     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                        match (self, other) {
+                           (AlignOrUnknown::Alignment(x), AlignOrUnknown::Alignment(y)) => x.partial_cmp(y),
+                           _ => None,
+                        }
+                     }
+                  }
+                  let (alignment_source, alignment_target) = {
+                     fn get_align_or_unknown(a_type: &ExpressionType, ctx: &ValidationContext) -> AlignOrUnknown {
+                        if a_type.size_is_unknown() {
+                           return AlignOrUnknown::Unknown;
+                        }
+                        AlignOrUnknown::Alignment(mem_alignment(a_type, ctx.user_defined_types))
+                     }
+
+                     let source_base_type = e_type.get_type_or_type_being_pointed_to();
+                     let target_base_type = target_type.get_type_or_type_being_pointed_to();
+
+                     (
+                        get_align_or_unknown(source_base_type, validation_context),
+                        get_align_or_unknown(target_base_type, validation_context),
+                     )
+                  };
+
+                  let alignment_cmp_not_good = e_type.is_pointer()
+                     && target_type.is_pointer()
+                     && alignment_target != AlignOrUnknown::Alignment(1)
+                     && (alignment_source < alignment_target);
 
                   let e_is_pointer_to_unit =
                      e_type.is_pointer() && *e_type.get_type_or_type_being_pointed_to() == ExpressionType::Unit;
 
-                  let alignment_error =
-                     e_type.is_pointer() && target_type.is_pointer() && (alignment_source < alignment_target);
-
-                  if alignment_error && !e_is_pointer_to_unit {
+                  if alignment_cmp_not_good && !e_is_pointer_to_unit {
                      rolandc_error!(
                         err_manager,
                         e.location,

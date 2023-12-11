@@ -181,12 +181,10 @@ impl ExpressionType {
    }
 
    #[must_use]
-   pub fn is_concrete(&self) -> bool {
+   pub fn is_or_contains_or_points_to_generic(&self) -> bool {
       match self {
-         ExpressionType::Unknown(_)
-         | ExpressionType::CompileError
-         | ExpressionType::Unresolved(_)
-         | ExpressionType::GenericParam(_) => false,
+         ExpressionType::Unknown(_) | ExpressionType::CompileError | ExpressionType::Unresolved(_) => unreachable!(),
+         ExpressionType::GenericParam(_) => true,
          ExpressionType::Int(_)
          | ExpressionType::Float(_)
          | ExpressionType::Bool
@@ -196,9 +194,31 @@ impl ExpressionType {
          | ExpressionType::Union(_)
          | ExpressionType::ProcedureItem(_, _)
          | ExpressionType::ProcedurePointer { .. }
-         | ExpressionType::Enum(_) => true,
-         ExpressionType::Array(exp, _) => exp.is_concrete(),
-         ExpressionType::Pointer(exp) => exp.is_concrete(),
+         | ExpressionType::Enum(_) => false,
+         ExpressionType::Array(exp, _) => exp.is_or_contains_or_points_to_generic(),
+         ExpressionType::Pointer(exp) => exp.is_or_contains_or_points_to_generic(),
+      }
+   }
+
+   #[must_use]
+   pub fn size_is_unknown(&self) -> bool {
+      match self {
+         ExpressionType::CompileError
+         | ExpressionType::Unresolved(_) => unreachable!(),
+         ExpressionType::Unknown(_)
+         | ExpressionType::GenericParam(_) => true,
+         ExpressionType::Int(_)
+         | ExpressionType::Float(_)
+         | ExpressionType::Bool
+         | ExpressionType::Unit
+         | ExpressionType::Never
+         | ExpressionType::Struct(_)
+         | ExpressionType::Union(_)
+         | ExpressionType::ProcedureItem(_, _)
+         | ExpressionType::ProcedurePointer { .. }
+         | ExpressionType::Enum(_)
+         | ExpressionType::Pointer(_) => false,
+         ExpressionType::Array(exp, _) => exp.size_is_unknown(),
       }
    }
 

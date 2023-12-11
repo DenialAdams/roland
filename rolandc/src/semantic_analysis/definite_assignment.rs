@@ -5,7 +5,8 @@ use indexmap::IndexMap;
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::parse::{
-   AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, Statement, StatementId, VariableId, statement_always_returns,
+   statement_always_returns, AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, Statement,
+   StatementId, VariableId,
 };
 use crate::type_data::ExpressionType;
 use crate::Program;
@@ -56,10 +57,10 @@ fn ensure_all_variables_assigned_in_stmt(
       Statement::VariableDeclaration(_, decl_val, _, var_id) => match decl_val {
          DeclarationValue::Expr(e) => {
             ensure_expression_does_not_use_unassigned_variable(*e, unassigned_vars, pool, err_manager);
-            unassigned_vars.remove(&var_id);
+            unassigned_vars.remove(var_id);
          }
          DeclarationValue::Uninit => {
-            unassigned_vars.remove(&var_id);
+            unassigned_vars.remove(var_id);
          }
          DeclarationValue::None => (),
       },
@@ -80,13 +81,13 @@ fn ensure_all_variables_assigned_in_stmt(
          ensure_expression_does_not_use_unassigned_variable(*lhs, unassigned_vars, pool, err_manager);
       }
       Statement::Block(b) => {
-         ensure_all_variables_assigned_in_block(&b, unassigned_vars, var_types, pool, err_manager);
+         ensure_all_variables_assigned_in_block(b, unassigned_vars, var_types, pool, err_manager);
       }
       Statement::IfElse(cond, then, otherwise) => {
          ensure_expression_does_not_use_unassigned_variable(*cond, unassigned_vars, pool, err_manager);
 
          let mut else_unassigned = unassigned_vars.clone();
-         ensure_all_variables_assigned_in_block(&then, unassigned_vars, var_types, pool, err_manager);
+         ensure_all_variables_assigned_in_block(then, unassigned_vars, var_types, pool, err_manager);
          ensure_all_variables_assigned_in_stmt(*otherwise, &mut else_unassigned, var_types, pool, err_manager);
 
          // Union the then and else results
@@ -97,7 +98,7 @@ fn ensure_all_variables_assigned_in_stmt(
          // because continue and break may skip execution of assignments inside
 
          let backup = unassigned_vars.clone();
-         ensure_all_variables_assigned_in_block(&b, unassigned_vars, var_types, pool, err_manager);
+         ensure_all_variables_assigned_in_block(b, unassigned_vars, var_types, pool, err_manager);
          *unassigned_vars = backup;
       }
       Statement::Expression(e) => {
