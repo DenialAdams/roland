@@ -111,8 +111,7 @@ fn ensure_all_variables_assigned_in_stmt(
          ensure_expression_does_not_use_unassigned_variable(*e, unassigned_vars, pool, err_manager);
          unassigned_vars.clear();
       }
-      Statement::Continue => (),
-      Statement::Break => (),
+      Statement::Continue | Statement::Break => unassigned_vars.clear(),
       Statement::For { .. } => unreachable!(),
       Statement::While(_, _) => unreachable!(),
       Statement::Defer(_) => unreachable!(),

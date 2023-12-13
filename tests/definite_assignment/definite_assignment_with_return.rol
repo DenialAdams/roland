@@ -1,13 +1,19 @@
 proc main() {
-    let x: bool;
-    if true {
-        return;
-    } else if true {
-        unreachable();
-    } else {
-        x = false;
+    loop {
+        let x: bool;
+        if true {
+            return;
+        } else if true {
+            unreachable();
+        } else if true {
+            break;
+        } else if true {
+            continue;
+        } else {
+            x = false;
+        }
+        x;
     }
-    x;
 }
 __END__
 run:
