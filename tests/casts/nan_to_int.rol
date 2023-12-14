@@ -1,0 +1,15 @@
+proc main() {
+   let nan = 0x7fffffffffffffff transmute f64;
+
+   assert(nan as u64 == 0);
+   assert(nan as u32 == 0);
+   assert(nan as u16 == 0);
+   assert(nan as u8 == 0);
+
+   assert(nan as i64 == 0);
+   assert(nan as i32 == 0);
+   assert(nan as i16 == 0);
+   assert(nan as i8 == 0);
+}
+__END__
+run:
