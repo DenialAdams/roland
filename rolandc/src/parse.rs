@@ -1212,8 +1212,8 @@ fn parse_parameters(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<V
    Ok(parameters)
 }
 
-fn parse_generic_arguments(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Vec<ExpressionTypeNode>, ()> {
-   expect(l, parse_context, Token::Dollar)?;
+fn parse_generic_arguments(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<(Vec<ExpressionTypeNode>, SourceInfo), ()> {
+   let start_token = expect(l, parse_context, Token::Dollar)?;
    expect(l, parse_context, Token::LessThan)?;
 
    let mut generic_arguments = vec![];
@@ -1226,9 +1226,9 @@ fn parse_generic_arguments(l: &mut Lexer, parse_context: &mut ParseContext) -> R
       expect(l, parse_context, Token::Comma)?;
    }
 
-   expect(l, parse_context, Token::GreaterThan)?;
+   let close_token = expect(l, parse_context, Token::GreaterThan)?;
 
-   Ok(generic_arguments)
+   Ok((generic_arguments, merge_locations(start_token.source_info, close_token.source_info)))
 }
 
 fn parse_generic_parameters(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Vec<StrNode>, ()> {
@@ -1448,8 +1448,8 @@ fn pratt(
       Token::Identifier(s) => {
          let _ = l.next();
          if l.peek_token() == Token::Dollar {
-            let generic_args = parse_generic_arguments(l, parse_context)?;
-            let combined_location = merge_locations(begin_source, generic_args.last().as_ref().unwrap().location);
+            let (generic_args, args_location) = parse_generic_arguments(l, parse_context)?;
+            let combined_location = merge_locations(begin_source, args_location);
             wrap(
                Expression::UnresolvedProcLiteral(
                   StrNode {
