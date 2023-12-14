@@ -251,34 +251,6 @@ impl ExpressionType {
    }
 
    #[must_use]
-   pub fn is_or_contains_or_points_to_never(&self, udt: &UserDefinedTypeInfo) -> bool {
-      match self {
-         ExpressionType::Never => true,
-         ExpressionType::Struct(s) => {
-            udt.struct_info
-               .get(*s)
-               .unwrap()
-               .size
-               .as_ref()
-               .unwrap()
-               .contains_never_type
-         }
-         ExpressionType::Union(s) => {
-            udt.union_info
-               .get(*s)
-               .unwrap()
-               .size
-               .as_ref()
-               .unwrap()
-               .contains_never_type
-         }
-         ExpressionType::Array(inner_t, _) => inner_t.is_or_contains_or_points_to_never(udt),
-         ExpressionType::Pointer(inner_t) => inner_t.is_or_contains_or_points_to_never(udt),
-         _ => false,
-      }
-   }
-
-   #[must_use]
    pub fn is_or_contains_union(&self, udt: &UserDefinedTypeInfo) -> bool {
       match self {
          ExpressionType::Struct(s) => {

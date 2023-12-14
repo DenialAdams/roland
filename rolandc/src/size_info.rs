@@ -14,7 +14,6 @@ pub struct StructSizeInfo {
    pub strictest_alignment: u32,
    pub field_offsets_mem: HashMap<StrId, u32>,
    pub field_offsets_values: HashMap<StrId, u32>,
-   pub contains_never_type: bool,
    pub contains_union_type: bool,
 }
 
@@ -22,7 +21,6 @@ pub struct StructSizeInfo {
 pub struct UnionSizeInfo {
    pub mem_size: u32,
    pub mem_alignment: u32,
-   pub contains_never_type: bool,
 }
 
 pub fn aligned_address(v: u32, a: u32) -> u32 {
@@ -51,12 +49,10 @@ pub fn calculate_union_size_info(id: UnionId, udt: &mut UserDefinedTypeInfo) {
 
    let mut our_mem_size = 0;
    let mut our_mem_alignment = 1;
-   let mut contains_never_type = false;
 
    for field_t in udt.union_info.get(id).unwrap().field_types.values() {
       let field_t = &field_t.e_type;
 
-      contains_never_type |= field_t.is_or_contains_or_points_to_never(udt);
       our_mem_size = std::cmp::max(our_mem_size, sizeof_type_mem(field_t, udt));
       our_mem_alignment = std::cmp::max(our_mem_alignment, mem_alignment(field_t, udt));
    }
@@ -64,7 +60,6 @@ pub fn calculate_union_size_info(id: UnionId, udt: &mut UserDefinedTypeInfo) {
    udt.union_info.get_mut(id).unwrap().size = Some(UnionSizeInfo {
       mem_size: aligned_address(our_mem_size, our_mem_alignment),
       mem_alignment: our_mem_alignment,
-      contains_never_type,
    });
 }
 
@@ -88,7 +83,6 @@ pub fn calculate_struct_size_info(id: StructId, udt: &mut UserDefinedTypeInfo) {
    let mut strictest_alignment = 1;
    let mut field_offsets_mem = HashMap::with_capacity(udt.struct_info.get(id).unwrap().field_types.len());
    let mut field_offsets_values = HashMap::with_capacity(udt.struct_info.get(id).unwrap().field_types.len());
-   let mut contains_never_type = false;
    let mut contains_union_type = false;
    for ((field_name, field_t), next_field_t) in udt
       .struct_info
@@ -114,7 +108,6 @@ pub fn calculate_struct_size_info(id: StructId, udt: &mut UserDefinedTypeInfo) {
 
       strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(field_t, udt));
 
-      contains_never_type |= field_t.is_or_contains_or_points_to_never(udt);
       contains_union_type |= field_t.is_or_contains_union(udt);
    }
 
@@ -127,7 +120,6 @@ pub fn calculate_struct_size_info(id: StructId, udt: &mut UserDefinedTypeInfo) {
       sum_mem += sizeof_type_mem(last_field_t, udt);
       sum_values += sizeof_type_values(last_field_t, &udt.enum_info, &udt.struct_info);
       strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(last_field_t, udt));
-      contains_never_type |= last_field_t.is_or_contains_or_points_to_never(udt);
       contains_union_type |= last_field_t.is_or_contains_union(udt);
    }
 
@@ -137,7 +129,6 @@ pub fn calculate_struct_size_info(id: StructId, udt: &mut UserDefinedTypeInfo) {
       strictest_alignment,
       field_offsets_mem,
       field_offsets_values,
-      contains_never_type,
       contains_union_type,
    });
 }

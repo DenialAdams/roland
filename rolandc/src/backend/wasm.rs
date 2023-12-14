@@ -910,8 +910,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
                .unwrap()
                .is_never()
             {
-               // WASM has strict rules about the stack - we need a literal "unreachable" to bypass them
-               generation_context.active_fcn.instruction(&Instruction::Unreachable);
+               // We have already emitted a literal "unreachable", no need to adjust the stack
             } else {
                adjust_stack_function_exit(generation_context);
                generation_context.active_fcn.instruction(&Instruction::Return);
@@ -1944,6 +1943,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       }
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+   }
+   if expr_node.exp_type.as_ref().unwrap().is_never() {
+      generation_context.active_fcn.instruction(&Instruction::Unreachable);
    }
 }
 
