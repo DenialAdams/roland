@@ -13,6 +13,9 @@ use crate::Program;
 pub fn ensure_variables_definitely_assigned(program: &Program, err_manager: &mut ErrorManager) {
    for procedure in program.procedures.values() {
       if let ProcImplSource::Body(block) = &procedure.proc_impl {
+         // Because we need to clone this fairly frequently, an immutable set is appealing here.
+         // I benchmarked im::HashSet (which is a drop-in replacement) and it seemed slightly worse
+         // for my example, so sticking with std for now.
          let mut unassigned_vars: HashSet<VariableId> = procedure.locals.keys().copied().collect();
          for param in procedure.definition.parameters.iter() {
             unassigned_vars.remove(&param.var_id);
@@ -84,6 +87,11 @@ fn ensure_all_variables_assigned_in_stmt(
          let mut else_unassigned = unassigned_vars.clone();
          ensure_all_variables_assigned_in_block(then, unassigned_vars, var_types, pool, err_manager);
          ensure_all_variables_assigned_in_stmt(*otherwise, &mut else_unassigned, var_types, pool, err_manager);
+
+         // Optimization: ensure that we union elements from smaller set to larger
+         if unassigned_vars.len() < else_unassigned.len() {
+            std::mem::swap(unassigned_vars, &mut else_unassigned);
+         }
 
          // Union the then and else results
          unassigned_vars.extend(else_unassigned);
