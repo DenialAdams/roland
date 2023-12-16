@@ -78,8 +78,7 @@ pub fn liveness(
       // Update live_in
       {
          let s = &mut state[node_id];
-         let old_live_in = std::mem::replace(&mut s.live_in, bitbox![0; procedure_vars.len()]);
-         s.live_in |= &s.gen;
+         let old_live_in = std::mem::replace(&mut s.live_in, s.gen.clone());
 
          // s.live_in |= s.live_out & !s.kill;
          for ((lhs, rhs), mut dst) in s
