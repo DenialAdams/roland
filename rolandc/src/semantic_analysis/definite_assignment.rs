@@ -5,8 +5,7 @@ use indexmap::IndexMap;
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::parse::{
-   statement_always_returns, AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, Statement,
-   StatementId, VariableId,
+   AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, Statement, StatementId, VariableId,
 };
 use crate::type_data::ExpressionType;
 use crate::Program;
@@ -38,10 +37,6 @@ fn ensure_all_variables_assigned_in_block(
 ) {
    for stmt_id in block.statements.iter().copied() {
       ensure_all_variables_assigned_in_stmt(stmt_id, unassigned_vars, var_types, pool, err_manager);
-      if statement_always_returns(stmt_id, pool) {
-         unassigned_vars.clear();
-         return;
-      }
    }
 }
 

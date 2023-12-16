@@ -1212,7 +1212,10 @@ fn parse_parameters(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<V
    Ok(parameters)
 }
 
-fn parse_generic_arguments(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<(Vec<ExpressionTypeNode>, SourceInfo), ()> {
+fn parse_generic_arguments(
+   l: &mut Lexer,
+   parse_context: &mut ParseContext,
+) -> Result<(Vec<ExpressionTypeNode>, SourceInfo), ()> {
    let start_token = expect(l, parse_context, Token::Dollar)?;
    expect(l, parse_context, Token::LessThan)?;
 
@@ -1228,7 +1231,10 @@ fn parse_generic_arguments(l: &mut Lexer, parse_context: &mut ParseContext) -> R
 
    let close_token = expect(l, parse_context, Token::GreaterThan)?;
 
-   Ok((generic_arguments, merge_locations(start_token.source_info, close_token.source_info)))
+   Ok((
+      generic_arguments,
+      merge_locations(start_token.source_info, close_token.source_info),
+   ))
 }
 
 fn parse_generic_parameters(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Vec<StrNode>, ()> {

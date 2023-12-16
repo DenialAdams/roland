@@ -203,10 +203,8 @@ impl ExpressionType {
    #[must_use]
    pub fn size_is_unknown(&self) -> bool {
       match self {
-         ExpressionType::CompileError
-         | ExpressionType::Unresolved(_) => unreachable!(),
-         ExpressionType::Unknown(_)
-         | ExpressionType::GenericParam(_) => true,
+         ExpressionType::CompileError | ExpressionType::Unresolved(_) => unreachable!(),
+         ExpressionType::Unknown(_) | ExpressionType::GenericParam(_) => true,
          ExpressionType::Int(_)
          | ExpressionType::Float(_)
          | ExpressionType::Bool
