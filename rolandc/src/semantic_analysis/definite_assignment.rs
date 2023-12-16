@@ -15,7 +15,7 @@ pub fn ensure_variables_definitely_assigned(program: &Program, err_manager: &mut
       if let ProcImplSource::Body(block) = &procedure.proc_impl {
          // Because we need to clone this fairly frequently, an immutable set is appealing here.
          // I benchmarked im::HashSet (which is a drop-in replacement) and it seemed slightly worse
-         // for my example, so sticking with std for now.
+         // for my example, so sticking with std for now. TODO: BitVec?
          let mut unassigned_vars: HashSet<VariableId> = procedure.locals.keys().copied().collect();
          for param in procedure.definition.parameters.iter() {
             unassigned_vars.remove(&param.var_id);
@@ -23,6 +23,7 @@ pub fn ensure_variables_definitely_assigned(program: &Program, err_manager: &mut
          ensure_all_variables_assigned_in_block(
             block,
             &mut unassigned_vars,
+            &mut None,
             &procedure.locals,
             &program.ast,
             err_manager,
@@ -34,18 +35,27 @@ pub fn ensure_variables_definitely_assigned(program: &Program, err_manager: &mut
 fn ensure_all_variables_assigned_in_block(
    block: &BlockNode,
    unassigned_vars: &mut HashSet<VariableId>,
+   unassigned_vars_after_loop: &mut Option<HashSet<VariableId>>,
    var_types: &IndexMap<VariableId, ExpressionType>,
    pool: &AstPool,
    err_manager: &mut ErrorManager,
 ) {
    for stmt_id in block.statements.iter().copied() {
-      ensure_all_variables_assigned_in_stmt(stmt_id, unassigned_vars, var_types, pool, err_manager);
+      ensure_all_variables_assigned_in_stmt(
+         stmt_id,
+         unassigned_vars,
+         unassigned_vars_after_loop,
+         var_types,
+         pool,
+         err_manager,
+      );
    }
 }
 
 fn ensure_all_variables_assigned_in_stmt(
    stmt_id: StatementId,
    unassigned_vars: &mut HashSet<VariableId>,
+   unassigned_vars_after_loop: &mut Option<HashSet<VariableId>>,
    var_types: &IndexMap<VariableId, ExpressionType>,
    pool: &AstPool,
    err_manager: &mut ErrorManager,
@@ -79,14 +89,35 @@ fn ensure_all_variables_assigned_in_stmt(
          ensure_expression_does_not_use_unassigned_variable(*lhs, unassigned_vars, pool, err_manager);
       }
       Statement::Block(b) => {
-         ensure_all_variables_assigned_in_block(b, unassigned_vars, var_types, pool, err_manager);
+         ensure_all_variables_assigned_in_block(
+            b,
+            unassigned_vars,
+            unassigned_vars_after_loop,
+            var_types,
+            pool,
+            err_manager,
+         );
       }
       Statement::IfElse(cond, then, otherwise) => {
          ensure_expression_does_not_use_unassigned_variable(*cond, unassigned_vars, pool, err_manager);
 
          let mut else_unassigned = unassigned_vars.clone();
-         ensure_all_variables_assigned_in_block(then, unassigned_vars, var_types, pool, err_manager);
-         ensure_all_variables_assigned_in_stmt(*otherwise, &mut else_unassigned, var_types, pool, err_manager);
+         ensure_all_variables_assigned_in_block(
+            then,
+            unassigned_vars,
+            unassigned_vars_after_loop,
+            var_types,
+            pool,
+            err_manager,
+         );
+         ensure_all_variables_assigned_in_stmt(
+            *otherwise,
+            &mut else_unassigned,
+            unassigned_vars_after_loop,
+            var_types,
+            pool,
+            err_manager,
+         );
 
          // Optimization: ensure that we union elements from smaller set to larger
          if unassigned_vars.len() < else_unassigned.len() {
@@ -97,12 +128,16 @@ fn ensure_all_variables_assigned_in_stmt(
          unassigned_vars.extend(else_unassigned);
       }
       Statement::Loop(b) => {
-         // We can't trust any assignment in a loop wihout more sophisticated dataflow analysis,
-         // because continue and break may skip execution of assignments inside
-
-         let backup = unassigned_vars.clone();
-         ensure_all_variables_assigned_in_block(b, unassigned_vars, var_types, pool, err_manager);
-         *unassigned_vars = backup;
+         let mut unassigned_after_new_loop = Some(HashSet::with_capacity(unassigned_vars.capacity()));
+         ensure_all_variables_assigned_in_block(
+            b,
+            unassigned_vars,
+            &mut unassigned_after_new_loop,
+            var_types,
+            pool,
+            err_manager,
+         );
+         *unassigned_vars = unassigned_after_new_loop.unwrap();
       }
       Statement::Expression(e) => {
          ensure_expression_does_not_use_unassigned_variable(*e, unassigned_vars, pool, err_manager);
@@ -114,7 +149,13 @@ fn ensure_all_variables_assigned_in_stmt(
          ensure_expression_does_not_use_unassigned_variable(*e, unassigned_vars, pool, err_manager);
          unassigned_vars.clear();
       }
-      Statement::Continue | Statement::Break => unassigned_vars.clear(),
+      Statement::Continue => unassigned_vars.clear(),
+      Statement::Break => {
+         unassigned_vars_after_loop
+            .as_mut()
+            .unwrap()
+            .extend(unassigned_vars.drain());
+      }
       Statement::For { .. } => unreachable!(),
       Statement::While(_, _) => unreachable!(),
       Statement::Defer(_) => unreachable!(),

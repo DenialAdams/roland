@@ -1,13 +1,16 @@
 proc main() {
     let x: bool;
+    let y: bool;
     loop {
+        x = false;
         if true {
             break;
         }
-        x = false;
+        y = false;
     }
     x;
+    y;
 }__END__
 compile:
 Variable may not have been assigned at this use
-↳ line 9, column 5 [tests/definite_assignment/definite_assignment_must_error_loop.rol]
+↳ line 12, column 5 [tests/definite_assignment/definite_assignment_loop.rol]
