@@ -64,8 +64,6 @@ pub fn liveness(
    // we want to go backwards, which is post_order, but since we are popping we must reverse
    let mut worklist: IndexSet<usize> = post_order(cfg).into_iter().rev().collect();
    while let Some(node_id) = worklist.pop() {
-      // TODO: There is a lot of cloning and creating new bitboxes in here that we probably don't need
-
       // Update live_out
       {
          let mut new_live_out = bitbox![0; procedure_vars.len()];
