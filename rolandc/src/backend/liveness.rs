@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use bitvec::prelude::*;
 use indexmap::{IndexMap, IndexSet};
 
@@ -33,28 +31,26 @@ pub fn liveness(
       cfg.bbs.len()
    ];
 
-   let var_to_dense: HashMap<VariableId, usize> = procedure_vars.keys().enumerate().map(|x| (*x.1, x.0)).collect();
-
    // Setup
    for (i, bb) in cfg.bbs.iter().enumerate() {
       let s = &mut state[i];
       for instruction in bb.instructions.iter().rev() {
          match instruction {
             CfgInstruction::Assignment(lhs, rhs) => {
-               gen_for_expr(*rhs, &mut s.gen, &mut s.kill, ast, &var_to_dense);
-               gen_for_expr(*lhs, &mut s.gen, &mut s.kill, ast, &var_to_dense);
+               gen_for_expr(*rhs, &mut s.gen, &mut s.kill, ast, procedure_vars);
+               gen_for_expr(*lhs, &mut s.gen, &mut s.kill, ast, procedure_vars);
                if let Expression::Variable(v) = ast.expressions[*lhs].expression {
-                  if let Some(di) = var_to_dense.get(&v).copied() {
+                  if let Some(di) = procedure_vars.get_index_of(&v) {
                      s.gen.set(di, false);
                      s.kill.set(di, true);
                   }
                }
             }
-            CfgInstruction::Expression(expr) => gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, &var_to_dense),
-            CfgInstruction::Return(expr) => gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, &var_to_dense),
+            CfgInstruction::Expression(expr) => gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, procedure_vars),
+            CfgInstruction::Return(expr) => gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, procedure_vars),
             CfgInstruction::Break | CfgInstruction::Continue => (),
             CfgInstruction::IfElse(expr, _, _, _) | CfgInstruction::ConditionalJump(expr, _, _) => {
-               gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, &var_to_dense);
+               gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, procedure_vars);
             }
             CfgInstruction::Jump(_) | CfgInstruction::Loop(_, _) => (),
          }
@@ -112,8 +108,8 @@ pub fn liveness(
             let pi = ProgramIndex(rpo_index, i);
             let var_to_kill = match instruction {
                CfgInstruction::Assignment(lhs, rhs) => {
-                  update_live_variables_for_expr(*rhs, &mut current_live_variables, ast, &var_to_dense);
-                  update_live_variables_for_expr(*lhs, &mut current_live_variables, ast, &var_to_dense);
+                  update_live_variables_for_expr(*rhs, &mut current_live_variables, ast, procedure_vars);
+                  update_live_variables_for_expr(*lhs, &mut current_live_variables, ast, procedure_vars);
                   if let Expression::Variable(v) = ast.expressions[*lhs].expression {
                      Some(v)
                   } else {
@@ -121,22 +117,22 @@ pub fn liveness(
                   }
                }
                CfgInstruction::Expression(expr) => {
-                  update_live_variables_for_expr(*expr, &mut current_live_variables, ast, &var_to_dense);
+                  update_live_variables_for_expr(*expr, &mut current_live_variables, ast, procedure_vars);
                   None
                }
                CfgInstruction::Return(expr) => {
-                  update_live_variables_for_expr(*expr, &mut current_live_variables, ast, &var_to_dense);
+                  update_live_variables_for_expr(*expr, &mut current_live_variables, ast, procedure_vars);
                   None
                }
                CfgInstruction::IfElse(expr, _, _, _) | CfgInstruction::ConditionalJump(expr, _, _) => {
-                  update_live_variables_for_expr(*expr, &mut current_live_variables, ast, &var_to_dense);
+                  update_live_variables_for_expr(*expr, &mut current_live_variables, ast, procedure_vars);
                   None
                }
                _ => None,
             };
             all_liveness.insert(pi, current_live_variables.clone());
             if let Some(v) = var_to_kill {
-               if let Some(di) = var_to_dense.get(&v).copied() {
+               if let Some(di) = procedure_vars.get_index_of(&v) {
                   current_live_variables.set(di, false);
                }
             }
@@ -151,50 +147,50 @@ fn update_live_variables_for_expr(
    expr: ExpressionId,
    current_live_variables: &mut BitBox,
    ast: &AstPool,
-   var_to_dense: &HashMap<VariableId, usize>,
+   procedure_vars: &IndexMap<VariableId, ExpressionType>,
 ) {
    match &ast.expressions[expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
-         update_live_variables_for_expr(*proc_expr, current_live_variables, ast, var_to_dense);
+         update_live_variables_for_expr(*proc_expr, current_live_variables, ast, procedure_vars);
 
          for val in args.iter().map(|x| x.expr) {
-            update_live_variables_for_expr(val, current_live_variables, ast, var_to_dense);
+            update_live_variables_for_expr(val, current_live_variables, ast, procedure_vars);
          }
       }
       Expression::ArrayLiteral(vals) => {
          for val in vals.iter().copied() {
-            update_live_variables_for_expr(val, current_live_variables, ast, var_to_dense);
+            update_live_variables_for_expr(val, current_live_variables, ast, procedure_vars);
          }
       }
       Expression::ArrayIndex { array, index } => {
-         update_live_variables_for_expr(*array, current_live_variables, ast, var_to_dense);
-         update_live_variables_for_expr(*index, current_live_variables, ast, var_to_dense);
+         update_live_variables_for_expr(*array, current_live_variables, ast, procedure_vars);
+         update_live_variables_for_expr(*index, current_live_variables, ast, procedure_vars);
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
-         update_live_variables_for_expr(*lhs, current_live_variables, ast, var_to_dense);
-         update_live_variables_for_expr(*rhs, current_live_variables, ast, var_to_dense);
+         update_live_variables_for_expr(*lhs, current_live_variables, ast, procedure_vars);
+         update_live_variables_for_expr(*rhs, current_live_variables, ast, procedure_vars);
       }
       Expression::IfX(a, b, c) => {
-         update_live_variables_for_expr(*a, current_live_variables, ast, var_to_dense);
-         update_live_variables_for_expr(*b, current_live_variables, ast, var_to_dense);
-         update_live_variables_for_expr(*c, current_live_variables, ast, var_to_dense);
+         update_live_variables_for_expr(*a, current_live_variables, ast, procedure_vars);
+         update_live_variables_for_expr(*b, current_live_variables, ast, procedure_vars);
+         update_live_variables_for_expr(*c, current_live_variables, ast, procedure_vars);
       }
       Expression::StructLiteral(_, exprs) => {
          for expr in exprs.values().flatten() {
-            update_live_variables_for_expr(*expr, current_live_variables, ast, var_to_dense);
+            update_live_variables_for_expr(*expr, current_live_variables, ast, procedure_vars);
          }
       }
       Expression::FieldAccess(_, base_expr) => {
-         update_live_variables_for_expr(*base_expr, current_live_variables, ast, var_to_dense);
+         update_live_variables_for_expr(*base_expr, current_live_variables, ast, procedure_vars);
       }
       Expression::Cast { expr, .. } => {
-         update_live_variables_for_expr(*expr, current_live_variables, ast, var_to_dense);
+         update_live_variables_for_expr(*expr, current_live_variables, ast, procedure_vars);
       }
       Expression::UnaryOperator(_, expr) => {
-         update_live_variables_for_expr(*expr, current_live_variables, ast, var_to_dense);
+         update_live_variables_for_expr(*expr, current_live_variables, ast, procedure_vars);
       }
       Expression::Variable(var) => {
-         if let Some(di) = var_to_dense.get(var).copied() {
+         if let Some(di) = procedure_vars.get_index_of(var) {
             current_live_variables.set(di, true);
          }
       }
@@ -215,50 +211,50 @@ fn gen_for_expr(
    gen: &mut BitBox,
    kill: &mut BitBox,
    ast: &AstPool,
-   var_to_dense: &HashMap<VariableId, usize>,
+   procedure_vars: &IndexMap<VariableId, ExpressionType>,
 ) {
    match &ast.expressions[expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
-         gen_for_expr(*proc_expr, gen, kill, ast, var_to_dense);
+         gen_for_expr(*proc_expr, gen, kill, ast, procedure_vars);
 
          for val in args.iter().map(|x| x.expr) {
-            gen_for_expr(val, gen, kill, ast, var_to_dense);
+            gen_for_expr(val, gen, kill, ast, procedure_vars);
          }
       }
       Expression::ArrayLiteral(vals) => {
          for val in vals.iter().copied() {
-            gen_for_expr(val, gen, kill, ast, var_to_dense);
+            gen_for_expr(val, gen, kill, ast, procedure_vars);
          }
       }
       Expression::ArrayIndex { array, index } => {
-         gen_for_expr(*array, gen, kill, ast, var_to_dense);
-         gen_for_expr(*index, gen, kill, ast, var_to_dense);
+         gen_for_expr(*array, gen, kill, ast, procedure_vars);
+         gen_for_expr(*index, gen, kill, ast, procedure_vars);
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
-         gen_for_expr(*lhs, gen, kill, ast, var_to_dense);
-         gen_for_expr(*rhs, gen, kill, ast, var_to_dense);
+         gen_for_expr(*lhs, gen, kill, ast, procedure_vars);
+         gen_for_expr(*rhs, gen, kill, ast, procedure_vars);
       }
       Expression::IfX(a, b, c) => {
-         gen_for_expr(*a, gen, kill, ast, var_to_dense);
-         gen_for_expr(*b, gen, kill, ast, var_to_dense);
-         gen_for_expr(*c, gen, kill, ast, var_to_dense);
+         gen_for_expr(*a, gen, kill, ast, procedure_vars);
+         gen_for_expr(*b, gen, kill, ast, procedure_vars);
+         gen_for_expr(*c, gen, kill, ast, procedure_vars);
       }
       Expression::StructLiteral(_, exprs) => {
          for expr in exprs.values().flatten() {
-            gen_for_expr(*expr, gen, kill, ast, var_to_dense);
+            gen_for_expr(*expr, gen, kill, ast, procedure_vars);
          }
       }
       Expression::FieldAccess(_, base_expr) => {
-         gen_for_expr(*base_expr, gen, kill, ast, var_to_dense);
+         gen_for_expr(*base_expr, gen, kill, ast, procedure_vars);
       }
       Expression::Cast { expr, .. } => {
-         gen_for_expr(*expr, gen, kill, ast, var_to_dense);
+         gen_for_expr(*expr, gen, kill, ast, procedure_vars);
       }
       Expression::UnaryOperator(_, expr) => {
-         gen_for_expr(*expr, gen, kill, ast, var_to_dense);
+         gen_for_expr(*expr, gen, kill, ast, procedure_vars);
       }
       Expression::Variable(var) => {
-         if let Some(di) = var_to_dense.get(var).copied() {
+         if let Some(di) = procedure_vars.get_index_of(var) {
             gen.set(di, true);
             kill.set(di, false);
          };
