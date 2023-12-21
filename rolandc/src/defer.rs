@@ -1,6 +1,6 @@
 use crate::parse::{
-   statement_always_returns, AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcImplSource, Program,
-   Statement, StatementId,
+   statement_always_or_never_returns, AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcImplSource,
+   Program, Statement, StatementId,
 };
 
 enum CfKind {
@@ -60,8 +60,9 @@ fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, ast: &mut As
       .statements
       .last()
       .copied()
-      .map_or(false, |x| statement_always_returns(x, ast))
+      .map_or(false, |x| statement_always_or_never_returns(x, ast))
    {
+      // There is an implicit final return
       let deferred_exprs = &defer_ctx.deferred_stmts[deferred_stmts_before..];
       insert_deferred_stmt(block.statements.len(), deferred_exprs, block, ast);
    }

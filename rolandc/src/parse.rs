@@ -308,21 +308,34 @@ pub enum Statement {
 
 // For lack of a better place...
 #[must_use]
-pub fn statement_always_returns(stmt: StatementId, ast: &AstPool) -> bool {
+pub fn statement_always_or_never_returns(stmt: StatementId, ast: &AstPool) -> bool {
    match &ast.statements[stmt].statement {
       Statement::Return(_) => true,
       Statement::IfElse(_, then_block, else_if) => {
          then_block
             .statements
             .last()
-            .map_or(false, |l| statement_always_returns(*l, ast))
-            && statement_always_returns(*else_if, ast)
+            .map_or(false, |l| statement_always_or_never_returns(*l, ast))
+            && statement_always_or_never_returns(*else_if, ast)
       }
       Statement::Block(bn) => bn
          .statements
          .last()
-         .map_or(false, |l| statement_always_returns(*l, ast)),
+         .map_or(false, |l| statement_always_or_never_returns(*l, ast)),
       Statement::Expression(ex) => *ast.expressions[*ex].exp_type.as_ref().unwrap() == ExpressionType::Never,
+      Statement::Loop(bn) => !bn.statements.iter().copied().any(|s| statement_breaks(s, ast)),
+      _ => false,
+   }
+}
+
+fn statement_breaks(stmt: StatementId, ast: &AstPool) -> bool {
+   match &ast.statements[stmt].statement {
+      Statement::Break => true,
+      Statement::IfElse(_, then_block, else_if) => {
+         then_block.statements.iter().copied().any(|s| statement_breaks(s, ast)) || statement_breaks(*else_if, ast)
+      }
+      Statement::Block(bn) => bn.statements.iter().copied().any(|s| statement_breaks(s, ast)),
+      // If we ever support breaking out of multiple layers of loops, this needs to be updated
       _ => false,
    }
 }

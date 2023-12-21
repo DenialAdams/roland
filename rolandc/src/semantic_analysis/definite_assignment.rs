@@ -182,9 +182,21 @@ fn ensure_expression_does_not_use_unassigned_variable(
          }
       }
       Expression::ProcedureCall { proc_expr, args } => {
-         ensure_expression_does_not_use_unassigned_variable(*proc_expr, assigned_vars, procedure_vars, pool, err_manager);
+         ensure_expression_does_not_use_unassigned_variable(
+            *proc_expr,
+            assigned_vars,
+            procedure_vars,
+            pool,
+            err_manager,
+         );
          for arg in args.iter() {
-            ensure_expression_does_not_use_unassigned_variable(arg.expr, assigned_vars, procedure_vars, pool, err_manager);
+            ensure_expression_does_not_use_unassigned_variable(
+               arg.expr,
+               assigned_vars,
+               procedure_vars,
+               pool,
+               err_manager,
+            );
          }
       }
       Expression::ArrayLiteral(items) => {

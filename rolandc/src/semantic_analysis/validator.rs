@@ -15,9 +15,9 @@ use crate::error_handling::error_handling_macros::{
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   statement_always_returns, ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression, ExpressionId,
-   ExpressionNode, ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId, StrNode, UnOp,
-   UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
+   statement_always_or_never_returns, ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression,
+   ExpressionId, ExpressionNode, ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId,
+   StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
 };
 use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::source_info::SourceInfo;
@@ -441,7 +441,7 @@ pub fn type_and_check_validity(
       // (it has already been type checked, so we don't have to check that)
       match (&procedure.definition.ret_type.e_type, block.statements.last().copied()) {
          (ExpressionType::Unit, _) => (),
-         (_, Some(s)) if statement_always_returns(s, validation_context.ast) => (),
+         (_, Some(s)) if statement_always_or_never_returns(s, validation_context.ast) => (),
          (x, _) => {
             let x_str = x.as_roland_type_info(
                validation_context.interner,

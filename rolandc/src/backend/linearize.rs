@@ -6,8 +6,8 @@ use slotmap::SecondaryMap;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
 use crate::parse::{
-   statement_always_returns, AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ProcImplSource, ProcedureId,
-   Statement, StatementId,
+   statement_always_or_never_returns, AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ProcImplSource,
+   ProcedureId, Statement, StatementId,
 };
 use crate::type_data::ExpressionType;
 use crate::Program;
@@ -176,7 +176,7 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool) -> 
             .statements
             .last()
             .copied()
-            .map_or(false, |x| statement_always_returns(x, &program.ast))
+            .map_or(false, |x| statement_always_or_never_returns(x, &program.ast))
          {
             let return_expr = program.ast.expressions.insert(ExpressionNode {
                expression: Expression::UnitLiteral,

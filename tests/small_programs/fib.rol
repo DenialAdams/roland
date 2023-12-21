@@ -34,7 +34,6 @@ proc fast_fib(n: u64) -> u64 {
       last = sum;
       i = i + 1;
    }
-   return sum;
 }
 __END__
 run:
