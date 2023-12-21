@@ -17,21 +17,19 @@ proc fib(n: u64) -> u64 {
 proc fast_fib(n: u64) -> u64 {
    if n == 0 {
       return 0;
-   } else if n == 1 {
-      return 1;
    }
 
    let twice_before: u64 = 0;
-   let last: u64 = 1;
+   let once_before: u64 = 1;
    let sum: u64 = 1;
    let i: u64 = 1;
    loop {
       if i == n {
          return sum;
       }
-      sum = last + twice_before;
-      twice_before = last;
-      last = sum;
+      sum = once_before + twice_before;
+      twice_before = once_before;
+      once_before = sum;
       i = i + 1;
    }
 }
