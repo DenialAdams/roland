@@ -17,6 +17,8 @@ proc fib(n: u64) -> u64 {
 proc fast_fib(n: u64) -> u64 {
    if n == 0 {
       return 0;
+   } else if n == 1 {
+      return 1;
    }
 
    let twice_before: u64 = 0;
