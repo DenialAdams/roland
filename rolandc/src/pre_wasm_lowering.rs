@@ -1,8 +1,9 @@
 use slotmap::SlotMap;
 
 use crate::interner::Interner;
-use crate::parse::{ArgumentNode, EnumId, Expression, ExpressionNode, Program};
+use crate::parse::{ArgumentNode, EnumId, Expression, ExpressionId, ExpressionNode, Program, UnOp};
 use crate::semantic_analysis::EnumInfo;
+use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I8_TYPE, USIZE_TYPE};
 
 fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInfo>) {
@@ -106,40 +107,74 @@ pub fn lower_enums_and_pointers(program: &mut Program) {
    }
 }
 
+fn replace_cast_expr(
+   src: ExpressionId,
+   target: &ExpressionNode,
+   program: &Program,
+   interner: &Interner,
+) -> Option<ExpressionNode> {
+   let src_type = program.ast.expressions[src].exp_type.as_ref().unwrap();
+   let target_type = target.exp_type.as_ref().unwrap();
+   let proc_name = match (src_type, target_type) {
+      (&F32_TYPE, &I8_TYPE) => "f32_to_i8",
+      (&F64_TYPE, &I8_TYPE) => "f64_to_i8",
+      (&F32_TYPE, &I16_TYPE) => "f32_to_i16",
+      (&F64_TYPE, &I16_TYPE) => "f64_to_i16",
+      _ => return None,
+   };
+   let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
+   Some(ExpressionNode {
+      expression: Expression::BoundFcnLiteral(proc_id, Box::new([])),
+      exp_type: Some(ExpressionType::ProcedureItem(proc_id, Box::new([]))),
+      location: target.location,
+   })
+}
+
+fn replace_negate(
+   operand: ExpressionId,
+   location: SourceInfo,
+   program: &Program,
+   interner: &Interner,
+) -> Option<ExpressionNode> {
+   let operand_type = program.ast.expressions[operand].exp_type.as_ref().unwrap();
+   let proc_name = match operand_type {
+      &I8_TYPE => "neg_i8",
+      &I16_TYPE => "neg_i16",
+      _ => return None,
+   };
+   let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
+   Some(ExpressionNode {
+      expression: Expression::BoundFcnLiteral(proc_id, Box::new([])),
+      exp_type: Some(ExpressionType::ProcedureItem(proc_id, Box::new([]))),
+      location,
+   })
+}
+
 pub fn replace_nonnative_casts(program: &mut Program, interner: &Interner) {
    let mut replacements = vec![];
    for (expression, v) in program.ast.expressions.iter() {
-      let target_type = v.exp_type.as_ref().unwrap();
-      let Expression::Cast { expr: src_expr, .. } = &v.expression else {
-         continue;
+      let opt_new_expr = match v.expression {
+         Expression::Cast { expr: src_expr, .. } => replace_cast_expr(src_expr, v, program, interner),
+         Expression::UnaryOperator(un_op, inner_expr) => match un_op {
+            UnOp::Negate => replace_negate(inner_expr, v.location, program, interner),
+            _ => None,
+         },
+         _ => None,
       };
-      let src_type = program.ast.expressions[*src_expr].exp_type.as_ref().unwrap();
-      let proc_name = match (src_type, target_type) {
-         (&F32_TYPE, &I8_TYPE) => "f32_to_i8",
-         (&F64_TYPE, &I8_TYPE) => "f64_to_i8",
-         (&F32_TYPE, &I16_TYPE) => "f32_to_i16",
-         (&F64_TYPE, &I16_TYPE) => "f64_to_i16",
-         _ => continue,
-      };
-      let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
-      let new_proc_expr = ExpressionNode {
-         expression: Expression::BoundFcnLiteral(proc_id, Box::new([])),
-         exp_type: Some(ExpressionType::ProcedureItem(proc_id, Box::new([]))),
-         location: v.location,
-      };
-      replacements.push((expression, new_proc_expr));
+      if let Some(new_expr) = opt_new_expr {
+         replacements.push((expression, new_expr));
+      }
    }
    for replacement in replacements {
       let pid = program.ast.expressions.insert(replacement.1);
-      let Expression::Cast { expr: castee, .. } = &program.ast.expressions[replacement.0].expression else {
-         unreachable!();
+      let arg = match &program.ast.expressions[replacement.0].expression {
+         Expression::Cast { expr: castee, .. } => castee,
+         Expression::UnaryOperator(_, operand) => operand,
+         _ => unreachable!(),
       };
       program.ast.expressions[replacement.0].expression = Expression::ProcedureCall {
          proc_expr: pid,
-         args: Box::new([ArgumentNode {
-            name: None,
-            expr: *castee,
-         }]),
+         args: Box::new([ArgumentNode { name: None, expr: *arg }]),
       };
    }
 }

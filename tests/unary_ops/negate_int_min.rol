@@ -1,0 +1,16 @@
+proc main() {
+   let i64m = I64_MIN;
+   let i32m = I32_MIN;
+   let i16m = I16_MIN;
+   let i8m = I8_MIN;
+   println(int_to_string(-i64m));
+   println(int_to_string(-i32m as i64));
+   println(int_to_string(-i16m as i64));
+   println(int_to_string(-i8m as i64));
+}
+__END__
+run:
+-9223372036854775808
+-2147483648
+-32768
+-128

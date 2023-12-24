@@ -94,6 +94,20 @@ proc f64_to_i16(x: f64) -> i16 {
    return x as i32 as i16;
 }
 
+proc neg_i8(x: i8) -> i8 {
+   if x == I8_MIN {
+      return I8_MIN;
+   }
+   return (-(x as i32)) as i8;
+}
+
+proc neg_i16(x: i16) -> i16 {
+   if x == I16_MIN {
+      return I16_MIN;
+   }
+   return (-(x as i32)) as i16;
+}
+
 proc unit() -> unit {
 
 }
