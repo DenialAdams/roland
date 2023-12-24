@@ -694,23 +694,6 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
       }
       Statement::Defer(si) => {
          type_statement(err_manager, *si, validation_context);
-
-         match validation_context.ast.statements[*si].statement {
-            Statement::Assignment(_, _)
-            | Statement::Block(_)
-            | Statement::Loop(_)
-            | Statement::While(_, _)
-            | Statement::For { .. }
-            | Statement::Expression(_)
-            | Statement::IfElse(_, _, _) => (),
-            _ => {
-               rolandc_error!(
-                  err_manager,
-                  validation_context.ast.statements[*si].location,
-                  "This kind of statement may not be deferred"
-               );
-            }
-         }
       }
       Statement::Expression(en) => {
          type_expression(err_manager, *en, validation_context);
