@@ -18,8 +18,8 @@ use similar_asserts::SimpleDiff;
 use wait_timeout::ChildExt;
 
 enum TestFailureReason {
-   TestingNothing(File),
-   ExpectedCompilationSuccess,
+   TestingNothing(String, File),
+   ExpectedCompilationSuccess(String),
    FailedToRunExecutable,
    MismatchedExecutionOutput(String, String),
    MismatchedCompilationErrorOutput(String, TestDetails),
@@ -97,7 +97,7 @@ fn main() -> Result<(), &'static str> {
    };
 
    let successes = AtomicU64::new(0);
-   let failures = AtomicU64::new(0);
+   let failures = Mutex::new(Vec::new());
    let output_lock = Mutex::new(());
 
    entries.par_iter().for_each(|entry| {
@@ -105,6 +105,7 @@ fn main() -> Result<(), &'static str> {
       let test_ok = test_result(&tc_output, entry);
       // prevents stdout and stderr from mixing
       let _ol = output_lock.lock();
+      if test_ok.is_ok() {}
       match test_ok {
          Ok(()) => {
             successes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -116,113 +117,116 @@ fn main() -> Result<(), &'static str> {
             color_reset(&mut out_handle).unwrap();
          }
          Err(reason) => {
-            failures.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let mut out_handle = std::io::stderr().lock();
-            color_reset(&mut out_handle).unwrap();
-            writeln!(out_handle, "--------------------").unwrap();
-            write!(out_handle, "{}: ", entry.file_name().unwrap().to_str().unwrap()).unwrap();
-            bold_red(&mut out_handle).unwrap();
-            writeln!(out_handle, "FAILED").unwrap();
-            color_reset(&mut out_handle).unwrap();
-            match reason {
-               TestFailureReason::TestingNothing(mut file) => {
-                  if !opts.overwrite_error_files {
-                     writeln!(out_handle, "There was no test specified for this input.").unwrap();
-                  }
-
-                  let actual = String::from_utf8_lossy(&tc_output.stderr);
-
-                  writeln!(out_handle, "\ncompilation output:").unwrap();
-                  writeln!(out_handle, "```").unwrap();
-                  writeln!(out_handle, "{}", actual).unwrap();
-                  writeln!(out_handle, "```").unwrap();
-
-                  if opts.overwrite_error_files {
-                     file.write_all(b"__END__\n").unwrap();
-                     file.write_all(b"compile:\n").unwrap();
-                     file.write_all(actual.as_bytes()).unwrap();
-                     let current_position = file.stream_position().unwrap();
-                     file.set_len(current_position).unwrap();
-                     writeln!(out_handle, "Created test compilation error output.").unwrap();
-                  }
-               }
-               TestFailureReason::ExpectedCompilationSuccess => {
-                  writeln!(out_handle, "Compilation was supposed to succeed, but it failed:").unwrap();
-                  writeln!(out_handle, "```").unwrap();
-                  writeln!(out_handle, "{}", String::from_utf8_lossy(&tc_output.stderr)).unwrap();
-                  writeln!(out_handle, "```").unwrap();
-               }
-               TestFailureReason::FailedToRunExecutable => {
-                  writeln!(
-                     out_handle,
-                     "Compilation seemingly succeeded, but the executable failed to run. Is wasmtime installed?"
-                  )
-                  .unwrap();
-               }
-               TestFailureReason::ExecutionTimeout => {
-                  writeln!(out_handle, "Compiled OK, but the executable failed to terminate.").unwrap();
-               }
-               TestFailureReason::MismatchedExecutionOutput(expected, actual) => {
-                  writeln!(
-                     out_handle,
-                     "Compiled OK, but execution of the program produced a different result than expected:"
-                  )
-                  .unwrap();
-                  print_diff(&mut out_handle, &expected, &actual);
-               }
-               TestFailureReason::MismatchedCompilationErrorOutput(actual, mut test_details) => {
-                  if opts.overwrite_error_files {
-                     // file should have been sunk to the correct point
-                     test_details.file.write_all(b"compile:\n").unwrap();
-                     test_details.file.write_all(actual.as_bytes()).unwrap();
-                     if let Some(r) = test_details.result.run_output {
-                        test_details.file.write_all(b"\nrun:\n").unwrap();
-                        test_details.file.write_all(r.as_bytes()).unwrap();
-                     }
-                     let current_position = test_details.file.stream_position().unwrap();
-                     test_details.file.set_len(current_position).unwrap();
-                     print_diff(
-                        &mut out_handle,
-                        test_details.result.compile_output.as_ref().map_or("", |x| x.as_str()),
-                        &actual,
-                     );
-                     writeln!(out_handle, "Updated test compilation error output.").unwrap();
-                  } else {
-                     writeln!(
-                        out_handle,
-                        "Failed to compile, but the compilation error was different than expected:"
-                     )
-                     .unwrap();
-                     print_diff(
-                        &mut out_handle,
-                        test_details.result.compile_output.as_ref().map_or("", |x| x.as_str()),
-                        &actual,
-                     );
-                  }
-               }
-            }
-            writeln!(out_handle, "--------------------").unwrap();
+            failures.lock().unwrap().push((entry.file_name().unwrap().to_str().unwrap(), reason));
          }
       }
    });
 
-   let successes = successes.load(Ordering::Relaxed);
-   let failures = failures.load(Ordering::Relaxed);
+   let mut failures = failures.into_inner().unwrap();
+
+   for (name, ref mut reason) in failures.iter_mut() {
+      let mut out_handle = std::io::stderr().lock();
+      color_reset(&mut out_handle).unwrap();
+      writeln!(out_handle, "--------------------").unwrap();
+      write!(out_handle, "{}: ", name).unwrap();
+      bold_red(&mut out_handle).unwrap();
+      writeln!(out_handle, "FAILED").unwrap();
+      color_reset(&mut out_handle).unwrap();
+      match reason {
+         TestFailureReason::TestingNothing(actual, ref mut file) => {
+            if !opts.overwrite_error_files {
+               writeln!(out_handle, "There was no test specified for this input.").unwrap();
+            }
+
+            writeln!(out_handle, "\ncompilation output:").unwrap();
+            writeln!(out_handle, "```").unwrap();
+            writeln!(out_handle, "{}", actual).unwrap();
+            writeln!(out_handle, "```").unwrap();
+
+            if opts.overwrite_error_files {
+               file.write_all(b"__END__\n").unwrap();
+               file.write_all(b"compile:\n").unwrap();
+               file.write_all(actual.as_bytes()).unwrap();
+               let current_position = file.stream_position().unwrap();
+               file.set_len(current_position).unwrap();
+               writeln!(out_handle, "Created test compilation error output.").unwrap();
+            }
+         }
+         TestFailureReason::ExpectedCompilationSuccess(err_out) => {
+            writeln!(out_handle, "Compilation was supposed to succeed, but it failed:").unwrap();
+            writeln!(out_handle, "```").unwrap();
+            writeln!(out_handle, "{}", err_out).unwrap();
+            writeln!(out_handle, "```").unwrap();
+         }
+         TestFailureReason::FailedToRunExecutable => {
+            writeln!(
+               out_handle,
+               "Compilation seemingly succeeded, but the executable failed to run. Is wasmtime installed?"
+            )
+            .unwrap();
+         }
+         TestFailureReason::ExecutionTimeout => {
+            writeln!(out_handle, "Compiled OK, but the executable failed to terminate.").unwrap();
+         }
+         TestFailureReason::MismatchedExecutionOutput(expected, actual) => {
+            writeln!(
+               out_handle,
+               "Compiled OK, but execution of the program produced a different result than expected:"
+            )
+            .unwrap();
+            print_diff(&mut out_handle, &expected, &actual);
+         }
+         TestFailureReason::MismatchedCompilationErrorOutput(actual, ref mut test_details) => {
+            if opts.overwrite_error_files {
+               // file should have been sunk to the correct point
+               test_details.file.write_all(b"compile:\n").unwrap();
+               test_details.file.write_all(actual.as_bytes()).unwrap();
+               if let Some(r) = test_details.result.run_output.as_ref() {
+                  test_details.file.write_all(b"\nrun:\n").unwrap();
+                  test_details.file.write_all(r.as_bytes()).unwrap();
+               }
+               let current_position = test_details.file.stream_position().unwrap();
+               test_details.file.set_len(current_position).unwrap();
+               print_diff(
+                  &mut out_handle,
+                  test_details.result.compile_output.as_ref().map_or("", |x| x.as_str()),
+                  &actual,
+               );
+               writeln!(out_handle, "Updated test compilation error output.").unwrap();
+            } else {
+               writeln!(
+                  out_handle,
+                  "Failed to compile, but the compilation error was different than expected:"
+               )
+               .unwrap();
+               print_diff(
+                  &mut out_handle,
+                  test_details.result.compile_output.as_ref().map_or("", |x| x.as_str()),
+                  &actual,
+               );
+            }
+         }
+      }
+      writeln!(out_handle, "--------------------").unwrap();
+   }
+
+   let num_successes = successes.load(Ordering::Relaxed);
+   let num_failures = failures.len();
 
    let mut out_handle = std::io::stdout().lock();
 
    bold_green(&mut out_handle).unwrap();
-   write!(out_handle, "{} ", successes).unwrap();
+   write!(out_handle, "{} ", num_successes).unwrap();
    color_reset(&mut out_handle).unwrap();
-   if successes == 1 {
+   if num_successes == 1 {
       write!(out_handle, "success, ").unwrap();
    } else {
       write!(out_handle, "successes, ").unwrap();
    }
    bold_red(&mut out_handle).unwrap();
-   write!(out_handle, "{} ", failures).unwrap();
+   write!(out_handle, "{} ", num_failures).unwrap();
    color_reset(&mut out_handle).unwrap();
-   if failures == 1 {
+   if num_failures == 1 {
       writeln!(out_handle, "failure").unwrap();
    } else {
       writeln!(out_handle, "failures").unwrap();
@@ -237,11 +241,11 @@ fn print_diff<W: Write>(t: &mut W, expected: &str, actual: &str) {
 fn test_result(tc_output: &Output, t_file_path: &Path) -> Result<(), TestFailureReason> {
    let td = extract_test_data(t_file_path);
 
-   if td.result.compile_output.is_none() && td.result.run_output.is_none() {
-      return Err(TestFailureReason::TestingNothing(td.file));
-   }
-
    let stderr_text = String::from_utf8_lossy(&tc_output.stderr);
+
+   if td.result.compile_output.is_none() && td.result.run_output.is_none() {
+      return Err(TestFailureReason::TestingNothing(stderr_text.into_owned(), td.file));
+   }
 
    if tc_output.status.success() {
       if td
@@ -300,7 +304,7 @@ fn test_result(tc_output: &Output, t_file_path: &Path) -> Result<(), TestFailure
 
       std::fs::remove_file(prog_path).unwrap();
    } else if td.result.run_output.is_some() {
-      return Err(TestFailureReason::ExpectedCompilationSuccess);
+      return Err(TestFailureReason::ExpectedCompilationSuccess(stderr_text.into_owned()));
    } else if td
       .result
       .compile_output
