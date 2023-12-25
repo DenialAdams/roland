@@ -1,0 +1,20 @@
+proc main() {
+    println(uint_to_string(foo()));
+    println(uint_to_string(B));
+}
+
+proc foo() -> u64 {
+    defer inc();
+    return inc();
+}
+
+static B: u64 = 0;
+proc inc() -> u64 {
+    let before = B;
+    B = B + 1;
+    return before;
+}
+__END__
+run:
+0
+2

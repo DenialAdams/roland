@@ -2,9 +2,10 @@ use std::collections::HashMap;
 
 use indexmap::IndexMap;
 
+use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
-   statement_always_or_never_returns, AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionPool,
-   ProcImplSource, Program, Statement, StatementId, VariableId,
+   statement_always_or_never_returns, AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionNode,
+   ExpressionPool, ProcImplSource, Program, Statement, StatementId, StatementNode, VariableId,
 };
 use crate::type_data::ExpressionType;
 
@@ -52,11 +53,60 @@ fn insert_deferred_stmt(
    ast: &mut AstPool,
    vm: &mut VarMigrator,
 ) {
-   for (i, stmt) in deferred_stmts.iter().rev().copied().enumerate() {
+   let mut inserted_stmts: usize = 0;
+
+   if deferred_stmts.is_empty() {
+      // This early return prevents us from hoisting out of the return statement
+      // when it's not necessary
+      return;
+   }
+
+   if let Some(Statement::Return(e)) = block
+      .statements
+      .get(point)
+      .map(|i| &ast.statements[*i].statement)
+   {
+      let e = *e;
+      if expression_could_have_side_effects(e, &ast.expressions) {
+         // We want the deferred statement to semantically execute AFTER the returned expression
+         // So, we hoist before inserting the deferred stmt.
+         let temp = {
+            let var_id = *vm.next_var;
+            *vm.next_var = vm.next_var.next();
+            vm.local_types
+               .insert(var_id, ast.expressions[e].exp_type.clone().unwrap());
+            var_id
+         };
+
+         let location = ast.expressions[e].location;
+
+         let temp_expression_node = ExpressionNode {
+            expression: Expression::Variable(temp),
+            exp_type: ast.expressions[e].exp_type.clone(),
+            location,
+         };
+
+         let temp_assign = {
+            let lhs = ast.expressions.insert(temp_expression_node);
+            let rhs = ast.expressions.insert(ast.expressions[e].clone());
+            ast.statements.insert(StatementNode {
+               statement: Statement::Assignment(lhs, rhs),
+               location,
+            })
+         };
+         block.statements.insert(point, temp_assign);
+         ast.expressions[e].expression = Expression::Variable(temp);
+
+         inserted_stmts += 1;
+      }
+   }
+
+   for stmt in deferred_stmts.iter().rev().copied() {
       // Clearing the mapping here is correct, as long as we are going from the innermost defer out
       vm.mapping.clear();
       let new_stmt = deep_clone_stmt(stmt, ast, vm);
-      block.statements.insert(point + i, new_stmt);
+      block.statements.insert(point + inserted_stmts, new_stmt);
+      inserted_stmts += 1;
    }
 }
 
@@ -82,8 +132,8 @@ fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, ast: &mut As
       .map_or(false, |x| statement_always_or_never_returns(x, ast))
    {
       // There is an implicit final return
-      let deferred_exprs = &defer_ctx.deferred_stmts[deferred_stmts_before..];
-      insert_deferred_stmt(block.statements.len(), deferred_exprs, block, ast, vm);
+      let deferred_stmts = &defer_ctx.deferred_stmts[deferred_stmts_before..];
+      insert_deferred_stmt(block.statements.len(), deferred_stmts, block, ast, vm);
    }
 
    defer_ctx.deferred_stmts.truncate(deferred_stmts_before);
