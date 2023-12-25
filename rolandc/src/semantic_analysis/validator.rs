@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::ops::Deref;
+use std::sync::OnceLock;
 
 use indexmap::{IndexMap, IndexSet};
 use slotmap::SecondaryMap;
@@ -31,43 +32,52 @@ pub struct SpecialProcedure {
    pub return_type: ExpressionType,
 }
 
-pub fn get_special_procedures(target: Target, interner: &mut Interner) -> Vec<SpecialProcedure> {
+pub fn get_special_procedures(target: Target, interner: &mut Interner) -> &'static [SpecialProcedure] {
+   static WASM4_SPECIAL: OnceLock<Box<[SpecialProcedure]>> = OnceLock::new();
+   static WASI_SPECIAL: OnceLock<Box<[SpecialProcedure]>> = OnceLock::new();
+   static MICROW8_SPECIAL: OnceLock<Box<[SpecialProcedure]>> = OnceLock::new();
    match target {
-      Target::Lib => vec![],
-      Target::Wasm4 => vec![
-         SpecialProcedure {
-            name: interner.intern("start"),
-            required: false,
-            input_types: vec![],
-            return_type: ExpressionType::Unit,
-         },
-         SpecialProcedure {
-            name: interner.intern("update"),
+      Target::Lib => &[],
+      Target::Wasm4 => WASM4_SPECIAL.get_or_init(|| {
+         Box::new([
+            SpecialProcedure {
+               name: interner.intern("start"),
+               required: false,
+               input_types: vec![],
+               return_type: ExpressionType::Unit,
+            },
+            SpecialProcedure {
+               name: interner.intern("update"),
+               required: true,
+               input_types: vec![],
+               return_type: ExpressionType::Unit,
+            },
+         ])
+      }),
+      Target::Wasi => WASI_SPECIAL.get_or_init(|| {
+         Box::new([SpecialProcedure {
+            name: interner.intern("main"),
             required: true,
             input_types: vec![],
             return_type: ExpressionType::Unit,
-         },
-      ],
-      Target::Wasi => vec![SpecialProcedure {
-         name: interner.intern("main"),
-         required: true,
-         input_types: vec![],
-         return_type: ExpressionType::Unit,
-      }],
-      Target::Microw8 => vec![
-         SpecialProcedure {
-            name: interner.intern("upd"),
-            required: true,
-            input_types: vec![],
-            return_type: ExpressionType::Unit,
-         },
-         SpecialProcedure {
-            name: interner.intern("snd"),
-            required: false,
-            input_types: vec![I32_TYPE],
-            return_type: F32_TYPE,
-         },
-      ],
+         }])
+      }),
+      Target::Microw8 => MICROW8_SPECIAL.get_or_init(|| {
+         Box::new([
+            SpecialProcedure {
+               name: interner.intern("upd"),
+               required: true,
+               input_types: vec![],
+               return_type: ExpressionType::Unit,
+            },
+            SpecialProcedure {
+               name: interner.intern("snd"),
+               required: false,
+               input_types: vec![I32_TYPE],
+               return_type: F32_TYPE,
+            },
+         ])
+      }),
    }
 }
 
