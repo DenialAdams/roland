@@ -2,10 +2,11 @@ use std::collections::HashMap;
 
 use indexmap::IndexMap;
 
-use crate::{parse::{
-   statement_always_or_never_returns, AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionPool, ProcImplSource, Program,
-   Statement, StatementId, VariableId,
-}, type_data::ExpressionType};
+use crate::parse::{
+   statement_always_or_never_returns, AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionPool,
+   ProcImplSource, Program, Statement, StatementId, VariableId,
+};
+use crate::type_data::ExpressionType;
 
 enum CfKind {
    Loop,
@@ -44,7 +45,13 @@ pub fn process_defer_statements(program: &mut Program) {
    }
 }
 
-fn insert_deferred_stmt(point: usize, deferred_stmts: &[StatementId], block: &mut BlockNode, ast: &mut AstPool, vm: &mut VarMigrator) {
+fn insert_deferred_stmt(
+   point: usize,
+   deferred_stmts: &[StatementId],
+   block: &mut BlockNode,
+   ast: &mut AstPool,
+   vm: &mut VarMigrator,
+) {
    for (i, stmt) in deferred_stmts.iter().rev().copied().enumerate() {
       // Clearing the mapping here is correct, as long as we are going from the innermost defer out
       vm.mapping.clear();
@@ -94,7 +101,13 @@ fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, ast: &mut As
    });
 }
 
-fn defer_statement(statement: StatementId, defer_ctx: &mut DeferContext, ast: &mut AstPool, current_statement: usize, vm: &mut VarMigrator) {
+fn defer_statement(
+   statement: StatementId,
+   defer_ctx: &mut DeferContext,
+   ast: &mut AstPool,
+   current_statement: usize,
+   vm: &mut VarMigrator,
+) {
    let mut the_statement = std::mem::replace(&mut ast.statements[statement].statement, Statement::Break);
    match &mut the_statement {
       Statement::Return(_) => {
@@ -230,7 +243,7 @@ fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool, vm: &mu
       }
       Expression::Variable(x) => {
          *x = vm.replacement_var(*x);
-      },
+      }
       Expression::BinaryOperator { lhs, rhs, .. } => {
          *lhs = deep_clone_expr(*lhs, expressions, vm);
          *rhs = deep_clone_expr(*rhs, expressions, vm);
