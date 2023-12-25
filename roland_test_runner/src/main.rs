@@ -117,7 +117,10 @@ fn main() -> Result<(), &'static str> {
             color_reset(&mut out_handle).unwrap();
          }
          Err(reason) => {
-            failures.lock().unwrap().push((entry.file_name().unwrap().to_str().unwrap(), reason));
+            failures
+               .lock()
+               .unwrap()
+               .push((entry.file_name().unwrap().to_str().unwrap(), reason));
          }
       }
    });
