@@ -142,7 +142,7 @@ proc int_to_string(value: i64) -> String {
          pointer: buf,
       };
    } else {
-      return uint_to_string(-value as u64);
+      return uint_to_string(value as u64);
    }
 }
 

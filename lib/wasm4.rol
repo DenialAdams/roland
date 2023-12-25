@@ -130,6 +130,6 @@ proc int_to_string(value: i32, buf: &[u8; 11]) -> String {
          pointer: &buf~[0],
       };
    } else {
-      return uint_to_string(-value as u32, buf transmute &[u8; 10]);
+      return uint_to_string(value as u32, buf transmute &[u8; 10]);
    }
 }
