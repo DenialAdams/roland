@@ -61,11 +61,7 @@ fn insert_deferred_stmt(
       return;
    }
 
-   if let Some(Statement::Return(e)) = block
-      .statements
-      .get(point)
-      .map(|i| &ast.statements[*i].statement)
-   {
+   if let Some(Statement::Return(e)) = block.statements.get(point).map(|i| &ast.statements[*i].statement) {
       let e = *e;
       if expression_could_have_side_effects(e, &ast.expressions) {
          // We want the deferred statement to semantically execute AFTER the returned expression

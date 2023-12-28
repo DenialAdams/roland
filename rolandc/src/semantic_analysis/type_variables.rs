@@ -79,18 +79,16 @@ impl TypeVariableManager {
 
    pub fn union(&mut self, x: TypeVariable, y: TypeVariable) {
       let new_constraint = union_constraints(self.get_data(x).constraint, self.get_data(y).constraint);
-      let known_type = {
-         match (
-            self.get_data_mut(x).known_type.take(),
-            self.get_data_mut(y).known_type.take(),
-         ) {
-            (None, None) => None,
-            (None, r @ Some(_)) => r,
-            (l @ Some(_), None) => l,
-            (l @ Some(_), r @ Some(_)) => {
-               debug_assert!(l == r);
-               l
-            }
+      let known_type = match (
+         self.get_data_mut(x).known_type.take(),
+         self.get_data_mut(y).known_type.take(),
+      ) {
+         (None, None) => None,
+         (None, r @ Some(_)) => r,
+         (l @ Some(_), None) => l,
+         (l @ Some(_), r @ Some(_)) => {
+            debug_assert!(l == r);
+            l
          }
       };
       self.disjoint_set.union(x.0, y.0);
