@@ -1,0 +1,48 @@
+proc main() {
+    let i64_m = I64_MAX;
+    let i32_m = I32_MAX;
+    let i16_m = I16_MAX;
+    let i8_m = I8_MAX;
+    let u64_m = U64_MAX;
+    let u32_m = U32_MAX;
+    let u16_m = U16_MAX;
+    let u8_m = U8_MAX;
+    {
+        println("--- i64 ---");
+        println(int_to_string(i64_m << 64));
+        println("--- i32 ---");
+        println(int_to_string((i32_m << 32) as i64));
+        println("--- i16 ---");
+        println(int_to_string((i16_m << 16) as i64));
+        println("--- i8 ---");
+        println(int_to_string((i8_m << 8) as i64));
+    }
+    {
+        println("--- u64 ---");
+        println(uint_to_string(u64_m << 64));
+        println("--- u32 ---");
+        println(uint_to_string((u32_m << 32) as u64));
+        println("--- u16 ---");
+        println(uint_to_string((u16_m << 16) as u64));
+        println("--- u8 ---");
+        println(uint_to_string((u8_m << 8) as u64));
+    }
+}
+__END__
+run:
+--- i64 ---
+9223372036854775807
+--- i32 ---
+2147483647
+--- i16 ---
+32767
+--- i8 ---
+127
+--- u64 ---
+18446744073709551615
+--- u32 ---
+4294967295
+--- u16 ---
+65535
+--- u8 ---
+255
