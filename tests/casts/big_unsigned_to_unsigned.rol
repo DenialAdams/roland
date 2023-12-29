@@ -1,0 +1,35 @@
+proc main() {
+   {
+      let m = U64_MAX;
+      let b = m as u32;
+      let c = m as u16;
+      let d = m as u8;
+      println(int_to_string(b as i64));
+      println(int_to_string(c as i64));
+      println(int_to_string(d as i64));
+   }
+   println("---");
+   {
+      let m = U32_MAX;
+      let c = m as u16;
+      let d = m as u8;
+      println(int_to_string(c as i64));
+      println(int_to_string(d as i64));
+   }
+   println("---");
+   {
+      let m = U16_MAX;
+      let d = m as u8;
+      println(int_to_string(d as i64));
+   }
+}
+__END__
+run:
+4294967295
+65535
+255
+---
+65535
+255
+---
+255
