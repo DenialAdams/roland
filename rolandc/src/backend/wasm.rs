@@ -1693,9 +1693,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                         generation_context.active_fcn.instruction(&Instruction::I32Extend8S);
                      } else {
                         generation_context
-                        .active_fcn
-                        .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_0000_0000_1111_1111));
-                     generation_context.active_fcn.instruction(&Instruction::I32And);
+                           .active_fcn
+                           .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_0000_0000_1111_1111));
+                        generation_context.active_fcn.instruction(&Instruction::I32And);
                      }
                   }
                   (IntWidth::Two, IntWidth::Two) if !l.signed && r.signed => {
