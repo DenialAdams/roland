@@ -1373,6 +1373,26 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             _ => unreachable!(),
          };
 
+         if matches!(operator, BinOp::BitwiseLeftShift) {
+            let op_type = generation_context.ast.expressions[*rhs].exp_type.as_ref().unwrap();
+            match op_type {
+               ExpressionType::Int(x) => {
+                  match x.width {
+                     IntWidth::Two => {
+                        generation_context.active_fcn.instruction(&Instruction::I32Const(0b1111));
+                        generation_context.active_fcn.instruction(&Instruction::I32And);
+                     }
+                     IntWidth::One => {
+                        generation_context.active_fcn.instruction(&Instruction::I32Const(0b111));
+                        generation_context.active_fcn.instruction(&Instruction::I32And);
+                     }
+                     _ => (),
+                  }
+               }
+               _ => (),
+            }
+         }
+
          match operator {
             BinOp::Add => {
                match wasm_type {
