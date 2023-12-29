@@ -1,0 +1,80 @@
+proc main() {
+    let i64_m = I64_MAX;
+    let i32_m = I32_MAX;
+    let i16_m = I16_MAX;
+    let i8_m = I8_MAX;
+    let u64_m = U64_MAX;
+    let u32_m = U32_MAX;
+    let u16_m = U16_MAX;
+    let u8_m = U8_MAX;
+    {
+        println("--- i64 ---");
+        println(int_to_string(i64_m + i64_m));
+        println(int_to_string(i64_m * i64_m));
+        println(int_to_string(I64_MIN - i64_m));
+        println("--- i32 ---");
+        println(int_to_string((i32_m + i32_m) as i64));
+        println(int_to_string((i32_m * i32_m) as i64));
+        println(int_to_string((I32_MIN - i32_m) as i64));
+        println("--- i16 ---");
+        println(int_to_string((i16_m + i16_m) as i64));
+        println(int_to_string((i16_m * i16_m) as i64));
+        println(int_to_string((I16_MIN - i16_m) as i64));
+        println("--- i8 ---");
+        println(int_to_string((i8_m + i8_m) as i64));
+        println(int_to_string((i8_m * i8_m) as i64));
+        println(int_to_string((I8_MIN - i8_m) as i64));
+    }
+    {
+        println("--- u64 ---");
+        println(uint_to_string(u64_m + u64_m));
+        println(uint_to_string(u64_m * u64_m));
+        println(uint_to_string(U64_MIN - u64_m));
+        println("--- u32 ---");
+        println(uint_to_string((u32_m + u32_m) as u64));
+        println(uint_to_string((u32_m * u32_m) as u64));
+        println(uint_to_string((U32_MIN - u32_m) as u64));
+        println("--- u16 ---");
+        println(uint_to_string((u16_m + u16_m) as u64));
+        println(uint_to_string((u16_m * u16_m) as u64));
+        println(uint_to_string((U16_MIN - u16_m) as u64));
+        println("--- u8 ---");
+        println(uint_to_string((u8_m + u8_m) as u64));
+        println(uint_to_string((u8_m * u8_m) as u64));
+        println(uint_to_string((U8_MIN - u8_m) as u64));
+    }
+}
+__END__
+run:
+--- i64 ---
+-2
+1
+1
+--- i32 ---
+-2
+1
+1
+--- i16 ---
+-2
+1
+1
+--- i8 ---
+-2
+1
+1
+--- u64 ---
+18446744073709551614
+1
+1
+--- u32 ---
+4294967294
+1
+1
+--- u16 ---
+65534
+1
+1
+--- u8 ---
+254
+1
+1
