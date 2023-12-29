@@ -1,9 +1,11 @@
 proc main() {
    {
       let m = I64_MAX;
+      let a = m as i64;
       let b = m as i32;
       let c = m as i16;
       let d = m as i8;
+      println(int_to_string(a));
       println(int_to_string(b as i64));
       println(int_to_string(c as i64));
       println(int_to_string(d as i64));
@@ -11,25 +13,58 @@ proc main() {
    println("---");
    {
       let m = I32_MAX;
+      let a = m as i64;
+      let b = m as i32;
       let c = m as i16;
       let d = m as i8;
+      println(int_to_string(a));
+      println(int_to_string(b as i64));
       println(int_to_string(c as i64));
       println(int_to_string(d as i64));
    }
    println("---");
    {
       let m = I16_MAX;
+      let a = m as i64;
+      let b = m as i32;
+      let c = m as i16;
       let d = m as i8;
+      println(int_to_string(a));
+      println(int_to_string(b as i64));
+      println(int_to_string(c as i64));
+      println(int_to_string(d as i64));
+   }
+   println("---");
+   {
+      let m = I8_MAX;
+      let a = m as i64;
+      let b = m as i32;
+      let c = m as i16;
+      let d = m as i8;
+      println(int_to_string(a));
+      println(int_to_string(b as i64));
+      println(int_to_string(c as i64));
       println(int_to_string(d as i64));
    }
 }
 __END__
 run:
+9223372036854775807
 -1
 -1
 -1
 ---
+2147483647
+2147483647
 -1
 -1
 ---
+32767
+32767
+32767
 -1
+---
+127
+127
+127
+127

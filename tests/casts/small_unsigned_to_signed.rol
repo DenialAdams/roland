@@ -1,6 +1,6 @@
 proc main() {
    {
-      let m = U64_MAX;
+      let m = U64_MIN;
       let a = m as i64;
       let b = m as i32;
       let c = m as i16;
@@ -12,7 +12,7 @@ proc main() {
    }
    println("---");
    {
-      let m = U32_MAX;
+      let m = U32_MIN;
       let a = m as i64;
       let b = m as i32;
       let c = m as i16;
@@ -24,7 +24,7 @@ proc main() {
    }
    println("---");
    {
-      let m = U16_MAX;
+      let m = U16_MIN;
       let a = m as i64;
       let b = m as i32;
       let c = m as i16;
@@ -36,7 +36,7 @@ proc main() {
    }
    println("---");
    {
-      let m = U8_MAX;
+      let m = U8_MIN;
       let a = m as i64;
       let b = m as i32;
       let c = m as i16;
@@ -49,22 +49,22 @@ proc main() {
 }
 __END__
 run:
--1
--1
--1
--1
+0
+0
+0
+0
 ---
-4294967295
--1
--1
--1
+0
+0
+0
+0
 ---
-65535
-65535
--1
--1
+0
+0
+0
+0
 ---
-255
-255
-255
--1
+0
+0
+0
+0
