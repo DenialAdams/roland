@@ -1698,22 +1698,41 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                         generation_context.active_fcn.instruction(&Instruction::I32And);
                      }
                   }
-                  (IntWidth::Two, IntWidth::Two) if !l.signed && r.signed => {
-                     generation_context.active_fcn.instruction(&Instruction::I32Extend16S);
+                  (IntWidth::Two, IntWidth::Two) => {
+                     if !l.signed && r.signed {
+                        generation_context.active_fcn.instruction(&Instruction::I32Extend16S);
+                     } else if l.signed && !r.signed {
+                        generation_context
+                           .active_fcn
+                           .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_1111_1111_1111_1111));
+                        generation_context.active_fcn.instruction(&Instruction::I32And);
+                     }
                   }
-                  (IntWidth::One, IntWidth::One) if !l.signed && r.signed => {
-                     generation_context.active_fcn.instruction(&Instruction::I32Extend8S);
+                  (IntWidth::One, IntWidth::One) => {
+                     if !l.signed && r.signed {
+                        generation_context.active_fcn.instruction(&Instruction::I32Extend8S);
+                     } else if l.signed && !r.signed {
+                        generation_context
+                           .active_fcn
+                           .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_0000_0000_1111_1111));
+                        generation_context.active_fcn.instruction(&Instruction::I32And);
+                     }
                   }
                   _ => (),
                }
             }
             (ExpressionType::Int(l), ExpressionType::Int(r)) if l.width.as_num_bytes() < r.width.as_num_bytes() => {
-               if r.width == IntWidth::Eight && l.width.as_num_bytes() <= 4 {
+               if l.width.as_num_bytes() <= 4 && r.width == IntWidth::Eight {
                   if l.signed {
                      generation_context.active_fcn.instruction(&Instruction::I64ExtendI32S);
                   } else {
                      generation_context.active_fcn.instruction(&Instruction::I64ExtendI32U);
                   }
+               } else if l.width == IntWidth::One && r.width == IntWidth::Two && l.signed && !r.signed {
+                  generation_context
+                     .active_fcn
+                     .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_1111_1111_1111_1111));
+                  generation_context.active_fcn.instruction(&Instruction::I32And);
                }
             }
             (&F64_TYPE, &F32_TYPE) => {
