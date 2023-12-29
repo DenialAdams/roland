@@ -1,0 +1,35 @@
+proc main() {
+   {
+      let m = I64_MAX;
+      let b = m as i32;
+      let c = m as i16;
+      let d = m as i8;
+      println(int_to_string(b as i64));
+      println(int_to_string(c as i64));
+      println(int_to_string(d as i64));
+   }
+   println("---");
+   {
+      let m = I32_MAX;
+      let c = m as i16;
+      let d = m as i8;
+      println(int_to_string(c as i64));
+      println(int_to_string(d as i64));
+   }
+   println("---");
+   {
+      let m = I16_MAX;
+      let d = m as i8;
+      println(int_to_string(d as i64));
+   }
+}
+__END__
+run:
+-1
+-1
+-1
+---
+-1
+-1
+---
+-1

@@ -1658,29 +1658,51 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                   }
                   (IntWidth::Eight, IntWidth::Two) => {
                      generation_context.active_fcn.instruction(&Instruction::I32WrapI64);
-                     generation_context
-                        .active_fcn
-                        .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_1111_1111_1111_1111));
-                     generation_context.active_fcn.instruction(&Instruction::I32And);
+                     if r.signed {
+                        generation_context.active_fcn.instruction(&Instruction::I32Extend16S);
+                     } else {
+                        generation_context
+                           .active_fcn
+                           .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_1111_1111_1111_1111));
+                        generation_context.active_fcn.instruction(&Instruction::I32And);
+                     }
                   }
                   (IntWidth::Eight, IntWidth::One) => {
                      generation_context.active_fcn.instruction(&Instruction::I32WrapI64);
-                     generation_context
-                        .active_fcn
-                        .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_0000_0000_1111_1111));
-                     generation_context.active_fcn.instruction(&Instruction::I32And);
+                     if r.signed {
+                        generation_context.active_fcn.instruction(&Instruction::I32Extend8S);
+                     } else {
+                        generation_context
+                           .active_fcn
+                           .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_0000_0000_1111_1111));
+                        generation_context.active_fcn.instruction(&Instruction::I32And);
+                     }
                   }
                   (IntWidth::Four, IntWidth::Two) => {
-                     generation_context
-                        .active_fcn
-                        .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_1111_1111_1111_1111));
-                     generation_context.active_fcn.instruction(&Instruction::I32And);
+                     if r.signed {
+                        generation_context.active_fcn.instruction(&Instruction::I32Extend16S);
+                     } else {
+                        generation_context
+                           .active_fcn
+                           .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_1111_1111_1111_1111));
+                        generation_context.active_fcn.instruction(&Instruction::I32And);
+                     }
                   }
                   (IntWidth::Four | IntWidth::Two, IntWidth::One) => {
-                     generation_context
+                     if r.signed {
+                        generation_context.active_fcn.instruction(&Instruction::I32Extend8S);
+                     } else {
+                        generation_context
                         .active_fcn
                         .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_0000_0000_1111_1111));
                      generation_context.active_fcn.instruction(&Instruction::I32And);
+                     }
+                  }
+                  (IntWidth::Two, IntWidth::Two) if !l.signed && r.signed => {
+                     generation_context.active_fcn.instruction(&Instruction::I32Extend16S);
+                  }
+                  (IntWidth::One, IntWidth::One) if !l.signed && r.signed => {
+                     generation_context.active_fcn.instruction(&Instruction::I32Extend8S);
                   }
                   _ => (),
                }
