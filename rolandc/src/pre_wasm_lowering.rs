@@ -1,7 +1,7 @@
 use slotmap::SlotMap;
 
 use crate::interner::Interner;
-use crate::parse::{ArgumentNode, EnumId, Expression, ExpressionId, ExpressionNode, Program, UnOp};
+use crate::parse::{ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, Program, UnOp, ProcedureId};
 use crate::semantic_analysis::EnumInfo;
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I8_TYPE, USIZE_TYPE};
@@ -150,13 +150,58 @@ fn replace_negate(
    })
 }
 
-pub fn replace_nonnative_casts(program: &mut Program, interner: &Interner) {
+fn replace_div(
+   operand: ExpressionId,
+   location: SourceInfo,
+   program: &Program,
+   interner: &Interner,
+) -> Option<ExpressionNode> {
+   let operand_type = program.ast.expressions[operand].exp_type.as_ref().unwrap();
+   let proc_name = match operand_type {
+      &I8_TYPE => "div_i8",
+      &I16_TYPE => "div_i16",
+      _ => return None,
+   };
+   let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
+   Some(ExpressionNode {
+      expression: Expression::BoundFcnLiteral(proc_id, Box::new([])),
+      exp_type: Some(ExpressionType::ProcedureItem(proc_id, Box::new([]))),
+      location,
+   })
+}
+
+fn replace_mod(
+   operand: ExpressionId,
+   location: SourceInfo,
+   program: &Program,
+   interner: &Interner,
+) -> Option<ExpressionNode> {
+   let operand_type = program.ast.expressions[operand].exp_type.as_ref().unwrap();
+   let proc_name = match operand_type {
+      &I8_TYPE => "mod_i8",
+      &I16_TYPE => "mod_i16",
+      _ => return None,
+   };
+   let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
+   Some(ExpressionNode {
+      expression: Expression::BoundFcnLiteral(proc_id, Box::new([])),
+      exp_type: Some(ExpressionType::ProcedureItem(proc_id, Box::new([]))),
+      location,
+   })
+}
+
+pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, interner: &Interner) {
    let mut replacements = vec![];
    for (expression, v) in program.ast.expressions.iter() {
       let opt_new_expr = match v.expression {
          Expression::Cast { expr: src_expr, .. } => replace_cast_expr(src_expr, v, program, interner),
          Expression::UnaryOperator(un_op, inner_expr) => match un_op {
             UnOp::Negate => replace_negate(inner_expr, v.location, program, interner),
+            _ => None,
+         },
+         Expression::BinaryOperator { operator, lhs, .. } => match operator {
+            BinOp::Divide => replace_div(lhs, v.location, program, interner),
+            BinOp::Remainder => replace_mod(lhs, v.location, program, interner),
             _ => None,
          },
          _ => None,
@@ -167,14 +212,19 @@ pub fn replace_nonnative_casts(program: &mut Program, interner: &Interner) {
    }
    for replacement in replacements {
       let pid = program.ast.expressions.insert(replacement.1);
-      let arg = match &program.ast.expressions[replacement.0].expression {
-         Expression::Cast { expr: castee, .. } => castee,
-         Expression::UnaryOperator(_, operand) => operand,
+      let args = match &program.ast.expressions[replacement.0].expression {
+         Expression::Cast { expr: castee, .. } => [Some(*castee), None],
+         Expression::UnaryOperator(_, operand) => [Some(*operand), None],
+         Expression::BinaryOperator { lhs, rhs, .. } => [Some(*lhs), Some(*rhs)],
          _ => unreachable!(),
       };
       program.ast.expressions[replacement.0].expression = Expression::ProcedureCall {
          proc_expr: pid,
-         args: Box::new([ArgumentNode { name: None, expr: *arg }]),
+         args: args
+            .iter()
+            .flatten()
+            .map(|x| ArgumentNode { name: None, expr: *x })
+            .collect(),
       };
    }
 }
