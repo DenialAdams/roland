@@ -33,6 +33,7 @@ mod lex;
 mod logical_op_lowering;
 mod loop_lowering;
 mod monomorphization;
+mod named_argument_lowering;
 pub mod parse;
 mod pre_wasm_lowering;
 mod semantic_analysis;
@@ -187,6 +188,10 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    logical_op_lowering::lower_logical_ops(&mut ctx.program);
 
    expression_hoisting::expression_hoisting(&mut ctx.program);
+
+   // must run after expression hoisting, so that re-ordering named arguments does not
+   // affect side-effect order
+   named_argument_lowering::lower_named_args(&mut ctx.program);
 
    monomorphization::monomorphize(&mut ctx.program, &mut ctx.err_manager);
    if !ctx.err_manager.errors.is_empty() {

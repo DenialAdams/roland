@@ -1906,26 +1906,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             do_emit_and_load_lval(*proc_expr, generation_context);
          }
 
-         // Output the non-named parameters
-         let mut first_named_arg = None;
-         for (i, arg) in args.iter().enumerate() {
-            if arg.name.is_some() {
-               first_named_arg = Some(i);
-               break;
-            }
-
+         for arg in args.iter() {
             do_emit_and_load_lval(arg.expr, generation_context);
-         }
-
-         if let Some(i) = first_named_arg {
-            let mut named_args = vec![];
-            named_args.extend_from_slice(&args[i..]);
-
-            // Output each named parameter in canonical order
-            named_args.sort_unstable_by_key(|x| x.name);
-            for named_arg in named_args {
-               do_emit_and_load_lval(named_arg.expr, generation_context);
-            }
          }
 
          match generation_context.ast.expressions[*proc_expr]
