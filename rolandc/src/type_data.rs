@@ -221,11 +221,11 @@ impl ExpressionType {
    }
 
    #[must_use]
-   pub fn is_error(&self) -> bool {
+   pub fn is_or_contains_or_points_to_error(&self) -> bool {
       match self {
          ExpressionType::CompileError => true,
-         ExpressionType::Array(exp, _) => exp.is_error(),
-         ExpressionType::Pointer(exp) => exp.is_error(),
+         ExpressionType::Array(exp, _) => exp.is_or_contains_or_points_to_error(),
+         ExpressionType::Pointer(exp) => exp.is_or_contains_or_points_to_error(),
          _ => false,
       }
    }

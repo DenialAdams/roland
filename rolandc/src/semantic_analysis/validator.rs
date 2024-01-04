@@ -542,7 +542,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
          let lhs_type = len.exp_type.as_ref().unwrap();
          let rhs_type = en.exp_type.as_ref().unwrap();
 
-         if lhs_type.is_error() || rhs_type.is_error() {
+         if lhs_type.is_or_contains_or_points_to_error() || rhs_type.is_or_contains_or_points_to_error() {
             // avoid cascading errors
          } else if lhs_type != rhs_type && !rhs_type.is_never() {
             rolandc_error_w_details!(
@@ -638,8 +638,8 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             start_expr.exp_type.as_ref().unwrap(),
             end_expr.exp_type.as_ref().unwrap(),
          ) {
-            (lhs, _) if lhs.is_error() => ExpressionType::CompileError,
-            (_, rhs) if rhs.is_error() => ExpressionType::CompileError,
+            (lhs, _) if lhs.is_or_contains_or_points_to_error() => ExpressionType::CompileError,
+            (_, rhs) if rhs.is_or_contains_or_points_to_error() => ExpressionType::CompileError,
             (ExpressionType::Int(x), ExpressionType::Int(y)) if x == y => ExpressionType::Int(*x),
             (ExpressionType::Unknown(x), ExpressionType::Unknown(y)) if x == y => ExpressionType::Unknown(*x),
             _ => {
@@ -683,7 +683,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
 
          let cond_node = &validation_context.ast.expressions[*cond];
          let cond_type = cond_node.exp_type.as_ref().unwrap();
-         if cond_type != &ExpressionType::Bool && !cond_type.is_error() {
+         if cond_type != &ExpressionType::Bool && !cond_type.is_or_contains_or_points_to_error() {
             rolandc_error!(
                err_manager,
                cond_node.location,
@@ -715,7 +715,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
 
          let en = &validation_context.ast.expressions[*en];
          let if_exp_type = en.exp_type.as_ref().unwrap();
-         if if_exp_type != &ExpressionType::Bool && !if_exp_type.is_error() {
+         if if_exp_type != &ExpressionType::Bool && !if_exp_type.is_or_contains_or_points_to_error() {
             rolandc_error!(
                err_manager,
                en.location,
@@ -738,7 +738,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
 
          let en = &validation_context.ast.expressions[*en];
 
-         if !en.exp_type.as_ref().unwrap().is_error()
+         if !en.exp_type.as_ref().unwrap().is_or_contains_or_points_to_error()
             && !en.exp_type.as_ref().unwrap().is_never()
             && *en.exp_type.as_ref().unwrap() != cur_procedure_info.ret_type
          {
@@ -1021,7 +1021,7 @@ fn get_type(
       } => {
          type_expression(err_manager, *expr_id, validation_context);
 
-         if target_type.is_error() {
+         if target_type.is_or_contains_or_points_to_error() {
             // this can occur when the target type is unresolved
             // not only does this hide extraneous error messages from the user, this also prevents panicking when
             // we check the size of an error type
@@ -1067,7 +1067,7 @@ fn get_type(
          let e = &validation_context.ast.expressions[*expr_id];
          let e_type = e.exp_type.as_ref().unwrap();
 
-         if e_type.is_error() {
+         if e_type.is_or_contains_or_points_to_error() {
             // Avoid cascading errors
             return ExpressionType::CompileError;
          }
@@ -1251,7 +1251,7 @@ fn get_type(
          let lhs_type = lhs_expr.exp_type.as_ref().unwrap();
          let rhs_type = rhs_expr.exp_type.as_ref().unwrap();
 
-         if lhs_type.is_error() || rhs_type.is_error() {
+         if lhs_type.is_or_contains_or_points_to_error() || rhs_type.is_or_contains_or_points_to_error() {
             // Avoid cascading errors
             ExpressionType::CompileError
          } else if !any_match(correct_arg_types, lhs_type, validation_context) {
@@ -1409,7 +1409,7 @@ fn get_type(
             }
          };
 
-         if e.exp_type.as_ref().unwrap().is_error() {
+         if e.exp_type.as_ref().unwrap().is_or_contains_or_points_to_error() {
             // Avoid cascading errors
             ExpressionType::CompileError
          } else if !any_match(correct_type, e.exp_type.as_ref().unwrap(), validation_context) {
@@ -1537,7 +1537,11 @@ fn get_type(
                      let field_expr = &validation_context.ast.expressions[field_val];
 
                      if field_expr.exp_type.as_ref().unwrap() != defined_type
-                        && !field_expr.exp_type.as_ref().unwrap().is_error()
+                        && !field_expr
+                           .exp_type
+                           .as_ref()
+                           .unwrap()
+                           .is_or_contains_or_points_to_error()
                      {
                         let field_1_type_str = field_expr.exp_type.as_ref().unwrap().as_roland_type_info(
                            validation_context.interner,
@@ -1752,8 +1756,16 @@ fn get_type(
             let last_elem_expr = &validation_context.ast.expressions[elems[i - 1]];
             let this_elem_expr = &validation_context.ast.expressions[elems[i]];
 
-            if last_elem_expr.exp_type.as_ref().unwrap().is_error()
-               || this_elem_expr.exp_type.as_ref().unwrap().is_error()
+            if last_elem_expr
+               .exp_type
+               .as_ref()
+               .unwrap()
+               .is_or_contains_or_points_to_error()
+               || this_elem_expr
+                  .exp_type
+                  .as_ref()
+                  .unwrap()
+                  .is_or_contains_or_points_to_error()
             {
                // avoid cascading errors
             } else if last_elem_expr.exp_type.as_ref().unwrap() != this_elem_expr.exp_type.as_ref().unwrap() {
@@ -1826,7 +1838,12 @@ fn get_type(
          let array_expression = &validation_context.ast.expressions[*array];
          let index_expression = &validation_context.ast.expressions[*index];
 
-         if index_expression.exp_type.as_ref().unwrap().is_error() {
+         if index_expression
+            .exp_type
+            .as_ref()
+            .unwrap()
+            .is_or_contains_or_points_to_error()
+         {
             // avoid cascading errors
          } else if index_expression.exp_type.as_ref().unwrap() != &USIZE_TYPE {
             rolandc_error!(
@@ -1843,7 +1860,7 @@ fn get_type(
          }
 
          match &array_expression.exp_type {
-            Some(x) if x.is_error() => ExpressionType::CompileError,
+            Some(x) if x.is_or_contains_or_points_to_error() => ExpressionType::CompileError,
             Some(ExpressionType::Array(b, _)) => b.deref().clone(),
             Some(x @ ExpressionType::Pointer(b)) if matches!(**b, ExpressionType::Array(_, _)) => {
                rolandc_error!(
@@ -1944,7 +1961,7 @@ fn get_type(
 
          let en = &validation_context.ast.expressions[*a];
          let if_exp_type = en.exp_type.as_ref().unwrap();
-         if if_exp_type != &ExpressionType::Bool && !if_exp_type.is_error() {
+         if if_exp_type != &ExpressionType::Bool && !if_exp_type.is_or_contains_or_points_to_error() {
             rolandc_error!(
                err_manager,
                en.location,
@@ -2064,7 +2081,7 @@ fn check_procedure_call(
          let actual_expr = &validation_context.ast.expressions[actual.expr];
          let actual_type = actual_expr.exp_type.as_ref().unwrap();
 
-         if *actual_type != *expected && !actual_type.is_error() {
+         if *actual_type != *expected && !actual_type.is_or_contains_or_points_to_error() {
             let actual_type_str = actual_type.as_roland_type_info(
                validation_context.interner,
                validation_context.user_defined_types,
@@ -2108,7 +2125,7 @@ fn check_procedure_call(
          let arg_expr = &validation_context.ast.expressions[arg.expr];
 
          let actual_type = arg_expr.exp_type.as_ref().unwrap();
-         if *actual_type != *expected && !actual_type.is_error() {
+         if *actual_type != *expected && !actual_type.is_or_contains_or_points_to_error() {
             let actual_type_str = actual_type.as_roland_type_info(
                validation_context.interner,
                validation_context.user_defined_types,
@@ -2234,7 +2251,7 @@ fn check_type_declared_vs_actual(
 
    let actual_type = actual.exp_type.as_ref().unwrap();
    let declared_type = &declared.e_type;
-   if declared_type != actual_type && !actual_type.is_error() && !actual_type.is_never() {
+   if declared_type != actual_type && !actual_type.is_or_contains_or_points_to_error() && !actual_type.is_never() {
       let actual_type_str = actual_type.as_roland_type_info(interner, udt, procedure_info, type_variable_info);
       let declared_type_str = declared
          .e_type
