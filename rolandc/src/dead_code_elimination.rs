@@ -44,22 +44,18 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
    while let Some(reachable_item) = ctx.worklist.pop() {
       match reachable_item {
          WorkItem::Procedure(reachable_proc) => {
-            if reachable_procedures.contains(&reachable_proc) {
+            if !reachable_procedures.insert(reachable_proc) {
                continue;
             }
-
-            reachable_procedures.insert(reachable_proc);
 
             if let ProcImplSource::Body(block) = &program.procedures.get(reachable_proc).unwrap().proc_impl {
                mark_reachable_block(block, &program.ast, &mut ctx);
             }
          }
          WorkItem::Static(reachable_global) => {
-            if reachable_globals.contains(&reachable_global) {
+            if !reachable_globals.insert(reachable_global) {
                continue;
             }
-
-            reachable_globals.insert(reachable_global);
 
             if let Some(val_expr) = program.global_info[&reachable_global].initializer {
                mark_reachable_expr(val_expr, &program.ast, &mut ctx);
