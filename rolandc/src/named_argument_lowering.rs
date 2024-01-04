@@ -13,4 +13,6 @@ pub fn lower_named_args(p: &mut Program) {
          named_arg.name = None;
       }
    }
+   // We only lower arguments - parameters are lowered very early on, even before type checking
+   // (There's probably no good reason for that, and maybe we colocate them eventually)
 }
