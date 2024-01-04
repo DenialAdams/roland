@@ -315,12 +315,12 @@ fn vv_expr(
             && !top
          {
             vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
-         } else if !top {
-            // assumption: procedure call always has side effects
-            // If we eventually decide to come up with a list of pure procedure calls, this needs to be updated
-            // @PureCalls
-            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::IfOtherHoisting);
          }
+
+         // assumption: procedure call always has side effects
+         // If we eventually decide to come up with a list of pure procedure calls, this needs to be updated
+         // @PureCalls
+         vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::IfOtherHoisting);
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
          vv_expr(*lhs, vv_context, expressions, current_statement, false);
