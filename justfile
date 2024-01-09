@@ -31,7 +31,7 @@ rolandc_dhat *args:
    cargo run --profile dhat --bin rolandc_cli --features dhat-heap -- {{args}}
 [no-cd]
 rolandc_flame *args:
-   cargo flamegraph --profile dhat --freq 50700 --bin rolandc_cli -- {{args}}
+   cargo flamegraph --profile dhat --freq 100000 --bin rolandc_cli -- {{args}}
 [no-cd]
 rolandc_samply *args:
    cargo build --profile dhat
