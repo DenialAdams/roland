@@ -159,56 +159,89 @@ pub fn resolve_type(
    v_type: &mut ExpressionType,
    type_name_table: &HashMap<StrId, UserDefinedTypeId>,
    type_params: Option<&IndexMap<StrId, IndexSet<StrId>>>,
-) -> Result<(), ()> {
+   err_manager: &mut ErrorManager,
+   interner: &Interner,
+   location_for_error: SourceInfo,
+) -> bool {
    match v_type {
-      ExpressionType::Pointer(vt) => resolve_type(vt, type_name_table, type_params),
-      ExpressionType::Never => Ok(()),
-      ExpressionType::Unknown(_) => Ok(()),
-      ExpressionType::Int(_) => Ok(()),
-      ExpressionType::Float(_) => Ok(()),
-      ExpressionType::Bool => Ok(()),
-      ExpressionType::Unit => Ok(()),
-      ExpressionType::Struct(_) => Ok(()),
-      ExpressionType::Union(_) => Ok(()),
-      ExpressionType::Array(exp, _) => resolve_type(exp, type_name_table, type_params),
-      ExpressionType::CompileError => Ok(()),
-      ExpressionType::Enum(_) => Ok(()),
+      ExpressionType::Pointer(vt) => resolve_type(
+         vt,
+         type_name_table,
+         type_params,
+         err_manager,
+         interner,
+         location_for_error,
+      ),
+      ExpressionType::Never => true,
+      ExpressionType::Unknown(_) => true,
+      ExpressionType::Int(_) => true,
+      ExpressionType::Float(_) => true,
+      ExpressionType::Bool => true,
+      ExpressionType::Unit => true,
+      ExpressionType::Struct(_) => true,
+      ExpressionType::Union(_) => true,
+      ExpressionType::Array(exp, _) => resolve_type(
+         exp,
+         type_name_table,
+         type_params,
+         err_manager,
+         interner,
+         location_for_error,
+      ),
+      ExpressionType::CompileError => true,
+      ExpressionType::Enum(_) => true,
       ExpressionType::ProcedurePointer {
          parameters,
          ret_type: ret_val,
       } => {
-         let mut failed_to_resolve = false;
+         let mut resolve_result = true;
          for parameter in parameters.iter_mut() {
-            failed_to_resolve |= resolve_type(parameter, type_name_table, type_params).is_err();
+            resolve_result &= resolve_type(
+               parameter,
+               type_name_table,
+               type_params,
+               err_manager,
+               interner,
+               location_for_error,
+            );
          }
-         failed_to_resolve |= resolve_type(ret_val, type_name_table, type_params).is_err();
-         if failed_to_resolve {
-            Err(())
-         } else {
-            Ok(())
-         }
+         resolve_result &= resolve_type(
+            ret_val,
+            type_name_table,
+            type_params,
+            err_manager,
+            interner,
+            location_for_error,
+         );
+         resolve_result
       }
-      ExpressionType::GenericParam(_) => Ok(()),
-      ExpressionType::ProcedureItem(_, _) => Ok(()), // This type contains other types, but this type itself can never be written down. It should always be valid
+      ExpressionType::GenericParam(_) => true,
+      ExpressionType::ProcedureItem(_, _) => true, // This type contains other types, but this type itself can never be written down. It should always be valid
       ExpressionType::Unresolved(x) => match type_name_table.get(x) {
          Some(UserDefinedTypeId::Enum(y)) => {
             *v_type = ExpressionType::Enum(*y);
-            Ok(())
+            true
          }
          Some(UserDefinedTypeId::Union(y)) => {
             *v_type = ExpressionType::Union(*y);
-            Ok(())
+            true
          }
          Some(UserDefinedTypeId::Struct(y)) => {
             *v_type = ExpressionType::Struct(*y);
-            Ok(())
+            true
          }
          None => {
             if type_params.map_or(false, |tp| tp.contains_key(x)) {
                *v_type = ExpressionType::GenericParam(*x);
-               Ok(())
+               true
             } else {
-               Err(())
+               rolandc_error!(
+                  err_manager,
+                  location_for_error,
+                  "Undeclared type `{}`",
+                  interner.lookup(*x),
+               );
+               false
             }
          }
       },
@@ -766,17 +799,21 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             type_expression(err_manager, *enid, validation_context);
          }
 
+         let mut dt_is_unresolved = false;
          if let Some(v) = dt.as_mut() {
-            // Failure to resolve is handled below
-            let _ = resolve_type(
+            if !resolve_type(
                &mut v.e_type,
                validation_context.user_defined_type_name_table,
                validation_context.cur_procedure_info.map(|x| &x.type_parameters),
-            );
-            if let DeclarationValue::Expr(enid) = opt_enid {
+               err_manager,
+               validation_context.interner,
+               v.location,
+            ) {
+               dt_is_unresolved = true;
+            } else if let DeclarationValue::Expr(enid) = opt_enid {
                try_set_inferred_type(&v.e_type, *enid, validation_context);
             }
-         }
+         };
 
          let opt_en = match opt_enid {
             DeclarationValue::Expr(enid) => Some(&validation_context.ast.expressions[*enid]),
@@ -784,23 +821,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             DeclarationValue::None => None,
          };
 
-         let result_type = if dt
-            .as_ref()
-            .map_or(false, |x| matches!(x.e_type, ExpressionType::Unresolved(_)))
-         {
-            let dt_str = dt.as_ref().unwrap().e_type.as_roland_type_info(
-               validation_context.interner,
-               validation_context.user_defined_types,
-               validation_context.procedure_info,
-               &validation_context.type_variables,
-            );
-            rolandc_error!(
-               err_manager,
-               dt.as_ref().unwrap().location,
-               "Variable `{}` is declared with undefined type {}",
-               validation_context.interner.lookup(id.str),
-               dt_str,
-            );
+         let result_type = if dt_is_unresolved {
             ExpressionType::CompileError
          } else if let Some(dt_val) = dt {
             if let Some(en) = opt_en {
@@ -912,24 +933,14 @@ fn type_expression(
    // Resolve types and names first
    match &mut validation_context.ast.expressions[expr_index].expression {
       Expression::Cast { target_type, .. } => {
-         if resolve_type(
+         if !resolve_type(
             target_type,
             validation_context.user_defined_type_name_table,
             validation_context.cur_procedure_info.map(|x| &x.type_parameters),
-         )
-         .is_err()
-         {
-            rolandc_error!(
-               err_manager,
-               expr_location,
-               "Undeclared type `{}`",
-               target_type.as_roland_type_info(
-                  validation_context.interner,
-                  validation_context.user_defined_types,
-                  validation_context.procedure_info,
-                  &validation_context.type_variables
-               ),
-            );
+            err_manager,
+            validation_context.interner,
+            expr_location,
+         ) {
             *target_type = ExpressionType::CompileError;
          }
       }
@@ -952,21 +963,14 @@ fn type_expression(
       },
       Expression::UnresolvedProcLiteral(name, g_args) => {
          for g_arg in g_args.iter_mut() {
-            if resolve_type(
+            resolve_type(
                &mut g_arg.e_type,
                validation_context.user_defined_type_name_table,
                validation_context.cur_procedure_info.map(|x| &x.type_parameters),
-            )
-            .is_err()
-            {
-               let etype_str = g_arg.e_type.as_roland_type_info(
-                  validation_context.interner,
-                  validation_context.user_defined_types,
-                  validation_context.procedure_info,
-                  &validation_context.type_variables,
-               );
-               rolandc_error!(err_manager, g_arg.location, "Undeclared type {}", etype_str,);
-            }
+               err_manager,
+               validation_context.interner,
+               g_arg.location,
+            );
          }
 
          if let Some(proc_id) = validation_context.proc_name_table.get(&name.str).copied() {

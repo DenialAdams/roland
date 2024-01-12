@@ -6,5 +6,5 @@ proc main() {
    
 }__END__
 compile:
-Field `foo` of union `U` is of undeclared type `F`
-↳ union defined @ line 1, column 1 [tests/unions/bad_field_type.rol]
+Undeclared type `F`
+↳ line 2, column 9 [tests/unions/bad_field_type.rol]

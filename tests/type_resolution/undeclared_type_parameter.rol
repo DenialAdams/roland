@@ -7,5 +7,5 @@ proc main() {
 }
 __END__
 compile:
-Parameter `x` of procedure `foo` is of undeclared type `Y`
+Undeclared type `Y`
 ↳ line 1, column 13 [tests/type_resolution/undeclared_type_parameter.rol]

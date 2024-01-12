@@ -248,43 +248,27 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          .insert(a_union.name, UserDefinedTypeId::Union(union_id));
    }
 
-   // horrendous clone. we can probably avoid it if resolve_type returned the types that could not be resolved and then we actually give a good message that way anyway
-   let cloned_udt = program.user_defined_types.clone();
    for struct_i in program.user_defined_types.struct_info.values_mut() {
-      for (field, etn) in struct_i.field_types.iter_mut() {
-         if resolve_type(&mut etn.e_type, &program.user_defined_type_name_table, None).is_ok() {
-            continue;
-         }
-
-         let etype_str = etn
-            .e_type
-            .as_roland_type_info_notv(interner, &cloned_udt, &program.procedure_info);
-         rolandc_error_w_details!(
+      for etn in struct_i.field_types.values_mut() {
+         resolve_type(
+            &mut etn.e_type,
+            &program.user_defined_type_name_table,
+            None,
             err_manager,
-            &[(struct_i.location, "struct defined")],
-            "Field `{}` of struct `{}` is of undeclared type `{}`",
-            interner.lookup(*field),
-            interner.lookup(struct_i.name),
-            etype_str,
+            interner,
+            etn.location,
          );
       }
    }
    for union_i in program.user_defined_types.union_info.values_mut() {
-      for (field, etn) in union_i.field_types.iter_mut() {
-         if resolve_type(&mut etn.e_type, &program.user_defined_type_name_table, None).is_ok() {
-            continue;
-         }
-
-         let etype_str = etn
-            .e_type
-            .as_roland_type_info_notv(interner, &cloned_udt, &program.procedure_info);
-         rolandc_error_w_details!(
+      for etn in union_i.field_types.values_mut() {
+         resolve_type(
+            &mut etn.e_type,
+            &program.user_defined_type_name_table,
+            None,
             err_manager,
-            &[(union_i.location, "union defined")],
-            "Field `{}` of union `{}` is of undeclared type `{}`",
-            interner.lookup(*field),
-            interner.lookup(union_i.name),
-            etype_str,
+            interner,
+            etn.location,
          );
       }
    }
@@ -340,17 +324,14 @@ pub fn populate_type_and_procedure_info(
       let const_type = &mut const_node.const_type.e_type;
       let si = &const_node.location;
 
-      if resolve_type(const_type, &program.user_defined_type_name_table, None).is_err() {
-         let static_type_str =
-            const_type.as_roland_type_info_notv(interner, &program.user_defined_types, &program.procedure_info);
-         rolandc_error!(
-            err_manager,
-            const_node.const_type.location,
-            "Const `{}` is of undeclared type `{}`",
-            interner.lookup(const_node.name.str),
-            static_type_str,
-         );
-      }
+      resolve_type(
+         const_type,
+         &program.user_defined_type_name_table,
+         None,
+         err_manager,
+         interner,
+         const_node.const_type.location,
+      );
 
       if let Some(old_value) = program.global_info.insert(
          program.next_variable,
@@ -377,26 +358,14 @@ pub fn populate_type_and_procedure_info(
    }
 
    for mut static_node in program.statics.drain(..) {
-      if resolve_type(
+      resolve_type(
          &mut static_node.static_type.e_type,
          &program.user_defined_type_name_table,
          None,
-      )
-      .is_err()
-      {
-         let static_type_str = static_node.static_type.e_type.as_roland_type_info_notv(
-            interner,
-            &program.user_defined_types,
-            &program.procedure_info,
-         );
-         rolandc_error!(
-            err_manager,
-            static_node.static_type.location,
-            "Static `{}` is of undeclared type `{}`",
-            interner.lookup(static_node.name.str),
-            static_type_str,
-         );
-      }
+         err_manager,
+         interner,
+         static_node.static_type.location,
+      );
 
       if let Some(old_value) = program.global_info.insert(
          program.next_variable,
@@ -530,49 +499,24 @@ pub fn populate_type_and_procedure_info(
          .collect();
 
       for parameter in definition.parameters.iter_mut() {
-         if resolve_type(
+         resolve_type(
             &mut parameter.p_type.e_type,
             &program.user_defined_type_name_table,
             Some(&type_parameters_with_constraints),
-         )
-         .is_err()
-         {
-            let etype_str = parameter.p_type.e_type.as_roland_type_info_notv(
-               interner,
-               &program.user_defined_types,
-               &program.procedure_info,
-            );
-            rolandc_error!(
-               err_manager,
-               parameter.p_type.location,
-               "Parameter `{}` of procedure `{}` is of undeclared type `{}`",
-               interner.lookup(parameter.name),
-               interner.lookup(definition.name.str),
-               etype_str,
-            );
-         }
+            err_manager,
+            interner,
+            parameter.p_type.location,
+         );
       }
 
-      if resolve_type(
+      resolve_type(
          &mut definition.ret_type.e_type,
          &program.user_defined_type_name_table,
          Some(&type_parameters_with_constraints),
-      )
-      .is_err()
-      {
-         let etype_str = definition.ret_type.e_type.as_roland_type_info_notv(
-            interner,
-            &program.user_defined_types,
-            &program.procedure_info,
-         );
-         rolandc_error!(
-            err_manager,
-            definition.ret_type.location,
-            "Return type of procedure `{}` is of undeclared type `{}`",
-            interner.lookup(definition.name.str),
-            etype_str,
-         );
-      }
+         err_manager,
+         interner,
+         definition.ret_type.location,
+      );
 
       program.procedure_info.insert(
          id,

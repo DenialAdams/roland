@@ -1,0 +1,12 @@
+proc main() {
+   let x: [Booger; 10] = ___;
+   // x should be error type at this point
+   x[0] = unreachable();
+   // This assignment should be local if x is typed as Error
+   let y: u8 = x;
+}
+__END__
+__END__
+compile:
+Undeclared type `Booger`
+↳ line 2, column 11 [tests/type_resolution/partially_unresolved_var_decl_type.rol]

@@ -3,5 +3,5 @@ proc main() {
 }
 __END__
 compile:
-Variable `foo` is declared with undefined type Y
+Undeclared type `Y`
 ↳ line 2, column 13 [tests/type_resolution/undeclared_type_decl.rol]

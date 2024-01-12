@@ -7,5 +7,5 @@ proc main() {
 }
 __END__
 compile:
-Field `alpha` of struct `X` is of undeclared type `Y`
-↳ struct defined @ line 1, column 1 [tests/type_resolution/undeclared_type_field.rol]
+Undeclared type `Y`
+↳ line 2, column 11 [tests/type_resolution/undeclared_type_field.rol]

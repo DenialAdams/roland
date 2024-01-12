@@ -1,0 +1,10 @@
+proc main() {
+    let x: proc(X, Y) -> Z = ___;
+}__END__
+compile:
+Undeclared type `X`
+↳ line 2, column 12 [tests/type_resolution/multiple_unresolved_in_one_type.rol]
+Undeclared type `Y`
+↳ line 2, column 12 [tests/type_resolution/multiple_unresolved_in_one_type.rol]
+Undeclared type `Z`
+↳ line 2, column 12 [tests/type_resolution/multiple_unresolved_in_one_type.rol]
