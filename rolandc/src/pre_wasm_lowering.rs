@@ -137,9 +137,9 @@ fn replace_negate(
    interner: &Interner,
 ) -> Option<ExpressionNode> {
    let operand_type = program.ast.expressions[operand].exp_type.as_ref().unwrap();
-   let proc_name = match operand_type {
-      &I8_TYPE => "neg_i8",
-      &I16_TYPE => "neg_i16",
+   let proc_name = match *operand_type {
+      I8_TYPE => "neg_i8",
+      I16_TYPE => "neg_i16",
       _ => return None,
    };
    let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
@@ -157,9 +157,9 @@ fn replace_div(
    interner: &Interner,
 ) -> Option<ExpressionNode> {
    let operand_type = program.ast.expressions[operand].exp_type.as_ref().unwrap();
-   let proc_name = match operand_type {
-      &I8_TYPE => "div_i8",
-      &I16_TYPE => "div_i16",
+   let proc_name = match *operand_type {
+      I8_TYPE => "div_i8",
+      I16_TYPE => "div_i16",
       _ => return None,
    };
    let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
@@ -177,9 +177,9 @@ fn replace_mod(
    interner: &Interner,
 ) -> Option<ExpressionNode> {
    let operand_type = program.ast.expressions[operand].exp_type.as_ref().unwrap();
-   let proc_name = match operand_type {
-      &I8_TYPE => "mod_i8",
-      &I16_TYPE => "mod_i16",
+   let proc_name = match *operand_type {
+      I8_TYPE => "mod_i8",
+      I16_TYPE => "mod_i16",
       _ => return None,
    };
    let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
@@ -195,10 +195,9 @@ pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, intern
    for (expression, v) in program.ast.expressions.iter() {
       let opt_new_expr = match v.expression {
          Expression::Cast { expr: src_expr, .. } => replace_cast_expr(src_expr, v, program, interner),
-         Expression::UnaryOperator(un_op, inner_expr) => match un_op {
-            UnOp::Negate => replace_negate(inner_expr, v.location, program, interner),
-            _ => None,
-         },
+         Expression::UnaryOperator(UnOp::Negate, inner_expr) => {
+            replace_negate(inner_expr, v.location, program, interner)
+         }
          Expression::BinaryOperator { operator, lhs, .. } => match operator {
             BinOp::Divide => replace_div(lhs, v.location, program, interner),
             BinOp::Remainder => replace_mod(lhs, v.location, program, interner),

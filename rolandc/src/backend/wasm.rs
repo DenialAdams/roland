@@ -1375,8 +1375,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
 
          if matches!(operator, BinOp::BitwiseLeftShift) {
             let op_type = generation_context.ast.expressions[*rhs].exp_type.as_ref().unwrap();
-            match op_type {
-               ExpressionType::Int(x) => match x.width {
+            if let ExpressionType::Int(x) = op_type {
+               match x.width {
                   IntWidth::Two => {
                      generation_context
                         .active_fcn
@@ -1388,8 +1388,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                      generation_context.active_fcn.instruction(&Instruction::I32And);
                   }
                   _ => (),
-               },
-               _ => (),
+               }
             }
          }
 
@@ -1545,32 +1544,29 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
 
          if matches!(operator, BinOp::Add | BinOp::Multiply | BinOp::Subtract) {
             let op_type = generation_context.ast.expressions[*lhs].exp_type.as_ref().unwrap();
-            match op_type {
-               ExpressionType::Int(x) => {
-                  // Emulate overflow for necessary types
-                  match (x.width, x.signed) {
-                     (IntWidth::Two, true) => {
-                        generation_context.active_fcn.instruction(&Instruction::I32Extend16S);
-                     }
-                     (IntWidth::Two, false) => {
-                        generation_context
-                           .active_fcn
-                           .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_1111_1111_1111_1111));
-                        generation_context.active_fcn.instruction(&Instruction::I32And);
-                     }
-                     (IntWidth::One, true) => {
-                        generation_context.active_fcn.instruction(&Instruction::I32Extend8S);
-                     }
-                     (IntWidth::One, false) => {
-                        generation_context
-                           .active_fcn
-                           .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_0000_0000_1111_1111));
-                        generation_context.active_fcn.instruction(&Instruction::I32And);
-                     }
-                     _ => (),
+            if let ExpressionType::Int(x) = op_type {
+               // Emulate overflow for necessary types
+               match (x.width, x.signed) {
+                  (IntWidth::Two, true) => {
+                     generation_context.active_fcn.instruction(&Instruction::I32Extend16S);
                   }
+                  (IntWidth::Two, false) => {
+                     generation_context
+                        .active_fcn
+                        .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_1111_1111_1111_1111));
+                     generation_context.active_fcn.instruction(&Instruction::I32And);
+                  }
+                  (IntWidth::One, true) => {
+                     generation_context.active_fcn.instruction(&Instruction::I32Extend8S);
+                  }
+                  (IntWidth::One, false) => {
+                     generation_context
+                        .active_fcn
+                        .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_0000_0000_1111_1111));
+                     generation_context.active_fcn.instruction(&Instruction::I32And);
+                  }
+                  _ => (),
                }
-               _ => (),
             }
          }
       }

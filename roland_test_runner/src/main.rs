@@ -105,7 +105,6 @@ fn main() -> Result<(), &'static str> {
       let test_ok = test_result(&tc_output, entry);
       // prevents stdout and stderr from mixing
       let _ol = output_lock.lock();
-      if test_ok.is_ok() {}
       match test_ok {
          Ok(()) => {
             successes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -177,7 +176,7 @@ fn main() -> Result<(), &'static str> {
                "Compiled OK, but execution of the program produced a different result than expected:"
             )
             .unwrap();
-            print_diff(&mut out_handle, &expected, &actual);
+            print_diff(&mut out_handle, expected, actual);
          }
          TestFailureReason::MismatchedCompilationErrorOutput(actual, ref mut test_details) => {
             if opts.overwrite_error_files {
@@ -193,7 +192,7 @@ fn main() -> Result<(), &'static str> {
                print_diff(
                   &mut out_handle,
                   test_details.result.compile_output.as_ref().map_or("", |x| x.as_str()),
-                  &actual,
+                  actual,
                );
                writeln!(out_handle, "Updated test compilation error output.").unwrap();
             } else {
@@ -205,7 +204,7 @@ fn main() -> Result<(), &'static str> {
                print_diff(
                   &mut out_handle,
                   test_details.result.compile_output.as_ref().map_or("", |x| x.as_str()),
-                  &actual,
+                  actual,
                );
             }
          }
