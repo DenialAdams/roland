@@ -2210,13 +2210,13 @@ fn check_procedure_item(
                };
                if !constraint_met {
                   rolandc_error!(
-                                       err_manager,
-                                       g_arg.location,
-                                       "For procedure `{}`, encountered generic argument of type {} which does not meet the constraint `{}`",
-                                       interner.lookup(callee_proc_name),
-                                       g_arg.e_type.as_roland_type_info_notv(interner, udt, procedure_info),
-                                       interner.lookup(*constraint),
-                                    );
+                     err_manager,
+                     g_arg.location,
+                     "For procedure `{}`, encountered generic argument of type {} which does not meet the constraint `{}`",
+                     interner.lookup(callee_proc_name),
+                     g_arg.e_type.as_roland_type_info_notv(interner, udt, procedure_info),
+                     interner.lookup(*constraint),
+                  );
                }
             }
          }
