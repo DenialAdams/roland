@@ -92,7 +92,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
    let mut dupe_check = HashSet::new();
    let mut all_types = HashMap::new();
 
-   for a_enum in program.enums.drain(..) {
+   for mut a_enum in program.enums.drain(..) {
       dupe_check.clear();
       for variant in a_enum.variants.iter() {
          if !dupe_check.insert(variant.str) {
@@ -106,7 +106,18 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          }
       }
 
-      let base_type = if let Some(etn) = a_enum.requested_size.as_ref() {
+      let base_type = if let Some(etn) = a_enum.requested_size.as_mut() {
+         if !resolve_type(
+            &mut etn.e_type,
+            &program.user_defined_type_name_table,
+            None,
+            err_manager,
+            interner,
+            etn.location,
+         ) {
+            continue;
+         };
+
          let base_type = match etn.e_type {
             U64_TYPE => U64_TYPE,
             U32_TYPE => {

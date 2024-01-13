@@ -1,0 +1,11 @@
+enum Foo : Cat {
+    A,
+}
+
+proc main() {
+
+}
+__END____END__
+compile:
+Undeclared type `Cat`
+↳ line 1, column 12 [tests/enums/enum_unresolved_base.rol]
