@@ -1501,7 +1501,11 @@ fn get_type(
             type_expression(err_manager, field_val, validation_context);
          }
 
-         match validation_context.user_defined_type_name_table.get(&struct_name.str).copied() {
+         match validation_context
+            .user_defined_type_name_table
+            .get(&struct_name.str)
+            .copied()
+         {
             Some(UserDefinedTypeId::Enum(_)) => {
                rolandc_error!(
                   err_manager,
@@ -2217,7 +2221,7 @@ fn check_procedure_item(
                rolandc_error!(
                   err_manager,
                   g_arg.location,
-                  "For procedure `{}`, encountered generic argument of type {} which does not meet the constraints {}",
+                  "For procedure `{}`, encountered type argument of type {} which does not meet the constraints {}",
                   interner.lookup(callee_proc_name),
                   g_arg.e_type.as_roland_type_info_notv(interner, udt, procedure_info),
                   constraints_we_do_not_meet.join(", "),
@@ -2235,7 +2239,7 @@ fn check_procedure_item(
                   rolandc_error!(
                      err_manager,
                      g_arg.location,
-                     "For procedure `{}`, encountered generic argument of type {} which does not meet the constraint `{}`",
+                     "For procedure `{}`, encountered type argument of type {} which does not meet the constraint `{}`",
                      interner.lookup(callee_proc_name),
                      g_arg.e_type.as_roland_type_info_notv(interner, udt, procedure_info),
                      interner.lookup(*constraint),

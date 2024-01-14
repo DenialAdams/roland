@@ -78,12 +78,7 @@ fn insert_or_error_duplicated(
 ) {
    let name_str = interner.lookup(name);
    if str_to_builtin_type(name_str).is_some() {
-      rolandc_error!(
-         err_manager,
-         location,
-         "`{}` is a builtin type",
-         name_str,
-      )
+      rolandc_error!(err_manager, location, "`{}` is a builtin type", name_str,)
    } else if let Some(existing_declaration) = all_types.insert(name, location) {
       rolandc_error_w_details!(
          err_manager,

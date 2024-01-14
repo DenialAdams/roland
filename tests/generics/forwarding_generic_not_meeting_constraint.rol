@@ -10,5 +10,5 @@ proc bar<T>(x: T) -> T where T: Enum {
 }
 __END__
 compile:
-For procedure `bar`, encountered generic argument of type T which does not meet the constraints `Enum`
+For procedure `bar`, encountered type argument of type T which does not meet the constraints `Enum`
 ↳ line 5, column 16 [tests/generics/forwarding_generic_not_meeting_constraint.rol]
