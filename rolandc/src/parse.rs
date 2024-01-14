@@ -1394,26 +1394,7 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
       _ => {
          let type_token = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
          let type_s = extract_identifier(type_token.token);
-         (
-            type_token.source_info,
-            match parse_context.interner.lookup(type_s) {
-               "bool" => ExpressionType::Bool,
-               "isize" => crate::type_data::ISIZE_TYPE,
-               "i64" => crate::type_data::I64_TYPE,
-               "i32" => crate::type_data::I32_TYPE,
-               "i16" => crate::type_data::I16_TYPE,
-               "i8" => crate::type_data::I8_TYPE,
-               "usize" => crate::type_data::USIZE_TYPE,
-               "u64" => crate::type_data::U64_TYPE,
-               "u32" => crate::type_data::U32_TYPE,
-               "u16" => crate::type_data::U16_TYPE,
-               "u8" => crate::type_data::U8_TYPE,
-               "f32" => crate::type_data::F32_TYPE,
-               "f64" => crate::type_data::F64_TYPE,
-               "unit" => ExpressionType::Unit,
-               _ => ExpressionType::Unresolved(type_s),
-            },
-         )
+         (type_token.source_info, ExpressionType::Unresolved(type_s))
       }
    };
 

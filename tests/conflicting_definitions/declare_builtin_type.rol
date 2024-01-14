@@ -1,0 +1,10 @@
+struct bool {
+   x: u64,
+}
+
+proc main() {
+   let x = bool { x: 100, };
+}__END__
+compile:
+`bool` is a builtin type
+↳ line 1, column 1 [tests/conflicting_definitions/declare_builtin_type.rol]

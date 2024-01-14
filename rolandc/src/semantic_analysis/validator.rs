@@ -155,6 +155,26 @@ fn any_match(type_validations: &[TypeValidator], et: &ExpressionType, validation
    any_match
 }
 
+pub fn str_to_builtin_type(x: &str) -> Option<ExpressionType> {
+   match x {
+      "bool" => Some(ExpressionType::Bool),
+      "isize" => Some(crate::type_data::ISIZE_TYPE),
+      "i64" => Some(crate::type_data::I64_TYPE),
+      "i32" => Some(crate::type_data::I32_TYPE),
+      "i16" => Some(crate::type_data::I16_TYPE),
+      "i8" => Some(crate::type_data::I8_TYPE),
+      "usize" => Some(crate::type_data::USIZE_TYPE),
+      "u64" => Some(crate::type_data::U64_TYPE),
+      "u32" => Some(crate::type_data::U32_TYPE),
+      "u16" => Some(crate::type_data::U16_TYPE),
+      "u8" => Some(crate::type_data::U8_TYPE),
+      "f32" => Some(crate::type_data::F32_TYPE),
+      "f64" => Some(crate::type_data::F64_TYPE),
+      "unit" => Some(ExpressionType::Unit),
+      _ => None,
+   }
+}
+
 pub fn resolve_type(
    v_type: &mut ExpressionType,
    type_name_table: &HashMap<StrId, UserDefinedTypeId>,
@@ -231,7 +251,10 @@ pub fn resolve_type(
             true
          }
          None => {
-            if type_params.map_or(false, |tp| tp.contains_key(x)) {
+            if let Some(bt) = str_to_builtin_type(interner.lookup(*x)) {
+               *v_type = bt;
+               true
+            } else if type_params.map_or(false, |tp| tp.contains_key(x)) {
                *v_type = ExpressionType::GenericParam(*x);
                true
             } else {

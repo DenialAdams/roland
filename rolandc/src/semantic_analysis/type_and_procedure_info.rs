@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use indexmap::{IndexMap, IndexSet};
 use slotmap::SlotMap;
 
+use super::validator::str_to_builtin_type;
 use super::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo, UnionInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
@@ -75,7 +76,15 @@ fn insert_or_error_duplicated(
    location: SourceInfo,
    interner: &Interner,
 ) {
-   if let Some(existing_declaration) = all_types.insert(name, location) {
+   let name_str = interner.lookup(name);
+   if str_to_builtin_type(name_str).is_some() {
+      rolandc_error!(
+         err_manager,
+         location,
+         "`{}` is a builtin type",
+         name_str,
+      )
+   } else if let Some(existing_declaration) = all_types.insert(name, location) {
       rolandc_error_w_details!(
          err_manager,
          &[
@@ -83,7 +92,7 @@ fn insert_or_error_duplicated(
             (location, "second type defined")
          ],
          "Encountered duplicate types with the same name `{}`",
-         interner.lookup(name)
+         name_str
       );
    }
 }
