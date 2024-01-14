@@ -1501,7 +1501,7 @@ fn get_type(
             type_expression(err_manager, field_val, validation_context);
          }
 
-         match validation_context.user_defined_type_name_table.get(&struct_name.str) {
+         match validation_context.user_defined_type_name_table.get(&struct_name.str).copied() {
             Some(UserDefinedTypeId::Enum(_)) => {
                rolandc_error!(
                   err_manager,
@@ -1524,7 +1524,7 @@ fn get_type(
                let si = validation_context
                   .user_defined_types
                   .struct_info
-                  .get(*defined_struct)
+                  .get(defined_struct)
                   .unwrap();
 
                validation_context
@@ -1611,9 +1611,9 @@ fn get_type(
                   );
                }
 
-               *expr = Expression::StructLiteral(*defined_struct, fields.iter().map(|x| (x.0, x.1)).collect());
+               *expr = Expression::StructLiteral(defined_struct, fields.iter().map(|x| (x.0, x.1)).collect());
 
-               ExpressionType::Struct(*defined_struct)
+               ExpressionType::Struct(defined_struct)
             }
             None => {
                rolandc_error!(
