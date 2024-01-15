@@ -85,7 +85,10 @@ pub enum ExpressionType {
       ret_type: Box<ExpressionType>,
    },
    GenericParam(StrId),
-   Unresolved(StrId), // Could be a struct, enum, generic parameter, or fail to resolve (compilation error)
+   Unresolved {
+      name: StrId,
+      generic_args: Box<[ExpressionType]>,
+   }, // Could be a struct, enum, generic parameter, or fail to resolve (compilation error)
    Never,
 }
 
@@ -183,7 +186,9 @@ impl ExpressionType {
    #[must_use]
    pub fn is_or_contains_or_points_to_generic(&self) -> bool {
       match self {
-         ExpressionType::Unknown(_) | ExpressionType::CompileError | ExpressionType::Unresolved(_) => unreachable!(),
+         ExpressionType::Unknown(_) | ExpressionType::CompileError | ExpressionType::Unresolved { .. } => {
+            unreachable!()
+         }
          ExpressionType::GenericParam(_) => true,
          ExpressionType::Int(_)
          | ExpressionType::Float(_)
@@ -203,7 +208,7 @@ impl ExpressionType {
    #[must_use]
    pub fn size_is_unknown(&self) -> bool {
       match self {
-         ExpressionType::CompileError | ExpressionType::Unresolved(_) => unreachable!(),
+         ExpressionType::CompileError | ExpressionType::Unresolved { .. } => unreachable!(),
          ExpressionType::Unknown(_) | ExpressionType::GenericParam(_) => true,
          ExpressionType::Int(_)
          | ExpressionType::Float(_)
@@ -342,7 +347,20 @@ impl ExpressionType {
             "&{}",
             i_type.as_roland_type_info_inner(interner, udt, procedure_info, type_variable_info)
          )),
-         ExpressionType::Unresolved(x) | ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
+         ExpressionType::Unresolved { name: x, generic_args } => {
+            if generic_args.is_empty() {
+               Cow::Borrowed(interner.lookup(*x))
+            } else {
+               let g_args: String = generic_args
+                  .iter()
+                  .map(|x| x.as_roland_type_info_inner(interner, udt, procedure_info, type_variable_info))
+                  .collect::<Vec<_>>()
+                  .join(", ");
+
+               Cow::Owned(format!("{}<{}>", interner.lookup(*x), g_args,))
+            }
+         }
+         ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::ProcedurePointer {
             parameters,
             ret_type: ret_val,
@@ -429,7 +447,20 @@ impl ExpressionType {
             "&{}",
             i_type.as_roland_type_info_notv(interner, udt, procedure_info)
          )),
-         ExpressionType::Unresolved(x) | ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
+         ExpressionType::Unresolved { name: x, generic_args } => {
+            if generic_args.is_empty() {
+               Cow::Borrowed(interner.lookup(*x))
+            } else {
+               let g_args: String = generic_args
+                  .iter()
+                  .map(|x| x.as_roland_type_info_like_source(interner, udt, procedure_info))
+                  .collect::<Vec<_>>()
+                  .join(", ");
+
+               Cow::Owned(format!("{}<{}>", interner.lookup(*x), g_args,))
+            }
+         }
+         ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::ProcedurePointer {
             parameters,
             ret_type: ret_val,

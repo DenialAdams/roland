@@ -135,7 +135,7 @@ pub fn calculate_struct_size_info(id: StructId, udt: &mut UserDefinedTypeInfo) {
 
 pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo) -> u32 {
    match e {
-      ExpressionType::Unresolved(_) => unreachable!(),
+      ExpressionType::Unresolved { .. } => unreachable!(),
       ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Enum(x) => {
          let base_type = &udt.enum_info.get(*x).unwrap().base_type;
@@ -181,7 +181,7 @@ pub fn sizeof_type_values(
    si: &SlotMap<StructId, StructInfo>,
 ) -> u32 {
    match e {
-      ExpressionType::Unresolved(_) => unreachable!(),
+      ExpressionType::Unresolved { .. } => unreachable!(),
       ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Enum(x) => {
          let base_type = &ei.get(*x).unwrap().base_type;
@@ -216,7 +216,7 @@ pub fn sizeof_type_wasm(e: &ExpressionType, udt: &UserDefinedTypeInfo) -> u32 {
 /// The size of a type as it's stored in memory
 pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo) -> u32 {
    match e {
-      ExpressionType::Unresolved(_) => unreachable!(),
+      ExpressionType::Unresolved { .. } => unreachable!(),
       ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Enum(x) => {
          let base_type = &udt.enum_info.get(*x).unwrap().base_type;
