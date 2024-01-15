@@ -1452,7 +1452,13 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
       _ => {
          let type_token = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
          let type_s = extract_identifier(type_token.token);
-         (type_token.source_info, ExpressionType::Unresolved(type_s))
+         (
+            type_token.source_info,
+            ExpressionType::Unresolved {
+               name: type_s,
+               generic_args: Box::new([]),
+            },
+         )
       }
    };
 

@@ -144,7 +144,7 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Targ
       ExpressionType::Array(a_type, _len) => mem_alignment(a_type, udt, target),
       ExpressionType::Union(x) => udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_alignment,
       ExpressionType::Bool | ExpressionType::Unit | ExpressionType::Never | ExpressionType::ProcedureItem(_, _) => 1,
-      ExpressionType::Unresolved(_)
+      ExpressionType::Unresolved { .. }
       | ExpressionType::Unknown(_)
       | ExpressionType::CompileError
       | ExpressionType::GenericParam(_) => unreachable!(),
@@ -173,7 +173,7 @@ pub fn sizeof_type_values(e: &ExpressionType, udt: &UserDefinedTypeInfo, target:
       ExpressionType::ProcedureItem(_, _) | ExpressionType::Unit | ExpressionType::Never => 0,
       ExpressionType::GenericParam(_)
       | ExpressionType::CompileError
-      | ExpressionType::Unresolved(_)
+      | ExpressionType::Unresolved { .. }
       | ExpressionType::Unknown(_) => unreachable!(),
    }
 }
@@ -205,7 +205,7 @@ pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Ta
       ExpressionType::Union(x) => udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_size,
       ExpressionType::GenericParam(_)
       | ExpressionType::CompileError
-      | ExpressionType::Unresolved(_)
+      | ExpressionType::Unresolved { .. }
       | ExpressionType::Unknown(_) => unreachable!(),
    }
 }

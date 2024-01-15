@@ -217,40 +217,83 @@ pub fn resolve_type(
       | ExpressionType::Union(_)
       | ExpressionType::GenericParam(_)
       | ExpressionType::ProcedureItem(_, _) => true, // This type contains other types, but this type itself can never be written down. It should always be valid
-      ExpressionType::Unresolved(x) => match type_name_table.get(x) {
-         Some(UserDefinedTypeId::Enum(y)) => {
-            *v_type = ExpressionType::Enum(*y);
-            true
+      ExpressionType::Unresolved { name: x, generic_args } => {
+         let mut args_ok = true;
+         for g_arg in generic_args.iter_mut() {
+            args_ok &= resolve_type(
+               g_arg,
+               type_name_table,
+               type_params,
+               specialized_types,
+               err_manager,
+               interner,
+               location_for_error,
+            );
          }
-         Some(UserDefinedTypeId::Union(y)) => {
-            *v_type = ExpressionType::Union(*y);
-            true
-         }
-         Some(UserDefinedTypeId::Struct(y)) => {
-            *v_type = ExpressionType::Struct(*y);
-            true
-         }
-         None => {
-            if let Some(bt) = str_to_builtin_type(interner.lookup(*x)) {
-               *v_type = bt;
-               true
-            } else if type_params.map_or(false, |tp| tp.contains_key(x)) {
-               *v_type = ExpressionType::GenericParam(*x);
-               true
-            } else if let Some(spec_type) = specialized_types.and_then(|st| st.get(x)) {
-               *v_type = spec_type.clone();
-               true
-            } else {
-               rolandc_error!(
-                  err_manager,
-                  location_for_error,
-                  "Undeclared type `{}`",
-                  interner.lookup(*x),
-               );
-               false
+
+         let new_type = match type_name_table.get(x) {
+            Some(UserDefinedTypeId::Enum(y)) => {
+               if !generic_args.is_empty() {
+                  rolandc_error!(
+                     err_manager,
+                     location_for_error,
+                     "Type arguments are not supported for enum types",
+                  );
+
+                  return false;
+               }
+               ExpressionType::Enum(*y)
             }
-         }
-      },
+            Some(UserDefinedTypeId::Union(y)) => ExpressionType::Union(*y),
+            Some(UserDefinedTypeId::Struct(y)) => ExpressionType::Struct(*y),
+            None => {
+               if let Some(bt) = str_to_builtin_type(interner.lookup(*x)) {
+                  if !generic_args.is_empty() {
+                     rolandc_error!(
+                        err_manager,
+                        location_for_error,
+                        "Type arguments are not supported for builtin types",
+                     );
+
+                     return false;
+                  }
+                  bt
+               } else if type_params.map_or(false, |tp| tp.contains_key(x)) {
+                  if !generic_args.is_empty() {
+                     rolandc_error!(
+                        err_manager,
+                        location_for_error,
+                        "Type arguments are not supported for type parameters",
+                     );
+
+                     return false;
+                  }
+                  ExpressionType::GenericParam(*x)
+               } else if let Some(spec_type) = specialized_types.and_then(|st| st.get(x)) {
+                  if !generic_args.is_empty() {
+                     rolandc_error!(
+                        err_manager,
+                        location_for_error,
+                        "Type arguments are not supported for type parameters",
+                     );
+
+                     return false;
+                  }
+                  spec_type.clone()
+               } else {
+                  rolandc_error!(
+                     err_manager,
+                     location_for_error,
+                     "Undeclared type `{}`",
+                     interner.lookup(*x),
+                  );
+                  return false;
+               }
+            }
+         };
+         *v_type = new_type;
+         args_ok
+      }
    }
 }
 
@@ -2200,7 +2243,10 @@ fn check_procedure_item(
    let mut type_arguments_are_valid = true;
    for (g_arg, constraints) in type_arguments.iter().zip(callee_type_params.values()) {
       match g_arg.e_type {
-         ExpressionType::Unresolved(_) => {
+         ExpressionType::Unresolved {
+            name: _,
+            generic_args: _,
+         } => {
             // We have already errored on this argument
             type_arguments_are_valid = false;
          }
