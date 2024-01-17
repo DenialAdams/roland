@@ -1,9 +1,7 @@
-// no variants + base
-enum Foo : u8 {
-
-}
-
 // too many variants
+enum Foo : unit {
+    A
+}
 enum Bar : u8 {
 _0,
 _1,
@@ -274,9 +272,9 @@ proc main() {
 }
 __END__
 compile:
-Enum `Foo` has no variants, so it must be zero sized and can't have a base type
+Enum `Foo` has 1 variants, which exceeds the maximum capacity of the specified base type (0)
 ↳ line 2, column 12 [tests/enums/enum_base_negative.rol]
 Enum `Bar` has 257 variants, which exceeds the maximum capacity of the specified base type (256)
-↳ line 7, column 12 [tests/enums/enum_base_negative.rol]
+↳ line 5, column 12 [tests/enums/enum_base_negative.rol]
 Enum base type must be an unsigned integer
-↳ line 268, column 12 [tests/enums/enum_base_negative.rol]
+↳ line 266, column 12 [tests/enums/enum_base_negative.rol]

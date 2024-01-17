@@ -1,14 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
 use indexmap::{IndexMap, IndexSet};
-use slotmap::SlotMap;
+use slotmap::{SlotMap, SecondaryMap};
 
 use super::validator::str_to_builtin_type;
 use super::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo, UnionInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{ExpressionTypeNode, ProcImplSource, StructId, UnionId, UserDefinedTypeId};
+use crate::parse::{ExpressionTypeNode, ProcImplSource, StructId, UnionId, UserDefinedTypeId, EnumId};
 use crate::semantic_analysis::validator::resolve_type;
 use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
 use crate::source_info::{SourceInfo, SourcePath};
@@ -96,7 +96,8 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
    let mut dupe_check = HashSet::new();
    let mut all_types = HashMap::new();
 
-   for mut a_enum in program.enums.drain(..) {
+   let mut enum_base_type_locations: SecondaryMap<EnumId, SourceInfo> = SecondaryMap::new();
+   for a_enum in program.enums.drain(..) {
       dupe_check.clear();
       for variant in a_enum.variants.iter() {
          if !dupe_check.insert(variant.str) {
@@ -110,85 +111,19 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          }
       }
 
-      let base_type = if let Some(etn) = a_enum.requested_size.as_mut() {
-         if !resolve_type(
-            &mut etn.e_type,
-            &program.user_defined_type_name_table,
-            None,
-            err_manager,
-            interner,
-            etn.location,
-         ) {
-            continue;
-         };
-
-         let base_type = match etn.e_type {
-            U64_TYPE => U64_TYPE,
-            U32_TYPE => {
-               if a_enum.variants.len() > (u64::from(u32::MAX) + 1) as usize {
-                  rolandc_error!(
-                     err_manager,
-                     etn.location,
-                     "Enum `{}` has {} variants, which exceeds the maximum capacity of the specified base type ({})",
-                     interner.lookup(a_enum.name),
-                     a_enum.variants.len(),
-                     u64::from(u32::MAX) + 1
-                  );
-               }
-               U32_TYPE
-            }
-            U16_TYPE => {
-               if a_enum.variants.len() > (u32::from(u16::MAX) + 1) as usize {
-                  rolandc_error!(
-                     err_manager,
-                     etn.location,
-                     "Enum `{}` has {} variants, which exceeds the maximum capacity of the specified base type ({})",
-                     interner.lookup(a_enum.name),
-                     a_enum.variants.len(),
-                     u32::from(u16::MAX) + 1
-                  );
-               }
-               U16_TYPE
-            }
-            U8_TYPE => {
-               if a_enum.variants.len() > (u16::from(u8::MAX) + 1) as usize {
-                  rolandc_error!(
-                     err_manager,
-                     etn.location,
-                     "Enum `{}` has {} variants, which exceeds the maximum capacity of the specified base type ({})",
-                     interner.lookup(a_enum.name),
-                     a_enum.variants.len(),
-                     u16::from(u8::MAX) + 1,
-                  );
-               }
-               U8_TYPE
-            }
-            _ => {
-               rolandc_error!(err_manager, etn.location, "Enum base type must be an unsigned integer");
-               // We're opting to continue without defining the enum instead of setting a bogus size.
-               // I'm not sure what's better for error behavior, but I just don't like assuming a size
-               continue;
-            }
-         };
-         if a_enum.variants.is_empty() {
-            rolandc_error!(
-               err_manager,
-               etn.location,
-               "Enum `{}` has no variants, so it must be zero sized and can't have a base type",
-               interner.lookup(a_enum.name),
-            );
-         }
-         base_type
+      let (base_type, btl) = if let Some(etn) = a_enum.requested_size {
+         // We'll resolve this type after all preliminary type info has been populated
+         (etn.e_type, etn.location)
       } else if a_enum.variants.len() > (u64::from(u32::MAX) + 1) as usize {
-         U64_TYPE
+         (U64_TYPE, a_enum.location)
       } else if a_enum.variants.len() > (u32::from(u16::MAX) + 1) as usize {
-         U32_TYPE
+         (U32_TYPE, a_enum.location)
       } else if a_enum.variants.len() > (u16::from(u8::MAX) + 1) as usize {
-         U16_TYPE
+         (U16_TYPE, a_enum.location)
       } else if !a_enum.variants.is_empty() {
-         U8_TYPE
+         (U8_TYPE, a_enum.location)
       } else {
-         ExpressionType::Unit
+         (ExpressionType::Unit, a_enum.location)
       };
 
       insert_or_error_duplicated(&mut all_types, err_manager, a_enum.name, a_enum.location, interner);
@@ -201,6 +136,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       program
          .user_defined_type_name_table
          .insert(a_enum.name, UserDefinedTypeId::Enum(enum_id));
+      enum_base_type_locations.insert(enum_id, btl);
    }
 
    for a_struct in program.structs.drain(..) {
@@ -263,6 +199,75 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          .insert(a_union.name, UserDefinedTypeId::Union(union_id));
    }
 
+   for (id, enum_i) in program.user_defined_types.enum_info.iter_mut() {
+      let base_type_location = enum_base_type_locations[id];
+
+      if !resolve_type(
+         &mut enum_i.base_type,
+         &program.user_defined_type_name_table,
+         None,
+         err_manager,
+         interner,
+         base_type_location,
+      ) {
+         continue;
+      };
+
+      match enum_i.base_type {
+         U64_TYPE => (),
+         U32_TYPE => {
+            if enum_i.variants.len() > (u64::from(u32::MAX) + 1) as usize {
+               rolandc_error!(
+                  err_manager,
+                  base_type_location,
+                  "Enum `{}` has {} variants, which exceeds the maximum capacity of the specified base type ({})",
+                  interner.lookup(enum_i.name),
+                  enum_i.variants.len(),
+                  u64::from(u32::MAX) + 1
+               );
+            }
+         }
+         U16_TYPE => {
+            if enum_i.variants.len() > (u32::from(u16::MAX) + 1) as usize {
+               rolandc_error!(
+                  err_manager,
+                  base_type_location,
+                  "Enum `{}` has {} variants, which exceeds the maximum capacity of the specified base type ({})",
+                  interner.lookup(enum_i.name),
+                  enum_i.variants.len(),
+                  u32::from(u16::MAX) + 1
+               );
+            }
+         }
+         U8_TYPE => {
+            if enum_i.variants.len() > (u16::from(u8::MAX) + 1) as usize {
+               rolandc_error!(
+                  err_manager,
+                  base_type_location,
+                  "Enum `{}` has {} variants, which exceeds the maximum capacity of the specified base type ({})",
+                  interner.lookup(enum_i.name),
+                  enum_i.variants.len(),
+                  u16::from(u8::MAX) + 1,
+               );
+            }
+         }
+         ExpressionType::Unit => {
+            if !enum_i.variants.is_empty() {
+               rolandc_error!(
+                  err_manager,
+                  base_type_location,
+                  "Enum `{}` has {} variants, which exceeds the maximum capacity of the specified base type ({})",
+                  interner.lookup(enum_i.name),
+                  enum_i.variants.len(),
+                  0,
+               );
+            }
+         }
+         _ => {
+            rolandc_error!(err_manager, base_type_location, "Enum base type must be an unsigned integer");
+         }
+      }
+   }
    for struct_i in program.user_defined_types.struct_info.values_mut() {
       for etn in struct_i.field_types.values_mut() {
          resolve_type(

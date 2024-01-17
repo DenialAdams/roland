@@ -1,0 +1,10 @@
+// no variants + base
+enum Foo : u8 {
+
+}
+
+proc main() {
+    let x: Foo = ___;
+}
+__END__
+run:
