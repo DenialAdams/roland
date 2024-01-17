@@ -274,7 +274,7 @@
             {
                "comment": "union keyword",
                "name": "keyword.declaration.union.roland storage.type.roland",
-               "match": "\\b(struct)\\b"
+               "match": "\\b(union)\\b"
             },
             {
                "comment": "other keywords",
