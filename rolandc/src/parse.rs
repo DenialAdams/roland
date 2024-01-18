@@ -1402,7 +1402,10 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
          let type_s = extract_identifier(type_token.token);
          let (generic_args, final_location) = if l.peek_token() == Token::LessThan {
             let (g_args, g_args_location) = parse_generic_arguments(l, parse_context)?;
-            (g_args.into_iter().map(|x| x.e_type).collect(), merge_locations(type_token.source_info, g_args_location))
+            (
+               g_args.into_iter().map(|x| x.e_type).collect(),
+               merge_locations(type_token.source_info, g_args_location),
+            )
          } else {
             (vec![], type_token.source_info)
          };

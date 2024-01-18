@@ -175,15 +175,37 @@ pub fn str_to_builtin_type(x: &str) -> Option<ExpressionType> {
    }
 }
 
-pub fn resolve_type(
+pub trait CanCheckContainsStrId {
+   fn contains(&self, x: &StrId) -> bool;
+}
+
+impl<V> CanCheckContainsStrId for IndexMap<StrId, V> {
+   fn contains(&self, x: &StrId) -> bool {
+      self.contains_key(x)
+   }
+}
+
+impl CanCheckContainsStrId for IndexSet<StrId> {
+   fn contains(&self, x: &StrId) -> bool {
+      self.contains(x)
+   }
+}
+
+impl CanCheckContainsStrId for () {
+    fn contains(&self, _: &StrId) -> bool {
+        return false;
+    }
+}
+
+pub fn resolve_type<T>(
    v_type: &mut ExpressionType,
    type_name_table: &HashMap<StrId, UserDefinedTypeId>,
-   type_params: Option<&IndexMap<StrId, IndexSet<StrId>>>,
+   type_params: Option<&T>,
    err_manager: &mut ErrorManager,
    interner: &Interner,
    location_for_error: SourceInfo,
    udt: &UserDefinedTypeInfo,
-) -> bool {
+) -> bool where T: CanCheckContainsStrId {
    match v_type {
       ExpressionType::Pointer(vt) => resolve_type(
          vt,
@@ -245,7 +267,15 @@ pub fn resolve_type(
       ExpressionType::Unresolved { name: x, generic_args } => {
          let mut args_ok = true;
          for g_arg in generic_args.iter_mut() {
-            args_ok &= resolve_type(g_arg, type_name_table, type_params, err_manager, interner, location_for_error, udt);
+            args_ok &= resolve_type(
+               g_arg,
+               type_name_table,
+               type_params,
+               err_manager,
+               interner,
+               location_for_error,
+               udt,
+            );
          }
 
          let new_type = match type_name_table.get(x) {
@@ -261,12 +291,8 @@ pub fn resolve_type(
                }
                ExpressionType::Enum(*y)
             }
-            Some(UserDefinedTypeId::Union(y)) => {
-               ExpressionType::Union(*y)
-            }
-            Some(UserDefinedTypeId::Struct(y)) => {
-               ExpressionType::Struct(*y)
-            }
+            Some(UserDefinedTypeId::Union(y)) => ExpressionType::Union(*y),
+            Some(UserDefinedTypeId::Struct(y)) => ExpressionType::Struct(*y),
             None => {
                if let Some(bt) = str_to_builtin_type(interner.lookup(*x)) {
                   if !generic_args.is_empty() {
@@ -279,7 +305,7 @@ pub fn resolve_type(
                      return false;
                   }
                   bt
-               } else if type_params.map_or(false, |tp| tp.contains_key(x)) {
+               } else if type_params.map_or(false, |tp| tp.contains(x)) {
                   if !generic_args.is_empty() {
                      rolandc_error!(
                         err_manager,
