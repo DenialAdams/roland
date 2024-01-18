@@ -182,6 +182,7 @@ pub fn resolve_type(
    err_manager: &mut ErrorManager,
    interner: &Interner,
    location_for_error: SourceInfo,
+   udt: &UserDefinedTypeInfo,
 ) -> bool {
    match v_type {
       ExpressionType::Pointer(vt) => resolve_type(
@@ -191,6 +192,7 @@ pub fn resolve_type(
          err_manager,
          interner,
          location_for_error,
+         udt,
       ),
       ExpressionType::Never => true,
       ExpressionType::Unknown(_) => true,
@@ -207,6 +209,7 @@ pub fn resolve_type(
          err_manager,
          interner,
          location_for_error,
+         udt,
       ),
       ExpressionType::CompileError => true,
       ExpressionType::Enum(_) => true,
@@ -223,6 +226,7 @@ pub fn resolve_type(
                err_manager,
                interner,
                location_for_error,
+               udt,
             );
          }
          resolve_result &= resolve_type(
@@ -232,6 +236,7 @@ pub fn resolve_type(
             err_manager,
             interner,
             location_for_error,
+            udt,
          );
          resolve_result
       }
@@ -240,7 +245,7 @@ pub fn resolve_type(
       ExpressionType::Unresolved { name: x, generic_args } => {
          let mut args_ok = true;
          for g_arg in generic_args.iter_mut() {
-            args_ok &= resolve_type(g_arg, type_name_table, type_params, err_manager, interner, location_for_error);
+            args_ok &= resolve_type(g_arg, type_name_table, type_params, err_manager, interner, location_for_error, udt);
          }
 
          let new_type = match type_name_table.get(x) {
@@ -862,6 +867,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                err_manager,
                validation_context.interner,
                v.location,
+               validation_context.user_defined_types,
             ) {
                dt_is_unresolved = true;
             } else if let DeclarationValue::Expr(enid) = opt_enid {
@@ -994,6 +1000,7 @@ fn type_expression(
             err_manager,
             validation_context.interner,
             expr_location,
+            validation_context.user_defined_types,
          ) {
             *target_type = ExpressionType::CompileError;
          }
@@ -1024,6 +1031,7 @@ fn type_expression(
                err_manager,
                validation_context.interner,
                g_arg.location,
+               validation_context.user_defined_types,
             );
          }
 

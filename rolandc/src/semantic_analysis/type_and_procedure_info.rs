@@ -199,6 +199,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          .insert(a_union.name, UserDefinedTypeId::Union(union_id));
    }
 
+   let udt_copy = program.user_defined_types.clone();
    for (id, enum_i) in program.user_defined_types.enum_info.iter_mut() {
       let base_type_location = enum_base_type_locations[id];
 
@@ -209,6 +210,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          err_manager,
          interner,
          base_type_location,
+         &udt_copy,
       ) {
          continue;
       };
@@ -277,6 +279,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
             err_manager,
             interner,
             etn.location,
+            &udt_copy,
          );
       }
    }
@@ -289,6 +292,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
             err_manager,
             interner,
             etn.location,
+            &udt_copy,
          );
       }
    }
@@ -351,6 +355,7 @@ pub fn populate_type_and_procedure_info(
          err_manager,
          interner,
          const_node.const_type.location,
+         &program.user_defined_types,
       );
 
       if let Some(old_value) = program.global_info.insert(
@@ -385,6 +390,7 @@ pub fn populate_type_and_procedure_info(
          err_manager,
          interner,
          static_node.static_type.location,
+         &program.user_defined_types,
       );
 
       if let Some(old_value) = program.global_info.insert(
@@ -539,6 +545,7 @@ pub fn populate_type_and_procedure_info(
             err_manager,
             interner,
             parameter.p_type.location,
+            &program.user_defined_types,
          );
       }
 
@@ -549,6 +556,7 @@ pub fn populate_type_and_procedure_info(
          err_manager,
          interner,
          definition.ret_type.location,
+         &program.user_defined_types,
       );
 
       program.procedure_info.insert(
