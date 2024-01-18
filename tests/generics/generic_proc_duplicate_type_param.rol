@@ -1,0 +1,10 @@
+proc main() {
+}
+
+proc foo<T, T>() {
+
+}
+__END__
+compile:
+Procedure `foo` has a duplicate type parameter `T`
+↳ line 4, column 13 [tests/generics/generic_proc_duplicate_type_param.rol]

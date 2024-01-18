@@ -473,6 +473,19 @@ pub fn populate_type_and_procedure_info(
          }
       }
 
+      dupe_check.clear();
+      for generic_param in definition.generic_parameters.iter() {
+         if !dupe_check.insert(generic_param.str) {
+            rolandc_error!(
+               err_manager,
+               generic_param.location,
+               "Procedure `{}` has a duplicate type parameter `{}`",
+               interner.lookup(definition.name.str),
+               interner.lookup(generic_param.str),
+            );
+         }
+      }
+
       for constraint in definition.constraints.iter() {
          let matching_generic_param = match definition.generic_parameters.iter().find(|x| x.str == *constraint.0) {
             Some(x) => x.str,
