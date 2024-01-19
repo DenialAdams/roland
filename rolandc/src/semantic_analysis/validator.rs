@@ -1204,7 +1204,7 @@ fn get_type(
                }
             }
             CastType::Transmute => {
-               if e_type.size_is_unknown() {
+               if e_type.size_is_unknown(validation_context.user_defined_types) {
                   rolandc_error!(
                      err_manager,
                      e.location,
@@ -1213,7 +1213,7 @@ fn get_type(
                   return ExpressionType::CompileError;
                }
 
-               if target_type.size_is_unknown() {
+               if target_type.size_is_unknown(validation_context.user_defined_types) {
                   // This can only happen if the target is a type argument
                   rolandc_error!(
                      err_manager,
@@ -1250,7 +1250,7 @@ fn get_type(
                   }
                   let (alignment_source, alignment_target) = {
                      fn get_align_or_unknown(a_type: &ExpressionType, ctx: &ValidationContext) -> AlignOrUnknown {
-                        if a_type.size_is_unknown() {
+                        if a_type.size_is_unknown(ctx.user_defined_types) {
                            return AlignOrUnknown::Unknown;
                         }
                         AlignOrUnknown::Alignment(mem_alignment(a_type, ctx.user_defined_types))
