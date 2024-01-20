@@ -20,7 +20,7 @@ use crate::parse::{
    ExpressionId, ExpressionNode, ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId,
    StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
 };
-use crate::size_info::{mem_alignment, sizeof_type_mem};
+use crate::size_info::{calculate_struct_size_info, mem_alignment, sizeof_type_mem};
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, IntType, F32_TYPE, F64_TYPE, I32_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE};
 use crate::Target;
@@ -192,9 +192,9 @@ impl CanCheckContainsStrId for IndexSet<StrId> {
 }
 
 impl CanCheckContainsStrId for () {
-    fn contains(&self, _: &StrId) -> bool {
-        return false;
-    }
+   fn contains(&self, _: &StrId) -> bool {
+      return false;
+   }
 }
 
 pub fn resolve_type<T>(
@@ -204,8 +204,11 @@ pub fn resolve_type<T>(
    err_manager: &mut ErrorManager,
    interner: &Interner,
    location_for_error: SourceInfo,
-   udt: &UserDefinedTypeInfo,
-) -> bool where T: CanCheckContainsStrId {
+   udt: &mut UserDefinedTypeInfo,
+) -> bool
+where
+   T: CanCheckContainsStrId,
+{
    match v_type {
       ExpressionType::Pointer(vt) => resolve_type(
          vt,
@@ -292,7 +295,34 @@ pub fn resolve_type<T>(
                ExpressionType::Enum(*y)
             }
             Some(UserDefinedTypeId::Union(y)) => ExpressionType::Union(*y),
-            Some(UserDefinedTypeId::Struct(y)) => ExpressionType::Struct(*y),
+            Some(UserDefinedTypeId::Struct(y)) => {
+               if !generic_args.is_empty() {
+                  let si: &super::StructInfo = &udt.struct_info[*y];
+                  if generic_args.len() != si.type_parameters.len() {
+                     rolandc_error!(
+                        err_manager,
+                        location_for_error,
+                        "Mismatched arity for struct '{}'. Expected {} type arguments but got {}",
+                        interner.lookup(*x),
+                        si.type_parameters.len(),
+                        generic_args.len(),
+                     );
+                     return false;
+                  }
+                  let mut new_si = si.clone();
+                  new_si.type_parameters.clear();
+                  for ft in new_si.field_types.iter_mut() {
+                     if let ExpressionType::GenericParam(n) = ft.1.e_type {
+                        ft.1.e_type = generic_args[si.type_parameters.get_index_of(&n).unwrap()].clone();
+                     }
+                  }
+                  let new_id = udt.struct_info.insert(new_si);
+                  calculate_struct_size_info(new_id, udt);
+                  ExpressionType::Struct(new_id)
+               } else {
+                  ExpressionType::Struct(*y)
+               }
+            }
             None => {
                if let Some(bt) = str_to_builtin_type(interner.lookup(*x)) {
                   if !generic_args.is_empty() {
@@ -893,7 +923,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                err_manager,
                validation_context.interner,
                v.location,
-               validation_context.user_defined_types,
+               todo!(),
             ) {
                dt_is_unresolved = true;
             } else if let DeclarationValue::Expr(enid) = opt_enid {
@@ -1026,7 +1056,7 @@ fn type_expression(
             err_manager,
             validation_context.interner,
             expr_location,
-            validation_context.user_defined_types,
+            todo!(),
          ) {
             *target_type = ExpressionType::CompileError;
          }
@@ -1057,7 +1087,7 @@ fn type_expression(
                err_manager,
                validation_context.interner,
                g_arg.location,
-               validation_context.user_defined_types,
+               todo!(),
             );
          }
 

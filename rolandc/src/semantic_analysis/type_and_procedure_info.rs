@@ -213,19 +213,28 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          .insert(a_union.name, UserDefinedTypeId::Union(union_id));
    }
 
-   let udt_copy = program.user_defined_types.clone();
-   for (id, enum_i) in program.user_defined_types.enum_info.iter_mut() {
+   let enum_ids: Vec<EnumId> = program.user_defined_types.enum_info.keys().collect();
+   for id in enum_ids {
       let base_type_location = enum_base_type_locations[id];
 
-      if !resolve_type::<()>(
-         &mut enum_i.base_type,
+      let mut et = std::mem::replace(
+         &mut program.user_defined_types.enum_info[id].base_type,
+         ExpressionType::Unit,
+      );
+      let resolved_ok = resolve_type::<()>(
+         &mut et,
          &program.user_defined_type_name_table,
          None,
          err_manager,
          interner,
          base_type_location,
-         &udt_copy,
-      ) {
+         &mut program.user_defined_types,
+      );
+
+      let enum_i = &mut program.user_defined_types.enum_info[id];
+      enum_i.base_type = et;
+
+      if !resolved_ok {
          continue;
       };
 
@@ -288,6 +297,8 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          }
       }
    }
+
+   let mut udt_copy = program.user_defined_types.clone();
    for struct_i in program.user_defined_types.struct_info.values_mut() {
       for etn in struct_i.field_types.values_mut() {
          resolve_type(
@@ -297,7 +308,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
             err_manager,
             interner,
             etn.location,
-            &udt_copy,
+            &mut udt_copy,
          );
       }
    }
@@ -310,7 +321,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
             err_manager,
             interner,
             etn.location,
-            &udt_copy,
+            &mut udt_copy,
          );
       }
    }
@@ -373,7 +384,7 @@ pub fn populate_type_and_procedure_info(
          err_manager,
          interner,
          const_node.const_type.location,
-         &program.user_defined_types,
+         &mut program.user_defined_types,
       );
 
       if let Some(old_value) = program.global_info.insert(
@@ -408,7 +419,7 @@ pub fn populate_type_and_procedure_info(
          err_manager,
          interner,
          static_node.static_type.location,
-         &program.user_defined_types,
+         &mut program.user_defined_types,
       );
 
       if let Some(old_value) = program.global_info.insert(
@@ -563,7 +574,7 @@ pub fn populate_type_and_procedure_info(
             err_manager,
             interner,
             parameter.p_type.location,
-            &program.user_defined_types,
+            &mut program.user_defined_types,
          );
       }
 
@@ -574,7 +585,7 @@ pub fn populate_type_and_procedure_info(
          err_manager,
          interner,
          definition.ret_type.location,
-         &program.user_defined_types,
+         &mut program.user_defined_types,
       );
 
       program.procedure_info.insert(

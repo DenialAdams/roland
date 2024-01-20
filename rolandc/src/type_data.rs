@@ -210,9 +210,7 @@ impl ExpressionType {
       match self {
          ExpressionType::CompileError | ExpressionType::Unresolved { .. } => unreachable!(),
          ExpressionType::Unknown(_) | ExpressionType::GenericParam(_) => true,
-         ExpressionType::Struct(id) => {
-            udt.struct_info[*id].size.is_none()
-         }
+         ExpressionType::Struct(id) => udt.struct_info[*id].size.is_none(),
          ExpressionType::Int(_)
          | ExpressionType::Float(_)
          | ExpressionType::Bool

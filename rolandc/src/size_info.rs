@@ -68,15 +68,21 @@ pub fn calculate_struct_size_info(id: StructId, udt: &mut UserDefinedTypeInfo) {
       return;
    }
 
+   let mut size_not_known = false;
    let ft = std::mem::take(&mut udt.struct_info.get_mut(id).unwrap().field_types);
    for field_t in ft.values() {
       match field_t.e_type {
          ExpressionType::Struct(s) => calculate_struct_size_info(s, udt),
          ExpressionType::Union(s) => calculate_union_size_info(s, udt),
+         ExpressionType::GenericParam(_) => size_not_known = true,
          _ => (),
       }
    }
    udt.struct_info.get_mut(id).unwrap().field_types = ft;
+
+   if size_not_known {
+      return;
+   }
 
    let mut sum_mem = 0;
    let mut sum_values = 0;
