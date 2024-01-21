@@ -1,0 +1,24 @@
+proc main() {
+   validate(return_union$<U>(10), return_union$<U>(100));
+}
+
+proc validate(x: U, y: U) {
+   println_bool(x.x == 10);
+   println_bool(y.x == 100);
+}
+
+union U {
+   x: i64,
+   y: f64,
+}
+
+proc return_union<T>(v: i64) -> T {
+   let x: T = ___;
+   let y = &x transmute &i64;
+   y~ = v; 
+   return x;
+}
+__END__
+run:
+true
+true
