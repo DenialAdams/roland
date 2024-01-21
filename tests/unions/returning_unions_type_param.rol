@@ -1,10 +1,16 @@
 proc main() {
-   validate(return_union$<U>(10), return_union$<U>(100));
+    doit$<U>();
 }
 
-proc validate(x: U, y: U) {
-   println_bool(x.x == 10);
-   println_bool(y.x == 100);
+proc doit<T>() {
+    validate$<T>(return_union$<T>(10), return_union$<T>(100));
+}
+
+proc validate<T>(x: T, y: T) {
+   let xv = (&x transmute &i64)~;
+   let yv = (&y transmute &i64)~;
+   println_bool(xv == 10);
+   println_bool(yv == 100);
 }
 
 union U {

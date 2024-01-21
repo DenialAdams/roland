@@ -307,11 +307,14 @@ fn vv_expr(
             vv_context.statements_that_need_hoisting.insert(current_statement);
          }
 
-         if expressions[expr_index]
-            .exp_type
-            .as_ref()
-            .unwrap()
-            .is_or_contains_union(vv_context.user_defined_type_info)
+         let exp_type = expressions[expr_index].exp_type.as_ref().unwrap();
+
+         // The point here is that we need to hoist calls where a union is returned, because currently
+         // a returned union is an address _in the function we just called_, so not hoisting would mean
+         // that we clobber the union if we make another call. Because, currently, this hoisting runs before
+         // monomorphization, we must also check size_is_unknown because any type parameter could end up
+         // being a union. This means unnecessary hoisting, unfortunately.
+         if (exp_type.size_is_unknown() || exp_type.is_or_contains_union(vv_context.user_defined_type_info))
             && !top
          {
             vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
