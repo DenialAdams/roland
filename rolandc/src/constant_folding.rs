@@ -57,6 +57,7 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
    }
 
    for si in program.user_defined_types.struct_info.iter() {
+      // nocheckin if 1 struct becomes 10 we don't want to error 10 times here
       for field_with_default in si.1.default_values.iter() {
          try_fold_and_replace_expr(*field_with_default.1, err_manager, &mut folding_context, interner);
          let v = &folding_context.ast.expressions[*field_with_default.1];

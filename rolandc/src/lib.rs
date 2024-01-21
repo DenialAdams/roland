@@ -162,6 +162,12 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       return Err(CompilationError::Semantic);
    }
 
+   semantic_analysis::name_and_type_resolution::resolve_names_and_types(
+      &mut ctx.program,
+      &mut ctx.err_manager,
+      &mut ctx.interner,
+   );
+
    semantic_analysis::validator::type_and_check_validity(
       &mut ctx.program,
       &mut ctx.err_manager,

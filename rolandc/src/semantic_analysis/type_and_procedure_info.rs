@@ -3,13 +3,12 @@ use std::collections::{HashMap, HashSet};
 use indexmap::{IndexMap, IndexSet};
 use slotmap::{SecondaryMap, SlotMap};
 
-use super::validator::str_to_builtin_type;
+use super::name_and_type_resolution::{str_to_builtin_type, resolve_type};
 use super::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo, UnionInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{EnumId, ExpressionTypeNode, ProcImplSource, StructId, UnionId, UserDefinedTypeId};
-use crate::semantic_analysis::validator::resolve_type;
 use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
 use crate::source_info::{SourceInfo, SourcePath};
 use crate::type_data::{ExpressionType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
@@ -298,6 +297,8 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       }
    }
 
+   // nocheckin: this is still putting new structs (from resolution) into the void!
+   // How was I supposed to deal with this?
    let mut udt_copy = program.user_defined_types.clone();
    for struct_i in program.user_defined_types.struct_info.values_mut() {
       for etn in struct_i.field_types.values_mut() {
@@ -337,6 +338,7 @@ pub fn populate_type_and_procedure_info(
 
    // Check for recursive structs only after we've attempted to resolve all of the field types
    let mut seen_structs_or_unions = HashSet::new();
+   // nocheckin if 1 struct becomes 10 we don't want to error 10 times here
    for struct_i in program.user_defined_types.struct_info.iter() {
       seen_structs_or_unions.clear();
       if recursive_struct_union_check(

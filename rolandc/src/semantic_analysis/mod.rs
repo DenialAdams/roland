@@ -15,6 +15,7 @@ use crate::type_data::ExpressionType;
 use crate::Target;
 
 pub mod definite_assignment;
+pub mod name_and_type_resolution;
 pub mod type_and_procedure_info;
 pub mod type_inference;
 pub mod type_variables;

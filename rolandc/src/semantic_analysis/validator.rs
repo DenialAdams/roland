@@ -20,7 +20,7 @@ use crate::parse::{
    ExpressionId, ExpressionNode, ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId,
    StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
 };
-use crate::size_info::{calculate_struct_size_info, mem_alignment, sizeof_type_mem};
+use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, IntType, F32_TYPE, F64_TYPE, I32_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE};
 use crate::Target;
@@ -153,214 +153,6 @@ fn any_match(type_validations: &[TypeValidator], et: &ExpressionType, validation
       any_match |= matches(type_validation, et, validation_context);
    }
    any_match
-}
-
-pub fn str_to_builtin_type(x: &str) -> Option<ExpressionType> {
-   match x {
-      "bool" => Some(ExpressionType::Bool),
-      "isize" => Some(crate::type_data::ISIZE_TYPE),
-      "i64" => Some(crate::type_data::I64_TYPE),
-      "i32" => Some(crate::type_data::I32_TYPE),
-      "i16" => Some(crate::type_data::I16_TYPE),
-      "i8" => Some(crate::type_data::I8_TYPE),
-      "usize" => Some(crate::type_data::USIZE_TYPE),
-      "u64" => Some(crate::type_data::U64_TYPE),
-      "u32" => Some(crate::type_data::U32_TYPE),
-      "u16" => Some(crate::type_data::U16_TYPE),
-      "u8" => Some(crate::type_data::U8_TYPE),
-      "f32" => Some(crate::type_data::F32_TYPE),
-      "f64" => Some(crate::type_data::F64_TYPE),
-      "unit" => Some(ExpressionType::Unit),
-      _ => None,
-   }
-}
-
-pub trait CanCheckContainsStrId {
-   fn contains(&self, x: &StrId) -> bool;
-}
-
-impl<V> CanCheckContainsStrId for IndexMap<StrId, V> {
-   fn contains(&self, x: &StrId) -> bool {
-      self.contains_key(x)
-   }
-}
-
-impl CanCheckContainsStrId for IndexSet<StrId> {
-   fn contains(&self, x: &StrId) -> bool {
-      self.contains(x)
-   }
-}
-
-impl CanCheckContainsStrId for () {
-   fn contains(&self, _: &StrId) -> bool {
-      return false;
-   }
-}
-
-pub fn resolve_type<T>(
-   v_type: &mut ExpressionType,
-   type_name_table: &HashMap<StrId, UserDefinedTypeId>,
-   type_params: Option<&T>,
-   err_manager: &mut ErrorManager,
-   interner: &Interner,
-   location_for_error: SourceInfo,
-   udt: &mut UserDefinedTypeInfo,
-) -> bool
-where
-   T: CanCheckContainsStrId,
-{
-   match v_type {
-      ExpressionType::Pointer(vt) => resolve_type(
-         vt,
-         type_name_table,
-         type_params,
-         err_manager,
-         interner,
-         location_for_error,
-         udt,
-      ),
-      ExpressionType::Never => true,
-      ExpressionType::Unknown(_) => true,
-      ExpressionType::Int(_) => true,
-      ExpressionType::Float(_) => true,
-      ExpressionType::Bool => true,
-      ExpressionType::Unit => true,
-      ExpressionType::Struct(_) => true,
-      ExpressionType::Union(_) => true,
-      ExpressionType::Array(exp, _) => resolve_type(
-         exp,
-         type_name_table,
-         type_params,
-         err_manager,
-         interner,
-         location_for_error,
-         udt,
-      ),
-      ExpressionType::CompileError => true,
-      ExpressionType::Enum(_) => true,
-      ExpressionType::ProcedurePointer {
-         parameters,
-         ret_type: ret_val,
-      } => {
-         let mut resolve_result = true;
-         for parameter in parameters.iter_mut() {
-            resolve_result &= resolve_type(
-               parameter,
-               type_name_table,
-               type_params,
-               err_manager,
-               interner,
-               location_for_error,
-               udt,
-            );
-         }
-         resolve_result &= resolve_type(
-            ret_val,
-            type_name_table,
-            type_params,
-            err_manager,
-            interner,
-            location_for_error,
-            udt,
-         );
-         resolve_result
-      }
-      ExpressionType::GenericParam(_) => true,
-      ExpressionType::ProcedureItem(_, _) => true, // This type contains other types, but this type itself can never be written down. It should always be valid
-      ExpressionType::Unresolved { name: x, generic_args } => {
-         let mut args_ok = true;
-         for g_arg in generic_args.iter_mut() {
-            args_ok &= resolve_type(
-               g_arg,
-               type_name_table,
-               type_params,
-               err_manager,
-               interner,
-               location_for_error,
-               udt,
-            );
-         }
-
-         let new_type = match type_name_table.get(x) {
-            Some(UserDefinedTypeId::Enum(y)) => {
-               if !generic_args.is_empty() {
-                  rolandc_error!(
-                     err_manager,
-                     location_for_error,
-                     "Type arguments are not supported for enum types",
-                  );
-
-                  return false;
-               }
-               ExpressionType::Enum(*y)
-            }
-            Some(UserDefinedTypeId::Union(y)) => ExpressionType::Union(*y),
-            Some(UserDefinedTypeId::Struct(y)) => {
-               if !generic_args.is_empty() {
-                  let si: &super::StructInfo = &udt.struct_info[*y];
-                  if generic_args.len() != si.type_parameters.len() {
-                     rolandc_error!(
-                        err_manager,
-                        location_for_error,
-                        "Mismatched arity for struct '{}'. Expected {} type arguments but got {}",
-                        interner.lookup(*x),
-                        si.type_parameters.len(),
-                        generic_args.len(),
-                     );
-                     return false;
-                  }
-                  let mut new_si = si.clone();
-                  new_si.type_parameters.clear();
-                  for ft in new_si.field_types.iter_mut() {
-                     if let ExpressionType::GenericParam(n) = ft.1.e_type {
-                        ft.1.e_type = generic_args[si.type_parameters.get_index_of(&n).unwrap()].clone();
-                     }
-                  }
-                  let new_id = udt.struct_info.insert(new_si);
-                  calculate_struct_size_info(new_id, udt);
-                  ExpressionType::Struct(new_id)
-               } else {
-                  ExpressionType::Struct(*y)
-               }
-            }
-            None => {
-               if let Some(bt) = str_to_builtin_type(interner.lookup(*x)) {
-                  if !generic_args.is_empty() {
-                     rolandc_error!(
-                        err_manager,
-                        location_for_error,
-                        "Type arguments are not supported for builtin types",
-                     );
-
-                     return false;
-                  }
-                  bt
-               } else if type_params.map_or(false, |tp| tp.contains(x)) {
-                  if !generic_args.is_empty() {
-                     rolandc_error!(
-                        err_manager,
-                        location_for_error,
-                        "Type arguments are not supported for type parameters",
-                     );
-
-                     return false;
-                  }
-                  ExpressionType::GenericParam(*x)
-               } else {
-                  rolandc_error!(
-                     err_manager,
-                     location_for_error,
-                     "Undeclared type `{}`",
-                     interner.lookup(*x),
-                  );
-                  return false;
-               }
-            }
-         };
-         *v_type = new_type;
-         args_ok
-      }
-   }
 }
 
 pub fn type_and_check_validity(
@@ -508,6 +300,7 @@ pub fn type_and_check_validity(
          let declared_type = s.1.field_types.get(field_name).unwrap();
          try_set_inferred_type(&declared_type.e_type, default_expr, &mut validation_context);
 
+         // nocheckin if 1 struct becomes 10 we don't want to error 10 times here
          check_type_declared_vs_actual(
             declared_type,
             &validation_context.ast.expressions[default_expr],
@@ -914,19 +707,8 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             type_expression(err_manager, *enid, validation_context);
          }
 
-         let mut dt_is_unresolved = false;
          if let Some(v) = dt.as_mut() {
-            if !resolve_type(
-               &mut v.e_type,
-               validation_context.user_defined_type_name_table,
-               validation_context.cur_procedure_info.map(|x| &x.type_parameters),
-               err_manager,
-               validation_context.interner,
-               v.location,
-               todo!(),
-            ) {
-               dt_is_unresolved = true;
-            } else if let DeclarationValue::Expr(enid) = opt_enid {
+            if let DeclarationValue::Expr(enid) = opt_enid {
                try_set_inferred_type(&v.e_type, *enid, validation_context);
             }
          };
@@ -937,22 +719,25 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             DeclarationValue::None => None,
          };
 
-         let result_type = if dt_is_unresolved {
-            ExpressionType::CompileError
-         } else if let Some(dt_val) = dt {
-            if let Some(en) = opt_en {
-               check_type_declared_vs_actual(
-                  dt_val,
-                  en,
-                  validation_context.interner,
-                  validation_context.user_defined_types,
-                  validation_context.procedure_info,
-                  &validation_context.type_variables,
-                  err_manager,
-               );
-            }
+         let result_type = if let Some(dt_val) = dt {
+            if dt_val.e_type == ExpressionType::CompileError {
+               // When the declared type was not successfully resolved
+               ExpressionType::CompileError
+            } else {
+               if let Some(en) = opt_en {
+                  check_type_declared_vs_actual(
+                     dt_val,
+                     en,
+                     validation_context.interner,
+                     validation_context.user_defined_types,
+                     validation_context.procedure_info,
+                     &validation_context.type_variables,
+                     err_manager,
+                  );
+               }
 
-            dt_val.e_type.clone()
+               dt_val.e_type.clone()
+            }
          } else if let Some(en) = opt_en {
             en.exp_type.clone().unwrap()
          } else {
@@ -1046,21 +831,8 @@ fn type_expression(
 ) {
    let expr_location = validation_context.ast.expressions[expr_index].location;
 
-   // Resolve types and names first
+   // Resolve names first
    match &mut validation_context.ast.expressions[expr_index].expression {
-      Expression::Cast { target_type, .. } => {
-         if !resolve_type(
-            target_type,
-            validation_context.user_defined_type_name_table,
-            validation_context.cur_procedure_info.map(|x| &x.type_parameters),
-            err_manager,
-            validation_context.interner,
-            expr_location,
-            todo!(),
-         ) {
-            *target_type = ExpressionType::CompileError;
-         }
-      }
       Expression::UnresolvedVariable(id) => match validation_context.variable_types.get_mut(&id.str) {
          Some(var_info) => {
             var_info.used = true;
@@ -1078,24 +850,6 @@ fn type_expression(
             }
          }
       },
-      Expression::UnresolvedProcLiteral(name, g_args) => {
-         for g_arg in g_args.iter_mut() {
-            resolve_type(
-               &mut g_arg.e_type,
-               validation_context.user_defined_type_name_table,
-               validation_context.cur_procedure_info.map(|x| &x.type_parameters),
-               err_manager,
-               validation_context.interner,
-               g_arg.location,
-               todo!(),
-            );
-         }
-
-         if let Some(proc_id) = validation_context.proc_name_table.get(&name.str).copied() {
-            validation_context.ast.expressions[expr_index].expression =
-               Expression::BoundFcnLiteral(proc_id, std::mem::take(g_args).into_boxed_slice());
-         }
-      }
       _ => (),
    }
 
