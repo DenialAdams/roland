@@ -126,10 +126,7 @@ fn main() {
 
    let out_bytes = match compile_result {
       Ok(v) => v,
-      Err(CompilationError::Lex) => std::process::exit(1),
-      Err(CompilationError::Parse) => std::process::exit(1),
-      Err(CompilationError::Semantic) => std::process::exit(1),
-      Err(CompilationError::Io) => std::process::exit(1),
+      Err(_) => std::process::exit(1),
    };
 
    let output_path = if let Some(v) = opts.output {
