@@ -6,7 +6,7 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
 
-use rolandc::{CompilationContext, CompilationEntryPoint, CompilationError, FileResolver, Target};
+use rolandc::{CompilationContext, CompilationEntryPoint, FileResolver, Target};
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
@@ -16,27 +16,39 @@ const HELP: &str = r"
 Usage: rolandc (source.rol) [OPTION]*
 
 Valid boolean options are:
---wasm4 | Links the WASM-4 standard library and emits a WASM-4 cart
+--wasm4   | Links the WASM-4 standard library and emits a WASM-4 cart
 --microw8 | Links the microw8 standard library and emits a microw8 cart
+--wasi    | Links the full roland standard library and emits a binary for use with a WASI-compliant runtime
 
 Valid options with arguments are:
 --output (output_file.wasm) | Specify the name of the output file
+--target (target_name)      | Specify the compilation target
 
 Other modes:
---help | Prints this message
+--help    | Prints this message
 --version | Prints the git commit this executable was built from";
 
 #[derive(Debug)]
 struct Opts {
    source_file: PathBuf,
    output: Option<PathBuf>,
-   wasm4: bool,
-   microw8: bool,
+   target: Option<Target>,
    dump_debugging_info: bool,
 }
 
 fn parse_path(s: &std::ffi::OsStr) -> Result<std::path::PathBuf, &'static str> {
    Ok(s.into())
+}
+
+fn parse_target(s: &std::ffi::OsStr) -> Result<Target, &'static str> {
+   let mut lower = s.to_string_lossy().into_owned();
+   lower.make_ascii_lowercase();
+   Ok(match lower.as_str() {
+      "wasm4" | "wasm-4" => Target::Wasm4,
+      "wasi" => Target::Wasi,
+      "microw8" => Target::Microw8,
+      _ => return Err("Unrecognized target")
+   })
 }
 
 fn parse_args() -> Result<Opts, pico_args::Error> {
@@ -53,9 +65,32 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
       std::process::exit(0);
    }
 
+   let mut target: Option<Target> = None;
+
+   let target_arr = [("--wasm4", Target::Wasm4), ("--microw8", Target::Microw8), ("--wasi", Target::Wasi)];
+
+   for (opt, pot_target) in target_arr {
+      if pargs.contains(opt) {
+         if target.is_some() {
+            eprintln!("Only one target may be specified");
+            std::process::exit(1);
+         }
+
+         target = Some(pot_target);
+      }
+   }
+
+   if let Some(t) = pargs.opt_value_from_os_str("--target", parse_target)? {
+      if target.is_some() {
+         eprintln!("Only one target may be specified");
+         std::process::exit(1);
+      }
+
+      target = Some(t);
+   }
+
    let opts = Opts {
-      wasm4: pargs.contains("--wasm4"),
-      microw8: pargs.contains("--microw8"),
+      target,
       dump_debugging_info: pargs.contains("--dump-debugging-info"),
       output: pargs.opt_value_from_os_str("--output", parse_path)?,
       source_file: pargs.free_from_os_str(parse_path)?,
@@ -65,7 +100,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
 
    if !remaining_args.is_empty() {
       let remaining_args_unicode: Vec<_> = remaining_args.iter().map(|x| x.to_string_lossy()).collect();
-      eprintln!("Unrecognized arugments: '{}'", remaining_args_unicode.join("', '"));
+      eprintln!("Unrecognized arguments: '{}'", remaining_args_unicode.join("', '"));
       eprintln!("{}", HELP);
       std::process::exit(1);
    }
@@ -88,7 +123,7 @@ fn main() {
    let opts = match parse_args() {
       Ok(v) => v,
       Err(e) => {
-         eprintln!("We didn't understand the arguments you provided: {}", e);
+         eprintln!("Argument parsing error: {}", e);
          eprintln!("{}", HELP);
          std::process::exit(1);
       }
@@ -97,20 +132,9 @@ fn main() {
    let err_stream = std::io::stderr();
    let mut err_stream_l = err_stream.lock();
 
-   // this doesn't scale :) we'll change the CLI at some point to accept --target <x>!
-   let target = match (opts.microw8, opts.wasm4) {
-      (true, true) => {
-         eprintln!("--wasm4 must not be specified with --microw8");
-         std::process::exit(1);
-      }
-      (true, false) => Target::Microw8,
-      (false, true) => Target::Wasm4,
-      (false, false) => Target::Wasi,
-   };
-
    let mut ctx = CompilationContext::new();
    let config = rolandc::CompilationConfig {
-      target,
+      target: opts.target.unwrap_or(Target::Wasi),
       include_std: true,
       i_am_std: false,
       dump_debugging_info: opts.dump_debugging_info,
