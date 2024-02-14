@@ -7,7 +7,7 @@ use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{AstPool, Expression, ExpressionId, ProcedureId, Program, UserDefinedTypeInfo, VariableId};
-use crate::semantic_analysis::ProcedureInfo;
+use crate::semantic_analysis::{GlobalKind, ProcedureInfo};
 use crate::source_info::SourceInfo;
 
 struct CgContext<'a> {
@@ -47,9 +47,10 @@ pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &
    // As a result, we need to completely simplify constant expressions in the correct (DAG) order before we can proceed with the rest of compilation.
 
    let all_consts: HashMap<VariableId, (SourceInfo, ExpressionId, StrId)> = program
-      .consts
+      .global_info
       .iter()
-      .map(|x| (x.var_id, (x.location, x.value, x.name.str)))
+      .filter(|x| x.1.kind == GlobalKind::Const)
+      .map(|x| (*x.0, (x.1.location, x.1.initializer.unwrap(), x.1.name)))
       .collect();
    let mut consts_being_processed: HashSet<VariableId> = HashSet::new();
    let mut const_replacements: HashMap<VariableId, ExpressionId> = HashMap::new();
@@ -64,8 +65,13 @@ pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &
       interner,
    };
 
-   for c in program.consts.iter() {
-      cg_const(c.var_id, &mut cg_ctx, err_manager);
+   for c_var_id in program
+      .global_info
+      .iter()
+      .filter(|x| x.1.kind == GlobalKind::Const)
+      .map(|x| *x.0)
+   {
+      cg_const(c_var_id, &mut cg_ctx, err_manager);
    }
 }
 

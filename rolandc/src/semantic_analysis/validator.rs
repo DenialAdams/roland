@@ -9,7 +9,7 @@ use slotmap::SecondaryMap;
 
 use super::type_inference::try_set_inferred_type;
 use super::type_variables::{TypeConstraint, TypeVariableManager};
-use super::{GlobalKind, ProcedureInfo, ValidationContext, VariableDetails, VariableKind};
+use super::{ProcedureInfo, ValidationContext, VariableDetails, VariableKind};
 use crate::error_handling::error_handling_macros::{
    rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn,
 };
@@ -428,41 +428,18 @@ pub fn type_and_check_validity(
       }
    }
 
-   for p_const in program.consts.iter_mut() {
-      // p_const.const_type is guaranteed to be resolved at this point
-      type_expression(err_manager, p_const.value, &mut validation_context);
-      try_set_inferred_type(&p_const.const_type.e_type, p_const.value, &mut validation_context);
-
-      let p_const_expr = &validation_context.ast.expressions[p_const.value];
-
-      check_type_declared_vs_actual(
-         &p_const.const_type,
-         p_const_expr,
-         validation_context.interner,
-         validation_context.user_defined_types,
-         validation_context.procedure_info,
-         &validation_context.type_variables,
-         err_manager,
-      );
-   }
-
-   for p_static in program
-      .global_info
-      .values()
-      .filter(|x| x.kind == GlobalKind::Static && x.initializer.is_some())
-   {
-      // p_static.static_type is guaranteed to be resolved at this point
-      type_expression(err_manager, p_static.initializer.unwrap(), &mut validation_context);
+   for p_global in program.global_info.values().filter(|x| x.initializer.is_some()) {
+      type_expression(err_manager, p_global.initializer.unwrap(), &mut validation_context);
       try_set_inferred_type(
-         &p_static.expr_type.e_type,
-         p_static.initializer.unwrap(),
+         &p_global.expr_type.e_type,
+         p_global.initializer.unwrap(),
          &mut validation_context,
       );
 
-      let p_static_expr = &validation_context.ast.expressions[p_static.initializer.unwrap()];
+      let p_static_expr = &validation_context.ast.expressions[p_global.initializer.unwrap()];
 
       check_type_declared_vs_actual(
-         &p_static.expr_type,
+         &p_global.expr_type,
          p_static_expr,
          validation_context.interner,
          validation_context.user_defined_types,

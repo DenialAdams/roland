@@ -11,7 +11,7 @@ use crate::parse::{
    AstPool, BinOp, BlockNode, CastType, EnumId, Expression, ExpressionId, ExpressionNode, ExpressionPool,
    ProcImplSource, ProcedureId, Program, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::ProcedureInfo;
+use crate::semantic_analysis::{GlobalKind, ProcedureInfo};
 use crate::source_info::SourceInfo;
 use crate::type_data::{
    ExpressionType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
@@ -29,8 +29,8 @@ pub struct FoldingContext<'a> {
 pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, interner: &Interner) {
    let mut const_replacements: HashMap<VariableId, ExpressionId> = HashMap::new();
 
-   for p_const in program.consts.drain(..) {
-      const_replacements.insert(p_const.var_id, p_const.value);
+   for p_const in program.global_info.iter().filter(|x| x.1.kind == GlobalKind::Const) {
+      const_replacements.insert(*p_const.0, p_const.1.initializer.unwrap());
    }
 
    let mut folding_context = FoldingContext {

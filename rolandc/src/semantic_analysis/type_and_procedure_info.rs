@@ -1,14 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
 use indexmap::{IndexMap, IndexSet};
-use slotmap::{SlotMap, SecondaryMap};
+use slotmap::{SecondaryMap, SlotMap};
 
 use super::validator::str_to_builtin_type;
 use super::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo, UnionInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{ExpressionTypeNode, ProcImplSource, StructId, UnionId, UserDefinedTypeId, EnumId};
+use crate::parse::{EnumId, ExpressionTypeNode, ProcImplSource, StructId, UnionId, UserDefinedTypeId};
 use crate::semantic_analysis::validator::resolve_type;
 use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
 use crate::source_info::{SourceInfo, SourcePath};
@@ -264,7 +264,11 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
             }
          }
          _ => {
-            rolandc_error!(err_manager, base_type_location, "Enum base type must be an unsigned integer");
+            rolandc_error!(
+               err_manager,
+               base_type_location,
+               "Enum base type must be an unsigned integer"
+            );
          }
       }
    }
@@ -340,12 +344,9 @@ pub fn populate_type_and_procedure_info(
       }
    }
 
-   for const_node in program.consts.iter_mut() {
-      let const_type = &mut const_node.const_type.e_type;
-      let si = &const_node.location;
-
+   for mut const_node in program.consts.drain(..) {
       resolve_type(
-         const_type,
+         &mut const_node.const_type.e_type,
          &program.user_defined_type_name_table,
          None,
          err_manager,
@@ -356,7 +357,7 @@ pub fn populate_type_and_procedure_info(
       if let Some(old_value) = program.global_info.insert(
          program.next_variable,
          GlobalInfo {
-            expr_type: const_node.const_type.clone(),
+            expr_type: const_node.const_type,
             initializer: Some(const_node.value),
             location: const_node.location,
             kind: GlobalKind::Const,
@@ -367,13 +368,12 @@ pub fn populate_type_and_procedure_info(
             err_manager,
             &[
                (old_value.location, "first static/const defined"),
-               (*si, "second static/const defined"),
+               (const_node.location, "second static/const defined"),
             ],
             "Encountered duplicate static/const with the same name `{}`",
             interner.lookup(const_node.name.str),
          );
       }
-      const_node.var_id = program.next_variable;
       program.next_variable = program.next_variable.next();
    }
 

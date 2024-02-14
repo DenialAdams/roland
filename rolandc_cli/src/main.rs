@@ -47,7 +47,7 @@ fn parse_target(s: &std::ffi::OsStr) -> Result<Target, &'static str> {
       "wasm4" | "wasm-4" => Target::Wasm4,
       "wasi" => Target::Wasi,
       "microw8" => Target::Microw8,
-      _ => return Err("Unrecognized target")
+      _ => return Err("Unrecognized target"),
    })
 }
 
@@ -67,7 +67,11 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
 
    let mut target: Option<Target> = None;
 
-   let target_arr = [("--wasm4", Target::Wasm4), ("--microw8", Target::Microw8), ("--wasi", Target::Wasi)];
+   let target_arr = [
+      ("--wasm4", Target::Wasm4),
+      ("--microw8", Target::Microw8),
+      ("--wasi", Target::Wasi),
+   ];
 
    for (opt, pot_target) in target_arr {
       if pargs.contains(opt) {
