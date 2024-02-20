@@ -808,7 +808,7 @@ fn compare_type_alignment(e_1: &ExpressionType, e_2: &ExpressionType, udt: &User
    let alignment_2 = mem_alignment(e_2, udt);
 
    let sizeof_1 = sizeof_type_mem(e_1, udt);
-   let sizeof_2 = sizeof_type_mem(e_1, udt);
+   let sizeof_2 = sizeof_type_mem(e_2, udt);
 
    compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
 }
