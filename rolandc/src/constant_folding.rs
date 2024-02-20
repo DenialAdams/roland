@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::ops::{BitAnd, BitOr, BitXor};
 
 use slotmap::SecondaryMap;
