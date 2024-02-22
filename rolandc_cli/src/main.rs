@@ -4,7 +4,9 @@
 #![allow(clippy::unnecessary_wraps)] // False positives
 
 use std::borrow::Cow;
+use std::error::Error;
 use std::path::PathBuf;
+use std::process::Command;
 
 use rolandc::{CompilationContext, CompilationEntryPoint, FileResolver, Target};
 
@@ -19,6 +21,7 @@ Valid boolean options are:
 --wasm4   | Links the WASM-4 standard library and emits a WASM-4 cart
 --microw8 | Links the microw8 standard library and emits a microw8 cart
 --wasi    | Links the full roland standard library and emits a binary for use with a WASI-compliant runtime
+--amd64   | (EXPERIMENTAL)
 
 Valid options with arguments are:
 --output (output_file.wasm) | Specify the name of the output file
@@ -47,6 +50,7 @@ fn parse_target(s: &std::ffi::OsStr) -> Result<Target, &'static str> {
       "wasm4" | "wasm-4" => Target::Wasm4,
       "wasi" => Target::Wasi,
       "microw8" => Target::Microw8,
+      "amd64" => Target::Qbe,
       _ => return Err("Unrecognized target"),
    })
 }
@@ -71,6 +75,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
       ("--wasm4", Target::Wasm4),
       ("--microw8", Target::Microw8),
       ("--wasi", Target::Wasi),
+      ("--amd64", Target::Qbe),
    ];
 
    for (opt, pot_target) in target_arr {
@@ -160,9 +165,35 @@ fn main() {
       v
    } else {
       let mut output_path = opts.source_file.clone();
-      output_path.set_extension("wasm");
+      if config.target == Target::Qbe {
+         output_path.set_extension("ssa");
+      } else {
+         output_path.set_extension("wasm");
+      }
       output_path
    };
 
-   std::fs::write(output_path, out_bytes).unwrap();
+   std::fs::write(&output_path, out_bytes).unwrap();
+
+   if config.target == Target::Qbe {
+      if let Err(e) = compile_qbe(output_path) {
+         use std::io::Write;
+         writeln!(err_stream_l, "Failed to compile produced IR to binary: {}", e).unwrap();
+      }
+   }
+}
+
+fn compile_qbe(mut ssa_path: PathBuf) -> std::result::Result<(), Box<dyn Error>> {
+   let mut asm_path = ssa_path.clone();
+   asm_path.set_extension("s");
+   let qbe_stat = Command::new("qbe").arg("-o").arg(&asm_path).arg(&ssa_path).status()?;
+   if !qbe_stat.success() {
+      return Err(format!("QBE failed to execute with code {}", qbe_stat).into());
+   }
+   ssa_path.set_extension("");
+   let cc_stat = Command::new("cc").arg("-o").arg(ssa_path).arg(&asm_path).status()?;
+   if !cc_stat.success() {
+      return Err(format!("cc failed to execute with code {}", qbe_stat).into());
+   }
+   Ok(())
 }

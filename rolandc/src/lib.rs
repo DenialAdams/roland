@@ -54,6 +54,7 @@ pub use parse::Program;
 use parse::{ImportNode, ProcImplSource};
 use semantic_analysis::{definite_assignment, GlobalKind};
 use source_info::SourcePath;
+use type_data::IntWidth;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Target {
@@ -61,6 +62,16 @@ pub enum Target {
    Wasm4,
    Microw8,
    Lib,
+   Qbe,
+}
+
+impl Target {
+   fn pointer_width(&self) -> IntWidth {
+      match self {
+         Target::Qbe => IntWidth::Eight,
+         _ => IntWidth::Four,
+      }
+   }
 }
 
 impl Display for Target {
@@ -70,6 +81,7 @@ impl Display for Target {
          Target::Wasm4 => write!(f, "WASM-4"),
          Target::Microw8 => write!(f, "Microw8"),
          Target::Lib => write!(f, "lib"),
+         Target::Qbe => write!(f, "AMD64"),
       }
    }
 }
@@ -123,6 +135,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       Target::Wasm4 => "wasm4.rol",
       Target::Microw8 => "microw8.rol",
       Target::Lib => "shared.rol",
+      Target::Qbe => "amd64.rol",
    }
    .into();
 
@@ -234,7 +247,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    // (introduces usize types, so run this before those are lowered)
    aggregate_literal_lowering::lower_aggregate_literals(&mut ctx.program, &ctx.interner);
 
-   pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program);
+   pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program, config.target);
 
    // It would be nice to run this before deleting unreachable procedures,
    // but doing so would currently delete procedures that we take pointers to
@@ -249,7 +262,13 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       .unwrap();
    }
 
-   Ok(backend::emit_wasm(&mut ctx.program, &mut ctx.interner, config))
+   ctx.program.cfg = backend::linearize::linearize(&mut ctx.program, &ctx.interner, config.dump_debugging_info);
+
+   if config.target == Target::Qbe {
+      Ok(backend::qbe::emit_qbe(&mut ctx.program, &mut ctx.interner, config))
+   } else {
+      Ok(backend::wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, config))
+   }
 }
 
 fn lex_and_parse(

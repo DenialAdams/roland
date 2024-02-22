@@ -30,6 +30,7 @@ struct Opts {
    test_path: PathBuf,
    tc_path: PathBuf,
    overwrite_error_files: bool,
+   amd64: bool,
 }
 
 fn parse_path(s: &std::ffi::OsStr) -> Result<std::path::PathBuf, &'static str> {
@@ -45,6 +46,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
       test_path: pargs.free_from_os_str(parse_path)?,
       tc_path: cli_path,
       overwrite_error_files: pargs.contains("--overwrite-error-files"),
+      amd64: pargs.contains("--amd64"),
    };
 
    let remaining_args = pargs.finish();
@@ -101,8 +103,12 @@ fn main() -> Result<(), &'static str> {
    let output_lock = Mutex::new(());
 
    entries.par_iter().for_each(|entry| {
-      let tc_output = Command::new(&opts.tc_path).arg(entry.clone()).output().unwrap();
-      let test_ok = test_result(&tc_output, entry);
+      let tc_output = if opts.amd64 {
+         Command::new(&opts.tc_path).arg(entry.clone()).arg("--amd64").output().unwrap()
+      } else {
+         Command::new(&opts.tc_path).arg(entry.clone()).output().unwrap()
+      };
+      let test_ok = test_result(&tc_output, entry, opts.amd64);
       // prevents stdout and stderr from mixing
       let _ol = output_lock.lock();
       match test_ok {
@@ -240,7 +246,7 @@ fn print_diff<W: Write>(t: &mut W, expected: &str, actual: &str) {
    writeln!(t, "{}", SimpleDiff::from_str(expected, actual, "expected", "actual")).unwrap();
 }
 
-fn test_result(tc_output: &Output, t_file_path: &Path) -> Result<(), TestFailureReason> {
+fn test_result(tc_output: &Output, t_file_path: &Path, amd64: bool) -> Result<(), TestFailureReason> {
    let td = extract_test_data(t_file_path);
 
    let stderr_text = String::from_utf8_lossy(&tc_output.stderr);
@@ -266,12 +272,21 @@ fn test_result(tc_output: &Output, t_file_path: &Path) -> Result<(), TestFailure
 
       // Execute the program
       let mut prog_path = t_file_path.to_path_buf();
-      prog_path.set_extension("wasm");
+      if amd64 {
+         prog_path.set_extension("");
+      } else {
+         prog_path.set_extension("wasm");
+      }
 
       let prog_output = {
          let (mut handle, mut prog_output_stream) = {
-            let mut prog_command = Command::new("wasmtime");
-            prog_command.arg(prog_path.as_os_str());
+            let mut prog_command = if amd64 {
+               Command::new(&prog_path)
+            } else {
+               let mut prog_command = Command::new("wasmtime");
+               prog_command.arg(prog_path.as_os_str());
+               prog_command
+            };
             // It's desirable to combine stdout and stderr, so an output test can test either or both
             let prog_output_stream = {
                let (reader, writer) = pipe().unwrap();

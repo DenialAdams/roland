@@ -34,7 +34,7 @@ pub struct SpecialProcedure {
 
 pub fn get_special_procedures(target: Target, interner: &mut Interner) -> &'static [SpecialProcedure] {
    static WASM4_SPECIAL: OnceLock<Box<[SpecialProcedure]>> = OnceLock::new();
-   static WASI_SPECIAL: OnceLock<Box<[SpecialProcedure]>> = OnceLock::new();
+   static WASI_AMD64_SPECIAL: OnceLock<Box<[SpecialProcedure]>> = OnceLock::new();
    static MICROW8_SPECIAL: OnceLock<Box<[SpecialProcedure]>> = OnceLock::new();
    match target {
       Target::Lib => &[],
@@ -54,7 +54,7 @@ pub fn get_special_procedures(target: Target, interner: &mut Interner) -> &'stat
             },
          ])
       }),
-      Target::Wasi => WASI_SPECIAL.get_or_init(|| {
+      Target::Wasi | Target::Qbe => WASI_AMD64_SPECIAL.get_or_init(|| {
          Box::new([SpecialProcedure {
             name: interner.intern("main"),
             required: true,

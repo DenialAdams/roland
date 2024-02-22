@@ -4,6 +4,9 @@ release_text := if env_var_or_default("DEBUG", "false") == "true" { "debug" } el
 test path="tests/":
    cargo build {{release_flag}} --bin rolandc_cli
    cargo run --release --bin roland_test_runner -- --cli {{justfile_directory()}}/target/{{release_text}}/rolandc_cli {{path}}
+test_amd64 path="tests/":
+   cargo build {{release_flag}} --bin rolandc_cli
+   cargo run --release --bin roland_test_runner -- --cli {{justfile_directory()}}/target/{{release_text}}/rolandc_cli {{path}} --amd64
 test-overwrite:
    cargo build {{release_flag}} --bin rolandc_cli
    cargo run --release --bin roland_test_runner -- --cli {{justfile_directory()}}/target/{{release_text}}/rolandc_cli tests/ --overwrite-error-files
@@ -19,6 +22,8 @@ scratch *args:
    cargo run {{release_flag}} --bin rolandc_cli -- scratch.rol {{args}}
    wasm2wat --no-check scratch.wasm > scratch.wat
    wasmtime scratch.wasm
+scratch_qbe:
+   cargo run {{release_flag}} --bin rolandc_cli -- scratch.rol --target amd64 && ./scratch
 coverage:
    RUSTFLAGS=-Cinstrument-coverage cargo build --bin rolandc_cli
    cargo tarpaulin --skip-clean --implicit-test-threads --follow-exec --engine llvm --command build --bin roland_test_runner -o html -- {{justfile_directory()}}/tests/ --cli {{justfile_directory()}}/target/debug/rolandc_cli
