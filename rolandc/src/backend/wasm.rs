@@ -182,11 +182,16 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
    // This will come in handy later, allowing us to avoid padding.
    // Do it now, because we will iterate globals in regalloc and we want it to be consistent
    program.global_info.sort_by(|_k_1, v_1, _k_2, v_2| {
-      compare_type_alignment(
-         &v_1.expr_type.e_type,
-         &v_2.expr_type.e_type,
-         &program.user_defined_types,
-      )
+      let e_1 = &v_1.expr_type.e_type;
+      let e_2 = &v_2.expr_type.e_type;
+
+      let alignment_1 = mem_alignment(e_1, &program.user_defined_types);
+      let alignment_2 = mem_alignment(e_2, &program.user_defined_types);
+
+      let sizeof_1 = sizeof_type_mem(e_1, &program.user_defined_types);
+      let sizeof_2 = sizeof_type_mem(e_2, &program.user_defined_types);
+
+      compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
    });
 
    let mut regalloc_result = regalloc::assign_variables_to_wasm_registers(program, config);
@@ -224,7 +229,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
          .type_manager
          .register_or_find_type_by_definition(&external_procedure.definition);
       match config.target {
-         Target::Lib => (),
+         Target::Qbe | Target::Lib => unreachable!(),
          Target::Wasm4 | Target::Microw8 => {
             import_section.import(
                "env",
@@ -248,7 +253,8 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
    // the base memory offset varies per platform;
    // on wasm-4/microw8, we don't own all of the memory!
    let mut offset: u32 = match config.target {
-      Target::Wasi | Target::Lib => 0x0,
+      Target::Lib | Target::Qbe => unreachable!(),
+      Target::Wasi => 0x0,
       Target::Wasm4 => 0x19a0,
       Target::Microw8 => 0x14000,
    };
@@ -512,7 +518,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
 
    // target specific imports/exports
    match config.target {
-      Target::Lib => (),
+      Target::Lib | Target::Qbe => unreachable!(),
       Target::Wasm4 => {
          import_section.import(
             "env",
@@ -620,16 +626,6 @@ fn compare_alignment(alignment_1: u32, sizeof_1: u32, alignment_2: u32, sizeof_2
    alignment_2
       .cmp(&alignment_1)
       .then(required_padding_1.cmp(&required_padding_2))
-}
-
-fn compare_type_alignment(e_1: &ExpressionType, e_2: &ExpressionType, udt: &UserDefinedTypeInfo) -> std::cmp::Ordering {
-   let alignment_1 = mem_alignment(e_1, udt);
-   let alignment_2 = mem_alignment(e_2, udt);
-
-   let sizeof_1 = sizeof_type_mem(e_1, udt);
-   let sizeof_2 = sizeof_type_mem(e_2, udt);
-
-   compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
 }
 
 fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {

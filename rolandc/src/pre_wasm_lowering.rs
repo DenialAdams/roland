@@ -7,40 +7,48 @@ use crate::parse::{
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::sizeof_type_mem;
 use crate::source_info::SourceInfo;
-use crate::type_data::{ExpressionType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I8_TYPE, USIZE_TYPE};
+use crate::type_data::{ExpressionType, IntType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I8_TYPE};
+use crate::Target;
 
-fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInfo>) {
+fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInfo>, target: Target) {
    match the_type {
       ExpressionType::Enum(a) => {
          *the_type = enum_info.get(*a).unwrap().base_type.clone();
       }
       ExpressionType::Array(inner_type, _) => {
-         lower_type(inner_type, enum_info);
+         lower_type(inner_type, enum_info, target);
       }
       ExpressionType::Pointer(_) => {
-         *the_type = USIZE_TYPE;
+         *the_type = ExpressionType::Int(IntType {
+            width: target.pointer_width(),
+            signed: false,
+         });
       }
       ExpressionType::Int(it) => {
          if it.width == IntWidth::Pointer {
-            it.width = IntWidth::Four;
+            it.width = target.pointer_width();
          }
       }
       ExpressionType::ProcedurePointer { parameters, ret_type } => {
          for param in parameters.iter_mut() {
-            lower_type(param, enum_info);
+            lower_type(param, enum_info, target);
          }
-         lower_type(ret_type, enum_info);
+         lower_type(ret_type, enum_info, target);
       }
       ExpressionType::ProcedureItem(_, type_params) => {
          for type_param in type_params.iter_mut() {
-            lower_type(type_param, enum_info);
+            lower_type(type_param, enum_info, target);
          }
       }
       _ => (),
    }
 }
 
-fn lower_single_expression(expression_node: &mut ExpressionNode, enum_info: &SlotMap<EnumId, EnumInfo>) {
+fn lower_single_expression(
+   expression_node: &mut ExpressionNode,
+   enum_info: &SlotMap<EnumId, EnumInfo>,
+   target: Target,
+) {
    match &mut expression_node.expression {
       Expression::EnumLiteral(a, b) => {
          let ei = enum_info.get(*a).unwrap();
@@ -62,33 +70,33 @@ fn lower_single_expression(expression_node: &mut ExpressionNode, enum_info: &Slo
          target_type,
          expr: _,
       } => {
-         lower_type(target_type, enum_info);
+         lower_type(target_type, enum_info, target);
       }
       Expression::BoundFcnLiteral(_, generic_args) => {
          for g_arg in generic_args.iter_mut() {
-            lower_type(&mut g_arg.e_type, enum_info);
+            lower_type(&mut g_arg.e_type, enum_info, target);
          }
       }
       _ => (),
    }
 
-   lower_type(expression_node.exp_type.as_mut().unwrap(), enum_info);
+   lower_type(expression_node.exp_type.as_mut().unwrap(), enum_info, target);
 }
 
-pub fn lower_enums_and_pointers(program: &mut Program) {
+pub fn lower_enums_and_pointers(program: &mut Program, target: Target) {
    for e in program.ast.expressions.values_mut() {
-      lower_single_expression(e, &program.user_defined_types.enum_info);
+      lower_single_expression(e, &program.user_defined_types.enum_info, target);
    }
 
    for struct_info in program.user_defined_types.struct_info.iter_mut() {
       for field_type in struct_info.1.field_types.values_mut() {
-         lower_type(&mut field_type.e_type, &program.user_defined_types.enum_info);
+         lower_type(&mut field_type.e_type, &program.user_defined_types.enum_info, target);
       }
    }
 
    for union_info in program.user_defined_types.union_info.iter_mut() {
       for field_type in union_info.1.field_types.values_mut() {
-         lower_type(&mut field_type.e_type, &program.user_defined_types.enum_info);
+         lower_type(&mut field_type.e_type, &program.user_defined_types.enum_info, target);
       }
    }
 
@@ -96,17 +104,22 @@ pub fn lower_enums_and_pointers(program: &mut Program) {
       lower_type(
          &mut procedure.definition.ret_type.e_type,
          &program.user_defined_types.enum_info,
+         target,
       );
       for param in procedure.definition.parameters.iter_mut() {
-         lower_type(&mut param.p_type.e_type, &program.user_defined_types.enum_info);
+         lower_type(&mut param.p_type.e_type, &program.user_defined_types.enum_info, target);
       }
       for var_type in procedure.locals.values_mut() {
-         lower_type(var_type, &program.user_defined_types.enum_info);
+         lower_type(var_type, &program.user_defined_types.enum_info, target);
       }
    }
 
    for a_global in program.global_info.iter_mut() {
-      lower_type(&mut a_global.1.expr_type.e_type, &program.user_defined_types.enum_info);
+      lower_type(
+         &mut a_global.1.expr_type.e_type,
+         &program.user_defined_types.enum_info,
+         target,
+      );
    }
 }
 
