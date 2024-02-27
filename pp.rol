@@ -1,0 +1,1008 @@
+builtin proc wasm_memory_size() -> usize;
+builtin proc wasm_memory_grow(pages: usize) -> usize;
+extern proc fd_write(handle: usize, strings_to_write: &ciovec, strings_to_write_len: usize, written_ptr: &usize) -> isize;
+extern proc path_open(fd: usize, dirflags: u32, path: String, oflags: u16, fs_rights_base: u64, fs_rights_inheriting: u64, fdflags: u16, ret: &usize) -> isize;
+extern proc fd_close(fd: usize) -> isize;
+extern proc fd_prestat_get(fd: usize, result: &prestat) -> isize;
+proc print(s: String) -> unit {
+   v42 = [ciovec { buf: v41.pointer, buf_len: v41.length, }, ];
+   v43 = 0;
+   loop {
+      fd_write(0,&v42[0],v42.length,&v43,);
+      v44 = &v42[0].buf_len;
+      if v43 >= v44~ {
+         break;
+      }
+      else  {
+         v348 = v42[0].buf transmute usize + v43;
+         v42[0].buf = v348 transmute &u8;
+         v44~ = v44~ - v43;
+      }
+   }
+}
+proc println(s: String) -> unit {
+   v350 = "
+";
+   v349 = "
+";
+   v46 = [ciovec { buf: v45.pointer, buf_len: v45.length, }, ciovec { buf: v350.pointer, buf_len: v349.length, }, ];
+   v47 = 0;
+   loop {
+      fd_write(0,&v46[0],v46.length,&v47,);
+      v48 = &v46[0].buf_len;
+      if v47 > v48~ {
+         break;
+      }
+      else  {
+         v46[0].buf = v46[0].buf transmute usize + v47 transmute &u8;
+         v48~ = v48~ - v47;
+      }
+   }
+}
+proc println_bool(value: bool) -> unit {
+   println(bool_to_string(v49,),);
+}
+proc count_digits(value: u64) -> u8 {
+   v51 = 0;
+   loop {
+      if v50 <= 0 {
+         return v51 + 0;
+      }
+      v51 = v51 + 0;
+      v50 = v50 / 0;
+   }
+   unreachable();
+}
+proc f32_to_string(f: f32) -> String {
+   v53 = malloc(0,);
+   return ryu_f2s_buffered(v52,v53,);
+}
+proc f64_to_string(f: f64) -> String {
+   v55 = malloc(0,);
+   return ryu_d2s_buffered(v54,v55,);
+}
+proc _wasi_int_to_string_inner(value: u64, buf: &u8) -> String {
+   v58 = count_digits(v56,);
+   v59 = v58 as usize - 0;
+   v60 = 0;
+   v61 = 0;
+   loop {
+      if v56 <= 0 {
+         v60 = v56 as u8;
+         v351 = v57 transmute usize + v59 - v61;
+         v62 = v351 transmute &u8;
+         v62~ = v60 + 0;
+         v61 = v61 + 0;
+         break;
+      }
+      v60 = v56 % 0 as u8;
+      v56 = v56 / 0;
+      v352 = v57 transmute usize + v59 - v61;
+      v63 = v352 transmute &u8;
+      v63~ = v60 + 0;
+      v61 = v61 + 0;
+   }
+   return String { length: v61, pointer: v57, };
+}
+proc uint_to_string(value: u64) -> String {
+   v65 = malloc(0,);
+   return _wasi_int_to_string_inner(v64,v65,);
+}
+proc int_to_string(value: i64) -> String {
+   if v66 == v26 {
+      return "-9223372036854775808";
+   }
+   else if v66 < 0 {
+      v67 = malloc(0,);
+      v353 = "-";
+      v67~ = v353.pointer~;
+      v68 = v67 transmute usize;
+      v68 = v68 + 0;
+      v69 = _wasi_int_to_string_inner(-v66 as u64,v68 transmute &u8,);
+      return String { length: v69.length + 0, pointer: v67, };
+   }
+   else  {
+      return uint_to_string(v66 as u64,);
+   }
+}
+proc malloc(bytes: usize) -> &u8 {
+   v71 = v70 / 0 + v70 % 0 != 0 as usize;
+   v72 = wasm_memory_grow(v71,) * 0;
+   return v72 transmute &u8;
+}
+proc _ryu_decimalLength17(v: u64) -> u64 {
+   assert(v73 < 0,);
+   if v73 >= 0 {
+      return 0;
+   }
+   if v73 >= 0 {
+      return 0;
+   }
+   if v73 >= 0 {
+      return 0;
+   }
+   if v73 >= 0 {
+      return 0;
+   }
+   if v73 >= 0 {
+      return 0;
+   }
+   if v73 >= 0 {
+      return 0;
+   }
+   if v73 >= 0 {
+      return 0;
+   }
+   if v73 >= 0 {
+      return 0;
+   }
+   if v73 >= 0 {
+      return 0;
+   }
+   if v73 >= 0 {
+      return 0;
+   }
+   if v73 >= 0 {
+      return 0;
+   }
+   if v73 >= 0 {
+      return 0;
+   }
+   if v73 >= 0 {
+      return 0;
+   }
+   if v73 >= 0 {
+      return 0;
+   }
+   if v73 >= 0 {
+      return 0;
+   }
+   if v73 >= 0 {
+      return 0;
+   }
+   return 0;
+}
+proc _ryu_d2d(ieeeMantissa: u64, ieeeExponent: u32) -> _ryu_floating_decimal_64 {
+   if v75 == 0 {
+      v76 = 0 - v2 as i32 - v0 as i32 - 0;
+      v77 = v74;
+   }
+   else  {
+      v76 = v75 as i32 - v2 as i32 - v0 as i32 - 0;
+      v77 = 0 << v0 as u64 | v74;
+   }
+   v78 = v77 & 0 == 0;
+   v79 = v78;
+   v80 = 0 * v77;
+   v81 = ifx v74 != 0 true else v75 <= 0 as u32;
+   v86 = false;
+   v87 = false;
+   if v76 >= 0 {
+      v88 = _ryu_log10Pow2(v76,) - v76 > 0 as u32;
+      v85 = v88 as i32;
+      v89 = v3 + _ryu_pow5bits(v88 as i32,) - 0;
+      v90 = -v76 + v88 as i32 + v89;
+      v82 = _ryu_mulShiftAll64(v77,&v36[v88 as usize],v90,&v83,&v84,v81,);
+      if v88 <= 0 {
+         v91 = v80 as u32 - 0 * _ryu_div5(v80,) as u32 as i32;
+         if v91 == 0 {
+            v87 = _ryu_multipleOfPowerOf5(v80,v88,);
+         }
+         else if v79 {
+            v86 = _ryu_multipleOfPowerOf5(v80 - 0 - v81 as u64,v88,);
+         }
+         else  {
+            v83 = v83 - _ryu_multipleOfPowerOf5(v80 + 0,v88,) as u64;
+         }
+      }
+   }
+   else  {
+      v92 = _ryu_log10Pow5(-v76,) - -v76 > 0 as u32;
+      v85 = v92 as i32 + v76;
+      v93 = -v76 - v92 as i32;
+      v94 = _ryu_pow5bits(v93,) - v4;
+      v95 = v92 as i32 - v94;
+      v82 = _ryu_mulShiftAll64(v77,&v37[v93 as usize],v95,&v83,&v84,v81,);
+      if v92 <= 0 {
+         v87 = true;
+         if v79 {
+            v86 = v81 == 0;
+         }
+         else  {
+            v83 = v83 - 0;
+         }
+      }
+      else if v92 < 0 {
+         v87 = _ryu_multipleOfPowerOf2(v80,v92,);
+      }
+   }
+   v96 = 0;
+   v97 = 0;
+   if ifx v86 true else v87 {
+      loop {
+         v99 = _ryu_div10(v83,);
+         v100 = _ryu_div10(v84,);
+         if v99 <= v100 {
+            break;
+         }
+         v101 = v84 as u32 - 0 * v100 as u32;
+         v102 = _ryu_div10(v82,);
+         v103 = v82 as u32 - 0 * v102 as u32;
+         v86 = v86 & v101 == 0;
+         v87 = v87 & v97 == 0;
+         v97 = v103 as u8;
+         v82 = v102;
+         v83 = v99;
+         v84 = v100;
+         v96 = v96 + 0;
+      }
+      if v86 {
+         loop {
+            v104 = _ryu_div10(v84,);
+            v105 = v84 as u32 - 0 * v104 as u32;
+            if v105 != 0 {
+               break;
+            }
+            v106 = _ryu_div10(v83,);
+            v107 = _ryu_div10(v82,);
+            v108 = v82 as u32 - 0 * v107 as u32;
+            v87 = v87 & v97 == 0;
+            v97 = v108 as u8;
+            v82 = v107;
+            v83 = v106;
+            v84 = v104;
+            v96 = v96 + 0;
+         }
+      }
+      if ifx ifx v87 v97 == 0 else false v82 % 0 == 0 else false {
+         v97 = 0;
+      }
+      v98 = v82 + ifx ifx v82 == v84 ifx !v79 true else !v86 else false true else v97 >= 0 as u64;
+   }
+   else  {
+      v109 = false;
+      v110 = _ryu_div100(v83,);
+      v111 = _ryu_div100(v84,);
+      if v110 > v111 {
+         v112 = _ryu_div100(v82,);
+         v113 = v82 as u32 - 0 * v112 as u32;
+         v109 = v113 >= 0;
+         v82 = v112;
+         v83 = v110;
+         v84 = v111;
+         v96 = v96 + 0;
+      }
+      loop {
+         v114 = _ryu_div10(v83,);
+         v115 = _ryu_div10(v84,);
+         if v114 <= v115 {
+            break;
+         }
+         v116 = _ryu_div10(v82,);
+         v117 = v82 as u32 - 0 * v116 as u32;
+         v109 = v117 >= 0;
+         v82 = v116;
+         v83 = v114;
+         v84 = v115;
+         v96 = v96 + 0;
+      }
+      v98 = v82 + ifx v82 == v84 true else v109 as u64;
+   }
+   v118 = v85 + v96;
+   return _ryu_floating_decimal_64 { exponent: v118, mantissa: v98, };
+}
+proc _ryu_d2s_to_chars(v: _ryu_floating_decimal_64, sign: bool, result: &u8) -> usize {
+   v122 = 0;
+   if v120 {
+      v355 = _ryu_offset_ptr_forward(v121,v122,);
+      v354 = "-";
+      v355~ = v354.pointer~;
+      v122 = v122 + 0;
+   }
+   v123 = v119.mantissa;
+   v124 = _ryu_decimalLength17(v123,) as u32;
+   v125 = 0;
+   if v123 >> 0 != 0 {
+      v126 = _ryu_div1e8(v123,);
+      v127 = v123 as u32 - 0 * v126 as u32;
+      v123 = v126;
+      v128 = v127 % 0;
+      v127 = v127 / 0;
+      v129 = v127 % 0;
+      v130 = v128 % 0 << 0;
+      v131 = v128 / 0 << 0;
+      v132 = v129 % 0 << 0;
+      v133 = v129 / 0 << 0;
+      _ryu_memcpy(_ryu_offset_ptr_forward(v121,v122 + v124 as usize - v125 as usize - 0,),&v38[v130 as usize],0,);
+      _ryu_memcpy(_ryu_offset_ptr_forward(v121,v122 + v124 as usize - v125 as usize - 0,),&v38[v131 as usize],0,);
+      _ryu_memcpy(_ryu_offset_ptr_forward(v121,v122 + v124 as usize - v125 as usize - 0,),&v38[v132 as usize],0,);
+      _ryu_memcpy(_ryu_offset_ptr_forward(v121,v122 + v124 as usize - v125 as usize - 0,),&v38[v133 as usize],0,);
+      v125 = v125 + 0;
+   }
+   v134 = v123 as u32;
+   loop {
+      if v134 < 0 {
+         break;
+      }
+      v135 = v134 % 0;
+      v134 = v134 / 0;
+      v136 = v135 % 0 << 0;
+      v137 = v135 / 0 << 0;
+      _ryu_memcpy(_ryu_offset_ptr_forward(v121,v122 + v124 as usize - v125 as usize - 0,),&v38[v136 as usize],0,);
+      _ryu_memcpy(_ryu_offset_ptr_forward(v121,v122 + v124 as usize - v125 as usize - 0,),&v38[v137 as usize],0,);
+      v125 = v125 + 0;
+   }
+   if v134 >= 0 {
+      v138 = v134 % 0 << 0;
+      v134 = v134 / 0;
+      _ryu_memcpy(_ryu_offset_ptr_forward(v121,v122 + v124 as usize - v125 as usize - 0,),&v38[v138 as usize],0,);
+      v125 = v125 + 0;
+   }
+   if v134 >= 0 {
+      v139 = v134 << 0;
+      _ryu_offset_ptr_forward(v121,v122 + v124 as usize - v125 as usize,)~ = v38[v139 as usize + 0];
+      _ryu_offset_ptr_forward(v121,v122,)~ = v38[v139 as usize];
+   }
+   else  {
+      v357 = _ryu_offset_ptr_forward(v121,v122,);
+      v356 = "0";
+      v357~ = v356.pointer~ as u32 + v134 as u8;
+   }
+   if v124 > 0 {
+      v359 = _ryu_offset_ptr_forward(v121,v122 + 0,);
+      v358 = ".";
+      v359~ = v358.pointer~;
+      v122 = v122 + v124 as usize + 0;
+   }
+   else  {
+      v122 = v122 + 0;
+   }
+   v367 = _ryu_offset_ptr_forward(v121,v122,);
+   v366 = "E";
+   v367~ = v366.pointer~;
+   v122 = v122 + 0;
+   v140 = v119.exponent + v124 as i32 - 0;
+   if v140 < 0 {
+      v361 = _ryu_offset_ptr_forward(v121,v122,);
+      v360 = "-";
+      v361~ = v360.pointer~;
+      v122 = v122 + 0;
+      v140 = -v140;
+   }
+   if v140 >= 0 {
+      v141 = v140 % 0;
+      _ryu_memcpy(_ryu_offset_ptr_forward(v121,v122,),&v38[0 * v140 / 0 as usize],0,);
+      v363 = _ryu_offset_ptr_forward(v121,v122 + 0,);
+      v362 = "0";
+      v363~ = v362.pointer~ as i32 + v141 as u8;
+      v122 = v122 + 0;
+   }
+   else if v140 >= 0 {
+      _ryu_memcpy(_ryu_offset_ptr_forward(v121,v122,),&v38[0 * v140 as usize],0,);
+      v122 = v122 + 0;
+   }
+   else  {
+      v365 = _ryu_offset_ptr_forward(v121,v122,);
+      v364 = "0";
+      v365~ = v364.pointer~ as i32 + v140 as u8;
+      v122 = v122 + 0;
+   }
+   return v122;
+}
+proc _ryu_d2d_small_int(ieeeMantissa: u64, ieeeExponent: u32, v: &_ryu_floating_decimal_64) -> bool {
+   v145 = 0 << v0 as u64 | v142;
+   v146 = v143 - v2 - v0 as i32;
+   if v146 > 0 {
+      return false;
+   }
+   if v146 < -0 {
+      return false;
+   }
+   v147 = 0 << -v146 as u64 - 0;
+   v148 = v145 & v147;
+   if v148 != 0 {
+      return false;
+   }
+   v144~.mantissa = v145 >> -v146 as u64;
+   v144~.exponent = 0;
+   return true;
+}
+proc _ryu_d2s_buffered_n(f: f64, result: &u8) -> usize {
+   v151 = v149 transmute u64;
+   v152 = v151 >> v0 as u64 + v1 as u64 & 0 != 0;
+   v153 = v151 & 0 << v0 as u64 - 0;
+   v154 = v151 >> v0 as u64 & 0 << v1 as u64 - 0 as u32;
+   if ifx v154 == 0 << v1 - 0 true else ifx v154 == 0 v153 == 0 else false {
+      return _ryu_copy_special_str(v150,v152,v154 > 0,v153 > 0,);
+   }
+   v156 = _ryu_d2d_small_int(v153,v154,&v155,);
+   if v156 {
+      loop {
+         v157 = _ryu_div10(v155.mantissa,);
+         v158 = v155.mantissa as u32 - 0 * v157 as u32;
+         if v158 != 0 {
+            break;
+         }
+         v155.mantissa = v157;
+         v155.exponent = v155.exponent + 0;
+      }
+   }
+   else  {
+      v155 = _ryu_d2d(v153,v154,);
+   }
+   return _ryu_d2s_to_chars(v155,v152,v150,);
+}
+proc ryu_d2s_buffered(f: f64, result: &u8) -> String {
+   v161 = _ryu_d2s_buffered_n(v159,v160,);
+   return String { pointer: v160, length: v161, };
+}
+proc _ryu_umul128(a: u64, b: u64, productHi: &u64) -> u64 {
+   v165 = v162 as u32;
+   v166 = v162 >> 0 as u32;
+   v167 = v163 as u32;
+   v168 = v163 >> 0 as u32;
+   v169 = v165 as u64 * v167 as u64;
+   v170 = v165 as u64 * v168 as u64;
+   v171 = v166 as u64 * v167 as u64;
+   v172 = v166 as u64 * v168 as u64;
+   v173 = v169 as u32;
+   v174 = v169 >> 0 as u32;
+   v175 = v171 + v174 as u64;
+   v176 = v175 as u32;
+   v177 = v175 >> 0 as u32;
+   v178 = v170 + v176 as u64;
+   v179 = v178 as u32;
+   v180 = v178 >> 0 as u32;
+   v181 = v172 + v177 as u64 + v180 as u64;
+   v182 = v179 as u64 << 0 | v173 as u64;
+   v164~ = v181;
+   return v182;
+}
+proc _ryu_shiftright128(lo: u64, hi: u64, dist: u32) -> u64 {
+   assert(v185 < 0,);
+   assert(v185 > 0,);
+   return v184 << 0 - v185 as u64 | v183 >> v185 as u64;
+}
+proc _ryu_div5(x: u64) -> u64 {
+   return v186 / 0;
+}
+proc _ryu_div10(x: u64) -> u64 {
+   return v187 / 0;
+}
+proc _ryu_div100(x: u64) -> u64 {
+   return v188 / 0;
+}
+proc _ryu_div1e8(x: u64) -> u64 {
+   return v189 / 0;
+}
+proc _ryu_div1e9(x: u64) -> u64 {
+   return v190 / 0;
+}
+proc _ryu_mod1e9(x: u64) -> u32 {
+   return v191 - 0 * _ryu_div1e9(v191,) as u32;
+}
+proc _ryu_pow5Factor(value: u64) -> u32 {
+   v193 = 0;
+   v194 = 0;
+   v195 = 0;
+   loop {
+      assert(v192 != 0,);
+      v192 = v192 * v193;
+      if v192 > v194 {
+         break;
+      }
+      v195 = v195 + 0;
+   }
+   return v195;
+}
+proc _ryu_multipleOfPowerOf5(value: u64, p: u32) -> bool {
+   return _ryu_pow5Factor(v196,) >= v197;
+}
+proc _ryu_multipleOfPowerOf2(value: u64, p: u32) -> bool {
+   assert(v198 != 0,);
+   assert(v199 < 0,);
+   return v198 & 0 << v199 - 0 as u64 == 0;
+}
+proc _ryu_mulShift64(m: u64, mul: &[u64; 2], j: i32) -> u64 {
+   v204 = _ryu_umul128(v200,v201~[0],&v203,);
+   _ryu_umul128(v200,v201~[0],&v205,);
+   v206 = v205 + v204;
+   if v206 < v205 {
+      v203 = v203 + 0;
+   }
+   return _ryu_shiftright128(v206,v203,v202 - 0 as u32,);
+}
+proc _ryu_mulShiftAll64(m: u64, mul: &[u64; 2], j: i32, vp: &u64, vm: &u64, mmShift: u32) -> u64 {
+   v207 = v207 << 0;
+   v214 = _ryu_umul128(v207,v208~[0],&v213,);
+   v216 = v213 + _ryu_umul128(v207,v208~[0],&v215,);
+   v215 = v215 + v216 < v213 as u64;
+   v217 = v214 + v208~[0];
+   v218 = v216 + v208~[0] + v217 < v214 as u64;
+   v219 = v215 + v218 < v216 as u64;
+   v210~ = _ryu_shiftright128(v218,v219,v209 - 0 - 0 as u32,);
+   if v212 == 0 {
+      v220 = v214 - v208~[0];
+      v221 = v216 - v208~[0] - v220 > v214 as u64;
+      v222 = v215 - v221 > v216 as u64;
+      v211~ = _ryu_shiftright128(v221,v222,v209 - 0 - 0 as u32,);
+   }
+   else  {
+      v223 = v214 + v214;
+      v224 = v216 + v216 + v223 < v214 as u64;
+      v225 = v215 + v215 + v224 < v216 as u64;
+      v226 = v223 - v208~[0];
+      v227 = v224 - v208~[0] - v226 > v223 as u64;
+      v228 = v225 - v227 > v224 as u64;
+      v211~ = _ryu_shiftright128(v227,v228,v209 - 0 as u32,);
+   }
+   return _ryu_shiftright128(v216,v215,v209 - 0 - 0 as u32,);
+}
+proc _ryu_decimalLength9(v: u32) -> u32 {
+   assert(v229 < 0,);
+   if v229 >= 0 {
+      return 0;
+   }
+   if v229 >= 0 {
+      return 0;
+   }
+   if v229 >= 0 {
+      return 0;
+   }
+   if v229 >= 0 {
+      return 0;
+   }
+   if v229 >= 0 {
+      return 0;
+   }
+   if v229 >= 0 {
+      return 0;
+   }
+   if v229 >= 0 {
+      return 0;
+   }
+   if v229 >= 0 {
+      return 0;
+   }
+   return 0;
+}
+proc _ryu_log2pow5(e: i32) -> i32 {
+   assert(v230 >= 0,);
+   assert(v230 <= 0,);
+   return v230 as u32 * 0 >> 0 as i32;
+}
+proc _ryu_pow5bits(e: i32) -> i32 {
+   assert(v231 >= 0,);
+   assert(v231 <= 0,);
+   return v231 as u32 * 0 >> 0 + 0 as i32;
+}
+proc _ryu_ceil__ryu_log2pow5(e: i32) -> i32 {
+   return _ryu_log2pow5(v232,) + 0;
+}
+proc _ryu_log10Pow2(e: i32) -> u32 {
+   assert(v233 >= 0,);
+   assert(v233 <= 0,);
+   return v233 as u32 * 0 >> 0;
+}
+proc _ryu_log10Pow5(e: i32) -> u32 {
+   assert(v234 >= 0,);
+   assert(v234 <= 0,);
+   return v234 as u32 * 0 >> 0;
+}
+proc _ryu_copy_special_str(result: &u8, sign: bool, exponent: bool, mantissa: bool) -> usize {
+   if v238 {
+      v239 = "NaN";
+      _ryu_memcpy(v235,v239.pointer,v239.length,);
+      return v239.length;
+   }
+   if v236 {
+      v368 = "-";
+      v235~ = v368.pointer~;
+   }
+   if v237 {
+      v240 = "Infinity";
+      _ryu_memcpy(_ryu_offset_ptr_forward(v235,v236 as usize,),v240.pointer,v240.length,);
+      return v236 as usize + v240.length;
+   }
+   v241 = "0E0";
+   _ryu_memcpy(_ryu_offset_ptr_forward(v235,v236 as usize,),v241.pointer,v241.length,);
+   return v236 as usize + v241.length;
+}
+proc _ryu_offset_ptr_forward(ptr: &u8, offset: usize) -> &u8 {
+   v369 = v242 transmute usize + v243;
+   return v369 transmute &u8;
+}
+proc _ryu_memcpy(dest: &u8, src: &u8, length: usize) -> unit {
+   v247 = 0;
+   v346 = v246;
+   loop {
+      if v247 >= v346 {
+         break;
+      }
+      v371 = v244 transmute usize + v247;
+      v370 = v245 transmute usize + v247;
+      v371 transmute &u8~ = v370 transmute &u8~;
+      v247 = v247 + 0;
+   }
+}
+proc _ryu_f2d(ieeeMantissa: u32, ieeeExponent: u32) -> _ryu_floating_decimal_32 {
+   if v249 == 0 {
+      v250 = 0 - v9 as i32 - v7 as i32 - 0;
+      v251 = v248;
+   }
+   else  {
+      v250 = v249 as i32 - v9 as i32 - v7 as i32 - 0;
+      v251 = 0 << v7 | v248;
+   }
+   v252 = v251 & 0 == 0;
+   v253 = v252;
+   v254 = 0 * v251;
+   v255 = 0 * v251 + 0;
+   v256 = ifx v248 != 0 true else v249 <= 0 as u32;
+   v257 = 0 * v251 - 0 - v256;
+   v262 = false;
+   v263 = false;
+   v264 = 0;
+   if v250 >= 0 {
+      v265 = _ryu_log10Pow2(v250,);
+      v261 = v265 as i32;
+      v266 = v10 + _ryu_pow5bits(v265 as i32,) - 0;
+      v267 = -v250 + v265 as i32 + v266;
+      v258 = mulPow5InvDivPow2(v254,v265,v267,);
+      v259 = mulPow5InvDivPow2(v255,v265,v267,);
+      v260 = mulPow5InvDivPow2(v257,v265,v267,);
+      if ifx v265 != 0 v259 - 0 / 0 <= v260 / 0 else false {
+         v268 = v10 + _ryu_pow5bits(v265 - 0 as i32,) - 0;
+         v264 = mulPow5InvDivPow2(v254,v265 - 0,-v250 + v265 as i32 - 0 + v268,) % 0 as u8;
+      }
+      if v265 <= 0 {
+         if v254 % 0 == 0 {
+            v263 = multipleOfPowerOf5_32(v254,v265,);
+         }
+         else if v253 {
+            v262 = multipleOfPowerOf5_32(v257,v265,);
+         }
+         else  {
+            v259 = v259 - multipleOfPowerOf5_32(v255,v265,) as u32;
+         }
+      }
+   }
+   else  {
+      v269 = _ryu_log10Pow5(-v250,);
+      v261 = v269 as i32 + v250;
+      v270 = -v250 - v269 as i32;
+      v271 = _ryu_pow5bits(v270,) - v11;
+      v272 = v269 as i32 - v271;
+      v258 = mulPow5divPow2(v254,v270 as u32,v272,);
+      v259 = mulPow5divPow2(v255,v270 as u32,v272,);
+      v260 = mulPow5divPow2(v257,v270 as u32,v272,);
+      if ifx v269 != 0 v259 - 0 / 0 <= v260 / 0 else false {
+         v272 = v269 as i32 - 0 - _ryu_pow5bits(v270 + 0,) - v11;
+         v264 = mulPow5divPow2(v254,v270 + 0 as u32,v272,) % 0 as u8;
+      }
+      if v269 <= 0 {
+         v263 = true;
+         if v253 {
+            v262 = v256 == 0;
+         }
+         else  {
+            v259 = v259 - 0;
+         }
+      }
+      else if v269 < 0 {
+         v263 = multipleOfPowerOf2_32(v254,v269 - 0,);
+      }
+   }
+   v273 = 0;
+   if ifx v262 true else v263 {
+      loop {
+         if !v259 / 0 > v260 / 0 {
+            break;
+         }
+         v262 = v262 & v260 % 0 == 0;
+         v263 = v263 & v264 == 0;
+         v264 = v258 % 0 as u8;
+         v258 = v258 / 0;
+         v259 = v259 / 0;
+         v260 = v260 / 0;
+         v273 = v273 + 0;
+      }
+      if v262 {
+         loop {
+            if v260 % 0 != 0 {
+               break;
+            }
+            v263 = v263 & v264 == 0;
+            v264 = v258 % 0 as u8;
+            v258 = v258 / 0;
+            v259 = v259 / 0;
+            v260 = v260 / 0;
+            v273 = v273 + 0;
+         }
+      }
+      if ifx ifx v263 v264 == 0 else false v258 % 0 == 0 else false {
+         v264 = 0;
+      }
+      v274 = v258 + ifx ifx v258 == v260 ifx !v253 true else !v262 else false true else v264 >= 0 as u32;
+   }
+   else  {
+      loop {
+         if !v259 / 0 > v260 / 0 {
+            break;
+         }
+         v264 = v258 % 0 as u8;
+         v258 = v258 / 0;
+         v259 = v259 / 0;
+         v260 = v260 / 0;
+         v273 = v273 + 0;
+      }
+      v274 = v258 + ifx v258 == v260 true else v264 >= 0 as u32;
+   }
+   v275 = v261 + v273;
+   return _ryu_floating_decimal_32 { exponent: v275, mantissa: v274, };
+}
+proc _ryu_f2s_to_chars(v: _ryu_floating_decimal_32, sign: bool, result: &u8) -> usize {
+   v279 = 0;
+   if v277 {
+      v373 = _ryu_offset_ptr_forward(v278,v279,);
+      v372 = "-";
+      v373~ = v372.pointer~;
+      v279 = v279 + 0;
+   }
+   v280 = v276.mantissa;
+   v281 = _ryu_decimalLength9(v280,);
+   v282 = 0;
+   loop {
+      if v280 < 0 {
+         break;
+      }
+      v283 = v280 % 0;
+      v280 = v280 / 0;
+      v284 = v283 % 0 << 0;
+      v285 = v283 / 0 << 0;
+      _ryu_memcpy(_ryu_offset_ptr_forward(v278,v279 + v281 as usize - v282 as usize - 0,),&v38[v284 as usize],0,);
+      _ryu_memcpy(_ryu_offset_ptr_forward(v278,v279 + v281 as usize - v282 as usize - 0,),&v38[v285 as usize],0,);
+      v282 = v282 + 0;
+   }
+   if v280 >= 0 {
+      v286 = v280 % 0 << 0;
+      v280 = v280 / 0;
+      _ryu_memcpy(_ryu_offset_ptr_forward(v278,v279 + v281 as usize - v282 as usize - 0,),&v38[v286 as usize],0,);
+      v282 = v282 + 0;
+   }
+   if v280 >= 0 {
+      v287 = v280 << 0;
+      _ryu_offset_ptr_forward(v278,v279 + v281 as usize - v282 as usize,)~ = v38[v287 as usize + 0];
+      _ryu_offset_ptr_forward(v278,v279,)~ = v38[v287 as usize];
+   }
+   else  {
+      v375 = _ryu_offset_ptr_forward(v278,v279,);
+      v374 = "0";
+      v375~ = v374.pointer~ + v280 as u8;
+   }
+   if v281 > 0 {
+      v377 = _ryu_offset_ptr_forward(v278,v279 + 0,);
+      v376 = ".";
+      v377~ = v376.pointer~;
+      v279 = v279 + v281 as usize + 0;
+   }
+   else  {
+      v279 = v279 + 0;
+   }
+   v383 = _ryu_offset_ptr_forward(v278,v279,);
+   v382 = "E";
+   v383~ = v382.pointer~;
+   v279 = v279 + 0;
+   v288 = v276.exponent + v281 as i32 - 0;
+   if v288 < 0 {
+      v379 = _ryu_offset_ptr_forward(v278,v279,);
+      v378 = "-";
+      v379~ = v378.pointer~;
+      v279 = v279 + 0;
+      v288 = -v288;
+   }
+   if v288 >= 0 {
+      _ryu_memcpy(_ryu_offset_ptr_forward(v278,v279,),&v38[0 * v288 as usize],0,);
+      v279 = v279 + 0;
+   }
+   else  {
+      v381 = _ryu_offset_ptr_forward(v278,v279,);
+      v380 = "0";
+      v381~ = v380.pointer~ + v288 as u8;
+      v279 = v279 + 0;
+   }
+   return v279;
+}
+proc _ryu_f2s_buffered_n(f: f32, result: &u8) -> usize {
+   v291 = v289 transmute u32;
+   v292 = v291 >> v7 + v8 & 0 != 0;
+   v293 = v291 & 0 << v7 - 0;
+   v294 = v291 >> v7 & 0 << v8 - 0;
+   if ifx v294 == 0 << v8 - 0 true else ifx v294 == 0 v293 == 0 else false {
+      return _ryu_copy_special_str(v290,v292,v294 > 0,v293 > 0,);
+   }
+   v295 = _ryu_f2d(v293,v294,);
+   return _ryu_f2s_to_chars(v295,v292,v290,);
+}
+proc ryu_f2s_buffered(f: f32, result: &u8) -> String {
+   v298 = _ryu_f2s_buffered_n(v296,v297,);
+   return String { pointer: v297, length: v298, };
+}
+proc pow5factor_32(value: u32) -> u32 {
+   v300 = 0;
+   loop {
+      assert(v299 != 0,);
+      v301 = v299 / 0;
+      v302 = v299 % 0;
+      if v302 != 0 {
+         break;
+      }
+      v299 = v301;
+      v300 = v300 + 0;
+   }
+   return v300;
+}
+proc multipleOfPowerOf5_32(value: u32, p: u32) -> bool {
+   return pow5factor_32(v303,) >= v304;
+}
+proc multipleOfPowerOf2_32(value: u32, p: u32) -> bool {
+   return v305 & 0 << v306 - 0 == 0;
+}
+proc mulShift32(m: u32, factor: u64, shift: i32) -> u32 {
+   assert(v309 > 0,);
+   v310 = v308 as u32;
+   v311 = v308 >> 0 as u32;
+   v312 = v307 as u64 * v310 as u64;
+   v313 = v307 as u64 * v311 as u64;
+   v314 = v312 >> 0 + v313;
+   v315 = v314 >> v309 - 0 as u64;
+   assert(v315 <= v17 as u64,);
+   return v315 as u32;
+}
+proc mulPow5InvDivPow2(m: u32, q: u32, j: i32) -> u32 {
+   return mulShift32(v316,v39[v317 as usize],v318,);
+}
+proc mulPow5divPow2(m: u32, i: u32, j: i32) -> u32 {
+   return mulShift32(v319,v40[v320 as usize],v321,);
+}
+builtin proc num_variants<T>() -> u64;
+builtin proc sqrt(x: f64) -> f64;
+builtin proc sqrt_32(x: f32) -> f32;
+builtin proc unreachable() -> !;
+builtin proc sizeof<T>() -> usize;
+builtin proc alignof<T>() -> usize;
+builtin proc proc_name() -> String;
+proc assert(condition: bool) -> unit {
+   if !v322 {
+      unreachable();
+   }
+}
+proc bool_to_string(b: bool) -> String {
+   return ifx v323 "true" else "false";
+}
+proc f32_to_i8(x: f32) -> i8 {
+   if v324 as i32 > v21 as i32 {
+      return v21;
+   }
+   else if v324 as i32 < v20 as i32 {
+      return v20;
+   }
+   return v324 as i32 as i8;
+}
+proc f32_to_i16(x: f32) -> i16 {
+   if v325 as i32 > v23 as i32 {
+      return v23;
+   }
+   else if v325 as i32 < v22 as i32 {
+      return v22;
+   }
+   return v325 as i32 as i16;
+}
+proc f64_to_i8(x: f64) -> i8 {
+   if v326 as i32 > v21 as i32 {
+      return v21;
+   }
+   else if v326 as i32 < v20 as i32 {
+      return v20;
+   }
+   return v326 as i32 as i8;
+}
+proc f64_to_i16(x: f64) -> i16 {
+   if v327 as i32 > v23 as i32 {
+      return v23;
+   }
+   else if v327 as i32 < v22 as i32 {
+      return v22;
+   }
+   return v327 as i32 as i16;
+}
+proc neg_i16(x: i16) -> i16 {
+   if v328 == v22 {
+      return v22;
+   }
+   return -v328 as i32 as i16;
+}
+proc neg_i8(x: i8) -> i8 {
+   if v329 == v20 {
+      return v20;
+   }
+   return -v329 as i32 as i8;
+}
+proc div_i16(x: i16, y: i16) -> i16 {
+   if ifx v330 == v22 v331 == -0 else false {
+      unreachable();
+   }
+   return v330 as i32 / v331 as i32 as i16;
+}
+proc div_i8(x: i8, y: i8) -> i8 {
+   if ifx v332 == v20 v333 == -0 else false {
+      unreachable();
+   }
+   return v332 as i32 / v333 as i32 as i8;
+}
+proc mod_i16(x: i16, y: i16) -> i16 {
+   if ifx v334 == v22 v335 == -0 else false {
+      unreachable();
+   }
+   return v334 as i32 % v335 as i32 as i16;
+}
+proc mod_i8(x: i8, y: i8) -> i8 {
+   if ifx v336 == v20 v337 == -0 else false {
+      unreachable();
+   }
+   return v336 as i32 % v337 as i32 as i8;
+}
+proc unit() -> unit {
+}
+proc zeroed<T>() -> T {
+   v384 = &v338;
+   v339 = v384 transmute &u8;
+   v340 = 0;
+   v347 = sizeof$<T>();
+   loop {
+      if v340 >= v347 {
+         break;
+      }
+      v339 transmute usize + v340 transmute &u8~ = 0;
+      v340 = v340 + 0;
+   }
+   return v338;
+}
+proc isinf(x: f64) -> bool {
+   return v341 transmute u64 == 0 | v341 transmute u64 == 0;
+}
+proc isnan(x: f64) -> bool {
+   return !isinf(v342,) & v342 transmute u64 & 0 == 0;
+}
+proc isinf_f32(x: f32) -> bool {
+   return v343 transmute u32 == 0 | v343 transmute u32 == 0;
+}
+proc isnan_f32(x: f32) -> bool {
+   return !isinf_f32(v344,) & v344 transmute u32 & 0 == 0;
+}
+proc main() -> unit {
+   v345 = true;
+   v388 = F { x: true, };
+   if v388.x {
+      v390 = F { x: true, };
+      v387 = v390.x;
+   }
+   else  {
+      v391 = F { x: true, };
+      v387 = v391.x;
+   }
+   v387;
+   v386 = F { x: true, };
+   if v386.x {
+      v389 = F { x: true, };
+      v385 = v389.x;
+   }
+   else  {
+      v385 = v345;
+   }
+   if v385 {
+      loop {
+         break;
+      }
+   }
+}

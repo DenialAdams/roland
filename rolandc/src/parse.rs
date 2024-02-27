@@ -178,8 +178,9 @@ pub enum CastType {
    Transmute,
 }
 
+// hack: this is pub for pretty printing only.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct VariableId(u64);
+pub struct VariableId(pub u64);
 
 impl VariableId {
    #[must_use]

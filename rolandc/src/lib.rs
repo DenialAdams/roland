@@ -35,6 +35,7 @@ mod loop_lowering;
 mod monomorphization;
 mod named_argument_lowering;
 pub mod parse;
+mod pp;
 mod pre_wasm_lowering;
 mod semantic_analysis;
 mod size_info;
@@ -188,6 +189,10 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    logical_op_lowering::lower_logical_ops(&mut ctx.program);
 
    expression_hoisting::expression_hoisting(&mut ctx.program);
+
+   if config.dump_debugging_info {
+      pp::pp(&ctx.program, &ctx.interner, &mut std::fs::File::create("pp.rol").unwrap()).unwrap();
+   }
 
    // must run after expression hoisting, so that re-ordering named arguments does not
    // affect side-effect order
