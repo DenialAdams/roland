@@ -427,7 +427,7 @@ impl ExpressionType {
          )),
          ExpressionType::Pointer(i_type) => Cow::Owned(format!(
             "&{}",
-            i_type.as_roland_type_info_notv(interner, udt, procedure_info)
+            i_type.as_roland_type_info_like_source(interner, udt, procedure_info)
          )),
          ExpressionType::Unresolved(x) | ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::ProcedurePointer {
