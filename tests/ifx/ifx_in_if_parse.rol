@@ -1,0 +1,20 @@
+struct F {
+   x: bool,
+}
+
+proc main() {
+   let x: bool = true;
+   ifx F { x: true}.x F { x: true}.x else F { x: true}.x;
+   if ifx F { x: true}.x F { x: true}.x else x { 
+      loop {
+         break;
+      }
+   }
+   if ifx F { x: true}.x F { x: true}.x else (F { x: true}.x) { 
+      loop {
+         break;
+      }
+   }
+}
+__END__
+run:

@@ -1542,7 +1542,7 @@ fn pratt(
          let condition = parse_expression(l, parse_context, false, expressions)?;
          let consequent = parse_expression(l, parse_context, false, expressions)?;
          expect(l, parse_context, Token::KeywordElse)?;
-         let otherwise = parse_expression(l, parse_context, false, expressions)?;
+         let otherwise = parse_expression(l, parse_context, if_head, expressions)?;
          let combined_location = merge_locations(begin_source, expressions[otherwise].location);
          wrap(
             Expression::IfX(condition, consequent, otherwise),
