@@ -315,7 +315,7 @@ impl ExpressionType {
             FloatWidth::Four => Cow::Borrowed("f32"),
          },
          ExpressionType::Bool => Cow::Borrowed("bool"),
-         ExpressionType::Unit => Cow::Borrowed("()"),
+         ExpressionType::Unit => Cow::Borrowed("unit"),
          ExpressionType::Never => Cow::Borrowed("!"),
          ExpressionType::CompileError => Cow::Borrowed("ERROR"),
          ExpressionType::Struct(x) => {
@@ -414,7 +414,7 @@ impl ExpressionType {
             FloatWidth::Four => Cow::Borrowed("f32"),
          },
          ExpressionType::Bool => Cow::Borrowed("bool"),
-         ExpressionType::Unit => Cow::Borrowed("()"),
+         ExpressionType::Unit => Cow::Borrowed("unit"),
          ExpressionType::Never => Cow::Borrowed("!"),
          ExpressionType::CompileError => Cow::Borrowed("ERROR"),
          ExpressionType::Struct(x) => Cow::Borrowed(interner.lookup(udt.struct_info.get(*x).unwrap().name)),
