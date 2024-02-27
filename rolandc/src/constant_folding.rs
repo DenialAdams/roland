@@ -707,20 +707,33 @@ fn fold_expr_inner(
          try_fold_and_replace_expr(*b, err_manager, folding_context, interner);
          try_fold_and_replace_expr(*c, err_manager, folding_context, interner);
 
-         if expression_could_have_side_effects(*a, &folding_context.ast.expressions)
+         let any_side_effect = expression_could_have_side_effects(*a, &folding_context.ast.expressions)
             || expression_could_have_side_effects(*b, &folding_context.ast.expressions)
-            || expression_could_have_side_effects(*c, &folding_context.ast.expressions)
-         {
-            None
-         } else if let Some(Literal::Bool(val)) = extract_literal(&folding_context.ast.expressions[*a]) {
-            if val {
+            || expression_could_have_side_effects(*c, &folding_context.ast.expressions);
+
+         if any_side_effect {
+            return None;
+         }
+
+         if let Some(Literal::Bool(val)) = extract_literal(&folding_context.ast.expressions[*a]) {
+            return if val {
                Some(folding_context.ast.expressions[*b].expression.clone())
             } else {
                Some(folding_context.ast.expressions[*c].expression.clone())
+            };
+         } else if let Some(Literal::Bool(false)) = extract_literal(&folding_context.ast.expressions[*c]) {
+            // x && x
+            if folding_context.ast.expressions[*a].expression == folding_context.ast.expressions[*b].expression {
+               return Some(folding_context.ast.expressions[*b].expression.clone());
             }
-         } else {
-            None
+         } else if let Some(Literal::Bool(true)) = extract_literal(&folding_context.ast.expressions[*b]) {
+            // x || x
+            if folding_context.ast.expressions[*a].expression == folding_context.ast.expressions[*c].expression {
+               return Some(folding_context.ast.expressions[*c].expression.clone());
+            }
          }
+
+         None
       }
       Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
