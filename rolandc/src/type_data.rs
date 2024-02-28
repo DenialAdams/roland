@@ -365,7 +365,7 @@ impl ExpressionType {
             } else {
                let type_argument_string = type_arguments
                   .iter()
-                  .map(|x| x.as_roland_type_info_like_source(interner, udt, procedure_info))
+                  .map(|x| x.as_roland_type_info_like_source(interner, udt))
                   .collect::<Vec<_>>()
                   .join("$");
                Cow::Owned(format!(
@@ -393,7 +393,6 @@ impl ExpressionType {
       &self,
       interner: &'i Interner,
       udt: &UserDefinedTypeInfo,
-      procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
    ) -> Cow<'i, str> {
       match self {
          ExpressionType::Unknown(_) => unreachable!(),
@@ -422,12 +421,12 @@ impl ExpressionType {
          ExpressionType::Enum(x) => Cow::Borrowed(interner.lookup(udt.enum_info.get(*x).unwrap().name)),
          ExpressionType::Array(i_type, length) => Cow::Owned(format!(
             "[{}; {}]",
-            i_type.as_roland_type_info_like_source(interner, udt, procedure_info),
+            i_type.as_roland_type_info_like_source(interner, udt),
             length
          )),
          ExpressionType::Pointer(i_type) => Cow::Owned(format!(
             "&{}",
-            i_type.as_roland_type_info_like_source(interner, udt, procedure_info)
+            i_type.as_roland_type_info_like_source(interner, udt)
          )),
          ExpressionType::Unresolved(x) | ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::ProcedurePointer {
@@ -436,13 +435,13 @@ impl ExpressionType {
          } => {
             let params: String = parameters
                .iter()
-               .map(|x| x.as_roland_type_info_like_source(interner, udt, procedure_info))
+               .map(|x| x.as_roland_type_info_like_source(interner, udt))
                .collect::<Vec<_>>()
                .join(", ");
             Cow::Owned(format!(
                "proc({}) -> {}",
                params,
-               ret_val.as_roland_type_info_like_source(interner, udt, procedure_info)
+               ret_val.as_roland_type_info_like_source(interner, udt)
             ))
          }
          ExpressionType::ProcedureItem(_, _) => unreachable!(),

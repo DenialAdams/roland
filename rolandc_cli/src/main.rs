@@ -152,9 +152,8 @@ fn main() {
 
    ctx.err_manager.write_out_errors(&mut err_stream_l, &ctx.interner);
 
-   let out_bytes = match compile_result {
-      Ok(v) => v,
-      Err(_) => std::process::exit(1),
+   let Ok(out_bytes) = compile_result else {
+      std::process::exit(1);
    };
 
    let output_path = if let Some(v) = opts.output {

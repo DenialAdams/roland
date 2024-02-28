@@ -368,7 +368,6 @@ pub fn type_and_check_validity(
                      .map(|x| x.as_roland_type_info_like_source(
                         validation_context.interner,
                         validation_context.user_defined_types,
-                        validation_context.procedure_info
                      ))
                      .collect::<Vec<_>>()
                      .join(", ")
@@ -393,8 +392,7 @@ pub fn type_and_check_validity(
                   validation_context.target,
                   special_proc.return_type.as_roland_type_info_like_source(
                      validation_context.interner,
-                     validation_context.user_defined_types,
-                     validation_context.procedure_info
+                     validation_context.user_defined_types
                   ),
                );
             }

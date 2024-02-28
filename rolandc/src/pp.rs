@@ -46,10 +46,10 @@ pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> R
       if !proc.definition.generic_parameters.is_empty() {
          write!(pp_ctx.output, "<")?;
          for (i, g_param) in proc.definition.generic_parameters.iter().enumerate() {
-            if i != proc.definition.generic_parameters.len() - 1 {
-               write!(pp_ctx.output, "{}, ", pp_ctx.interner.lookup(g_param.str))?;
-            } else {
+            if i == proc.definition.generic_parameters.len() - 1 {
                write!(pp_ctx.output, "{}", pp_ctx.interner.lookup(g_param.str))?;
+            } else {
+               write!(pp_ctx.output, "{}, ", pp_ctx.interner.lookup(g_param.str))?;
             }
          }
          write!(pp_ctx.output, ">")?;
@@ -342,6 +342,6 @@ fn pp_type<W: Write>(a_type: &ExpressionType, pp_ctx: &mut PpCtx<W>) -> Result<(
    write!(
       pp_ctx.output,
       "{}",
-      a_type.as_roland_type_info_like_source(pp_ctx.interner, pp_ctx.user_defined_types, pp_ctx.procedure_info)
+      a_type.as_roland_type_info_like_source(pp_ctx.interner, pp_ctx.user_defined_types)
    )
 }
