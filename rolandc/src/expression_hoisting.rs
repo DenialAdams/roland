@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use indexmap::{IndexMap, IndexSet};
 
 use crate::constant_folding::expression_could_have_side_effects;
@@ -41,14 +43,14 @@ struct VvContext<'a> {
    global_info: &'a IndexMap<VariableId, GlobalInfo>,
    next_variable: VariableId,
    statement_actions: Vec<StmtAction>,
-   statements_that_need_hoisting: IndexSet<usize>,
+   statements_that_need_hoisting: Vec<usize>,
    user_defined_type_info: &'a UserDefinedTypeInfo,
 }
 
 impl VvContext<'_> {
    fn mark_expr_for_hoisting(&mut self, expr_id: ExpressionId, current_stmt: usize, reason: HoistReason) {
       if reason == HoistReason::Must {
-         self.statements_that_need_hoisting.insert(current_stmt);
+         self.statements_that_need_hoisting.push(current_stmt);
       }
       if !self.pending_hoists.insert(expr_id) {
          return;
@@ -73,7 +75,7 @@ pub fn expression_hoisting(program: &mut Program) {
       global_info: &program.global_info,
       next_variable: program.next_variable,
       statement_actions: Vec::new(),
-      statements_that_need_hoisting: IndexSet::new(),
+      statements_that_need_hoisting: Vec::new(),
       user_defined_type_info: &program.user_defined_types,
    };
 
@@ -95,9 +97,10 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool
       vv_statement(statement, vv_context, ast, current_stmt);
    }
 
-   let this_block_stmts_that_need_hoisting = vv_context
+   let this_block_stmts_that_need_hoisting: HashSet<usize> = vv_context
       .statements_that_need_hoisting
-      .split_off(before_stmts_that_need_hoisting);
+      .drain(before_stmts_that_need_hoisting..)
+      .collect();
 
    let mut new_ifs = vec![];
    for vv in vv_context.statement_actions.drain(before_vv_len..).rev() {
@@ -293,7 +296,7 @@ fn vv_expr(
          if any_named_arg {
             for arg in args.iter() {
                if expression_could_have_side_effects(arg.expr, expressions) {
-                  vv_context.statements_that_need_hoisting.insert(current_statement);
+                  vv_context.statements_that_need_hoisting.push(current_statement);
                   break;
                }
             }
@@ -304,7 +307,7 @@ fn vv_expr(
             ExpressionType::ProcedurePointer { .. }
          ) && expression_could_have_side_effects(*proc_expr, expressions)
          {
-            vv_context.statements_that_need_hoisting.insert(current_statement);
+            vv_context.statements_that_need_hoisting.push(current_statement);
          }
 
          let exp_type = expressions[expr_index].exp_type.as_ref().unwrap();
@@ -342,7 +345,7 @@ fn vv_expr(
          for expr in field_exprs.values().flatten() {
             vv_expr(*expr, vv_context, expressions, current_statement, false);
             if expression_could_have_side_effects(*expr, expressions) {
-               vv_context.statements_that_need_hoisting.insert(current_statement);
+               vv_context.statements_that_need_hoisting.push(current_statement);
             }
          }
       }
