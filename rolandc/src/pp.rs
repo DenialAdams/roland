@@ -185,9 +185,11 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
       Expression::ProcedureCall { proc_expr, args } => {
          pp_expr(*proc_expr, pp_ctx)?;
          write!(pp_ctx.output, "(")?;
-         for arg in args.iter() {
+         for (i, arg) in args.iter().enumerate() {
             pp_expr(arg.expr, pp_ctx)?;
-            write!(pp_ctx.output, ",")?;
+            if i != args.len() - 1 {
+               write!(pp_ctx.output, ", ")?;
+            }
          }
          write!(pp_ctx.output, ")")?;
       }
@@ -264,16 +266,18 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
       Expression::StructLiteral(_, field_exprs) => {
          pp_type(expr.exp_type.as_ref().unwrap(), pp_ctx)?;
          write!(pp_ctx.output, " {{ ",)?;
-         for field_expr in field_exprs.iter() {
+         for (i, field_expr) in field_exprs.iter().enumerate() {
             if let Some(e) = field_expr.1 {
                write!(pp_ctx.output, "{}: ", pp_ctx.interner.lookup(*field_expr.0))?;
                pp_expr(*e, pp_ctx)?;  
             } else {
                write!(pp_ctx.output, "{},", pp_ctx.interner.lookup(*field_expr.0))?;
             }
-            write!(pp_ctx.output, ", ",)?;
+            if i != field_exprs.len() - 1 {
+               write!(pp_ctx.output, ", ",)?;
+            }
          }
-         write!(pp_ctx.output, "}}")?;
+         write!(pp_ctx.output, " }}")?;
       }
       Expression::FieldAccess(field, base) => {
          pp_expr(*base, pp_ctx)?;
