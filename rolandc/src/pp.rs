@@ -179,7 +179,7 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
 }
 
 fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
-   // Note that printing an expr might not reflect original order of operations.
+   // Note that printing an expr might not reflect correct order of operations.
    let expr = &pp_ctx.ast.expressions[expr];
    match &expr.expression {
       Expression::ProcedureCall { proc_expr, args } => {
@@ -195,9 +195,11 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
       }
       Expression::ArrayLiteral(exprs) => {
          write!(pp_ctx.output, "[")?;
-         for expr in exprs.iter() {
+         for (i, expr) in exprs.iter().enumerate() {
             pp_expr(*expr, pp_ctx)?;
-            write!(pp_ctx.output, ", ")?;
+            if i != exprs.len() - 1 {
+               write!(pp_ctx.output, ", ")?;
+            }
          }
          write!(pp_ctx.output, "]")?;
       }
@@ -214,7 +216,7 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          write!(pp_ctx.output, "\"{}\"", pp_ctx.interner.lookup(*val))?;
       }
       Expression::IntLiteral { .. } => {
-         // nocheckin
+         // TODO: actual value
          write!(pp_ctx.output, "{}", 0)?;
       }
       Expression::FloatLiteral(val) => {
