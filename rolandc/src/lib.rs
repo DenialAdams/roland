@@ -49,7 +49,7 @@ use std::path::{Path, PathBuf};
 use error_handling::error_handling_macros::rolandc_error;
 use error_handling::ErrorManager;
 use interner::Interner;
-use parse::ImportNode;
+use parse::{ImportNode, ProcImplSource};
 pub use parse::Program;
 use semantic_analysis::{definite_assignment, GlobalKind};
 use source_info::SourcePath;
@@ -204,7 +204,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    }
    ctx.program
       .procedures
-      .retain(|_, x| x.definition.generic_parameters.is_empty());
+      .retain(|_, x| x.definition.generic_parameters.is_empty() || !matches!(x.proc_impl, ProcImplSource::Body(_)));
 
    constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner);
    ctx.program.global_info.retain(|_, v| v.kind != GlobalKind::Const);

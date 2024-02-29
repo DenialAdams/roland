@@ -526,8 +526,11 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
          "unreachable" => {
             generation_context.active_fcn.instruction(&Instruction::Unreachable);
          }
-         x => {
-            panic!("Unimplemented builtin: {}", x);
+         _ => {
+            // *sigh* we used to assert here, but this is actually reachable when a
+            // builtin with no backend impl is referenced in the IR without a direct call
+            // x = proc_name;
+            continue;
          }
       }
 

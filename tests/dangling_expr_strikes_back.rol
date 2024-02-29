@@ -9,3 +9,4 @@ __END__
 compile:
 The result of this expression is not consumed
 ↳ line 4, column 4 [tests/dangling_expr_strikes_back.rol]
+run:

@@ -1,0 +1,8 @@
+proc main() {
+   let a = proc_name;
+   let x = sizeof$<u8>;
+   x();
+   a();
+}
+__END__
+run:
