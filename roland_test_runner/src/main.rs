@@ -104,7 +104,11 @@ fn main() -> Result<(), &'static str> {
 
    entries.par_iter().for_each(|entry| {
       let tc_output = if opts.amd64 {
-         Command::new(&opts.tc_path).arg(entry.clone()).arg("--amd64").output().unwrap()
+         Command::new(&opts.tc_path)
+            .arg(entry.clone())
+            .arg("--amd64")
+            .output()
+            .unwrap()
       } else {
          Command::new(&opts.tc_path).arg(entry.clone()).output().unwrap()
       };
