@@ -1,13 +1,12 @@
 use std::collections::HashSet;
 
-use arrayvec::ArrayVec;
 use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
 use super::linearize::{post_order, Cfg, CfgInstruction};
 use super::liveness::{liveness, ProgramIndex};
-use crate::backend::wasm::type_to_wasm_type;
+use crate::backend::wasm::{type_to_wasm_type, type_to_wasm_type_basic};
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::parse::{
    AstPool, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, UnOp, VariableId,
@@ -15,7 +14,7 @@ use crate::parse::{
 use crate::{CompilationConfig, Program, Target};
 
 pub struct RegallocResult {
-   pub var_to_reg: IndexMap<VariableId, ArrayVec<u32, 1>>,
+   pub var_to_reg: IndexMap<VariableId, u32>,
    pub procedure_registers: SecondaryMap<ProcedureId, Vec<ValType>>,
 }
 
@@ -75,7 +74,7 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
          let reg = total_registers;
          total_registers += t_buf.len() as u32;
 
-         if typ.is_aggregate() {
+         if typ.is_aggregate() || typ.is_nonaggregate_zst() {
             continue;
          }
 
@@ -86,7 +85,7 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
             continue;
          }
 
-         result.var_to_reg.insert(var, (reg..total_registers).collect());
+         result.var_to_reg.insert(var, reg);
       }
 
       for (var, range) in live_intervals.iter() {
@@ -100,44 +99,28 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
             continue;
          }
 
-         if procedure.locals.get(var).unwrap().is_aggregate() {
+         let local_type = procedure.locals.get(var).unwrap();
+         if local_type.is_aggregate() || local_type.is_nonaggregate_zst() {
             continue;
          }
 
          for expired_var in active.extract_if(|v| live_intervals.get(v).unwrap().end < range.begin) {
-            t_buf.clear();
-            type_to_wasm_type(
-               procedure.locals.get(&expired_var).unwrap(),
-               &mut t_buf,
-               &program.user_defined_types.struct_info,
-            );
-            for (t_val, reg) in t_buf.drain(..).zip(result.var_to_reg.get(&expired_var).unwrap()) {
-               free_registers.entry(t_val).or_default().push(*reg);
-            }
+            let wt = type_to_wasm_type_basic(procedure.locals.get(&expired_var).unwrap());
+            free_registers.entry(wt).or_default().push(result.var_to_reg.get(&expired_var).copied().unwrap());
          }
 
-         t_buf.clear();
-         type_to_wasm_type(
-            procedure.locals.get(var).unwrap(),
-            &mut t_buf,
-            &program.user_defined_types.struct_info,
-         );
+         let wt = type_to_wasm_type_basic(local_type);
 
-         let mut var_registers = ArrayVec::new();
-         for t_val in t_buf.drain(..) {
-            let reg = if let Some(reg) = free_registers.entry(t_val).or_default().pop() {
-               reg
-            } else {
-               all_registers.push(t_val);
-               let reg = total_registers;
-               total_registers += 1;
-               reg
-            };
+         let reg = if let Some(reg) = free_registers.entry(wt).or_default().pop() {
+            reg
+         } else {
+            all_registers.push(wt);
+            let reg = total_registers;
+            total_registers += 1;
+            reg
+         };
 
-            var_registers.push(reg);
-         }
-
-         result.var_to_reg.insert(*var, var_registers.clone());
+         result.var_to_reg.insert(*var, reg);
          active.push(*var);
       }
    }
@@ -156,23 +139,16 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
          continue;
       }
 
-      if global.1.expr_type.e_type.is_aggregate() {
+      if global.1.expr_type.e_type.is_aggregate() || global.1.expr_type.e_type.is_nonaggregate_zst() {
          continue;
       }
 
-      t_buf.clear();
-      type_to_wasm_type(
-         &global.1.expr_type.e_type,
-         &mut t_buf,
-         &program.user_defined_types.struct_info,
-      );
-
       let reg = num_global_registers;
-      num_global_registers += t_buf.len() as u32;
+      num_global_registers += 1;
 
       result
          .var_to_reg
-         .insert(*global.0, (reg..num_global_registers).collect());
+         .insert(*global.0, reg);
    }
 
    result

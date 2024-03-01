@@ -249,6 +249,14 @@ impl ExpressionType {
    }
 
    #[must_use]
+   pub fn is_nonaggregate_zst(&self) -> bool {
+      matches!(
+         self,
+         ExpressionType::Never | ExpressionType::Unit | ExpressionType::ProcedureItem(_, _)
+      )
+   }
+
+   #[must_use]
    pub fn is_or_contains_union(&self, udt: &UserDefinedTypeInfo) -> bool {
       match self {
          ExpressionType::Struct(s) => {

@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-use arrayvec::ArrayVec;
 use indexmap::{IndexMap, IndexSet};
 use slotmap::SlotMap;
 use wasm_encoder::{
@@ -43,7 +42,7 @@ struct GenerationContext<'a> {
    procedure_to_table_index: IndexSet<ProcedureId>,
    procedure_indices: IndexSet<ProcedureId>,
    stack_of_loop_jump_offsets: Vec<u32>,
-   var_to_reg: IndexMap<VariableId, ArrayVec<u32, 1>>,
+   var_to_reg: IndexMap<VariableId, u32>,
 }
 
 impl GenerationContext<'_> {
@@ -87,7 +86,7 @@ pub fn type_to_wasm_type(t: &ExpressionType, buf: &mut Vec<ValType>, si: &SlotMa
    }
 }
 
-fn type_to_wasm_type_basic(t: &ExpressionType) -> ValType {
+pub fn type_to_wasm_type_basic(t: &ExpressionType) -> ValType {
    match t {
       ExpressionType::Int(x) => match x.width {
          IntWidth::Eight => ValType::I64,
@@ -463,7 +462,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
             &mut t_buf,
             &program.user_defined_types.struct_info,
          );
-         debug_assert!(t_buf.len() == generation_context.var_to_reg.get(global.0).unwrap().len());
+         debug_assert!(t_buf.len() == 1);
 
          if let Some(initializer) = global.1.initializer {
             literal_as_wasm_consts(&mut global_c, initializer, &mut generation_context);
@@ -605,8 +604,8 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       // Copy parameters to stack memory so we can take pointers
       let mut values_index = 0;
       for param in &procedure.definition.parameters {
-         if let Some(range) = generation_context.var_to_reg.get(&param.var_id) {
-            values_index += range.len() as u32;
+         if generation_context.var_to_reg.contains_key(&param.var_id) {
+            values_index += 1;
          } else {
             match sizeof_type_values(
                &param.p_type.e_type,
@@ -866,19 +865,15 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
             do_emit(*len, generation_context);
             do_emit_and_load_lval(*en, generation_context);
             let val_type = generation_context.ast.expressions[*en].exp_type.as_ref().unwrap();
-            if let Some((is_global, range)) = get_registers_for_expr(*len, generation_context) {
+            if let Some((is_global, a_reg)) = get_registers_for_expr(*len, generation_context) {
                if is_global {
-                  for a_reg in range.iter().rev() {
-                     generation_context
+                  generation_context
                         .active_fcn
-                        .instruction(&Instruction::GlobalSet(*a_reg));
-                  }
+                        .instruction(&Instruction::GlobalSet(a_reg));
                } else {
-                  for a_reg in range.iter().rev() {
-                     generation_context
+                  generation_context
                         .active_fcn
-                        .instruction(&Instruction::LocalSet(*a_reg));
-                  }
+                        .instruction(&Instruction::LocalSet(a_reg));
                }
             } else {
                store_mem(val_type, generation_context);
@@ -927,7 +922,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
 fn get_registers_for_expr(
    expr_id: ExpressionId,
    generation_context: &GenerationContext,
-) -> Option<(bool, ArrayVec<u32, 1>)> {
+) -> Option<(bool, u32)> {
    let node = &generation_context.ast.expressions[expr_id];
    match &node.expression {
       Expression::Variable(v) => generation_context
@@ -947,17 +942,13 @@ fn do_emit_and_load_lval(expr_index: ExpressionId, generation_context: &mut Gene
       .expression
       .is_lvalue_disregard_consts(&generation_context.ast.expressions)
    {
-      if let Some((is_global, range)) = get_registers_for_expr(expr_index, generation_context) {
+      if let Some((is_global, a_reg)) = get_registers_for_expr(expr_index, generation_context) {
          if is_global {
-            for a_reg in range {
-               generation_context
+            generation_context
                   .active_fcn
                   .instruction(&Instruction::GlobalGet(a_reg));
-            }
          } else {
-            for a_reg in range {
-               generation_context.active_fcn.instruction(&Instruction::LocalGet(a_reg));
-            }
+            generation_context.active_fcn.instruction(&Instruction::LocalGet(a_reg));
          }
       } else {
          load_mem(expr_node.exp_type.as_ref().unwrap(), generation_context);
