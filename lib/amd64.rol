@@ -3,6 +3,33 @@ import "ryu/f2s.rol";
 import "ryu/d2s.rol";
 
 extern proc malloc(bytes: usize) -> &u8;
+extern proc write(fd: i32, buf: &u8, nbyte: usize) -> isize;
+
+proc print(s: String) {
+
+   let written: usize = 0;
+   let buf: &u8 = s.pointer;
+   loop {
+      let ret = write(1, buf, s.length);
+      if ret < 0 {
+         unreachable();
+      }
+      written = written + ret as usize;
+      if written >= s.length {
+         break;
+      }
+      buf = (s.pointer transmute usize + written) transmute &u8;
+   }
+}
+
+proc println(s: String) {
+   print(s);
+   print("\n");
+}
+
+proc println_bool(value: bool) {
+   println(bool_to_string(value));
+}
 
 proc count_digits(value: u64) -> u8 {
    let digit_count: u8 = 0;

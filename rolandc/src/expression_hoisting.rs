@@ -438,9 +438,18 @@ fn vv_expr(
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
+   // TODO: don't need to hoist void procedure calls (if this is expr stmt or assign)
    if !expressions[expr_index]
       .expression
-      .is_lvalue(expressions, vv_context.global_info) && !matches!(expressions[expr_index].expression, Expression::BoundFcnLiteral(_, _))
+      .is_lvalue(expressions, vv_context.global_info)
+      && !matches!(
+         expressions[expr_index].expression,
+         Expression::BoundFcnLiteral(_, _)
+            | Expression::IntLiteral { .. }
+            | Expression::FloatLiteral { .. }
+            | Expression::BoolLiteral { .. }
+            | Expression::EnumLiteral { .. }
+      )
    {
       vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
    }
