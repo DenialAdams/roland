@@ -438,4 +438,10 @@ fn vv_expr(
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
+   if !expressions[expr_index]
+      .expression
+      .is_lvalue(expressions, vv_context.global_info) && !matches!(expressions[expr_index].expression, Expression::BoundFcnLiteral(_, _))
+   {
+      vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+   }
 }
