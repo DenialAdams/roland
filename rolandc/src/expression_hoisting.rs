@@ -11,6 +11,7 @@ use crate::semantic_analysis::GlobalInfo;
 use crate::type_data::ExpressionType;
 
 pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
+   // TODO: this doesn't include types that are lowered to int? pointer, enum
    source_type == target_type
       || matches!(
          (source_type, &target_type),
