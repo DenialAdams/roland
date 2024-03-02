@@ -259,24 +259,6 @@ impl ExpressionType {
    }
 
    #[must_use]
-   pub fn is_or_contains_union(&self, udt: &UserDefinedTypeInfo) -> bool {
-      match self {
-         ExpressionType::Struct(s) => {
-            udt.struct_info
-               .get(*s)
-               .unwrap()
-               .size
-               .as_ref()
-               .unwrap()
-               .contains_union_type
-         }
-         ExpressionType::Union(_) => true,
-         ExpressionType::Array(inner_t, _) => inner_t.is_or_contains_union(udt),
-         _ => false,
-      }
-   }
-
-   #[must_use]
    pub fn as_roland_type_info<'i>(
       &self,
       interner: &'i Interner,
@@ -434,10 +416,9 @@ impl ExpressionType {
             i_type.as_roland_type_info_like_source(interner, udt),
             length
          )),
-         ExpressionType::Pointer(i_type) => Cow::Owned(format!(
-            "&{}",
-            i_type.as_roland_type_info_like_source(interner, udt)
-         )),
+         ExpressionType::Pointer(i_type) => {
+            Cow::Owned(format!("&{}", i_type.as_roland_type_info_like_source(interner, udt)))
+         }
          ExpressionType::Unresolved(x) | ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::ProcedurePointer {
             parameters,

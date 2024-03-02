@@ -6,7 +6,7 @@ use wasm_encoder::ValType;
 
 use super::linearize::{post_order, Cfg, CfgInstruction};
 use super::liveness::{liveness, ProgramIndex};
-use crate::backend::wasm::{type_to_wasm_type, type_to_wasm_type_basic};
+use crate::backend::wasm::type_to_wasm_type_basic;
 use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
 use crate::parse::{
    AstPool, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, UnOp, VariableId,
@@ -28,7 +28,6 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
 
    let mut active: Vec<VariableId> = Vec::new();
    let mut free_registers: IndexMap<ValType, Vec<u32>> = IndexMap::new();
-   let mut t_buf: Vec<ValType> = Vec::new();
 
    for (proc_id, procedure) in program.procedures.iter() {
       active.clear();
@@ -68,18 +67,15 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
          let var = param.var_id;
          let typ = &param.p_type.e_type;
 
-         t_buf.clear();
-         type_to_wasm_type(typ, &mut t_buf, &program.user_defined_types.struct_info);
-
-         let reg = total_registers;
-         total_registers += t_buf.len() as u32;
-
-         if typ.is_aggregate() || typ.is_nonaggregate_zst() {
+         if typ.is_nonaggregate_zst() {
             continue;
          }
 
-         if escaping_vars.contains(&var) {
-            // address is observed, variable must live on the stack.
+         let reg = total_registers;
+         total_registers += 1;
+
+         if typ.is_aggregate() || escaping_vars.contains(&var) {
+            // variable must live on the stack.
             // however, this var is a parameter, so we still need to offset
             // the register count
             continue;
@@ -106,7 +102,10 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
 
          for expired_var in active.extract_if(|v| live_intervals.get(v).unwrap().end < range.begin) {
             let wt = type_to_wasm_type_basic(procedure.locals.get(&expired_var).unwrap());
-            free_registers.entry(wt).or_default().push(result.var_to_reg.get(&expired_var).copied().unwrap());
+            free_registers
+               .entry(wt)
+               .or_default()
+               .push(result.var_to_reg.get(&expired_var).copied().unwrap());
          }
 
          let wt = type_to_wasm_type_basic(local_type);
@@ -131,7 +130,7 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
       return result;
    }
 
-   let mut num_global_registers = 2; // Skip the stack pointer, scratch mem address globals
+   let mut num_global_registers = 1; // Skip the stack pointer
    for global in program.global_info.iter() {
       debug_assert!(!result.var_to_reg.contains_key(global.0));
 
@@ -146,9 +145,7 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
       let reg = num_global_registers;
       num_global_registers += 1;
 
-      result
-         .var_to_reg
-         .insert(*global.0, reg);
+      result.var_to_reg.insert(*global.0, reg);
    }
 
    result

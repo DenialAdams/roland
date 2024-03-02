@@ -5,9 +5,9 @@ use indexmap::{IndexMap, IndexSet};
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
    AstPool, BlockNode, CastType, DeclarationValue, Expression, ExpressionId, ExpressionNode, ExpressionPool,
-   ProcImplSource, Program, Statement, StatementId, StatementNode, UnOp, UserDefinedTypeInfo, VariableId,
+   ProcImplSource, Program, Statement, StatementId, StatementNode, UnOp, VariableId,
 };
-use crate::semantic_analysis::GlobalInfo;
+use crate::semantic_analysis::{GlobalInfo, GlobalKind};
 use crate::type_data::ExpressionType;
 
 pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
@@ -45,7 +45,6 @@ struct VvContext<'a> {
    next_variable: VariableId,
    statement_actions: Vec<StmtAction>,
    statements_that_need_hoisting: Vec<usize>,
-   user_defined_type_info: &'a UserDefinedTypeInfo,
 }
 
 impl VvContext<'_> {
@@ -77,7 +76,6 @@ pub fn expression_hoisting(program: &mut Program) {
       next_variable: program.next_variable,
       statement_actions: Vec::new(),
       statements_that_need_hoisting: Vec::new(),
-      user_defined_type_info: &program.user_defined_types,
    };
 
    for procedure in program.procedures.values_mut() {
@@ -313,19 +311,21 @@ fn vv_expr(
 
          let exp_type = expressions[expr_index].exp_type.as_ref().unwrap();
 
-         // The point here is that we need to hoist calls where a union is returned, because currently
-         // a returned union is an address _in the function we just called_, so not hoisting would mean
-         // that we clobber the union if we make another call. Because, currently, this hoisting runs before
+         // The point here is that we need to hoist calls where an aggregate is returned, because currently
+         // a returned aggregate is an address _in the function we just called_, so not hoisting would mean
+         // that we clobber the aggregate if we make another call. Because, currently, this hoisting runs before
          // monomorphization, we must also check size_is_unknown because any type parameter could end up
-         // being a union. This means unnecessary hoisting, unfortunately.
-         if (exp_type.size_is_unknown() || exp_type.is_or_contains_union(vv_context.user_defined_type_info)) && !top {
+         // being an aggregate. This means unnecessary hoisting, unfortunately.
+         if (exp_type.size_is_unknown() || exp_type.is_aggregate()) && !top {
             vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
          }
 
          // assumption: procedure call always has side effects
          // If we eventually decide to come up with a list of pure procedure calls, this needs to be updated
          // @PureCalls
-         vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::IfOtherHoisting);
+         if !top {
+            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::IfOtherHoisting);
+         }
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
          vv_expr(*lhs, vv_context, expressions, current_statement, false);
@@ -348,6 +348,9 @@ fn vv_expr(
             if expression_could_have_side_effects(*expr, expressions) {
                vv_context.statements_that_need_hoisting.push(current_statement);
             }
+         }
+         if !top {
+            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
          }
       }
       Expression::FieldAccess(_field_names, expr) => {
@@ -385,6 +388,9 @@ fn vv_expr(
          for expr in exprs.iter() {
             vv_expr(*expr, vv_context, expressions, current_statement, false);
          }
+         if !top {
+            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+         }
       }
       Expression::IfX(a, b, c) => {
          // IfX is hoisted specially, because it needs to become an if statement.
@@ -404,12 +410,21 @@ fn vv_expr(
       }
       Expression::EnumLiteral(_, _) => (),
       Expression::BoolLiteral(_) => (),
-      Expression::StringLiteral(_) => (),
+      Expression::StringLiteral(_) => {
+         if !top {
+            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+         }
+      },
       Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
       Expression::BoundFcnLiteral(_, _) => (),
       Expression::UnitLiteral => (),
-      Expression::Variable(_) => (),
+      Expression::Variable(x) => {
+         // Pretty hacky.
+         if vv_context.global_info.get(x).map_or(false, |x| x.kind == GlobalKind::Const && x.expr_type.e_type.is_aggregate()) && !top {
+            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+         }
+      },
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }

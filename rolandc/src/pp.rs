@@ -3,7 +3,10 @@ use std::io::Write;
 use slotmap::SecondaryMap;
 
 use crate::interner::Interner;
-use crate::parse::{AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, ProcedureId, Statement, StatementId, UserDefinedTypeInfo, VariableId};
+use crate::parse::{
+   AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, ProcedureId, Statement, StatementId,
+   UserDefinedTypeInfo, VariableId,
+};
 use crate::semantic_analysis::ProcedureInfo;
 use crate::type_data::ExpressionType;
 use crate::Program;
@@ -38,11 +41,16 @@ pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> R
 
    for proc in program.procedures.values() {
       let prefix = match proc.proc_impl {
-        ProcImplSource::Builtin => "builtin ",
-        ProcImplSource::External => "extern ",
-        ProcImplSource::Body(_) => "",
+         ProcImplSource::Builtin => "builtin ",
+         ProcImplSource::External => "extern ",
+         ProcImplSource::Body(_) => "",
       };
-      write!(pp_ctx.output, "{}proc {}", prefix, interner.lookup(proc.definition.name.str))?;
+      write!(
+         pp_ctx.output,
+         "{}proc {}",
+         prefix,
+         interner.lookup(proc.definition.name.str)
+      )?;
       if !proc.definition.generic_parameters.is_empty() {
          write!(pp_ctx.output, "<")?;
          for (i, g_param) in proc.definition.generic_parameters.iter().enumerate() {
@@ -68,7 +76,7 @@ pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> R
       write!(pp_ctx.output, ") -> ")?;
       pp_type(&proc.definition.ret_type.e_type, &mut pp_ctx)?;
       if let ProcImplSource::Body(b) = &proc.proc_impl {
-         pp_block(b, &mut pp_ctx)?;   
+         pp_block(b, &mut pp_ctx)?;
       } else {
          writeln!(pp_ctx.output, ";")?;
       }
@@ -115,7 +123,14 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
          write!(pp_ctx.output, "defer ")?;
          pp_stmt(*stmt, pp_ctx)?;
       }
-      Statement::For { range_start: start, range_end: end, range_inclusive, induction_var: var, body, ..} => {
+      Statement::For {
+         range_start: start,
+         range_end: end,
+         range_inclusive,
+         induction_var: var,
+         body,
+         ..
+      } => {
          write!(pp_ctx.output, "for ")?;
          pp_var(*var, pp_ctx)?;
          write!(pp_ctx.output, " in ")?;
@@ -123,7 +138,7 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
          if *range_inclusive {
             write!(pp_ctx.output, "..=")?;
          } else {
-            write!(pp_ctx.output, "..")?;   
+            write!(pp_ctx.output, "..")?;
          }
          write!(pp_ctx.output, "..")?;
          pp_expr(*end, pp_ctx)?;
@@ -168,10 +183,10 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
             DeclarationValue::Expr(e) => {
                write!(pp_ctx.output, " = ")?;
                pp_expr(*e, pp_ctx)?;
-            },
+            }
             DeclarationValue::Uninit => write!(pp_ctx.output, " = ___")?,
             DeclarationValue::None => (),
-        }
+         }
          writeln!(pp_ctx.output, ";")?;
       }
    }
@@ -215,9 +230,8 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
       Expression::StringLiteral(val) => {
          write!(pp_ctx.output, "\"{}\"", pp_ctx.interner.lookup(*val))?;
       }
-      Expression::IntLiteral { .. } => {
-         // TODO: actual value
-         write!(pp_ctx.output, "{}", 0)?;
+      Expression::IntLiteral { val, .. } => {
+         write!(pp_ctx.output, "{}", val)?;
       }
       Expression::FloatLiteral(val) => {
          write!(pp_ctx.output, "{}", *val)?;
@@ -271,7 +285,7 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          for (i, field_expr) in field_exprs.iter().enumerate() {
             if let Some(e) = field_expr.1 {
                write!(pp_ctx.output, "{}: ", pp_ctx.interner.lookup(*field_expr.0))?;
-               pp_expr(*e, pp_ctx)?;  
+               pp_expr(*e, pp_ctx)?;
             } else {
                write!(pp_ctx.output, "{},", pp_ctx.interner.lookup(*field_expr.0))?;
             }

@@ -40,6 +40,7 @@ mod pre_wasm_lowering;
 mod semantic_analysis;
 mod size_info;
 pub mod source_info;
+mod aggregate_literal_lowering;
 pub mod type_data;
 
 use std::borrow::Cow;
@@ -49,8 +50,8 @@ use std::path::{Path, PathBuf};
 use error_handling::error_handling_macros::rolandc_error;
 use error_handling::ErrorManager;
 use interner::Interner;
-use parse::{ImportNode, ProcImplSource};
 pub use parse::Program;
+use parse::{ImportNode, ProcImplSource};
 use semantic_analysis::{definite_assignment, GlobalKind};
 use source_info::SourcePath;
 
@@ -190,10 +191,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
 
    expression_hoisting::expression_hoisting(&mut ctx.program);
 
-   if config.dump_debugging_info {
-      pp::pp(&ctx.program, &ctx.interner, &mut std::fs::File::create("pp.rol").unwrap()).unwrap();
-   }
-
    // must run after expression hoisting, so that re-ordering named arguments does not
    // affect side-effect order
    named_argument_lowering::lower_named_args(&mut ctx.program);
@@ -233,6 +230,27 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    pre_wasm_lowering::replace_nonnative_casts_and_unique_overflow(&mut ctx.program, &ctx.interner);
 
    dead_code_elimination::delete_unreachable_procedures_and_globals(&mut ctx.program, &mut ctx.interner, config.target);
+
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp_b4.rol").unwrap(),
+      )
+      .unwrap();
+   }
+
+   // (introduces usize types, so run this before those are lowered)
+   aggregate_literal_lowering::lower_aggregate_literals(&mut ctx.program, &ctx.interner);
+
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp_after.rol").unwrap(),
+      )
+      .unwrap();
+   }
 
    pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program);
 
