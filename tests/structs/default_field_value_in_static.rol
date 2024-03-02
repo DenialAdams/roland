@@ -1,0 +1,12 @@
+struct Foo {
+   x: u8 = 10,
+}
+
+static F: Foo = Foo {};
+
+proc main() {
+   print(int_to_string(F.x as i64));
+}
+__END__
+run:
+10
