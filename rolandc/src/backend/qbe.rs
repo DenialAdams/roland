@@ -195,7 +195,6 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   }
                   writeln!(ctx.buf, ")").unwrap();
                }
-               Expression::ArrayLiteral(_) => todo!(),
                Expression::ArrayIndex { array, index } => todo!(),
                Expression::BoolLiteral(v) => {
                   writeln!(ctx.buf, "copy {}", *v as u8).unwrap();
@@ -267,19 +266,20 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                      crate::parse::UnOp::Dereference => todo!(),
                   }
                }
-               Expression::UnresolvedStructLiteral(_, _) => todo!(),
-               Expression::StructLiteral(_, _) => todo!(),
                Expression::FieldAccess(_, _) => todo!(),
                Expression::Cast {
                   cast_type,
                   target_type,
                   expr,
                } => todo!(),
-               Expression::EnumLiteral(_, _) => todo!(),
-               Expression::UnresolvedEnumLiteral(_, _) => todo!(),
-               Expression::UnresolvedProcLiteral(_, _) => todo!(),
                Expression::BoundFcnLiteral(_, _) => todo!(),
-               Expression::IfX(_, _, _) => todo!(),
+               Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
+               Expression::StructLiteral(_, _) => unreachable!(),
+               Expression::EnumLiteral(_, _) => unreachable!(),
+               Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+               Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+               Expression::ArrayLiteral(_) => unreachable!(),
+               Expression::IfX(_, _, _) => unreachable!(),
             }
          }
          CfgInstruction::Expression(en) => match &ctx.ast.expressions[*en].expression {
