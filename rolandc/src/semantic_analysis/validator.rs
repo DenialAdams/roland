@@ -407,25 +407,6 @@ pub fn type_and_check_validity(
       }
    }
 
-   for s in validation_context.user_defined_types.struct_info.iter() {
-      for (field_name, &default_expr) in s.1.default_values.iter() {
-         type_expression(err_manager, default_expr, &mut validation_context);
-
-         let declared_type = s.1.field_types.get(field_name).unwrap();
-         try_set_inferred_type(&declared_type.e_type, default_expr, &mut validation_context);
-
-         check_type_declared_vs_actual(
-            declared_type,
-            &validation_context.ast.expressions[default_expr],
-            validation_context.interner,
-            validation_context.user_defined_types,
-            validation_context.procedure_info,
-            &validation_context.type_variables,
-            err_manager,
-         );
-      }
-   }
-
    for p_global in program.global_info.values().filter(|x| x.initializer.is_some()) {
       type_expression(err_manager, p_global.initializer.unwrap(), &mut validation_context);
       try_set_inferred_type(
@@ -1575,7 +1556,6 @@ fn get_type(
                }
 
                // Missing field check
-               unmatched_fields.retain(|x| !si.default_values.contains_key(x));
                if !unmatched_fields.is_empty() {
                   let unmatched_fields_str: Vec<&str> = unmatched_fields
                      .iter()

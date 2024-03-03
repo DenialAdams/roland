@@ -55,21 +55,6 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
       }
    }
 
-   for si in program.user_defined_types.struct_info.iter() {
-      for field_with_default in si.1.default_values.iter() {
-         try_fold_and_replace_expr(*field_with_default.1, err_manager, &mut folding_context, interner);
-         let v = &folding_context.ast.expressions[*field_with_default.1];
-         if !crate::constant_folding::is_const(&v.expression, &folding_context.ast.expressions) {
-            rolandc_error!(
-               err_manager,
-               v.location,
-               "Default value of struct field `{}` can't be constant folded.",
-               interner.lookup(*field_with_default.0),
-            );
-         }
-      }
-   }
-
    for procedure in program.procedures.values_mut() {
       if let ProcImplSource::Body(block) = &procedure.proc_impl {
          folding_context.current_proc_name = Some(procedure.definition.name.str);

@@ -141,7 +141,6 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
 
    for a_struct in program.structs.drain(..) {
       let mut field_map = IndexMap::with_capacity(a_struct.fields.len());
-      let mut default_value_map = IndexMap::with_capacity(a_struct.fields.len());
 
       for field in a_struct.fields.iter() {
          if field_map.insert(field.0, field.1.clone()).is_some() {
@@ -153,16 +152,11 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
                interner.lookup(field.0),
             );
          }
-
-         if let Some(expr_id) = field.2 {
-            default_value_map.insert(field.0, expr_id);
-         }
       }
 
       insert_or_error_duplicated(&mut all_types, err_manager, a_struct.name, a_struct.location, interner);
       let struct_id = program.user_defined_types.struct_info.insert(StructInfo {
          field_types: field_map,
-         default_values: default_value_map,
          location: a_struct.location,
          size: None,
          name: a_struct.name,

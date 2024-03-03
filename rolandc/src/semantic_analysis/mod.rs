@@ -43,7 +43,6 @@ pub struct EnumInfo {
 #[derive(Clone)]
 pub struct StructInfo {
    pub field_types: IndexMap<StrId, ExpressionTypeNode>,
-   pub default_values: IndexMap<StrId, ExpressionId>,
    pub location: SourceInfo,
    pub size: Option<StructSizeInfo>,
    pub name: StrId,

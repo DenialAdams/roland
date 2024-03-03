@@ -77,23 +77,13 @@ fn lower_block(block: &mut BlockNode, ctx: &mut Context, ast: &mut AstPool) {
          Expression::StructLiteral(s_id, fields) => {
             let si = ctx.user_defined_types.struct_info.get(s_id).unwrap();
             for field in si.field_types.iter().rev() {
-               let rhs = match fields.get(field.0).copied() {
-                  Some(Some(value_of_field)) => {
+               let rhs = match fields.get(field.0).copied().unwrap() {
+                  Some(value_of_field) => {
                      value_of_field
                   }
-                  Some(None) => {
+                  None => {
                      // Uninitialized
                      continue;
-                  }
-                  None => {
-                     // Must be a default value
-                     let default_value = si.default_values.get(field.0).copied().unwrap();
-
-                     // We are sticking the default expression into the IR without cloning,
-                     // which is bad. Even worse, if the default value is itself an aggregate
-                     // literal, our goose is cooked. TODO we must lower default values prior
-                     // to here.
-                     default_value
                   }
                };
                let base = ast.expressions.insert(ExpressionNode {

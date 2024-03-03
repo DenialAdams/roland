@@ -87,7 +87,7 @@ pub struct ParameterNode {
 #[derive(Clone)]
 pub struct StructNode {
    pub name: StrId,
-   pub fields: Vec<(StrId, ExpressionTypeNode, Option<ExpressionId>)>,
+   pub fields: Vec<(StrId, ExpressionTypeNode)>,
    pub location: SourceInfo,
 }
 
@@ -536,7 +536,7 @@ fn parse_top_level_items(
          }
          Token::KeywordStructDef => {
             let def = lexer.next();
-            let s = parse_struct(lexer, parse_context, def.source_info, &mut ast.expressions)?;
+            let s = parse_struct(lexer, parse_context, def.source_info)?;
             top.structs.push(s);
          }
          Token::KeywordUnionDef => {
@@ -781,11 +781,10 @@ fn parse_struct(
    l: &mut Lexer,
    parse_context: &mut ParseContext,
    source_info: SourceInfo,
-   expressions: &mut ExpressionPool,
 ) -> Result<StructNode, ()> {
    let struct_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
    expect(l, parse_context, Token::OpenBrace)?;
-   let mut fields: Vec<(StrId, ExpressionTypeNode, Option<ExpressionId>)> = vec![];
+   let mut fields: Vec<(StrId, ExpressionTypeNode)> = vec![];
    let close_brace = loop {
       if l.peek_token() == Token::CloseBrace {
          break l.next();
@@ -794,14 +793,7 @@ fn parse_struct(
       let _ = expect(l, parse_context, Token::Colon)?;
       let f_type = parse_type(l, parse_context)?;
 
-      let default_value = if l.peek_token() == Token::Assignment {
-         let _ = l.next();
-         Some(parse_expression(l, parse_context, false, expressions)?)
-      } else {
-         None
-      };
-
-      fields.push((extract_identifier(identifier.token), f_type, default_value));
+      fields.push((extract_identifier(identifier.token), f_type));
 
       if l.peek_token() == Token::CloseBrace {
          break l.next();
