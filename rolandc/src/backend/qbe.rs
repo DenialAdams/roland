@@ -1,6 +1,5 @@
 use std::io::Write;
 
-use arrayvec::ArrayVec;
 use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 
@@ -16,7 +15,7 @@ use crate::{CompilationConfig, Program};
 struct GenerationContext<'a> {
    buf: Vec<u8>,
    is_main: bool,
-   var_to_reg: IndexMap<VariableId, ArrayVec<u32, 1>>,
+   var_to_reg: IndexMap<VariableId, u32>,
    ast: &'a AstPool,
    proc_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
    interner: &'a Interner,
@@ -112,7 +111,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       )
       .unwrap();
       for (i, param) in procedure.definition.parameters.iter().enumerate() {
-         let param_reg = ctx.var_to_reg.get(&param.var_id).unwrap()[0];
+         let param_reg = ctx.var_to_reg.get(&param.var_id).unwrap();
          if i == procedure.definition.parameters.len() - 1 {
             write!(
                ctx.buf,
@@ -154,7 +153,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
             let len = &ctx.ast.expressions[*lid];
             match len.expression {
                Expression::Variable(v) => {
-                  let reg = ctx.var_to_reg.get(&v).unwrap()[0];
+                  let reg = ctx.var_to_reg.get(&v).unwrap();
                   write!(
                      ctx.buf,
                      "   %v{} ={} ",
@@ -215,7 +214,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                Expression::UnresolvedVariable(_) => todo!(),
                Expression::Variable(v) => {
                   let reg = ctx.var_to_reg.get(v).unwrap();
-                  writeln!(ctx.buf, "copy %v{}", reg[0]).unwrap();
+                  writeln!(ctx.buf, "copy %v{}", reg).unwrap();
                }
                Expression::BinaryOperator { operator, lhs, rhs } => {
                   let opcode = match operator {
@@ -328,7 +327,7 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> String 
          format!("{}", *val as u8)
       }
       Expression::Variable(v) => {
-         format!("%v{}", ctx.var_to_reg.get(v).unwrap()[0])
+         format!("%v{}", ctx.var_to_reg.get(v).unwrap())
       }
       _ => unreachable!(),
    }
