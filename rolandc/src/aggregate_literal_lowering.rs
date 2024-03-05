@@ -51,7 +51,7 @@ fn lower_block(block: &mut BlockNode, ctx: &mut Context, ast: &mut AstPool) {
 
       match old_expr {
          Expression::ArrayLiteral(children) => {
-            for (i, child) in children.into_iter().enumerate().rev() {
+            for (i, child) in children.iter().enumerate().rev() {
                let arr_index_val = ast.expressions.insert(ExpressionNode {
                   expression: Expression::IntLiteral { val: i as u64, synthetic: true },
                   location,
@@ -77,14 +77,9 @@ fn lower_block(block: &mut BlockNode, ctx: &mut Context, ast: &mut AstPool) {
          Expression::StructLiteral(s_id, fields) => {
             let si = ctx.user_defined_types.struct_info.get(s_id).unwrap();
             for field in si.field_types.iter().rev() {
-               let rhs = match fields.get(field.0).copied().unwrap() {
-                  Some(value_of_field) => {
-                     value_of_field
-                  }
-                  None => {
-                     // Uninitialized
-                     continue;
-                  }
+               let Some(rhs) = fields.get(field.0).copied().unwrap() else {
+                  // Uninitialized
+                  continue;
                };
                let base = ast.expressions.insert(ExpressionNode {
                   expression: Expression::Variable(new_var),

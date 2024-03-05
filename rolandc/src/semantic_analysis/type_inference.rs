@@ -105,7 +105,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
                .get_data_mut(my_tv)
                .known_type
                .get_or_insert_with(|| e_type.clone());
-            validation_context.unknown_literals.remove(&expr_index);
+            validation_context.unknown_literals.swap_remove(&expr_index);
          }
          *validation_context.ast.expressions[expr_index]
             .exp_type
@@ -236,7 +236,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
                      .get_data_mut(my_tv)
                      .known_type
                      .get_or_insert_with(|| incoming_definition.clone());
-                  validation_context.unknown_literals.remove(&expr_index);
+                  validation_context.unknown_literals.swap_remove(&expr_index);
                }
 
                **a_type = target_elem_type.deref().clone();

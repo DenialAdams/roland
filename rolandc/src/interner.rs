@@ -69,6 +69,6 @@ impl Interner {
          &self.buf[start..]
       };
 
-      &*(interned as *const str)
+      &*std::ptr::from_ref(interned)
    }
 }

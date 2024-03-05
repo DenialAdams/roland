@@ -739,7 +739,7 @@ fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &Generation
       Expression::Variable(v) => generation_context
          .var_to_reg
          .get(v)
-         .cloned()
+         .copied()
          .map(|x| (generation_context.globals.contains(v), x)),
       _ => None,
    }

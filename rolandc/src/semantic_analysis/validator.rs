@@ -496,7 +496,7 @@ pub fn type_and_check_validity(
             let the_type = validation_context.type_variables.get_data(tv);
             if let Some(t) = the_type.known_type.as_ref() {
                *e.exp_type.as_mut().unwrap().get_unknown_portion_of_type().unwrap() = t.clone();
-               validation_context.unknown_literals.remove(&i);
+               validation_context.unknown_literals.swap_remove(&i);
             }
          }
       }
