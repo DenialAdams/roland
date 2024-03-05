@@ -222,7 +222,9 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
    let mut the_statement = std::mem::replace(&mut ast.statements[statement].statement, Statement::Break);
    match &mut the_statement {
       Statement::Assignment(lhs_expr, rhs_expr) => {
-         vv_expr(*lhs_expr, vv_context, &ast.expressions, current_statement, true);
+         // nocheckin! we do want to hoist LHS in following scenario
+         // foo(...)~ = ...
+         //vv_expr(*lhs_expr, vv_context, &ast.expressions, current_statement, true);
          vv_expr(*rhs_expr, vv_context, &ast.expressions, current_statement, true);
       }
       Statement::Block(block) => {
@@ -338,16 +340,18 @@ fn vv_expr(
          vv_expr(*lhs, vv_context, expressions, current_statement, false);
          vv_expr(*rhs, vv_context, expressions, current_statement, false);
       }
-      Expression::UnaryOperator(op, expr) => {
-         vv_expr(*expr, vv_context, expressions, current_statement, false);
-
-         if *op == UnOp::AddressOf
-            && !expressions[*expr]
-               .expression
-               .is_lvalue(expressions, vv_context.global_info)
+      Expression::UnaryOperator(UnOp::AddressOf, expr) => {
+         if !expressions[*expr]
+            .expression
+            .is_lvalue(expressions, vv_context.global_info)
          {
+            vv_expr(*expr, vv_context, expressions, current_statement, false);
             vv_context.mark_expr_for_hoisting(*expr, current_statement, HoistReason::Must);
          }
+         // Otherwise, do NOT descend into the expr, as hoisting would change semantics
+      }
+      Expression::UnaryOperator(op, expr) => {
+         vv_expr(*expr, vv_context, expressions, current_statement, false);
       }
       Expression::StructLiteral(_, field_exprs) => {
          for expr in field_exprs.values().flatten() {
@@ -439,18 +443,14 @@ fn vv_expr(
       Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
    // TODO: don't need to hoist void procedure calls (if this is expr stmt or assign)
-   if !expressions[expr_index]
-      .expression
-      .is_lvalue(expressions, vv_context.global_info)
-      && !matches!(
-         expressions[expr_index].expression,
-         Expression::BoundFcnLiteral(_, _)
-            | Expression::IntLiteral { .. }
-            | Expression::FloatLiteral { .. }
-            | Expression::BoolLiteral { .. }
-            | Expression::EnumLiteral { .. }
-      )
-   {
+   if !matches!(
+      expressions[expr_index].expression,
+      Expression::BoundFcnLiteral(_, _)
+         | Expression::IntLiteral { .. }
+         | Expression::FloatLiteral { .. }
+         | Expression::BoolLiteral { .. }
+         | Expression::EnumLiteral { .. }
+   ) {
       vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
    }
 }
