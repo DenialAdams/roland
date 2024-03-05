@@ -7,7 +7,7 @@ use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE, CFG_START_NODE};
 use super::regalloc;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
-use crate::parse::{AstPool, Expression, ExpressionId, ProcedureId, UserDefinedTypeInfo, VariableId};
+use crate::parse::{ArgumentNode, AstPool, Expression, ExpressionId, ProcedureId, UserDefinedTypeInfo, VariableId};
 use crate::semantic_analysis::ProcedureInfo;
 use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::type_data::{ExpressionType, IntType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
@@ -225,6 +225,9 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          if ctx.var_to_reg.contains_key(local.0) {
             continue;
          }
+         if sizeof_type_mem(local.1, ctx.udt) == 0 {
+            continue;
+         }
          let alignment = {
             let align_floor_4 = mem_alignment(local.1, ctx.udt).max(4);
             if align_floor_4 > 4 && align_floor_4 <= 8 {
@@ -269,6 +272,9 @@ fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<Str
          match ctx.ast.expressions[base].exp_type.as_ref().unwrap() {
             ExpressionType::Struct(sid) => {
                let offset = ctx.udt.struct_info.get(*sid).unwrap().size.as_ref().unwrap().field_offsets_mem.get(&field).unwrap();
+               if *offset == 0 {
+                  return Some(base_mem);
+               }
                let at = ctx.address_temp;
                ctx.address_temp += 1;
                writeln!(ctx.buf, "   %a{} =l add {}, {}", at, base_mem, offset).unwrap();
@@ -310,11 +316,9 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   continue;
                }
                (Some(l), None) => {
-                  if *ctx.ast.expressions[*lid].exp_type.as_ref().unwrap() != ExpressionType::Unit {
-                     let suffix = roland_type_to_extended_type(ctx.ast.expressions[*lid].exp_type.as_ref().unwrap());
-                     let val = expr_to_val(*en, ctx);
-                     writeln!(ctx.buf, "   store{} {}, {}", suffix, val, l).unwrap();
-                  }
+                  let suffix = roland_type_to_extended_type(ctx.ast.expressions[*lid].exp_type.as_ref().unwrap());
+                  let val = expr_to_val(*en, ctx);
+                  writeln!(ctx.buf, "   store{} {}, {}", suffix, val, l).unwrap();
                   continue;
                }
                _ => (),
@@ -336,41 +340,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
             let ren = &ctx.ast.expressions[*en];
             match &ren.expression {
                Expression::ProcedureCall { proc_expr, args } => {
-                  let callee = match ctx.ast.expressions[*proc_expr].exp_type.as_ref().unwrap() {
-                     ExpressionType::ProcedureItem(id, _) => ctx.interner.lookup(ctx.proc_info[*id].name.str),
-                     ExpressionType::ProcedurePointer { .. } => todo!(),
-                     _ => unreachable!(),
-                  };
-                  write!(ctx.buf, "call ${}(", callee).unwrap();
-                  for (i, arg) in args.iter().enumerate() {
-                     let val = expr_to_val(arg.expr, ctx);
-                     if i == args.len() - 1 {
-                        write!(
-                           ctx.buf,
-                           "{} {}",
-                           roland_type_to_abi_type(
-                              ctx.ast.expressions[arg.expr].exp_type.as_ref().unwrap(),
-                              ctx.udt,
-                              ctx.interner
-                           ),
-                           val
-                        )
-                        .unwrap();
-                     } else {
-                        write!(
-                           ctx.buf,
-                           "{} {}, ",
-                           roland_type_to_abi_type(
-                              ctx.ast.expressions[arg.expr].exp_type.as_ref().unwrap(),
-                              ctx.udt,
-                              ctx.interner
-                           ),
-                           val
-                        )
-                        .unwrap();
-                     }
-                  }
-                  writeln!(ctx.buf, ")").unwrap();
+                  write_call_expr(*proc_expr, args, ctx);
                }
                Expression::ArrayIndex { array, index } => todo!(),
                Expression::BoolLiteral(v) => {
@@ -531,7 +501,10 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
             }
          }
          CfgInstruction::Expression(en) => match &ctx.ast.expressions[*en].expression {
-            Expression::ProcedureCall { proc_expr, args } => todo!(),
+            Expression::ProcedureCall { proc_expr, args } => {
+               write!(ctx.buf, "   ").unwrap();
+               write_call_expr(*proc_expr, args, ctx);
+            },
             _ => debug_assert!(!expression_could_have_side_effects(*en, &ctx.ast.expressions)),
          },
          CfgInstruction::Return(en) => {
@@ -581,8 +554,53 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> String 
          format!("{}", *val as u8)
       }
       Expression::Variable(v) => {
-         format!("%r{}", ctx.var_to_reg.get(v).unwrap())
+         if let Some(reg) = ctx.var_to_reg.get(v) {
+            format!("%r{}", reg)
+         } else {
+            format!("%v{}", v.0)
+         }
+      }
+      Expression::StringLiteral(_) => {
+         format!("{}", "stringy boi")
       }
       _ => unreachable!(),
    }
+}
+
+fn write_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &mut GenerationContext) {
+   let callee = match ctx.ast.expressions[proc_expr].exp_type.as_ref().unwrap() {
+      ExpressionType::ProcedureItem(id, _) => ctx.interner.lookup(ctx.proc_info[*id].name.str),
+      ExpressionType::ProcedurePointer { .. } => todo!(),
+      _ => unreachable!(),
+   };
+   write!(ctx.buf, "call ${}(", callee).unwrap();
+   for (i, arg) in args.iter().enumerate() {
+      let val = expr_to_val(arg.expr, ctx);
+      if i == args.len() - 1 {
+         write!(
+            ctx.buf,
+            "{} {}",
+            roland_type_to_abi_type(
+               ctx.ast.expressions[arg.expr].exp_type.as_ref().unwrap(),
+               ctx.udt,
+               ctx.interner
+            ),
+            val
+         )
+         .unwrap();
+      } else {
+         write!(
+            ctx.buf,
+            "{} {}, ",
+            roland_type_to_abi_type(
+               ctx.ast.expressions[arg.expr].exp_type.as_ref().unwrap(),
+               ctx.udt,
+               ctx.interner
+            ),
+            val
+         )
+         .unwrap();
+      }
+   }
+   writeln!(ctx.buf, ")").unwrap();
 }
