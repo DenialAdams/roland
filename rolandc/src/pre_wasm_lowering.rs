@@ -1,9 +1,8 @@
 use slotmap::SlotMap;
 
-use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
 use crate::parse::{
-   ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, ProcImplSource, Program, Statement, UnOp,
+   ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, Program, Statement, UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::sizeof_type_mem;
@@ -233,23 +232,18 @@ pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, intern
 }
 
 pub fn kill_zst_assignments(program: &mut Program) {
-   for proc in program.procedures.iter_mut() {
-      let ProcImplSource::Body(ref mut b) = proc.1.proc_impl else {
+   for stmt in program.ast.statements.iter_mut() {
+      let Statement::Assignment(lhs, rhs) = stmt.1.statement else {
          continue;
       };
-      b.statements.retain(|stmt| {
-         let Statement::Assignment(lhs, rhs) = program.ast.statements[*stmt].statement else {
-            return true;
-         };
-         let lhs_t = program.ast.expressions[lhs].exp_type.as_ref().unwrap();
-         if sizeof_type_mem(lhs_t, &program.user_defined_types) == 0 {
-            if expression_could_have_side_effects(rhs, &program.ast.expressions) {
-               program.ast.statements[*stmt].statement = Statement::Expression(rhs);
-            } else {
-               return false;
-            }
-         }
-         true
-      })
+      let lhs_t = program.ast.expressions[lhs].exp_type.as_ref().unwrap();
+      if lhs_t.size_is_unknown() {
+         // We don't currently garbage collect statements (or exprs),
+         // so this is branch is sadly live, even late.
+         continue;
+      }
+      if sizeof_type_mem(lhs_t, &program.user_defined_types) == 0 {
+         stmt.1.statement = Statement::Expression(rhs);
+      }
    }
 }
