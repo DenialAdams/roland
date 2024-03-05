@@ -12,13 +12,18 @@ proc print(s: String) {
    loop {
       let ret = write(1, buf, s.length);
       if ret < 0 {
-         unreachable();
+         //nocheckin
+         return;
+         //unreachable();
       }
       written = written + ret as usize;
       if written >= s.length {
          break;
       }
-      buf = (s.pointer transmute usize + written) transmute &u8;
+      // todo
+      //buf = (s.pointer transmute usize + written) transmute &u8;
+      let v = s.pointer transmute usize;
+      buf = (v + written) transmute &u8;
    }
 }
 
