@@ -1,16 +1,21 @@
 use std::io::Write;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use slotmap::SecondaryMap;
 
 use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE, CFG_START_NODE};
 use super::regalloc;
 use crate::constant_folding::expression_could_have_side_effects;
-use crate::interner::Interner;
-use crate::parse::{ArgumentNode, AstPool, Expression, ExpressionId, ProcedureId, UserDefinedTypeInfo, VariableId};
+use crate::interner::{Interner, StrId};
+use crate::parse::{
+   ArgumentNode, AstPool, CastType, Expression, ExpressionId, ProcedureId, UserDefinedTypeInfo, VariableId,
+};
 use crate::semantic_analysis::ProcedureInfo;
 use crate::size_info::{mem_alignment, sizeof_type_mem};
-use crate::type_data::{ExpressionType, IntType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
+use crate::type_data::{
+   ExpressionType, IntType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, U16_TYPE, U32_TYPE,
+   U64_TYPE, U8_TYPE,
+};
 use crate::{CompilationConfig, Program};
 
 struct GenerationContext<'a> {
@@ -21,6 +26,7 @@ struct GenerationContext<'a> {
    proc_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
    interner: &'a Interner,
    udt: &'a UserDefinedTypeInfo,
+   string_literals: &'a IndexSet<StrId>,
    address_temp: u64,
 }
 
@@ -144,8 +150,13 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       proc_info: &program.procedure_info,
       interner,
       udt: &program.user_defined_types,
+      string_literals: &program.literals,
       address_temp: 0,
    };
+
+   for (i, string_literal) in ctx.string_literals.iter().enumerate() {
+      writeln!(ctx.buf, "data $s{} = {{ b \"{}\" }}", i, ctx.interner.lookup(*string_literal)).unwrap();
+   }
 
    for a_struct in program.user_defined_types.struct_info.iter() {
       write!(ctx.buf, "type :{} = {{ ", ctx.interner.lookup(a_struct.1.name)).unwrap();
@@ -241,7 +252,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          writeln!(
             ctx.buf,
             "   %v{} =l alloc{} {}",
-            local.0.0,
+            local.0 .0,
             alignment,
             sizeof_type_mem(local.1, ctx.udt),
          )
@@ -271,7 +282,17 @@ fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<Str
          let base_mem = compute_offset(base, ctx).unwrap();
          match ctx.ast.expressions[base].exp_type.as_ref().unwrap() {
             ExpressionType::Struct(sid) => {
-               let offset = ctx.udt.struct_info.get(*sid).unwrap().size.as_ref().unwrap().field_offsets_mem.get(&field).unwrap();
+               let offset = ctx
+                  .udt
+                  .struct_info
+                  .get(*sid)
+                  .unwrap()
+                  .size
+                  .as_ref()
+                  .unwrap()
+                  .field_offsets_mem
+                  .get(&field)
+                  .unwrap();
                if *offset == 0 {
                   return Some(base_mem);
                }
@@ -279,7 +300,7 @@ fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<Str
                ctx.address_temp += 1;
                writeln!(ctx.buf, "   %a{} =l add {}, {}", at, base_mem, offset).unwrap();
                Some(format!("%a{}", at))
-            },
+            }
             ExpressionType::Union(_) => Some(base_mem),
             _ => unreachable!(),
          }
@@ -342,13 +363,15 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                Expression::ProcedureCall { proc_expr, args } => {
                   write_call_expr(*proc_expr, args, ctx);
                }
-               Expression::ArrayIndex { array, index } => todo!(),
                Expression::BoolLiteral(v) => {
                   writeln!(ctx.buf, "copy {}", *v as u8).unwrap();
                }
                Expression::StringLiteral(_) => todo!(),
                Expression::IntLiteral { val, .. } => {
-                  let signed = matches!(ren.exp_type.as_ref().unwrap(), ExpressionType::Int(IntType { signed: true,  .. }));
+                  let signed = matches!(
+                     ren.exp_type.as_ref().unwrap(),
+                     ExpressionType::Int(IntType { signed: true, .. })
+                  );
                   if signed {
                      writeln!(ctx.buf, "copy {}", *val as i64).unwrap();
                   } else {
@@ -409,8 +432,50 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                      crate::parse::BinOp::Equality => "eq",
                      crate::parse::BinOp::NotEquality => "ne",
                      crate::parse::BinOp::GreaterThan => "gt",
-                     crate::parse::BinOp::LessThan => "lt",
-                     crate::parse::BinOp::GreaterThanOrEqualTo => "ge",
+                     crate::parse::BinOp::LessThan => match typ {
+                        ExpressionType::Bool => "cultw",
+                        &F32_TYPE => "clts",
+                        &F64_TYPE => "cltd",
+                        ExpressionType::Int(IntType {
+                           signed: false,
+                           width: IntWidth::Eight,
+                        }) => "cultl",
+                        ExpressionType::Int(IntType {
+                           signed: false,
+                           width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+                        }) => "cultw",
+                        ExpressionType::Int(IntType {
+                           signed: true,
+                           width: IntWidth::Eight,
+                        }) => "csltl",
+                        ExpressionType::Int(IntType {
+                           signed: true,
+                           width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+                        }) => "csltw",
+                        _ => unreachable!(),
+                     },
+                     crate::parse::BinOp::GreaterThanOrEqualTo => match typ {
+                        ExpressionType::Bool => "cugew",
+                        &F32_TYPE => "cges",
+                        &F64_TYPE => "cged",
+                        ExpressionType::Int(IntType {
+                           signed: false,
+                           width: IntWidth::Eight,
+                        }) => "cugel",
+                        ExpressionType::Int(IntType {
+                           signed: false,
+                           width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+                        }) => "cugew",
+                        ExpressionType::Int(IntType {
+                           signed: true,
+                           width: IntWidth::Eight,
+                        }) => "csgel",
+                        ExpressionType::Int(IntType {
+                           signed: true,
+                           width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+                        }) => "csgew",
+                        _ => unreachable!(),
+                     },
                      crate::parse::BinOp::LessThanOrEqualTo => "le",
                      crate::parse::BinOp::BitwiseAnd => "and",
                      crate::parse::BinOp::BitwiseOr => "or",
@@ -450,7 +515,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                      crate::parse::UnOp::Dereference => todo!(),
                   }
                }
-               Expression::FieldAccess(_, _) => {
+               Expression::FieldAccess(_, _) | Expression::ArrayIndex { .. } => {
                   let load_target = rhs_mem.unwrap();
                   match ren.exp_type.as_ref().unwrap() {
                      ExpressionType::Bool | &U8_TYPE => {
@@ -482,14 +547,31 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                      }
                      _ => unreachable!(),
                   }
-               },
+               }
                Expression::Cast {
-                  cast_type,
+                  cast_type: CastType::As,
                   target_type,
                   expr,
                } => {
-                  writeln!(ctx.buf, "todo");
-               },
+                  writeln!(ctx.buf, "todoc");
+               }
+               Expression::Cast {
+                  cast_type: CastType::Transmute,
+                  target_type,
+                  expr,
+               } => {
+                  // hmm todo the variable could be a memory variable?
+                  let val = expr_to_val(*expr, ctx);
+                  let source_type = ctx.ast.expressions[*expr].exp_type.as_ref().unwrap();
+                  if (matches!(source_type, ExpressionType::Float(_)) && matches!(target_type, ExpressionType::Int(_)))
+                     || (matches!(source_type, ExpressionType::Int(_))
+                        && matches!(target_type, ExpressionType::Float(_)))
+                  {
+                     writeln!(ctx.buf, "cast {}", val);
+                  } else {
+                     writeln!(ctx.buf, "copy {}", val);
+                  }
+               }
                Expression::BoundFcnLiteral(_, _) => todo!(),
                Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
                Expression::StructLiteral(_, _) => unreachable!(),
@@ -504,7 +586,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
             Expression::ProcedureCall { proc_expr, args } => {
                write!(ctx.buf, "   ").unwrap();
                write_call_expr(*proc_expr, args, ctx);
-            },
+            }
             _ => debug_assert!(!expression_could_have_side_effects(*en, &ctx.ast.expressions)),
          },
          CfgInstruction::Return(en) => {
@@ -538,7 +620,10 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> String 
    let expr_node = &ctx.ast.expressions[expr_index];
    match &expr_node.expression {
       Expression::IntLiteral { val, .. } => {
-         let signed = matches!(expr_node.exp_type.as_ref().unwrap(), ExpressionType::Int(IntType { signed: true,  .. }));
+         let signed = matches!(
+            expr_node.exp_type.as_ref().unwrap(),
+            ExpressionType::Int(IntType { signed: true, .. })
+         );
          if signed {
             format!("{}", *val as i64)
          } else {
@@ -560,8 +645,8 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> String 
             format!("%v{}", v.0)
          }
       }
-      Expression::StringLiteral(_) => {
-         format!("{}", "stringy boi")
+      Expression::StringLiteral(id) => {
+         format!("$s{}", ctx.string_literals.get_index_of(id).unwrap())
       }
       _ => unreachable!(),
    }

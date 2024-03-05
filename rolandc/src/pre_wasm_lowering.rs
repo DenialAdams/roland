@@ -1,9 +1,7 @@
 use slotmap::SlotMap;
 
 use crate::interner::Interner;
-use crate::parse::{
-   ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, Program, Statement, UnOp,
-};
+use crate::parse::{ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, Program, Statement, UnOp};
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::sizeof_type_mem;
 use crate::source_info::SourceInfo;

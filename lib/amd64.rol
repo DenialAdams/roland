@@ -16,7 +16,9 @@ proc print(s: String) {
          return;
          //unreachable();
       }
-      written = written + ret as usize;
+      written = written + ret transmute usize;
+      // todo
+      //written = written + ret as usize;
       if written >= s.length {
          break;
       }
