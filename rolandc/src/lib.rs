@@ -19,6 +19,7 @@
 #![allow(clippy::let_underscore_untyped)] // looks weird with no let
 #![feature(extract_if)]
 
+mod aggregate_literal_lowering;
 mod backend;
 mod compile_consts;
 mod constant_folding;
@@ -40,7 +41,6 @@ mod pre_wasm_lowering;
 mod semantic_analysis;
 mod size_info;
 pub mod source_info;
-mod aggregate_literal_lowering;
 pub mod type_data;
 
 use std::borrow::Cow;
@@ -231,28 +231,23 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    dead_code_elimination::delete_unreachable_procedures_and_globals(&mut ctx.program, &mut ctx.interner, config.target);
 
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp_b4.rol").unwrap(),
-      )
-      .unwrap();
-   }
-
    // (introduces usize types, so run this before those are lowered)
    aggregate_literal_lowering::lower_aggregate_literals(&mut ctx.program, &ctx.interner);
 
+   pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program);
+
+   // It would be nice to run this before deleting unreachable procedures,
+   // but doing so would currently delete procedures that we take pointers to
+   pre_wasm_lowering::kill_zst_assignments(&mut ctx.program);
+
    if config.dump_debugging_info {
       pp::pp(
          &ctx.program,
          &ctx.interner,
-         &mut std::fs::File::create("pp_after.rol").unwrap(),
+         &mut std::fs::File::create("pp.rol").unwrap(),
       )
       .unwrap();
    }
-
-   pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program);
 
    Ok(backend::emit_wasm(&mut ctx.program, &mut ctx.interner, config))
 }

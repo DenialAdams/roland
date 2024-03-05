@@ -15,8 +15,16 @@ pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_ty
       || matches!(
          (source_type, &target_type),
          (
-            ExpressionType::Int(_) | ExpressionType::Float(_) | ExpressionType::Pointer(_) | ExpressionType::Bool | ExpressionType::Enum(_),
-            ExpressionType::Int(_) | ExpressionType::Float(_) | ExpressionType::Pointer(_) | ExpressionType::Bool | ExpressionType::Enum(_)
+            ExpressionType::Int(_)
+               | ExpressionType::Float(_)
+               | ExpressionType::Pointer(_)
+               | ExpressionType::Bool
+               | ExpressionType::Enum(_),
+            ExpressionType::Int(_)
+               | ExpressionType::Float(_)
+               | ExpressionType::Pointer(_)
+               | ExpressionType::Bool
+               | ExpressionType::Enum(_)
          )
       )
 }
@@ -413,17 +421,20 @@ fn vv_expr(
          if !top {
             vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
          }
-      },
+      }
       Expression::IntLiteral { .. } => (),
       Expression::FloatLiteral(_) => (),
       Expression::BoundFcnLiteral(_, _) => (),
       Expression::UnitLiteral => (),
       Expression::Variable(x) => {
          // Pretty hacky.
-         if vv_context.global_info.get(x).map_or(false, |x| x.kind == GlobalKind::Const && x.expr_type.e_type.is_aggregate()) && !top {
+         if vv_context.global_info.get(x).map_or(false, |x| {
+            x.kind == GlobalKind::Const && x.expr_type.e_type.is_aggregate()
+         }) && !top
+         {
             vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
          }
-      },
+      }
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }

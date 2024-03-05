@@ -777,11 +777,7 @@ fn parse_external_procedure(
    })
 }
 
-fn parse_struct(
-   l: &mut Lexer,
-   parse_context: &mut ParseContext,
-   source_info: SourceInfo,
-) -> Result<StructNode, ()> {
+fn parse_struct(l: &mut Lexer, parse_context: &mut ParseContext, source_info: SourceInfo) -> Result<StructNode, ()> {
    let struct_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
    expect(l, parse_context, Token::OpenBrace)?;
    let mut fields: Vec<(StrId, ExpressionTypeNode)> = vec![];

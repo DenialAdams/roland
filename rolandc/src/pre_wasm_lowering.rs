@@ -1,8 +1,12 @@
 use slotmap::SlotMap;
 
+use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
-use crate::parse::{ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, Program, UnOp};
+use crate::parse::{
+   ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, ProcImplSource, Program, Statement, UnOp,
+};
 use crate::semantic_analysis::EnumInfo;
+use crate::size_info::sizeof_type_mem;
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I8_TYPE, USIZE_TYPE};
 
@@ -225,5 +229,27 @@ pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, intern
             .map(|x| ArgumentNode { name: None, expr: *x })
             .collect(),
       };
+   }
+}
+
+pub fn kill_zst_assignments(program: &mut Program) {
+   for proc in program.procedures.iter_mut() {
+      let ProcImplSource::Body(ref mut b) = proc.1.proc_impl else {
+         continue;
+      };
+      b.statements.retain(|stmt| {
+         let Statement::Assignment(lhs, rhs) = program.ast.statements[*stmt].statement else {
+            return true;
+         };
+         let lhs_t = program.ast.expressions[lhs].exp_type.as_ref().unwrap();
+         if sizeof_type_mem(lhs_t, &program.user_defined_types) == 0 {
+            if expression_could_have_side_effects(rhs, &program.ast.expressions) {
+               program.ast.statements[*stmt].statement = Statement::Expression(rhs);
+            } else {
+               return false;
+            }
+         }
+         true
+      })
    }
 }

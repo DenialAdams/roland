@@ -2,7 +2,8 @@ use indexmap::IndexMap;
 
 use crate::interner::Interner;
 use crate::parse::{
-   AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ProcImplSource, Program, Statement, StatementId, StatementNode, UserDefinedTypeInfo, VariableId
+   AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ProcImplSource, Program, Statement, StatementId,
+   StatementNode, UserDefinedTypeInfo, VariableId,
 };
 use crate::type_data::{ExpressionType, U8_TYPE, USIZE_TYPE};
 
@@ -40,20 +41,25 @@ fn lower_block(block: &mut BlockNode, ctx: &mut Context, ast: &mut AstPool) {
       let new_var = {
          let var_id = *ctx.next_var;
          *ctx.next_var = ctx.next_var.next();
-         ctx
-            .local_types
+         ctx.local_types
             .insert(var_id, ast.expressions[literal_expr].exp_type.clone().unwrap());
          var_id
       };
 
-      let old_expr = std::mem::replace(&mut ast.expressions[literal_expr].expression, Expression::Variable(new_var));
+      let old_expr = std::mem::replace(
+         &mut ast.expressions[literal_expr].expression,
+         Expression::Variable(new_var),
+      );
       let location = ast.expressions[literal_expr].location;
 
       match old_expr {
          Expression::ArrayLiteral(children) => {
             for (i, child) in children.iter().enumerate().rev() {
                let arr_index_val = ast.expressions.insert(ExpressionNode {
-                  expression: Expression::IntLiteral { val: i as u64, synthetic: true },
+                  expression: Expression::IntLiteral {
+                     val: i as u64,
+                     synthetic: true,
+                  },
                   location,
                   exp_type: Some(USIZE_TYPE),
                });
@@ -63,7 +69,10 @@ fn lower_block(block: &mut BlockNode, ctx: &mut Context, ast: &mut AstPool) {
                   exp_type: ast.expressions[literal_expr].exp_type.clone(),
                });
                let arr_index = ast.expressions.insert(ExpressionNode {
-                  expression: Expression::ArrayIndex { array: base, index: arr_index_val },
+                  expression: Expression::ArrayIndex {
+                     array: base,
+                     index: arr_index_val,
+                  },
                   location,
                   exp_type: ast.expressions[*child].exp_type.clone(),
                });
@@ -98,11 +107,14 @@ fn lower_block(block: &mut BlockNode, ctx: &mut Context, ast: &mut AstPool) {
                block.statements.insert(stmt_index, assignment);
             }
          }
-         Expression::StringLiteral(s_val) => {            
+         Expression::StringLiteral(s_val) => {
             // length
             {
                let rhs = ast.expressions.insert(ExpressionNode {
-                  expression: Expression::IntLiteral { val: ctx.interner.lookup(s_val).len() as u64, synthetic: true },
+                  expression: Expression::IntLiteral {
+                     val: ctx.interner.lookup(s_val).len() as u64,
+                     synthetic: true,
+                  },
                   location,
                   exp_type: Some(USIZE_TYPE),
                });
@@ -180,7 +192,7 @@ fn lower_statement(statement: StatementId, ctx: &mut Context, ast: &mut AstPool,
          if expr_is_agg_literal(*rhs, ast) {
             ctx.aggregate_exprs_in_stmt.push((*rhs, current_statement));
          }
-      },
+      }
       Statement::Break | Statement::Continue => (),
       Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
       Statement::For { .. } | Statement::While(_, _) => unreachable!(),
@@ -190,5 +202,8 @@ fn lower_statement(statement: StatementId, ctx: &mut Context, ast: &mut AstPool,
 }
 
 fn expr_is_agg_literal(expression: ExpressionId, ast: &AstPool) -> bool {
-   matches!(ast.expressions[expression].expression, Expression::ArrayLiteral(_) | Expression::StructLiteral(_, _) | Expression::StringLiteral(_))
+   matches!(
+      ast.expressions[expression].expression,
+      Expression::ArrayLiteral(_) | Expression::StructLiteral(_, _) | Expression::StringLiteral(_)
+   )
 }

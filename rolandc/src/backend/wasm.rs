@@ -1765,11 +1765,7 @@ fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContex
 }
 
 fn store_mem(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   if sizeof_type_values(val_type, &generation_context.user_defined_types.enum_info) == 0 {
-      // drop the placement address
-      generation_context.active_fcn.instruction(&Instruction::Drop);
-      return;
-   }
+   debug_assert!(sizeof_type_values(val_type, &generation_context.user_defined_types.enum_info) != 0);
 
    if val_type.is_aggregate() {
       let size = sizeof_type_mem(val_type, generation_context.user_defined_types);
