@@ -37,7 +37,7 @@ mod monomorphization;
 mod named_argument_lowering;
 pub mod parse;
 mod pp;
-mod pre_wasm_lowering;
+mod pre_backend_lowering;
 mod semantic_analysis;
 mod size_info;
 pub mod source_info;
@@ -256,18 +256,18 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 ) -> Result<Vec<u8>, CompilationError> {
    compile_for_errors(ctx, user_program_ep, config)?;
 
-   pre_wasm_lowering::replace_nonnative_casts_and_unique_overflow(&mut ctx.program, &ctx.interner);
+   pre_backend_lowering::replace_nonnative_casts_and_unique_overflow(&mut ctx.program, &ctx.interner);
 
    dead_code_elimination::delete_unreachable_procedures_and_globals(&mut ctx.program, &mut ctx.interner, config.target);
 
    // (introduces usize types, so run this before those are lowered)
    aggregate_literal_lowering::lower_aggregate_literals(&mut ctx.program, &ctx.interner);
 
-   pre_wasm_lowering::lower_enums_and_pointers(&mut ctx.program, config.target);
+   pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target);
 
    // It would be nice to run this before deleting unreachable procedures,
    // but doing so would currently delete procedures that we take pointers to
-   pre_wasm_lowering::kill_zst_assignments(&mut ctx.program, config.target);
+   pre_backend_lowering::kill_zst_assignments(&mut ctx.program, config.target);
 
    if config.dump_debugging_info {
       pp::pp(

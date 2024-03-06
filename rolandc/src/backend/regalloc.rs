@@ -7,7 +7,7 @@ use wasm_encoder::ValType;
 use super::linearize::{post_order, Cfg, CfgInstruction};
 use super::liveness::{liveness, ProgramIndex};
 use crate::backend::wasm::type_to_wasm_type_basic;
-use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
+use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::parse::{
    AstPool, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, UnOp, VariableId,
 };
@@ -222,7 +222,7 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
          mark_escaping_vars_expr(*expr, escaping_vars, ast);
 
          if *cast_type == CastType::Transmute
-            && !is_wasm_compatible_rval_transmute(
+            && !is_reinterpretable_transmute(
                ast.expressions[*expr].exp_type.as_ref().unwrap(),
                ast.expressions[in_expr].exp_type.as_ref().unwrap(),
             )

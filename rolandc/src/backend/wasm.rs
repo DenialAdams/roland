@@ -9,7 +9,7 @@ use wasm_encoder::{
 
 use super::linearize::{Cfg, CfgInstruction, CFG_START_NODE};
 use crate::backend::regalloc;
-use crate::expression_hoisting::is_wasm_compatible_rval_transmute;
+use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureDefinition, ProcedureId, Program, UnOp,
@@ -1338,7 +1338,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             do_emit(*e_id, generation_context);
             load_mem(target_type, generation_context);
          } else {
-            debug_assert!(is_wasm_compatible_rval_transmute(
+            debug_assert!(is_reinterpretable_transmute(
                e.exp_type.as_ref().unwrap(),
                target_type
             ));
