@@ -7,6 +7,7 @@ use crate::interner::{Interner, StrId};
 use crate::parse::{EnumId, ProcedureId, StructId, UnionId, UserDefinedTypeInfo};
 use crate::semantic_analysis::type_variables::{TypeConstraint, TypeVariable, TypeVariableManager};
 use crate::semantic_analysis::ProcedureInfo;
+use crate::Target;
 
 pub const U8_TYPE: ExpressionType = ExpressionType::Int(IntType {
    signed: false,
@@ -128,13 +129,13 @@ pub enum IntWidth {
 
 impl IntWidth {
    #[must_use]
-   pub fn as_num_bytes(self) -> u8 {
+   pub fn as_num_bytes(self, target: Target) -> u8 {
       match self {
          IntWidth::Eight => 8,
-         // @FixedPointerWidth
-         IntWidth::Four | IntWidth::Pointer => 4,
+         IntWidth::Four => 4,
          IntWidth::Two => 2,
          IntWidth::One => 1,
+         IntWidth::Pointer => target.pointer_width(),
       }
    }
 }

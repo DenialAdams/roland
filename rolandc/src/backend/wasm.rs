@@ -40,6 +40,7 @@ struct GenerationContext<'a> {
    procedure_indices: IndexSet<ProcedureId>,
    stack_of_loop_jump_offsets: Vec<u32>,
    var_to_reg: IndexMap<VariableId, u32>,
+   target: Target,
 }
 
 impl GenerationContext<'_> {
@@ -185,11 +186,11 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       let e_1 = &v_1.expr_type.e_type;
       let e_2 = &v_2.expr_type.e_type;
 
-      let alignment_1 = mem_alignment(e_1, &program.user_defined_types);
-      let alignment_2 = mem_alignment(e_2, &program.user_defined_types);
+      let alignment_1 = mem_alignment(e_1, &program.user_defined_types, config.target);
+      let alignment_2 = mem_alignment(e_2, &program.user_defined_types, config.target);
 
-      let sizeof_1 = sizeof_type_mem(e_1, &program.user_defined_types);
-      let sizeof_2 = sizeof_type_mem(e_2, &program.user_defined_types);
+      let sizeof_1 = sizeof_type_mem(e_1, &program.user_defined_types, config.target);
+      let sizeof_2 = sizeof_type_mem(e_2, &program.user_defined_types, config.target);
 
       compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
    });
@@ -211,6 +212,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       stack_of_loop_jump_offsets: Vec::new(),
       var_to_reg: regalloc_result.var_to_reg,
       proc_name_table: &program.procedure_name_table,
+      target: config.target,
    };
 
    let mut import_section = ImportSection::new();
@@ -280,7 +282,11 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
          .iter()
          .find(|x| !generation_context.var_to_reg.contains_key(x.0))
       {
-         mem_alignment(&v.1.expr_type.e_type, generation_context.user_defined_types)
+         mem_alignment(
+            &v.1.expr_type.e_type,
+            generation_context.user_defined_types,
+            generation_context.target,
+         )
       } else {
          1
       };
@@ -296,7 +302,11 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       debug_assert!(static_details.kind != GlobalKind::Const);
       generation_context.static_addresses.insert(*static_var, offset);
 
-      offset += sizeof_type_mem(&static_details.expr_type.e_type, generation_context.user_defined_types);
+      offset += sizeof_type_mem(
+         &static_details.expr_type.e_type,
+         generation_context.user_defined_types,
+         generation_context.target,
+      );
    }
 
    let mut buf = vec![];
@@ -434,8 +444,8 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
          .iter()
          .filter(|x| !generation_context.var_to_reg.contains_key(x.0))
          .map(|x| {
-            let alignment = mem_alignment(x.1, generation_context.user_defined_types);
-            let size = sizeof_type_mem(x.1, generation_context.user_defined_types);
+            let alignment = mem_alignment(x.1, generation_context.user_defined_types, generation_context.target);
+            let size = sizeof_type_mem(x.1, generation_context.user_defined_types, generation_context.target);
             (*x.0, (alignment, size))
          })
          .collect();
@@ -835,8 +845,13 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
             }
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
             let next_offset = ssi.field_offsets_mem.get(next_field).unwrap();
-            let padding_bytes =
-               next_offset - this_offset - sizeof_type_mem(&field.1.e_type, generation_context.user_defined_types);
+            let padding_bytes = next_offset
+               - this_offset
+               - sizeof_type_mem(
+                  &field.1.e_type,
+                  generation_context.user_defined_types,
+                  generation_context.target,
+               );
             for _ in 0..padding_bytes {
                buf.push(0);
             }
@@ -850,8 +865,13 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
             }
             let this_offset = ssi.field_offsets_mem.get(last_field.0).unwrap();
             let next_offset = ssi.mem_size;
-            let padding_bytes =
-               next_offset - this_offset - sizeof_type_mem(&last_field.1.e_type, generation_context.user_defined_types);
+            let padding_bytes = next_offset
+               - this_offset
+               - sizeof_type_mem(
+                  &last_field.1.e_type,
+                  generation_context.user_defined_types,
+                  generation_context.target,
+               );
             for _ in 0..padding_bytes {
                buf.push(0);
             }
@@ -911,8 +931,13 @@ fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, generation_
             type_as_zero_bytes(buf, &field.1.e_type, generation_context);
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
             let next_offset = ssi.field_offsets_mem.get(next_field).unwrap();
-            let padding_bytes =
-               next_offset - this_offset - sizeof_type_mem(&field.1.e_type, generation_context.user_defined_types);
+            let padding_bytes = next_offset
+               - this_offset
+               - sizeof_type_mem(
+                  &field.1.e_type,
+                  generation_context.user_defined_types,
+                  generation_context.target,
+               );
             for _ in 0..padding_bytes {
                buf.push(0);
             }
@@ -921,8 +946,13 @@ fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, generation_
             type_as_zero_bytes(buf, &last_field.1.e_type, generation_context);
             let this_offset = ssi.field_offsets_mem.get(last_field.0).unwrap();
             let next_offset = ssi.mem_size;
-            let padding_bytes =
-               next_offset - this_offset - sizeof_type_mem(&last_field.1.e_type, generation_context.user_defined_types);
+            let padding_bytes = next_offset
+               - this_offset
+               - sizeof_type_mem(
+                  &last_field.1.e_type,
+                  generation_context.user_defined_types,
+                  generation_context.target,
+               );
             for _ in 0..padding_bytes {
                buf.push(0);
             }
@@ -1319,12 +1349,12 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             {
                // float -> int
                match target_type {
-                  ExpressionType::Int(x) if x.width.as_num_bytes() == 4 => {
+                  ExpressionType::Int(x) if x.width.as_num_bytes(generation_context.target) == 4 => {
                      generation_context
                         .active_fcn
                         .instruction(&Instruction::I32ReinterpretF32);
                   }
-                  ExpressionType::Int(x) if x.width.as_num_bytes() == 8 => {
+                  ExpressionType::Int(x) if x.width.as_num_bytes(generation_context.target) == 8 => {
                      generation_context
                         .active_fcn
                         .instruction(&Instruction::I64ReinterpretF64);
@@ -1368,7 +1398,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          }
 
          match (src_type, target_type) {
-            (ExpressionType::Int(l), ExpressionType::Int(r)) if l.width.as_num_bytes() >= r.width.as_num_bytes() => {
+            (ExpressionType::Int(l), ExpressionType::Int(r))
+               if l.width.as_num_bytes(generation_context.target)
+                  >= r.width.as_num_bytes(generation_context.target) =>
+            {
                match (l.width, r.width) {
                   (IntWidth::Eight, IntWidth::Four) => {
                      generation_context.active_fcn.instruction(&Instruction::I32WrapI64);
@@ -1438,8 +1471,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                   _ => (),
                }
             }
-            (ExpressionType::Int(l), ExpressionType::Int(r)) if l.width.as_num_bytes() < r.width.as_num_bytes() => {
-               if l.width.as_num_bytes() <= 4 && r.width == IntWidth::Eight {
+            (ExpressionType::Int(l), ExpressionType::Int(r))
+               if l.width.as_num_bytes(generation_context.target) < r.width.as_num_bytes(generation_context.target) =>
+            {
+               if l.width.as_num_bytes(generation_context.target) <= 4 && r.width == IntWidth::Eight {
                   if l.signed {
                      generation_context.active_fcn.instruction(&Instruction::I64ExtendI32S);
                   } else {
@@ -1633,7 +1668,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       Expression::ArrayIndex { array, index } => {
          fn calculate_offset(array: ExpressionId, index_e: ExpressionId, generation_context: &mut GenerationContext) {
             let sizeof_inner = match &generation_context.ast.expressions[array].exp_type {
-               Some(ExpressionType::Array(x, _)) => sizeof_type_mem(x, generation_context.user_defined_types),
+               Some(ExpressionType::Array(x, _)) => {
+                  sizeof_type_mem(x, generation_context.user_defined_types, generation_context.target)
+               }
                _ => unreachable!(),
             };
 
@@ -1717,9 +1754,15 @@ fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContex
       return;
    }
 
-   if sizeof_type_mem(val_type, generation_context.user_defined_types)
-      == sizeof_type_wasm(val_type, generation_context.user_defined_types)
-   {
+   if sizeof_type_mem(
+      val_type,
+      generation_context.user_defined_types,
+      generation_context.target,
+   ) == sizeof_type_wasm(
+      val_type,
+      generation_context.user_defined_types,
+      generation_context.target,
+   ) {
       match type_to_wasm_type_basic(val_type) {
          ValType::I64 => generation_context
             .active_fcn
@@ -1764,7 +1807,11 @@ fn store_mem(val_type: &ExpressionType, generation_context: &mut GenerationConte
    debug_assert!(sizeof_type_values(val_type, &generation_context.user_defined_types.enum_info) != 0);
 
    if val_type.is_aggregate() {
-      let size = sizeof_type_mem(val_type, generation_context.user_defined_types);
+      let size = sizeof_type_mem(
+         val_type,
+         generation_context.user_defined_types,
+         generation_context.target,
+      );
       generation_context
          .active_fcn
          .instruction(&Instruction::I32Const(size as i32));
@@ -1774,9 +1821,15 @@ fn store_mem(val_type: &ExpressionType, generation_context: &mut GenerationConte
       return;
    }
 
-   if sizeof_type_mem(val_type, generation_context.user_defined_types)
-      == sizeof_type_wasm(val_type, generation_context.user_defined_types)
-   {
+   if sizeof_type_mem(
+      val_type,
+      generation_context.user_defined_types,
+      generation_context.target,
+   ) == sizeof_type_wasm(
+      val_type,
+      generation_context.user_defined_types,
+      generation_context.target,
+   ) {
       match type_to_wasm_type_basic(val_type) {
          ValType::I64 => generation_context
             .active_fcn

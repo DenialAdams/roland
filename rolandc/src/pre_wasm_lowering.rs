@@ -18,13 +18,13 @@ fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInf
       }
       ExpressionType::Pointer(_) => {
          *the_type = ExpressionType::Int(IntType {
-            width: target.pointer_width(),
+            width: target.lowered_ptr_width(),
             signed: false,
          });
       }
       ExpressionType::Int(it) => {
          if it.width == IntWidth::Pointer {
-            it.width = target.pointer_width();
+            it.width = target.lowered_ptr_width();
          }
       }
       ExpressionType::ProcedurePointer { parameters, ret_type } => {
@@ -242,7 +242,7 @@ pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, intern
    }
 }
 
-pub fn kill_zst_assignments(program: &mut Program) {
+pub fn kill_zst_assignments(program: &mut Program, target: Target) {
    for stmt in program.ast.statements.iter_mut() {
       let Statement::Assignment(lhs, rhs) = stmt.1.statement else {
          continue;
@@ -253,7 +253,7 @@ pub fn kill_zst_assignments(program: &mut Program) {
          // so this is branch is sadly live, even late.
          continue;
       }
-      if sizeof_type_mem(lhs_t, &program.user_defined_types) == 0 {
+      if sizeof_type_mem(lhs_t, &program.user_defined_types, target) == 0 {
          stmt.1.statement = Statement::Expression(rhs);
       }
    }

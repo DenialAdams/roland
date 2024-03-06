@@ -1114,8 +1114,13 @@ fn get_type(
                   return ExpressionType::CompileError;
                }
 
-               let size_source = sizeof_type_mem(e_type, validation_context.user_defined_types);
-               let size_target = sizeof_type_mem(target_type, validation_context.user_defined_types);
+               let size_source =
+                  sizeof_type_mem(e_type, validation_context.user_defined_types, validation_context.target);
+               let size_target = sizeof_type_mem(
+                  target_type,
+                  validation_context.user_defined_types,
+                  validation_context.target,
+               );
 
                if size_source == size_target {
                   #[derive(PartialEq)]
@@ -1144,7 +1149,7 @@ fn get_type(
                         if a_type.size_is_unknown() {
                            return AlignOrUnknown::Unknown;
                         }
-                        AlignOrUnknown::Alignment(mem_alignment(a_type, ctx.user_defined_types))
+                        AlignOrUnknown::Alignment(mem_alignment(a_type, ctx.user_defined_types, ctx.target))
                      }
 
                      let source_base_type = e_type.get_type_or_type_being_pointed_to();
@@ -1782,7 +1787,7 @@ fn get_type(
             }
          }
 
-         // @FixedPointerWidth
+         // @U32Arrays
          let max_elems = std::u32::MAX as usize;
          if elems.len() > max_elems {
             any_error = true;

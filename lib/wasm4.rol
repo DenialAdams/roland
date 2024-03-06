@@ -1,4 +1,4 @@
-import "shared.rol";
+import "wasm_shared.rol";
 
 // |-- WASM4
 // drawing

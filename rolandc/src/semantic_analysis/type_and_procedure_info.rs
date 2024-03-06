@@ -585,12 +585,12 @@ pub fn populate_type_and_procedure_info(
 
    let ids: Vec<StructId> = program.user_defined_types.struct_info.keys().collect();
    for id in ids {
-      calculate_struct_size_info(id, &mut program.user_defined_types);
+      calculate_struct_size_info(id, &mut program.user_defined_types, config.target);
    }
 
    let ids: Vec<UnionId> = program.user_defined_types.union_info.keys().collect();
    for id in ids {
-      calculate_union_size_info(id, &mut program.user_defined_types);
+      calculate_union_size_info(id, &mut program.user_defined_types, config.target);
    }
 }
 

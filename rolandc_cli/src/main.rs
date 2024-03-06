@@ -179,6 +179,7 @@ fn main() {
       if let Err(e) = compile_qbe(output_path) {
          use std::io::Write;
          writeln!(err_stream_l, "Failed to compile produced IR to binary: {}", e).unwrap();
+         std::process::exit(1);
       }
    }
 }
