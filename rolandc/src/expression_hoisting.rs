@@ -224,15 +224,15 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
       Statement::Assignment(lhs_expr, rhs_expr) => {
          // nocheckin! we do want to hoist LHS in following scenario
          // foo(...)~ = ...
-         //vv_expr(*lhs_expr, vv_context, &ast.expressions, current_statement, true);
-         vv_expr(*rhs_expr, vv_context, &ast.expressions, current_statement, true);
+         vv_expr(*lhs_expr, vv_context, &ast.expressions, current_statement, true, true);
+         vv_expr(*rhs_expr, vv_context, &ast.expressions, current_statement, true, false);
       }
       Statement::Block(block) => {
          vv_block(block, vv_context, ast);
       }
       Statement::Break | Statement::Continue => (),
       Statement::IfElse(if_expr, if_block, else_statement) => {
-         vv_expr(*if_expr, vv_context, &ast.expressions, current_statement, true);
+         vv_expr(*if_expr, vv_context, &ast.expressions, current_statement, true, false);
          vv_block(if_block, vv_context, ast);
          vv_statement(*else_statement, vv_context, ast, current_statement);
       }
@@ -240,14 +240,14 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
          vv_block(block, vv_context, ast);
       }
       Statement::Expression(expr) => {
-         vv_expr(*expr, vv_context, &ast.expressions, current_statement, true);
+         vv_expr(*expr, vv_context, &ast.expressions, current_statement, true, false);
       }
       Statement::Return(expr) => {
-         vv_expr(*expr, vv_context, &ast.expressions, current_statement, true);
+         vv_expr(*expr, vv_context, &ast.expressions, current_statement, true, false);
       }
       Statement::VariableDeclaration(str_node, opt_expr, _, var_id) => {
          if let DeclarationValue::Expr(expr) = opt_expr {
-            vv_expr(*expr, vv_context, &ast.expressions, current_statement, true);
+            vv_expr(*expr, vv_context, &ast.expressions, current_statement, true, false);
             let lhs_type = vv_context.cur_procedure_locals.get(var_id).cloned();
             let lhs = ast.expressions.insert(ExpressionNode {
                expression: Expression::Variable(*var_id),
@@ -274,11 +274,12 @@ fn vv_expr(
    expressions: &ExpressionPool,
    current_statement: usize,
    top: bool,
+   is_lhs: bool,
 ) {
    match &expressions[expr_index].expression {
       Expression::ArrayIndex { array, index } => {
-         vv_expr(*array, vv_context, expressions, current_statement, false);
-         vv_expr(*index, vv_context, expressions, current_statement, false);
+         vv_expr(*array, vv_context, expressions, current_statement, false, is_lhs);
+         vv_expr(*index, vv_context, expressions, current_statement, false, is_lhs);
 
          let array_expression = &expressions[*array];
 
@@ -292,11 +293,11 @@ fn vv_expr(
          }
       }
       Expression::ProcedureCall { args, proc_expr } => {
-         vv_expr(*proc_expr, vv_context, expressions, current_statement, false);
+         vv_expr(*proc_expr, vv_context, expressions, current_statement, false, is_lhs);
 
          let mut any_named_arg = false;
          for arg in args.iter() {
-            vv_expr(arg.expr, vv_context, expressions, current_statement, false);
+            vv_expr(arg.expr, vv_context, expressions, current_statement, false, is_lhs);
 
             any_named_arg |= arg.name.is_some();
          }
@@ -337,25 +338,29 @@ fn vv_expr(
          }
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
-         vv_expr(*lhs, vv_context, expressions, current_statement, false);
-         vv_expr(*rhs, vv_context, expressions, current_statement, false);
+         vv_expr(*lhs, vv_context, expressions, current_statement, false, is_lhs);
+         vv_expr(*rhs, vv_context, expressions, current_statement, false, is_lhs);
       }
       Expression::UnaryOperator(UnOp::AddressOf, expr) => {
          if !expressions[*expr]
             .expression
             .is_lvalue(expressions, vv_context.global_info)
          {
-            vv_expr(*expr, vv_context, expressions, current_statement, false);
+            vv_expr(*expr, vv_context, expressions, current_statement, false, is_lhs);
             vv_context.mark_expr_for_hoisting(*expr, current_statement, HoistReason::Must);
+         } else {
+            vv_expr(*expr, vv_context, expressions, current_statement, false, true);
          }
-         // Otherwise, do NOT descend into the expr, as hoisting would change semantics
+      }
+      Expression::UnaryOperator(UnOp::Dereference, expr) => {
+         vv_expr(*expr, vv_context, expressions, current_statement, false, false);
       }
       Expression::UnaryOperator(_, expr) => {
-         vv_expr(*expr, vv_context, expressions, current_statement, false);
+         vv_expr(*expr, vv_context, expressions, current_statement, false, is_lhs);
       }
       Expression::StructLiteral(_, field_exprs) => {
          for expr in field_exprs.values().flatten() {
-            vv_expr(*expr, vv_context, expressions, current_statement, false);
+            vv_expr(*expr, vv_context, expressions, current_statement, false, is_lhs);
             if expression_could_have_side_effects(*expr, expressions) {
                vv_context.statements_that_need_hoisting.push(current_statement);
             }
@@ -365,7 +370,7 @@ fn vv_expr(
          }
       }
       Expression::FieldAccess(_field_names, expr) => {
-         vv_expr(*expr, vv_context, expressions, current_statement, false);
+         vv_expr(*expr, vv_context, expressions, current_statement, false, is_lhs);
 
          if !expressions[*expr]
             .expression
@@ -379,7 +384,7 @@ fn vv_expr(
          expr,
          ..
       } => {
-         vv_expr(*expr, vv_context, expressions, current_statement, false);
+         vv_expr(*expr, vv_context, expressions, current_statement, false, is_lhs);
 
          let e = &expressions[*expr];
 
@@ -393,11 +398,11 @@ fn vv_expr(
          }
       }
       Expression::Cast { expr, .. } => {
-         vv_expr(*expr, vv_context, expressions, current_statement, false);
+         vv_expr(*expr, vv_context, expressions, current_statement, false, is_lhs);
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
-            vv_expr(*expr, vv_context, expressions, current_statement, false);
+            vv_expr(*expr, vv_context, expressions, current_statement, false, is_lhs);
          }
          if !top {
             vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
@@ -410,11 +415,11 @@ fn vv_expr(
          // So what we do is we descend into B/C to allow for marking "this statement needs to be hoisted"
          // but then we pretend it didn't happen. Then, during hoisting we descend into the consequent/else
          // blocks that we create to do the marking and hoisting. Simple.
-         vv_expr(*a, vv_context, expressions, current_statement, false);
+         vv_expr(*a, vv_context, expressions, current_statement, false, is_lhs);
          let before_len = vv_context.statement_actions.len();
          let before_marked = vv_context.pending_hoists.len();
-         vv_expr(*b, vv_context, expressions, current_statement, false);
-         vv_expr(*c, vv_context, expressions, current_statement, false);
+         vv_expr(*b, vv_context, expressions, current_statement, false, is_lhs);
+         vv_expr(*c, vv_context, expressions, current_statement, false, is_lhs);
          vv_context.statement_actions.truncate(before_len);
          vv_context.pending_hoists.truncate(before_marked);
          vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::IfOtherHoisting);
@@ -443,7 +448,7 @@ fn vv_expr(
       Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
    // TODO: don't need to hoist void procedure calls (if this is expr stmt or assign)
-   if !matches!(
+   if !is_lhs && !matches!(
       expressions[expr_index].expression,
       Expression::BoundFcnLiteral(_, _)
          | Expression::IntLiteral { .. }
