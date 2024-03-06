@@ -10,7 +10,7 @@ use crate::parse::{
 use crate::semantic_analysis::{GlobalInfo, GlobalKind};
 use crate::type_data::ExpressionType;
 
-pub fn is_wasm_compatible_rval_transmute(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
+pub fn is_reinterpretable_transmute(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
    source_type == target_type
       || matches!(
          (source_type, &target_type),
@@ -384,7 +384,7 @@ fn vv_expr(
          let e = &expressions[*expr];
 
          if !e.expression.is_lvalue(expressions, vv_context.global_info)
-            && !is_wasm_compatible_rval_transmute(
+            && !is_reinterpretable_transmute(
                e.exp_type.as_ref().unwrap(),
                expressions[expr_index].exp_type.as_ref().unwrap(),
             )
