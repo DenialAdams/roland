@@ -36,12 +36,6 @@ const I32_MAX: i32 = 2147483647;
 const I64_MIN: i64 = -9223372036854775808;
 const I64_MAX: i64 = 9223372036854775807;
 
-const USIZE_MIN: usize = U32_MIN transmute usize;
-const USIZE_MAX: usize = U32_MAX transmute usize;
-
-const ISIZE_MIN: isize = I32_MIN transmute isize;
-const ISIZE_MAX: isize = I32_MAX transmute isize;
-
 const F64_INFINITY: f64 = 0x7ff0000000000000 transmute f64;
 const F64_NEG_INFINITY: f64 = 0xfff0000000000000 transmute f64;
 

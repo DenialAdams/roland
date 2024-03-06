@@ -16,6 +16,7 @@ use crate::type_data::{
    ExpressionType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
    U8_TYPE, USIZE_TYPE,
 };
+use crate::Target;
 
 pub struct FoldingContext<'a> {
    pub ast: &'a mut AstPool,
@@ -23,9 +24,10 @@ pub struct FoldingContext<'a> {
    pub user_defined_types: &'a UserDefinedTypeInfo,
    pub const_replacements: &'a HashMap<VariableId, ExpressionId>,
    pub current_proc_name: Option<StrId>,
+   pub target: Target,
 }
 
-pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, interner: &Interner) {
+pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, interner: &Interner, target: Target) {
    let mut const_replacements: HashMap<VariableId, ExpressionId> = HashMap::new();
 
    for p_const in program.global_info.iter().filter(|x| x.1.kind == GlobalKind::Const) {
@@ -38,6 +40,7 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
       user_defined_types: &program.user_defined_types,
       const_replacements: &const_replacements,
       current_proc_name: None,
+      target,
    };
 
    for p_static in program.global_info.values().filter(|x| x.initializer.is_some()) {
@@ -100,9 +103,9 @@ pub fn fold_statement(
 
          // We could also prune dead branches here
          let if_expr_d = &folding_context.ast.expressions[*if_expr];
-         if let Some(Literal::Bool(false)) = extract_literal(if_expr_d) {
+         if let Some(Literal::Bool(false)) = extract_literal(if_expr_d, folding_context.target) {
             rolandc_warn!(err_manager, if_expr_d.location, "This condition will always be false");
-         } else if let Some(Literal::Bool(true)) = extract_literal(if_expr_d) {
+         } else if let Some(Literal::Bool(true)) = extract_literal(if_expr_d, folding_context.target) {
             rolandc_warn!(err_manager, if_expr_d.location, "This condition will always be true");
          }
       }
@@ -183,31 +186,34 @@ fn fold_expr_inner(
             unreachable!()
          };
 
-         // TODO @FixedPointerWidth
-         if let Some(Literal::Uint32(v)) = extract_literal(index) {
-            if v >= len {
-               rolandc_error!(
-                  err_manager,
-                  expr_to_fold_location,
-                  "At runtime, index will be {}, which is out of bounds for the array of length {}",
-                  v,
-                  len,
-               );
-            } else if is_const(&array.expression, &folding_context.ast.expressions) {
-               let Expression::ArrayLiteral(array_elems) = &array.expression else {
-                  unreachable!();
-               };
+         let v = match extract_literal(index, folding_context.target) {
+            Some(Literal::Uint32(v)) => v as u64,
+            Some(Literal::Uint64(v)) => v,
+            _ => return None,
+         };
 
-               let chosen_elem_expr = folding_context
-                  .ast
-                  .expressions
-                  .get(array_elems[v as usize])
-                  .unwrap()
-                  .expression
-                  .clone();
+         if v >= u64::from(len) {
+            rolandc_error!(
+               err_manager,
+               expr_to_fold_location,
+               "At runtime, index will be {}, which is out of bounds for the array of length {}",
+               v,
+               len,
+            );
+         } else if is_const(&array.expression, &folding_context.ast.expressions) {
+            let Expression::ArrayLiteral(array_elems) = &array.expression else {
+               unreachable!();
+            };
 
-               return Some(chosen_elem_expr);
-            }
+            let chosen_elem_expr = folding_context
+               .ast
+               .expressions
+               .get(array_elems[v as usize])
+               .unwrap()
+               .expression
+               .clone();
+
+            return Some(chosen_elem_expr);
          }
 
          None
@@ -242,14 +248,24 @@ fn fold_expr_inner(
             &I8_TYPE => (val as i64) > i64::from(i8::MAX) || (val as i64) < i64::from(i8::MIN),
             &I16_TYPE => (val as i64) > i64::from(i16::MAX) || (val as i64) < i64::from(i16::MIN),
             &I32_TYPE => (val as i64) > i64::from(i32::MAX) || (val as i64) < i64::from(i32::MIN),
-            // @FixedPointerWidth
-            &ISIZE_TYPE => (val as i64) > i64::from(i32::MAX) || (val as i64) < i64::from(i32::MIN),
+            &ISIZE_TYPE => {
+               if folding_context.target.pointer_width() == 8 {
+                  false
+               } else {
+                  (val as i64) > i64::from(i32::MAX) || (val as i64) < i64::from(i32::MIN)
+               }
+            }
             &I64_TYPE => false,
             &U8_TYPE => val > u64::from(u8::MAX) || val < u64::from(u8::MIN),
             &U16_TYPE => val > u64::from(u16::MAX) || val < u64::from(u16::MIN),
             &U32_TYPE => val > u64::from(u32::MAX) || val < u64::from(u32::MIN),
-            // @FixedPointerWidth
-            &USIZE_TYPE | ExpressionType::Pointer(_) => val > u64::from(u32::MAX) || val < u64::from(u32::MIN),
+            &USIZE_TYPE | ExpressionType::Pointer(_) => {
+               if folding_context.target.pointer_width() == 8 {
+                  false
+               } else {
+                  val > u64::from(u32::MAX) || val < u64::from(u32::MIN)
+               }
+            }
             &U64_TYPE => false,
             _ => unreachable!(),
          };
@@ -345,8 +361,8 @@ fn fold_expr_inner(
 
          debug_assert!(lhs_expr.exp_type == rhs_expr.exp_type);
 
-         let lhs = extract_literal(lhs_expr);
-         let rhs = extract_literal(rhs_expr);
+         let lhs = extract_literal(lhs_expr, folding_context.target);
+         let rhs = extract_literal(rhs_expr, folding_context.target);
 
          if lhs.is_none() && rhs.is_none() {
             return None;
@@ -595,7 +611,7 @@ fn fold_expr_inner(
 
          let expr = &folding_context.ast.expressions[*expr];
 
-         if let Some(literal) = extract_literal(expr) {
+         if let Some(literal) = extract_literal(expr, folding_context.target) {
             match op {
                // float and signed int
                UnOp::Negate => {
@@ -677,10 +693,10 @@ fn fold_expr_inner(
             return Some(operand.expression.clone());
          }
 
-         if let Some(literal) = extract_literal(operand) {
+         if let Some(literal) = extract_literal(operand, folding_context.target) {
             match cast_type {
                CastType::Transmute => literal.transmute(expr_type),
-               CastType::As => literal.do_as(expr_type),
+               CastType::As => literal.do_as(expr_type, folding_context.target),
             }
          } else {
             None
@@ -700,18 +716,23 @@ fn fold_expr_inner(
             return None;
          }
 
-         if let Some(Literal::Bool(val)) = extract_literal(&folding_context.ast.expressions[*a]) {
+         if let Some(Literal::Bool(val)) = extract_literal(&folding_context.ast.expressions[*a], folding_context.target)
+         {
             return if val {
                Some(folding_context.ast.expressions[*b].expression.clone())
             } else {
                Some(folding_context.ast.expressions[*c].expression.clone())
             };
-         } else if let Some(Literal::Bool(false)) = extract_literal(&folding_context.ast.expressions[*c]) {
+         } else if let Some(Literal::Bool(false)) =
+            extract_literal(&folding_context.ast.expressions[*c], folding_context.target)
+         {
             // x && x
             if folding_context.ast.expressions[*a].expression == folding_context.ast.expressions[*b].expression {
                return Some(folding_context.ast.expressions[*b].expression.clone());
             }
-         } else if let Some(Literal::Bool(true)) = extract_literal(&folding_context.ast.expressions[*b]) {
+         } else if let Some(Literal::Bool(true)) =
+            extract_literal(&folding_context.ast.expressions[*b], folding_context.target)
+         {
             // x || x
             if folding_context.ast.expressions[*a].expression == folding_context.ast.expressions[*c].expression {
                return Some(folding_context.ast.expressions[*c].expression.clone());
@@ -735,7 +756,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
    match interner.lookup(proc_name) {
       "proc_name" => fc.current_proc_name.map(Expression::StringLiteral),
       "sizeof" => {
-         let type_size = crate::size_info::sizeof_type_mem(&generic_args[0], fc.user_defined_types);
+         let type_size = crate::size_info::sizeof_type_mem(&generic_args[0], fc.user_defined_types, fc.target);
 
          Some(Expression::IntLiteral {
             val: u64::from(type_size),
@@ -743,7 +764,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
          })
       }
       "alignof" => {
-         let type_alignment = crate::size_info::mem_alignment(&generic_args[0], fc.user_defined_types);
+         let type_alignment = crate::size_info::mem_alignment(&generic_args[0], fc.user_defined_types, fc.target);
 
          Some(Expression::IntLiteral {
             val: u64::from(type_alignment),
@@ -892,7 +913,7 @@ impl Literal {
             synthetic: true,
          },
 
-         // Transmute to pointer @FixedPointerWidth
+         // Transmute to pointer
          (Literal::Int32(i), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
             val: u64::from(i as u32),
             synthetic: true,
@@ -902,6 +923,18 @@ impl Literal {
             synthetic: true,
          },
          (Literal::Float32(f), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
+            val: u64::from(f.to_bits()),
+            synthetic: true,
+         },
+         (Literal::Int64(i), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
+            val: u64::from(i as u64),
+            synthetic: true,
+         },
+         (Literal::Uint64(i), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
+            val: u64::from(i),
+            synthetic: true,
+         },
+         (Literal::Float64(f), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
             val: u64::from(f.to_bits()),
             synthetic: true,
          },
@@ -979,36 +1012,48 @@ impl Literal {
       })
    }
 
-   fn do_as(self, target_type: &ExpressionType) -> Option<Expression> {
+   fn do_as(self, target_type: &ExpressionType, target: Target) -> Option<Expression> {
       Some(match (self, target_type) {
-         (Literal::Int64(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes() >= 8 => Expression::IntLiteral {
-            val: i as u64,
-            synthetic: true,
-         },
-         (Literal::Int32(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes() >= 4 => Expression::IntLiteral {
-            val: i64::from(i) as u64,
-            synthetic: true,
-         },
-         (Literal::Int16(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes() >= 2 => Expression::IntLiteral {
-            val: i64::from(i) as u64,
-            synthetic: true,
-         },
+         (Literal::Int64(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes(target) >= 8 => {
+            Expression::IntLiteral {
+               val: i as u64,
+               synthetic: true,
+            }
+         }
+         (Literal::Int32(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes(target) >= 4 => {
+            Expression::IntLiteral {
+               val: i64::from(i) as u64,
+               synthetic: true,
+            }
+         }
+         (Literal::Int16(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes(target) >= 2 => {
+            Expression::IntLiteral {
+               val: i64::from(i) as u64,
+               synthetic: true,
+            }
+         }
          (Literal::Int8(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: i64::from(i) as u64,
             synthetic: true,
          },
-         (Literal::Uint64(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes() >= 8 => Expression::IntLiteral {
-            val: i,
-            synthetic: true,
-         },
-         (Literal::Uint32(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes() >= 4 => Expression::IntLiteral {
-            val: u64::from(i),
-            synthetic: true,
-         },
-         (Literal::Uint16(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes() >= 2 => Expression::IntLiteral {
-            val: u64::from(i),
-            synthetic: true,
-         },
+         (Literal::Uint64(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes(target) >= 8 => {
+            Expression::IntLiteral {
+               val: i,
+               synthetic: true,
+            }
+         }
+         (Literal::Uint32(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes(target) >= 4 => {
+            Expression::IntLiteral {
+               val: u64::from(i),
+               synthetic: true,
+            }
+         }
+         (Literal::Uint16(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes(target) >= 2 => {
+            Expression::IntLiteral {
+               val: u64::from(i),
+               synthetic: true,
+            }
+         }
          (Literal::Uint8(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
             val: u64::from(i),
             synthetic: true,
@@ -1602,7 +1647,7 @@ impl PartialOrd for Literal {
    }
 }
 
-fn extract_literal(expr_node: &ExpressionNode) -> Option<Literal> {
+fn extract_literal(expr_node: &ExpressionNode, target: Target) -> Option<Literal> {
    match &expr_node.expression {
       Expression::IntLiteral { val: x, .. } => {
          let x = *x;
@@ -1611,16 +1656,24 @@ fn extract_literal(expr_node: &ExpressionNode) -> Option<Literal> {
             &I32_TYPE => Some(Literal::Int32((x as i64).try_into().ok()?)),
             &I16_TYPE => Some(Literal::Int16((x as i64).try_into().ok()?)),
             &I8_TYPE => Some(Literal::Int8((x as i64).try_into().ok()?)),
-            // @FixedPointerWidth
-            &ISIZE_TYPE => Some(Literal::Int32(x.try_into().ok()?)),
+            &ISIZE_TYPE => {
+               if target.pointer_width() == 8 {
+                  Some(Literal::Int64(x.try_into().ok()?))
+               } else {
+                  Some(Literal::Int32(x.try_into().ok()?))
+               }
+            }
             &U64_TYPE => Some(Literal::Uint64(x)),
             &U32_TYPE => Some(Literal::Uint32(x.try_into().ok()?)),
             &U16_TYPE => Some(Literal::Uint16(x.try_into().ok()?)),
             &U8_TYPE => Some(Literal::Uint8(x.try_into().ok()?)),
-            // @FixedPointerWidth
-            &USIZE_TYPE => Some(Literal::Uint32(x.try_into().ok()?)),
-            // @FixedPointerWidth
-            ExpressionType::Pointer(_) => Some(Literal::Uint32(x.try_into().ok()?)),
+            &USIZE_TYPE | ExpressionType::Pointer(_) => {
+               if target.pointer_width() == 8 {
+                  Some(Literal::Uint64(x.try_into().ok()?))
+               } else {
+                  Some(Literal::Uint32(x.try_into().ok()?))
+               }
+            }
             _ => unreachable!(),
          }
       }

@@ -16,7 +16,7 @@ use crate::type_data::{
    ExpressionType, IntType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, U16_TYPE, U32_TYPE,
    U64_TYPE, U8_TYPE,
 };
-use crate::{CompilationConfig, Program};
+use crate::{CompilationConfig, Program, Target};
 
 struct GenerationContext<'a> {
    buf: Vec<u8>,
@@ -69,7 +69,7 @@ fn roland_type_to_extended_type(r_type: &ExpressionType) -> &'static str {
          signed: _,
          width: IntWidth::One,
       }) => "b",
-      _ => todo!(),
+      x => unreachable!("{:?}", x),
    }
 }
 
@@ -155,7 +155,22 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
    };
 
    for (i, string_literal) in ctx.string_literals.iter().enumerate() {
-      writeln!(ctx.buf, "data $s{} = {{ b \"{}\" }}", i, ctx.interner.lookup(*string_literal)).unwrap();
+      let str = ctx.interner.lookup(*string_literal);
+      if str.chars().all(|x| !x.is_ascii_control() && x.is_ascii()) {
+         writeln!(
+            ctx.buf,
+            "data $s{} = {{ b \"{}\" }}",
+            i,
+            ctx.interner.lookup(*string_literal)
+         )
+         .unwrap();
+      } else {
+         write!(ctx.buf, "data $s{} = {{ b ", i).unwrap();
+         for by in str.as_bytes() {
+            write!(ctx.buf, "{} ", by).unwrap();
+         }
+         writeln!(ctx.buf, "}}").unwrap();
+      }
    }
 
    for a_struct in program.user_defined_types.struct_info.iter() {
@@ -236,11 +251,11 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          if ctx.var_to_reg.contains_key(local.0) {
             continue;
          }
-         if sizeof_type_mem(local.1, ctx.udt) == 0 {
+         if sizeof_type_mem(local.1, ctx.udt, Target::Qbe) == 0 {
             continue;
          }
          let alignment = {
-            let align_floor_4 = mem_alignment(local.1, ctx.udt).max(4);
+            let align_floor_4 = mem_alignment(local.1, ctx.udt, Target::Qbe).max(4);
             if align_floor_4 > 4 && align_floor_4 <= 8 {
                8
             } else if align_floor_4 > 4 {
@@ -254,7 +269,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
             "   %v{} =l alloc{} {}",
             local.0 .0,
             alignment,
-            sizeof_type_mem(local.1, ctx.udt),
+            sizeof_type_mem(local.1, ctx.udt, Target::Qbe),
          )
          .unwrap();
       }
@@ -263,7 +278,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          if ctx.var_to_reg.contains_key(&param.var_id) {
             continue;
          }
-         let size = sizeof_type_mem(&param.p_type.e_type, ctx.udt);
+         let size = sizeof_type_mem(&param.p_type.e_type, ctx.udt, Target::Qbe);
          writeln!(ctx.buf, "   blit %p{}, %v{}, {}", param.var_id.0, param.var_id.0, size).unwrap();
       }
       emit_bb(cfg, CFG_START_NODE, &mut ctx);
@@ -305,8 +320,20 @@ fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<Str
             _ => unreachable!(),
          }
       }
-      Expression::ArrayIndex { .. } => {
-         todo!()
+      Expression::ArrayIndex { array, index } => {
+         let base_mem = compute_offset(array, ctx).unwrap();
+         let sizeof_inner = match &ctx.ast.expressions[array].exp_type {
+            Some(ExpressionType::Array(x, _)) => sizeof_type_mem(x, ctx.udt, Target::Qbe),
+            _ => unreachable!(),
+         };
+
+         let index_val = expr_to_val(index, ctx);
+
+         writeln!(ctx.buf, "   %t =l mul {}, {}", sizeof_inner, index_val).unwrap();
+         let at = ctx.address_temp;
+         ctx.address_temp += 1;
+         writeln!(ctx.buf, "   %a{} =l add {}, %t", at, base_mem).unwrap();
+         Some(format!("%a{}", at))
       }
       Expression::Variable(v) => {
          if ctx.var_to_reg.contains_key(&v) {
@@ -332,11 +359,35 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
             let rhs_mem = compute_offset(*en, ctx);
             match (&lhs_mem, &rhs_mem) {
                (Some(l), Some(r)) => {
-                  let size = sizeof_type_mem(ctx.ast.expressions[*lid].exp_type.as_ref().unwrap(), ctx.udt);
+                  let size = sizeof_type_mem(
+                     ctx.ast.expressions[*lid].exp_type.as_ref().unwrap(),
+                     ctx.udt,
+                     Target::Qbe,
+                  );
                   writeln!(ctx.buf, "   blit {}, {}, {}", r, l, size).unwrap();
                   continue;
                }
                (Some(l), None) => {
+                  if ctx.ast.expressions[*lid].exp_type.as_ref().unwrap().is_aggregate() {
+                     write!(
+                        ctx.buf,
+                        "   %t ={} ",
+                        roland_type_to_abi_type(
+                           ctx.ast.expressions[*lid].exp_type.as_ref().unwrap(),
+                           ctx.udt,
+                           ctx.interner
+                        )
+                     )
+                     .unwrap();
+                     write_expr(*en, rhs_mem, ctx);
+                     let size = sizeof_type_mem(
+                        ctx.ast.expressions[*lid].exp_type.as_ref().unwrap(),
+                        ctx.udt,
+                        Target::Qbe,
+                     );
+                     writeln!(ctx.buf, "   blit %t, {}, {}", l, size).unwrap();
+                     continue;
+                  }
                   let suffix = roland_type_to_extended_type(ctx.ast.expressions[*lid].exp_type.as_ref().unwrap());
                   let val = expr_to_val(*en, ctx);
                   writeln!(ctx.buf, "   store{} {}, {}", suffix, val, l).unwrap();
@@ -358,229 +409,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                }
                _ => unreachable!(),
             };
-            let ren = &ctx.ast.expressions[*en];
-            match &ren.expression {
-               Expression::ProcedureCall { proc_expr, args } => {
-                  write_call_expr(*proc_expr, args, ctx);
-               }
-               Expression::BoolLiteral(v) => {
-                  writeln!(ctx.buf, "copy {}", *v as u8).unwrap();
-               }
-               Expression::StringLiteral(_) => todo!(),
-               Expression::IntLiteral { val, .. } => {
-                  let signed = matches!(
-                     ren.exp_type.as_ref().unwrap(),
-                     ExpressionType::Int(IntType { signed: true, .. })
-                  );
-                  if signed {
-                     writeln!(ctx.buf, "copy {}", *val as i64).unwrap();
-                  } else {
-                     writeln!(ctx.buf, "copy {}", *val).unwrap();
-                  }
-               }
-               Expression::FloatLiteral(val) => match ren.exp_type.as_ref().unwrap() {
-                  &F64_TYPE => writeln!(ctx.buf, "copy d_{}", val).unwrap(),
-                  &F32_TYPE => writeln!(ctx.buf, "copy s_{}", val).unwrap(),
-                  _ => unreachable!(),
-               },
-               Expression::UnitLiteral => todo!(),
-               Expression::UnresolvedVariable(_) => todo!(),
-               Expression::Variable(v) => {
-                  if let Some(reg) = ctx.var_to_reg.get(v) {
-                     writeln!(ctx.buf, "copy %r{}", reg).unwrap();
-                  } else {
-                     match ren.exp_type.as_ref().unwrap() {
-                        ExpressionType::Bool | &U8_TYPE => {
-                           writeln!(ctx.buf, "loadub %v{}", v.0).unwrap();
-                        }
-                        &I8_TYPE => {
-                           writeln!(ctx.buf, "loadsb %v{}", v.0).unwrap();
-                        }
-                        &U16_TYPE => {
-                           writeln!(ctx.buf, "loaduh %v{}", v.0).unwrap();
-                        }
-                        &I16_TYPE => {
-                           writeln!(ctx.buf, "loadsh %v{}", v.0).unwrap();
-                        }
-                        &U32_TYPE => {
-                           writeln!(ctx.buf, "loaduw %v{}", v.0).unwrap();
-                        }
-                        &I32_TYPE => {
-                           writeln!(ctx.buf, "loadsw %v{}", v.0).unwrap();
-                        }
-                        &U64_TYPE | &I64_TYPE => {
-                           writeln!(ctx.buf, "loadl %v{}", v.0).unwrap();
-                        }
-                        &F32_TYPE => {
-                           writeln!(ctx.buf, "loads %v{}", v.0).unwrap();
-                        }
-                        &F64_TYPE => {
-                           writeln!(ctx.buf, "loads %v{}", v.0).unwrap();
-                        }
-                        _ => unreachable!(),
-                     }
-                  }
-               }
-               Expression::BinaryOperator { operator, lhs, rhs } => {
-                  let typ = ctx.ast.expressions[*lhs].exp_type.as_ref().unwrap();
-                  let opcode = match operator {
-                     crate::parse::BinOp::Add => "add",
-                     crate::parse::BinOp::Subtract => "sub",
-                     crate::parse::BinOp::Multiply => "mul",
-                     crate::parse::BinOp::Divide => todo!(),
-                     crate::parse::BinOp::Remainder => todo!(),
-                     crate::parse::BinOp::Equality => "eq",
-                     crate::parse::BinOp::NotEquality => "ne",
-                     crate::parse::BinOp::GreaterThan => "gt",
-                     crate::parse::BinOp::LessThan => match typ {
-                        ExpressionType::Bool => "cultw",
-                        &F32_TYPE => "clts",
-                        &F64_TYPE => "cltd",
-                        ExpressionType::Int(IntType {
-                           signed: false,
-                           width: IntWidth::Eight,
-                        }) => "cultl",
-                        ExpressionType::Int(IntType {
-                           signed: false,
-                           width: IntWidth::Four | IntWidth::Two | IntWidth::One,
-                        }) => "cultw",
-                        ExpressionType::Int(IntType {
-                           signed: true,
-                           width: IntWidth::Eight,
-                        }) => "csltl",
-                        ExpressionType::Int(IntType {
-                           signed: true,
-                           width: IntWidth::Four | IntWidth::Two | IntWidth::One,
-                        }) => "csltw",
-                        _ => unreachable!(),
-                     },
-                     crate::parse::BinOp::GreaterThanOrEqualTo => match typ {
-                        ExpressionType::Bool => "cugew",
-                        &F32_TYPE => "cges",
-                        &F64_TYPE => "cged",
-                        ExpressionType::Int(IntType {
-                           signed: false,
-                           width: IntWidth::Eight,
-                        }) => "cugel",
-                        ExpressionType::Int(IntType {
-                           signed: false,
-                           width: IntWidth::Four | IntWidth::Two | IntWidth::One,
-                        }) => "cugew",
-                        ExpressionType::Int(IntType {
-                           signed: true,
-                           width: IntWidth::Eight,
-                        }) => "csgel",
-                        ExpressionType::Int(IntType {
-                           signed: true,
-                           width: IntWidth::Four | IntWidth::Two | IntWidth::One,
-                        }) => "csgew",
-                        _ => unreachable!(),
-                     },
-                     crate::parse::BinOp::LessThanOrEqualTo => "le",
-                     crate::parse::BinOp::BitwiseAnd => "and",
-                     crate::parse::BinOp::BitwiseOr => "or",
-                     crate::parse::BinOp::BitwiseXor => "xor",
-                     crate::parse::BinOp::BitwiseLeftShift => "shl",
-                     crate::parse::BinOp::BitwiseRightShift => todo!(),
-                     crate::parse::BinOp::LogicalAnd => unreachable!(),
-                     crate::parse::BinOp::LogicalOr => unreachable!(),
-                  };
-                  let lhs_val = expr_to_val(*lhs, ctx);
-                  let rhs_val = expr_to_val(*rhs, ctx);
-                  writeln!(ctx.buf, "{} {}, {}", opcode, lhs_val, rhs_val).unwrap();
-               }
-               Expression::UnaryOperator(operator, inner_id) => {
-                  let inner_val = expr_to_val(*inner_id, ctx);
-                  match operator {
-                     crate::parse::UnOp::Negate => writeln!(ctx.buf, "neg {}", inner_val).unwrap(),
-                     crate::parse::UnOp::Complement => {
-                        if *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() == ExpressionType::Bool {
-                           writeln!(ctx.buf, "eq {}, 0", inner_val).unwrap()
-                        } else {
-                           let magic_const: u64 = match *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() {
-                              crate::type_data::U8_TYPE => u64::from(std::u8::MAX),
-                              crate::type_data::U16_TYPE => u64::from(std::u16::MAX),
-                              crate::type_data::U32_TYPE => u64::from(std::u32::MAX),
-                              crate::type_data::U64_TYPE => std::u64::MAX,
-                              crate::type_data::I8_TYPE => u64::from(std::u32::MAX),
-                              crate::type_data::I16_TYPE => u64::from(std::u32::MAX),
-                              crate::type_data::I32_TYPE => u64::from(std::u32::MAX),
-                              crate::type_data::I64_TYPE => std::u64::MAX,
-                              _ => unreachable!(),
-                           };
-                           writeln!(ctx.buf, "xor {}, {}", inner_val, magic_const).unwrap()
-                        }
-                     }
-                     crate::parse::UnOp::AddressOf => todo!(),
-                     crate::parse::UnOp::Dereference => todo!(),
-                  }
-               }
-               Expression::FieldAccess(_, _) | Expression::ArrayIndex { .. } => {
-                  let load_target = rhs_mem.unwrap();
-                  match ren.exp_type.as_ref().unwrap() {
-                     ExpressionType::Bool | &U8_TYPE => {
-                        writeln!(ctx.buf, "loadub {}", load_target).unwrap();
-                     }
-                     &I8_TYPE => {
-                        writeln!(ctx.buf, "loadsb {}", load_target).unwrap();
-                     }
-                     &U16_TYPE => {
-                        writeln!(ctx.buf, "loaduh {}", load_target).unwrap();
-                     }
-                     &I16_TYPE => {
-                        writeln!(ctx.buf, "loadsh {}", load_target).unwrap();
-                     }
-                     &U32_TYPE => {
-                        writeln!(ctx.buf, "loaduw {}", load_target).unwrap();
-                     }
-                     &I32_TYPE => {
-                        writeln!(ctx.buf, "loadsw {}", load_target).unwrap();
-                     }
-                     &U64_TYPE | &I64_TYPE => {
-                        writeln!(ctx.buf, "loadl {}", load_target).unwrap();
-                     }
-                     &F32_TYPE => {
-                        writeln!(ctx.buf, "loads {}", load_target).unwrap();
-                     }
-                     &F64_TYPE => {
-                        writeln!(ctx.buf, "loads {}", load_target).unwrap();
-                     }
-                     _ => unreachable!(),
-                  }
-               }
-               Expression::Cast {
-                  cast_type: CastType::As,
-                  target_type,
-                  expr,
-               } => {
-                  writeln!(ctx.buf, "todoc");
-               }
-               Expression::Cast {
-                  cast_type: CastType::Transmute,
-                  target_type,
-                  expr,
-               } => {
-                  // hmm todo the variable could be a memory variable?
-                  let val = expr_to_val(*expr, ctx);
-                  let source_type = ctx.ast.expressions[*expr].exp_type.as_ref().unwrap();
-                  if (matches!(source_type, ExpressionType::Float(_)) && matches!(target_type, ExpressionType::Int(_)))
-                     || (matches!(source_type, ExpressionType::Int(_))
-                        && matches!(target_type, ExpressionType::Float(_)))
-                  {
-                     writeln!(ctx.buf, "cast {}", val);
-                  } else {
-                     writeln!(ctx.buf, "copy {}", val);
-                  }
-               }
-               Expression::BoundFcnLiteral(_, _) => todo!(),
-               Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
-               Expression::StructLiteral(_, _) => unreachable!(),
-               Expression::EnumLiteral(_, _) => unreachable!(),
-               Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
-               Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-               Expression::ArrayLiteral(_) => unreachable!(),
-               Expression::IfX(_, _, _) => unreachable!(),
-            }
+            write_expr(*en, rhs_mem, ctx);
          }
          CfgInstruction::Expression(en) => match &ctx.ast.expressions[*en].expression {
             Expression::ProcedureCall { proc_expr, args } => {
@@ -594,7 +423,10 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                // World's biggest hack
                writeln!(&mut ctx.buf, "   ret 0").unwrap();
             } else {
-               if *ctx.ast.expressions[*en].exp_type.as_ref().unwrap() != ExpressionType::Unit {
+               // this whole thing is pretty suspect?
+               if false && *ctx.ast.expressions[*en].exp_type.as_ref().unwrap() == ExpressionType::Never {
+                  writeln!(&mut ctx.buf, "   halt").unwrap();
+               } else if *ctx.ast.expressions[*en].exp_type.as_ref().unwrap() != ExpressionType::Unit {
                   let val = expr_to_val(*en, ctx);
                   writeln!(&mut ctx.buf, "   ret {}", val).unwrap();
                } else {
@@ -648,7 +480,245 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> String 
       Expression::StringLiteral(id) => {
          format!("$s{}", ctx.string_literals.get_index_of(id).unwrap())
       }
-      _ => unreachable!(),
+      x => unreachable!("{:?}", x),
+   }
+}
+
+fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationContext) {
+   let ren = &ctx.ast.expressions[expr];
+   match &ren.expression {
+      Expression::ProcedureCall { proc_expr, args } => {
+         write_call_expr(*proc_expr, args, ctx);
+      }
+      Expression::BoolLiteral(v) => {
+         writeln!(ctx.buf, "copy {}", *v as u8).unwrap();
+      }
+      Expression::StringLiteral(_) => todo!(),
+      Expression::IntLiteral { val, .. } => {
+         let signed = matches!(
+            ren.exp_type.as_ref().unwrap(),
+            ExpressionType::Int(IntType { signed: true, .. })
+         );
+         if signed {
+            writeln!(ctx.buf, "copy {}", *val as i64).unwrap();
+         } else {
+            writeln!(ctx.buf, "copy {}", *val).unwrap();
+         }
+      }
+      Expression::FloatLiteral(val) => match ren.exp_type.as_ref().unwrap() {
+         &F64_TYPE => writeln!(ctx.buf, "copy d_{}", val).unwrap(),
+         &F32_TYPE => writeln!(ctx.buf, "copy s_{}", val).unwrap(),
+         _ => unreachable!(),
+      },
+      Expression::UnitLiteral => todo!(),
+      Expression::UnresolvedVariable(_) => todo!(),
+      Expression::Variable(v) => {
+         if let Some(reg) = ctx.var_to_reg.get(v) {
+            writeln!(ctx.buf, "copy %r{}", reg).unwrap();
+         } else {
+            match ren.exp_type.as_ref().unwrap() {
+               ExpressionType::Bool | &U8_TYPE => {
+                  writeln!(ctx.buf, "loadub %v{}", v.0).unwrap();
+               }
+               &I8_TYPE => {
+                  writeln!(ctx.buf, "loadsb %v{}", v.0).unwrap();
+               }
+               &U16_TYPE => {
+                  writeln!(ctx.buf, "loaduh %v{}", v.0).unwrap();
+               }
+               &I16_TYPE => {
+                  writeln!(ctx.buf, "loadsh %v{}", v.0).unwrap();
+               }
+               &U32_TYPE => {
+                  writeln!(ctx.buf, "loaduw %v{}", v.0).unwrap();
+               }
+               &I32_TYPE => {
+                  writeln!(ctx.buf, "loadsw %v{}", v.0).unwrap();
+               }
+               &U64_TYPE | &I64_TYPE => {
+                  writeln!(ctx.buf, "loadl %v{}", v.0).unwrap();
+               }
+               &F32_TYPE => {
+                  writeln!(ctx.buf, "loads %v{}", v.0).unwrap();
+               }
+               &F64_TYPE => {
+                  writeln!(ctx.buf, "loads %v{}", v.0).unwrap();
+               }
+               _ => unreachable!(),
+            }
+         }
+      }
+      Expression::BinaryOperator { operator, lhs, rhs } => {
+         let typ = ctx.ast.expressions[*lhs].exp_type.as_ref().unwrap();
+         let opcode = match operator {
+            crate::parse::BinOp::Add => "add",
+            crate::parse::BinOp::Subtract => "sub",
+            crate::parse::BinOp::Multiply => "mul",
+            crate::parse::BinOp::Divide => todo!(),
+            crate::parse::BinOp::Remainder => todo!(),
+            crate::parse::BinOp::Equality => match typ {
+               ExpressionType::Bool => "ceqw",
+               &F32_TYPE => "ceqs",
+               &F64_TYPE => "ceqd",
+               ExpressionType::Int(IntType {
+                  signed: _,
+                  width: IntWidth::Eight,
+               }) => "ceql",
+               ExpressionType::Int(IntType {
+                  signed: _,
+                  width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+               }) => "ceqw",
+               _ => unreachable!(),
+            },
+            crate::parse::BinOp::NotEquality => "ne",
+            crate::parse::BinOp::GreaterThan => "gt",
+            crate::parse::BinOp::LessThan => match typ {
+               ExpressionType::Bool => "cultw",
+               &F32_TYPE => "clts",
+               &F64_TYPE => "cltd",
+               ExpressionType::Int(IntType {
+                  signed: false,
+                  width: IntWidth::Eight,
+               }) => "cultl",
+               ExpressionType::Int(IntType {
+                  signed: false,
+                  width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+               }) => "cultw",
+               ExpressionType::Int(IntType {
+                  signed: true,
+                  width: IntWidth::Eight,
+               }) => "csltl",
+               ExpressionType::Int(IntType {
+                  signed: true,
+                  width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+               }) => "csltw",
+               _ => unreachable!(),
+            },
+            crate::parse::BinOp::GreaterThanOrEqualTo => match typ {
+               ExpressionType::Bool => "cugew",
+               &F32_TYPE => "cges",
+               &F64_TYPE => "cged",
+               ExpressionType::Int(IntType {
+                  signed: false,
+                  width: IntWidth::Eight,
+               }) => "cugel",
+               ExpressionType::Int(IntType {
+                  signed: false,
+                  width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+               }) => "cugew",
+               ExpressionType::Int(IntType {
+                  signed: true,
+                  width: IntWidth::Eight,
+               }) => "csgel",
+               ExpressionType::Int(IntType {
+                  signed: true,
+                  width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+               }) => "csgew",
+               _ => unreachable!(),
+            },
+            crate::parse::BinOp::LessThanOrEqualTo => "le",
+            crate::parse::BinOp::BitwiseAnd => "and",
+            crate::parse::BinOp::BitwiseOr => "or",
+            crate::parse::BinOp::BitwiseXor => "xor",
+            crate::parse::BinOp::BitwiseLeftShift => "shl",
+            crate::parse::BinOp::BitwiseRightShift => todo!(),
+            crate::parse::BinOp::LogicalAnd => unreachable!(),
+            crate::parse::BinOp::LogicalOr => unreachable!(),
+         };
+         let lhs_val = expr_to_val(*lhs, ctx);
+         let rhs_val = expr_to_val(*rhs, ctx);
+         writeln!(ctx.buf, "{} {}, {}", opcode, lhs_val, rhs_val).unwrap();
+      }
+      Expression::UnaryOperator(operator, inner_id) => {
+         let inner_val = expr_to_val(*inner_id, ctx);
+         match operator {
+            crate::parse::UnOp::Negate => writeln!(ctx.buf, "neg {}", inner_val).unwrap(),
+            crate::parse::UnOp::Complement => {
+               if *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() == ExpressionType::Bool {
+                  writeln!(ctx.buf, "eq {}, 0", inner_val).unwrap()
+               } else {
+                  let magic_const: u64 = match *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() {
+                     crate::type_data::U8_TYPE => u64::from(std::u8::MAX),
+                     crate::type_data::U16_TYPE => u64::from(std::u16::MAX),
+                     crate::type_data::U32_TYPE => u64::from(std::u32::MAX),
+                     crate::type_data::U64_TYPE => std::u64::MAX,
+                     crate::type_data::I8_TYPE => u64::from(std::u32::MAX),
+                     crate::type_data::I16_TYPE => u64::from(std::u32::MAX),
+                     crate::type_data::I32_TYPE => u64::from(std::u32::MAX),
+                     crate::type_data::I64_TYPE => std::u64::MAX,
+                     _ => unreachable!(),
+                  };
+                  writeln!(ctx.buf, "xor {}, {}", inner_val, magic_const).unwrap()
+               }
+            }
+            crate::parse::UnOp::AddressOf => todo!(),
+            crate::parse::UnOp::Dereference => todo!(),
+         }
+      }
+      Expression::FieldAccess(_, _) | Expression::ArrayIndex { .. } => {
+         let load_target = rhs_mem.unwrap();
+         match ren.exp_type.as_ref().unwrap() {
+            ExpressionType::Bool | &U8_TYPE => {
+               writeln!(ctx.buf, "loadub {}", load_target).unwrap();
+            }
+            &I8_TYPE => {
+               writeln!(ctx.buf, "loadsb {}", load_target).unwrap();
+            }
+            &U16_TYPE => {
+               writeln!(ctx.buf, "loaduh {}", load_target).unwrap();
+            }
+            &I16_TYPE => {
+               writeln!(ctx.buf, "loadsh {}", load_target).unwrap();
+            }
+            &U32_TYPE => {
+               writeln!(ctx.buf, "loaduw {}", load_target).unwrap();
+            }
+            &I32_TYPE => {
+               writeln!(ctx.buf, "loadsw {}", load_target).unwrap();
+            }
+            &U64_TYPE | &I64_TYPE => {
+               writeln!(ctx.buf, "loadl {}", load_target).unwrap();
+            }
+            &F32_TYPE => {
+               writeln!(ctx.buf, "loads {}", load_target).unwrap();
+            }
+            &F64_TYPE => {
+               writeln!(ctx.buf, "loads {}", load_target).unwrap();
+            }
+            _ => unreachable!(),
+         }
+      }
+      Expression::Cast {
+         cast_type: CastType::As,
+         target_type,
+         expr,
+      } => {
+         writeln!(ctx.buf, "todoc").unwrap();
+      }
+      Expression::Cast {
+         cast_type: CastType::Transmute,
+         target_type,
+         expr,
+      } => {
+         // hmm todo the variable could be a memory variable?
+         let val = expr_to_val(*expr, ctx);
+         let source_type = ctx.ast.expressions[*expr].exp_type.as_ref().unwrap();
+         if (matches!(source_type, ExpressionType::Float(_)) && matches!(target_type, ExpressionType::Int(_)))
+            || (matches!(source_type, ExpressionType::Int(_)) && matches!(target_type, ExpressionType::Float(_)))
+         {
+            writeln!(ctx.buf, "cast {}", val).unwrap();
+         } else {
+            writeln!(ctx.buf, "copy {}", val).unwrap();
+         }
+      }
+      Expression::BoundFcnLiteral(_, _) => todo!(),
+      Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
+      Expression::StructLiteral(_, _) => unreachable!(),
+      Expression::EnumLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+      Expression::ArrayLiteral(_) => unreachable!(),
+      Expression::IfX(_, _, _) => unreachable!(),
    }
 }
 

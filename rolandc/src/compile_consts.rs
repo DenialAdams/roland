@@ -9,6 +9,7 @@ use crate::interner::{Interner, StrId};
 use crate::parse::{AstPool, Expression, ExpressionId, ProcedureId, Program, UserDefinedTypeInfo, VariableId};
 use crate::semantic_analysis::{GlobalKind, ProcedureInfo};
 use crate::source_info::SourceInfo;
+use crate::Target;
 
 struct CgContext<'a> {
    ast: &'a mut AstPool,
@@ -18,6 +19,7 @@ struct CgContext<'a> {
    procedure_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
    user_defined_types: &'a UserDefinedTypeInfo,
    interner: &'a Interner,
+   target: Target,
 }
 
 fn fold_expr_id(
@@ -28,6 +30,7 @@ fn fold_expr_id(
    user_defined_types: &UserDefinedTypeInfo,
    const_replacements: &HashMap<VariableId, ExpressionId>,
    interner: &Interner,
+   target: Target,
 ) {
    let mut fc = FoldingContext {
       ast,
@@ -35,11 +38,12 @@ fn fold_expr_id(
       user_defined_types,
       const_replacements,
       current_proc_name: None,
+      target,
    };
    constant_folding::try_fold_and_replace_expr(expr_id, err_manager, &mut fc, interner);
 }
 
-pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &mut ErrorManager) {
+pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &mut ErrorManager, target: Target) {
    // There is an effective second compilation pipeline for constants. This is because:
    // 1) Lowering constants is something we need to do for compilation
    // 2) Constants can form a DAG of dependency, such that we need to lower them in the right order
@@ -63,6 +67,7 @@ pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &
       const_replacements: &mut const_replacements,
       user_defined_types: &program.user_defined_types,
       interner,
+      target,
    };
 
    for c_var_id in program
@@ -93,6 +98,7 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
       cg_context.user_defined_types,
       cg_context.const_replacements,
       cg_context.interner,
+      cg_context.target,
    );
 
    let p_const_expr = &cg_context.ast.expressions[c.1];

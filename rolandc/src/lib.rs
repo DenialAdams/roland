@@ -66,7 +66,14 @@ pub enum Target {
 }
 
 impl Target {
-   fn pointer_width(&self) -> IntWidth {
+   fn pointer_width(&self) -> u8 {
+      match self {
+         Target::Qbe => 8,
+         _ => 4,
+      }
+   }
+
+   fn lowered_ptr_width(&self) -> IntWidth {
       match self {
          Target::Qbe => IntWidth::Eight,
          _ => IntWidth::Four,
@@ -194,7 +201,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
 
    definite_assignment::ensure_variables_definitely_assigned(&ctx.program, &mut ctx.err_manager);
 
-   compile_consts::compile_consts(&mut ctx.program, &ctx.interner, &mut ctx.err_manager);
+   compile_consts::compile_consts(&mut ctx.program, &ctx.interner, &mut ctx.err_manager, config.target);
 
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
@@ -225,7 +232,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       .procedures
       .retain(|_, x| x.definition.generic_parameters.is_empty() || !matches!(x.proc_impl, ProcImplSource::Body(_)));
 
-   constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner);
+   constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner, config.target);
    ctx.program.global_info.retain(|_, v| v.kind != GlobalKind::Const);
 
    if !ctx.err_manager.errors.is_empty() {
@@ -260,7 +267,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    // It would be nice to run this before deleting unreachable procedures,
    // but doing so would currently delete procedures that we take pointers to
-   pre_wasm_lowering::kill_zst_assignments(&mut ctx.program);
+   pre_wasm_lowering::kill_zst_assignments(&mut ctx.program, config.target);
 
    if config.dump_debugging_info {
       pp::pp(

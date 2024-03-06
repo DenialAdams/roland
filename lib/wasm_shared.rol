@@ -1,0 +1,7 @@
+import "shared.rol";
+
+const USIZE_MIN: usize = U32_MIN transmute usize;
+const USIZE_MAX: usize = U32_MAX transmute usize;
+
+const ISIZE_MIN: isize = I32_MIN transmute isize;
+const ISIZE_MAX: isize = I32_MAX transmute isize;

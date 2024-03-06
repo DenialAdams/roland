@@ -350,7 +350,7 @@ fn vv_expr(
          }
          // Otherwise, do NOT descend into the expr, as hoisting would change semantics
       }
-      Expression::UnaryOperator(op, expr) => {
+      Expression::UnaryOperator(_, expr) => {
          vv_expr(*expr, vv_context, expressions, current_statement, false);
       }
       Expression::StructLiteral(_, field_exprs) => {

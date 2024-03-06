@@ -1,4 +1,4 @@
-import "shared.rol";
+import "wasm_shared.rol";
 import "ryu/f2s.rol";
 import "ryu/d2s.rol";
 
