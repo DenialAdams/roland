@@ -1,0 +1,15 @@
+proc foo(x: proc() -> u8) -> bool {
+   return x() > 10;
+}
+
+proc val() -> u8 {
+    return 11;
+}
+
+proc main() {
+   let result = foo(&val);
+   println_bool(result);
+}
+__END__
+run:
+true
