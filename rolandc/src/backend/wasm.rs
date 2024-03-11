@@ -74,7 +74,7 @@ fn type_to_wasm_type(t: &ExpressionType, buf: &mut Vec<ValType>) {
    }
 }
 
-pub fn type_to_wasm_type_basic(t: &ExpressionType) -> ValType {
+fn type_to_wasm_type_basic(t: &ExpressionType) -> ValType {
    match t {
       ExpressionType::Int(x) => match x.width {
          IntWidth::Eight => ValType::I64,
@@ -1211,8 +1211,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       Expression::UnaryOperator(un_op, e_index) => {
          let e = &generation_context.ast.expressions[*e_index];
 
-         if let ExpressionType::ProcedureItem(proc_name, _bound_type_params) = e.exp_type.as_ref().unwrap() {
-            emit_procedure_pointer_index(*proc_name, generation_context);
+         // todo: why not put this in the addressof branch?
+         if let ExpressionType::ProcedureItem(proc_id, _bound_type_params) = e.exp_type.as_ref().unwrap() {
+            emit_procedure_pointer_index(*proc_id, generation_context);
             return;
          }
 

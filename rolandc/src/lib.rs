@@ -220,15 +220,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
 
    expression_hoisting::expression_hoisting(&mut ctx.program, false);
 
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp.rol").unwrap(),
-      )
-      .unwrap();
-   }
-
    // must run after expression hoisting, so that re-ordering named arguments does not
    // affect side-effect order
    named_argument_lowering::lower_named_args(&mut ctx.program);
@@ -276,6 +267,15 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    if config.target == Target::Qbe {
       expression_hoisting::expression_hoisting(&mut ctx.program, true);
+   }
+
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp.rol").unwrap(),
+      )
+      .unwrap();
    }
 
    ctx.program.cfg = backend::linearize::linearize(&mut ctx.program, &ctx.interner, config.dump_debugging_info);

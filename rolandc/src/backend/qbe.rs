@@ -42,12 +42,12 @@ fn roland_type_to_base_type(r_type: &ExpressionType) -> &'static str {
       ExpressionType::Int(IntType {
          signed: _,
          width: IntWidth::Eight,
-      }) => "l",
+      })
+      | ExpressionType::ProcedurePointer { .. } => "l",
       ExpressionType::Int(IntType {
          signed: _,
          width: IntWidth::Four | IntWidth::Two | IntWidth::One,
       }) => "w",
-      ExpressionType::Unit => "",
       _ => todo!(),
    }
 }
@@ -55,16 +55,6 @@ fn roland_type_to_base_type(r_type: &ExpressionType) -> &'static str {
 fn roland_type_to_extended_type(r_type: &ExpressionType) -> &'static str {
    match r_type {
       ExpressionType::Bool => "b",
-      &F32_TYPE => "s",
-      &F64_TYPE => "d",
-      ExpressionType::Int(IntType {
-         signed: _,
-         width: IntWidth::Eight,
-      }) => "l",
-      ExpressionType::Int(IntType {
-         signed: _,
-         width: IntWidth::Four,
-      }) => "w",
       ExpressionType::Int(IntType {
          signed: _,
          width: IntWidth::Two,
@@ -73,23 +63,12 @@ fn roland_type_to_extended_type(r_type: &ExpressionType) -> &'static str {
          signed: _,
          width: IntWidth::One,
       }) => "b",
-      x => unreachable!("{:?}", x),
+      _ => roland_type_to_base_type(r_type)
    }
 }
 
 fn roland_type_to_abi_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, interner: &Interner) -> String {
    match r_type {
-      ExpressionType::Bool => "ub".into(),
-      &F32_TYPE => "s".into(),
-      &F64_TYPE => "d".into(),
-      ExpressionType::Int(IntType {
-         signed: _,
-         width: IntWidth::Eight,
-      }) => "l".into(),
-      ExpressionType::Int(IntType {
-         signed: _,
-         width: IntWidth::Four,
-      }) => "w".into(),
       ExpressionType::Int(IntType {
          signed: true,
          width: IntWidth::Two,
@@ -105,7 +84,7 @@ fn roland_type_to_abi_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, i
       ExpressionType::Int(IntType {
          signed: false,
          width: IntWidth::One,
-      }) => "ub".into(),
+      }) | ExpressionType::Bool => "ub".into(),
       ExpressionType::Unit | ExpressionType::Never => "".into(), // TODO
       ExpressionType::Struct(sid) => {
          format!(":{}", interner.lookup(udt.struct_info.get(*sid).unwrap().name))
@@ -113,39 +92,20 @@ fn roland_type_to_abi_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, i
       ExpressionType::Union(uid) => {
          format!(":{}", interner.lookup(udt.union_info.get(*uid).unwrap().name))
       }
-      x => todo!("{:?}", x),
+      _ => roland_type_to_base_type(r_type).into()
    }
 }
 
 // TODO: we'll make this not alloc
 fn roland_type_to_sub_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, interner: &Interner) -> String {
    match r_type {
-      ExpressionType::Bool => "b".into(),
-      &F32_TYPE => "s".into(),
-      &F64_TYPE => "d".into(),
-      ExpressionType::Int(IntType {
-         signed: _,
-         width: IntWidth::Eight,
-      }) => "l".into(),
-      ExpressionType::Int(IntType {
-         signed: _,
-         width: IntWidth::Four,
-      }) => "w".into(),
-      ExpressionType::Int(IntType {
-         signed: _,
-         width: IntWidth::Two,
-      }) => "h".into(),
-      ExpressionType::Int(IntType {
-         signed: _,
-         width: IntWidth::One,
-      }) => "b".into(),
       ExpressionType::Struct(sid) => {
          format!(":{}", interner.lookup(udt.struct_info.get(*sid).unwrap().name))
       }
       ExpressionType::Union(uid) => {
          format!(":{}", interner.lookup(udt.union_info.get(*uid).unwrap().name))
       }
-      x => todo!("{:?}", x),
+      _ => roland_type_to_extended_type(r_type).into()
    }
 }
 
@@ -294,7 +254,13 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       writeln!(ctx.buf, "}}").unwrap();
    }
 
-   fn emit_aggregate(buf: &mut Vec<u8>, emitted: &mut HashSet<UserDefinedTypeId>, udt: &UserDefinedTypeInfo, interner: &Interner, id: UserDefinedTypeId) {
+   fn emit_aggregate(
+      buf: &mut Vec<u8>,
+      emitted: &mut HashSet<UserDefinedTypeId>,
+      udt: &UserDefinedTypeInfo,
+      interner: &Interner,
+      id: UserDefinedTypeId,
+   ) {
       // All this complication is because we must emit the definition of an aggregate before it is used
       if !emitted.insert(id) {
          return;
@@ -303,11 +269,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       match id {
          UserDefinedTypeId::Struct(sid) => {
             let si = udt.struct_info.get(sid).unwrap();
-            for field_t in si
-               .field_types
-               .iter()
-               .map(|x| &x.1.e_type)
-            {
+            for field_t in si.field_types.iter().map(|x| &x.1.e_type) {
                match field_t {
                   ExpressionType::Struct(f_sid) => {
                      emit_aggregate(buf, emitted, udt, interner, UserDefinedTypeId::Struct(*f_sid));
@@ -322,19 +284,9 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
             write!(buf, "type :{} = {{ ", interner.lookup(si.name)).unwrap();
             for (i, field_type) in si.field_types.values().map(|x| &x.e_type).enumerate() {
                if i == si.field_types.len() - 1 {
-                  write!(
-                     buf,
-                     "{}",
-                     roland_type_to_sub_type(field_type, udt, interner)
-                  )
-                  .unwrap();
+                  write!(buf, "{}", roland_type_to_sub_type(field_type, udt, interner)).unwrap();
                } else {
-                  write!(
-                     buf,
-                     "{}, ",
-                     roland_type_to_sub_type(field_type, udt, interner)
-                  )
-                  .unwrap();
+                  write!(buf, "{}, ", roland_type_to_sub_type(field_type, udt, interner)).unwrap();
                }
             }
          }
@@ -355,36 +307,37 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
             write!(buf, "type :{} = {{ ", interner.lookup(ui.name)).unwrap();
             for (i, field_type) in ui.field_types.values().map(|x| &x.e_type).enumerate() {
                if i == ui.field_types.len() - 1 {
-                  write!(
-                     buf,
-                     "{{ {} }}",
-                     roland_type_to_sub_type(field_type, udt, interner)
-                  )
-                  .unwrap();
+                  write!(buf, "{{ {} }}", roland_type_to_sub_type(field_type, udt, interner)).unwrap();
                } else {
-                  write!(
-                     buf,
-                     "{{ {} }} ",
-                     roland_type_to_sub_type(field_type, udt, interner)
-                  )
-                  .unwrap();
+                  write!(buf, "{{ {} }} ", roland_type_to_sub_type(field_type, udt, interner)).unwrap();
                }
             }
          }
          UserDefinedTypeId::Enum(_) => unreachable!(),
       }
       writeln!(buf, " }}").unwrap();
-
    }
 
    let mut emitted_aggregates = HashSet::new();
 
    for a_struct in program.user_defined_types.struct_info.keys() {
-      emit_aggregate(&mut ctx.buf, &mut emitted_aggregates, ctx.udt, ctx.interner, UserDefinedTypeId::Struct(a_struct));
+      emit_aggregate(
+         &mut ctx.buf,
+         &mut emitted_aggregates,
+         ctx.udt,
+         ctx.interner,
+         UserDefinedTypeId::Struct(a_struct),
+      );
    }
 
    for a_union in program.user_defined_types.union_info.keys() {
-      emit_aggregate(&mut ctx.buf, &mut emitted_aggregates, ctx.udt, ctx.interner, UserDefinedTypeId::Union(a_union));
+      emit_aggregate(
+         &mut ctx.buf,
+         &mut emitted_aggregates,
+         ctx.udt,
+         ctx.interner,
+         UserDefinedTypeId::Union(a_union),
+      );
    }
 
    for (proc_id, procedure) in program.procedures.iter() {
@@ -441,9 +394,6 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       writeln!(ctx.buf, "@entry").unwrap();
       for local in procedure.locals.iter() {
          if ctx.var_to_reg.contains_key(local.0) {
-            continue;
-         }
-         if sizeof_type_mem(local.1, ctx.udt, Target::Qbe) == 0 {
             continue;
          }
          let alignment = {
@@ -941,7 +891,16 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          let rhs_val = expr_to_val(*rhs, ctx);
          writeln!(ctx.buf, "{} {}, {}", opcode, lhs_val, rhs_val).unwrap();
       }
-      Expression::UnaryOperator(UnOp::AddressOf, _) => writeln!(ctx.buf, "copy {}", rhs_mem.unwrap()).unwrap(),
+      Expression::UnaryOperator(UnOp::AddressOf, inner_id) => {
+         let e = &ctx.ast.expressions[*inner_id];
+         if let ExpressionType::ProcedureItem(proc_id, _bound_type_params) = e.exp_type.as_ref().unwrap() {
+            // TODO: need to do name mangling here, as with call
+            let proc_name = ctx.interner.lookup(ctx.proc_info[*proc_id].name.str);
+            writeln!(ctx.buf, "copy ${}", proc_name).unwrap();
+         } else {
+            writeln!(ctx.buf, "copy {}", rhs_mem.unwrap()).unwrap()
+         }
+      },
       Expression::UnaryOperator(operator, inner_id) => {
          let inner_val = expr_to_val(*inner_id, ctx);
          match operator {
@@ -1108,12 +1067,17 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
 }
 
 fn write_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &mut GenerationContext) {
-   let callee = match ctx.ast.expressions[proc_expr].exp_type.as_ref().unwrap() {
-      ExpressionType::ProcedureItem(id, _) => ctx.interner.lookup(ctx.proc_info[*id].name.str),
-      ExpressionType::ProcedurePointer { .. } => todo!(),
+   match ctx.ast.expressions[proc_expr].exp_type.as_ref().unwrap() {
+      ExpressionType::ProcedureItem(id, _) => {
+         let callee = ctx.interner.lookup(ctx.proc_info[*id].name.str);
+         write!(ctx.buf, "call ${}(", callee).unwrap();
+      }
+      ExpressionType::ProcedurePointer { .. } => {
+         let val = expr_to_val(proc_expr, ctx);
+         write!(ctx.buf, "call {}(", val).unwrap();
+      }
       _ => unreachable!(),
    };
-   write!(ctx.buf, "call ${}(", callee).unwrap();
    for (i, arg) in args.iter().enumerate() {
       let val = expr_to_val(arg.expr, ctx);
       if i == args.len() - 1 {
