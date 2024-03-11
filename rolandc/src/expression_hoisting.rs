@@ -52,6 +52,7 @@ struct VvContext<'a> {
    next_variable: VariableId,
    statement_actions: Vec<StmtAction>,
    statements_that_need_hoisting: Vec<usize>,
+   tac: bool,
 }
 
 impl VvContext<'_> {
@@ -75,7 +76,7 @@ impl VvContext<'_> {
 // 3) Some operations don't make sense without operating on an lvalue (addressof)
 // 4) The constant folder can't fold away an entire expression with side effects, but it can if the side effect is pulled out into a separate statement
 //    - (this is of particular importance for field access - we need to lower all array length queries (which is pure type system info) before the backend)
-pub fn expression_hoisting(program: &mut Program) {
+pub fn expression_hoisting(program: &mut Program, tac: bool) {
    let mut vv_context = VvContext {
       cur_procedure_locals: &mut IndexMap::new(),
       pending_hoists: IndexSet::new(),
@@ -83,6 +84,7 @@ pub fn expression_hoisting(program: &mut Program) {
       next_variable: program.next_variable,
       statement_actions: Vec::new(),
       statements_that_need_hoisting: Vec::new(),
+      tac,
    };
 
    for procedure in program.procedures.values_mut() {
@@ -222,8 +224,6 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
    let mut the_statement = std::mem::replace(&mut ast.statements[statement].statement, Statement::Break);
    match &mut the_statement {
       Statement::Assignment(lhs_expr, rhs_expr) => {
-         // nocheckin! we do want to hoist LHS in following scenario
-         // foo(...)~ = ...
          vv_expr(*lhs_expr, vv_context, &ast.expressions, current_statement, true, true);
          vv_expr(*rhs_expr, vv_context, &ast.expressions, current_statement, true, false);
       }
@@ -279,7 +279,7 @@ fn vv_expr(
    match &expressions[expr_index].expression {
       Expression::ArrayIndex { array, index } => {
          vv_expr(*array, vv_context, expressions, current_statement, false, is_lhs);
-         vv_expr(*index, vv_context, expressions, current_statement, false, is_lhs);
+         vv_expr(*index, vv_context, expressions, current_statement, false, false);
 
          let array_expression = &expressions[*array];
 
@@ -448,14 +448,18 @@ fn vv_expr(
       Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
    // TODO: don't need to hoist void procedure calls (if this is expr stmt or assign)
-   if !is_lhs && !matches!(
-      expressions[expr_index].expression,
-      Expression::BoundFcnLiteral(_, _)
-         | Expression::IntLiteral { .. }
-         | Expression::FloatLiteral { .. }
-         | Expression::BoolLiteral { .. }
-         | Expression::EnumLiteral { .. }
-   ) {
+   if vv_context.tac
+      && !is_lhs
+      && !matches!(
+         expressions[expr_index].expression,
+         Expression::BoundFcnLiteral(_, _)
+            | Expression::IntLiteral { .. }
+            | Expression::FloatLiteral { .. }
+            | Expression::BoolLiteral { .. }
+            | Expression::EnumLiteral { .. }
+            | Expression::StringLiteral(_)
+      )
+   {
       vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
    }
 }

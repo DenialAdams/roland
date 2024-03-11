@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io::Write;
 
 use indexmap::{IndexMap, IndexSet};
@@ -5,16 +6,18 @@ use slotmap::SecondaryMap;
 
 use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE, CFG_START_NODE};
 use super::regalloc;
+use super::wasm::type_as_zero_bytes;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   ArgumentNode, AstPool, CastType, Expression, ExpressionId, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId
+   ArgumentNode, AstPool, CastType, Expression, ExpressionId, ProcImplSource, ProcedureId, UnOp, UserDefinedTypeId,
+   UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::ProcedureInfo;
+use crate::semantic_analysis::{GlobalInfo, ProcedureInfo};
 use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::type_data::{
-   ExpressionType, IntType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, U16_TYPE, U32_TYPE,
-   U64_TYPE, U8_TYPE,
+   ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, U16_TYPE,
+   U32_TYPE, U64_TYPE, U8_TYPE,
 };
 use crate::{CompilationConfig, Program, Target};
 
@@ -28,6 +31,7 @@ struct GenerationContext<'a> {
    udt: &'a UserDefinedTypeInfo,
    string_literals: &'a IndexSet<StrId>,
    address_temp: u64,
+   global_info: &'a IndexMap<VariableId, GlobalInfo>,
 }
 
 fn roland_type_to_base_type(r_type: &ExpressionType) -> &'static str {
@@ -102,9 +106,12 @@ fn roland_type_to_abi_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, i
          signed: false,
          width: IntWidth::One,
       }) => "ub".into(),
-      ExpressionType::Unit => "".into(), // TODO
+      ExpressionType::Unit | ExpressionType::Never => "".into(), // TODO
       ExpressionType::Struct(sid) => {
          format!(":{}", interner.lookup(udt.struct_info.get(*sid).unwrap().name))
+      }
+      ExpressionType::Union(uid) => {
+         format!(":{}", interner.lookup(udt.union_info.get(*uid).unwrap().name))
       }
       x => todo!("{:?}", x),
    }
@@ -135,7 +142,105 @@ fn roland_type_to_sub_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, i
       ExpressionType::Struct(sid) => {
          format!(":{}", interner.lookup(udt.struct_info.get(*sid).unwrap().name))
       }
-      _ => todo!(),
+      ExpressionType::Union(uid) => {
+         format!(":{}", interner.lookup(udt.union_info.get(*uid).unwrap().name))
+      }
+      x => todo!("{:?}", x),
+   }
+}
+
+fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_context: &GenerationContext) {
+   let expr_node = &generation_context.ast.expressions[expr_index];
+   match &expr_node.expression {
+      Expression::BoundFcnLiteral(proc_id, _) => todo!(),
+      Expression::UnitLiteral => (),
+      Expression::BoolLiteral(x) => {
+         buf.extend(u8::from(*x).to_le_bytes());
+      }
+      Expression::EnumLiteral(_, _) => unreachable!(),
+      Expression::IntLiteral { val: x, .. } => {
+         let width = match expr_node.exp_type.as_ref().unwrap() {
+            ExpressionType::Int(x) => x.width,
+            _ => unreachable!(),
+         };
+         match width {
+            IntWidth::Eight => {
+               buf.extend(x.to_le_bytes());
+            }
+            IntWidth::Four => {
+               buf.extend((*x as u32).to_le_bytes());
+            }
+            IntWidth::Two => {
+               buf.extend((*x as u16).to_le_bytes());
+            }
+            IntWidth::One => {
+               buf.extend((*x as u8).to_le_bytes());
+            }
+            IntWidth::Pointer => unreachable!(),
+         };
+      }
+      Expression::FloatLiteral(x) => {
+         let width = match expr_node.exp_type.as_ref().unwrap() {
+            ExpressionType::Float(x) => x.width,
+            _ => unreachable!(),
+         };
+         match width {
+            FloatWidth::Eight => {
+               buf.extend(x.to_bits().to_le_bytes());
+            }
+            FloatWidth::Four => {
+               buf.extend((*x as f32).to_bits().to_le_bytes());
+            }
+         }
+      }
+      Expression::StringLiteral(str) => todo!(),
+      Expression::StructLiteral(s_id, fields) => {
+         let si = generation_context.udt.struct_info.get(*s_id).unwrap();
+         let ssi = generation_context
+            .udt
+            .struct_info
+            .get(*s_id)
+            .unwrap()
+            .size
+            .as_ref()
+            .unwrap();
+         for (field, next_field) in si.field_types.iter().zip(si.field_types.keys().skip(1)) {
+            let value_of_field = fields.get(field.0).copied().unwrap();
+            if let Some(val) = value_of_field {
+               literal_as_bytes(buf, val, generation_context);
+            } else {
+               type_as_zero_bytes(buf, &field.1.e_type, generation_context.udt, Target::Qbe);
+            }
+            let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
+            let next_offset = ssi.field_offsets_mem.get(next_field).unwrap();
+            let padding_bytes =
+               next_offset - this_offset - sizeof_type_mem(&field.1.e_type, generation_context.udt, Target::Qbe);
+            for _ in 0..padding_bytes {
+               buf.push(0);
+            }
+         }
+         if let Some(last_field) = si.field_types.iter().last() {
+            let value_of_field = fields.get(last_field.0).copied().unwrap();
+            if let Some(val) = value_of_field {
+               literal_as_bytes(buf, val, generation_context);
+            } else {
+               type_as_zero_bytes(buf, &last_field.1.e_type, generation_context.udt, Target::Qbe);
+            }
+            let this_offset = ssi.field_offsets_mem.get(last_field.0).unwrap();
+            let next_offset = ssi.mem_size;
+            let padding_bytes =
+               next_offset - this_offset - sizeof_type_mem(&last_field.1.e_type, generation_context.udt, Target::Qbe);
+            for _ in 0..padding_bytes {
+               buf.push(0);
+            }
+         }
+      }
+      Expression::ArrayLiteral(exprs) => {
+         for expr in exprs.iter() {
+            literal_as_bytes(buf, *expr, generation_context);
+         }
+      }
+      _ => unreachable!(),
    }
 }
 
@@ -152,6 +257,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       udt: &program.user_defined_types,
       string_literals: &program.literals,
       address_temp: 0,
+      global_info: &program.global_info,
    };
 
    for (i, string_literal) in ctx.string_literals.iter().enumerate() {
@@ -163,26 +269,122 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       writeln!(ctx.buf, "}}").unwrap();
    }
 
-   for a_struct in program.user_defined_types.struct_info.iter() {
-      write!(ctx.buf, "type :{} = {{ ", ctx.interner.lookup(a_struct.1.name)).unwrap();
-      for (i, field_type) in a_struct.1.field_types.values().map(|x| &x.e_type).enumerate() {
-         if i == a_struct.1.field_types.len() - 1 {
+   let mut global_bytes = vec![];
+   for a_global in program.global_info.iter() {
+      // TODO: skip zero size globals? ... add a test?
+      write!(ctx.buf, "data $v{} = {{ ", a_global.0 .0).unwrap();
+      match a_global.1.initializer {
+         Some(e) => {
+            literal_as_bytes(&mut global_bytes, e, &ctx);
+            write!(ctx.buf, "b ").unwrap();
+            for by in global_bytes.drain(..) {
+               write!(ctx.buf, "{} ", by).unwrap();
+            }
+         }
+         None => {
+            // Just zero init
             write!(
                ctx.buf,
-               "{}",
-               roland_type_to_sub_type(field_type, ctx.udt, ctx.interner)
-            )
-            .unwrap();
-         } else {
-            write!(
-               ctx.buf,
-               "{}, ",
-               roland_type_to_sub_type(field_type, ctx.udt, ctx.interner)
+               "z {} ",
+               sizeof_type_mem(&a_global.1.expr_type.e_type, ctx.udt, Target::Qbe)
             )
             .unwrap();
          }
       }
-      writeln!(ctx.buf, " }}").unwrap();
+      writeln!(ctx.buf, "}}").unwrap();
+   }
+
+   fn emit_aggregate(buf: &mut Vec<u8>, emitted: &mut HashSet<UserDefinedTypeId>, udt: &UserDefinedTypeInfo, interner: &Interner, id: UserDefinedTypeId) {
+      // All this complication is because we must emit the definition of an aggregate before it is used
+      if !emitted.insert(id) {
+         return;
+      }
+
+      match id {
+         UserDefinedTypeId::Struct(sid) => {
+            let si = udt.struct_info.get(sid).unwrap();
+            for field_t in si
+               .field_types
+               .iter()
+               .map(|x| &x.1.e_type)
+            {
+               match field_t {
+                  ExpressionType::Struct(f_sid) => {
+                     emit_aggregate(buf, emitted, udt, interner, UserDefinedTypeId::Struct(*f_sid));
+                  }
+                  ExpressionType::Union(f_uid) => {
+                     emit_aggregate(buf, emitted, udt, interner, UserDefinedTypeId::Union(*f_uid));
+                  }
+                  _ => (),
+               }
+            }
+
+            write!(buf, "type :{} = {{ ", interner.lookup(si.name)).unwrap();
+            for (i, field_type) in si.field_types.values().map(|x| &x.e_type).enumerate() {
+               if i == si.field_types.len() - 1 {
+                  write!(
+                     buf,
+                     "{}",
+                     roland_type_to_sub_type(field_type, udt, interner)
+                  )
+                  .unwrap();
+               } else {
+                  write!(
+                     buf,
+                     "{}, ",
+                     roland_type_to_sub_type(field_type, udt, interner)
+                  )
+                  .unwrap();
+               }
+            }
+         }
+         UserDefinedTypeId::Union(uid) => {
+            let ui = udt.union_info.get(uid).unwrap();
+            for field_t in ui.field_types.iter().map(|x| &x.1.e_type) {
+               match field_t {
+                  ExpressionType::Struct(f_sid) => {
+                     emit_aggregate(buf, emitted, udt, interner, UserDefinedTypeId::Struct(*f_sid));
+                  }
+                  ExpressionType::Union(f_uid) => {
+                     emit_aggregate(buf, emitted, udt, interner, UserDefinedTypeId::Union(*f_uid));
+                  }
+                  _ => (),
+               }
+            }
+
+            write!(buf, "type :{} = {{ ", interner.lookup(ui.name)).unwrap();
+            for (i, field_type) in ui.field_types.values().map(|x| &x.e_type).enumerate() {
+               if i == ui.field_types.len() - 1 {
+                  write!(
+                     buf,
+                     "{{ {} }}",
+                     roland_type_to_sub_type(field_type, udt, interner)
+                  )
+                  .unwrap();
+               } else {
+                  write!(
+                     buf,
+                     "{{ {} }} ",
+                     roland_type_to_sub_type(field_type, udt, interner)
+                  )
+                  .unwrap();
+               }
+            }
+         }
+         UserDefinedTypeId::Enum(_) => unreachable!(),
+      }
+      writeln!(buf, " }}").unwrap();
+
+   }
+
+   let mut emitted_aggregates = HashSet::new();
+
+   for a_struct in program.user_defined_types.struct_info.keys() {
+      emit_aggregate(&mut ctx.buf, &mut emitted_aggregates, ctx.udt, ctx.interner, UserDefinedTypeId::Struct(a_struct));
+   }
+
+   for a_union in program.user_defined_types.union_info.keys() {
+      emit_aggregate(&mut ctx.buf, &mut emitted_aggregates, ctx.udt, ctx.interner, UserDefinedTypeId::Union(a_union));
    }
 
    for (proc_id, procedure) in program.procedures.iter() {
@@ -278,6 +480,41 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       writeln!(ctx.buf, "}}").unwrap();
    }
 
+   for (_, procedure) in program
+      .procedures
+      .iter()
+      .filter(|x| matches!(x.1.proc_impl, ProcImplSource::Builtin))
+   {
+      write!(
+         ctx.buf,
+         "function {} ${}(",
+         roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, ctx.interner),
+         interner.lookup(procedure.definition.name.str)
+      )
+      .unwrap();
+      for (i, param) in procedure.definition.parameters.iter().enumerate() {
+         write!(
+            ctx.buf,
+            "{} %p{}",
+            roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, ctx.interner),
+            param.var_id.0,
+         )
+         .unwrap();
+
+         if i != procedure.definition.parameters.len() - 1 {
+            write!(ctx.buf, ", ").unwrap();
+         }
+      }
+      writeln!(ctx.buf, ") {{").unwrap();
+      writeln!(ctx.buf, "@entry").unwrap();
+      match interner.lookup(procedure.definition.name.str) {
+         "unreachable" | _ => {
+            writeln!(ctx.buf, "   hlt").unwrap();
+         }
+      }
+      writeln!(ctx.buf, "}}").unwrap();
+   }
+
    ctx.buf
 }
 
@@ -328,13 +565,14 @@ fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<Str
       Expression::Variable(v) => {
          if ctx.var_to_reg.contains_key(&v) {
             None
+         } else if ctx.global_info.contains_key(&v) {
+            Some(format!("$v{}", v.0))
          } else {
             Some(format!("%v{}", v.0))
          }
       }
-      Expression::UnaryOperator(UnOp::Dereference, e) => {
-         Some(expr_to_val(e, ctx))
-      }
+      Expression::UnaryOperator(UnOp::Dereference, e) => Some(expr_to_val(e, ctx)),
+      Expression::UnaryOperator(UnOp::AddressOf, e) => compute_offset(e, ctx),
       _ => None,
    }
 }
@@ -467,6 +705,8 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> String 
       Expression::Variable(v) => {
          if let Some(reg) = ctx.var_to_reg.get(v) {
             format!("%r{}", reg)
+         } else if ctx.global_info.contains_key(v) {
+            format!("$v{}", v.0)
          } else {
             format!("%v{}", v.0)
          }
@@ -510,33 +750,34 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          if let Some(reg) = ctx.var_to_reg.get(v) {
             writeln!(ctx.buf, "copy %r{}", reg).unwrap();
          } else {
+            let lt = rhs_mem.unwrap();
             match ren.exp_type.as_ref().unwrap() {
                ExpressionType::Bool | &U8_TYPE => {
-                  writeln!(ctx.buf, "loadub %v{}", v.0).unwrap();
+                  writeln!(ctx.buf, "loadub {}", lt).unwrap();
                }
                &I8_TYPE => {
-                  writeln!(ctx.buf, "loadsb %v{}", v.0).unwrap();
+                  writeln!(ctx.buf, "loadsb {}", lt).unwrap();
                }
                &U16_TYPE => {
-                  writeln!(ctx.buf, "loaduh %v{}", v.0).unwrap();
+                  writeln!(ctx.buf, "loaduh {}", lt).unwrap();
                }
                &I16_TYPE => {
-                  writeln!(ctx.buf, "loadsh %v{}", v.0).unwrap();
+                  writeln!(ctx.buf, "loadsh {}", lt).unwrap();
                }
                &U32_TYPE => {
-                  writeln!(ctx.buf, "loaduw %v{}", v.0).unwrap();
+                  writeln!(ctx.buf, "loaduw {}", lt).unwrap();
                }
                &I32_TYPE => {
-                  writeln!(ctx.buf, "loadsw %v{}", v.0).unwrap();
+                  writeln!(ctx.buf, "loadsw {}", lt).unwrap();
                }
                &U64_TYPE | &I64_TYPE => {
-                  writeln!(ctx.buf, "loadl %v{}", v.0).unwrap();
+                  writeln!(ctx.buf, "loadl {}", lt).unwrap();
                }
                &F32_TYPE => {
-                  writeln!(ctx.buf, "loads %v{}", v.0).unwrap();
+                  writeln!(ctx.buf, "loads {}", lt).unwrap();
                }
                &F64_TYPE => {
-                  writeln!(ctx.buf, "loads %v{}", v.0).unwrap();
+                  writeln!(ctx.buf, "loads {}", lt).unwrap();
                }
                _ => unreachable!(),
             }
@@ -554,10 +795,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                   signed: false,
                   width: _,
                }) => "udiv",
-               ExpressionType::Int(IntType {
-                  signed: true,
-                  width: _,
-               }) => "div",
+               ExpressionType::Int(IntType { signed: true, width: _ }) => "div",
                _ => unreachable!(),
             },
             crate::parse::BinOp::Remainder => match typ {
@@ -565,10 +803,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                   signed: false,
                   width: _,
                }) => "urem",
-               ExpressionType::Int(IntType {
-                  signed: true,
-                  width: _,
-               }) => "rem",
+               ExpressionType::Int(IntType { signed: true, width: _ }) => "rem",
                _ => unreachable!(),
             },
             crate::parse::BinOp::Equality => match typ {
@@ -691,7 +926,14 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
             crate::parse::BinOp::BitwiseOr => "or",
             crate::parse::BinOp::BitwiseXor => "xor",
             crate::parse::BinOp::BitwiseLeftShift => "shl",
-            crate::parse::BinOp::BitwiseRightShift => todo!(),
+            crate::parse::BinOp::BitwiseRightShift => match typ {
+               ExpressionType::Int(IntType { signed: true, width: _ }) => "sar",
+               ExpressionType::Int(IntType {
+                  signed: false,
+                  width: _,
+               }) => "shr",
+               _ => unreachable!(),
+            },
             crate::parse::BinOp::LogicalAnd => unreachable!(),
             crate::parse::BinOp::LogicalOr => unreachable!(),
          };
@@ -699,13 +941,14 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          let rhs_val = expr_to_val(*rhs, ctx);
          writeln!(ctx.buf, "{} {}, {}", opcode, lhs_val, rhs_val).unwrap();
       }
+      Expression::UnaryOperator(UnOp::AddressOf, _) => writeln!(ctx.buf, "copy {}", rhs_mem.unwrap()).unwrap(),
       Expression::UnaryOperator(operator, inner_id) => {
          let inner_val = expr_to_val(*inner_id, ctx);
          match operator {
             crate::parse::UnOp::Negate => writeln!(ctx.buf, "neg {}", inner_val).unwrap(),
             crate::parse::UnOp::Complement => {
                if *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() == ExpressionType::Bool {
-                  writeln!(ctx.buf, "eq {}, 0", inner_val).unwrap()
+                  writeln!(ctx.buf, "ceqw {}, 0", inner_val).unwrap()
                } else {
                   let magic_const: u64 = match *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() {
                      crate::type_data::U8_TYPE => u64::from(std::u8::MAX),
@@ -721,8 +964,37 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                   writeln!(ctx.buf, "xor {}, {}", inner_val, magic_const).unwrap()
                }
             }
-            crate::parse::UnOp::AddressOf => todo!(),
-            crate::parse::UnOp::Dereference => todo!(),
+            crate::parse::UnOp::AddressOf => unreachable!(),
+            crate::parse::UnOp::Dereference => match ren.exp_type.as_ref().unwrap() {
+               ExpressionType::Bool | &U8_TYPE => {
+                  writeln!(ctx.buf, "loadub {}", inner_val).unwrap();
+               }
+               &I8_TYPE => {
+                  writeln!(ctx.buf, "loadsb {}", inner_val).unwrap();
+               }
+               &U16_TYPE => {
+                  writeln!(ctx.buf, "loaduh {}", inner_val).unwrap();
+               }
+               &I16_TYPE => {
+                  writeln!(ctx.buf, "loadsh {}", inner_val).unwrap();
+               }
+               &U32_TYPE => {
+                  writeln!(ctx.buf, "loaduw {}", inner_val).unwrap();
+               }
+               &I32_TYPE => {
+                  writeln!(ctx.buf, "loadsw {}", inner_val).unwrap();
+               }
+               &U64_TYPE | &I64_TYPE => {
+                  writeln!(ctx.buf, "loadl {}", inner_val).unwrap();
+               }
+               &F32_TYPE => {
+                  writeln!(ctx.buf, "loads {}", inner_val).unwrap();
+               }
+               &F64_TYPE => {
+                  writeln!(ctx.buf, "loads {}", inner_val).unwrap();
+               }
+               _ => unreachable!(),
+            },
          }
       }
       Expression::FieldAccess(_, _) | Expression::ArrayIndex { .. } => {
@@ -763,8 +1035,50 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          target_type,
          expr,
       } => {
+         let src_type = ctx.ast.expressions[*expr].exp_type.as_ref().unwrap();
          let val = expr_to_val(*expr, ctx);
-         writeln!(ctx.buf, "copy {}", val).unwrap();
+         match (src_type, target_type) {
+            (ExpressionType::Int(l), ExpressionType::Int(r))
+               if l.width.as_num_bytes(Target::Qbe) >= r.width.as_num_bytes(Target::Qbe) =>
+            {
+               writeln!(ctx.buf, "copy {}", val).unwrap();
+            }
+            (ExpressionType::Int(l), ExpressionType::Int(r))
+               if l.width.as_num_bytes(Target::Qbe) < r.width.as_num_bytes(Target::Qbe) =>
+            {
+               if l.width.as_num_bytes(Target::Qbe) <= 4 && r.width == IntWidth::Eight {
+                  if l.signed {
+                     writeln!(ctx.buf, "extsw {}", val).unwrap();
+                  } else {
+                     writeln!(ctx.buf, "extuw {}", val).unwrap();
+                  }
+               } else if l.width == IntWidth::One && r.width == IntWidth::Two && l.signed && !r.signed {
+                  writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111).unwrap();
+               } else {
+                  writeln!(ctx.buf, "copy {}", val).unwrap();
+               }
+            }
+            (&F64_TYPE, &F32_TYPE) => {
+               writeln!(ctx.buf, "truncd {}", val).unwrap();
+            }
+            (&F32_TYPE, &F64_TYPE) => {
+               writeln!(ctx.buf, "exts {}", val).unwrap();
+            }
+            (ExpressionType::Float(_), ExpressionType::Int(_)) => {
+               todo!()
+            }
+            (ExpressionType::Int(_), ExpressionType::Float(_)) => {
+               todo!()
+            }
+            (ExpressionType::Bool, ExpressionType::Int(i)) => {
+               if i.width == IntWidth::Eight {
+                  writeln!(ctx.buf, "extuw {}", val).unwrap();
+               } else {
+                  writeln!(ctx.buf, "copy {}", val).unwrap();
+               }
+            }
+            _ => writeln!(ctx.buf, "copy {}", val).unwrap(),
+         }
       }
       Expression::Cast {
          cast_type: CastType::Transmute,
