@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::iter;
 
 use indexmap::{IndexMap, IndexSet};
 use wasm_encoder::{
@@ -841,7 +842,12 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
             if let Some(val) = value_of_field {
                literal_as_bytes(buf, val, generation_context);
             } else {
-               type_as_zero_bytes(buf, &field.1.e_type, generation_context);
+               type_as_zero_bytes(
+                  buf,
+                  &field.1.e_type,
+                  generation_context.user_defined_types,
+                  generation_context.target,
+               );
             }
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
             let next_offset = ssi.field_offsets_mem.get(next_field).unwrap();
@@ -861,7 +867,12 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
             if let Some(val) = value_of_field {
                literal_as_bytes(buf, val, generation_context);
             } else {
-               type_as_zero_bytes(buf, &last_field.1.e_type, generation_context);
+               type_as_zero_bytes(
+                  buf,
+                  &last_field.1.e_type,
+                  generation_context.user_defined_types,
+                  generation_context.target,
+               );
             }
             let this_offset = ssi.field_offsets_mem.get(last_field.0).unwrap();
             let next_offset = ssi.mem_size;
@@ -886,81 +897,9 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
    }
 }
 
-fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, generation_context: &GenerationContext) {
-   match expr_type {
-      ExpressionType::Array(et, len) => {
-         for _ in 0..*len {
-            type_as_zero_bytes(buf, et, generation_context);
-         }
-      }
-      ExpressionType::Bool => {
-         buf.extend(0u8.to_le_bytes());
-      }
-      ExpressionType::Float(x) => match x.width {
-         FloatWidth::Eight => {
-            buf.extend(0.0f64.to_bits().to_le_bytes());
-         }
-         FloatWidth::Four => {
-            buf.extend(0.0f32.to_bits().to_le_bytes());
-         }
-      },
-      ExpressionType::Int(x) => {
-         match x.width {
-            IntWidth::Eight => {
-               buf.extend(0u64.to_le_bytes());
-            }
-            IntWidth::Four => {
-               buf.extend(0u32.to_le_bytes());
-            }
-            IntWidth::Two => {
-               buf.extend(0u16.to_le_bytes());
-            }
-            IntWidth::One => {
-               buf.extend(0u8.to_le_bytes());
-            }
-            IntWidth::Pointer => unreachable!(),
-         };
-      }
-      ExpressionType::ProcedurePointer { .. } => {
-         buf.extend(0u32.to_le_bytes());
-      }
-      ExpressionType::Struct(id) => {
-         let si = generation_context.user_defined_types.struct_info.get(*id).unwrap();
-         let ssi = si.size.as_ref().unwrap();
-         for (field, next_field) in si.field_types.iter().zip(si.field_types.keys().skip(1)) {
-            type_as_zero_bytes(buf, &field.1.e_type, generation_context);
-            let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
-            let next_offset = ssi.field_offsets_mem.get(next_field).unwrap();
-            let padding_bytes = next_offset
-               - this_offset
-               - sizeof_type_mem(
-                  &field.1.e_type,
-                  generation_context.user_defined_types,
-                  generation_context.target,
-               );
-            for _ in 0..padding_bytes {
-               buf.push(0);
-            }
-         }
-         if let Some(last_field) = si.field_types.iter().last() {
-            type_as_zero_bytes(buf, &last_field.1.e_type, generation_context);
-            let this_offset = ssi.field_offsets_mem.get(last_field.0).unwrap();
-            let next_offset = ssi.mem_size;
-            let padding_bytes = next_offset
-               - this_offset
-               - sizeof_type_mem(
-                  &last_field.1.e_type,
-                  generation_context.user_defined_types,
-                  generation_context.target,
-               );
-            for _ in 0..padding_bytes {
-               buf.push(0);
-            }
-         }
-      }
-      ExpressionType::Unit => (),
-      _ => unreachable!(),
-   }
+pub fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) {
+   let size = sizeof_type_mem(expr_type, udt, target);
+   buf.extend(iter::repeat(0).take(size as usize));
 }
 
 fn literal_as_wasm_const(expr_index: ExpressionId, generation_context: &mut GenerationContext) -> ConstExpr {
@@ -1338,10 +1277,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             do_emit(*e_id, generation_context);
             load_mem(target_type, generation_context);
          } else {
-            debug_assert!(is_reinterpretable_transmute(
-               e.exp_type.as_ref().unwrap(),
-               target_type
-            ));
+            debug_assert!(is_reinterpretable_transmute(e.exp_type.as_ref().unwrap(), target_type));
             do_emit_and_load_lval(*e_id, generation_context);
 
             if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Float(_))

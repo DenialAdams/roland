@@ -209,7 +209,16 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
 
    logical_op_lowering::lower_logical_ops(&mut ctx.program);
 
-   expression_hoisting::expression_hoisting(&mut ctx.program);
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp_b4.rol").unwrap(),
+      )
+      .unwrap();
+   }
+
+   expression_hoisting::expression_hoisting(&mut ctx.program, false);
 
    if config.dump_debugging_info {
       pp::pp(
@@ -265,20 +274,15 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target);
 
-   // It would be nice to run this before deleting unreachable procedures,
-   // but doing so would currently delete procedures that we take pointers to
-   pre_backend_lowering::kill_zst_assignments(&mut ctx.program, config.target);
-
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp.rol").unwrap(),
-      )
-      .unwrap();
+   if config.target == Target::Qbe {
+      expression_hoisting::expression_hoisting(&mut ctx.program, true);
    }
 
    ctx.program.cfg = backend::linearize::linearize(&mut ctx.program, &ctx.interner, config.dump_debugging_info);
+
+   // It would be nice to run this before deleting unreachable procedures,
+   // but doing so would currently delete procedures that we take pointers to
+   pre_backend_lowering::kill_zst_assignments(&mut ctx.program, config.target);
 
    if config.target == Target::Qbe {
       Ok(backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, config))
