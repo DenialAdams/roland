@@ -4,7 +4,7 @@ use crate::backend::linearize::CfgInstruction;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
 use crate::parse::{
-   ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, ProcImplSource, Program, Statement, UnOp,
+   ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, ProcImplSource, Program, UnOp,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::sizeof_type_mem;

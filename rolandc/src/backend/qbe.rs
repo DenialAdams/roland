@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::io::Write;
 
 use indexmap::{IndexMap, IndexSet};
@@ -10,8 +9,7 @@ use super::wasm::type_as_zero_bytes;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   ArgumentNode, AstPool, CastType, Expression, ExpressionId, ProcImplSource, ProcedureId, UnOp, UserDefinedTypeId,
-   UserDefinedTypeInfo, VariableId,
+   ArgumentNode, AstPool, CastType, Expression, ExpressionId, ProcImplSource, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId
 };
 use crate::semantic_analysis::{GlobalInfo, ProcedureInfo};
 use crate::size_info::{mem_alignment, sizeof_type_mem};
@@ -32,6 +30,7 @@ struct GenerationContext<'a> {
    string_literals: &'a IndexSet<StrId>,
    address_temp: u64,
    global_info: &'a IndexMap<VariableId, GlobalInfo>,
+   aggregate_defs: IndexSet<ExpressionType>,
 }
 
 fn roland_type_to_base_type(r_type: &ExpressionType) -> &'static str {
@@ -67,7 +66,7 @@ fn roland_type_to_extended_type(r_type: &ExpressionType) -> &'static str {
    }
 }
 
-fn roland_type_to_abi_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, interner: &Interner) -> String {
+fn roland_type_to_abi_type(r_type: &ExpressionType, aggregate_defs: &IndexSet<ExpressionType>) -> String {
    match r_type {
       ExpressionType::Int(IntType {
          signed: true,
@@ -86,24 +85,36 @@ fn roland_type_to_abi_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, i
          width: IntWidth::One,
       }) | ExpressionType::Bool => "ub".into(),
       ExpressionType::Unit | ExpressionType::Never => "".into(), // TODO
-      ExpressionType::Struct(sid) => {
-         format!(":{}", interner.lookup(udt.struct_info.get(*sid).unwrap().name))
+      ExpressionType::Struct(_) => {
+         let index = aggregate_defs.get_index_of(r_type).unwrap();
+         format!(":s{}", index)
       }
-      ExpressionType::Union(uid) => {
-         format!(":{}", interner.lookup(udt.union_info.get(*uid).unwrap().name))
+      ExpressionType::Union(_) => {
+         let index = aggregate_defs.get_index_of(r_type).unwrap();
+         format!(":u{}", index)
+      }
+      ExpressionType::Array(_, _) => {
+         let index = aggregate_defs.get_index_of(r_type).unwrap();
+         format!(":a{}", index)
       }
       _ => roland_type_to_base_type(r_type).into()
    }
 }
 
 // TODO: we'll make this not alloc
-fn roland_type_to_sub_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, interner: &Interner) -> String {
+fn roland_type_to_sub_type(r_type: &ExpressionType, aggregate_defs: &IndexSet<ExpressionType>) -> String {
    match r_type {
-      ExpressionType::Struct(sid) => {
-         format!(":{}", interner.lookup(udt.struct_info.get(*sid).unwrap().name))
+      ExpressionType::Struct(_) => {
+         let index = aggregate_defs.get_index_of(r_type).unwrap();
+         format!(":s{}", index)
       }
-      ExpressionType::Union(uid) => {
-         format!(":{}", interner.lookup(udt.union_info.get(*uid).unwrap().name))
+      ExpressionType::Union(_) => {
+         let index = aggregate_defs.get_index_of(r_type).unwrap();
+         format!(":u{}", index)
+      }
+      ExpressionType::Array(_, _) => {
+         let index = aggregate_defs.get_index_of(r_type).unwrap();
+         format!(":a{}", index)
       }
       _ => roland_type_to_extended_type(r_type).into()
    }
@@ -218,6 +229,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       string_literals: &program.literals,
       address_temp: 0,
       global_info: &program.global_info,
+      aggregate_defs: IndexSet::new(),
    };
 
    for (i, string_literal) in ctx.string_literals.iter().enumerate() {
@@ -254,90 +266,68 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       writeln!(ctx.buf, "}}").unwrap();
    }
 
-   fn emit_aggregate(
+   fn emit_aggregate_def(
       buf: &mut Vec<u8>,
-      emitted: &mut HashSet<UserDefinedTypeId>,
+      emitted: &mut IndexSet<ExpressionType>,
       udt: &UserDefinedTypeInfo,
-      interner: &Interner,
-      id: UserDefinedTypeId,
+      et: &ExpressionType,
    ) {
-      // All this complication is because we must emit the definition of an aggregate before it is used
-      if !emitted.insert(id) {
+      if !et.is_aggregate() {
          return;
       }
 
-      match id {
-         UserDefinedTypeId::Struct(sid) => {
-            let si = udt.struct_info.get(sid).unwrap();
+      // TODO this clone sucks!
+      let (index, new) = emitted.insert_full(et.clone());
+      if !new {
+         return;
+      }
+
+      match et {
+         ExpressionType::Struct(sid) => {
+            let si = udt.struct_info.get(*sid).unwrap();
             for field_t in si.field_types.iter().map(|x| &x.1.e_type) {
-               match field_t {
-                  ExpressionType::Struct(f_sid) => {
-                     emit_aggregate(buf, emitted, udt, interner, UserDefinedTypeId::Struct(*f_sid));
-                  }
-                  ExpressionType::Union(f_uid) => {
-                     emit_aggregate(buf, emitted, udt, interner, UserDefinedTypeId::Union(*f_uid));
-                  }
-                  _ => (),
-               }
+               emit_aggregate_def(buf, emitted, udt, field_t);
             }
 
-            write!(buf, "type :{} = {{ ", interner.lookup(si.name)).unwrap();
+            write!(buf, "type :s{} = {{ ", index).unwrap();
             for (i, field_type) in si.field_types.values().map(|x| &x.e_type).enumerate() {
                if i == si.field_types.len() - 1 {
-                  write!(buf, "{}", roland_type_to_sub_type(field_type, udt, interner)).unwrap();
+                  write!(buf, "{}", roland_type_to_sub_type(field_type, emitted)).unwrap();
                } else {
-                  write!(buf, "{}, ", roland_type_to_sub_type(field_type, udt, interner)).unwrap();
+                  write!(buf, "{}, ", roland_type_to_sub_type(field_type, emitted)).unwrap();
                }
             }
+            writeln!(buf, " }}").unwrap();
          }
-         UserDefinedTypeId::Union(uid) => {
-            let ui = udt.union_info.get(uid).unwrap();
+         ExpressionType::Union(uid) => {
+            let ui = udt.union_info.get(*uid).unwrap();
             for field_t in ui.field_types.iter().map(|x| &x.1.e_type) {
-               match field_t {
-                  ExpressionType::Struct(f_sid) => {
-                     emit_aggregate(buf, emitted, udt, interner, UserDefinedTypeId::Struct(*f_sid));
-                  }
-                  ExpressionType::Union(f_uid) => {
-                     emit_aggregate(buf, emitted, udt, interner, UserDefinedTypeId::Union(*f_uid));
-                  }
-                  _ => (),
-               }
+               emit_aggregate_def(buf, emitted, udt, field_t);
             }
-
-            write!(buf, "type :{} = {{ ", interner.lookup(ui.name)).unwrap();
+            write!(buf, "type :u{} = {{ ", index).unwrap();
             for (i, field_type) in ui.field_types.values().map(|x| &x.e_type).enumerate() {
                if i == ui.field_types.len() - 1 {
-                  write!(buf, "{{ {} }}", roland_type_to_sub_type(field_type, udt, interner)).unwrap();
+                  write!(buf, "{{ {} }}", roland_type_to_sub_type(field_type, emitted)).unwrap();
                } else {
-                  write!(buf, "{{ {} }} ", roland_type_to_sub_type(field_type, udt, interner)).unwrap();
+                  write!(buf, "{{ {} }} ", roland_type_to_sub_type(field_type, emitted)).unwrap();
                }
             }
+            writeln!(buf, " }}").unwrap();
          }
-         UserDefinedTypeId::Enum(_) => unreachable!(),
+         ExpressionType::Array(base_ty, len) => {
+            emit_aggregate_def(buf, emitted, udt, base_ty);
+            let basety_as_qbe = roland_type_to_sub_type(base_ty, emitted);
+            writeln!(buf, "type :a{} = {{ {} {} }}", index, basety_as_qbe, len).unwrap();
+         }
+         _ => unreachable!(),
       }
-      writeln!(buf, " }}").unwrap();
    }
 
-   let mut emitted_aggregates = HashSet::new();
-
-   for a_struct in program.user_defined_types.struct_info.keys() {
-      emit_aggregate(
-         &mut ctx.buf,
-         &mut emitted_aggregates,
-         ctx.udt,
-         ctx.interner,
-         UserDefinedTypeId::Struct(a_struct),
-      );
-   }
-
-   for a_union in program.user_defined_types.union_info.keys() {
-      emit_aggregate(
-         &mut ctx.buf,
-         &mut emitted_aggregates,
-         ctx.udt,
-         ctx.interner,
-         UserDefinedTypeId::Union(a_union),
-      );
+   for procedure in program.procedures.values() {
+      for param_type in procedure.definition.parameters.iter().map(|x| &x.p_type.e_type) {
+         emit_aggregate_def(&mut ctx.buf, &mut ctx.aggregate_defs, &ctx.udt, param_type);
+      }
+      emit_aggregate_def(&mut ctx.buf, &mut ctx.aggregate_defs, &ctx.udt, &procedure.definition.ret_type.e_type);
    }
 
    for (proc_id, procedure) in program.procedures.iter() {
@@ -355,7 +345,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       let abi_ret_type = if ctx.is_main {
          "w".into()
       } else {
-         roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, ctx.interner)
+         roland_type_to_abi_type(&procedure.definition.ret_type.e_type, &ctx.aggregate_defs)
       };
       write!(
          ctx.buf,
@@ -370,7 +360,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
             write!(
                ctx.buf,
                "{} %r{}",
-               roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, ctx.interner),
+               roland_type_to_abi_type(&param.p_type.e_type, &ctx.aggregate_defs),
                param_reg
             )
             .unwrap();
@@ -378,7 +368,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
             write!(
                ctx.buf,
                "{} %p{}",
-               roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, ctx.interner),
+               roland_type_to_abi_type(&param.p_type.e_type, &ctx.aggregate_defs),
                param.var_id.0,
             )
             .unwrap();
@@ -438,7 +428,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       write!(
          ctx.buf,
          "function {} ${}(",
-         roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, ctx.interner),
+         roland_type_to_abi_type(&procedure.definition.ret_type.e_type, &ctx.aggregate_defs),
          interner.lookup(procedure.definition.name.str)
       )
       .unwrap();
@@ -446,7 +436,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          write!(
             ctx.buf,
             "{} %p{}",
-            roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, ctx.interner),
+            roland_type_to_abi_type(&param.p_type.e_type, &ctx.aggregate_defs),
             param.var_id.0,
          )
          .unwrap();
@@ -555,8 +545,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                         "   %t ={} ",
                         roland_type_to_abi_type(
                            ctx.ast.expressions[*lid].exp_type.as_ref().unwrap(),
-                           ctx.udt,
-                           ctx.interner
+                           &ctx.aggregate_defs
                         )
                      )
                      .unwrap();
@@ -1086,8 +1075,7 @@ fn write_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &mut Gen
             "{} {}",
             roland_type_to_abi_type(
                ctx.ast.expressions[arg.expr].exp_type.as_ref().unwrap(),
-               ctx.udt,
-               ctx.interner
+               &ctx.aggregate_defs,
             ),
             val
          )
@@ -1098,8 +1086,7 @@ fn write_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &mut Gen
             "{} {}, ",
             roland_type_to_abi_type(
                ctx.ast.expressions[arg.expr].exp_type.as_ref().unwrap(),
-               ctx.udt,
-               ctx.interner
+               &ctx.aggregate_defs,
             ),
             val
          )
