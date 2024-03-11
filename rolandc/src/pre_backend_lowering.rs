@@ -250,6 +250,7 @@ pub fn kill_zst_assignments(program: &mut Program, target: Target) {
       for bb in cfg.bbs.iter_mut() {
          // This feels pretty inefficient :(
          // do this at cfg construction time?
+         // at the very least, most basic blocks have no such assignments
          bb.instructions = bb.instructions.drain(..).flat_map(|x|
             match x {
                CfgInstruction::Assignment(lhs, rhs) => {

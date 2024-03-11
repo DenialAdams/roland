@@ -1,0 +1,18 @@
+proc side() -> usize {
+   println("did something");
+   return 1;
+}
+
+proc other_side() -> unit {
+   println("did something else");
+   return unit();
+}
+
+proc main() {
+   let x = [unit(), unit()];
+   x[side()] = other_side();
+}
+__END__
+run:
+did something
+did something else
