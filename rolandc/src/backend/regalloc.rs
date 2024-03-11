@@ -6,11 +6,11 @@ use wasm_encoder::ValType;
 
 use super::linearize::{post_order, Cfg, CfgInstruction};
 use super::liveness::{liveness, ProgramIndex};
-use crate::backend::wasm::type_to_wasm_type_basic;
 use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::parse::{
    AstPool, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, UnOp, VariableId,
 };
+use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
 use crate::{CompilationConfig, Program, Target};
 
 pub struct RegallocResult {
@@ -101,19 +101,19 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
          }
 
          for expired_var in active.extract_if(|v| live_intervals.get(v).unwrap().end < range.begin) {
-            let wt = type_to_wasm_type_basic(procedure.locals.get(&expired_var).unwrap());
+            let wt = type_to_register_type(procedure.locals.get(&expired_var).unwrap(), config.target);
             free_registers
                .entry(wt)
                .or_default()
                .push(result.var_to_reg.get(&expired_var).copied().unwrap());
          }
 
-         let wt = type_to_wasm_type_basic(local_type);
+         let rt = type_to_register_type(local_type, config.target);
 
-         let reg = if let Some(reg) = free_registers.entry(wt).or_default().pop() {
+         let reg = if let Some(reg) = free_registers.entry(rt).or_default().pop() {
             reg
          } else {
-            all_registers.push(wt);
+            all_registers.push(rt);
             let reg = total_registers;
             total_registers += 1;
             reg
@@ -267,4 +267,28 @@ fn get_var_from_use(expr: ExpressionId, expressions: &ExpressionPool) -> Option<
 pub struct LiveInterval {
    pub begin: ProgramIndex,
    pub end: ProgramIndex,
+}
+
+// TODO: merge with type_to_wasm_type? also, create an abstraction instead of using ValType
+fn type_to_register_type(et: &ExpressionType, target: Target) -> ValType {
+   match et {
+      ExpressionType::Int(x) => match x.width {
+         IntWidth::Eight => ValType::I64,
+         _ => ValType::I32,
+      },
+      ExpressionType::Float(x) => match x.width {
+         FloatWidth::Eight => ValType::F64,
+         FloatWidth::Four => ValType::F32,
+      },
+      ExpressionType::Bool => ValType::I32,
+      ExpressionType::ProcedurePointer { .. } => if target.pointer_width() == 8 {
+         ValType::I64
+      } else {
+         ValType::I32
+      },
+      ExpressionType::Union(_) | ExpressionType::Struct(_) | ExpressionType::Array(_, _) => ValType::I32,
+      x => {
+         unreachable!("{:?}", x);
+      }
+   }
 }
