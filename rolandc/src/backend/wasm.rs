@@ -1211,14 +1211,13 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       Expression::UnaryOperator(un_op, e_index) => {
          let e = &generation_context.ast.expressions[*e_index];
 
-         // todo: why not put this in the addressof branch?
-         if let ExpressionType::ProcedureItem(proc_id, _bound_type_params) = e.exp_type.as_ref().unwrap() {
-            emit_procedure_pointer_index(*proc_id, generation_context);
-            return;
-         }
-
          match un_op {
             UnOp::AddressOf => {
+               if let ExpressionType::ProcedureItem(proc_id, _bound_type_params) = e.exp_type.as_ref().unwrap() {
+                  emit_procedure_pointer_index(*proc_id, generation_context);
+                  return;
+               }
+
                do_emit(*e_index, generation_context);
 
                // This operator coaxes the lvalue to an rvalue without a load

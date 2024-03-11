@@ -47,7 +47,7 @@ fn roland_type_to_base_type(r_type: &ExpressionType) -> &'static str {
          signed: _,
          width: IntWidth::Four | IntWidth::Two | IntWidth::One,
       }) => "w",
-      _ => todo!(),
+      _ => unreachable!(),
    }
 }
 
@@ -513,6 +513,9 @@ fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<Str
       }
       Expression::UnaryOperator(UnOp::Dereference, e) => Some(expr_to_val(e, ctx)),
       Expression::UnaryOperator(UnOp::AddressOf, e) => compute_offset(e, ctx),
+      Expression::Cast { cast_type: CastType::Transmute, expr, .. } => {
+         compute_offset(expr, ctx)
+      }
       _ => None,
    }
 }
@@ -1033,7 +1036,6 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          target_type,
          expr,
       } => {
-         // hmm todo the variable could be a memory variable?
          let val = expr_to_val(*expr, ctx);
          let source_type = ctx.ast.expressions[*expr].exp_type.as_ref().unwrap();
          if (matches!(source_type, ExpressionType::Float(_)) && matches!(target_type, ExpressionType::Int(_)))
