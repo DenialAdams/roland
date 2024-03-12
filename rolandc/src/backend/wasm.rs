@@ -829,7 +829,13 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
             .size
             .as_ref()
             .unwrap();
-         for (field, next_offset) in si.field_types.iter().zip(si.field_types.keys().skip(1).map(|x| ssi.field_offsets_mem[x]).chain(std::iter::once(ssi.mem_size))) {
+         for (field, next_offset) in si.field_types.iter().zip(
+            si.field_types
+               .keys()
+               .skip(1)
+               .map(|x| ssi.field_offsets_mem[x])
+               .chain(std::iter::once(ssi.mem_size)),
+         ) {
             let value_of_field = fields.get(field.0).copied().unwrap();
             if let Some(val) = value_of_field {
                literal_as_bytes(buf, val, generation_context);
@@ -970,7 +976,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             ExpressionType::Int(x) => match x.width {
                IntWidth::Eight => (ValType::I64, x.signed),
                _ => (ValType::I32, x.signed),
-            }
+            },
             ExpressionType::Enum(_) => unreachable!(),
             ExpressionType::Float(x) => match x.width {
                FloatWidth::Eight => (ValType::F64, false),
