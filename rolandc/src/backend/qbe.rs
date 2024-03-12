@@ -928,70 +928,11 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                }
             }
             crate::parse::UnOp::AddressOf => unreachable!(),
-            crate::parse::UnOp::Dereference => match ren.exp_type.as_ref().unwrap() {
-               ExpressionType::Bool | &U8_TYPE => {
-                  writeln!(ctx.buf, "loadub {}", inner_val).unwrap();
-               }
-               &I8_TYPE => {
-                  writeln!(ctx.buf, "loadsb {}", inner_val).unwrap();
-               }
-               &U16_TYPE => {
-                  writeln!(ctx.buf, "loaduh {}", inner_val).unwrap();
-               }
-               &I16_TYPE => {
-                  writeln!(ctx.buf, "loadsh {}", inner_val).unwrap();
-               }
-               &U32_TYPE => {
-                  writeln!(ctx.buf, "loaduw {}", inner_val).unwrap();
-               }
-               &I32_TYPE => {
-                  writeln!(ctx.buf, "loadsw {}", inner_val).unwrap();
-               }
-               &U64_TYPE | &I64_TYPE => {
-                  writeln!(ctx.buf, "loadl {}", inner_val).unwrap();
-               }
-               &F32_TYPE => {
-                  writeln!(ctx.buf, "loads {}", inner_val).unwrap();
-               }
-               &F64_TYPE => {
-                  writeln!(ctx.buf, "loads {}", inner_val).unwrap();
-               }
-               _ => unreachable!(),
-            },
+            crate::parse::UnOp::Dereference => emit_load(&mut ctx.buf, inner_val, ren.exp_type.as_ref().unwrap()),
          }
       }
       Expression::FieldAccess(_, _) | Expression::ArrayIndex { .. } => {
-         let load_target = rhs_mem.unwrap();
-         match ren.exp_type.as_ref().unwrap() {
-            ExpressionType::Bool | &U8_TYPE => {
-               writeln!(ctx.buf, "loadub {}", load_target).unwrap();
-            }
-            &I8_TYPE => {
-               writeln!(ctx.buf, "loadsb {}", load_target).unwrap();
-            }
-            &U16_TYPE => {
-               writeln!(ctx.buf, "loaduh {}", load_target).unwrap();
-            }
-            &I16_TYPE => {
-               writeln!(ctx.buf, "loadsh {}", load_target).unwrap();
-            }
-            &U32_TYPE => {
-               writeln!(ctx.buf, "loaduw {}", load_target).unwrap();
-            }
-            &I32_TYPE => {
-               writeln!(ctx.buf, "loadsw {}", load_target).unwrap();
-            }
-            &U64_TYPE | &I64_TYPE => {
-               writeln!(ctx.buf, "loadl {}", load_target).unwrap();
-            }
-            &F32_TYPE => {
-               writeln!(ctx.buf, "loads {}", load_target).unwrap();
-            }
-            &F64_TYPE => {
-               writeln!(ctx.buf, "loads {}", load_target).unwrap();
-            }
-            _ => unreachable!(),
-         }
+         emit_load(&mut ctx.buf, rhs_mem.unwrap(), ren.exp_type.as_ref().unwrap());
       }
       Expression::Cast {
          cast_type: CastType::As,
@@ -1072,14 +1013,18 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          target_type,
          expr,
       } => {
-         let val = expr_to_val(*expr, ctx);
-         let source_type = ctx.ast.expressions[*expr].exp_type.as_ref().unwrap();
-         if (matches!(source_type, ExpressionType::Float(_)) && matches!(target_type, ExpressionType::Int(_)))
-            || (matches!(source_type, ExpressionType::Int(_)) && matches!(target_type, ExpressionType::Float(_)))
-         {
-            writeln!(ctx.buf, "cast {}", val).unwrap();
+         if let Some(load_target) = rhs_mem {
+            emit_load(&mut ctx.buf, load_target, ren.exp_type.as_ref().unwrap());
          } else {
-            writeln!(ctx.buf, "copy {}", val).unwrap();
+            let val = expr_to_val(*expr, ctx);
+            let source_type = ctx.ast.expressions[*expr].exp_type.as_ref().unwrap();
+            if (matches!(source_type, ExpressionType::Float(_)) && matches!(target_type, ExpressionType::Int(_)))
+               || (matches!(source_type, ExpressionType::Int(_)) && matches!(target_type, ExpressionType::Float(_)))
+            {
+               writeln!(ctx.buf, "cast {}", val).unwrap();
+            } else {
+               writeln!(ctx.buf, "copy {}", val).unwrap();
+            }
          }
       }
       Expression::BoundFcnLiteral(_, _) => todo!(),
@@ -1090,6 +1035,39 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
       Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::ArrayLiteral(_) => unreachable!(),
       Expression::IfX(_, _, _) => unreachable!(),
+   }
+}
+
+fn emit_load(buf: &mut Vec<u8>, load_target: String, a_type: &ExpressionType) {
+   match a_type {
+      ExpressionType::Bool | &U8_TYPE => {
+         writeln!(buf, "loadub {}", load_target).unwrap();
+      }
+      &I8_TYPE => {
+         writeln!(buf, "loadsb {}", load_target).unwrap();
+      }
+      &U16_TYPE => {
+         writeln!(buf, "loaduh {}", load_target).unwrap();
+      }
+      &I16_TYPE => {
+         writeln!(buf, "loadsh {}", load_target).unwrap();
+      }
+      &U32_TYPE => {
+         writeln!(buf, "loaduw {}", load_target).unwrap();
+      }
+      &I32_TYPE => {
+         writeln!(buf, "loadsw {}", load_target).unwrap();
+      }
+      &U64_TYPE | &I64_TYPE => {
+         writeln!(buf, "loadl {}", load_target).unwrap();
+      }
+      &F32_TYPE => {
+         writeln!(buf, "loads {}", load_target).unwrap();
+      }
+      &F64_TYPE => {
+         writeln!(buf, "loads {}", load_target).unwrap();
+      }
+      _ => unreachable!(),
    }
 }
 

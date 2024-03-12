@@ -201,7 +201,11 @@ fn compile_qbe(mut ssa_path: PathBuf, final_path: Option<PathBuf>) -> std::resul
       ssa_path.set_extension("");
       ssa_path
    };
-   let cc_stat = Command::new("cc").arg("-o").arg(the_final_path).arg(&asm_path).status()?;
+   let cc_stat = Command::new("cc")
+      .arg("-o")
+      .arg(the_final_path)
+      .arg(&asm_path)
+      .status()?;
    if !cc_stat.success() {
       return Err(format!("cc failed to execute with code {}", qbe_stat).into());
    }
