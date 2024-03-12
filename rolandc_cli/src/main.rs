@@ -161,8 +161,12 @@ fn main() {
       std::process::exit(1);
    };
 
-   let output_path = if let Some(v) = opts.output {
-      v
+   let output_path = if let Some(v) = &opts.output {
+      let mut cloned = v.clone();
+      if config.target == Target::Qbe {
+         cloned.set_extension("ssa");
+      }
+      cloned
    } else {
       let mut output_path = opts.source_file.clone();
       if config.target == Target::Qbe {
@@ -176,7 +180,7 @@ fn main() {
    std::fs::write(&output_path, out_bytes).unwrap();
 
    if config.target == Target::Qbe {
-      if let Err(e) = compile_qbe(output_path) {
+      if let Err(e) = compile_qbe(output_path, opts.output) {
          use std::io::Write;
          writeln!(err_stream_l, "Failed to compile produced IR to binary: {}", e).unwrap();
          std::process::exit(1);
@@ -184,15 +188,20 @@ fn main() {
    }
 }
 
-fn compile_qbe(mut ssa_path: PathBuf) -> std::result::Result<(), Box<dyn Error>> {
+fn compile_qbe(mut ssa_path: PathBuf, final_path: Option<PathBuf>) -> std::result::Result<(), Box<dyn Error>> {
    let mut asm_path = ssa_path.clone();
    asm_path.set_extension("s");
    let qbe_stat = Command::new("qbe").arg("-o").arg(&asm_path).arg(&ssa_path).status()?;
    if !qbe_stat.success() {
       return Err(format!("QBE failed to execute with code {}", qbe_stat).into());
    }
-   ssa_path.set_extension("");
-   let cc_stat = Command::new("cc").arg("-o").arg(ssa_path).arg(&asm_path).status()?;
+   let the_final_path = if let Some(final_path) = final_path {
+      final_path
+   } else {
+      ssa_path.set_extension("");
+      ssa_path
+   };
+   let cc_stat = Command::new("cc").arg("-o").arg(the_final_path).arg(&asm_path).status()?;
    if !cc_stat.success() {
       return Err(format!("cc failed to execute with code {}", qbe_stat).into());
    }

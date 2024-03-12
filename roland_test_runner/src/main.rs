@@ -107,6 +107,12 @@ fn main() -> Result<(), &'static str> {
          Command::new(&opts.tc_path)
             .arg(entry.clone())
             .arg("--amd64")
+            .arg("--output")
+            .arg({
+               let mut x = entry.clone();
+               x.set_extension("out");
+               x
+            })
             .output()
             .unwrap()
       } else {
@@ -277,7 +283,7 @@ fn test_result(tc_output: &Output, t_file_path: &Path, amd64: bool) -> Result<()
       // Execute the program
       let mut prog_path = t_file_path.to_path_buf();
       if amd64 {
-         prog_path.set_extension("");
+         prog_path.set_extension("out");
       } else {
          prog_path.set_extension("wasm");
       }
