@@ -185,7 +185,7 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
             .size
             .as_ref()
             .unwrap();
-         for (field, next_field) in si.field_types.iter().zip(si.field_types.keys().skip(1)) {
+         for (field, next_offset) in si.field_types.iter().zip(si.field_types.keys().skip(1).map(|x| ssi.field_offsets_mem[x]).chain(std::iter::once(ssi.mem_size))) {
             let value_of_field = fields.get(field.0).copied().unwrap();
             if let Some(val) = value_of_field {
                literal_as_data(val, ctx);
@@ -196,27 +196,8 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
                }
             }
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
-            let next_offset = ssi.field_offsets_mem.get(next_field).unwrap();
             let padding_bytes =
                next_offset - this_offset - sizeof_type_mem(&field.1.e_type, ctx.udt, Target::Qbe);
-            if padding_bytes > 0 {
-               write!(ctx.buf, "z {}, ", padding_bytes).unwrap();
-            }
-         }
-         if let Some(last_field) = si.field_types.iter().last() {
-            let value_of_field = fields.get(last_field.0).copied().unwrap();
-            if let Some(val) = value_of_field {
-               literal_as_data(val, ctx);
-            } else {
-               let sz = sizeof_type_mem(&last_field.1.e_type, ctx.udt, Target::Qbe);
-               if sz > 0 {
-                  write!(ctx.buf, "z {}, ", sz).unwrap();
-               }
-            }
-            let this_offset = ssi.field_offsets_mem.get(last_field.0).unwrap();
-            let next_offset = ssi.mem_size;
-            let padding_bytes =
-               next_offset - this_offset - sizeof_type_mem(&last_field.1.e_type, ctx.udt, Target::Qbe);
             if padding_bytes > 0 {
                write!(ctx.buf, "z {}, ", padding_bytes).unwrap();
             }
@@ -296,19 +277,22 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       match et {
          ExpressionType::Struct(sid) => {
             let si = udt.struct_info.get(*sid).unwrap();
+            let ssi = si.size.as_ref().unwrap();
             for field_t in si.field_types.iter().map(|x| &x.1.e_type) {
                emit_aggregate_def(buf, emitted, udt, field_t);
             }
 
             write!(buf, "type :s{} = {{ ", index).unwrap();
-            for (i, field_type) in si.field_types.values().map(|x| &x.e_type).enumerate() {
-               if i == si.field_types.len() - 1 {
-                  write!(buf, "{}", roland_type_to_sub_type(field_type, emitted)).unwrap();
-               } else {
-                  write!(buf, "{}, ", roland_type_to_sub_type(field_type, emitted)).unwrap();
+            for (field, next_offset) in si.field_types.iter().zip(si.field_types.keys().skip(1).map(|x| ssi.field_offsets_mem[x]).chain(std::iter::once(ssi.mem_size))) {
+               write!(buf, "{}, ", roland_type_to_sub_type(&field.1.e_type, emitted)).unwrap();
+               let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
+               let padding_bytes =
+                  next_offset - this_offset - sizeof_type_mem(&field.1.e_type, udt, Target::Qbe);
+               if padding_bytes > 0 {
+                  write!(buf, "b {}, ", padding_bytes).unwrap();
                }
             }
-            writeln!(buf, " }}").unwrap();
+            writeln!(buf, "}}").unwrap();
          }
          ExpressionType::Union(uid) => {
             let ui = udt.union_info.get(*uid).unwrap();
