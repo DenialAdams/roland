@@ -130,7 +130,7 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
          // TODO: mangling
          let proc_name = ctx.interner.lookup(ctx.proc_info[*proc_id].name.str);
          write!(ctx.buf, "l ${}, ", proc_name).unwrap();
-      },
+      }
       Expression::UnitLiteral => (),
       Expression::BoolLiteral(x) => {
          write!(ctx.buf, "b {}, ", *x as u8).unwrap();
@@ -174,18 +174,17 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
          let (string_index, string_id) = ctx.string_literals.get_full(str).unwrap();
          let length = ctx.interner.lookup(*string_id).len();
          write!(ctx.buf, "l $s{}, l {}, ", string_index, length).unwrap();
-      },
+      }
       Expression::StructLiteral(s_id, fields) => {
          let si = ctx.udt.struct_info.get(*s_id).unwrap();
-         let ssi = ctx
-            .udt
-            .struct_info
-            .get(*s_id)
-            .unwrap()
-            .size
-            .as_ref()
-            .unwrap();
-         for (field, next_offset) in si.field_types.iter().zip(si.field_types.keys().skip(1).map(|x| ssi.field_offsets_mem[x]).chain(std::iter::once(ssi.mem_size))) {
+         let ssi = ctx.udt.struct_info.get(*s_id).unwrap().size.as_ref().unwrap();
+         for (field, next_offset) in si.field_types.iter().zip(
+            si.field_types
+               .keys()
+               .skip(1)
+               .map(|x| ssi.field_offsets_mem[x])
+               .chain(std::iter::once(ssi.mem_size)),
+         ) {
             let value_of_field = fields.get(field.0).copied().unwrap();
             if let Some(val) = value_of_field {
                literal_as_data(val, ctx);
@@ -196,8 +195,7 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
                }
             }
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
-            let padding_bytes =
-               next_offset - this_offset - sizeof_type_mem(&field.1.e_type, ctx.udt, Target::Qbe);
+            let padding_bytes = next_offset - this_offset - sizeof_type_mem(&field.1.e_type, ctx.udt, Target::Qbe);
             if padding_bytes > 0 {
                write!(ctx.buf, "z {}, ", padding_bytes).unwrap();
             }
@@ -283,11 +281,16 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
             }
 
             write!(buf, "type :s{} = {{ ", index).unwrap();
-            for (field, next_offset) in si.field_types.iter().zip(si.field_types.keys().skip(1).map(|x| ssi.field_offsets_mem[x]).chain(std::iter::once(ssi.mem_size))) {
+            for (field, next_offset) in si.field_types.iter().zip(
+               si.field_types
+                  .keys()
+                  .skip(1)
+                  .map(|x| ssi.field_offsets_mem[x])
+                  .chain(std::iter::once(ssi.mem_size)),
+            ) {
                write!(buf, "{}, ", roland_type_to_sub_type(&field.1.e_type, emitted)).unwrap();
                let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
-               let padding_bytes =
-                  next_offset - this_offset - sizeof_type_mem(&field.1.e_type, udt, Target::Qbe);
+               let padding_bytes = next_offset - this_offset - sizeof_type_mem(&field.1.e_type, udt, Target::Qbe);
                if padding_bytes > 0 {
                   write!(buf, "b {}, ", padding_bytes).unwrap();
                }
