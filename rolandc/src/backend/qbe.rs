@@ -5,7 +5,6 @@ use slotmap::SecondaryMap;
 
 use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE, CFG_START_NODE};
 use super::regalloc;
-use super::wasm::type_as_zero_bytes;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -124,15 +123,18 @@ fn roland_type_to_sub_type(r_type: &ExpressionType, aggregate_defs: &IndexSet<Ex
    }
 }
 
-fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_context: &GenerationContext) {
-   let expr_node = &generation_context.ast.expressions[expr_index];
+fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
+   let expr_node = &ctx.ast.expressions[expr_index];
    match &expr_node.expression {
-      Expression::BoundFcnLiteral(proc_id, _) => todo!(),
+      Expression::BoundFcnLiteral(proc_id, _) => {
+         // TODO: mangling
+         let proc_name = ctx.interner.lookup(ctx.proc_info[*proc_id].name.str);
+         write!(ctx.buf, "l ${}, ", proc_name).unwrap();
+      },
       Expression::UnitLiteral => (),
       Expression::BoolLiteral(x) => {
-         buf.extend(u8::from(*x).to_le_bytes());
+         write!(ctx.buf, "b {}, ", *x as u8).unwrap();
       }
-      Expression::EnumLiteral(_, _) => unreachable!(),
       Expression::IntLiteral { val: x, .. } => {
          let width = match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => x.width,
@@ -140,16 +142,16 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
          };
          match width {
             IntWidth::Eight => {
-               buf.extend(x.to_le_bytes());
+               write!(ctx.buf, "l {}, ", *x).unwrap();
             }
             IntWidth::Four => {
-               buf.extend((*x as u32).to_le_bytes());
+               write!(ctx.buf, "w {}, ", *x).unwrap();
             }
             IntWidth::Two => {
-               buf.extend((*x as u16).to_le_bytes());
+               write!(ctx.buf, "h {}, ", *x).unwrap();
             }
             IntWidth::One => {
-               buf.extend((*x as u8).to_le_bytes());
+               write!(ctx.buf, "b {}, ", *x).unwrap();
             }
             IntWidth::Pointer => unreachable!(),
          };
@@ -161,17 +163,17 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
          };
          match width {
             FloatWidth::Eight => {
-               buf.extend(x.to_bits().to_le_bytes());
+               write!(ctx.buf, "d {}, ", x.to_bits()).unwrap();
             }
             FloatWidth::Four => {
-               buf.extend((*x as f32).to_bits().to_le_bytes());
+               write!(ctx.buf, "s {}, ", (*x as f32).to_bits()).unwrap();
             }
          }
       }
       Expression::StringLiteral(str) => todo!(),
       Expression::StructLiteral(s_id, fields) => {
-         let si = generation_context.udt.struct_info.get(*s_id).unwrap();
-         let ssi = generation_context
+         let si = ctx.udt.struct_info.get(*s_id).unwrap();
+         let ssi = ctx
             .udt
             .struct_info
             .get(*s_id)
@@ -182,37 +184,43 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
          for (field, next_field) in si.field_types.iter().zip(si.field_types.keys().skip(1)) {
             let value_of_field = fields.get(field.0).copied().unwrap();
             if let Some(val) = value_of_field {
-               literal_as_bytes(buf, val, generation_context);
+               literal_as_data(val, ctx);
             } else {
-               type_as_zero_bytes(buf, &field.1.e_type, generation_context.udt, Target::Qbe);
+               let sz = sizeof_type_mem(&field.1.e_type, ctx.udt, Target::Qbe);
+               if sz > 0 {
+                  write!(ctx.buf, "z {}, ", sz).unwrap();
+               }
             }
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
             let next_offset = ssi.field_offsets_mem.get(next_field).unwrap();
             let padding_bytes =
-               next_offset - this_offset - sizeof_type_mem(&field.1.e_type, generation_context.udt, Target::Qbe);
-            for _ in 0..padding_bytes {
-               buf.push(0);
+               next_offset - this_offset - sizeof_type_mem(&field.1.e_type, ctx.udt, Target::Qbe);
+            if padding_bytes > 0 {
+               write!(ctx.buf, "z {}, ", padding_bytes).unwrap();
             }
          }
          if let Some(last_field) = si.field_types.iter().last() {
             let value_of_field = fields.get(last_field.0).copied().unwrap();
             if let Some(val) = value_of_field {
-               literal_as_bytes(buf, val, generation_context);
+               literal_as_data(val, ctx);
             } else {
-               type_as_zero_bytes(buf, &last_field.1.e_type, generation_context.udt, Target::Qbe);
+               let sz = sizeof_type_mem(&last_field.1.e_type, ctx.udt, Target::Qbe);
+               if sz > 0 {
+                  write!(ctx.buf, "z {}, ", sz).unwrap();
+               }
             }
             let this_offset = ssi.field_offsets_mem.get(last_field.0).unwrap();
             let next_offset = ssi.mem_size;
             let padding_bytes =
-               next_offset - this_offset - sizeof_type_mem(&last_field.1.e_type, generation_context.udt, Target::Qbe);
-            for _ in 0..padding_bytes {
-               buf.push(0);
+               next_offset - this_offset - sizeof_type_mem(&last_field.1.e_type, ctx.udt, Target::Qbe);
+            if padding_bytes > 0 {
+               write!(ctx.buf, "z {}, ", padding_bytes).unwrap();
             }
          }
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
-            literal_as_bytes(buf, *expr, generation_context);
+            literal_as_data(*expr, ctx);
          }
       }
       _ => unreachable!(),
@@ -245,17 +253,12 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       writeln!(ctx.buf, "}}").unwrap();
    }
 
-   let mut global_bytes = vec![];
    for a_global in program.global_info.iter() {
       // TODO: skip zero size globals? ... add a test?
       write!(ctx.buf, "data $v{} = {{ ", a_global.0 .0).unwrap();
       match a_global.1.initializer {
          Some(e) => {
-            literal_as_bytes(&mut global_bytes, e, &ctx);
-            write!(ctx.buf, "b ").unwrap();
-            for by in global_bytes.drain(..) {
-               write!(ctx.buf, "{} ", by).unwrap();
-            }
+            literal_as_data(e, &mut ctx);
          }
          None => {
             // Just zero init
@@ -668,6 +671,11 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> String 
       Expression::StringLiteral(id) => {
          format!("$s{}", ctx.string_literals.get_index_of(id).unwrap())
       }
+      Expression::BoundFcnLiteral(proc_id, _) => {
+         // TODO: mangling
+         let proc_name = ctx.interner.lookup(ctx.proc_info[*proc_id].name.str);
+         format!("${}", proc_name)
+      }
       x => unreachable!("{:?}", x),
    }
 }
@@ -704,37 +712,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          if let Some(reg) = ctx.var_to_reg.get(v) {
             writeln!(ctx.buf, "copy %r{}", reg).unwrap();
          } else {
-            let lt = rhs_mem.unwrap();
-            match ren.exp_type.as_ref().unwrap() {
-               ExpressionType::Bool | &U8_TYPE => {
-                  writeln!(ctx.buf, "loadub {}", lt).unwrap();
-               }
-               &I8_TYPE => {
-                  writeln!(ctx.buf, "loadsb {}", lt).unwrap();
-               }
-               &U16_TYPE => {
-                  writeln!(ctx.buf, "loaduh {}", lt).unwrap();
-               }
-               &I16_TYPE => {
-                  writeln!(ctx.buf, "loadsh {}", lt).unwrap();
-               }
-               &U32_TYPE => {
-                  writeln!(ctx.buf, "loaduw {}", lt).unwrap();
-               }
-               &I32_TYPE => {
-                  writeln!(ctx.buf, "loadsw {}", lt).unwrap();
-               }
-               &U64_TYPE | &I64_TYPE => {
-                  writeln!(ctx.buf, "loadl {}", lt).unwrap();
-               }
-               &F32_TYPE => {
-                  writeln!(ctx.buf, "loads {}", lt).unwrap();
-               }
-               &F64_TYPE => {
-                  writeln!(ctx.buf, "loads {}", lt).unwrap();
-               }
-               _ => unreachable!(),
-            }
+            emit_load(&mut ctx.buf, rhs_mem.unwrap(), ren.exp_type.as_ref().unwrap());
          }
       }
       Expression::BinaryOperator { operator, lhs, rhs } => {
@@ -1058,7 +1036,7 @@ fn emit_load(buf: &mut Vec<u8>, load_target: String, a_type: &ExpressionType) {
       &I32_TYPE => {
          writeln!(buf, "loadsw {}", load_target).unwrap();
       }
-      &U64_TYPE | &I64_TYPE => {
+      &U64_TYPE | &I64_TYPE | ExpressionType::ProcedurePointer { .. } => {
          writeln!(buf, "loadl {}", load_target).unwrap();
       }
       &F32_TYPE => {
