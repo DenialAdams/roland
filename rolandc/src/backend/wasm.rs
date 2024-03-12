@@ -18,7 +18,7 @@ use crate::parse::{
 };
 use crate::semantic_analysis::GlobalKind;
 use crate::size_info::{aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm};
-use crate::type_data::{ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE};
+use crate::type_data::{ExpressionType, FloatType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE};
 use crate::{CompilationConfig, Target};
 
 const MINIMUM_STACK_FRAME_SIZE: u32 = 0;
@@ -1429,14 +1429,15 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             (&F32_TYPE, &F64_TYPE) => {
                generation_context.active_fcn.instruction(&Instruction::F64PromoteF32);
             }
-            (ExpressionType::Float(_), ExpressionType::Int(_)) => {
-               let (dest_width, signed) = match target_type {
-                  ExpressionType::Int(x) => (x.width, x.signed),
-                  _ => unreachable!(),
-               };
-               let src_type = type_to_wasm_type_basic(e.exp_type.as_ref().unwrap());
-               match src_type {
-                  ValType::F64 => {
+            (
+               ExpressionType::Float(FloatType { width: src_width }),
+               ExpressionType::Int(IntType {
+                  signed,
+                  width: dest_width,
+               }),
+            ) => {
+               match src_width {
+                  FloatWidth::Eight => {
                      match (dest_width, signed) {
                         (IntWidth::Eight, true) => {
                            generation_context.active_fcn.instruction(&Instruction::I64TruncSatF64S)
@@ -1448,7 +1449,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                         (_, false) => generation_context.active_fcn.instruction(&Instruction::I32TruncSatF64U),
                      };
                   }
-                  ValType::F32 => {
+                  FloatWidth::Four => {
                      match (dest_width, signed) {
                         (IntWidth::Eight, true) => {
                            generation_context.active_fcn.instruction(&Instruction::I64TruncSatF32S)
@@ -1460,7 +1461,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                         (_, false) => generation_context.active_fcn.instruction(&Instruction::I32TruncSatF32U),
                      };
                   }
-                  _ => unreachable!(),
                }
                match dest_width {
                   IntWidth::Eight | IntWidth::Four => (),
@@ -1479,43 +1479,34 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                   IntWidth::Pointer => unreachable!(),
                }
             }
-            (ExpressionType::Int(_), ExpressionType::Float(_)) => {
-               let target_type_wasm = type_to_wasm_type_basic(target_type);
-
-               let (src_type, signed) = match e.exp_type.as_ref().unwrap() {
-                  ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
-                  _ => unreachable!(),
-               };
-               match target_type_wasm {
-                  ValType::F64 => {
-                     match (src_type, signed) {
-                        (ValType::I64, true) => generation_context.active_fcn.instruction(&Instruction::F64ConvertI64S),
-                        (ValType::I64, false) => {
-                           generation_context.active_fcn.instruction(&Instruction::F64ConvertI64U)
-                        }
-                        (ValType::I32, true) => generation_context.active_fcn.instruction(&Instruction::F64ConvertI32S),
-                        (ValType::I32, false) => {
-                           generation_context.active_fcn.instruction(&Instruction::F64ConvertI32U)
-                        }
-                        _ => unreachable!(),
-                     };
-                  }
-                  ValType::F32 => {
-                     match (src_type, signed) {
-                        (ValType::I64, true) => generation_context.active_fcn.instruction(&Instruction::F32ConvertI64S),
-                        (ValType::I64, false) => {
-                           generation_context.active_fcn.instruction(&Instruction::F32ConvertI64U)
-                        }
-                        (ValType::I32, true) => generation_context.active_fcn.instruction(&Instruction::F32ConvertI32S),
-                        (ValType::I32, false) => {
-                           generation_context.active_fcn.instruction(&Instruction::F32ConvertI32U)
-                        }
-                        _ => unreachable!(),
-                     };
-                  }
-                  _ => unreachable!(),
+            (
+               ExpressionType::Int(IntType {
+                  signed,
+                  width: src_width,
+               }),
+               ExpressionType::Float(FloatType { width: dest_width }),
+            ) => match dest_width {
+               FloatWidth::Eight => {
+                  match (src_width, signed) {
+                     (IntWidth::Eight, true) => generation_context.active_fcn.instruction(&Instruction::F64ConvertI64S),
+                     (IntWidth::Eight, false) => {
+                        generation_context.active_fcn.instruction(&Instruction::F64ConvertI64U)
+                     }
+                     (_, true) => generation_context.active_fcn.instruction(&Instruction::F64ConvertI32S),
+                     (_, false) => generation_context.active_fcn.instruction(&Instruction::F64ConvertI32U),
+                  };
                }
-            }
+               FloatWidth::Four => {
+                  match (src_width, signed) {
+                     (IntWidth::Eight, true) => generation_context.active_fcn.instruction(&Instruction::F32ConvertI64S),
+                     (IntWidth::Eight, false) => {
+                        generation_context.active_fcn.instruction(&Instruction::F32ConvertI64U)
+                     }
+                     (_, true) => generation_context.active_fcn.instruction(&Instruction::F32ConvertI32S),
+                     (_, false) => generation_context.active_fcn.instruction(&Instruction::F32ConvertI32U),
+                  };
+               }
+            },
             (ExpressionType::Bool, ExpressionType::Int(i)) => {
                if i.width == IntWidth::Eight {
                   generation_context.active_fcn.instruction(&Instruction::I64ExtendI32U);

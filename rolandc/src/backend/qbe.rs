@@ -9,13 +9,14 @@ use super::wasm::type_as_zero_bytes;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   ArgumentNode, AstPool, CastType, Expression, ExpressionId, ProcImplSource, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId
+   ArgumentNode, AstPool, CastType, Expression, ExpressionId, ProcImplSource, ProcedureId, UnOp, UserDefinedTypeInfo,
+   VariableId,
 };
 use crate::semantic_analysis::{GlobalInfo, ProcedureInfo};
 use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::type_data::{
-   ExpressionType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, U16_TYPE,
-   U32_TYPE, U64_TYPE, U8_TYPE,
+   ExpressionType, FloatType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE,
+   U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE,
 };
 use crate::{CompilationConfig, Program, Target};
 
@@ -62,7 +63,7 @@ fn roland_type_to_extended_type(r_type: &ExpressionType) -> &'static str {
          signed: _,
          width: IntWidth::One,
       }) => "b",
-      _ => roland_type_to_base_type(r_type)
+      _ => roland_type_to_base_type(r_type),
    }
 }
 
@@ -83,8 +84,10 @@ fn roland_type_to_abi_type(r_type: &ExpressionType, aggregate_defs: &IndexSet<Ex
       ExpressionType::Int(IntType {
          signed: false,
          width: IntWidth::One,
-      }) | ExpressionType::Bool => "ub".into(),
-      ExpressionType::Unit | ExpressionType::Never => "".into(), // TODO
+      })
+      | ExpressionType::Bool => "ub".into(),
+      // I'd like to redo this one day. This is pretty weird.
+      ExpressionType::Unit | ExpressionType::Never => ":unit".into(),
       ExpressionType::Struct(_) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
          format!(":s{}", index)
@@ -97,7 +100,7 @@ fn roland_type_to_abi_type(r_type: &ExpressionType, aggregate_defs: &IndexSet<Ex
          let index = aggregate_defs.get_index_of(r_type).unwrap();
          format!(":a{}", index)
       }
-      _ => roland_type_to_base_type(r_type).into()
+      _ => roland_type_to_base_type(r_type).into(),
    }
 }
 
@@ -116,7 +119,8 @@ fn roland_type_to_sub_type(r_type: &ExpressionType, aggregate_defs: &IndexSet<Ex
          let index = aggregate_defs.get_index_of(r_type).unwrap();
          format!(":a{}", index)
       }
-      _ => roland_type_to_extended_type(r_type).into()
+      ExpressionType::Unit | ExpressionType::Never => ":unit".into(),
+      _ => roland_type_to_extended_type(r_type).into(),
    }
 }
 
@@ -323,11 +327,17 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       }
    }
 
+   writeln!(ctx.buf, "type :unit = {{}}").unwrap();
    for procedure in program.procedures.values() {
       for param_type in procedure.definition.parameters.iter().map(|x| &x.p_type.e_type) {
          emit_aggregate_def(&mut ctx.buf, &mut ctx.aggregate_defs, &ctx.udt, param_type);
       }
-      emit_aggregate_def(&mut ctx.buf, &mut ctx.aggregate_defs, &ctx.udt, &procedure.definition.ret_type.e_type);
+      emit_aggregate_def(
+         &mut ctx.buf,
+         &mut ctx.aggregate_defs,
+         &ctx.udt,
+         &procedure.definition.ret_type.e_type,
+      );
    }
 
    for (proc_id, procedure) in program.procedures.iter() {
@@ -513,9 +523,11 @@ fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<Str
       }
       Expression::UnaryOperator(UnOp::Dereference, e) => Some(expr_to_val(e, ctx)),
       Expression::UnaryOperator(UnOp::AddressOf, e) => compute_offset(e, ctx),
-      Expression::Cast { cast_type: CastType::Transmute, expr, .. } => {
-         compute_offset(expr, ctx)
-      }
+      Expression::Cast {
+         cast_type: CastType::Transmute,
+         expr,
+         ..
+      } => compute_offset(expr, ctx),
       _ => None,
    }
 }
@@ -586,7 +598,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
          }
          CfgInstruction::Expression(en) => match &ctx.ast.expressions[*en].expression {
             Expression::ProcedureCall { proc_expr, args } => {
-               write!(ctx.buf, "   ").unwrap();
+               write!(ctx.buf, "   %dead =:unit ").unwrap();
                write_call_expr(*proc_expr, args, ctx);
             }
             _ => debug_assert!(!expression_could_have_side_effects(*en, &ctx.ast.expressions)),
@@ -892,7 +904,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          } else {
             writeln!(ctx.buf, "copy {}", rhs_mem.unwrap()).unwrap()
          }
-      },
+      }
       Expression::UnaryOperator(operator, inner_id) => {
          let inner_val = expr_to_val(*inner_id, ctx);
          match operator {
@@ -1015,12 +1027,36 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
             (&F32_TYPE, &F64_TYPE) => {
                writeln!(ctx.buf, "exts {}", val).unwrap();
             }
-            (ExpressionType::Float(_), ExpressionType::Int(_)) => {
-               todo!()
+            (ExpressionType::Float(FloatType { width: src_width }), ExpressionType::Int(IntType { signed, .. })) => {
+               match src_width {
+                  FloatWidth::Eight => {
+                     if *signed {
+                        writeln!(ctx.buf, "dtosi {}", val).unwrap();
+                     } else {
+                        writeln!(ctx.buf, "dtoui {}", val).unwrap();
+                     }
+                  }
+                  FloatWidth::Four => {
+                     if *signed {
+                        writeln!(ctx.buf, "stosi {}", val).unwrap();
+                     } else {
+                        writeln!(ctx.buf, "stoui {}", val).unwrap();
+                     }
+                  }
+               }
             }
-            (ExpressionType::Int(_), ExpressionType::Float(_)) => {
-               todo!()
-            }
+            (
+               ExpressionType::Int(IntType {
+                  signed,
+                  width: src_width,
+               }),
+               ExpressionType::Float(_),
+            ) => match (src_width, signed) {
+               (IntWidth::Eight, true) => writeln!(ctx.buf, "sltof {}", val).unwrap(),
+               (IntWidth::Eight, false) => writeln!(ctx.buf, "ultof {}", val).unwrap(),
+               (_, true) => writeln!(ctx.buf, "swtof {}", val).unwrap(),
+               (_, false) => writeln!(ctx.buf, "uwtof {}", val).unwrap(),
+            },
             (ExpressionType::Bool, ExpressionType::Int(i)) => {
                if i.width == IntWidth::Eight {
                   writeln!(ctx.buf, "extuw {}", val).unwrap();

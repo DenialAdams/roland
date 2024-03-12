@@ -281,11 +281,13 @@ fn type_to_register_type(et: &ExpressionType, target: Target) -> ValType {
          FloatWidth::Four => ValType::F32,
       },
       ExpressionType::Bool => ValType::I32,
-      ExpressionType::ProcedurePointer { .. } => if target.pointer_width() == 8 {
-         ValType::I64
-      } else {
-         ValType::I32
-      },
+      ExpressionType::ProcedurePointer { .. } => {
+         if target.pointer_width() == 8 {
+            ValType::I64
+         } else {
+            ValType::I32
+         }
+      }
       ExpressionType::Union(_) | ExpressionType::Struct(_) | ExpressionType::Array(_, _) => ValType::I32,
       x => {
          unreachable!("{:?}", x);
