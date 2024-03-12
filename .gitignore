@@ -4,6 +4,7 @@ rolandc/target
 **/*.s
 **/*.ssa
 **/*.wat
+**/*.out
 **/*.profraw
 **/*.bundle.js
 **/node_modules/
