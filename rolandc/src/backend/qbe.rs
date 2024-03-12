@@ -170,7 +170,11 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
             }
          }
       }
-      Expression::StringLiteral(str) => todo!(),
+      Expression::StringLiteral(str) => {
+         let (string_index, string_id) = ctx.string_literals.get_full(str).unwrap();
+         let length = ctx.interner.lookup(*string_id).len();
+         write!(ctx.buf, "l $s{}, l {}, ", string_index, length).unwrap();
+      },
       Expression::StructLiteral(s_id, fields) => {
          let si = ctx.udt.struct_info.get(*s_id).unwrap();
          let ssi = ctx
@@ -689,7 +693,6 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
       Expression::BoolLiteral(v) => {
          writeln!(ctx.buf, "copy {}", *v as u8).unwrap();
       }
-      Expression::StringLiteral(_) => todo!(),
       Expression::IntLiteral { val, .. } => {
          let signed = matches!(
             ren.exp_type.as_ref().unwrap(),
@@ -706,8 +709,6 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          &F32_TYPE => writeln!(ctx.buf, "copy s_{}", val).unwrap(),
          _ => unreachable!(),
       },
-      Expression::UnitLiteral => todo!(),
-      Expression::UnresolvedVariable(_) => todo!(),
       Expression::Variable(v) => {
          if let Some(reg) = ctx.var_to_reg.get(v) {
             writeln!(ctx.buf, "copy %r{}", reg).unwrap();
@@ -1005,7 +1006,8 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
             }
          }
       }
-      Expression::BoundFcnLiteral(_, _) => todo!(),
+      Expression::BoundFcnLiteral(_, _) => unreachable!(),
+      Expression::StringLiteral(_) => unreachable!(),
       Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
       Expression::StructLiteral(_, _) => unreachable!(),
       Expression::EnumLiteral(_, _) => unreachable!(),
@@ -1013,6 +1015,8 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
       Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::ArrayLiteral(_) => unreachable!(),
       Expression::IfX(_, _, _) => unreachable!(),
+      Expression::UnitLiteral => unreachable!(),
+      Expression::UnresolvedVariable(_) => unreachable!(),
    }
 }
 

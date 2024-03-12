@@ -1,8 +1,11 @@
 const A: String = "Hello";
+static B: String = "Hello from a global";
 
 proc main () {
    println(A);
+   println(B);
 }
 __END__
 run:
 Hello
+Hello from a global
