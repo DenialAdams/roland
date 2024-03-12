@@ -1,0 +1,19 @@
+struct U32Wrapper {
+   x: u32,
+}
+
+proc main() {
+   // Based on our current register allocation scheme,
+   // this will move memory between registers and the stack.
+   let a = U32Wrapper { x: 123456 };
+   println(uint_to_string(a.x as u64));
+   let b = a transmute u32;
+   let c = b transmute U32Wrapper;
+   println(uint_to_string(b as u64));
+   println(uint_to_string(c.x as u64));
+}
+__END__
+run:
+123456
+123456
+123456
