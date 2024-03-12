@@ -93,14 +93,6 @@ fn type_to_wasm_type_basic(t: &ExpressionType) -> ValType {
    }
 }
 
-fn int_to_wasm_runtime_and_suffix(x: IntType) -> (ValType, bool) {
-   let wasm_type = match x.width {
-      IntWidth::Eight => ValType::I64,
-      _ => ValType::I32,
-   };
-   (wasm_type, x.signed)
-}
-
 #[derive(Hash, Eq, PartialEq)]
 struct FunctionValTypes {
    param_val_types: Vec<ValType>,
@@ -897,7 +889,7 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
    }
 }
 
-pub fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) {
+fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) {
    let size = sizeof_type_mem(expr_type, udt, target);
    buf.extend(iter::repeat(0).take(size as usize));
 }
@@ -1001,7 +993,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          do_emit_and_load_lval(*rhs, generation_context);
 
          let (wasm_type, signed) = match generation_context.ast.expressions[*lhs].exp_type.as_ref().unwrap() {
-            ExpressionType::Int(x) => int_to_wasm_runtime_and_suffix(*x),
+            ExpressionType::Int(x) => match x.width {
+               IntWidth::Eight => (ValType::I64, x.signed),
+               _ => (ValType::I32, x.signed),
+            }
             ExpressionType::Enum(_) => unreachable!(),
             ExpressionType::Float(x) => match x.width {
                FloatWidth::Eight => (ValType::F64, false),
