@@ -829,7 +829,7 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
             .size
             .as_ref()
             .unwrap();
-         for (field, next_field) in si.field_types.iter().zip(si.field_types.keys().skip(1)) {
+         for (field, next_offset) in si.field_types.iter().zip(si.field_types.keys().skip(1).map(|x| ssi.field_offsets_mem[x]).chain(std::iter::once(ssi.mem_size))) {
             let value_of_field = fields.get(field.0).copied().unwrap();
             if let Some(val) = value_of_field {
                literal_as_bytes(buf, val, generation_context);
@@ -842,36 +842,10 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
                );
             }
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
-            let next_offset = ssi.field_offsets_mem.get(next_field).unwrap();
             let padding_bytes = next_offset
                - this_offset
                - sizeof_type_mem(
                   &field.1.e_type,
-                  generation_context.user_defined_types,
-                  generation_context.target,
-               );
-            for _ in 0..padding_bytes {
-               buf.push(0);
-            }
-         }
-         if let Some(last_field) = si.field_types.iter().last() {
-            let value_of_field = fields.get(last_field.0).copied().unwrap();
-            if let Some(val) = value_of_field {
-               literal_as_bytes(buf, val, generation_context);
-            } else {
-               type_as_zero_bytes(
-                  buf,
-                  &last_field.1.e_type,
-                  generation_context.user_defined_types,
-                  generation_context.target,
-               );
-            }
-            let this_offset = ssi.field_offsets_mem.get(last_field.0).unwrap();
-            let next_offset = ssi.mem_size;
-            let padding_bytes = next_offset
-               - this_offset
-               - sizeof_type_mem(
-                  &last_field.1.e_type,
                   generation_context.user_defined_types,
                   generation_context.target,
                );
