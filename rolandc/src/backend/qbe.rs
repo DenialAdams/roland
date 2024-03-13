@@ -173,7 +173,7 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
       Expression::StringLiteral(str) => {
          let (string_index, string_id) = ctx.string_literals.get_full(str).unwrap();
          let length = ctx.interner.lookup(*string_id).len();
-         write!(ctx.buf, "l $s{}, l {}, ", string_index, length).unwrap();
+         write!(ctx.buf, "l $.s{}, l {}, ", string_index, length).unwrap();
       }
       Expression::StructLiteral(s_id, fields) => {
          let si = ctx.udt.struct_info.get(*s_id).unwrap();
@@ -229,7 +229,8 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
 
    for (i, string_literal) in ctx.string_literals.iter().enumerate() {
       let str = ctx.interner.lookup(*string_literal);
-      write!(ctx.buf, "data $s{} = {{ b ", i).unwrap();
+      // We prefix with a dot to avoid any conflict with user-named exported functions
+      write!(ctx.buf, "data $.s{} = {{ b ", i).unwrap();
       for by in str.as_bytes() {
          write!(ctx.buf, "{} ", by).unwrap();
       }
@@ -238,7 +239,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
 
    for a_global in program.global_info.iter() {
       // TODO: skip zero size globals? ... add a test?
-      write!(ctx.buf, "data $v{} = {{ ", a_global.0 .0).unwrap();
+      write!(ctx.buf, "data $.v{} = {{ ", a_global.0 .0).unwrap();
       match a_global.1.initializer {
          Some(e) => {
             literal_as_data(e, &mut ctx);
@@ -510,7 +511,7 @@ fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<Str
          if ctx.var_to_reg.contains_key(&v) {
             None
          } else if ctx.global_info.contains_key(&v) {
-            Some(format!("$v{}", v.0))
+            Some(format!("$.v{}", v.0))
          } else {
             Some(format!("%v{}", v.0))
          }
@@ -654,13 +655,13 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> String 
          if let Some(reg) = ctx.var_to_reg.get(v) {
             format!("%r{}", reg)
          } else if ctx.global_info.contains_key(v) {
-            format!("$v{}", v.0)
+            format!("$.v{}", v.0)
          } else {
             format!("%v{}", v.0)
          }
       }
       Expression::StringLiteral(id) => {
-         format!("$s{}", ctx.string_literals.get_index_of(id).unwrap())
+         format!("$.s{}", ctx.string_literals.get_index_of(id).unwrap())
       }
       Expression::BoundFcnLiteral(proc_id, _) => {
          // TODO: mangling
