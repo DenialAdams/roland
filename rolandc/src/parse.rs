@@ -75,6 +75,23 @@ pub enum ProcImplSource {
    Body(BlockNode),
 }
 
+#[derive(Clone, PartialEq)]
+pub enum ProcImplSourceShallow {
+   Builtin,
+   External,
+   Native,
+}
+
+impl From<&ProcImplSource> for ProcImplSourceShallow {
+   fn from(value: &ProcImplSource) -> Self {
+      match value {
+         ProcImplSource::Builtin => ProcImplSourceShallow::Builtin,
+         ProcImplSource::External => ProcImplSourceShallow::External,
+         ProcImplSource::Body(_) => ProcImplSourceShallow::Native,
+      }
+   }
+}
+
 #[derive(Clone)]
 pub struct ParameterNode {
    pub name: StrId,

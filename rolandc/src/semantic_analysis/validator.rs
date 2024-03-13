@@ -16,9 +16,7 @@ use crate::error_handling::error_handling_macros::{
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   statement_always_or_never_returns, ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression,
-   ExpressionId, ExpressionNode, ExpressionTypeNode, ProcImplSource, ProcedureId, Program, Statement, StatementId,
-   StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
+   statement_always_or_never_returns, ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression, ExpressionId, ExpressionNode, ExpressionTypeNode, ProcImplSource, ProcImplSourceShallow, ProcedureId, Program, Statement, StatementId, StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId
 };
 use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::source_info::SourceInfo;
@@ -1328,7 +1326,7 @@ fn get_type(
                // special case
                let procedure_info = validation_context.procedure_info.get(*proc_id).unwrap();
 
-               if procedure_info.is_builtin {
+               if procedure_info.impl_source == ProcImplSourceShallow::Builtin {
                   rolandc_error!(
                      err_manager,
                      expr_location,

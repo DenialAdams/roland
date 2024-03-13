@@ -1,15 +1,15 @@
+use std::borrow::Cow;
 use std::io::Write;
 
 use indexmap::{IndexMap, IndexSet};
-use slotmap::SecondaryMap;
+use slotmap::{Key, SecondaryMap};
 
 use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE, CFG_START_NODE};
 use super::regalloc;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   ArgumentNode, AstPool, CastType, Expression, ExpressionId, ProcImplSource, ProcedureId, UnOp, UserDefinedTypeInfo,
-   VariableId,
+   ArgumentNode, AstPool, CastType, Expression, ExpressionId, ProcImplSource, ProcImplSourceShallow, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId
 };
 use crate::semantic_analysis::{GlobalInfo, ProcedureInfo};
 use crate::size_info::{mem_alignment, sizeof_type_mem};
@@ -127,9 +127,7 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
    let expr_node = &ctx.ast.expressions[expr_index];
    match &expr_node.expression {
       Expression::BoundFcnLiteral(proc_id, _) => {
-         // TODO: mangling
-         let proc_name = ctx.interner.lookup(ctx.proc_info[*proc_id].name.str);
-         write!(ctx.buf, "l ${}, ", proc_name).unwrap();
+         write!(ctx.buf, "l ${}, ", mangle(*proc_id, ctx.proc_info, ctx.interner)).unwrap();
       }
       Expression::UnitLiteral => (),
       Expression::BoolLiteral(x) => {
@@ -357,7 +355,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          "{}function {} ${}(",
          export_txt,
          abi_ret_type,
-         interner.lookup(procedure.definition.name.str)
+         mangle(proc_id, ctx.proc_info, ctx.interner)
       )
       .unwrap();
       for (i, param) in procedure.definition.parameters.iter().enumerate() {
@@ -425,7 +423,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       writeln!(ctx.buf, "}}").unwrap();
    }
 
-   for (_, procedure) in program
+   for (proc_id, procedure) in program
       .procedures
       .iter()
       .filter(|x| matches!(x.1.proc_impl, ProcImplSource::Builtin))
@@ -434,7 +432,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          ctx.buf,
          "function {} ${}(",
          roland_type_to_abi_type(&procedure.definition.ret_type.e_type, &ctx.aggregate_defs),
-         interner.lookup(procedure.definition.name.str)
+         mangle(proc_id, ctx.proc_info, ctx.interner)
       )
       .unwrap();
       for (i, param) in procedure.definition.parameters.iter().enumerate() {
@@ -628,6 +626,18 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
    }
 }
 
+fn mangle<'a>(proc_id: ProcedureId, proc_info: &SecondaryMap<ProcedureId, ProcedureInfo>, interner: &'a Interner) -> Cow<'a, str> {
+   let proc_info = &proc_info[proc_id];
+   let proc_name = interner.lookup(proc_info.name.str);
+   if proc_info.impl_source != ProcImplSourceShallow::Native || proc_name == "main" {
+      // "main" implies imported, and builtin procedures can't be monomorphized and thus
+      // don't need to be mangled
+      return Cow::Borrowed(proc_name)
+   } else {
+      return Cow::Owned(format!(".{}_{}", proc_id.data().as_ffi(), proc_name));
+   }
+}
+
 // TODO: rework this to write directly into bytestream or otherwise not allocate
 fn expr_to_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> String {
    let expr_node = &ctx.ast.expressions[expr_index];
@@ -664,9 +674,7 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> String 
          format!("$.s{}", ctx.string_literals.get_index_of(id).unwrap())
       }
       Expression::BoundFcnLiteral(proc_id, _) => {
-         // TODO: mangling
-         let proc_name = ctx.interner.lookup(ctx.proc_info[*proc_id].name.str);
-         format!("${}", proc_name)
+         format!("${}", mangle(*proc_id, ctx.proc_info, ctx.interner))
       }
       x => unreachable!("{:?}", x),
    }
@@ -865,9 +873,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
       Expression::UnaryOperator(UnOp::AddressOf, inner_id) => {
          let e = &ctx.ast.expressions[*inner_id];
          if let ExpressionType::ProcedureItem(proc_id, _bound_type_params) = e.exp_type.as_ref().unwrap() {
-            // TODO: need to do name mangling here, as with call
-            let proc_name = ctx.interner.lookup(ctx.proc_info[*proc_id].name.str);
-            writeln!(ctx.buf, "copy ${}", proc_name).unwrap();
+            writeln!(ctx.buf, "copy ${}", mangle(*proc_id, ctx.proc_info, ctx.interner)).unwrap();
          } else {
             writeln!(ctx.buf, "copy {}", rhs_mem.unwrap()).unwrap()
          }
@@ -1044,8 +1050,7 @@ fn emit_load(buf: &mut Vec<u8>, load_target: String, a_type: &ExpressionType) {
 fn write_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &mut GenerationContext) {
    match ctx.ast.expressions[proc_expr].exp_type.as_ref().unwrap() {
       ExpressionType::ProcedureItem(id, _) => {
-         let callee = ctx.interner.lookup(ctx.proc_info[*id].name.str);
-         write!(ctx.buf, "call ${}(", callee).unwrap();
+         write!(ctx.buf, "call ${}(", mangle(*id, ctx.proc_info, ctx.interner)).unwrap();
       }
       ExpressionType::ProcedurePointer { .. } => {
          let val = expr_to_val(proc_expr, ctx);
