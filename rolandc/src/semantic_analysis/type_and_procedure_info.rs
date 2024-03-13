@@ -559,7 +559,7 @@ pub fn populate_type_and_procedure_info(
             ret_type: definition.ret_type.e_type.clone(),
             location: source_location,
             name: definition.name.clone(),
-            is_builtin: matches!(proc_impl_source, ProcImplSource::Builtin),
+            impl_source: proc_impl_source.into(),
          },
       );
 
