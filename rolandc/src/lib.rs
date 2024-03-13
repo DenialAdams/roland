@@ -224,7 +224,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    // affect side-effect order
    named_argument_lowering::lower_named_args(&mut ctx.program);
 
-   monomorphization::monomorphize(&mut ctx.program, &mut ctx.err_manager);
+   monomorphization::monomorphize(&mut ctx.program, &mut ctx.err_manager, &mut ctx.interner);
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
