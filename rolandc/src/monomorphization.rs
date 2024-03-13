@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
-use slotmap::Key;
 
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
-use crate::interner::{Interner, StrId};
+use crate::interner::StrId;
 use crate::parse::{
    AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, ProcedureNode, Statement,
    StatementId, VariableId,
@@ -24,7 +23,7 @@ struct SpecializationWorkItem {
    depth: usize,
 }
 
-pub fn monomorphize(program: &mut Program, err_manager: &mut ErrorManager, interner: &mut Interner) {
+pub fn monomorphize(program: &mut Program, err_manager: &mut ErrorManager) {
    let mut worklist: Vec<SpecializationWorkItem> = Vec::new();
    let mut new_procedures: HashMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId> = HashMap::new();
 
@@ -81,7 +80,7 @@ pub fn monomorphize(program: &mut Program, err_manager: &mut ErrorManager, inter
          return;
       }
 
-      let mut cloned_procedure_info = program
+      let cloned_procedure_info = program
          .procedure_info
          .get(new_spec.template_with_type_arguments.0)
          .unwrap()
@@ -101,10 +100,6 @@ pub fn monomorphize(program: &mut Program, err_manager: &mut ErrorManager, inter
       );
 
       let new_proc_id = program.procedures.insert(cloned_procedure);
-      let new_proc_name = format!(".{}_{}", new_proc_id.data().as_ffi(), interner.lookup(cloned_procedure_info.name.str));
-      let new_proc_name = interner.intern(&new_proc_name);
-      cloned_procedure_info.name.str = new_proc_name;
-      program.procedures.get_mut(new_proc_id).unwrap().definition.name.str = new_proc_name;
       program.procedure_info.insert(new_proc_id, cloned_procedure_info);
 
       new_procedures.insert(new_spec.template_with_type_arguments, new_proc_id);
