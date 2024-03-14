@@ -92,9 +92,6 @@ proc neg_i16(x: i16) -> i16 {
    if x == I16_MIN {
       return I16_MIN;
    }
-   // TODO: this is inefficient,
-   // because casting down an i32
-   // will insert an extend
    return (-(x as i32)) as i16;
 }
 
@@ -102,9 +99,6 @@ proc neg_i8(x: i8) -> i8 {
    if x == I8_MIN {
       return I8_MIN;
    }
-   // TODO: this is inefficient,
-   // because casting down an i32
-   // will insert an extend
    return (-(x as i32)) as i8;
 }
 
@@ -112,9 +106,6 @@ proc div_i16(x: i16, y: i16) -> i16 {
    if x == I16_MIN and y == -1 {
       unreachable();
    }
-   // TODO: this is inefficient,
-   // because casting down an i32
-   // will insert an extend
    return (x as i32 / y as i32) as i16;
 }
 
@@ -122,9 +113,6 @@ proc div_i8(x: i8, y: i8) -> i8 {
    if x == I8_MIN and y == -1 {
       unreachable();
    }
-   // TODO: this is inefficient,
-   // because casting down an i32
-   // will insert an extend
    return (x as i32 / y as i32) as i8;
 }
 
@@ -132,9 +120,6 @@ proc mod_i16(x: i16, y: i16) -> i16 {
    if x == I16_MIN and y == -1 {
       unreachable();
    }
-   // TODO: this is inefficient,
-   // because casting down an i32
-   // will insert an extend
    return (x as i32 % y as i32) as i16;
 }
 
@@ -142,9 +127,6 @@ proc mod_i8(x: i8, y: i8) -> i8 {
    if x == I8_MIN and y == -1 {
       unreachable();
    }
-   // TODO: this is inefficient,
-   // because casting down an i32
-   // will insert an extend
    return (x as i32 % y as i32) as i8;
 }
 
