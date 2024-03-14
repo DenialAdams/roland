@@ -917,9 +917,57 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          match (src_type, target_type) {
             (ExpressionType::Int(l), ExpressionType::Int(r))
                if l.width.as_num_bytes(Target::Qbe) >= r.width.as_num_bytes(Target::Qbe) =>
-            {
-               writeln!(ctx.buf, "copy {}", val).unwrap();
-            }
+               {
+                  match (l.width, r.width) {
+                     (IntWidth::Eight, IntWidth::Two) => {
+                        if r.signed {
+                           writeln!(ctx.buf, "extsh {}", val).unwrap();
+                        } else {
+                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111).unwrap();
+                        }
+                     }
+                     (IntWidth::Eight, IntWidth::One) => {
+                        if r.signed {
+                           writeln!(ctx.buf, "extsb {}", val).unwrap();
+                        } else {
+                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111).unwrap();
+                        }
+                     }
+                     (IntWidth::Four, IntWidth::Two) => {
+                        if r.signed {
+                           writeln!(ctx.buf, "extsh {}", val).unwrap();
+                        } else {
+                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111).unwrap();
+                        }
+                     }
+                     (IntWidth::Four | IntWidth::Two, IntWidth::One) => {
+                        if r.signed {
+                           writeln!(ctx.buf, "extsb {}", val).unwrap();
+                        } else {
+                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111).unwrap();
+                        }
+                     }
+                     (IntWidth::Two, IntWidth::Two) => {
+                        if !l.signed && r.signed {
+                           writeln!(ctx.buf, "extsh {}", val).unwrap();
+                        } else if l.signed && !r.signed {
+                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111).unwrap();
+                        } else {
+                           writeln!(ctx.buf, "copy {}", val).unwrap();
+                        }
+                     }
+                     (IntWidth::One, IntWidth::One) => {
+                        if !l.signed && r.signed {
+                           writeln!(ctx.buf, "extsb {}", val).unwrap();
+                        } else if l.signed && !r.signed {
+                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111).unwrap();
+                        } else {
+                           writeln!(ctx.buf, "copy {}", val).unwrap();
+                        }
+                     }
+                     _ => writeln!(ctx.buf, "copy {}", val).unwrap(),
+                  }
+               }
             (ExpressionType::Int(l), ExpressionType::Int(r))
                if l.width.as_num_bytes(Target::Qbe) < r.width.as_num_bytes(Target::Qbe) =>
             {
