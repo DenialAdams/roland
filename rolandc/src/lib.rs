@@ -256,7 +256,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 ) -> Result<Vec<u8>, CompilationError> {
    compile_for_errors(ctx, user_program_ep, config)?;
 
-   pre_backend_lowering::replace_nonnative_casts_and_unique_overflow(&mut ctx.program, &ctx.interner);
+   pre_backend_lowering::replace_nonnative_casts_and_unique_overflow(&mut ctx.program, &ctx.interner, config.target);
 
    dead_code_elimination::delete_unreachable_procedures_and_globals(&mut ctx.program, &mut ctx.interner, config.target);
 
