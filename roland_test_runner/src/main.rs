@@ -329,7 +329,13 @@ fn test_result(tc_output: &Output, t_file_path: &Path, amd64: bool) -> Result<()
          return Err(TestFailureReason::MismatchedExecutionOutput(ero, prog_output));
       }
 
-      std::fs::remove_file(prog_path).unwrap();
+      std::fs::remove_file(&prog_path).unwrap();
+      if amd64 {
+         prog_path.set_extension("s");
+         std::fs::remove_file(&prog_path).unwrap();
+         prog_path.set_extension("ssa");
+         std::fs::remove_file(&prog_path).unwrap();
+      }
    } else if td.result.run_output.is_some() {
       return Err(TestFailureReason::ExpectedCompilationSuccess(stderr_text.into_owned()));
    } else if td
