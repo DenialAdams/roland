@@ -119,3 +119,67 @@ const USIZE_MAX: usize = U64_MAX transmute usize;
 
 const ISIZE_MIN: isize = I64_MIN transmute isize;
 const ISIZE_MAX: isize = I64_MAX transmute isize;
+
+proc add_u8(x: u8, y: u8) -> u8 {
+   return (x as u32 + y as u32) as u8;
+}
+
+proc add_i8(x: i8, y: i8) -> i8 {
+   return (x as i32 + y as i32) as i8;
+}
+
+proc add_u16(x: u16, y: u16) -> u16 {
+   return (x as u32 + y as u32) as u16;
+}
+
+proc add_i16(x: i16, y: i16) -> i16 {
+   return (x as i32 + y as i32) as i16;
+}
+
+proc sub_u8(x: u8, y: u8) -> u8 {
+   return (x as u32 - y as u32) as u8;
+}
+
+proc sub_i8(x: i8, y: i8) -> i8 {
+   return (x as i32 - y as i32) as i8;
+}
+
+proc sub_u16(x: u16, y: u16) -> u16 {
+   return (x as u32 - y as u32) as u16;
+}
+
+proc sub_i16(x: i16, y: i16) -> i16 {
+   return (x as i32 - y as i32) as i16;
+}
+
+proc mul_u8(x: u8, y: u8) -> u8 {
+   return (x as u32 * y as u32) as u8;
+}
+
+proc mul_i8(x: i8, y: i8) -> i8 {
+   return (x as i32 * y as i32) as i8;
+}
+
+proc mul_u16(x: u16, y: u16) -> u16 {
+   return (x as u32 * y as u32) as u16;
+}
+
+proc mul_i16(x: i16, y: i16) -> i16 {
+   return (x as i32 * y as i32) as i16;
+}
+
+proc shl_u8(x: u8, y: u8) -> u8 {
+   return (x as u32 << (y & 0b111) as u32) as u8;
+}
+
+proc shl_i8(x: i8, y: i8) -> i8 {
+   return (x as i32 << (y & 0b111) as i32) as i8;
+}
+
+proc shl_u16(x: u16, y: u16) -> u16 {
+   return (x as u32 << (y & 0b1111) as u32) as u16;
+}
+
+proc shl_i16(x: i16, y: i16) -> i16 {
+   return (x as i32 << (y & 0b1111) as i32) as i16;
+}

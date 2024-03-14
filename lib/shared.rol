@@ -148,9 +148,7 @@ proc mod_i8(x: i8, y: i8) -> i8 {
    return (x as i32 % y as i32) as i8;
 }
 
-proc unit() -> unit {
-
-}
+proc unit() -> unit {}
 
 proc zeroed<T>() -> T {
    let x: T = ___;
