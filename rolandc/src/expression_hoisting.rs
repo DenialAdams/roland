@@ -326,37 +326,23 @@ enum ParentCtx {
 
 fn vv_expr(
    expr_index: ExpressionId,
-   vv_context: &mut VvContext,
+   ctx: &mut VvContext,
    expressions: &ExpressionPool,
-   current_statement: usize,
+   current_stmt: usize,
    parent_ctx: ParentCtx,
    is_lhs_context: bool,
 ) {
    match &expressions[expr_index].expression {
       Expression::ArrayIndex { array, index } => {
-         vv_expr(
-            *array,
-            vv_context,
-            expressions,
-            current_statement,
-            ParentCtx::Expr,
-            is_lhs_context,
-         );
-         vv_expr(
-            *index,
-            vv_context,
-            expressions,
-            current_statement,
-            ParentCtx::Expr,
-            false,
-         );
+         vv_expr(*array, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
+         vv_expr(*index, ctx, expressions, current_stmt, ParentCtx::Expr, false);
       }
       Expression::ProcedureCall { args, proc_expr } => {
          vv_expr(
             *proc_expr,
-            vv_context,
+            ctx,
             expressions,
-            current_statement,
+            current_stmt,
             ParentCtx::Expr,
             is_lhs_context,
          );
@@ -364,111 +350,45 @@ fn vv_expr(
          for arg in args.iter() {
             vv_expr(
                arg.expr,
-               vv_context,
+               ctx,
                expressions,
-               current_statement,
+               current_stmt,
                ParentCtx::Expr,
                is_lhs_context,
             );
          }
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
-         vv_expr(
-            *lhs,
-            vv_context,
-            expressions,
-            current_statement,
-            ParentCtx::Expr,
-            is_lhs_context,
-         );
-         vv_expr(
-            *rhs,
-            vv_context,
-            expressions,
-            current_statement,
-            ParentCtx::Expr,
-            is_lhs_context,
-         );
+         vv_expr(*lhs, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
+         vv_expr(*rhs, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
       }
       Expression::UnaryOperator(UnOp::AddressOf, expr) => {
-         if !expressions[*expr]
-            .expression
-            .is_lvalue(expressions, vv_context.global_info)
-         {
-            vv_expr(
-               *expr,
-               vv_context,
-               expressions,
-               current_statement,
-               ParentCtx::Expr,
-               is_lhs_context,
-            );
+         if !expressions[*expr].expression.is_lvalue(expressions, ctx.global_info) {
+            vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
          } else {
-            vv_expr(*expr, vv_context, expressions, current_statement, ParentCtx::Expr, true);
+            vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, true);
          }
       }
       Expression::UnaryOperator(UnOp::Dereference, expr) => {
-         vv_expr(
-            *expr,
-            vv_context,
-            expressions,
-            current_statement,
-            ParentCtx::Expr,
-            false,
-         );
+         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
       }
       Expression::UnaryOperator(_, expr) => {
-         vv_expr(
-            *expr,
-            vv_context,
-            expressions,
-            current_statement,
-            ParentCtx::Expr,
-            is_lhs_context,
-         );
+         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
       }
       Expression::StructLiteral(_, field_exprs) => {
          for expr in field_exprs.values().flatten() {
-            vv_expr(
-               *expr,
-               vv_context,
-               expressions,
-               current_statement,
-               ParentCtx::Expr,
-               is_lhs_context,
-            );
+            vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
          }
       }
       Expression::FieldAccess(_field_names, expr) => {
-         vv_expr(
-            *expr,
-            vv_context,
-            expressions,
-            current_statement,
-            ParentCtx::Expr,
-            is_lhs_context,
-         );
+         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
       }
       Expression::Cast { expr, .. } => {
-         vv_expr(
-            *expr,
-            vv_context,
-            expressions,
-            current_statement,
-            ParentCtx::Expr,
-            is_lhs_context,
-         );
+         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
-            vv_expr(
-               *expr,
-               vv_context,
-               expressions,
-               current_statement,
-               ParentCtx::Expr,
-               is_lhs_context,
-            );
+            vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
          }
       }
       Expression::IfX(a, b, c) => {
@@ -478,34 +398,13 @@ fn vv_expr(
          // So what we do is we descend into B/C to allow for marking "this statement needs to be hoisted"
          // but then we pretend it didn't happen. Then, during hoisting we descend into the consequent/else
          // blocks that we create to do the marking and hoisting. Simple.
-         vv_expr(
-            *a,
-            vv_context,
-            expressions,
-            current_statement,
-            ParentCtx::Expr,
-            is_lhs_context,
-         );
-         let before_len = vv_context.statement_actions.len();
-         let before_marked = vv_context.pending_hoists.len();
-         vv_expr(
-            *b,
-            vv_context,
-            expressions,
-            current_statement,
-            ParentCtx::Expr,
-            is_lhs_context,
-         );
-         vv_expr(
-            *c,
-            vv_context,
-            expressions,
-            current_statement,
-            ParentCtx::Expr,
-            is_lhs_context,
-         );
-         vv_context.statement_actions.truncate(before_len);
-         vv_context.pending_hoists.truncate(before_marked);
+         vv_expr(*a, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
+         let before_len = ctx.statement_actions.len();
+         let before_marked = ctx.pending_hoists.len();
+         vv_expr(*b, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
+         vv_expr(*c, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
+         ctx.statement_actions.truncate(before_len);
+         ctx.pending_hoists.truncate(before_marked);
       }
       Expression::StringLiteral(_)
       | Expression::EnumLiteral(_, _)
@@ -519,15 +418,15 @@ fn vv_expr(
       Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 
-   if vv_context.tac {
+   if ctx.tac {
       let top_void_procedure_call = (parent_ctx == ParentCtx::AssignmentRhs || parent_ctx == ParentCtx::ExprStmt)
          && matches!(expressions[expr_index].expression, Expression::ProcedureCall { .. })
          && sizeof_type_mem(
             expressions[expr_index].exp_type.as_ref().unwrap(),
-            vv_context.user_defined_types,
+            ctx.user_defined_types,
             Target::Qbe,
          ) == 0;
-      if vv_context.tac
+      if ctx.tac
          && !is_lhs_context
          && !top_void_procedure_call
          && !matches!(
@@ -540,7 +439,7 @@ fn vv_expr(
                | Expression::StringLiteral(_)
          )
       {
-         vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+         ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
       }
    } else {
       match &expressions[expr_index].expression {
@@ -549,11 +448,8 @@ fn vv_expr(
 
             // If this is an rvalue, we need to store this array in memory to do the indexing
             // and hence hoist here.
-            if !array_expression
-               .expression
-               .is_lvalue(expressions, vv_context.global_info)
-            {
-               vv_context.mark_expr_for_hoisting(*array, current_statement, HoistReason::Must);
+            if !array_expression.expression.is_lvalue(expressions, ctx.global_info) {
+               ctx.mark_expr_for_hoisting(*array, current_stmt, HoistReason::Must);
             }
          }
          Expression::ProcedureCall { args, proc_expr } => {
@@ -565,7 +461,7 @@ fn vv_expr(
             if any_named_arg {
                for arg in args.iter() {
                   if expression_could_have_side_effects(arg.expr, expressions) {
-                     vv_context.statements_that_need_hoisting.push(current_statement);
+                     ctx.statements_that_need_hoisting.push(current_stmt);
                      break;
                   }
                }
@@ -576,7 +472,7 @@ fn vv_expr(
                ExpressionType::ProcedurePointer { .. }
             ) && expression_could_have_side_effects(*proc_expr, expressions)
             {
-               vv_context.statements_that_need_hoisting.push(current_statement);
+               ctx.statements_that_need_hoisting.push(current_stmt);
             }
 
             let exp_type = expressions[expr_index].exp_type.as_ref().unwrap();
@@ -587,40 +483,34 @@ fn vv_expr(
             // monomorphization, we must also check size_is_unknown because any type parameter could end up
             // being an aggregate. This means unnecessary hoisting, unfortunately.
             if (exp_type.size_is_unknown() || exp_type.is_aggregate()) && parent_ctx == ParentCtx::Expr {
-               vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
             }
 
             // assumption: procedure call always has side effects
             // If we eventually decide to come up with a list of pure procedure calls, this needs to be updated
             // @PureCalls
             if parent_ctx == ParentCtx::Expr {
-               vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::IfOtherHoisting);
+               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
             }
          }
          Expression::UnaryOperator(UnOp::AddressOf, expr) => {
-            if !expressions[*expr]
-               .expression
-               .is_lvalue(expressions, vv_context.global_info)
-            {
-               vv_context.mark_expr_for_hoisting(*expr, current_statement, HoistReason::Must);
+            if !expressions[*expr].expression.is_lvalue(expressions, ctx.global_info) {
+               ctx.mark_expr_for_hoisting(*expr, current_stmt, HoistReason::Must);
             }
          }
          Expression::StructLiteral(_, field_exprs) => {
             for expr in field_exprs.values().flatten() {
                if expression_could_have_side_effects(*expr, expressions) {
-                  vv_context.statements_that_need_hoisting.push(current_statement);
+                  ctx.statements_that_need_hoisting.push(current_stmt);
                }
             }
             if parent_ctx == ParentCtx::Expr {
-               vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
             }
          }
          Expression::FieldAccess(_, expr) => {
-            if !expressions[*expr]
-               .expression
-               .is_lvalue(expressions, vv_context.global_info)
-            {
-               vv_context.mark_expr_for_hoisting(*expr, current_statement, HoistReason::Must);
+            if !expressions[*expr].expression.is_lvalue(expressions, ctx.global_info) {
+               ctx.mark_expr_for_hoisting(*expr, current_stmt, HoistReason::Must);
             }
          }
          Expression::Cast {
@@ -630,35 +520,35 @@ fn vv_expr(
          } => {
             let e = &expressions[*expr];
 
-            if !e.expression.is_lvalue(expressions, vv_context.global_info)
+            if !e.expression.is_lvalue(expressions, ctx.global_info)
                && !is_reinterpretable_transmute(
                   e.exp_type.as_ref().unwrap(),
                   expressions[expr_index].exp_type.as_ref().unwrap(),
                )
             {
-               vv_context.mark_expr_for_hoisting(*expr, current_statement, HoistReason::Must);
+               ctx.mark_expr_for_hoisting(*expr, current_stmt, HoistReason::Must);
             }
          }
          Expression::ArrayLiteral(_) => {
             if parent_ctx == ParentCtx::Expr {
-               vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
             }
          }
          Expression::IfX(_, _, _) => {
-            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::IfOtherHoisting);
+            ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
          }
          Expression::StringLiteral(_) => {
             if parent_ctx == ParentCtx::Expr {
-               vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
             }
          }
          Expression::Variable(x) => {
             // Pretty hacky.
-            if vv_context.global_info.get(x).map_or(false, |x| {
+            if ctx.global_info.get(x).map_or(false, |x| {
                x.kind == GlobalKind::Const && x.expr_type.e_type.is_aggregate()
             }) && parent_ctx == ParentCtx::Expr
             {
-               vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
             }
          }
          Expression::UnresolvedVariable(_)
