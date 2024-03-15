@@ -442,7 +442,7 @@ fn parse_test_content(mut content: &str, amd64: bool) -> ExpectedTestResult {
             match (amd64, anchor.1) {
                (true, TargetSpec::Wasi) | (false, TargetSpec::Amd64) => {
                   mode = Mode::ExpectingAnchor;
-               },
+               }
                _ => {
                   if anchor.2 {
                      expected_compile_output = Some(Vec::new());
