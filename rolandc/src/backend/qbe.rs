@@ -66,7 +66,7 @@ fn roland_type_to_extended_type(r_type: &ExpressionType) -> &'static str {
    }
 }
 
-fn roland_type_to_abi_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, aggregate_defs: &IndexSet<ExpressionType>) -> Option<String> {
+fn roland_type_to_abi_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, aggregate_defs: &IndexSet<ExpressionType>) -> Option<Cow<'static, str>> {
    if sizeof_type_mem(r_type, udt, Target::Qbe) == 0 {
       return None;
    }
@@ -74,54 +74,54 @@ fn roland_type_to_abi_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, a
       ExpressionType::Int(IntType {
          signed: true,
          width: IntWidth::Two,
-      }) => "sh".into(),
+      }) => Cow::Borrowed("sh"),
       ExpressionType::Int(IntType {
          signed: false,
          width: IntWidth::Two,
-      }) => "uh".into(),
+      }) => Cow::Borrowed("uh"),
       ExpressionType::Int(IntType {
          signed: true,
          width: IntWidth::One,
-      }) => "sb".into(),
+      }) => Cow::Borrowed("sb"),
       ExpressionType::Int(IntType {
          signed: false,
          width: IntWidth::One,
       })
-      | ExpressionType::Bool => "ub".into(),
+      | ExpressionType::Bool => Cow::Borrowed("ub"),
       ExpressionType::Struct(_) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
-         format!(":s{}", index)
+         Cow::Owned(format!(":s{}", index))
       }
       ExpressionType::Union(_) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
-         format!(":u{}", index)
+         Cow::Owned(format!(":u{}", index))
       }
       ExpressionType::Array(_, _) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
-         format!(":a{}", index)
+         Cow::Owned(format!(":a{}", index))
       }
-      _ => roland_type_to_base_type(r_type).into(),
+      _ => Cow::Borrowed(roland_type_to_base_type(r_type)),
    })
 }
 
-fn roland_type_to_sub_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, aggregate_defs: &IndexSet<ExpressionType>) -> Option<String> {
+fn roland_type_to_sub_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, aggregate_defs: &IndexSet<ExpressionType>) -> Option<Cow<'static, str>> {
    if sizeof_type_mem(r_type, udt, Target::Qbe) == 0 {
       return None;
    }
    Some(match r_type {
       ExpressionType::Struct(_) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
-         format!(":s{}", index)
+         Cow::Owned(format!(":s{}", index))
       }
       ExpressionType::Union(_) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
-         format!(":u{}", index)
+         Cow::Owned(format!(":u{}", index))
       }
       ExpressionType::Array(_, _) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
-         format!(":a{}", index)
+         Cow::Owned(format!(":a{}", index))
       }
-      _ => roland_type_to_extended_type(r_type).into(),
+      _ => Cow::Borrowed(roland_type_to_extended_type(r_type)),
    })
 }
 
@@ -608,7 +608,6 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                // World's biggest hack
                writeln!(&mut ctx.buf, "   ret 0").unwrap();
             } else {
-               // this whole thing is pretty suspect?
                if *ctx.ast.expressions[*en].exp_type.as_ref().unwrap() == ExpressionType::Never {
                   writeln!(&mut ctx.buf, "   hlt").unwrap();
                } else if sizeof_type_mem(ctx.ast.expressions[*en].exp_type.as_ref().unwrap(), ctx.udt, Target::Qbe) == 0 {
