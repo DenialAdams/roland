@@ -209,15 +209,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
 
    logical_op_lowering::lower_logical_ops(&mut ctx.program);
 
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp_b4.rol").unwrap(),
-      )
-      .unwrap();
-   }
-
    expression_hoisting::expression_hoisting(&mut ctx.program, false);
 
    // must run after expression hoisting, so that re-ordering named arguments does not

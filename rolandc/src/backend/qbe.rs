@@ -1048,17 +1048,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
             }
          }
       }
-      Expression::BoundFcnLiteral(_, _) => unreachable!(),
-      Expression::StringLiteral(_) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
-      Expression::StructLiteral(_, _) => unreachable!(),
-      Expression::EnumLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::ArrayLiteral(_) => unreachable!(),
-      Expression::IfX(_, _, _) => unreachable!(),
-      Expression::UnitLiteral => unreachable!(),
-      Expression::UnresolvedVariable(_) => unreachable!(),
+      _ => unreachable!(),
    }
 }
 
