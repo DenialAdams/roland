@@ -152,3 +152,11 @@ proc malloc(bytes: usize) -> &u8 {
    let current_page_start = wasm_memory_grow(num_new_pages) * 65536;
    return current_page_start transmute &u8;
 }
+
+proc free(ptr: &u8) {
+   // Body to get around unused variable warning...
+   let x = false;
+   if x {
+      ptr~ = 0;
+   }
+}
