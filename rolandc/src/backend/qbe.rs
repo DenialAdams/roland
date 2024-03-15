@@ -391,9 +391,6 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          if ctx.var_to_reg.contains_key(local.0) {
             continue;
          }
-         if sizeof_type_mem(local.1, ctx.udt, Target::Qbe) == 0 {
-            continue;
-         }
          let alignment = {
             let align_floor_4 = mem_alignment(local.1, ctx.udt, Target::Qbe).max(4);
             if align_floor_4 > 4 && align_floor_4 <= 8 {
