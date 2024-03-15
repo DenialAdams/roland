@@ -2,8 +2,13 @@ proc main(named foo: u32) {
 
 }
 __END__
-compile:
+compile_wasi:
 `main` is a special procedure for this target (WASI) and is not allowed to have named parameters
 ↳ line 1, column 1 [tests/special_procedures/main_named_parameters.rol]
 `main` is a special procedure for this target (WASI) and is not allowed to have parameters
+↳ line 1, column 1 [tests/special_procedures/main_named_parameters.rol]
+compile_amd64:
+`main` is a special procedure for this target (AMD64) and is not allowed to have named parameters
+↳ line 1, column 1 [tests/special_procedures/main_named_parameters.rol]
+`main` is a special procedure for this target (AMD64) and is not allowed to have parameters
 ↳ line 1, column 1 [tests/special_procedures/main_named_parameters.rol]

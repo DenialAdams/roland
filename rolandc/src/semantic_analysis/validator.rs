@@ -16,7 +16,9 @@ use crate::error_handling::error_handling_macros::{
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   statement_always_or_never_returns, ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression, ExpressionId, ExpressionNode, ExpressionTypeNode, ProcImplSource, ProcImplSourceShallow, ProcedureId, Program, Statement, StatementId, StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId
+   statement_always_or_never_returns, ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression,
+   ExpressionId, ExpressionNode, ExpressionTypeNode, ProcImplSource, ProcImplSourceShallow, ProcedureId, Program,
+   Statement, StatementId, StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
 };
 use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::source_info::SourceInfo;

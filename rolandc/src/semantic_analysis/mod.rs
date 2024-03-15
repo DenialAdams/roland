@@ -6,7 +6,8 @@ use slotmap::SecondaryMap;
 use self::type_variables::TypeVariableManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, ExpressionId, ExpressionTypeNode, ProcImplSourceShallow, ProcedureId, StrNode, StructId, UserDefinedTypeId, UserDefinedTypeInfo, VariableId
+   AstPool, ExpressionId, ExpressionTypeNode, ProcImplSourceShallow, ProcedureId, StrNode, StructId, UserDefinedTypeId,
+   UserDefinedTypeInfo, VariableId,
 };
 use crate::size_info::{StructSizeInfo, UnionSizeInfo};
 use crate::source_info::SourceInfo;

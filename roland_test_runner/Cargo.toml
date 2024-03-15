@@ -10,4 +10,3 @@ pico-args = { version = "0.5", default-features=false, features=[] }
 similar-asserts = "1"
 os_pipe = "1"
 rayon = "1"
-rolandc = { path = "../rolandc" }

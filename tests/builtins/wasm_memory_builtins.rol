@@ -4,7 +4,14 @@ proc main() {
    println_bool(wasm_memory_size() == 3);
 }
 __END__
-run:
+compile_amd64:
+Encountered undefined symbol `wasm_memory_size`
+↳ line 2, column 17 [tests/builtins/wasm_memory_builtins.rol]
+Encountered undefined symbol `wasm_memory_grow`
+↳ line 3, column 17 [tests/builtins/wasm_memory_builtins.rol]
+Encountered undefined symbol `wasm_memory_size`
+↳ line 4, column 17 [tests/builtins/wasm_memory_builtins.rol]
+run_wasi:
 true
 true
 true
