@@ -178,7 +178,6 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
             write!(pp_ctx.output, ": ")?;
             pp_type(&dt.e_type, pp_ctx)?;
          }
-         write!(pp_ctx.output, " = ")?;
          match initializer {
             DeclarationValue::Expr(e) => {
                write!(pp_ctx.output, " = ")?;
