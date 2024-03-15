@@ -350,17 +350,6 @@ fn vv_expr(
             ParentCtx::Expr,
             false,
          );
-
-         let array_expression = &expressions[*array];
-
-         // If this is an rvalue, we need to store this array in memory to do the indexing
-         // and hence hoist here.
-         if !array_expression
-            .expression
-            .is_lvalue(expressions, vv_context.global_info)
-         {
-            vv_context.mark_expr_for_hoisting(*array, current_statement, HoistReason::Must);
-         }
       }
       Expression::ProcedureCall { args, proc_expr } => {
          vv_expr(
@@ -372,7 +361,6 @@ fn vv_expr(
             is_lhs_context,
          );
 
-         let mut any_named_arg = false;
          for arg in args.iter() {
             vv_expr(
                arg.expr,
@@ -382,43 +370,6 @@ fn vv_expr(
                ParentCtx::Expr,
                is_lhs_context,
             );
-
-            any_named_arg |= arg.name.is_some();
-         }
-
-         if any_named_arg {
-            for arg in args.iter() {
-               if expression_could_have_side_effects(arg.expr, expressions) {
-                  vv_context.statements_that_need_hoisting.push(current_statement);
-                  break;
-               }
-            }
-         }
-
-         if matches!(
-            expressions[*proc_expr].exp_type.as_ref().unwrap(),
-            ExpressionType::ProcedurePointer { .. }
-         ) && expression_could_have_side_effects(*proc_expr, expressions)
-         {
-            vv_context.statements_that_need_hoisting.push(current_statement);
-         }
-
-         let exp_type = expressions[expr_index].exp_type.as_ref().unwrap();
-
-         // The point here is that we need to hoist calls where an aggregate is returned, because currently
-         // a returned aggregate is an address _in the function we just called_, so not hoisting would mean
-         // that we clobber the aggregate if we make another call. Because, currently, this hoisting runs before
-         // monomorphization, we must also check size_is_unknown because any type parameter could end up
-         // being an aggregate. This means unnecessary hoisting, unfortunately.
-         if (exp_type.size_is_unknown() || exp_type.is_aggregate()) && parent_ctx == ParentCtx::Expr {
-            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
-         }
-
-         // assumption: procedure call always has side effects
-         // If we eventually decide to come up with a list of pure procedure calls, this needs to be updated
-         // @PureCalls
-         if parent_ctx == ParentCtx::Expr {
-            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::IfOtherHoisting);
          }
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
@@ -452,7 +403,6 @@ fn vv_expr(
                ParentCtx::Expr,
                is_lhs_context,
             );
-            vv_context.mark_expr_for_hoisting(*expr, current_statement, HoistReason::Must);
          } else {
             vv_expr(*expr, vv_context, expressions, current_statement, ParentCtx::Expr, true);
          }
@@ -487,12 +437,6 @@ fn vv_expr(
                ParentCtx::Expr,
                is_lhs_context,
             );
-            if expression_could_have_side_effects(*expr, expressions) {
-               vv_context.statements_that_need_hoisting.push(current_statement);
-            }
-         }
-         if parent_ctx == ParentCtx::Expr {
-            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
          }
       }
       Expression::FieldAccess(_field_names, expr) => {
@@ -504,38 +448,6 @@ fn vv_expr(
             ParentCtx::Expr,
             is_lhs_context,
          );
-
-         if !expressions[*expr]
-            .expression
-            .is_lvalue(expressions, vv_context.global_info)
-         {
-            vv_context.mark_expr_for_hoisting(*expr, current_statement, HoistReason::Must);
-         }
-      }
-      Expression::Cast {
-         cast_type: CastType::Transmute,
-         expr,
-         ..
-      } => {
-         vv_expr(
-            *expr,
-            vv_context,
-            expressions,
-            current_statement,
-            ParentCtx::Expr,
-            is_lhs_context,
-         );
-
-         let e = &expressions[*expr];
-
-         if !e.expression.is_lvalue(expressions, vv_context.global_info)
-            && !is_reinterpretable_transmute(
-               e.exp_type.as_ref().unwrap(),
-               expressions[expr_index].exp_type.as_ref().unwrap(),
-            )
-         {
-            vv_context.mark_expr_for_hoisting(*expr, current_statement, HoistReason::Must);
-         }
       }
       Expression::Cast { expr, .. } => {
          vv_expr(
@@ -557,9 +469,6 @@ fn vv_expr(
                ParentCtx::Expr,
                is_lhs_context,
             );
-         }
-         if parent_ctx == ParentCtx::Expr {
-            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
          }
       }
       Expression::IfX(a, b, c) => {
@@ -597,51 +506,166 @@ fn vv_expr(
          );
          vv_context.statement_actions.truncate(before_len);
          vv_context.pending_hoists.truncate(before_marked);
-         vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::IfOtherHoisting);
       }
-      Expression::EnumLiteral(_, _) => (),
-      Expression::BoolLiteral(_) => (),
-      Expression::StringLiteral(_) => {
-         if parent_ctx == ParentCtx::Expr {
-            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
-         }
-      }
-      Expression::IntLiteral { .. } => (),
-      Expression::FloatLiteral(_) => (),
-      Expression::BoundFcnLiteral(_, _) => (),
-      Expression::UnitLiteral => (),
-      Expression::Variable(x) => {
-         // Pretty hacky.
-         if vv_context.global_info.get(x).map_or(false, |x| {
-            x.kind == GlobalKind::Const && x.expr_type.e_type.is_aggregate()
-         }) && parent_ctx == ParentCtx::Expr
-         {
-            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
-         }
-      }
+      Expression::StringLiteral(_)
+      | Expression::EnumLiteral(_, _)
+      | Expression::BoolLiteral(_)
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_)
+      | Expression::BoundFcnLiteral(_, _)
+      | Expression::UnitLiteral
+      | Expression::Variable(_) => (),
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
-   let top_void_procedure_call = (parent_ctx == ParentCtx::AssignmentRhs || parent_ctx == ParentCtx::ExprStmt)
-      && matches!(expressions[expr_index].expression, Expression::ProcedureCall { .. })
-      && sizeof_type_mem(
-         expressions[expr_index].exp_type.as_ref().unwrap(),
-         vv_context.user_defined_types,
-         Target::Qbe,
-      ) == 0;
-   if vv_context.tac
-      && !is_lhs_context
-      && !top_void_procedure_call
-      && !matches!(
-         expressions[expr_index].expression,
-         Expression::BoundFcnLiteral(_, _)
-            | Expression::IntLiteral { .. }
-            | Expression::FloatLiteral { .. }
-            | Expression::BoolLiteral { .. }
-            | Expression::EnumLiteral { .. }
-            | Expression::StringLiteral(_)
-      )
-   {
-      vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+
+   if vv_context.tac {
+      let top_void_procedure_call = (parent_ctx == ParentCtx::AssignmentRhs || parent_ctx == ParentCtx::ExprStmt)
+         && matches!(expressions[expr_index].expression, Expression::ProcedureCall { .. })
+         && sizeof_type_mem(
+            expressions[expr_index].exp_type.as_ref().unwrap(),
+            vv_context.user_defined_types,
+            Target::Qbe,
+         ) == 0;
+      if vv_context.tac
+         && !is_lhs_context
+         && !top_void_procedure_call
+         && !matches!(
+            expressions[expr_index].expression,
+            Expression::BoundFcnLiteral(_, _)
+               | Expression::IntLiteral { .. }
+               | Expression::FloatLiteral { .. }
+               | Expression::BoolLiteral { .. }
+               | Expression::EnumLiteral { .. }
+               | Expression::StringLiteral(_)
+         )
+      {
+         vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+      }
+   } else {
+      match &expressions[expr_index].expression {
+         Expression::ArrayIndex { array, .. } => {
+            let array_expression = &expressions[*array];
+
+            // If this is an rvalue, we need to store this array in memory to do the indexing
+            // and hence hoist here.
+            if !array_expression
+               .expression
+               .is_lvalue(expressions, vv_context.global_info)
+            {
+               vv_context.mark_expr_for_hoisting(*array, current_statement, HoistReason::Must);
+            }
+         }
+         Expression::ProcedureCall { args, proc_expr } => {
+            let mut any_named_arg = false;
+            for arg in args.iter() {
+               any_named_arg |= arg.name.is_some();
+            }
+
+            if any_named_arg {
+               for arg in args.iter() {
+                  if expression_could_have_side_effects(arg.expr, expressions) {
+                     vv_context.statements_that_need_hoisting.push(current_statement);
+                     break;
+                  }
+               }
+            }
+
+            if matches!(
+               expressions[*proc_expr].exp_type.as_ref().unwrap(),
+               ExpressionType::ProcedurePointer { .. }
+            ) && expression_could_have_side_effects(*proc_expr, expressions)
+            {
+               vv_context.statements_that_need_hoisting.push(current_statement);
+            }
+
+            let exp_type = expressions[expr_index].exp_type.as_ref().unwrap();
+
+            // The point here is that we need to hoist calls where an aggregate is returned, because currently
+            // a returned aggregate is an address _in the function we just called_, so not hoisting would mean
+            // that we clobber the aggregate if we make another call. Because, currently, this hoisting runs before
+            // monomorphization, we must also check size_is_unknown because any type parameter could end up
+            // being an aggregate. This means unnecessary hoisting, unfortunately.
+            if (exp_type.size_is_unknown() || exp_type.is_aggregate()) && parent_ctx == ParentCtx::Expr {
+               vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+            }
+
+            // assumption: procedure call always has side effects
+            // If we eventually decide to come up with a list of pure procedure calls, this needs to be updated
+            // @PureCalls
+            if parent_ctx == ParentCtx::Expr {
+               vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::IfOtherHoisting);
+            }
+         }
+         Expression::UnaryOperator(UnOp::AddressOf, expr) => {
+            if !expressions[*expr]
+               .expression
+               .is_lvalue(expressions, vv_context.global_info)
+            {
+               vv_context.mark_expr_for_hoisting(*expr, current_statement, HoistReason::Must);
+            }
+         }
+         Expression::StructLiteral(_, field_exprs) => {
+            for expr in field_exprs.values().flatten() {
+               if expression_could_have_side_effects(*expr, expressions) {
+                  vv_context.statements_that_need_hoisting.push(current_statement);
+               }
+            }
+            if parent_ctx == ParentCtx::Expr {
+               vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+            }
+         }
+         Expression::FieldAccess(_, expr) => {
+            if !expressions[*expr]
+               .expression
+               .is_lvalue(expressions, vv_context.global_info)
+            {
+               vv_context.mark_expr_for_hoisting(*expr, current_statement, HoistReason::Must);
+            }
+         }
+         Expression::Cast {
+            cast_type: CastType::Transmute,
+            expr,
+            ..
+         } => {
+            let e = &expressions[*expr];
+
+            if !e.expression.is_lvalue(expressions, vv_context.global_info)
+               && !is_reinterpretable_transmute(
+                  e.exp_type.as_ref().unwrap(),
+                  expressions[expr_index].exp_type.as_ref().unwrap(),
+               )
+            {
+               vv_context.mark_expr_for_hoisting(*expr, current_statement, HoistReason::Must);
+            }
+         }
+         Expression::ArrayLiteral(_) => {
+            if parent_ctx == ParentCtx::Expr {
+               vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+            }
+         }
+         Expression::IfX(_, _, _) => {
+            vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::IfOtherHoisting);
+         }
+         Expression::StringLiteral(_) => {
+            if parent_ctx == ParentCtx::Expr {
+               vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+            }
+         }
+         Expression::Variable(x) => {
+            // Pretty hacky.
+            if vv_context.global_info.get(x).map_or(false, |x| {
+               x.kind == GlobalKind::Const && x.expr_type.e_type.is_aggregate()
+            }) && parent_ctx == ParentCtx::Expr
+            {
+               vv_context.mark_expr_for_hoisting(expr_index, current_statement, HoistReason::Must);
+            }
+         }
+         Expression::UnresolvedVariable(_)
+         | Expression::UnresolvedProcLiteral(_, _)
+         | Expression::UnresolvedStructLiteral(_, _)
+         | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+         _ => (),
+      }
    }
 }
