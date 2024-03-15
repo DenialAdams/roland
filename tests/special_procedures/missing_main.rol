@@ -2,5 +2,7 @@ proc foo() {
    println("This is not main");
 }
 __END__
-compile:
+compile_wasi:
 A procedure with the name `main` must be present for this target (WASI)
+compile_amd64:
+A procedure with the name `main` must be present for this target (AMD64)

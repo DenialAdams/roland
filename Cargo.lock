@@ -631,7 +631,6 @@ dependencies = [
  "os_pipe",
  "pico-args",
  "rayon",
- "rolandc",
  "similar-asserts",
  "wait-timeout",
 ]

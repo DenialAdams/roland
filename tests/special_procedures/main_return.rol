@@ -2,6 +2,9 @@ proc main() -> String {
    return "awesome";
 }
 __END__
-compile:
+compile_wasi:
 `main` is a special procedure for this target (WASI) and must not return a value
+↳ line 1, column 1 [tests/special_procedures/main_return.rol]
+compile_amd64:
+`main` is a special procedure for this target (AMD64) and must not return a value
 ↳ line 1, column 1 [tests/special_procedures/main_return.rol]

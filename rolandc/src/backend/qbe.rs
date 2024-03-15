@@ -9,7 +9,8 @@ use super::regalloc;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   ArgumentNode, AstPool, CastType, Expression, ExpressionId, ProcImplSource, ProcImplSourceShallow, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId
+   ArgumentNode, AstPool, CastType, Expression, ExpressionId, ProcImplSource, ProcImplSourceShallow, ProcedureId, UnOp,
+   UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::{GlobalInfo, ProcedureInfo};
 use crate::size_info::{mem_alignment, sizeof_type_mem};
@@ -66,7 +67,11 @@ fn roland_type_to_extended_type(r_type: &ExpressionType) -> &'static str {
    }
 }
 
-fn roland_type_to_abi_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, aggregate_defs: &IndexSet<ExpressionType>) -> Option<Cow<'static, str>> {
+fn roland_type_to_abi_type(
+   r_type: &ExpressionType,
+   udt: &UserDefinedTypeInfo,
+   aggregate_defs: &IndexSet<ExpressionType>,
+) -> Option<Cow<'static, str>> {
    if sizeof_type_mem(r_type, udt, Target::Qbe) == 0 {
       return None;
    }
@@ -104,7 +109,11 @@ fn roland_type_to_abi_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, a
    })
 }
 
-fn roland_type_to_sub_type(r_type: &ExpressionType, udt: &UserDefinedTypeInfo, aggregate_defs: &IndexSet<ExpressionType>) -> Option<Cow<'static, str>> {
+fn roland_type_to_sub_type(
+   r_type: &ExpressionType,
+   udt: &UserDefinedTypeInfo,
+   aggregate_defs: &IndexSet<ExpressionType>,
+) -> Option<Cow<'static, str>> {
    if sizeof_type_mem(r_type, udt, Target::Qbe) == 0 {
       return None;
    }
@@ -353,7 +362,8 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       let abi_ret_type = if ctx.is_main {
          "w".into()
       } else {
-         roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs).unwrap_or_else(|| "".into())
+         roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs)
+            .unwrap_or_else(|| "".into())
       };
       write!(
          ctx.buf,
@@ -373,13 +383,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
             )
             .unwrap();
          } else if let Some(p_type) = roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, &ctx.aggregate_defs) {
-            write!(
-               ctx.buf,
-               "{} %p{}, ",
-               p_type,
-               param.var_id.0,
-            )
-            .unwrap();
+            write!(ctx.buf, "{} %p{}, ", p_type, param.var_id.0,).unwrap();
          } else {
             continue;
          }
@@ -436,19 +440,14 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       write!(
          ctx.buf,
          "function {} ${}(",
-         roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs).unwrap_or_else(|| "".into()),
+         roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs)
+            .unwrap_or_else(|| "".into()),
          mangle(proc_id, ctx.proc_info, ctx.interner)
       )
       .unwrap();
       for param in procedure.definition.parameters.iter() {
          if let Some(param_type) = roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, &ctx.aggregate_defs) {
-            write!(
-               ctx.buf,
-               "{} %p{}, ",
-               param_type,
-               param.var_id.0,
-            )
-            .unwrap();
+            write!(ctx.buf, "{} %p{}, ", param_type, param.var_id.0,).unwrap();
          }
       }
       writeln!(ctx.buf, ") {{").unwrap();
@@ -557,7 +556,8 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                            ctx.ast.expressions[*lid].exp_type.as_ref().unwrap(),
                            ctx.udt,
                            &ctx.aggregate_defs
-                        ).unwrap()
+                        )
+                        .unwrap()
                      )
                      .unwrap();
                      write_expr(*en, rhs_mem, ctx);
@@ -589,7 +589,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                      _ => unreachable!(),
                   };
                   write_expr(*en, rhs_mem, ctx);
-               },
+               }
             }
          }
          CfgInstruction::Expression(en) => match &ctx.ast.expressions[*en].expression {
@@ -607,7 +607,12 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
             } else {
                if *ctx.ast.expressions[*en].exp_type.as_ref().unwrap() == ExpressionType::Never {
                   writeln!(&mut ctx.buf, "   hlt").unwrap();
-               } else if sizeof_type_mem(ctx.ast.expressions[*en].exp_type.as_ref().unwrap(), ctx.udt, Target::Qbe) == 0 {
+               } else if sizeof_type_mem(
+                  ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
+                  ctx.udt,
+                  Target::Qbe,
+               ) == 0
+               {
                   writeln!(&mut ctx.buf, "   ret").unwrap();
                } else {
                   let val = expr_to_val(*en, ctx);
@@ -628,13 +633,17 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
    }
 }
 
-fn mangle<'a>(proc_id: ProcedureId, proc_info: &SecondaryMap<ProcedureId, ProcedureInfo>, interner: &'a Interner) -> Cow<'a, str> {
+fn mangle<'a>(
+   proc_id: ProcedureId,
+   proc_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
+   interner: &'a Interner,
+) -> Cow<'a, str> {
    let proc_info = &proc_info[proc_id];
    let proc_name = interner.lookup(proc_info.name.str);
    if proc_info.impl_source != ProcImplSourceShallow::Native || proc_name == "main" {
       // "main" implies imported, and builtin procedures can't be monomorphized and thus
       // don't need to be mangled
-      return Cow::Borrowed(proc_name)
+      return Cow::Borrowed(proc_name);
    } else {
       return Cow::Owned(format!(".{}_{}", proc_id.data().as_ffi(), proc_name));
    }
@@ -919,57 +928,57 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          match (src_type, target_type) {
             (ExpressionType::Int(l), ExpressionType::Int(r))
                if l.width.as_num_bytes(Target::Qbe) >= r.width.as_num_bytes(Target::Qbe) =>
-               {
-                  match (l.width, r.width) {
-                     (IntWidth::Eight, IntWidth::Two) => {
-                        if r.signed {
-                           writeln!(ctx.buf, "extsh {}", val).unwrap();
-                        } else {
-                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111).unwrap();
-                        }
+            {
+               match (l.width, r.width) {
+                  (IntWidth::Eight, IntWidth::Two) => {
+                     if r.signed {
+                        writeln!(ctx.buf, "extsh {}", val).unwrap();
+                     } else {
+                        writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111).unwrap();
                      }
-                     (IntWidth::Eight, IntWidth::One) => {
-                        if r.signed {
-                           writeln!(ctx.buf, "extsb {}", val).unwrap();
-                        } else {
-                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111).unwrap();
-                        }
-                     }
-                     (IntWidth::Four, IntWidth::Two) => {
-                        if r.signed {
-                           writeln!(ctx.buf, "extsh {}", val).unwrap();
-                        } else {
-                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111).unwrap();
-                        }
-                     }
-                     (IntWidth::Four | IntWidth::Two, IntWidth::One) => {
-                        if r.signed {
-                           writeln!(ctx.buf, "extsb {}", val).unwrap();
-                        } else {
-                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111).unwrap();
-                        }
-                     }
-                     (IntWidth::Two, IntWidth::Two) => {
-                        if !l.signed && r.signed {
-                           writeln!(ctx.buf, "extsh {}", val).unwrap();
-                        } else if l.signed && !r.signed {
-                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111).unwrap();
-                        } else {
-                           writeln!(ctx.buf, "copy {}", val).unwrap();
-                        }
-                     }
-                     (IntWidth::One, IntWidth::One) => {
-                        if !l.signed && r.signed {
-                           writeln!(ctx.buf, "extsb {}", val).unwrap();
-                        } else if l.signed && !r.signed {
-                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111).unwrap();
-                        } else {
-                           writeln!(ctx.buf, "copy {}", val).unwrap();
-                        }
-                     }
-                     _ => writeln!(ctx.buf, "copy {}", val).unwrap(),
                   }
+                  (IntWidth::Eight, IntWidth::One) => {
+                     if r.signed {
+                        writeln!(ctx.buf, "extsb {}", val).unwrap();
+                     } else {
+                        writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111).unwrap();
+                     }
+                  }
+                  (IntWidth::Four, IntWidth::Two) => {
+                     if r.signed {
+                        writeln!(ctx.buf, "extsh {}", val).unwrap();
+                     } else {
+                        writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111).unwrap();
+                     }
+                  }
+                  (IntWidth::Four | IntWidth::Two, IntWidth::One) => {
+                     if r.signed {
+                        writeln!(ctx.buf, "extsb {}", val).unwrap();
+                     } else {
+                        writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111).unwrap();
+                     }
+                  }
+                  (IntWidth::Two, IntWidth::Two) => {
+                     if !l.signed && r.signed {
+                        writeln!(ctx.buf, "extsh {}", val).unwrap();
+                     } else if l.signed && !r.signed {
+                        writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111).unwrap();
+                     } else {
+                        writeln!(ctx.buf, "copy {}", val).unwrap();
+                     }
+                  }
+                  (IntWidth::One, IntWidth::One) => {
+                     if !l.signed && r.signed {
+                        writeln!(ctx.buf, "extsb {}", val).unwrap();
+                     } else if l.signed && !r.signed {
+                        writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111).unwrap();
+                     } else {
+                        writeln!(ctx.buf, "copy {}", val).unwrap();
+                     }
+                  }
+                  _ => writeln!(ctx.buf, "copy {}", val).unwrap(),
                }
+            }
             (ExpressionType::Int(l), ExpressionType::Int(r))
                if l.width.as_num_bytes(Target::Qbe) < r.width.as_num_bytes(Target::Qbe) =>
             {
@@ -1105,13 +1114,7 @@ fn write_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &mut Gen
          ctx.udt,
          &ctx.aggregate_defs,
       ) {
-         write!(
-            ctx.buf,
-            "{} {}, ",
-            arg_type,
-            val
-         )
-         .unwrap();
+         write!(ctx.buf, "{} {}, ", arg_type, val).unwrap();
       }
    }
    writeln!(ctx.buf, ")").unwrap();

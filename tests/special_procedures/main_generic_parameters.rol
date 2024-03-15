@@ -2,6 +2,9 @@ proc main<T>() {
 
 }
 __END__
-compile:
+compile_wasi:
 `main` is a special procedure for this target (WASI) and is not allowed to have type parameters
+↳ line 1, column 1 [tests/special_procedures/main_generic_parameters.rol]
+compile_amd64:
+`main` is a special procedure for this target (AMD64) and is not allowed to have type parameters
 ↳ line 1, column 1 [tests/special_procedures/main_generic_parameters.rol]

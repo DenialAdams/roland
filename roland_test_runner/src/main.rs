@@ -1,7 +1,6 @@
 #![allow(clippy::uninlined_format_args)] // I'm an old man and I like the way it was before
 #![allow(clippy::unwrap_or_default)] // I want to know exactly what is being called
 
-use std::cell::RefCell;
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -13,7 +12,6 @@ use std::time::Duration;
 
 use os_pipe::pipe;
 use rayon::prelude::*;
-use rolandc::CompilationContext;
 use similar_asserts::SimpleDiff;
 use wait_timeout::ChildExt;
 
@@ -58,10 +56,6 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
    }
 
    Ok(opts)
-}
-
-thread_local! {
-   pub static COMPILATION_CTX: RefCell<CompilationContext> = RefCell::new(CompilationContext::new());
 }
 
 fn bold_green<W: Write>(w: &mut W) -> std::io::Result<()> {
@@ -257,7 +251,7 @@ fn print_diff<W: Write>(t: &mut W, expected: &str, actual: &str) {
 }
 
 fn test_result(tc_output: &Output, t_file_path: &Path, amd64: bool) -> Result<(), TestFailureReason> {
-   let td = extract_test_data(t_file_path);
+   let td = extract_test_data(t_file_path, amd64);
 
    let stderr_text = String::from_utf8_lossy(&tc_output.stderr);
 
@@ -363,7 +357,7 @@ struct ExpectedTestResult {
    run_output: Option<String>,
 }
 
-fn extract_test_data(entry: &Path) -> TestDetails {
+fn extract_test_data(entry: &Path, amd64: bool) -> TestDetails {
    let mut opened = OpenOptions::new().read(true).write(true).open(entry).unwrap();
 
    let mut s = String::new();
@@ -373,7 +367,7 @@ fn extract_test_data(entry: &Path) -> TestDetails {
    let anchor_location = s.rfind(anchor);
    let test_output = if let Some(loc) = anchor_location {
       opened.seek(SeekFrom::Start((loc + anchor.len()) as u64)).unwrap();
-      parse_test_content(&s[loc + anchor.len()..])
+      parse_test_content(&s[loc + anchor.len()..], amd64)
    } else {
       // This file doesn't seem to have any test content.
       // We'll see if there is an adjacent .result file
@@ -394,7 +388,7 @@ fn extract_test_data(entry: &Path) -> TestDetails {
       opened.read_to_string(&mut s).unwrap();
 
       opened.seek(SeekFrom::Start(0)).unwrap();
-      parse_test_content(&s)
+      parse_test_content(&s, amd64)
    };
 
    TestDetails {
@@ -403,28 +397,76 @@ fn extract_test_data(entry: &Path) -> TestDetails {
    }
 }
 
-fn parse_test_content(mut content: &str) -> ExpectedTestResult {
+fn parse_test_content(mut content: &str, amd64: bool) -> ExpectedTestResult {
    content = content.trim_start();
 
-   let run_anchor = "run:\n";
-
-   let mut expected_compile_output = None;
-   if let Some(after_compile) = content.strip_prefix("compile:\n") {
-      let mut until_run = after_compile;
-      if let Some(start_of_run) = after_compile.rfind(run_anchor) {
-         until_run = &until_run[..start_of_run];
-         content = &content[start_of_run..];
-      }
-      expected_compile_output = Some(until_run.to_string());
+   #[derive(Copy, Clone)]
+   enum TargetSpec {
+      Amd64,
+      Wasi,
+      Generic,
    }
 
-   let mut expected_run_output = None;
-   if let Some(after_run) = content.strip_prefix(run_anchor) {
-      expected_run_output = Some(after_run.to_string());
+   let anchors = [
+      (b"compile_amd64:\n".as_slice(), TargetSpec::Amd64, true),
+      (b"compile_wasi:\n".as_slice(), TargetSpec::Wasi, true),
+      (b"compile:\n".as_slice(), TargetSpec::Generic, true),
+      (b"run_amd64:\n".as_slice(), TargetSpec::Amd64, false),
+      (b"run_wasi:\n".as_slice(), TargetSpec::Wasi, false),
+      (b"run:\n".as_slice(), TargetSpec::Generic, false),
+   ];
+
+   let mut expected_compile_output: Option<Vec<u8>> = None;
+   let mut expected_run_output: Option<Vec<u8>> = None;
+
+   // Possible contents:
+   // compile: followed by run:
+   // run:
+   // compile:
+   // compile and run can optionally be suffixed by a target
+   // i.e. compile_amd64, run_amd64, compile_wasi, run_wasi
+   // in which case we can have multiple compile tokens
+
+   enum Mode<'a> {
+      ExpectingAnchor,
+      ParsingAnchor(&'a mut Vec<u8>),
+   }
+
+   let mut mode = Mode::ExpectingAnchor;
+   let mut content_view = &content.as_bytes()[..];
+
+   'outer: while content_view.len() > 0 {
+      for anchor in anchors.iter() {
+         if content_view.starts_with(anchor.0) {
+            content_view = &content_view[anchor.0.len()..];
+            match (amd64, anchor.1) {
+               (true, TargetSpec::Wasi) | (false, TargetSpec::Amd64) => {
+                  mode = Mode::ExpectingAnchor;
+               },
+               _ => {
+                  if anchor.2 {
+                     expected_compile_output = Some(Vec::new());
+                     mode = Mode::ParsingAnchor(expected_compile_output.as_mut().unwrap());
+                  } else {
+                     expected_run_output = Some(Vec::new());
+                     mode = Mode::ParsingAnchor(expected_run_output.as_mut().unwrap());
+                  }
+               }
+            }
+            continue 'outer;
+         }
+      }
+      match mode {
+         Mode::ExpectingAnchor => (),
+         Mode::ParsingAnchor(ref mut buf) => {
+            buf.push(content_view[0]);
+         }
+      }
+      content_view = &content_view[1..];
    }
 
    ExpectedTestResult {
-      compile_output: expected_compile_output,
-      run_output: expected_run_output,
+      compile_output: expected_compile_output.map(|x| String::from_utf8(x).unwrap()),
+      run_output: expected_run_output.map(|x| String::from_utf8(x).unwrap()),
    }
 }
