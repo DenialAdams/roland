@@ -426,8 +426,7 @@ fn vv_expr(
             ctx.user_defined_types,
             Target::Qbe,
          ) == 0;
-      if ctx.tac
-         && !is_lhs_context
+      if !is_lhs_context
          && !top_void_procedure_call
          && !matches!(
             expressions[expr_index].expression,
