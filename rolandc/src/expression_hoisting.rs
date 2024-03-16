@@ -419,25 +419,26 @@ fn vv_expr(
    }
 
    if ctx.tac {
-      let top_void_procedure_call = (parent_ctx == ParentCtx::AssignmentRhs || parent_ctx == ParentCtx::ExprStmt)
-         && matches!(expressions[expr_index].expression, Expression::ProcedureCall { .. })
+      let is_ifx = matches!(expressions[expr_index].expression, Expression::IfX(_, _, _));
+      let is_effective_top_level = (parent_ctx == ParentCtx::AssignmentRhs
          && sizeof_type_mem(
             expressions[expr_index].exp_type.as_ref().unwrap(),
             ctx.user_defined_types,
             Target::Qbe,
-         ) == 0;
-      if !is_lhs_context
-         && !top_void_procedure_call
-         && !matches!(
-            expressions[expr_index].expression,
-            Expression::BoundFcnLiteral(_, _)
-               | Expression::IntLiteral { .. }
-               | Expression::FloatLiteral { .. }
-               | Expression::BoolLiteral { .. }
-               | Expression::EnumLiteral { .. }
-               | Expression::StringLiteral(_)
-         )
-      {
+         ) == 0)
+         || parent_ctx == ParentCtx::ExprStmt;
+      let is_rhs_var = parent_ctx == ParentCtx::AssignmentRhs
+         && matches!(expressions[expr_index].expression, Expression::Variable(_));
+      let is_literal = matches!(
+         expressions[expr_index].expression,
+         Expression::BoundFcnLiteral(_, _)
+            | Expression::IntLiteral { .. }
+            | Expression::FloatLiteral { .. }
+            | Expression::BoolLiteral { .. }
+            | Expression::EnumLiteral { .. }
+            | Expression::StringLiteral(_)
+      );
+      if is_ifx || (!is_lhs_context && !is_effective_top_level && !is_literal && !is_rhs_var) {
          ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
       }
    } else {
