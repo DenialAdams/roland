@@ -3,7 +3,7 @@ use indexmap::IndexMap;
 use crate::interner::Interner;
 use crate::parse::{
    AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ProcImplSource, Program, Statement, StatementId,
-   StatementNode, UserDefinedTypeInfo, VariableId,
+   StatementNode, VariableId,
 };
 use crate::type_data::{ExpressionType, U8_TYPE, USIZE_TYPE};
 
@@ -11,7 +11,6 @@ struct Context<'a> {
    local_types: &'a mut IndexMap<VariableId, ExpressionType>,
    next_var: &'a mut VariableId,
    aggregate_exprs_in_stmt: Vec<(ExpressionId, usize)>,
-   user_defined_types: &'a UserDefinedTypeInfo,
    interner: &'a Interner,
 }
 
@@ -20,7 +19,6 @@ pub fn lower_aggregate_literals(program: &mut Program, interner: &Interner) {
       local_types: &mut IndexMap::new(),
       next_var: &mut program.next_variable,
       aggregate_exprs_in_stmt: Vec::new(),
-      user_defined_types: &program.user_defined_types,
       interner,
    };
 
@@ -83,10 +81,9 @@ fn lower_block(block: &mut BlockNode, ctx: &mut Context, ast: &mut AstPool) {
                block.statements.insert(stmt_index, assignment);
             }
          }
-         Expression::StructLiteral(s_id, fields) => {
-            let si = ctx.user_defined_types.struct_info.get(s_id).unwrap();
-            for field in si.field_types.iter().rev() {
-               let Some(rhs) = fields.get(field.0).copied().unwrap() else {
+         Expression::StructLiteral(_, fields) => {
+            for field in fields.into_iter().rev() {
+               let Some(rhs) = field.1 else {
                   // Uninitialized
                   continue;
                };
@@ -96,7 +93,7 @@ fn lower_block(block: &mut BlockNode, ctx: &mut Context, ast: &mut AstPool) {
                   exp_type: ast.expressions[literal_expr].exp_type.clone(),
                });
                let field_access = ast.expressions.insert(ExpressionNode {
-                  expression: Expression::FieldAccess(*field.0, base),
+                  expression: Expression::FieldAccess(field.0, base),
                   location,
                   exp_type: ast.expressions[rhs].exp_type.clone(),
                });
@@ -168,17 +165,13 @@ fn lower_statement(statement: StatementId, ctx: &mut Context, ast: &mut AstPool,
    let mut the_statement = std::mem::replace(&mut ast.statements[statement].statement, Statement::Break);
    match &mut the_statement {
       Statement::Return(e) | Statement::Expression(e) => {
-         if expr_is_agg_literal(*e, ast) {
-            ctx.aggregate_exprs_in_stmt.push((*e, current_statement));
-         }
+         lower_expr(*e, ctx, ast, current_statement);
       }
       Statement::Block(block) => {
          lower_block(block, ctx, ast);
       }
       Statement::IfElse(cond, if_block, else_statement) => {
-         if expr_is_agg_literal(*cond, ast) {
-            ctx.aggregate_exprs_in_stmt.push((*cond, current_statement));
-         }
+         lower_expr(*cond, ctx, ast, current_statement);
          lower_block(if_block, ctx, ast);
          lower_statement(*else_statement, ctx, ast, current_statement);
       }
@@ -186,24 +179,63 @@ fn lower_statement(statement: StatementId, ctx: &mut Context, ast: &mut AstPool,
          lower_block(block, ctx, ast);
       }
       Statement::Assignment(lhs, rhs) => {
-         if expr_is_agg_literal(*lhs, ast) {
-            ctx.aggregate_exprs_in_stmt.push((*lhs, current_statement));
-         }
-         if expr_is_agg_literal(*rhs, ast) {
-            ctx.aggregate_exprs_in_stmt.push((*rhs, current_statement));
-         }
+         lower_expr(*lhs, ctx, ast, current_statement);
+         lower_expr(*rhs, ctx, ast, current_statement);
       }
       Statement::Break | Statement::Continue => (),
-      Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
-      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
-      Statement::Defer(_) => unreachable!(),
+      Statement::VariableDeclaration(_, _, _, _)
+      | Statement::For { .. }
+      | Statement::While(_, _)
+      | Statement::Defer(_) => unreachable!(),
    }
    ast.statements[statement].statement = the_statement;
 }
 
-fn expr_is_agg_literal(expression: ExpressionId, ast: &AstPool) -> bool {
-   matches!(
-      ast.expressions[expression].expression,
-      Expression::ArrayLiteral(_) | Expression::StructLiteral(_, _) | Expression::StringLiteral(_)
-   )
+fn lower_expr(expr: ExpressionId, ctx: &mut Context, ast: &AstPool, current_statement: usize) {
+   match &ast.expressions[expr].expression {
+      Expression::ArrayLiteral(elems) => {
+         for elem in elems.iter().copied() {
+            lower_expr(elem, ctx, ast, current_statement);
+         }
+         ctx.aggregate_exprs_in_stmt.push((expr, current_statement));
+      }
+      Expression::StructLiteral(_, fields) => {
+         for field in fields.values().flatten().copied() {
+            lower_expr(field, ctx, ast, current_statement);
+         }
+         ctx.aggregate_exprs_in_stmt.push((expr, current_statement));
+      }
+      Expression::StringLiteral(_) => {
+         ctx.aggregate_exprs_in_stmt.push((expr, current_statement));
+      }
+      Expression::ProcedureCall { proc_expr, args } => {
+         lower_expr(*proc_expr, ctx, ast, current_statement);
+         for arg in args.iter().map(|x| x.expr) {
+            lower_expr(arg, ctx, ast, current_statement);
+         }
+      }
+      Expression::ArrayIndex { array: lhs, index: rhs } | Expression::BinaryOperator { lhs, rhs, .. } => {
+         lower_expr(*lhs, ctx, ast, current_statement);
+         lower_expr(*rhs, ctx, ast, current_statement);
+      }
+      Expression::Cast { expr: inner, .. }
+      | Expression::UnaryOperator(_, inner)
+      | Expression::FieldAccess(_, inner) => lower_expr(*inner, ctx, ast, current_statement),
+      Expression::IfX(a, b, c) => {
+         lower_expr(*a, ctx, ast, current_statement);
+         lower_expr(*b, ctx, ast, current_statement);
+         lower_expr(*c, ctx, ast, current_statement);
+      }
+      Expression::BoundFcnLiteral(_, _)
+      | Expression::BoolLiteral(_)
+      | Expression::IntLiteral { .. }
+      | Expression::EnumLiteral(_, _)
+      | Expression::FloatLiteral(_)
+      | Expression::UnitLiteral
+      | Expression::Variable(_) => (),
+      Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedEnumLiteral(_, _)
+      | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+   }
 }

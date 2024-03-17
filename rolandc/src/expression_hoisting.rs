@@ -7,7 +7,7 @@ use crate::parse::{
    AstPool, BlockNode, CastType, DeclarationValue, Expression, ExpressionId, ExpressionNode, ExpressionPool,
    ProcImplSource, Program, Statement, StatementId, StatementNode, UnOp, UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::{GlobalInfo, GlobalKind};
+use crate::semantic_analysis::GlobalInfo;
 use crate::size_info::sizeof_type_mem;
 use crate::type_data::ExpressionType;
 use crate::Target;
@@ -74,7 +74,7 @@ impl VvContext<'_> {
 }
 
 // We hoist for a couple of different reasons:
-// 1) Some operations are easier to sequence in the backend when side effects are pulled into separate statements (for loops, procedure calls, struct literals)
+// 1) Some operations are easier to sequence in the backend when side effects are pulled into separate statements (procedure calls)
 // 2) Some operations are easier to implement in the backend when rvalue's dont have to be considered (array indexing, field access, transmute)
 // 3) Some operations don't make sense without operating on an lvalue (addressof)
 // 4) The constant folder can't fold away an entire expression with side effects, but it can if the side effect is pulled out into a separate statement
@@ -376,8 +376,8 @@ fn vv_expr(
          vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
       }
       Expression::StructLiteral(_, field_exprs) => {
-         for expr in field_exprs.values().flatten() {
-            vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
+         for expr in field_exprs.values().flatten().copied() {
+            vv_expr(expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
          }
       }
       Expression::FieldAccess(_field_names, expr) => {
@@ -387,8 +387,8 @@ fn vv_expr(
          vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
       }
       Expression::ArrayLiteral(exprs) => {
-         for expr in exprs.iter() {
-            vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
+         for expr in exprs.iter().copied() {
+            vv_expr(expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
          }
       }
       Expression::IfX(a, b, c) => {
@@ -498,16 +498,6 @@ fn vv_expr(
                ctx.mark_expr_for_hoisting(*expr, current_stmt, HoistReason::Must);
             }
          }
-         Expression::StructLiteral(_, field_exprs) => {
-            for expr in field_exprs.values().flatten() {
-               if expression_could_have_side_effects(*expr, expressions) {
-                  ctx.statements_that_need_hoisting.push(current_stmt);
-               }
-            }
-            if parent_ctx == ParentCtx::Expr {
-               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
-            }
-         }
          Expression::FieldAccess(_, expr) => {
             if !expressions[*expr].expression.is_lvalue(expressions, ctx.global_info) {
                ctx.mark_expr_for_hoisting(*expr, current_stmt, HoistReason::Must);
@@ -529,27 +519,8 @@ fn vv_expr(
                ctx.mark_expr_for_hoisting(*expr, current_stmt, HoistReason::Must);
             }
          }
-         Expression::ArrayLiteral(_) => {
-            if parent_ctx == ParentCtx::Expr {
-               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
-            }
-         }
          Expression::IfX(_, _, _) => {
             ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
-         }
-         Expression::StringLiteral(_) => {
-            if parent_ctx == ParentCtx::Expr {
-               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
-            }
-         }
-         Expression::Variable(x) => {
-            // Pretty hacky.
-            if ctx.global_info.get(x).map_or(false, |x| {
-               x.kind == GlobalKind::Const && x.expr_type.e_type.is_aggregate()
-            }) && parent_ctx == ParentCtx::Expr
-            {
-               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
-            }
          }
          Expression::UnresolvedVariable(_)
          | Expression::UnresolvedProcLiteral(_, _)
