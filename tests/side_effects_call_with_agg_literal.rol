@@ -1,0 +1,15 @@
+struct S {
+   f: unit,
+}
+
+proc foo(first: unit, a: S) {
+
+}
+
+proc main() {
+   foo(println("first"), S { f: println("second") });
+}
+__END__
+run:
+first
+second

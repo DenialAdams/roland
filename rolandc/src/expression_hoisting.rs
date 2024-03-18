@@ -3,13 +3,14 @@ use std::collections::HashSet;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::constant_folding::expression_could_have_side_effects;
+use crate::interner::Interner;
 use crate::parse::{
    AstPool, BlockNode, CastType, DeclarationValue, Expression, ExpressionId, ExpressionNode, ExpressionPool,
    ProcImplSource, Program, Statement, StatementId, StatementNode, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
 use crate::size_info::sizeof_type_mem;
-use crate::type_data::ExpressionType;
+use crate::type_data::{ExpressionType, U8_TYPE, USIZE_TYPE};
 use crate::Target;
 
 pub fn is_reinterpretable_transmute(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
@@ -47,6 +48,13 @@ enum Action {
    Delete,
 }
 
+#[derive(PartialEq, Clone, Copy)]
+pub enum HoistingMode {
+   PreConstantFold,
+   ThreeAddressCode,
+   AggregateLiteralLowering,
+}
+
 struct VvContext<'a> {
    pending_hoists: IndexSet<ExpressionId>,
    cur_procedure_locals: &'a mut IndexMap<VariableId, ExpressionType>,
@@ -54,8 +62,9 @@ struct VvContext<'a> {
    next_variable: VariableId,
    statement_actions: Vec<StmtAction>,
    statements_that_need_hoisting: Vec<usize>,
-   tac: bool,
+   mode: HoistingMode,
    user_defined_types: &'a UserDefinedTypeInfo,
+   interner: &'a Interner,
 }
 
 impl VvContext<'_> {
@@ -79,7 +88,7 @@ impl VvContext<'_> {
 // 3) Some operations don't make sense without operating on an lvalue (addressof)
 // 4) The constant folder can't fold away an entire expression with side effects, but it can if the side effect is pulled out into a separate statement
 //    - (this is of particular importance for field access - we need to lower all array length queries (which is pure type system info) before the backend)
-pub fn expression_hoisting(program: &mut Program, tac: bool) {
+pub fn expression_hoisting(program: &mut Program, interner: &Interner, mode: HoistingMode) {
    let mut vv_context = VvContext {
       cur_procedure_locals: &mut IndexMap::new(),
       pending_hoists: IndexSet::new(),
@@ -87,8 +96,9 @@ pub fn expression_hoisting(program: &mut Program, tac: bool) {
       next_variable: program.next_variable,
       statement_actions: Vec::new(),
       statements_that_need_hoisting: Vec::new(),
-      tac,
+      mode,
       user_defined_types: &program.user_defined_types,
+      interner,
    };
 
    for procedure in program.procedures.values_mut() {
@@ -101,21 +111,21 @@ pub fn expression_hoisting(program: &mut Program, tac: bool) {
    program.next_variable = vv_context.next_variable;
 }
 
-fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool) {
-   let before_vv_len = vv_context.statement_actions.len();
-   let before_pending_hoists = vv_context.pending_hoists.len();
-   let before_stmts_that_need_hoisting = vv_context.statements_that_need_hoisting.len();
+fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
+   let before_vv_len = ctx.statement_actions.len();
+   let before_pending_hoists = ctx.pending_hoists.len();
+   let before_stmts_that_need_hoisting = ctx.statements_that_need_hoisting.len();
    for (current_stmt, statement) in block.statements.iter().copied().enumerate() {
-      vv_statement(statement, vv_context, ast, current_stmt);
+      vv_statement(statement, ctx, ast, current_stmt);
    }
 
-   let this_block_stmts_that_need_hoisting: HashSet<usize> = vv_context
+   let this_block_stmts_that_need_hoisting: HashSet<usize> = ctx
       .statements_that_need_hoisting
       .drain(before_stmts_that_need_hoisting..)
       .collect();
 
    let mut new_ifs = vec![];
-   for vv in vv_context.statement_actions.drain(before_vv_len..).rev() {
+   for vv in ctx.statement_actions.drain(before_vv_len..).rev() {
       match vv.action {
          Action::Hoist { expr } => {
             if !this_block_stmts_that_need_hoisting.contains(&vv.stmt_anchor) {
@@ -123,10 +133,9 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool
             }
 
             let temp = {
-               let var_id = vv_context.next_variable;
-               vv_context.next_variable = vv_context.next_variable.next();
-               vv_context
-                  .cur_procedure_locals
+               let var_id = ctx.next_variable;
+               ctx.next_variable = ctx.next_variable.next();
+               ctx.cur_procedure_locals
                   .insert(var_id, ast.expressions[expr].exp_type.clone().unwrap());
                var_id
             };
@@ -139,56 +148,168 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool
                location,
             };
 
-            if let Expression::IfX(a, b, c) = ast.expressions[expr].expression {
-               let then_block = {
-                  let temp_equals_b = {
-                     let lhs = ast.expressions.insert(temp_expression_node.clone());
+            let old_expression = std::mem::replace(&mut ast.expressions[expr].expression, Expression::Variable(temp));
+            match old_expression {
+               Expression::IfX(a, b, c) => {
+                  let then_block = {
+                     let temp_equals_b = {
+                        let lhs = ast.expressions.insert(temp_expression_node.clone());
+                        ast.statements.insert(StatementNode {
+                           statement: Statement::Assignment(lhs, b),
+                           location,
+                        })
+                     };
+                     BlockNode {
+                        statements: vec![temp_equals_b],
+                        location,
+                     }
+                  };
+                  let else_stmt = {
+                     let temp_equals_c = {
+                        let lhs = ast.expressions.insert(temp_expression_node.clone());
+                        ast.statements.insert(StatementNode {
+                           statement: Statement::Assignment(lhs, c),
+                           location,
+                        })
+                     };
                      ast.statements.insert(StatementNode {
-                        statement: Statement::Assignment(lhs, b),
+                        statement: Statement::Block(BlockNode {
+                           statements: vec![temp_equals_c],
+                           location,
+                        }),
                         location,
                      })
                   };
-                  BlockNode {
-                     statements: vec![temp_equals_b],
-                     location,
+                  let if_stmt = {
+                     ast.statements.insert(StatementNode {
+                        statement: Statement::IfElse(a, then_block, else_stmt),
+                        location,
+                     })
+                  };
+                  new_ifs.push(if_stmt);
+                  block.statements.insert(vv.stmt_anchor, if_stmt);
+               }
+               Expression::StringLiteral(s_val) if ctx.mode == HoistingMode::AggregateLiteralLowering => {
+                  // length
+                  {
+                     let rhs = ast.expressions.insert(ExpressionNode {
+                        expression: Expression::IntLiteral {
+                           val: ctx.interner.lookup(s_val).len() as u64,
+                           synthetic: true,
+                        },
+                        location,
+                        exp_type: Some(USIZE_TYPE),
+                     });
+                     let base = ast.expressions.insert(ExpressionNode {
+                        expression: Expression::Variable(temp),
+                        location,
+                        exp_type: ast.expressions[expr].exp_type.clone(),
+                     });
+                     let field_access = ast.expressions.insert(ExpressionNode {
+                        expression: Expression::FieldAccess(ctx.interner.reverse_lookup("length").unwrap(), base),
+                        location,
+                        exp_type: ast.expressions[rhs].exp_type.clone(),
+                     });
+                     let assignment = ast.statements.insert(StatementNode {
+                        location,
+                        statement: Statement::Assignment(field_access, rhs),
+                     });
+                     block.statements.insert(vv.stmt_anchor, assignment);
                   }
-               };
-               let else_stmt = {
-                  let temp_equals_c = {
-                     let lhs = ast.expressions.insert(temp_expression_node.clone());
+
+                  // Pointer
+                  {
+                     let rhs = ast.expressions.insert(ExpressionNode {
+                        expression: Expression::StringLiteral(s_val),
+                        location,
+                        exp_type: Some(ExpressionType::Pointer(Box::new(U8_TYPE))),
+                     });
+                     let base = ast.expressions.insert(ExpressionNode {
+                        expression: Expression::Variable(temp),
+                        location,
+                        exp_type: ast.expressions[expr].exp_type.clone(),
+                     });
+                     let field_access = ast.expressions.insert(ExpressionNode {
+                        expression: Expression::FieldAccess(ctx.interner.reverse_lookup("pointer").unwrap(), base),
+                        location,
+                        exp_type: ast.expressions[rhs].exp_type.clone(),
+                     });
+                     let assignment = ast.statements.insert(StatementNode {
+                        location,
+                        statement: Statement::Assignment(field_access, rhs),
+                     });
+                     block.statements.insert(vv.stmt_anchor, assignment);
+                  }
+               }
+               Expression::StructLiteral(_, fields) if ctx.mode == HoistingMode::AggregateLiteralLowering => {
+                  for field in fields.into_iter().rev() {
+                     let Some(rhs) = field.1 else {
+                        // Uninitialized
+                        continue;
+                     };
+                     let base = ast.expressions.insert(ExpressionNode {
+                        expression: Expression::Variable(temp),
+                        location,
+                        exp_type: ast.expressions[expr].exp_type.clone(),
+                     });
+                     let field_access = ast.expressions.insert(ExpressionNode {
+                        expression: Expression::FieldAccess(field.0, base),
+                        location,
+                        exp_type: ast.expressions[rhs].exp_type.clone(),
+                     });
+                     let assignment = ast.statements.insert(StatementNode {
+                        location,
+                        statement: Statement::Assignment(field_access, rhs),
+                     });
+                     block.statements.insert(vv.stmt_anchor, assignment);
+                  }
+               }
+               Expression::ArrayLiteral(children) if ctx.mode == HoistingMode::AggregateLiteralLowering => {
+                  for (i, child) in children.iter().enumerate().rev() {
+                     let arr_index_val = ast.expressions.insert(ExpressionNode {
+                        expression: Expression::IntLiteral {
+                           val: i as u64,
+                           synthetic: true,
+                        },
+                        location,
+                        exp_type: Some(USIZE_TYPE),
+                     });
+                     let base = ast.expressions.insert(ExpressionNode {
+                        expression: Expression::Variable(temp),
+                        location,
+                        exp_type: ast.expressions[expr].exp_type.clone(),
+                     });
+                     let arr_index = ast.expressions.insert(ExpressionNode {
+                        expression: Expression::ArrayIndex {
+                           array: base,
+                           index: arr_index_val,
+                        },
+                        location,
+                        exp_type: ast.expressions[*child].exp_type.clone(),
+                     });
+                     let assignment = ast.statements.insert(StatementNode {
+                        location,
+                        statement: Statement::Assignment(arr_index, *child),
+                     });
+                     block.statements.insert(vv.stmt_anchor, assignment);
+                  }
+               }
+               _ => {
+                  let temp_assign = {
+                     let lhs = ast.expressions.insert(temp_expression_node);
+                     let rhs = ast.expressions.insert(ExpressionNode {
+                        expression: old_expression,
+                        exp_type: ast.expressions[expr].exp_type.clone(),
+                        location: ast.expressions[expr].location,
+                     });
                      ast.statements.insert(StatementNode {
-                        statement: Statement::Assignment(lhs, c),
+                        statement: Statement::Assignment(lhs, rhs),
                         location,
                      })
                   };
-                  ast.statements.insert(StatementNode {
-                     statement: Statement::Block(BlockNode {
-                        statements: vec![temp_equals_c],
-                        location,
-                     }),
-                     location,
-                  })
-               };
-               let if_stmt = {
-                  ast.statements.insert(StatementNode {
-                     statement: Statement::IfElse(a, then_block, else_stmt),
-                     location,
-                  })
-               };
-               new_ifs.push(if_stmt);
-               block.statements.insert(vv.stmt_anchor, if_stmt);
-            } else {
-               let temp_assign = {
-                  let lhs = ast.expressions.insert(temp_expression_node);
-                  let rhs = ast.expressions.insert(ast.expressions[expr].clone());
-                  ast.statements.insert(StatementNode {
-                     statement: Statement::Assignment(lhs, rhs),
-                     location,
-                  })
-               };
-               block.statements.insert(vv.stmt_anchor, temp_assign);
+                  block.statements.insert(vv.stmt_anchor, temp_assign);
+               }
             }
-            ast.expressions[expr].expression = Expression::Variable(temp);
          }
          Action::Delete => {
             let removed_stmt_id = block.statements.remove(vv.stmt_anchor);
@@ -200,7 +321,7 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool
    // The same expression id shouldn't appear in the AST twice,
    // so we can simply truncate instead of splitting off as we do for
    // the list of statement block indices
-   vv_context.pending_hoists.truncate(before_pending_hoists);
+   ctx.pending_hoists.truncate(before_pending_hoists);
 
    for if_stmt in new_ifs {
       let else_s = {
@@ -209,7 +330,7 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool
             unreachable!()
          };
          let else_s = *else_s;
-         vv_block(then_b, vv_context, ast);
+         vv_block(then_b, ctx, ast);
          ast.statements[if_stmt].statement = the_statement;
          else_s
       };
@@ -218,7 +339,7 @@ fn vv_block(block: &mut BlockNode, vv_context: &mut VvContext, ast: &mut AstPool
          let Statement::Block(bn) = &mut the_statement else {
             unreachable!()
          };
-         vv_block(bn, vv_context, ast);
+         vv_block(bn, ctx, ast);
          ast.statements[else_s].statement = the_statement;
       }
    }
@@ -418,31 +539,22 @@ fn vv_expr(
       Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 
-   if ctx.tac {
-      let is_ifx = matches!(expressions[expr_index].expression, Expression::IfX(_, _, _));
-      let is_effective_top_level = (parent_ctx == ParentCtx::AssignmentRhs
-         && sizeof_type_mem(
-            expressions[expr_index].exp_type.as_ref().unwrap(),
-            ctx.user_defined_types,
-            Target::Qbe,
-         ) == 0)
-         || parent_ctx == ParentCtx::ExprStmt;
-      let is_rhs_var = parent_ctx == ParentCtx::AssignmentRhs
-         && matches!(expressions[expr_index].expression, Expression::Variable(_));
-      let is_literal = matches!(
-         expressions[expr_index].expression,
-         Expression::BoundFcnLiteral(_, _)
-            | Expression::IntLiteral { .. }
-            | Expression::FloatLiteral { .. }
-            | Expression::BoolLiteral { .. }
-            | Expression::EnumLiteral { .. }
-            | Expression::StringLiteral(_)
-      );
-      if is_ifx || (!is_lhs_context && !is_effective_top_level && !is_literal && !is_rhs_var) {
-         ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
+   match ctx.mode {
+      HoistingMode::AggregateLiteralLowering => match &expressions[expr_index].expression {
+         Expression::StringLiteral(_) | Expression::StructLiteral(_, _) | Expression::ArrayLiteral(_) => {
+            ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
+         }
+         Expression::IfX(_, _, _) => {
+            ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
+         }
+         Expression::ProcedureCall { .. } => {
+            if parent_ctx == ParentCtx::Expr {
+               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
+            }
+         }
+         _ => (),
       }
-   } else {
-      match &expressions[expr_index].expression {
+      HoistingMode::PreConstantFold => match &expressions[expr_index].expression {
          Expression::ArrayIndex { array, .. } => {
             let array_expression = &expressions[*array];
 
@@ -522,6 +634,30 @@ fn vv_expr(
          | Expression::UnresolvedStructLiteral(_, _)
          | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
          _ => (),
+      },
+      HoistingMode::ThreeAddressCode => {
+         let is_ifx = matches!(expressions[expr_index].expression, Expression::IfX(_, _, _));
+         let is_effective_top_level = (parent_ctx == ParentCtx::AssignmentRhs
+            && sizeof_type_mem(
+               expressions[expr_index].exp_type.as_ref().unwrap(),
+               ctx.user_defined_types,
+               Target::Qbe,
+            ) == 0)
+            || parent_ctx == ParentCtx::ExprStmt;
+         let is_rhs_var = parent_ctx == ParentCtx::AssignmentRhs
+            && matches!(expressions[expr_index].expression, Expression::Variable(_));
+         let is_literal = matches!(
+            expressions[expr_index].expression,
+            Expression::BoundFcnLiteral(_, _)
+               | Expression::IntLiteral { .. }
+               | Expression::FloatLiteral { .. }
+               | Expression::BoolLiteral { .. }
+               | Expression::EnumLiteral { .. }
+               | Expression::StringLiteral(_)
+         );
+         if is_ifx || (!is_lhs_context && !is_effective_top_level && !is_literal && !is_rhs_var) {
+            ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
+         }
       }
    }
 }

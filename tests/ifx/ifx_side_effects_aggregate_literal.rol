@@ -1,0 +1,11 @@
+struct S {
+   f: unit,
+}
+
+proc main() {
+   let x: bool = true;
+   ifx x S { f: println("A") } else S { f: println("B") };
+}
+__END__
+run:
+A

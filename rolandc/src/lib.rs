@@ -19,7 +19,6 @@
 #![allow(clippy::let_underscore_untyped)] // looks weird with no let
 #![feature(extract_if)]
 
-mod aggregate_literal_lowering;
 mod backend;
 mod compile_consts;
 mod constant_folding;
@@ -49,6 +48,7 @@ use std::path::{Path, PathBuf};
 
 use error_handling::error_handling_macros::rolandc_error;
 use error_handling::ErrorManager;
+use expression_hoisting::HoistingMode;
 use interner::Interner;
 pub use parse::Program;
 use parse::{ImportNode, ProcImplSource};
@@ -209,7 +209,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
 
    logical_op_lowering::lower_logical_ops(&mut ctx.program);
 
-   expression_hoisting::expression_hoisting(&mut ctx.program, false);
+   expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::PreConstantFold);
 
    // must run after expression hoisting, so that re-ordering named arguments does not
    // affect side-effect order
@@ -252,13 +252,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    dead_code_elimination::delete_unreachable_procedures_and_globals(&mut ctx.program, &mut ctx.interner, config.target);
 
    // (introduces usize types, so run this before those are lowered)
-   aggregate_literal_lowering::lower_aggregate_literals(&mut ctx.program, &ctx.interner);
-
-   pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target);
-
-   if config.target == Target::Qbe {
-      expression_hoisting::expression_hoisting(&mut ctx.program, true);
-   }
+   expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::AggregateLiteralLowering);
 
    if config.dump_debugging_info {
       pp::pp(
@@ -267,6 +261,12 @@ pub fn compile<'a, FR: FileResolver<'a>>(
          &mut std::fs::File::create("pp.rol").unwrap(),
       )
       .unwrap();
+   }
+
+   pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target);
+
+   if config.target == Target::Qbe {
+      expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::ThreeAddressCode);
    }
 
    ctx.program.cfg = backend::linearize::linearize(&mut ctx.program, &ctx.interner, config.dump_debugging_info);
