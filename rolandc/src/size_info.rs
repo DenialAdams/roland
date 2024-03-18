@@ -128,7 +128,7 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Targ
       }
       ExpressionType::Int(x) => match x.width {
          IntWidth::Eight => 8,
-         IntWidth::Pointer => target.pointer_width() as u32,
+         IntWidth::Pointer => u32::from(target.pointer_width()),
          IntWidth::Four => 4,
          IntWidth::Two => 2,
          IntWidth::One => 1,
@@ -137,7 +137,7 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Targ
          FloatWidth::Eight => 8,
          FloatWidth::Four => 4,
       },
-      ExpressionType::Pointer(_) | ExpressionType::ProcedurePointer { .. } => target.pointer_width() as u32,
+      ExpressionType::Pointer(_) | ExpressionType::ProcedurePointer { .. } => u32::from(target.pointer_width()),
       ExpressionType::Bool => 1,
       ExpressionType::Unit => 1,
       ExpressionType::Never => 1,
@@ -202,9 +202,9 @@ pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Ta
          let base_type = &udt.enum_info.get(*x).unwrap().base_type;
          sizeof_type_mem(base_type, udt, target)
       }
-      ExpressionType::Int(x) => x.width.as_num_bytes(target) as u32,
-      ExpressionType::Float(x) => x.width.as_num_bytes() as u32,
-      ExpressionType::Pointer(_) | ExpressionType::ProcedurePointer { .. } => target.pointer_width() as u32,
+      ExpressionType::Int(x) => u32::from(x.width.as_num_bytes(target)),
+      ExpressionType::Float(x) => u32::from(x.width.as_num_bytes()),
+      ExpressionType::Pointer(_) | ExpressionType::ProcedurePointer { .. } => u32::from(target.pointer_width()),
       ExpressionType::Bool => 1,
       ExpressionType::Unit => 0,
       ExpressionType::Never => 0,

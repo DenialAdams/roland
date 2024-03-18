@@ -66,14 +66,14 @@ pub enum Target {
 }
 
 impl Target {
-   fn pointer_width(&self) -> u8 {
+   fn pointer_width(self) -> u8 {
       match self {
          Target::Qbe => 8,
          _ => 4,
       }
    }
 
-   fn lowered_ptr_width(&self) -> IntWidth {
+   fn lowered_ptr_width(self) -> IntWidth {
       match self {
          Target::Qbe => IntWidth::Eight,
          _ => IntWidth::Four,

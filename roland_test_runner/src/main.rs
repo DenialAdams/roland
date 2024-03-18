@@ -433,9 +433,9 @@ fn parse_test_content(mut content: &str, amd64: bool) -> ExpectedTestResult {
    }
 
    let mut mode = Mode::ExpectingAnchor;
-   let mut content_view = &content.as_bytes()[..];
+   let mut content_view = content.as_bytes();
 
-   'outer: while content_view.len() > 0 {
+   'outer: while !content_view.is_empty() {
       for anchor in anchors.iter() {
          if content_view.starts_with(anchor.0) {
             content_view = &content_view[anchor.0.len()..];

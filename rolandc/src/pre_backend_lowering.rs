@@ -369,7 +369,7 @@ pub fn kill_zst_assignments(program: &mut Program, target: Target) {
                _ => [Some(x), None],
             })
             .flatten()
-            .collect()
+            .collect();
       }
    }
 }

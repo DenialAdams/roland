@@ -142,7 +142,7 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
       }
       Expression::UnitLiteral => (),
       Expression::BoolLiteral(x) => {
-         write!(ctx.buf, "b {}, ", *x as u8).unwrap();
+         write!(ctx.buf, "b {}, ", u8::from(*x)).unwrap();
       }
       Expression::IntLiteral { val: x, .. } => {
          let width = match expr_node.exp_type.as_ref().unwrap() {
@@ -220,52 +220,6 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
 }
 
 pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &CompilationConfig) -> Vec<u8> {
-   let regalloc_result = regalloc::assign_variables_to_wasm_registers(program, config);
-
-   let mut ctx = GenerationContext {
-      buf: vec![],
-      is_main: false,
-      var_to_reg: regalloc_result.var_to_reg,
-      ast: &program.ast,
-      proc_info: &program.procedure_info,
-      interner,
-      udt: &program.user_defined_types,
-      string_literals: &program.literals,
-      address_temp: 0,
-      global_info: &program.global_info,
-      aggregate_defs: IndexSet::new(),
-   };
-
-   for (i, string_literal) in ctx.string_literals.iter().enumerate() {
-      let str = ctx.interner.lookup(*string_literal);
-      // We prefix with a dot to avoid any conflict with user-named exported functions
-      write!(ctx.buf, "data $.s{} = {{ b ", i).unwrap();
-      for by in str.as_bytes() {
-         write!(ctx.buf, "{} ", by).unwrap();
-      }
-      writeln!(ctx.buf, "}}").unwrap();
-   }
-
-   for a_global in program.global_info.iter() {
-      // TODO: skip zero size globals? ... add a test?
-      write!(ctx.buf, "data $.v{} = {{ ", a_global.0 .0).unwrap();
-      match a_global.1.initializer {
-         Some(e) => {
-            literal_as_data(e, &mut ctx);
-         }
-         None => {
-            // Just zero init
-            write!(
-               ctx.buf,
-               "z {} ",
-               sizeof_type_mem(&a_global.1.expr_type.e_type, ctx.udt, Target::Qbe)
-            )
-            .unwrap();
-         }
-      }
-      writeln!(ctx.buf, "}}").unwrap();
-   }
-
    fn emit_aggregate_def(
       buf: &mut Vec<u8>,
       emitted: &mut IndexSet<ExpressionType>,
@@ -335,14 +289,60 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       }
    }
 
+   let regalloc_result = regalloc::assign_variables_to_wasm_registers(program, config);
+
+   let mut ctx = GenerationContext {
+      buf: vec![],
+      is_main: false,
+      var_to_reg: regalloc_result.var_to_reg,
+      ast: &program.ast,
+      proc_info: &program.procedure_info,
+      interner,
+      udt: &program.user_defined_types,
+      string_literals: &program.literals,
+      address_temp: 0,
+      global_info: &program.global_info,
+      aggregate_defs: IndexSet::new(),
+   };
+
+   for (i, string_literal) in ctx.string_literals.iter().enumerate() {
+      let str = ctx.interner.lookup(*string_literal);
+      // We prefix with a dot to avoid any conflict with user-named exported functions
+      write!(ctx.buf, "data $.s{} = {{ b ", i).unwrap();
+      for by in str.as_bytes() {
+         write!(ctx.buf, "{} ", by).unwrap();
+      }
+      writeln!(ctx.buf, "}}").unwrap();
+   }
+
+   for a_global in program.global_info.iter() {
+      // TODO: skip zero size globals? ... add a test?
+      write!(ctx.buf, "data $.v{} = {{ ", a_global.0 .0).unwrap();
+      match a_global.1.initializer {
+         Some(e) => {
+            literal_as_data(e, &mut ctx);
+         }
+         None => {
+            // Just zero init
+            write!(
+               ctx.buf,
+               "z {} ",
+               sizeof_type_mem(&a_global.1.expr_type.e_type, ctx.udt, Target::Qbe)
+            )
+            .unwrap();
+         }
+      }
+      writeln!(ctx.buf, "}}").unwrap();
+   }
+
    for procedure in program.procedures.values() {
       for param_type in procedure.definition.parameters.iter().map(|x| &x.p_type.e_type) {
-         emit_aggregate_def(&mut ctx.buf, &mut ctx.aggregate_defs, &ctx.udt, param_type);
+         emit_aggregate_def(&mut ctx.buf, &mut ctx.aggregate_defs, ctx.udt, param_type);
       }
       emit_aggregate_def(
          &mut ctx.buf,
          &mut ctx.aggregate_defs,
-         &ctx.udt,
+         ctx.udt,
          &procedure.definition.ret_type.e_type,
       );
    }
@@ -437,6 +437,11 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       .iter()
       .filter(|x| matches!(x.1.proc_impl, ProcImplSource::Builtin))
    {
+      if interner.lookup(procedure.definition.name.str) != "unreachable" {
+         // TODO: we should get better about pruning these dead builtins
+         continue;
+      }
+
       write!(
          ctx.buf,
          "function {} ${}(",
@@ -453,9 +458,10 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       writeln!(ctx.buf, ") {{").unwrap();
       writeln!(ctx.buf, "@entry").unwrap();
       match interner.lookup(procedure.definition.name.str) {
-         "unreachable" | _ => {
+         "unreachable" => {
             writeln!(ctx.buf, "   hlt").unwrap();
          }
+         _ => unreachable!(),
       }
       writeln!(ctx.buf, "}}").unwrap();
    }
@@ -604,20 +610,18 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
             if ctx.is_main {
                // World's biggest hack
                writeln!(&mut ctx.buf, "   ret 0").unwrap();
+            } else if *ctx.ast.expressions[*en].exp_type.as_ref().unwrap() == ExpressionType::Never {
+               writeln!(&mut ctx.buf, "   hlt").unwrap();
+            } else if sizeof_type_mem(
+               ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
+               ctx.udt,
+               Target::Qbe,
+            ) == 0
+            {
+               writeln!(&mut ctx.buf, "   ret").unwrap();
             } else {
-               if *ctx.ast.expressions[*en].exp_type.as_ref().unwrap() == ExpressionType::Never {
-                  writeln!(&mut ctx.buf, "   hlt").unwrap();
-               } else if sizeof_type_mem(
-                  ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
-                  ctx.udt,
-                  Target::Qbe,
-               ) == 0
-               {
-                  writeln!(&mut ctx.buf, "   ret").unwrap();
-               } else {
-                  let val = expr_to_val(*en, ctx);
-                  writeln!(&mut ctx.buf, "   ret {}", val).unwrap();
-               }
+               let val = expr_to_val(*en, ctx);
+               writeln!(&mut ctx.buf, "   ret {}", val).unwrap();
             }
          }
          CfgInstruction::Jump(dest) => {
@@ -644,9 +648,8 @@ fn mangle<'a>(
       // "main" implies imported, and builtin procedures can't be monomorphized and thus
       // don't need to be mangled
       return Cow::Borrowed(proc_name);
-   } else {
-      return Cow::Owned(format!(".{}_{}", proc_id.data().as_ffi(), proc_name));
    }
+   Cow::Owned(format!(".{}_{}", proc_id.data().as_ffi(), proc_name))
 }
 
 // TODO: rework this to write directly into bytestream or otherwise not allocate
@@ -664,13 +667,13 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> String 
             format!("{}", *val)
          }
       }
-      Expression::FloatLiteral(v) => match expr_node.exp_type.as_ref().unwrap() {
-         &F64_TYPE => format!("d_{}", v),
-         &F32_TYPE => format!("s_{}", v),
+      Expression::FloatLiteral(v) => match *expr_node.exp_type.as_ref().unwrap() {
+         F64_TYPE => format!("d_{}", v),
+         F32_TYPE => format!("s_{}", v),
          _ => unreachable!(),
       },
       Expression::BoolLiteral(val) => {
-         format!("{}", *val as u8)
+         format!("{}", u8::from(*val))
       }
       Expression::Variable(v) => {
          if let Some(reg) = ctx.var_to_reg.get(v) {
@@ -698,7 +701,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          write_call_expr(*proc_expr, args, ctx);
       }
       Expression::BoolLiteral(v) => {
-         writeln!(ctx.buf, "copy {}", *v as u8).unwrap();
+         writeln!(ctx.buf, "copy {}", u8::from(*v)).unwrap();
       }
       Expression::IntLiteral { val, .. } => {
          let signed = matches!(
@@ -711,16 +714,16 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
             writeln!(ctx.buf, "copy {}", *val).unwrap();
          }
       }
-      Expression::FloatLiteral(val) => match ren.exp_type.as_ref().unwrap() {
-         &F64_TYPE => writeln!(ctx.buf, "copy d_{}", val).unwrap(),
-         &F32_TYPE => writeln!(ctx.buf, "copy s_{}", val).unwrap(),
+      Expression::FloatLiteral(val) => match *ren.exp_type.as_ref().unwrap() {
+         F64_TYPE => writeln!(ctx.buf, "copy d_{}", val).unwrap(),
+         F32_TYPE => writeln!(ctx.buf, "copy s_{}", val).unwrap(),
          _ => unreachable!(),
       },
       Expression::Variable(v) => {
          if let Some(reg) = ctx.var_to_reg.get(v) {
             writeln!(ctx.buf, "copy %r{}", reg).unwrap();
          } else {
-            emit_load(&mut ctx.buf, rhs_mem.unwrap(), ren.exp_type.as_ref().unwrap());
+            emit_load(&mut ctx.buf, &rhs_mem.unwrap(), ren.exp_type.as_ref().unwrap());
          }
       }
       Expression::BinaryOperator { operator, lhs, rhs } => {
@@ -886,7 +889,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          if let ExpressionType::ProcedureItem(proc_id, _bound_type_params) = e.exp_type.as_ref().unwrap() {
             writeln!(ctx.buf, "copy ${}", mangle(*proc_id, ctx.proc_info, ctx.interner)).unwrap();
          } else {
-            writeln!(ctx.buf, "copy {}", rhs_mem.unwrap()).unwrap()
+            writeln!(ctx.buf, "copy {}", rhs_mem.unwrap()).unwrap();
          }
       }
       Expression::UnaryOperator(operator, inner_id) => {
@@ -895,7 +898,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
             crate::parse::UnOp::Negate => writeln!(ctx.buf, "neg {}", inner_val).unwrap(),
             crate::parse::UnOp::Complement => {
                if *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() == ExpressionType::Bool {
-                  writeln!(ctx.buf, "ceqw {}, 0", inner_val).unwrap()
+                  writeln!(ctx.buf, "ceqw {}, 0", inner_val).unwrap();
                } else {
                   let magic_const: u64 = match *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() {
                      crate::type_data::U8_TYPE => u64::from(std::u8::MAX),
@@ -908,15 +911,15 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                      crate::type_data::I64_TYPE => std::u64::MAX,
                      _ => unreachable!(),
                   };
-                  writeln!(ctx.buf, "xor {}, {}", inner_val, magic_const).unwrap()
+                  writeln!(ctx.buf, "xor {}, {}", inner_val, magic_const).unwrap();
                }
             }
             crate::parse::UnOp::AddressOf => unreachable!(),
-            crate::parse::UnOp::Dereference => emit_load(&mut ctx.buf, inner_val, ren.exp_type.as_ref().unwrap()),
+            crate::parse::UnOp::Dereference => emit_load(&mut ctx.buf, &inner_val, ren.exp_type.as_ref().unwrap()),
          }
       }
       Expression::FieldAccess(_, _) | Expression::ArrayIndex { .. } => {
-         emit_load(&mut ctx.buf, rhs_mem.unwrap(), ren.exp_type.as_ref().unwrap());
+         emit_load(&mut ctx.buf, &rhs_mem.unwrap(), ren.exp_type.as_ref().unwrap());
       }
       Expression::Cast {
          cast_type: CastType::As,
@@ -1046,7 +1049,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          expr,
       } => {
          if let Some(load_target) = rhs_mem {
-            emit_load(&mut ctx.buf, load_target, ren.exp_type.as_ref().unwrap());
+            emit_load(&mut ctx.buf, &load_target, ren.exp_type.as_ref().unwrap());
          } else {
             let val = expr_to_val(*expr, ctx);
             let source_type = ctx.ast.expressions[*expr].exp_type.as_ref().unwrap();
@@ -1063,7 +1066,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
    }
 }
 
-fn emit_load(buf: &mut Vec<u8>, load_target: String, a_type: &ExpressionType) {
+fn emit_load(buf: &mut Vec<u8>, load_target: &str, a_type: &ExpressionType) {
    match a_type {
       ExpressionType::Bool | &U8_TYPE => {
          writeln!(buf, "loadub {}", load_target).unwrap();

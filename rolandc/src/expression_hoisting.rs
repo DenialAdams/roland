@@ -435,7 +435,7 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
    ast.statements[statement].statement = the_statement;
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 enum ParentCtx {
    ExprStmt,
    AssignmentLhs,
@@ -484,10 +484,10 @@ fn vv_expr(
          vv_expr(*rhs, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
       }
       Expression::UnaryOperator(UnOp::AddressOf, expr) => {
-         if !expressions[*expr].expression.is_lvalue(expressions, ctx.global_info) {
-            vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
-         } else {
+         if expressions[*expr].expression.is_lvalue(expressions, ctx.global_info) {
             vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, true);
+         } else {
+            vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
          }
       }
       Expression::UnaryOperator(UnOp::Dereference, expr) => {

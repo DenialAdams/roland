@@ -187,7 +187,7 @@ fn fold_expr_inner(
          };
 
          let v = match extract_literal(index, folding_context.target) {
-            Some(Literal::Uint32(v)) => v as u64,
+            Some(Literal::Uint32(v)) => u64::from(v),
             Some(Literal::Uint64(v)) => v,
             _ => return None,
          };
@@ -929,15 +929,15 @@ impl Literal {
             synthetic: true,
          },
          (Literal::Int64(i), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
-            val: u64::from(i as u64),
+            val: i as u64,
             synthetic: true,
          },
          (Literal::Uint64(i), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
-            val: u64::from(i),
+            val: i,
             synthetic: true,
          },
          (Literal::Float64(f), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
-            val: u64::from(f.to_bits()),
+            val: f.to_bits(),
             synthetic: true,
          },
 
@@ -1671,7 +1671,7 @@ fn extract_literal(expr_node: &ExpressionNode, target: Target) -> Option<Literal
             &U8_TYPE => Some(Literal::Uint8(x.try_into().ok()?)),
             &USIZE_TYPE | ExpressionType::Pointer(_) => {
                if target.pointer_width() == 8 {
-                  Some(Literal::Uint64(x.try_into().ok()?))
+                  Some(Literal::Uint64(x))
                } else {
                   Some(Literal::Uint32(x.try_into().ok()?))
                }
