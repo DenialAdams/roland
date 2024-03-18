@@ -548,8 +548,19 @@ fn vv_expr(
             ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
          }
          Expression::ProcedureCall { .. } => {
+            let exp_type = expressions[expr_index].exp_type.as_ref().unwrap();
+
             if parent_ctx == ParentCtx::Expr {
-               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
+               let reason = if exp_type.is_aggregate() {
+                  // The point here is that we need to hoist calls where an aggregate is returned, because currently
+                  // a returned aggregate is an address _in the function we just called_, so not hoisting would mean
+                  // that we clobber the aggregate if we make another call.
+                  HoistReason::Must
+               } else {
+                  HoistReason::IfOtherHoisting
+               };
+
+               ctx.mark_expr_for_hoisting(expr_index, current_stmt, reason);
             }
          }
          _ => (),
@@ -585,17 +596,6 @@ fn vv_expr(
             ) && expression_could_have_side_effects(*proc_expr, expressions)
             {
                ctx.statements_that_need_hoisting.push(current_stmt);
-            }
-
-            let exp_type = expressions[expr_index].exp_type.as_ref().unwrap();
-
-            // The point here is that we need to hoist calls where an aggregate is returned, because currently
-            // a returned aggregate is an address _in the function we just called_, so not hoisting would mean
-            // that we clobber the aggregate if we make another call. Because, currently, this hoisting runs before
-            // monomorphization, we must also check size_is_unknown because any type parameter could end up
-            // being an aggregate. This means unnecessary hoisting, unfortunately.
-            if (exp_type.size_is_unknown() || exp_type.is_aggregate()) && parent_ctx == ParentCtx::Expr {
-               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
             }
 
             // assumption: procedure call always has side effects
