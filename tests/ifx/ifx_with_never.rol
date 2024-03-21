@@ -1,0 +1,11 @@
+proc main() {
+    let b = true;
+    let x: u8 = ifx b 10 else unreachable();
+    let y: u8 = ifx !b unreachable() else 10;
+    println(uint_to_string(x as u64));
+    println(uint_to_string(y as u64));
+}
+__END__
+run:
+10
+10

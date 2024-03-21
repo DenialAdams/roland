@@ -121,8 +121,8 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             .unwrap() = e_type.clone();
       }
       Expression::IfX(_, b, c) => {
-         set_inferred_type(e_type, *b, validation_context);
-         set_inferred_type(e_type, *c, validation_context);
+         try_set_inferred_type(e_type, *b, validation_context);
+         try_set_inferred_type(e_type, *c, validation_context);
          *validation_context.ast.expressions[expr_index]
             .exp_type
             .as_mut()

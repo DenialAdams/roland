@@ -1970,7 +1970,9 @@ fn get_type(
          let then_type = then_expr.exp_type.as_ref().unwrap();
          let else_expr = &validation_context.ast.expressions[*c];
          let else_type = else_expr.exp_type.as_ref().unwrap();
-         if then_type == else_type {
+         if then_type.is_never() {
+            else_type.clone()
+         } else if else_type.is_never() || then_type == else_type {
             then_type.clone()
          } else {
             rolandc_error_w_details!(
