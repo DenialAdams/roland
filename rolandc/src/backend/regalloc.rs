@@ -10,6 +10,7 @@ use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::parse::{
    AstPool, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, UnOp, VariableId,
 };
+use crate::size_info::sizeof_type_mem;
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
 use crate::{CompilationConfig, Program, Target};
 
@@ -67,7 +68,7 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
          let var = param.var_id;
          let typ = &param.p_type.e_type;
 
-         if typ.is_nonaggregate_zst() {
+         if sizeof_type_mem(typ, &program.user_defined_types, config.target) == 0 {
             continue;
          }
 
@@ -288,7 +289,6 @@ fn type_to_register_type(et: &ExpressionType, target: Target) -> ValType {
             ValType::I32
          }
       }
-      ExpressionType::Union(_) | ExpressionType::Struct(_) | ExpressionType::Array(_, _) => ValType::I32,
       x => {
          unreachable!("{:?}", x);
       }

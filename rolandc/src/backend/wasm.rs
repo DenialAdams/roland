@@ -28,7 +28,7 @@ const SP: u32 = 0;
 
 struct GenerationContext<'a> {
    active_fcn: wasm_encoder::Function,
-   type_manager: TypeManager,
+   type_manager: TypeManager<'a>,
    literal_offsets: HashMap<StrId, (u32, u32)>,
    globals: HashSet<VariableId>,
    static_addresses: HashMap<VariableId, u32>,
@@ -67,9 +67,13 @@ impl GenerationContext<'_> {
    }
 }
 
-fn type_to_wasm_type(t: &ExpressionType, buf: &mut Vec<ValType>) {
+fn type_to_wasm_type(t: &ExpressionType, udt: &UserDefinedTypeInfo, buf: &mut Vec<ValType>) {
+   if sizeof_type_mem(t, udt, Target::Wasi) == 0 {
+      return;
+   }
+
    match t {
-      ExpressionType::Unit | ExpressionType::Never | ExpressionType::ProcedureItem(_, _) => (),
+      ExpressionType::Union(_) | ExpressionType::Struct(_) | ExpressionType::Array(_, _) => buf.push(ValType::I32),
       _ => buf.push(type_to_wasm_type_basic(t)),
    }
 }
@@ -86,7 +90,6 @@ fn type_to_wasm_type_basic(t: &ExpressionType) -> ValType {
       },
       ExpressionType::Bool => ValType::I32,
       ExpressionType::ProcedurePointer { .. } => ValType::I32,
-      ExpressionType::Union(_) | ExpressionType::Struct(_) | ExpressionType::Array(_, _) => ValType::I32,
       x => {
          unreachable!("{:?}", x);
       }
@@ -119,15 +122,17 @@ impl Default for FunctionValTypes {
    }
 }
 
-struct TypeManager {
+struct TypeManager<'a> {
+   udt: &'a UserDefinedTypeInfo,
    function_val_types: FunctionValTypes,
    registered_types: IndexSet<FunctionValTypes>,
    type_section: TypeSection,
 }
 
-impl TypeManager {
-   fn new() -> TypeManager {
+impl<'u> TypeManager<'u> {
+   fn new(udt: &UserDefinedTypeInfo) -> TypeManager {
       TypeManager {
+         udt,
          function_val_types: FunctionValTypes::new(),
          registered_types: IndexSet::new(),
          type_section: TypeSection::new(),
@@ -146,10 +151,10 @@ impl TypeManager {
       self.function_val_types.clear();
 
       for param in parameters {
-         type_to_wasm_type(param, &mut self.function_val_types.param_val_types);
+         type_to_wasm_type(param, self.udt, &mut self.function_val_types.param_val_types);
       }
 
-      type_to_wasm_type(ret_type, &mut self.function_val_types.ret_val_types);
+      type_to_wasm_type(ret_type, self.udt, &mut self.function_val_types.ret_val_types);
 
       // (we are manually insert_full-ing here to minimize new vec allocation)
       let idx = if let Some(idx) = self.registered_types.get_index_of(&self.function_val_types) {
@@ -192,7 +197,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
 
    let mut generation_context = GenerationContext {
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
-      type_manager: TypeManager::new(),
+      type_manager: TypeManager::new(&program.user_defined_types),
       literal_offsets: HashMap::with_capacity(program.literals.len()),
       static_addresses: HashMap::with_capacity(program.global_info.len()),
       globals: HashSet::with_capacity(program.global_info.len()),
@@ -473,7 +478,13 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
          if generation_context.var_to_reg.contains_key(&param.var_id) {
             values_index += 1;
          } else {
-            match sizeof_type_values(&param.p_type.e_type, &generation_context.user_defined_types.enum_info).cmp(&1) {
+            match sizeof_type_values(
+               &param.p_type.e_type,
+               &generation_context.user_defined_types,
+               generation_context.target,
+            )
+            .cmp(&1)
+            {
                std::cmp::Ordering::Less => (),
                std::cmp::Ordering::Equal => {
                   get_stack_address_of_local(param.var_id, &mut generation_context);
@@ -681,7 +692,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
             do_emit(*len, generation_context);
             do_emit_and_load_lval(*en, generation_context);
             let val_type = generation_context.ast.expressions[*en].exp_type.as_ref().unwrap();
-            if let Some((is_global, a_reg)) = get_registers_for_expr(*len, generation_context) {
+            if let Some((is_global, a_reg)) = register_for_var(*len, generation_context) {
                if is_global {
                   generation_context
                      .active_fcn
@@ -707,7 +718,8 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
             do_emit_and_load_lval(*en, generation_context);
             for _ in 0..sizeof_type_values(
                generation_context.ast.expressions[*en].exp_type.as_ref().unwrap(),
-               &generation_context.user_defined_types.enum_info,
+               &generation_context.user_defined_types,
+               generation_context.target,
             ) {
                generation_context.active_fcn.instruction(&Instruction::Drop);
             }
@@ -732,7 +744,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
    }
 }
 
-fn get_registers_for_expr(expr_id: ExpressionId, generation_context: &GenerationContext) -> Option<(bool, u32)> {
+fn register_for_var(expr_id: ExpressionId, generation_context: &GenerationContext) -> Option<(bool, u32)> {
    let node = &generation_context.ast.expressions[expr_id];
    match &node.expression {
       Expression::Variable(v) => generation_context
@@ -752,7 +764,7 @@ fn do_emit_and_load_lval(expr_index: ExpressionId, generation_context: &mut Gene
       .expression
       .is_lvalue_disregard_consts(&generation_context.ast.expressions)
    {
-      if let Some((is_global, a_reg)) = get_registers_for_expr(expr_index, generation_context) {
+      if let Some((is_global, a_reg)) = register_for_var(expr_index, generation_context) {
          if is_global {
             generation_context
                .active_fcn
@@ -952,12 +964,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          };
       }
       Expression::FloatLiteral(x) => {
-         let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
-         match wasm_type {
-            ValType::F32 => generation_context
+         match expr_node.exp_type.as_ref().unwrap() {
+            &F64_TYPE => generation_context.active_fcn.instruction(&Instruction::F64Const(*x)),
+            &F32_TYPE => generation_context
                .active_fcn
                .instruction(&Instruction::F32Const(*x as f32)),
-            ValType::F64 => generation_context.active_fcn.instruction(&Instruction::F64Const(*x)),
             _ => unreachable!(),
          };
       }
@@ -1247,7 +1258,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          if e
             .expression
             .is_lvalue_disregard_consts(&generation_context.ast.expressions)
-            && get_registers_for_expr(*e_id, generation_context).is_none()
+            && register_for_var(*e_id, generation_context).is_none()
          {
             do_emit(*e_id, generation_context);
             load_mem(target_type, generation_context);
@@ -1644,15 +1655,20 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
 }
 
 fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   if val_type.is_aggregate() {
-      // Leave the address on the stack - there is no value representation of aggregates
-      // (Storing code understands this)
+   if sizeof_type_values(
+      val_type,
+      &generation_context.user_defined_types,
+      generation_context.target,
+   ) == 0
+   {
+      // Drop the load address; nothing to load
+      generation_context.active_fcn.instruction(&Instruction::Drop);
       return;
    }
 
-   if sizeof_type_values(val_type, &generation_context.user_defined_types.enum_info) == 0 {
-      // Drop the load address; nothing to load
-      generation_context.active_fcn.instruction(&Instruction::Drop);
+   if val_type.is_aggregate() {
+      // Leave the address on the stack - there is no value representation of aggregates
+      // (Storing code understands this)
       return;
    }
 
@@ -1706,7 +1722,13 @@ fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContex
 }
 
 fn store_mem(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   debug_assert!(sizeof_type_values(val_type, &generation_context.user_defined_types.enum_info) != 0);
+   debug_assert!(
+      sizeof_type_values(
+         val_type,
+         &generation_context.user_defined_types,
+         generation_context.target
+      ) != 0
+   );
 
    if val_type.is_aggregate() {
       let size = sizeof_type_mem(

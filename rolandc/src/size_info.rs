@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 
-use slotmap::SlotMap;
-
 use crate::interner::StrId;
-use crate::parse::{EnumId, StructId, UnionId, UserDefinedTypeInfo};
-use crate::semantic_analysis::EnumInfo;
+use crate::parse::{StructId, UnionId, UserDefinedTypeInfo};
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
 use crate::Target;
 
@@ -159,13 +156,17 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Targ
 }
 
 /// The size of a type, in number of WASM values
-pub fn sizeof_type_values(e: &ExpressionType, ei: &SlotMap<EnumId, EnumInfo>) -> u32 {
+pub fn sizeof_type_values(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) -> u32 {
+   if sizeof_type_mem(e, udt, target) == 0 {
+      return 0;
+   }
+
    match e {
       ExpressionType::Unresolved(_) => unreachable!(),
       ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Enum(x) => {
-         let base_type = &ei.get(*x).unwrap().base_type;
-         sizeof_type_values(base_type, ei)
+         let base_type = &udt.enum_info.get(*x).unwrap().base_type;
+         sizeof_type_values(base_type, udt, target)
       }
       ExpressionType::Int(_) => 1,
       ExpressionType::Float(_) => 1,

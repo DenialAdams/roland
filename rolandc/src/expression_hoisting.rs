@@ -564,7 +564,7 @@ fn vv_expr(
             }
          }
          _ => (),
-      }
+      },
       HoistingMode::PreConstantFold => match &expressions[expr_index].expression {
          Expression::ArrayIndex { array, .. } => {
             let array_expression = &expressions[*array];

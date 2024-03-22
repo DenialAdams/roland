@@ -1,0 +1,12 @@
+struct Empty {}
+
+proc main() {
+   println(foo(Empty{}, 10));
+}
+
+proc foo(x: Empty, y: u32) -> String {
+   return uint_to_string(y as u64);
+}
+__END__
+run:
+10
