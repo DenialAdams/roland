@@ -67,8 +67,8 @@ impl GenerationContext<'_> {
    }
 }
 
-fn type_to_wasm_type(t: &ExpressionType, udt: &UserDefinedTypeInfo, buf: &mut Vec<ValType>) {
-   if sizeof_type_mem(t, udt, Target::Wasi) == 0 {
+fn type_to_wasm_type(t: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target, buf: &mut Vec<ValType>) {
+   if sizeof_type_mem(t, udt, target) == 0 {
       return;
    }
 
@@ -124,15 +124,17 @@ impl Default for FunctionValTypes {
 
 struct TypeManager<'a> {
    udt: &'a UserDefinedTypeInfo,
+   target: Target,
    function_val_types: FunctionValTypes,
    registered_types: IndexSet<FunctionValTypes>,
    type_section: TypeSection,
 }
 
 impl<'u> TypeManager<'u> {
-   fn new(udt: &UserDefinedTypeInfo) -> TypeManager {
+   fn new(udt: &UserDefinedTypeInfo, target: Target) -> TypeManager {
       TypeManager {
          udt,
+         target,
          function_val_types: FunctionValTypes::new(),
          registered_types: IndexSet::new(),
          type_section: TypeSection::new(),
@@ -151,10 +153,10 @@ impl<'u> TypeManager<'u> {
       self.function_val_types.clear();
 
       for param in parameters {
-         type_to_wasm_type(param, self.udt, &mut self.function_val_types.param_val_types);
+         type_to_wasm_type(param, self.udt, self.target, &mut self.function_val_types.param_val_types);
       }
 
-      type_to_wasm_type(ret_type, self.udt, &mut self.function_val_types.ret_val_types);
+      type_to_wasm_type(ret_type, self.udt, self.target, &mut self.function_val_types.ret_val_types);
 
       // (we are manually insert_full-ing here to minimize new vec allocation)
       let idx = if let Some(idx) = self.registered_types.get_index_of(&self.function_val_types) {
@@ -197,7 +199,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
 
    let mut generation_context = GenerationContext {
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
-      type_manager: TypeManager::new(&program.user_defined_types),
+      type_manager: TypeManager::new(&program.user_defined_types, config.target),
       literal_offsets: HashMap::with_capacity(program.literals.len()),
       static_addresses: HashMap::with_capacity(program.global_info.len()),
       globals: HashSet::with_capacity(program.global_info.len()),
