@@ -22,12 +22,14 @@ pub fn is_reinterpretable_transmute(source_type: &ExpressionType, target_type: &
                | ExpressionType::Float(_)
                | ExpressionType::Pointer(_)
                | ExpressionType::Bool
-               | ExpressionType::Enum(_),
+               | ExpressionType::Enum(_)
+               | ExpressionType::ProcedurePointer { .. },
             ExpressionType::Int(_)
                | ExpressionType::Float(_)
                | ExpressionType::Pointer(_)
                | ExpressionType::Bool
                | ExpressionType::Enum(_)
+               | ExpressionType::ProcedurePointer { .. }
          )
       )
 }
