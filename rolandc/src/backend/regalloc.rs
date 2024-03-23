@@ -8,35 +8,53 @@ use super::linearize::{post_order, Cfg, CfgInstruction};
 use super::liveness::{liveness, ProgramIndex};
 use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::parse::{
-   AstPool, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, UnOp, VariableId,
+   AstPool, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, UnOp, UserDefinedTypeInfo,
+   VariableId,
 };
-use crate::size_info::sizeof_type_mem;
+use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
 use crate::{CompilationConfig, Program, Target};
 
+#[derive(Clone, Copy)]
+pub enum VarSlot {
+   Stack(u32),
+   Register(u32),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum VarSlotKind {
+   Stack((u32, u32)), // (size, alignment)
+   Register(ValType),
+}
+
 pub struct RegallocResult {
-   pub var_to_reg: IndexMap<VariableId, u32>,
+   pub var_to_slot: IndexMap<VariableId, VarSlot>,
    pub procedure_registers: SecondaryMap<ProcedureId, Vec<ValType>>,
+   pub procedure_stack_slots: SecondaryMap<ProcedureId, Vec<(u32, u32)>>,
 }
 
 pub fn assign_variables_to_wasm_registers(program: &Program, config: &CompilationConfig) -> RegallocResult {
    let mut escaping_vars = HashSet::new();
 
    let mut result = RegallocResult {
-      var_to_reg: IndexMap::new(),
+      var_to_slot: IndexMap::new(),
       procedure_registers: SecondaryMap::with_capacity(program.procedures.len()),
+      procedure_stack_slots: SecondaryMap::with_capacity(program.procedures.len()),
    };
 
    let mut active: Vec<VariableId> = Vec::new();
-   let mut free_registers: IndexMap<ValType, Vec<u32>> = IndexMap::new();
+   let mut free_slots: IndexMap<VarSlotKind, Vec<VarSlot>> = IndexMap::new();
 
    for (proc_id, procedure) in program.procedures.iter() {
       active.clear();
-      free_registers.clear();
+      free_slots.clear();
 
       result.procedure_registers.insert(proc_id, Vec::new());
       let all_registers = result.procedure_registers.get_mut(proc_id).unwrap();
+      result.procedure_stack_slots.insert(proc_id, Vec::new());
+      let all_stack_slots = result.procedure_stack_slots.get_mut(proc_id).unwrap();
       let mut total_registers = 0;
+      let mut total_stack_slots = 0;
 
       if !matches!(&procedure.proc_impl, ProcImplSource::Body(_)) {
          continue;
@@ -62,65 +80,81 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
          live_intervals.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
       }
 
-      // All non-aggregate parameters start in registers because that's how WASM
-      // (and Roland's calling convention) work.
-      for param in procedure.definition.parameters.iter() {
-         let var = param.var_id;
-         let typ = &param.p_type.e_type;
+      if config.target != Target::Qbe {
+         // For WASM, all parameters start in registers
+         for param in procedure.definition.parameters.iter() {
+            let var = param.var_id;
+            let typ = &param.p_type.e_type;
 
-         if sizeof_type_mem(typ, &program.user_defined_types, config.target) == 0 {
-            continue;
+            if sizeof_type_mem(typ, &program.user_defined_types, config.target) == 0 {
+               continue;
+            }
+
+            let reg = total_registers;
+            total_registers += 1;
+
+            if typ.is_aggregate() || escaping_vars.contains(&var) {
+               // variable must live on the stack.
+               // however, this var is a parameter, so we still need to offset
+               // the register count
+               continue;
+            }
+
+            result.var_to_slot.insert(var, VarSlot::Register(reg));
          }
-
-         let reg = total_registers;
-         total_registers += 1;
-
-         if typ.is_aggregate() || escaping_vars.contains(&var) {
-            // variable must live on the stack.
-            // however, this var is a parameter, so we still need to offset
-            // the register count
-            continue;
-         }
-
-         result.var_to_reg.insert(var, reg);
       }
 
       for (var, range) in live_intervals.iter() {
-         if result.var_to_reg.contains_key(var) {
-            // We have already assigned this var to a register, which means it must be a parameter
-            continue;
-         }
-
-         if escaping_vars.contains(var) {
-            // address is observed, variable must live on the stack
+         if result.var_to_slot.contains_key(var) {
+            // We have already assigned this var, which means it must be a parameter
             continue;
          }
 
          let local_type = procedure.locals.get(var).unwrap();
-         if local_type.is_aggregate() || local_type.is_nonaggregate_zst() {
-            continue;
-         }
 
          for expired_var in active.extract_if(|v| live_intervals.get(v).unwrap().end < range.begin) {
-            let wt = type_to_register_type(procedure.locals.get(&expired_var).unwrap(), config.target);
-            free_registers
-               .entry(wt)
+            if escaping_vars.contains(&expired_var) {
+               continue;
+            }
+            let sk = type_to_slot_kind(
+               procedure.locals.get(&expired_var).unwrap(),
+               false,
+               &program.user_defined_types,
+               config.target,
+            );
+            free_slots
+               .entry(sk)
                .or_default()
-               .push(result.var_to_reg.get(&expired_var).copied().unwrap());
+               .push(result.var_to_slot.get(&expired_var).copied().unwrap());
          }
 
-         let rt = type_to_register_type(local_type, config.target);
+         let sk = type_to_slot_kind(
+            local_type,
+            escaping_vars.contains(var),
+            &program.user_defined_types,
+            config.target,
+         );
 
-         let reg = if let Some(reg) = free_registers.entry(rt).or_default().pop() {
-            reg
+         let slot = if let Some(slot) = free_slots.entry(sk).or_default().pop() {
+            slot
          } else {
-            all_registers.push(rt);
-            let reg = total_registers;
-            total_registers += 1;
-            reg
+            match sk {
+               VarSlotKind::Register(rt) => {
+                  all_registers.push(rt);
+                  let reg = total_registers;
+                  total_registers += 1;
+                  VarSlot::Register(reg)
+               }
+               VarSlotKind::Stack(sz) => {
+                  all_stack_slots.push(sz);
+                  let ss = total_stack_slots;
+                  total_stack_slots += 1;
+                  VarSlot::Stack(ss)
+               }
+            }
          };
 
-         result.var_to_reg.insert(*var, reg);
+         result.var_to_slot.insert(*var, slot);
          active.push(*var);
       }
    }
@@ -134,7 +168,7 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
 
    let mut num_global_registers = 1; // Skip the stack pointer
    for global in program.global_info.iter() {
-      debug_assert!(!result.var_to_reg.contains_key(global.0));
+      debug_assert!(!result.var_to_slot.contains_key(global.0));
 
       if escaping_vars.contains(global.0) {
          continue;
@@ -147,7 +181,7 @@ pub fn assign_variables_to_wasm_registers(program: &Program, config: &Compilatio
       let reg = num_global_registers;
       num_global_registers += 1;
 
-      result.var_to_reg.insert(*global.0, reg);
+      result.var_to_slot.insert(*global.0, VarSlot::Register(reg));
    }
 
    result
@@ -196,12 +230,6 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
       Expression::ArrayIndex { array, index } => {
          mark_escaping_vars_expr(*array, escaping_vars, ast);
          mark_escaping_vars_expr(*index, escaping_vars, ast);
-
-         if let Some(v) = get_var_from_use(*array, &ast.expressions) {
-            if !matches!(ast.expressions[*index].expression, Expression::IntLiteral { .. }) {
-               escaping_vars.insert(v);
-            }
-         }
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
          mark_escaping_vars_expr(*lhs, escaping_vars, ast);
@@ -230,6 +258,9 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
             )
          {
             if let Some(v) = get_var_from_use(*expr, &ast.expressions) {
+               // This is a weaker form of escaping -
+               // stack slot reuse will avoid this var, but it shouldn't have to
+               // (future improvement TODO)
                escaping_vars.insert(v);
             }
          }
@@ -270,27 +301,50 @@ pub struct LiveInterval {
    pub end: ProgramIndex,
 }
 
-// TODO: merge with type_to_wasm_type? also, create an abstraction instead of using ValType
-fn type_to_register_type(et: &ExpressionType, target: Target) -> ValType {
-   match et {
-      ExpressionType::Int(x) => match x.width {
-         IntWidth::Eight => ValType::I64,
-         _ => ValType::I32,
-      },
-      ExpressionType::Float(x) => match x.width {
-         FloatWidth::Eight => ValType::F64,
-         FloatWidth::Four => ValType::F32,
-      },
-      ExpressionType::Bool => ValType::I32,
-      ExpressionType::ProcedurePointer { .. } => {
-         if target.pointer_width() == 8 {
-            ValType::I64
-         } else {
-            ValType::I32
+fn type_to_slot_kind(
+   et: &ExpressionType,
+   var_is_escaping: bool,
+   udt: &UserDefinedTypeInfo,
+   target: Target,
+) -> VarSlotKind {
+   let size = sizeof_type_mem(et, udt, target);
+   if et.is_aggregate() || var_is_escaping || size == 0 {
+      VarSlotKind::Stack((
+         size,
+         bucket_alignment(mem_alignment(et, udt, target)),
+      ))
+   } else {
+      VarSlotKind::Register(match et {
+         ExpressionType::Int(x) => match x.width {
+            IntWidth::Eight => ValType::I64,
+            _ => ValType::I32,
+         },
+         ExpressionType::Float(x) => match x.width {
+            FloatWidth::Eight => ValType::F64,
+            FloatWidth::Four => ValType::F32,
+         },
+         ExpressionType::Bool => ValType::I32,
+         ExpressionType::ProcedurePointer { .. } => {
+            if target.pointer_width() == 8 {
+               ValType::I64
+            } else {
+               ValType::I32
+            }
          }
-      }
-      x => {
-         unreachable!("{:?}", x);
-      }
+         _ => unreachable!(),
+      })
+   }
+}
+
+fn bucket_alignment(x: u32) -> u32 {
+   // These buckets are set due to QBE requirements
+   // hopefully this is reasonable for wasm as well
+   debug_assert!(x <= 16);
+   if x > 8 {
+      16
+   } else if x > 4 {
+      8
+   } else {
+      4
    }
 }

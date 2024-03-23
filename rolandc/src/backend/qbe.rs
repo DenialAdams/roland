@@ -5,7 +5,7 @@ use indexmap::{IndexMap, IndexSet};
 use slotmap::{Key, SecondaryMap};
 
 use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE, CFG_START_NODE};
-use super::regalloc;
+use super::regalloc::{self, VarSlot};
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -13,7 +13,7 @@ use crate::parse::{
    UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::{GlobalInfo, ProcedureInfo};
-use crate::size_info::{mem_alignment, sizeof_type_mem};
+use crate::size_info::sizeof_type_mem;
 use crate::type_data::{
    ExpressionType, FloatType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE,
    U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE,
@@ -23,7 +23,7 @@ use crate::{CompilationConfig, Program, Target};
 struct GenerationContext<'a> {
    buf: Vec<u8>,
    is_main: bool,
-   var_to_reg: IndexMap<VariableId, u32>,
+   var_to_slot: IndexMap<VariableId, VarSlot>,
    ast: &'a AstPool,
    proc_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
    interner: &'a Interner,
@@ -294,7 +294,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
    let mut ctx = GenerationContext {
       buf: vec![],
       is_main: false,
-      var_to_reg: regalloc_result.var_to_reg,
+      var_to_slot: regalloc_result.var_to_slot,
       ast: &program.ast,
       proc_info: &program.procedure_info,
       interner,
@@ -374,7 +374,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       )
       .unwrap();
       for param in procedure.definition.parameters.iter() {
-         if let Some(param_reg) = ctx.var_to_reg.get(&param.var_id) {
+         if let Some(VarSlot::Register(param_reg)) = ctx.var_to_slot.get(&param.var_id) {
             write!(
                ctx.buf,
                "{} %r{}, ",
@@ -391,39 +391,23 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       writeln!(ctx.buf, ") {{").unwrap();
       // Allocate stack
       writeln!(ctx.buf, "@entry").unwrap();
-      for local in procedure.locals.iter() {
-         if ctx.var_to_reg.contains_key(local.0) {
-            continue;
-         }
-         let alignment = {
-            let align_floor_4 = mem_alignment(local.1, ctx.udt, Target::Qbe).max(4);
-            if align_floor_4 > 4 && align_floor_4 <= 8 {
-               8
-            } else if align_floor_4 > 4 {
-               16
-            } else {
-               align_floor_4
-            }
-         };
-         writeln!(
-            ctx.buf,
-            "   %v{} =l alloc{} {}",
-            local.0 .0,
-            alignment,
-            sizeof_type_mem(local.1, ctx.udt, Target::Qbe),
-         )
-         .unwrap();
+      for (i, (sz, alignment)) in regalloc_result.procedure_stack_slots[proc_id]
+         .iter()
+         .copied()
+         .enumerate()
+      {
+         writeln!(ctx.buf, "   %v{} =l alloc{} {}", i, alignment, sz,).unwrap();
       }
       // Copy mem parameters
       for param in procedure.definition.parameters.iter() {
-         if ctx.var_to_reg.contains_key(&param.var_id) {
+         let Some(VarSlot::Stack(id)) = ctx.var_to_slot.get(&param.var_id) else {
             continue;
-         }
-         if sizeof_type_mem(&param.p_type.e_type, ctx.udt, Target::Qbe) == 0 {
-            continue;
-         }
+         };
          let size = sizeof_type_mem(&param.p_type.e_type, ctx.udt, Target::Qbe);
-         writeln!(ctx.buf, "   blit %p{}, %v{}, {}", param.var_id.0, param.var_id.0, size).unwrap();
+         if size == 0 {
+            continue;
+         }
+         writeln!(ctx.buf, "   blit %p{}, %v{}, {}", param.var_id.0, id, size).unwrap();
       }
       emit_bb(cfg, CFG_START_NODE, &mut ctx);
       for bb_id in 2..cfg.bbs.len() {
@@ -514,12 +498,17 @@ fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<Str
          Some(format!("%a{}", at))
       }
       Expression::Variable(v) => {
-         if ctx.var_to_reg.contains_key(&v) {
-            None
-         } else if ctx.global_info.contains_key(&v) {
+         if ctx.global_info.contains_key(&v) {
             Some(format!("$.v{}", v.0))
          } else {
-            Some(format!("%v{}", v.0))
+            // nocheckin
+            if !ctx.var_to_slot.contains_key(&v) {
+               return None;
+            }
+            match ctx.var_to_slot.get(&v).unwrap() {
+               VarSlot::Register(_) => None,
+               VarSlot::Stack(v) => Some(format!("%v{}", v)),
+            }
          }
       }
       Expression::UnaryOperator(UnOp::Dereference, e) => Some(expr_to_val(e, ctx)),
@@ -583,7 +572,9 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   let len = &ctx.ast.expressions[*lid];
                   match len.expression {
                      Expression::Variable(v) => {
-                        let reg = ctx.var_to_reg.get(&v).unwrap();
+                        let Some(VarSlot::Register(reg)) = ctx.var_to_slot.get(&v) else {
+                           unreachable!()
+                        };
                         write!(
                            ctx.buf,
                            "   %r{} ={} ",
@@ -676,12 +667,17 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> String 
          format!("{}", u8::from(*val))
       }
       Expression::Variable(v) => {
-         if let Some(reg) = ctx.var_to_reg.get(v) {
-            format!("%r{}", reg)
-         } else if ctx.global_info.contains_key(v) {
+         if ctx.global_info.contains_key(v) {
             format!("$.v{}", v.0)
          } else {
-            format!("%v{}", v.0)
+            match ctx.var_to_slot.get(v).unwrap() {
+               VarSlot::Register(reg) => {
+                  format!("%r{}", reg)
+               }
+               VarSlot::Stack(v) => {
+                  format!("%v{}", v)
+               }
+            }
          }
       }
       Expression::StringLiteral(id) => {
@@ -720,7 +716,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          _ => unreachable!(),
       },
       Expression::Variable(v) => {
-         if let Some(reg) = ctx.var_to_reg.get(v) {
+         if let Some(VarSlot::Register(reg)) = ctx.var_to_slot.get(v) {
             writeln!(ctx.buf, "copy %r{}", reg).unwrap();
          } else {
             emit_load(&mut ctx.buf, &rhs_mem.unwrap(), ren.exp_type.as_ref().unwrap());

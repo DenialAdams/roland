@@ -9,6 +9,7 @@ use wasm_encoder::{
 };
 
 use super::linearize::{Cfg, CfgInstruction, CFG_START_NODE};
+use super::regalloc::VarSlot;
 use crate::backend::regalloc;
 use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::interner::{Interner, StrId};
@@ -21,8 +22,6 @@ use crate::size_info::{aligned_address, mem_alignment, sizeof_type_mem, sizeof_t
 use crate::type_data::{ExpressionType, FloatType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE};
 use crate::{CompilationConfig, Target};
 
-const MINIMUM_STACK_FRAME_SIZE: u32 = 0;
-
 // globals
 const SP: u32 = 0;
 
@@ -32,7 +31,7 @@ struct GenerationContext<'a> {
    literal_offsets: HashMap<StrId, (u32, u32)>,
    globals: HashSet<VariableId>,
    static_addresses: HashMap<VariableId, u32>,
-   local_offsets_mem: HashMap<VariableId, u32>,
+   stack_offsets_mem: HashMap<usize, u32>,
    user_defined_types: &'a UserDefinedTypeInfo,
    sum_sizeof_locals_mem: u32,
    ast: &'a AstPool,
@@ -40,7 +39,7 @@ struct GenerationContext<'a> {
    procedure_to_table_index: IndexSet<ProcedureId>,
    procedure_indices: IndexSet<ProcedureId>,
    stack_of_loop_jump_offsets: Vec<u32>,
-   var_to_reg: IndexMap<VariableId, u32>,
+   var_to_slot: IndexMap<VariableId, VarSlot>,
    target: Target,
 }
 
@@ -153,10 +152,20 @@ impl<'u> TypeManager<'u> {
       self.function_val_types.clear();
 
       for param in parameters {
-         type_to_wasm_type(param, self.udt, self.target, &mut self.function_val_types.param_val_types);
+         type_to_wasm_type(
+            param,
+            self.udt,
+            self.target,
+            &mut self.function_val_types.param_val_types,
+         );
       }
 
-      type_to_wasm_type(ret_type, self.udt, self.target, &mut self.function_val_types.ret_val_types);
+      type_to_wasm_type(
+         ret_type,
+         self.udt,
+         self.target,
+         &mut self.function_val_types.ret_val_types,
+      );
 
       // (we are manually insert_full-ing here to minimize new vec allocation)
       let idx = if let Some(idx) = self.registered_types.get_index_of(&self.function_val_types) {
@@ -203,14 +212,14 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       literal_offsets: HashMap::with_capacity(program.literals.len()),
       static_addresses: HashMap::with_capacity(program.global_info.len()),
       globals: HashSet::with_capacity(program.global_info.len()),
-      local_offsets_mem: HashMap::new(),
+      stack_offsets_mem: HashMap::new(),
       user_defined_types: &program.user_defined_types,
       sum_sizeof_locals_mem: 0,
       ast: &program.ast,
       procedure_to_table_index: IndexSet::new(),
       procedure_indices: IndexSet::new(),
       stack_of_loop_jump_offsets: Vec::new(),
-      var_to_reg: regalloc_result.var_to_reg,
+      var_to_slot: regalloc_result.var_to_slot,
       proc_name_table: &program.procedure_name_table,
       target: config.target,
    };
@@ -280,7 +289,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       let strictest_alignment = if let Some(v) = program
          .global_info
          .iter()
-         .find(|x| !generation_context.var_to_reg.contains_key(x.0))
+         .find(|x| !matches!(generation_context.var_to_slot.get(x.0), Some(VarSlot::Register(_))))
       {
          mem_alignment(
             &v.1.expr_type.e_type,
@@ -295,7 +304,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
    }
    for (static_var, static_details) in program.global_info.iter() {
       generation_context.globals.insert(*static_var);
-      if generation_context.var_to_reg.contains_key(static_var) {
+      if generation_context.var_to_slot.contains_key(static_var) {
          continue;
       }
 
@@ -311,7 +320,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
 
    let mut buf = vec![];
    for (p_var, p_static) in program.global_info.iter().filter(|x| x.1.initializer.is_some()) {
-      if generation_context.var_to_reg.contains_key(p_var) {
+      if generation_context.var_to_slot.contains_key(p_var) {
          continue;
       }
 
@@ -336,7 +345,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       global_names.append(0, "stack_pointer");
 
       for (i, global) in program.global_info.iter().enumerate() {
-         if !generation_context.var_to_reg.contains_key(global.0) {
+         if !generation_context.var_to_slot.contains_key(global.0) {
             continue;
          }
 
@@ -435,41 +444,31 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       };
       generation_context.active_fcn =
          Function::new_with_locals_types(regalloc_result.procedure_registers.remove(proc_id).unwrap());
-      generation_context.local_offsets_mem.clear();
+      generation_context.stack_offsets_mem.clear();
 
-      generation_context.sum_sizeof_locals_mem = MINIMUM_STACK_FRAME_SIZE;
+      generation_context.sum_sizeof_locals_mem = 0;
 
-      let mut mem_info: IndexMap<VariableId, (u32, u32)> = procedure
-         .locals
+      let mut mem_info: IndexMap<usize, (u32, u32)> = regalloc_result
+         .procedure_stack_slots[proc_id]
          .iter()
-         .filter(|x| !generation_context.var_to_reg.contains_key(x.0))
-         .map(|x| {
-            let alignment = mem_alignment(x.1, generation_context.user_defined_types, generation_context.target);
-            let size = sizeof_type_mem(x.1, generation_context.user_defined_types, generation_context.target);
-            (*x.0, (alignment, size))
+         .enumerate()
+         .map(|(i, x)| {
+            (i, (x.1, x.0))
          })
          .collect();
 
-      // Handle alignment within frame
-      {
-         mem_info.sort_by(|_k_1, v_1, _k_2, v_2| compare_alignment(v_1.0, v_1.1, v_2.0, v_2.1));
-
-         let strictest_alignment = if let Some(v) = mem_info.first() { v.1 .0 } else { 1 };
-
-         generation_context.sum_sizeof_locals_mem =
-            aligned_address(generation_context.sum_sizeof_locals_mem, strictest_alignment);
-      }
+      mem_info.sort_by(|_k_1_, v_1, _k_2_, v_2| compare_alignment(v_1.0, v_1.1, v_2.0, v_2.1));
 
       for local in mem_info.iter() {
          // last element could have been a struct, and so we need to pad
          generation_context.sum_sizeof_locals_mem =
-            aligned_address(generation_context.sum_sizeof_locals_mem, local.1 .0);
+            aligned_address(generation_context.sum_sizeof_locals_mem, local.1.0);
          generation_context
-            .local_offsets_mem
+            .stack_offsets_mem
             .insert(*local.0, generation_context.sum_sizeof_locals_mem);
 
          // TODO: should we check for overflow on this value?
-         generation_context.sum_sizeof_locals_mem += local.1 .1;
+         generation_context.sum_sizeof_locals_mem += local.1.1;
       }
 
       adjust_stack_function_entry(&mut generation_context);
@@ -477,7 +476,10 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       // Copy parameters to stack memory so we can take pointers
       let mut values_index = 0;
       for param in &procedure.definition.parameters {
-         if generation_context.var_to_reg.contains_key(&param.var_id) {
+         if matches!(
+            generation_context.var_to_slot.get(&param.var_id),
+            Some(VarSlot::Register(_))
+         ) {
             values_index += 1;
          } else {
             match sizeof_type_values(
@@ -750,9 +752,9 @@ fn register_for_var(expr_id: ExpressionId, generation_context: &GenerationContex
    let node = &generation_context.ast.expressions[expr_id];
    match &node.expression {
       Expression::Variable(v) => generation_context
-         .var_to_reg
+         .var_to_slot
          .get(v)
-         .copied()
+         .and_then(|x| if let VarSlot::Register(v) = x { Some(*v) } else { None })
          .map(|x| (generation_context.globals.contains(v), x)),
       _ => None,
    }
@@ -1647,11 +1649,11 @@ fn complement_val(t_type: &ExpressionType, wasm_type: ValType, generation_contex
 
 /// Places the address of given local on the stack
 fn get_stack_address_of_local(id: VariableId, generation_context: &mut GenerationContext) {
-   if generation_context.var_to_reg.contains_key(&id) {
+   let Some(VarSlot::Stack(s)) = generation_context.var_to_slot.get(&id) else {
       return;
-   }
+   };
    let offset = aligned_address(generation_context.sum_sizeof_locals_mem, 8)
-      - generation_context.local_offsets_mem.get(&id).copied().unwrap();
+      - generation_context.stack_offsets_mem.get(&(*s as usize)).copied().unwrap();
    generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
    generation_context.emit_const_sub_i32(offset);
 }
@@ -1799,7 +1801,7 @@ fn adjust_stack_function_exit(generation_context: &mut GenerationContext) {
 }
 
 fn adjust_stack(generation_context: &mut GenerationContext, instr: &Instruction) {
-   if generation_context.sum_sizeof_locals_mem == MINIMUM_STACK_FRAME_SIZE {
+   if generation_context.sum_sizeof_locals_mem == 0 {
       return;
    }
 
