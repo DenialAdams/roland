@@ -448,13 +448,10 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
 
       generation_context.sum_sizeof_locals_mem = 0;
 
-      let mut mem_info: IndexMap<usize, (u32, u32)> = regalloc_result
-         .procedure_stack_slots[proc_id]
+      let mut mem_info: IndexMap<usize, (u32, u32)> = regalloc_result.procedure_stack_slots[proc_id]
          .iter()
          .enumerate()
-         .map(|(i, x)| {
-            (i, (x.1, x.0))
-         })
+         .map(|(i, x)| (i, (x.1, x.0)))
          .collect();
 
       mem_info.sort_by(|_k_1_, v_1, _k_2_, v_2| compare_alignment(v_1.0, v_1.1, v_2.0, v_2.1));
@@ -462,13 +459,13 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       for local in mem_info.iter() {
          // last element could have been a struct, and so we need to pad
          generation_context.sum_sizeof_locals_mem =
-            aligned_address(generation_context.sum_sizeof_locals_mem, local.1.0);
+            aligned_address(generation_context.sum_sizeof_locals_mem, local.1 .0);
          generation_context
             .stack_offsets_mem
             .insert(*local.0, generation_context.sum_sizeof_locals_mem);
 
          // TODO: should we check for overflow on this value?
-         generation_context.sum_sizeof_locals_mem += local.1.1;
+         generation_context.sum_sizeof_locals_mem += local.1 .1;
       }
 
       adjust_stack_function_entry(&mut generation_context);
@@ -1653,7 +1650,11 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
       return;
    };
    let offset = aligned_address(generation_context.sum_sizeof_locals_mem, 8)
-      - generation_context.stack_offsets_mem.get(&(*s as usize)).copied().unwrap();
+      - generation_context
+         .stack_offsets_mem
+         .get(&(*s as usize))
+         .copied()
+         .unwrap();
    generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
    generation_context.emit_const_sub_i32(offset);
 }

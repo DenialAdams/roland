@@ -309,10 +309,7 @@ fn type_to_slot_kind(
 ) -> VarSlotKind {
    let size = sizeof_type_mem(et, udt, target);
    if et.is_aggregate() || var_is_escaping || size == 0 {
-      VarSlotKind::Stack((
-         size,
-         bucket_alignment(mem_alignment(et, udt, target)),
-      ))
+      VarSlotKind::Stack((size, bucket_alignment(mem_alignment(et, udt, target))))
    } else {
       VarSlotKind::Register(match et {
          ExpressionType::Int(x) => match x.width {

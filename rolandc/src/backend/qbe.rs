@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::io::Write;
 
 use indexmap::{IndexMap, IndexSet};
@@ -373,19 +374,23 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          mangle(proc_id, ctx.proc_info, ctx.interner)
       )
       .unwrap();
-      for param in procedure.definition.parameters.iter() {
-         if let Some(VarSlot::Register(param_reg)) = ctx.var_to_slot.get(&param.var_id) {
-            write!(
-               ctx.buf,
-               "{} %r{}, ",
-               roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, &ctx.aggregate_defs).unwrap(),
-               param_reg
-            )
-            .unwrap();
-         } else if let Some(p_type) = roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, &ctx.aggregate_defs) {
-            write!(ctx.buf, "{} %p{}, ", p_type, param.var_id.0,).unwrap();
-         } else {
-            continue;
+      let mut stack_params = HashSet::new();
+      for (p_i, param) in procedure.definition.parameters.iter().enumerate() {
+         if let Some(p_type) = roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, &ctx.aggregate_defs) {
+            match ctx.var_to_slot.get(&param.var_id) {
+               Some(VarSlot::Register(reg)) => {
+                  write!(ctx.buf, "{} %r{}, ", p_type, reg).unwrap();
+               }
+               Some(VarSlot::Stack(v)) => {
+                  write!(ctx.buf, "{} %v{}, ", p_type, v).unwrap();
+                  stack_params.insert(v);
+               }
+               None => {
+                  // This parameter was not assigned a slot - this variable MUST be unused
+                  // we'll just give it some value
+                  write!(ctx.buf, "{} %p{}, ", p_type, p_i).unwrap();
+               }
+            }
          }
       }
       writeln!(ctx.buf, ") {{").unwrap();
@@ -396,18 +401,10 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          .copied()
          .enumerate()
       {
-         writeln!(ctx.buf, "   %v{} =l alloc{} {}", i, alignment, sz,).unwrap();
-      }
-      // Copy mem parameters
-      for param in procedure.definition.parameters.iter() {
-         let Some(VarSlot::Stack(id)) = ctx.var_to_slot.get(&param.var_id) else {
-            continue;
-         };
-         let size = sizeof_type_mem(&param.p_type.e_type, ctx.udt, Target::Qbe);
-         if size == 0 {
+         if stack_params.contains(&(i as u32)) {
             continue;
          }
-         writeln!(ctx.buf, "   blit %p{}, %v{}, {}", param.var_id.0, id, size).unwrap();
+         writeln!(ctx.buf, "   %v{} =l alloc{} {}", i, alignment, sz,).unwrap();
       }
       emit_bb(cfg, CFG_START_NODE, &mut ctx);
       for bb_id in 2..cfg.bbs.len() {
@@ -434,9 +431,9 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          mangle(proc_id, ctx.proc_info, ctx.interner)
       )
       .unwrap();
-      for param in procedure.definition.parameters.iter() {
+      for (p_i, param) in procedure.definition.parameters.iter().enumerate() {
          if let Some(param_type) = roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, &ctx.aggregate_defs) {
-            write!(ctx.buf, "{} %p{}, ", param_type, param.var_id.0,).unwrap();
+            write!(ctx.buf, "{} %p{}, ", param_type, p_i).unwrap();
          }
       }
       writeln!(ctx.buf, ") {{").unwrap();
