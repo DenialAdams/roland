@@ -484,7 +484,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
          } else {
             match sizeof_type_values(
                &param.p_type.e_type,
-               &generation_context.user_defined_types,
+               generation_context.user_defined_types,
                generation_context.target,
             )
             .cmp(&1)
@@ -722,7 +722,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
             do_emit_and_load_lval(*en, generation_context);
             for _ in 0..sizeof_type_values(
                generation_context.ast.expressions[*en].exp_type.as_ref().unwrap(),
-               &generation_context.user_defined_types,
+               generation_context.user_defined_types,
                generation_context.target,
             ) {
                generation_context.active_fcn.instruction(&Instruction::Drop);
@@ -968,9 +968,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          };
       }
       Expression::FloatLiteral(x) => {
-         match expr_node.exp_type.as_ref().unwrap() {
-            &F64_TYPE => generation_context.active_fcn.instruction(&Instruction::F64Const(*x)),
-            &F32_TYPE => generation_context
+         match *expr_node.exp_type.as_ref().unwrap() {
+            F64_TYPE => generation_context.active_fcn.instruction(&Instruction::F64Const(*x)),
+            F32_TYPE => generation_context
                .active_fcn
                .instruction(&Instruction::F32Const(*x as f32)),
             _ => unreachable!(),
@@ -1661,7 +1661,7 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
 fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
    if sizeof_type_values(
       val_type,
-      &generation_context.user_defined_types,
+      generation_context.user_defined_types,
       generation_context.target,
    ) == 0
    {
@@ -1729,7 +1729,7 @@ fn store_mem(val_type: &ExpressionType, generation_context: &mut GenerationConte
    debug_assert!(
       sizeof_type_values(
          val_type,
-         &generation_context.user_defined_types,
+         generation_context.user_defined_types,
          generation_context.target
       ) != 0
    );
