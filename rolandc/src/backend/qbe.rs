@@ -289,7 +289,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       }
    }
 
-   let regalloc_result = regalloc::assign_variables_to_wasm_registers(program, config);
+   let regalloc_result = regalloc::assign_variables_to_registers_and_mem(program, config);
 
    let mut ctx = GenerationContext {
       buf: vec![],

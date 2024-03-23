@@ -33,7 +33,7 @@ pub struct RegallocResult {
    pub procedure_stack_slots: SecondaryMap<ProcedureId, Vec<(u32, u32)>>,
 }
 
-pub fn assign_variables_to_wasm_registers(program: &Program, config: &CompilationConfig) -> RegallocResult {
+pub fn assign_variables_to_registers_and_mem(program: &Program, config: &CompilationConfig) -> RegallocResult {
    let mut escaping_vars = HashSet::new();
 
    let mut result = RegallocResult {

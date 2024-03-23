@@ -204,7 +204,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
    });
 
-   let mut regalloc_result = regalloc::assign_variables_to_wasm_registers(program, config);
+   let mut regalloc_result = regalloc::assign_variables_to_registers_and_mem(program, config);
 
    let mut generation_context = GenerationContext {
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
