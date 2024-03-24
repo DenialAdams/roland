@@ -498,10 +498,6 @@ fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<Str
          if ctx.global_info.contains_key(&v) {
             Some(format!("$.v{}", v.0))
          } else {
-            // nocheckin
-            if !ctx.var_to_slot.contains_key(&v) {
-               return None;
-            }
             match ctx.var_to_slot.get(&v).unwrap() {
                VarSlot::Register(_) => None,
                VarSlot::Stack(v) => Some(format!("%v{}", v)),
@@ -541,6 +537,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                }
                (Some(l), None) => {
                   if ctx.ast.expressions[*lid].exp_type.as_ref().unwrap().is_aggregate() {
+                     // Must be a call
                      write!(
                         ctx.buf,
                         "   %t ={} ",
