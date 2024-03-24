@@ -383,7 +383,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
                }
                Some(VarSlot::Stack(v)) => {
                   write!(ctx.buf, "{} %v{}, ", p_type, v).unwrap();
-                  stack_params.insert(v);
+                  stack_params.insert(*v as usize);
                }
                None => {
                   // This parameter was not assigned a slot - this variable MUST be unused
@@ -401,7 +401,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          .copied()
          .enumerate()
       {
-         if stack_params.contains(&(i as u32)) {
+         if stack_params.contains(&i) {
             continue;
          }
          writeln!(ctx.buf, "   %v{} =l alloc{} {}", i, alignment, sz,).unwrap();
