@@ -234,7 +234,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
    for (id, external_procedure) in program
       .procedures
       .iter()
-      .filter(|(_, v)| matches!(v.proc_impl, ProcImplSource::External))
+      .filter(|(_, v)| v.impl_source == ProcImplSource::External)
    {
       let type_index = generation_context
          .type_manager
@@ -382,7 +382,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
    for (id, builtin_procedure) in program
       .procedures
       .iter()
-      .filter(|(_, v)| matches!(v.proc_impl, ProcImplSource::Builtin))
+      .filter(|(_, v)| v.impl_source == ProcImplSource::Builtin)
    {
       generation_context.active_fcn = Function::new_with_locals_types([]);
 
@@ -428,7 +428,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
    for (id, procedure) in program
       .procedures
       .iter()
-      .filter(|(_, v)| v.proc_impl == ProcImplSource::Body)
+      .filter(|(_, v)| v.impl_source == ProcImplSource::Native)
    {
       function_section.function(
          generation_context

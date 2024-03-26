@@ -421,7 +421,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
    for (proc_id, procedure) in program
       .procedures
       .iter()
-      .filter(|x| matches!(x.1.proc_impl, ProcImplSource::Builtin))
+      .filter(|x| x.1.impl_source == ProcImplSource::Builtin)
    {
       if interner.lookup(procedure.definition.name.str) != "unreachable" {
          // TODO: we should get better about pruning these dead builtins
@@ -629,7 +629,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
 
 fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner) -> Cow<'a, str> {
    let proc_name = interner.lookup(proc.definition.name.str);
-   if proc.proc_impl != ProcImplSource::Body || proc_name == "main" {
+   if proc.impl_source != ProcImplSource::Native || proc_name == "main" {
       // "main" implies exported, and builtin procedures can't be monomorphized and thus
       // don't need to be mangled
       return Cow::Borrowed(proc_name);

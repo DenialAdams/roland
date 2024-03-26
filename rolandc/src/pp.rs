@@ -39,10 +39,10 @@ pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> R
    };
 
    for (id, proc) in program.procedures.iter() {
-      let prefix = match proc.proc_impl {
+      let prefix = match proc.impl_source {
          ProcImplSource::Builtin => "builtin ",
          ProcImplSource::External => "extern ",
-         ProcImplSource::Body => "",
+         ProcImplSource::Native => "",
       };
       write!(
          pp_ctx.output,

@@ -408,7 +408,7 @@ pub fn populate_type_and_procedure_info(
    for proc in program.procedures.values_mut() {
       dupe_check.clear();
 
-      if proc.proc_impl == ProcImplSource::Builtin && !source_is_std(proc.location, config) {
+      if proc.impl_source == ProcImplSource::Builtin && !source_is_std(proc.location, config) {
          rolandc_error!(
             err_manager,
             proc.location,
@@ -433,7 +433,7 @@ pub fn populate_type_and_procedure_info(
          if param.named && first_named_param.is_none() {
             first_named_param = Some(i);
 
-            if proc.proc_impl == ProcImplSource::External {
+            if proc.impl_source == ProcImplSource::External {
                reported_named_error = true;
                rolandc_error!(
                   err_manager,

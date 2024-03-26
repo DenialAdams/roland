@@ -1349,7 +1349,7 @@ fn get_type(
                // special case
                let proc = &validation_context.procedures[*proc_id];
 
-               if matches!(proc.proc_impl, ProcImplSource::Builtin) {
+               if proc.impl_source == ProcImplSource::Builtin {
                   rolandc_error!(
                      err_manager,
                      expr_location,

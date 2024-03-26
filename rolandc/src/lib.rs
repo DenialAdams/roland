@@ -221,7 +221,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    }
    ctx.program
       .procedures
-      .retain(|_, x| x.definition.type_parameters.is_empty() || x.proc_impl != ProcImplSource::Body);
+      .retain(|_, x| x.definition.type_parameters.is_empty() || x.impl_source != ProcImplSource::Native);
    ctx.program
       .procedure_bodies
       .retain(|k, _| ctx.program.procedures.contains_key(k));

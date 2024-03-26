@@ -63,7 +63,7 @@ pub struct ProcedureDefinition {
 pub struct ProcedureNode {
    pub definition: ProcedureDefinition,
    pub location: SourceInfo,
-   pub proc_impl: ProcImplSource,
+   pub impl_source: ProcImplSource,
 
    // Populated post-parse
    pub named_parameters: HashMap<StrId, ExpressionType>,
@@ -74,7 +74,7 @@ pub struct ProcedureNode {
 pub enum ProcImplSource {
    Builtin,
    External,
-   Body,
+   Native,
 }
 
 #[derive(Clone)]
@@ -767,7 +767,7 @@ fn parse_procedure(
    Ok((
       ProcedureNode {
          definition,
-         proc_impl: ProcImplSource::Body,
+         impl_source: ProcImplSource::Native,
          location: combined_location,
          named_parameters: HashMap::new(),
          type_parameters: IndexMap::new(),
@@ -790,7 +790,7 @@ fn parse_external_procedure(
    Ok(ProcedureNode {
       definition,
       location: merge_locations(source_info, end_token.source_info),
-      proc_impl: proc_impl_source,
+      impl_source: proc_impl_source,
       named_parameters: HashMap::new(),
       type_parameters: IndexMap::new(),
    })
