@@ -8,8 +8,7 @@ use super::linearize::{post_order, Cfg, CfgInstruction};
 use super::liveness::{liveness, ProgramIndex};
 use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::parse::{
-   AstPool, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, UnOp, UserDefinedTypeInfo,
-   VariableId,
+   AstPool, CastType, Expression, ExpressionId, ExpressionPool, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
@@ -45,7 +44,7 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
    let mut active: Vec<VariableId> = Vec::new();
    let mut free_slots: IndexMap<VarSlotKind, Vec<VarSlot>> = IndexMap::new();
 
-   for (proc_id, procedure) in program.procedures.iter() {
+   for (proc_id, body) in program.procedure_bodies.iter() {
       active.clear();
       free_slots.clear();
 
@@ -56,19 +55,15 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
       let mut total_registers = 0;
       let mut total_stack_slots = 0;
 
-      if !matches!(&procedure.proc_impl, ProcImplSource::Body(_)) {
-         continue;
-      }
-
       mark_escaping_vars_cfg(&program.cfg[proc_id], &mut escaping_vars, &program.ast);
 
-      let mut live_intervals: IndexMap<VariableId, LiveInterval> = IndexMap::with_capacity(procedure.locals.len());
+      let mut live_intervals: IndexMap<VariableId, LiveInterval> = IndexMap::with_capacity(body.locals.len());
       {
-         let proc_liveness = liveness(&procedure.locals, &program.cfg[proc_id], &program.ast);
+         let proc_liveness = liveness(&body.locals, &program.cfg[proc_id], &program.ast);
 
          for (pi, live_vars) in proc_liveness.iter() {
             for local_index in live_vars.iter_ones() {
-               let var = procedure.locals.get_index(local_index).map(|x| *x.0).unwrap();
+               let var = body.locals.get_index(local_index).map(|x| *x.0).unwrap();
                if let Some(existing_range) = live_intervals.get_mut(&var) {
                   existing_range.begin = std::cmp::min(existing_range.begin, *pi);
                   existing_range.end = std::cmp::max(existing_range.end, *pi);
@@ -82,7 +77,7 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
 
       if config.target != Target::Qbe {
          // For WASM, all parameters start in registers
-         for param in procedure.definition.parameters.iter() {
+         for param in program.procedures[proc_id].definition.parameters.iter() {
             let var = param.var_id;
             let typ = &param.p_type.e_type;
 
@@ -110,14 +105,14 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
             continue;
          }
 
-         let local_type = procedure.locals.get(var).unwrap();
+         let local_type = body.locals.get(var).unwrap();
 
          for expired_var in active.extract_if(|v| live_intervals.get(v).unwrap().end < range.begin) {
             if escaping_vars.contains(&expired_var) {
                continue;
             }
             let sk = type_to_slot_kind(
-               procedure.locals.get(&expired_var).unwrap(),
+               body.locals.get(&expired_var).unwrap(),
                false,
                &program.user_defined_types,
                config.target,

@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
    statement_always_or_never_returns, AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionNode,
-   ExpressionPool, ProcImplSource, Program, Statement, StatementId, StatementNode, VariableId,
+   ExpressionPool, Program, Statement, StatementId, StatementNode, VariableId,
 };
 use crate::type_data::ExpressionType;
 
@@ -38,11 +38,9 @@ pub fn process_defer_statements(program: &mut Program) {
       next_var: &mut program.next_variable,
       local_types: &mut IndexMap::new(),
    };
-   for procedure in program.procedures.values_mut() {
-      if let ProcImplSource::Body(block) = &mut procedure.proc_impl {
-         vm.local_types = &mut procedure.locals;
-         defer_block(block, &mut ctx, &mut program.ast, &mut vm);
-      }
+   for body in program.procedure_bodies.values_mut() {
+      vm.local_types = &mut body.locals;
+      defer_block(&mut body.block, &mut ctx, &mut program.ast, &mut vm);
    }
 }
 

@@ -5,27 +5,25 @@ use indexmap::IndexMap;
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::parse::{
-   AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, Statement, StatementId, VariableId,
+   AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, Statement, StatementId, VariableId,
 };
 use crate::type_data::ExpressionType;
 use crate::Program;
 
 pub fn ensure_variables_definitely_assigned(program: &Program, err_manager: &mut ErrorManager) {
-   for procedure in program.procedures.values() {
-      if let ProcImplSource::Body(block) = &procedure.proc_impl {
-         let mut assigned_vars: BitBox = bitbox![0; procedure.locals.len()];
-         for param in procedure.definition.parameters.iter() {
-            assigned_vars.set(procedure.locals.get_index_of(&param.var_id).unwrap(), true);
-         }
-         ensure_all_variables_assigned_in_block(
-            block,
-            &mut assigned_vars,
-            &mut None,
-            &procedure.locals,
-            &program.ast,
-            err_manager,
-         );
+   for (id, body) in program.procedure_bodies.iter() {
+      let mut assigned_vars: BitBox = bitbox![0; body.locals.len()];
+      for param in program.procedures[id].definition.parameters.iter() {
+         assigned_vars.set(body.locals.get_index_of(&param.var_id).unwrap(), true);
       }
+      ensure_all_variables_assigned_in_block(
+         &body.block,
+         &mut assigned_vars,
+         &mut None,
+         &body.locals,
+         &program.ast,
+         err_manager,
+      );
    }
 }
 

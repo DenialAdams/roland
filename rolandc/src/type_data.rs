@@ -1,12 +1,11 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
 
-use slotmap::SecondaryMap;
+use slotmap::SlotMap;
 
 use crate::interner::{Interner, StrId};
-use crate::parse::{EnumId, ProcedureId, StructId, UnionId, UserDefinedTypeInfo};
+use crate::parse::{EnumId, ProcedureId, ProcedureNode, StructId, UnionId, UserDefinedTypeInfo};
 use crate::semantic_analysis::type_variables::{TypeConstraint, TypeVariable, TypeVariableManager};
-use crate::semantic_analysis::ProcedureInfo;
 use crate::Target;
 
 pub const U8_TYPE: ExpressionType = ExpressionType::Int(IntType {
@@ -264,10 +263,10 @@ impl ExpressionType {
       &self,
       interner: &'i Interner,
       udt: &UserDefinedTypeInfo,
-      procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
+      procedures: &SlotMap<ProcedureId, ProcedureNode>,
       type_variable_info: &TypeVariableManager,
    ) -> Cow<'i, str> {
-      self.as_roland_type_info_inner(interner, udt, procedure_info, Some(type_variable_info))
+      self.as_roland_type_info_inner(interner, udt, procedures, Some(type_variable_info))
    }
 
    #[must_use]
@@ -275,7 +274,7 @@ impl ExpressionType {
       &self,
       interner: &'i Interner,
       udt: &UserDefinedTypeInfo,
-      procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
+      procedures: &SlotMap<ProcedureId, ProcedureNode>,
       type_variable_info: Option<&TypeVariableManager>,
    ) -> Cow<'i, str> {
       match self {
@@ -328,12 +327,12 @@ impl ExpressionType {
          }
          ExpressionType::Array(i_type, length) => Cow::Owned(format!(
             "[{}; {}]",
-            i_type.as_roland_type_info_inner(interner, udt, procedure_info, type_variable_info),
+            i_type.as_roland_type_info_inner(interner, udt, procedures, type_variable_info),
             length
          )),
          ExpressionType::Pointer(i_type) => Cow::Owned(format!(
             "&{}",
-            i_type.as_roland_type_info_inner(interner, udt, procedure_info, type_variable_info)
+            i_type.as_roland_type_info_inner(interner, udt, procedures, type_variable_info)
          )),
          ExpressionType::Unresolved(x) | ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
          ExpressionType::ProcedurePointer {
@@ -342,17 +341,17 @@ impl ExpressionType {
          } => {
             let params: String = parameters
                .iter()
-               .map(|x| x.as_roland_type_info_inner(interner, udt, procedure_info, type_variable_info))
+               .map(|x| x.as_roland_type_info_inner(interner, udt, procedures, type_variable_info))
                .collect::<Vec<_>>()
                .join(", ");
             Cow::Owned(format!(
                "proc({}) -> {}",
                params,
-               ret_val.as_roland_type_info_inner(interner, udt, procedure_info, type_variable_info)
+               ret_val.as_roland_type_info_inner(interner, udt, procedures, type_variable_info)
             ))
          }
          ExpressionType::ProcedureItem(proc_id, type_arguments) => {
-            let proc_name = procedure_info.get(*proc_id).unwrap().name.str;
+            let proc_name = procedures[*proc_id].definition.name.str;
             if type_arguments.is_empty() {
                Cow::Owned(format!("proc() {{{}}}", interner.lookup(proc_name),))
             } else {
@@ -376,9 +375,9 @@ impl ExpressionType {
       &self,
       interner: &'i Interner,
       udt: &UserDefinedTypeInfo,
-      procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
+      procedures: &SlotMap<ProcedureId, ProcedureNode>,
    ) -> Cow<'i, str> {
-      self.as_roland_type_info_inner(interner, udt, procedure_info, None)
+      self.as_roland_type_info_inner(interner, udt, procedures, None)
    }
 
    #[must_use]

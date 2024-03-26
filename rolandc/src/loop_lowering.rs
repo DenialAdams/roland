@@ -1,8 +1,8 @@
 use indexmap::IndexMap;
 
 use crate::parse::{
-   AstPool, BinOp, BlockNode, Expression, ExpressionNode, ProcImplSource, Program, Statement, StatementId,
-   StatementNode, UnOp, VariableId,
+   AstPool, BinOp, BlockNode, Expression, ExpressionNode, Program, Statement, StatementId, StatementNode, UnOp,
+   VariableId,
 };
 use crate::type_data::ExpressionType;
 
@@ -19,11 +19,9 @@ pub fn lower_fors_and_whiles(program: &mut Program) {
       for_stmts: Vec::new(),
    };
 
-   for procedure in program.procedures.values_mut() {
-      if let ProcImplSource::Body(block) = &mut procedure.proc_impl {
-         ctx.cur_procedure_locals = &mut procedure.locals;
-         lower_block(block, &mut ctx, &mut program.ast);
-      }
+   for body in program.procedure_bodies.values_mut() {
+      ctx.cur_procedure_locals = &mut body.locals;
+      lower_block(&mut body.block, &mut ctx, &mut program.ast);
    }
 }
 

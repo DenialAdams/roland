@@ -3,17 +3,17 @@ use std::collections::HashSet;
 use std::io::Write;
 
 use indexmap::{IndexMap, IndexSet};
-use slotmap::{Key, SecondaryMap};
+use slotmap::{Key, SlotMap};
 
 use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE, CFG_START_NODE};
 use super::regalloc::{self, VarSlot};
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   ArgumentNode, AstPool, CastType, Expression, ExpressionId, ProcImplSource, ProcImplSourceShallow, ProcedureId, UnOp,
+   ArgumentNode, AstPool, CastType, Expression, ExpressionId, ProcImplSource, ProcedureId, ProcedureNode, UnOp,
    UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::{GlobalInfo, ProcedureInfo};
+use crate::semantic_analysis::GlobalInfo;
 use crate::size_info::sizeof_type_mem;
 use crate::type_data::{
    ExpressionType, FloatType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE,
@@ -26,7 +26,7 @@ struct GenerationContext<'a> {
    is_main: bool,
    var_to_slot: IndexMap<VariableId, VarSlot>,
    ast: &'a AstPool,
-   proc_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
+   procedures: &'a SlotMap<ProcedureId, ProcedureNode>,
    interner: &'a Interner,
    udt: &'a UserDefinedTypeInfo,
    string_literals: &'a IndexSet<StrId>,
@@ -139,7 +139,12 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
    let expr_node = &ctx.ast.expressions[expr_index];
    match &expr_node.expression {
       Expression::BoundFcnLiteral(proc_id, _) => {
-         write!(ctx.buf, "l ${}, ", mangle(*proc_id, ctx.proc_info, ctx.interner)).unwrap();
+         write!(
+            ctx.buf,
+            "l ${}, ",
+            mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner)
+         )
+         .unwrap();
       }
       Expression::UnitLiteral => (),
       Expression::BoolLiteral(x) => {
@@ -297,7 +302,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       is_main: false,
       var_to_slot: regalloc_result.var_to_slot,
       ast: &program.ast,
-      proc_info: &program.procedure_info,
+      procedures: &program.procedures,
       interner,
       udt: &program.user_defined_types,
       string_literals: &program.literals,
@@ -371,7 +376,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          "{}function {} ${}(",
          export_txt,
          abi_ret_type,
-         mangle(proc_id, ctx.proc_info, ctx.interner)
+         mangle(proc_id, &ctx.procedures[proc_id], ctx.interner)
       )
       .unwrap();
       let mut stack_params = HashSet::new();
@@ -428,7 +433,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          "function {} ${}(",
          roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs)
             .unwrap_or_else(|| "".into()),
-         mangle(proc_id, ctx.proc_info, ctx.interner)
+         mangle(proc_id, &ctx.procedures[proc_id], ctx.interner)
       )
       .unwrap();
       for (p_i, param) in procedure.definition.parameters.iter().enumerate() {
@@ -622,15 +627,10 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
    }
 }
 
-fn mangle<'a>(
-   proc_id: ProcedureId,
-   proc_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
-   interner: &'a Interner,
-) -> Cow<'a, str> {
-   let proc_info = &proc_info[proc_id];
-   let proc_name = interner.lookup(proc_info.name.str);
-   if proc_info.impl_source != ProcImplSourceShallow::Native || proc_name == "main" {
-      // "main" implies imported, and builtin procedures can't be monomorphized and thus
+fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner) -> Cow<'a, str> {
+   let proc_name = interner.lookup(proc.definition.name.str);
+   if proc.proc_impl != ProcImplSource::Body || proc_name == "main" {
+      // "main" implies exported, and builtin procedures can't be monomorphized and thus
       // don't need to be mangled
       return Cow::Borrowed(proc_name);
    }
@@ -678,7 +678,7 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> String 
          format!("$.s{}", ctx.string_literals.get_index_of(id).unwrap())
       }
       Expression::BoundFcnLiteral(proc_id, _) => {
-         format!("${}", mangle(*proc_id, ctx.proc_info, ctx.interner))
+         format!("${}", mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner))
       }
       x => unreachable!("{:?}", x),
    }
@@ -877,7 +877,12 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
       Expression::UnaryOperator(UnOp::AddressOf, inner_id) => {
          let e = &ctx.ast.expressions[*inner_id];
          if let ExpressionType::ProcedureItem(proc_id, _bound_type_params) = e.exp_type.as_ref().unwrap() {
-            writeln!(ctx.buf, "copy ${}", mangle(*proc_id, ctx.proc_info, ctx.interner)).unwrap();
+            writeln!(
+               ctx.buf,
+               "copy ${}",
+               mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner)
+            )
+            .unwrap();
          } else {
             writeln!(ctx.buf, "copy {}", rhs_mem.unwrap()).unwrap();
          }
@@ -1092,7 +1097,7 @@ fn emit_load(buf: &mut Vec<u8>, load_target: &str, a_type: &ExpressionType) {
 fn write_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &mut GenerationContext) {
    match ctx.ast.expressions[proc_expr].exp_type.as_ref().unwrap() {
       ExpressionType::ProcedureItem(id, _) => {
-         write!(ctx.buf, "call ${}(", mangle(*id, ctx.proc_info, ctx.interner)).unwrap();
+         write!(ctx.buf, "call ${}(", mangle(*id, &ctx.procedures[*id], ctx.interner)).unwrap();
       }
       ExpressionType::ProcedurePointer { .. } => {
          let val = expr_to_val(proc_expr, ctx);

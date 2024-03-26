@@ -5,8 +5,8 @@ use indexmap::{IndexMap, IndexSet};
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
 use crate::parse::{
-   AstPool, BlockNode, CastType, DeclarationValue, Expression, ExpressionId, ExpressionNode, ExpressionPool,
-   ProcImplSource, Program, Statement, StatementId, StatementNode, UnOp, UserDefinedTypeInfo, VariableId,
+   AstPool, BlockNode, CastType, DeclarationValue, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program,
+   Statement, StatementId, StatementNode, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
 use crate::size_info::sizeof_type_mem;
@@ -103,11 +103,9 @@ pub fn expression_hoisting(program: &mut Program, interner: &Interner, mode: Hoi
       interner,
    };
 
-   for procedure in program.procedures.values_mut() {
-      if let ProcImplSource::Body(block) = &mut procedure.proc_impl {
-         vv_context.cur_procedure_locals = &mut procedure.locals;
-         vv_block(block, &mut vv_context, &mut program.ast);
-      }
+   for body in program.procedure_bodies.values_mut() {
+      vv_context.cur_procedure_locals = &mut body.locals;
+      vv_block(&mut body.block, &mut vv_context, &mut program.ast);
    }
 
    program.next_variable = vv_context.next_variable;

@@ -6,11 +6,10 @@ use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::StrId;
 use crate::parse::{
-   AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, ProcedureNode, Statement,
+   AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureBody, ProcedureId, ProcedureNode, Statement,
    StatementId, VariableId,
 };
 use crate::semantic_analysis::validator::map_generic_to_concrete;
-use crate::semantic_analysis::ProcedureInfo;
 use crate::type_data::ExpressionType;
 use crate::Program;
 
@@ -62,13 +61,13 @@ pub fn monomorphize(program: &mut Program, err_manager: &mut ErrorManager) {
          continue;
       }
 
-      let template_procedure = program.procedures.get(new_spec.template_with_type_arguments.0).unwrap();
+      let template_procedure = &program.procedures[new_spec.template_with_type_arguments.0];
 
       // It would be great to do this check before we push it onto the worklist, since at the moment
       // that involes cloning a bunch of types
-      if !matches!(template_procedure.proc_impl, ProcImplSource::Body(_)) {
+      let Some(body) = program.procedure_bodies.get(new_spec.template_with_type_arguments.0) else {
          continue;
-      }
+      };
 
       if new_spec.depth >= DEPTH_LIMIT {
          rolandc_error!(
@@ -80,27 +79,19 @@ pub fn monomorphize(program: &mut Program, err_manager: &mut ErrorManager) {
          return;
       }
 
-      let cloned_procedure_info = program
-         .procedure_info
-         .get(new_spec.template_with_type_arguments.0)
-         .unwrap()
-         .clone();
-
       let cloned_procedure = clone_procedure(
          template_procedure,
+         body,
          &new_spec.template_with_type_arguments.1,
-         program
-            .procedure_info
-            .get(new_spec.template_with_type_arguments.0)
-            .unwrap(),
+         &template_procedure.type_parameters,
          new_spec.depth,
          &mut program.ast,
          &mut worklist,
          &mut program.next_variable,
       );
 
-      let new_proc_id = program.procedures.insert(cloned_procedure);
-      program.procedure_info.insert(new_proc_id, cloned_procedure_info);
+      let new_proc_id = program.procedures.insert(cloned_procedure.0);
+      program.procedure_bodies.insert(new_proc_id, cloned_procedure.1);
 
       new_procedures.insert(new_spec.template_with_type_arguments, new_proc_id);
    }
@@ -136,58 +127,53 @@ pub fn monomorphize(program: &mut Program, err_manager: &mut ErrorManager) {
 
 fn clone_procedure(
    template_procedure: &ProcedureNode,
+   template_body: &ProcedureBody,
    concrete_types: &[ExpressionType],
-   procedure_info: &ProcedureInfo,
+   type_parameters: &IndexMap<StrId, IndexSet<StrId>>,
    depth: usize,
    ast: &mut AstPool,
    worklist: &mut Vec<SpecializationWorkItem>,
    next_var: &mut VariableId,
-) -> ProcedureNode {
-   let mut cloned = template_procedure.clone();
+) -> (ProcedureNode, ProcedureBody) {
+   let mut cloned_proc = template_procedure.clone();
+   let mut cloned_body = template_body.clone();
 
-   let mut variable_replacements = HashMap::with_capacity(cloned.locals.len());
+   let mut variable_replacements = HashMap::with_capacity(cloned_body.locals.len());
 
    // Rewrite locals
-   let old_locals = std::mem::take(&mut cloned.locals);
-   cloned.locals.reserve(old_locals.len());
+   let old_locals = std::mem::take(&mut cloned_body.locals);
+   cloned_body.locals.reserve(old_locals.len());
    for (var_id, mut local_type) in old_locals {
-      map_generic_to_concrete(&mut local_type, concrete_types, &procedure_info.type_parameters);
+      map_generic_to_concrete(&mut local_type, concrete_types, type_parameters);
       variable_replacements.insert(var_id, *next_var);
-      cloned.locals.insert(*next_var, local_type);
+      cloned_body.locals.insert(*next_var, local_type);
       *next_var = next_var.next();
    }
 
    // Rewrite the procedure definition
-   for param in cloned.definition.parameters.iter_mut() {
-      map_generic_to_concrete(
-         &mut param.p_type.e_type,
-         concrete_types,
-         &procedure_info.type_parameters,
-      );
+   for param in cloned_proc.definition.parameters.iter_mut() {
+      map_generic_to_concrete(&mut param.p_type.e_type, concrete_types, type_parameters);
       param.var_id = variable_replacements[&param.var_id];
    }
    map_generic_to_concrete(
-      &mut cloned.definition.ret_type.e_type,
+      &mut cloned_proc.definition.ret_type.e_type,
       concrete_types,
-      &procedure_info.type_parameters,
+      type_parameters,
    );
 
-   let ProcImplSource::Body(block) = &mut cloned.proc_impl else {
-      unreachable!()
-   };
    deep_clone_block(
-      block,
+      &mut cloned_body.block,
       ast,
       concrete_types,
-      &procedure_info.type_parameters,
+      type_parameters,
       depth,
       worklist,
       &variable_replacements,
    );
 
-   cloned.definition.generic_parameters.clear();
+   cloned_proc.definition.type_parameters.clear();
 
-   cloned
+   (cloned_proc, cloned_body)
 }
 
 fn deep_clone_block(

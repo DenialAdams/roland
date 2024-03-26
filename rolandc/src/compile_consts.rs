@@ -1,13 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
-use slotmap::SecondaryMap;
+use slotmap::SlotMap;
 
 use crate::constant_folding::{self, FoldingContext};
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
-use crate::parse::{AstPool, Expression, ExpressionId, ProcedureId, Program, UserDefinedTypeInfo, VariableId};
-use crate::semantic_analysis::{GlobalKind, ProcedureInfo};
+use crate::parse::{
+   AstPool, Expression, ExpressionId, ProcedureId, ProcedureNode, Program, UserDefinedTypeInfo, VariableId,
+};
+use crate::semantic_analysis::GlobalKind;
 use crate::source_info::SourceInfo;
 use crate::Target;
 
@@ -16,7 +18,7 @@ struct CgContext<'a> {
    all_consts: &'a HashMap<VariableId, (SourceInfo, ExpressionId, StrId)>,
    consts_being_processed: &'a mut HashSet<VariableId>,
    const_replacements: &'a mut HashMap<VariableId, ExpressionId>,
-   procedure_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
+   procedures: &'a SlotMap<ProcedureId, ProcedureNode>,
    user_defined_types: &'a UserDefinedTypeInfo,
    interner: &'a Interner,
    target: Target,
@@ -26,7 +28,7 @@ fn fold_expr_id(
    expr_id: ExpressionId,
    err_manager: &mut ErrorManager,
    ast: &mut AstPool,
-   procedure_info: &SecondaryMap<ProcedureId, ProcedureInfo>,
+   procedures: &SlotMap<ProcedureId, ProcedureNode>,
    user_defined_types: &UserDefinedTypeInfo,
    const_replacements: &HashMap<VariableId, ExpressionId>,
    interner: &Interner,
@@ -34,7 +36,7 @@ fn fold_expr_id(
 ) {
    let mut fc = FoldingContext {
       ast,
-      procedure_info,
+      procedures,
       user_defined_types,
       const_replacements,
       current_proc_name: None,
@@ -61,7 +63,7 @@ pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &
 
    let mut cg_ctx = CgContext {
       ast: &mut program.ast,
-      procedure_info: &program.procedure_info,
+      procedures: &program.procedures,
       all_consts: &all_consts,
       consts_being_processed: &mut consts_being_processed,
       const_replacements: &mut const_replacements,
@@ -94,7 +96,7 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
       c.1,
       err_manager,
       cg_context.ast,
-      cg_context.procedure_info,
+      cg_context.procedures,
       cg_context.user_defined_types,
       cg_context.const_replacements,
       cg_context.interner,

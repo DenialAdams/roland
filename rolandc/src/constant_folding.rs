@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 use std::ops::{BitAnd, BitOr, BitXor};
 
-use slotmap::SecondaryMap;
+use slotmap::SlotMap;
 
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_warn};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, BinOp, BlockNode, CastType, EnumId, Expression, ExpressionId, ExpressionNode, ExpressionPool,
-   ProcImplSource, ProcedureId, Program, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
+   AstPool, BinOp, BlockNode, CastType, EnumId, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcedureId,
+   ProcedureNode, Program, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::{GlobalKind, ProcedureInfo};
+use crate::semantic_analysis::GlobalKind;
 use crate::source_info::SourceInfo;
 use crate::type_data::{
    ExpressionType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
@@ -20,7 +20,7 @@ use crate::Target;
 
 pub struct FoldingContext<'a> {
    pub ast: &'a mut AstPool,
-   pub procedure_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
+   pub procedures: &'a SlotMap<ProcedureId, ProcedureNode>,
    pub user_defined_types: &'a UserDefinedTypeInfo,
    pub const_replacements: &'a HashMap<VariableId, ExpressionId>,
    pub current_proc_name: Option<StrId>,
@@ -36,7 +36,7 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
 
    let mut folding_context = FoldingContext {
       ast: &mut program.ast,
-      procedure_info: &program.procedure_info,
+      procedures: &program.procedures,
       user_defined_types: &program.user_defined_types,
       const_replacements: &const_replacements,
       current_proc_name: None,
@@ -58,11 +58,9 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
       }
    }
 
-   for procedure in program.procedures.values_mut() {
-      if let ProcImplSource::Body(block) = &procedure.proc_impl {
-         folding_context.current_proc_name = Some(procedure.definition.name.str);
-         fold_block(block, err_manager, &mut folding_context, interner);
-      }
+   for (proc_id, body) in program.procedure_bodies.iter_mut() {
+      folding_context.current_proc_name = Some(folding_context.procedures[proc_id].definition.name.str);
+      fold_block(&body.block, err_manager, &mut folding_context, interner);
    }
 }
 
@@ -284,7 +282,7 @@ fn fold_expr_inner(
                   expr_type.as_roland_type_info_notv(
                      interner,
                      folding_context.user_defined_types,
-                     folding_context.procedure_info
+                     folding_context.procedures
                   ),
                   val as i64
                );
@@ -296,7 +294,7 @@ fn fold_expr_inner(
                   expr_type.as_roland_type_info_notv(
                      interner,
                      folding_context.user_defined_types,
-                     folding_context.procedure_info
+                     folding_context.procedures
                   ),
                   val
                );
@@ -591,7 +589,7 @@ fn fold_expr_inner(
                      f_expr.exp_type.as_ref().unwrap().as_roland_type_info_notv(
                         interner,
                         folding_context.user_defined_types,
-                        folding_context.procedure_info
+                        folding_context.procedures
                      ),
                      *x,
                   );
@@ -751,7 +749,7 @@ fn fold_expr_inner(
 
 pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &FoldingContext) -> Option<Expression> {
    let (proc_name, generic_args) = match &fc.ast.expressions[proc_expr].exp_type.as_ref().unwrap() {
-      ExpressionType::ProcedureItem(x, type_arguments) => (fc.procedure_info[*x].name.str, type_arguments),
+      ExpressionType::ProcedureItem(x, type_arguments) => (fc.procedures[*x].definition.name.str, type_arguments),
       _ => return None,
    };
 

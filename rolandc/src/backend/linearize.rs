@@ -6,8 +6,8 @@ use slotmap::SecondaryMap;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
 use crate::parse::{
-   statement_always_or_never_returns, AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ProcImplSource,
-   ProcedureId, Statement, StatementId,
+   statement_always_or_never_returns, AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ProcedureId,
+   Statement, StatementId,
 };
 use crate::type_data::ExpressionType;
 use crate::Program;
@@ -155,11 +155,7 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool) -> 
       continue_target: 0,
    };
    let mut all_cfg: ProgramCfg = SecondaryMap::new();
-   for proc in program.procedures.iter() {
-      let ProcImplSource::Body(body) = &proc.1.proc_impl else {
-         continue;
-      };
-
+   for (id, body) in program.procedure_bodies.iter() {
       ctx.bbs.push(BasicBlock {
          instructions: vec![],
          predecessors: HashSet::new(),
@@ -170,9 +166,10 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool) -> 
       });
       ctx.current_block = CFG_START_NODE;
 
-      if !linearize_block(&mut ctx, body, &mut program.ast) {
-         let location = proc.1.location;
+      if !linearize_block(&mut ctx, &body.block, &mut program.ast) {
+         let location = program.procedures[id].location;
          if body
+            .block
             .statements
             .last()
             .copied()
@@ -206,7 +203,7 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool) -> 
       simplify_cfg(&mut ctx.bbs, &program.ast);
 
       all_cfg.insert(
-         proc.0,
+         id,
          Cfg {
             bbs: std::mem::take(&mut ctx.bbs),
          },

@@ -3,9 +3,7 @@ use slotmap::SlotMap;
 use crate::backend::linearize::CfgInstruction;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
-use crate::parse::{
-   ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, ProcImplSource, Program, UnOp,
-};
+use crate::parse::{ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, Program, UnOp};
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::sizeof_type_mem;
 use crate::source_info::SourceInfo;
@@ -111,7 +109,10 @@ pub fn lower_enums_and_pointers(program: &mut Program, target: Target) {
       for param in procedure.definition.parameters.iter_mut() {
          lower_type(&mut param.p_type.e_type, &program.user_defined_types.enum_info, target);
       }
-      for var_type in procedure.locals.values_mut() {
+   }
+
+   for body in program.procedure_bodies.values_mut() {
+      for var_type in body.locals.values_mut() {
          lower_type(var_type, &program.user_defined_types.enum_info, target);
       }
    }
@@ -339,12 +340,8 @@ pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, intern
 }
 
 pub fn kill_zst_assignments(program: &mut Program, target: Target) {
-   for proc in program
-      .procedures
-      .iter_mut()
-      .filter(|x| matches!(x.1.proc_impl, ProcImplSource::Body(_)))
-   {
-      let cfg = &mut program.cfg[proc.0];
+   for proc_id in program.procedure_bodies.keys() {
+      let cfg = &mut program.cfg[proc_id];
       for bb in cfg.bbs.iter_mut() {
          // This feels pretty inefficient :(
          // do this at cfg construction time?

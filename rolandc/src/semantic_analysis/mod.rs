@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
-use slotmap::SecondaryMap;
+use slotmap::SlotMap;
 
 use self::type_variables::TypeVariableManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, ExpressionId, ExpressionTypeNode, ProcImplSourceShallow, ProcedureId, StrNode, StructId, UserDefinedTypeId,
+   AstPool, ExpressionId, ExpressionTypeNode, ProcedureId, ProcedureNode, StructId, UserDefinedTypeId,
    UserDefinedTypeInfo, VariableId,
 };
 use crate::size_info::{StructSizeInfo, UnionSizeInfo};
@@ -19,18 +19,6 @@ pub mod type_and_procedure_info;
 pub mod type_inference;
 pub mod type_variables;
 pub mod validator;
-
-#[derive(Clone)]
-pub struct ProcedureInfo {
-   // This includes named parameters
-   pub parameters: Vec<ExpressionType>,
-   pub named_parameters: HashMap<StrId, ExpressionType>,
-   pub type_parameters: IndexMap<StrId, IndexSet<StrId>>,
-   pub ret_type: ExpressionType,
-   pub location: SourceInfo,
-   pub name: StrNode,
-   pub impl_source: ProcImplSourceShallow,
-}
 
 #[derive(Clone)]
 pub struct EnumInfo {
@@ -87,12 +75,12 @@ pub struct VariableDetails {
 
 pub struct ValidationContext<'a> {
    pub target: Target,
-   pub procedure_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
+   pub procedures: &'a SlotMap<ProcedureId, ProcedureNode>,
    pub user_defined_type_name_table: &'a HashMap<StrId, UserDefinedTypeId>,
    pub proc_name_table: &'a HashMap<StrId, ProcedureId>,
    pub user_defined_types: &'a UserDefinedTypeInfo,
    pub global_info: &'a IndexMap<VariableId, GlobalInfo>,
-   pub cur_procedure_info: Option<&'a ProcedureInfo>,
+   pub cur_procedure: Option<ProcedureId>,
    pub variable_types: IndexMap<StrId, VariableDetails>,
    pub loop_depth: u64,
    pub unknown_literals: IndexSet<ExpressionId>,

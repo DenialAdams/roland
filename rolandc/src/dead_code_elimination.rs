@@ -3,9 +3,7 @@ use std::collections::HashSet;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::interner::{Interner, StrId};
-use crate::parse::{
-   AstPool, BlockNode, Expression, ExpressionId, ProcImplSource, ProcedureId, Statement, StatementId, VariableId,
-};
+use crate::parse::{AstPool, BlockNode, Expression, ExpressionId, ProcedureId, Statement, StatementId, VariableId};
 use crate::semantic_analysis::validator::get_special_procedures;
 use crate::semantic_analysis::GlobalInfo;
 use crate::{Program, Target};
@@ -50,16 +48,20 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
                continue;
             }
 
-            let proc = program.procedures.get_mut(reachable_proc).unwrap();
-            if let ProcImplSource::Body(block) = &proc.proc_impl {
+            if let Some(body) = program.procedure_bodies.get_mut(reachable_proc) {
                ctx.used_locals.clear();
-               for param_var in proc.definition.parameters.iter().map(|x| x.var_id) {
+               for param_var in program.procedures[reachable_proc]
+                  .definition
+                  .parameters
+                  .iter()
+                  .map(|x| x.var_id)
+               {
                   ctx.used_locals.insert(param_var);
                }
 
-               mark_reachable_block(block, &program.ast, &mut ctx);
+               mark_reachable_block(&body.block, &program.ast, &mut ctx);
 
-               proc.locals.retain(|k: &VariableId, _| ctx.used_locals.contains(k));
+               body.locals.retain(|k: &VariableId, _| ctx.used_locals.contains(k));
             }
          }
          WorkItem::Static(reachable_global) => {
@@ -75,6 +77,9 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
    }
 
    program.procedures.retain(|k, _| reachable_procedures.contains(&k));
+   program
+      .procedure_bodies
+      .retain(|k, _| program.procedures.contains_key(k));
    program.global_info.retain(|k, _| reachable_globals.contains(k));
 }
 

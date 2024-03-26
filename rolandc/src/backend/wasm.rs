@@ -428,7 +428,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
    for (id, procedure) in program
       .procedures
       .iter()
-      .filter(|(_, v)| matches!(v.proc_impl, ProcImplSource::Body(_)))
+      .filter(|(_, v)| v.proc_impl == ProcImplSource::Body)
    {
       function_section.function(
          generation_context

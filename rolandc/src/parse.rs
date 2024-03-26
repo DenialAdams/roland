@@ -10,7 +10,7 @@ use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
 use crate::lex::Lexer;
-use crate::semantic_analysis::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo, UnionInfo};
+use crate::semantic_analysis::{EnumInfo, GlobalInfo, GlobalKind, StructInfo, UnionInfo};
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 
@@ -53,7 +53,7 @@ fn expect(l: &mut Lexer, parse_context: &mut ParseContext, token: Token) -> Resu
 #[derive(Clone)]
 pub struct ProcedureDefinition {
    pub name: StrNode,
-   pub generic_parameters: Vec<StrNode>,
+   pub type_parameters: Vec<StrNode>,
    pub constraints: IndexMap<StrId, IndexSet<StrId>>,
    pub parameters: Vec<ParameterNode>,
    pub ret_type: ExpressionTypeNode,
@@ -65,31 +65,16 @@ pub struct ProcedureNode {
    pub location: SourceInfo,
    pub proc_impl: ProcImplSource,
 
-   pub locals: IndexMap<VariableId, ExpressionType>,
-}
-
-#[derive(Clone)]
-pub enum ProcImplSource {
-   Builtin,
-   External,
-   Body(BlockNode),
+   // Populated post-parse
+   pub named_parameters: HashMap<StrId, ExpressionType>,
+   pub type_parameters: IndexMap<StrId, IndexSet<StrId>>,
 }
 
 #[derive(Clone, PartialEq)]
-pub enum ProcImplSourceShallow {
+pub enum ProcImplSource {
    Builtin,
    External,
-   Native,
-}
-
-impl From<&ProcImplSource> for ProcImplSourceShallow {
-   fn from(value: &ProcImplSource) -> Self {
-      match value {
-         ProcImplSource::Builtin => ProcImplSourceShallow::Builtin,
-         ProcImplSource::External => ProcImplSourceShallow::External,
-         ProcImplSource::Body(_) => ProcImplSourceShallow::Native,
-      }
-   }
+   Body,
 }
 
 #[derive(Clone)]
@@ -396,11 +381,18 @@ pub struct UserDefinedTypeInfo {
    pub union_info: SlotMap<UnionId, UnionInfo>,
 }
 
+#[derive(Clone)]
+pub struct ProcedureBody {
+   pub locals: IndexMap<VariableId, ExpressionType>,
+   pub block: BlockNode,
+}
+
 pub struct Program {
    pub ast: AstPool,
 
    // These fields are populated by the parser
    pub procedures: SlotMap<ProcedureId, ProcedureNode>,
+   pub procedure_bodies: SecondaryMap<ProcedureId, ProcedureBody>,
    pub enums: Vec<EnumNode>,     // killed during info population
    pub structs: Vec<StructNode>, // killed during info population
    pub unions: Vec<UnionNode>,   // killed during info population
@@ -414,7 +406,6 @@ pub struct Program {
    // These fields are populated during semantic analysis
    pub literals: IndexSet<StrId>,
    pub global_info: IndexMap<VariableId, GlobalInfo>,
-   pub procedure_info: SecondaryMap<ProcedureId, ProcedureInfo>,
    pub user_defined_type_name_table: HashMap<StrId, UserDefinedTypeId>,
    pub procedure_name_table: HashMap<StrId, ProcedureId>, // TODO: this doesn't need to live on Program
    pub user_defined_types: UserDefinedTypeInfo,
@@ -444,6 +435,7 @@ impl Program {
    pub fn new() -> Program {
       Program {
          procedures: SlotMap::with_key(),
+         procedure_bodies: SecondaryMap::new(),
          enums: Vec::new(),
          structs: Vec::new(),
          unions: Vec::new(),
@@ -457,7 +449,6 @@ impl Program {
             union_info: SlotMap::with_key(),
          },
          global_info: IndexMap::new(),
-         procedure_info: SecondaryMap::new(),
          procedure_name_table: HashMap::new(),
          user_defined_type_name_table: HashMap::new(),
          source_to_definition: IndexMap::new(),
@@ -472,6 +463,7 @@ impl Program {
 
    pub fn clear(&mut self) {
       reset_slotmap(&mut self.procedures);
+      reset_secondarymap(&mut self.procedure_bodies);
       self.enums.clear();
       self.structs.clear();
       self.unions.clear();
@@ -483,7 +475,6 @@ impl Program {
       reset_slotmap(&mut self.user_defined_types.struct_info);
       reset_slotmap(&mut self.user_defined_types.union_info);
       self.global_info.clear();
-      reset_secondarymap(&mut self.procedure_info);
       self.user_defined_type_name_table.clear();
       self.procedure_name_table.clear();
       self.source_to_definition.clear();
@@ -540,7 +531,8 @@ fn parse_top_level_items(
          Token::KeywordProc => {
             let def = lexer.next();
             let p = parse_procedure(lexer, parse_context, def.source_info, ast)?;
-            top.procedures.insert(p);
+            let id = top.procedures.insert(p.0);
+            top.procedure_bodies.insert(id, p.1);
          }
          Token::KeywordImport => {
             let kw = lexer.next();
@@ -621,6 +613,7 @@ fn parse_top_level_items(
 
 struct TopLevelItems<'a> {
    procedures: &'a mut SlotMap<ProcedureId, ProcedureNode>,
+   procedure_bodies: &'a mut SecondaryMap<ProcedureId, ProcedureBody>,
    structs: &'a mut Vec<StructNode>,
    unions: &'a mut Vec<UnionNode>,
    enums: &'a mut Vec<EnumNode>,
@@ -643,6 +636,7 @@ pub fn astify(
 
    let mut top = TopLevelItems {
       procedures: &mut program.procedures,
+      procedure_bodies: &mut program.procedure_bodies,
       structs: &mut program.structs,
       unions: &mut program.unions,
       enums: &mut program.enums,
@@ -754,7 +748,7 @@ fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -
    }
    Ok(ProcedureDefinition {
       name: procedure_name,
-      generic_parameters,
+      type_parameters: generic_parameters,
       constraints,
       parameters,
       ret_type,
@@ -766,16 +760,23 @@ fn parse_procedure(
    parse_context: &mut ParseContext,
    source_info: SourceInfo,
    ast: &mut AstPool,
-) -> Result<ProcedureNode, ()> {
+) -> Result<(ProcedureNode, ProcedureBody), ()> {
    let definition = parse_procedure_definition(l, parse_context)?;
    let block = parse_block(l, parse_context, ast)?;
    let combined_location = merge_locations(source_info, block.location);
-   Ok(ProcedureNode {
-      definition,
-      locals: IndexMap::new(),
-      proc_impl: ProcImplSource::Body(block),
-      location: combined_location,
-   })
+   Ok((
+      ProcedureNode {
+         definition,
+         proc_impl: ProcImplSource::Body,
+         location: combined_location,
+         named_parameters: HashMap::new(),
+         type_parameters: IndexMap::new(),
+      },
+      ProcedureBody {
+         locals: IndexMap::new(),
+         block,
+      },
+   ))
 }
 
 fn parse_external_procedure(
@@ -790,7 +791,8 @@ fn parse_external_procedure(
       definition,
       location: merge_locations(source_info, end_token.source_info),
       proc_impl: proc_impl_source,
-      locals: IndexMap::new(),
+      named_parameters: HashMap::new(),
+      type_parameters: IndexMap::new(),
    })
 }
 

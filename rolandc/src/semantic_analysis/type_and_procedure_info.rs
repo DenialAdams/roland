@@ -4,7 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 use slotmap::{SecondaryMap, SlotMap};
 
 use super::validator::str_to_builtin_type;
-use super::{EnumInfo, GlobalInfo, GlobalKind, ProcedureInfo, StructInfo, UnionInfo};
+use super::{EnumInfo, GlobalInfo, GlobalKind, StructInfo, UnionInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
@@ -405,31 +405,27 @@ pub fn populate_type_and_procedure_info(
    }
 
    let mut dupe_check = HashSet::new();
-   for (id, definition, source_location, proc_impl_source) in program
-      .procedures
-      .iter_mut()
-      .map(|(id, x)| (id, &mut x.definition, x.location, &x.proc_impl))
-   {
+   for proc in program.procedures.values_mut() {
       dupe_check.clear();
 
-      if matches!(proc_impl_source, ProcImplSource::Builtin) && !source_is_std(source_location, config) {
+      if proc.proc_impl == ProcImplSource::Builtin && !source_is_std(proc.location, config) {
          rolandc_error!(
             err_manager,
-            source_location,
+            proc.location,
             "Procedure `{}` is declared to be builtin, but only the compiler can declare builtin procedures",
-            interner.lookup(definition.name.str),
+            interner.lookup(proc.definition.name.str),
          );
       }
 
       let mut first_named_param = None;
       let mut reported_named_error = false;
-      for (i, param) in definition.parameters.iter().enumerate() {
+      for (i, param) in proc.definition.parameters.iter().enumerate() {
          if !dupe_check.insert(param.name) {
             rolandc_error!(
                err_manager,
-               source_location,
+               proc.location,
                "Procedure `{}` has a duplicate parameter `{}`",
-               interner.lookup(definition.name.str),
+               interner.lookup(proc.definition.name.str),
                interner.lookup(param.name),
             );
          }
@@ -437,13 +433,13 @@ pub fn populate_type_and_procedure_info(
          if param.named && first_named_param.is_none() {
             first_named_param = Some(i);
 
-            if matches!(proc_impl_source, ProcImplSource::External) {
+            if proc.proc_impl == ProcImplSource::External {
                reported_named_error = true;
                rolandc_error!(
                   err_manager,
-                  source_location,
+                  proc.location,
                   "External procedure `{}` has named parameter(s), which isn't supported",
-                  interner.lookup(definition.name.str),
+                  interner.lookup(proc.definition.name.str),
                );
             }
          }
@@ -452,9 +448,9 @@ pub fn populate_type_and_procedure_info(
             reported_named_error = true;
             rolandc_error!(
                err_manager,
-               source_location,
+               proc.location,
                "Procedure `{}` has named parameter(s) which come before non-named parameter(s)",
-               interner.lookup(definition.name.str),
+               interner.lookup(proc.definition.name.str),
             );
          }
       }
@@ -463,30 +459,30 @@ pub fn populate_type_and_procedure_info(
          if let Some(i) = first_named_param {
             // It doesn't really matter how we sort these, as long as we do it consistently for arguments
             // AND that there are no equal elements (in this case, we already check that parameters don't have the same name)
-            definition.parameters[i..].sort_unstable_by_key(|x| x.name);
+            proc.definition.parameters[i..].sort_unstable_by_key(|x| x.name);
          }
       }
 
       dupe_check.clear();
-      for generic_param in definition.generic_parameters.iter() {
+      for generic_param in proc.definition.type_parameters.iter() {
          if !dupe_check.insert(generic_param.str) {
             rolandc_error!(
                err_manager,
                generic_param.location,
                "Procedure `{}` has a duplicate type parameter `{}`",
-               interner.lookup(definition.name.str),
+               interner.lookup(proc.definition.name.str),
                interner.lookup(generic_param.str),
             );
          }
       }
 
-      for constraint in definition.constraints.iter() {
-         let matching_generic_param = match definition.generic_parameters.iter().find(|x| x.str == *constraint.0) {
+      for constraint in proc.definition.constraints.iter() {
+         let matching_generic_param = match proc.definition.type_parameters.iter().find(|x| x.str == *constraint.0) {
             Some(x) => x.str,
             None => {
                rolandc_error!(
                   err_manager,
-                  source_location,
+                  proc.location,
                   "A constraint was declared on {}, but there is no matching generic parameter by that name",
                   interner.lookup(*constraint.0),
                );
@@ -501,7 +497,7 @@ pub fn populate_type_and_procedure_info(
                _ => {
                   rolandc_error!(
                      err_manager,
-                     source_location,
+                     proc.location,
                      "Unknown trait {} was declared as a constraint on {}",
                      interner.lookup(*constraint_trait_name),
                      interner.lookup(matching_generic_param),
@@ -511,13 +507,15 @@ pub fn populate_type_and_procedure_info(
          }
       }
 
-      let type_parameters_with_constraints: IndexMap<StrId, IndexSet<StrId>> = definition
-         .generic_parameters
+      let type_parameters_with_constraints: IndexMap<StrId, IndexSet<StrId>> = proc
+         .definition
+         .type_parameters
          .iter()
          .map(|x| {
             (
                x.str,
-               definition
+               proc
+                  .definition
                   .constraints
                   .get_mut(&x.str)
                   .map_or_else(IndexSet::new, |x| std::mem::replace(x, IndexSet::new())),
@@ -525,7 +523,7 @@ pub fn populate_type_and_procedure_info(
          })
          .collect();
 
-      for parameter in definition.parameters.iter_mut() {
+      for parameter in proc.definition.parameters.iter_mut() {
          resolve_type(
             &mut parameter.p_type.e_type,
             &program.user_defined_type_name_table,
@@ -537,34 +535,31 @@ pub fn populate_type_and_procedure_info(
       }
 
       resolve_type(
-         &mut definition.ret_type.e_type,
+         &mut proc.definition.ret_type.e_type,
          &program.user_defined_type_name_table,
          Some(&type_parameters_with_constraints),
          err_manager,
          interner,
-         definition.ret_type.location,
+         proc.definition.ret_type.location,
       );
 
-      program.procedure_info.insert(
-         id,
-         ProcedureInfo {
-            type_parameters: type_parameters_with_constraints,
-            parameters: definition.parameters.iter().map(|x| x.p_type.e_type.clone()).collect(),
-            named_parameters: definition
-               .parameters
-               .iter()
-               .filter(|x| x.named)
-               .map(|x| (x.name, x.p_type.e_type.clone()))
-               .collect(),
-            ret_type: definition.ret_type.e_type.clone(),
-            location: source_location,
-            name: definition.name.clone(),
-            impl_source: proc_impl_source.into(),
-         },
-      );
+      proc.type_parameters = type_parameters_with_constraints;
+      proc.named_parameters = proc
+         .definition
+         .parameters
+         .iter()
+         .filter(|x| x.named)
+         .map(|x| (x.name, x.p_type.e_type.clone()))
+         .collect();
+   }
 
-      if let Some(old_proc_id) = program.procedure_name_table.insert(definition.name.str, id) {
-         let old_proc_location = program.procedure_info[old_proc_id].location;
+   for (id, proc_name, source_location) in program
+      .procedures
+      .iter()
+      .map(|x| (x.0, x.1.definition.name.str, x.1.location))
+   {
+      if let Some(old_proc_id) = program.procedure_name_table.insert(proc_name, id) {
+         let old_proc_location = program.procedures[old_proc_id].location;
          rolandc_error_w_details!(
             err_manager,
             &[
@@ -572,7 +567,7 @@ pub fn populate_type_and_procedure_info(
                (source_location, "second procedure declared")
             ],
             "Encountered duplicate procedures with the same name `{}`",
-            interner.lookup(definition.name.str),
+            interner.lookup(proc_name),
          );
       }
    }

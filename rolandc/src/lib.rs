@@ -221,7 +221,10 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    }
    ctx.program
       .procedures
-      .retain(|_, x| x.definition.generic_parameters.is_empty() || !matches!(x.proc_impl, ProcImplSource::Body(_)));
+      .retain(|_, x| x.definition.type_parameters.is_empty() || x.proc_impl != ProcImplSource::Body);
+   ctx.program
+      .procedure_bodies
+      .retain(|k, _| ctx.program.procedures.contains_key(k));
 
    constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner, config.target);
    ctx.program.global_info.retain(|_, v| v.kind != GlobalKind::Const);

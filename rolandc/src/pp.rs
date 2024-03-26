@@ -1,20 +1,19 @@
 use std::io::Write;
 
-use slotmap::SecondaryMap;
+use slotmap::SlotMap;
 
 use crate::interner::Interner;
 use crate::parse::{
-   AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, ProcedureId, Statement, StatementId,
-   UserDefinedTypeInfo, VariableId,
+   AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, ProcedureId, ProcedureNode,
+   Statement, StatementId, UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::ProcedureInfo;
 use crate::type_data::ExpressionType;
 use crate::Program;
 
 struct PpCtx<'a, W: Write> {
    indentation_level: usize,
    ast: &'a AstPool,
-   procedure_info: &'a SecondaryMap<ProcedureId, ProcedureInfo>,
+   procedures: &'a SlotMap<ProcedureId, ProcedureNode>,
    interner: &'a Interner,
    user_defined_types: &'a UserDefinedTypeInfo,
    output: &'a mut W,
@@ -35,15 +34,15 @@ pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> R
       ast: &program.ast,
       interner,
       output,
-      procedure_info: &program.procedure_info,
+      procedures: &program.procedures,
       user_defined_types: &program.user_defined_types,
    };
 
-   for proc in program.procedures.values() {
+   for (id, proc) in program.procedures.iter() {
       let prefix = match proc.proc_impl {
          ProcImplSource::Builtin => "builtin ",
          ProcImplSource::External => "extern ",
-         ProcImplSource::Body(_) => "",
+         ProcImplSource::Body => "",
       };
       write!(
          pp_ctx.output,
@@ -51,10 +50,10 @@ pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> R
          prefix,
          interner.lookup(proc.definition.name.str)
       )?;
-      if !proc.definition.generic_parameters.is_empty() {
+      if !proc.definition.type_parameters.is_empty() {
          write!(pp_ctx.output, "<")?;
-         for (i, g_param) in proc.definition.generic_parameters.iter().enumerate() {
-            if i == proc.definition.generic_parameters.len() - 1 {
+         for (i, g_param) in proc.definition.type_parameters.iter().enumerate() {
+            if i == proc.definition.type_parameters.len() - 1 {
                write!(pp_ctx.output, "{}", pp_ctx.interner.lookup(g_param.str))?;
             } else {
                write!(pp_ctx.output, "{}, ", pp_ctx.interner.lookup(g_param.str))?;
@@ -75,8 +74,8 @@ pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> R
       }
       write!(pp_ctx.output, ") -> ")?;
       pp_type(&proc.definition.ret_type.e_type, &mut pp_ctx)?;
-      if let ProcImplSource::Body(b) = &proc.proc_impl {
-         pp_block(b, &mut pp_ctx)?;
+      if let Some(b) = program.procedure_bodies.get(id) {
+         pp_block(&b.block, &mut pp_ctx)?;
       } else {
          writeln!(pp_ctx.output, ";")?;
       }
@@ -316,7 +315,7 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          write!(pp_ctx.output, "::{}", pp_ctx.interner.lookup(*variant))?;
       }
       Expression::BoundFcnLiteral(id, generic_args) => {
-         let proc_name = pp_ctx.procedure_info[*id].name.str;
+         let proc_name = pp_ctx.procedures[*id].definition.name.str;
          write!(pp_ctx.output, "{}", pp_ctx.interner.lookup(proc_name))?;
          if !generic_args.is_empty() {
             write!(pp_ctx.output, "$<")?;
