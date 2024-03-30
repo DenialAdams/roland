@@ -117,6 +117,11 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
                &program.user_defined_types,
                config.target,
             );
+            if matches!(sk, VarSlotKind::Stack(_)) && config.target == Target::Qbe {
+               // Empirically, our stack slot re-use interferes with QBE's own
+               // stack slot reuse, and results in worse ASM.
+               continue;
+            }
             free_slots
                .entry(sk)
                .or_default()
