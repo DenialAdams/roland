@@ -191,7 +191,19 @@ fn main() {
 fn compile_qbe(mut ssa_path: PathBuf, final_path: Option<PathBuf>) -> std::result::Result<(), Box<dyn Error>> {
    let mut asm_path = ssa_path.clone();
    asm_path.set_extension("s");
-   let qbe_stat = Command::new("qbe").arg("-o").arg(&asm_path).arg(&ssa_path).status()?;
+   let mut qbe_command = if let Some(extant_local_qbe) = std::env::current_exe()
+      .ok()
+      .map(|mut x| {
+         x.set_file_name("qbe");
+         x
+      })
+      .filter(|x| x.exists())
+   {
+      Command::new(extant_local_qbe)
+   } else {
+      Command::new("qbe")
+   };
+   let qbe_stat = qbe_command.arg("-o").arg(&asm_path).arg(&ssa_path).status()?;
    if !qbe_stat.success() {
       return Err(format!("QBE failed to execute with code {}", qbe_stat).into());
    }
