@@ -322,7 +322,6 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
    }
 
    for a_global in program.global_info.iter() {
-      // TODO: skip zero size globals? ... add a test?
       write!(ctx.buf, "data $.v{} = {{ ", a_global.0 .0).unwrap();
       match a_global.1.initializer {
          Some(e) => {
