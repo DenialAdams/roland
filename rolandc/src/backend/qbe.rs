@@ -236,11 +236,11 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          return;
       }
 
-      // TODO this clone sucks!
-      let (index, new) = emitted.insert_full(et.clone());
-      if !new {
+      if emitted.contains(et) {
          return;
       }
+
+      let index = emitted.insert_full(et.clone()).0;
 
       if sizeof_type_mem(et, udt, Target::Qbe) == 0 {
          return;
