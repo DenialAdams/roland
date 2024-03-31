@@ -1,0 +1,7 @@
+static G: unit = unit();
+
+proc main() {
+   G;
+}
+__END__
+run:

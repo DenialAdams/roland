@@ -754,6 +754,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
    };
 
    match interner.lookup(proc_name) {
+      "unit" => Some(Expression::UnitLiteral),
       "proc_name" => fc.current_proc_name.map(Expression::StringLiteral),
       "sizeof" => {
          let type_size = crate::size_info::sizeof_type_mem(&generic_args[0], fc.user_defined_types, fc.target);
