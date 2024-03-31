@@ -7,9 +7,7 @@ use wasm_encoder::ValType;
 use super::linearize::{post_order, Cfg, CfgInstruction};
 use super::liveness::{liveness, ProgramIndex};
 use crate::expression_hoisting::is_reinterpretable_transmute;
-use crate::parse::{
-   AstPool, CastType, Expression, ExpressionId, ExpressionPool, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId,
-};
+use crate::parse::{AstPool, CastType, Expression, ExpressionId, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId};
 use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
 use crate::{CompilationConfig, Program, Target};
@@ -259,7 +257,7 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
                ast.expressions[in_expr].exp_type.as_ref().unwrap(),
             )
          {
-            if let Some(v) = get_var_from_use(*expr, &ast.expressions) {
+            if let Expression::Variable(v) = ast.expressions[*expr].expression {
                // This is a weaker form of escaping -
                // stack slot reuse will avoid this var, but it shouldn't have to
                // (future improvement TODO)
@@ -270,7 +268,7 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
       Expression::UnaryOperator(op, expr) => {
          mark_escaping_vars_expr(*expr, escaping_vars, ast);
          if *op == UnOp::AddressOf {
-            if let Some(v) = get_var_from_use(*expr, &ast.expressions) {
+            if let Expression::Variable(v) = ast.expressions[*expr].expression {
                escaping_vars.insert(v);
             }
          }
@@ -285,15 +283,6 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
       Expression::FloatLiteral(_) => (),
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
-   }
-}
-
-fn get_var_from_use(expr: ExpressionId, expressions: &ExpressionPool) -> Option<VariableId> {
-   match &expressions[expr].expression {
-      Expression::Variable(v) => Some(*v),
-      Expression::FieldAccess(_, e) => get_var_from_use(*e, expressions),
-      Expression::ArrayIndex { array, .. } => get_var_from_use(*array, expressions),
-      _ => None,
    }
 }
 
