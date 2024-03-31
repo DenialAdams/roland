@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use slotmap::SecondaryMap;
@@ -31,7 +31,7 @@ pub struct RegallocResult {
 }
 
 pub fn assign_variables_to_registers_and_mem(program: &Program, config: &CompilationConfig) -> RegallocResult {
-   let mut escaping_vars = HashSet::new();
+   let mut escaping_vars = HashMap::new();
 
    let mut result = RegallocResult {
       var_to_slot: IndexMap::new(),
@@ -86,7 +86,7 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
             let reg = total_registers;
             total_registers += 1;
 
-            if typ.is_aggregate() || escaping_vars.contains(&var) {
+            if typ.is_aggregate() || escaping_vars.contains_key(&var) {
                // variable must live on the stack.
                // however, this var is a parameter, so we still need to offset
                // the register count
@@ -106,7 +106,7 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
          let local_type = body.locals.get(var).unwrap();
 
          for expired_var in active.extract_if(|v| live_intervals.get(v).unwrap().end < range.begin) {
-            if escaping_vars.contains(&expired_var) {
+            if escaping_vars.get(&expired_var).copied() == Some(EscapingKind::MustLiveOnStackAlone) {
                continue;
             }
             let sk = type_to_slot_kind(
@@ -128,7 +128,7 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
 
          let sk = type_to_slot_kind(
             local_type,
-            escaping_vars.contains(var),
+            escaping_vars.contains_key(var),
             &program.user_defined_types,
             config.target,
          );
@@ -168,7 +168,7 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
    for global in program.global_info.iter() {
       debug_assert!(!result.var_to_slot.contains_key(global.0));
 
-      if escaping_vars.contains(global.0) {
+      if escaping_vars.contains_key(global.0) {
          continue;
       }
 
@@ -187,7 +187,13 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
    result
 }
 
-fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, ast: &AstPool) {
+#[derive(PartialEq, Clone, Copy)]
+enum EscapingKind {
+   MustLiveOnStackAlone,
+   MustLiveOnStack,
+}
+
+fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashMap<VariableId, EscapingKind>, ast: &AstPool) {
    for bb in post_order(cfg) {
       for instr in cfg.bbs[bb].instructions.iter() {
          match instr {
@@ -213,7 +219,11 @@ fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, as
    }
 }
 
-fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<VariableId>, ast: &AstPool) {
+fn mark_escaping_vars_expr(
+   in_expr: ExpressionId,
+   escaping_vars: &mut HashMap<VariableId, EscapingKind>,
+   ast: &AstPool,
+) {
    match &ast.expressions[in_expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
          mark_escaping_vars_expr(*proc_expr, escaping_vars, ast);
@@ -258,10 +268,8 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
             )
          {
             if let Expression::Variable(v) = ast.expressions[*expr].expression {
-               // This is a weaker form of escaping -
-               // stack slot reuse will avoid this var, but it shouldn't have to
-               // (future improvement TODO)
-               escaping_vars.insert(v);
+               // Crucial here that we don't accidentally downgrade UnknownLifetime
+               escaping_vars.entry(v).or_insert(EscapingKind::MustLiveOnStack);
             }
          }
       }
@@ -269,7 +277,7 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
          mark_escaping_vars_expr(*expr, escaping_vars, ast);
          if *op == UnOp::AddressOf {
             if let Expression::Variable(v) = ast.expressions[*expr].expression {
-               escaping_vars.insert(v);
+               escaping_vars.insert(v, EscapingKind::MustLiveOnStackAlone);
             }
          }
       }
