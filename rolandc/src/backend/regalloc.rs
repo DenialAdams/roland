@@ -174,7 +174,9 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
          continue;
       }
 
-      if global.1.expr_type.e_type.is_aggregate() || global.1.expr_type.e_type.is_nonaggregate_zst() {
+      if global.1.expr_type.e_type.is_aggregate()
+         || sizeof_type_mem(&global.1.expr_type.e_type, &program.user_defined_types, config.target) == 0
+      {
          continue;
       }
 

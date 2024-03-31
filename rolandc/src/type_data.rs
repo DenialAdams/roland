@@ -249,16 +249,6 @@ impl ExpressionType {
    }
 
    #[must_use]
-   pub fn is_nonaggregate_zst(&self) -> bool {
-      // TODO: there is a footgun here that this doesn't account for enums
-      // this is currently fine as we only call this after enum lowering
-      matches!(
-         self,
-         ExpressionType::Never | ExpressionType::Unit | ExpressionType::ProcedureItem(_, _)
-      )
-   }
-
-   #[must_use]
    pub fn as_roland_type_info<'i>(
       &self,
       interner: &'i Interner,
