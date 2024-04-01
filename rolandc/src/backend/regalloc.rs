@@ -106,12 +106,13 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
          let local_type = body.locals.get(var).unwrap();
 
          for expired_var in active.extract_if(|v| live_intervals.get(v).unwrap().end < range.begin) {
-            if escaping_vars.get(&expired_var).copied() == Some(EscapingKind::MustLiveOnStackAlone) {
+            let escaping_kind = escaping_vars.get(&expired_var).copied();
+            if escaping_kind == Some(EscapingKind::MustLiveOnStackAlone) {
                continue;
             }
             let sk = type_to_slot_kind(
                body.locals.get(&expired_var).unwrap(),
-               false,
+               escaping_kind.is_some(),
                &program.user_defined_types,
                config.target,
             );
