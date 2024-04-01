@@ -279,6 +279,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    pre_backend_lowering::kill_zst_assignments(&mut ctx.program, config.target);
 
    if config.target == Target::Qbe {
+      backend::qbe::replace_main_return_val(&mut ctx.program, &ctx.interner);
       Ok(backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, config))
    } else {
       Ok(backend::wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, config))

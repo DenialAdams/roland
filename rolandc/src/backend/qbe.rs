@@ -23,7 +23,6 @@ use crate::{CompilationConfig, Program, Target};
 
 struct GenerationContext<'a> {
    buf: Vec<u8>,
-   is_main: bool,
    var_to_slot: IndexMap<VariableId, VarSlot>,
    ast: &'a AstPool,
    procedures: &'a SlotMap<ProcedureId, ProcedureNode>,
@@ -299,7 +298,6 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
 
    let mut ctx = GenerationContext {
       buf: vec![],
-      is_main: false,
       var_to_slot: regalloc_result.var_to_slot,
       ast: &program.ast,
       procedures: &program.procedures,
@@ -358,18 +356,12 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
       };
 
       let export_txt = if interner.lookup(procedure.definition.name.str) == "main" {
-         ctx.is_main = true;
          "export "
       } else {
-         ctx.is_main = false;
          ""
       };
-      let abi_ret_type = if ctx.is_main {
-         "w".into()
-      } else {
-         roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs)
-            .unwrap_or_else(|| "".into())
-      };
+      let abi_ret_type = roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs)
+         .unwrap_or_else(|| "".into());
       write!(
          ctx.buf,
          "{}function {} ${}(",
@@ -596,10 +588,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
          },
          CfgInstruction::Return(en) => {
             debug_assert!(!expression_could_have_side_effects(*en, &ctx.ast.expressions));
-            if ctx.is_main {
-               // World's biggest hack
-               writeln!(&mut ctx.buf, "   ret 0").unwrap();
-            } else if *ctx.ast.expressions[*en].exp_type.as_ref().unwrap() == ExpressionType::Never {
+            if *ctx.ast.expressions[*en].exp_type.as_ref().unwrap() == ExpressionType::Never {
                writeln!(&mut ctx.buf, "   hlt").unwrap();
             } else if sizeof_type_mem(
                ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
@@ -1115,4 +1104,16 @@ fn write_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &mut Gen
       }
    }
    writeln!(ctx.buf, ")").unwrap();
+}
+
+pub fn replace_main_return_val(program: &mut Program, interner: &Interner) {
+   let main_id = program.procedure_name_table[&interner.reverse_lookup("main").unwrap()];
+   program.procedures[main_id].definition.ret_type.e_type = ExpressionType::Int(IntType { signed: true, width: IntWidth::Four });
+   for instr in program.cfg[main_id].bbs.iter_mut().flat_map(|x| x.instructions.iter_mut()) {
+      let CfgInstruction::Return(ret_val) = instr else {
+         continue;
+      };
+      program.ast.expressions[*ret_val].expression = Expression::IntLiteral { val: 0, synthetic: true };
+      program.ast.expressions[*ret_val].exp_type = Some(ExpressionType::Int(IntType { signed: true, width: IntWidth::Four }));
+   }
 }
