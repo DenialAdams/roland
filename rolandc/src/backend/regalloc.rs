@@ -103,8 +103,6 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
             continue;
          }
 
-         let local_type = body.locals.get(var).unwrap();
-
          for expired_var in active.extract_if(|v| live_intervals.get(v).unwrap().end < range.begin) {
             let escaping_kind = escaping_vars.get(&expired_var).copied();
             if escaping_kind == Some(EscapingKind::MustLiveOnStackAlone) {
@@ -128,7 +126,7 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
          }
 
          let sk = type_to_slot_kind(
-            local_type,
+            body.locals.get(var).unwrap(),
             escaping_vars.contains_key(var),
             &program.user_defined_types,
             config.target,
