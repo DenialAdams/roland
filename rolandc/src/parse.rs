@@ -407,7 +407,7 @@ pub struct Program {
    pub literals: IndexSet<StrId>,
    pub global_info: IndexMap<VariableId, GlobalInfo>,
    pub user_defined_type_name_table: HashMap<StrId, UserDefinedTypeId>,
-   pub procedure_name_table: HashMap<StrId, ProcedureId>, // TODO: this doesn't need to live on Program
+   pub procedure_name_table: HashMap<StrId, ProcedureId>,
    pub user_defined_types: UserDefinedTypeInfo,
    pub next_variable: VariableId,
 

@@ -93,7 +93,6 @@ pub fn calculate_struct_size_info(id: StructId, udt: &mut UserDefinedTypeInfo, t
       // We align our size with the alignment of the next field to account for potential padding
       let next_mem_alignment = mem_alignment(next_field_t, udt, target);
 
-      // todo: Check this addition for overflow?
       sum_mem += aligned_address(our_mem_size, next_mem_alignment);
 
       strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(field_t, udt, target));

@@ -336,9 +336,9 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          write!(pp_ctx.output, " else ")?;
          pp_expr(*c, pp_ctx)?;
       }
-      Expression::UnresolvedProcLiteral(_, _) => todo!(),
-      Expression::UnresolvedStructLiteral(_, _) => todo!(),
-      Expression::UnresolvedEnumLiteral(_, _) => todo!(),
+      Expression::UnresolvedProcLiteral(_, _) => unimplemented!(),
+      Expression::UnresolvedStructLiteral(_, _) => unimplemented!(),
+      Expression::UnresolvedEnumLiteral(_, _) => unimplemented!(),
    }
 
    Ok(())

@@ -280,7 +280,6 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       //TODO: and here truncation
       let s_len = str_value.len() as u32;
       generation_context.literal_offsets.insert(*s, (offset, s_len));
-      // TODO: check for overflow here
       offset += s_len;
    }
 
@@ -464,7 +463,6 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
             .stack_offsets_mem
             .insert(*local.0, generation_context.sum_sizeof_locals_mem);
 
-         // TODO: should we check for overflow on this value?
          generation_context.sum_sizeof_locals_mem += local.1 .1;
       }
 
