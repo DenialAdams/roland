@@ -272,7 +272,16 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::ThreeAddressCode);
    }
 
-   ctx.program.cfg = backend::linearize::linearize(&mut ctx.program, &ctx.interner, config.dump_debugging_info);
+   // Convert nested, AST representation into CFG
+   {
+      backend::linearize::linearize(&mut ctx.program, &ctx.interner, config.dump_debugging_info);
+
+      // Clean up
+      for old_body in ctx.program.procedure_bodies.values_mut().map(|x| &mut x.block) {
+         old_body.statements.clear();
+      }
+      ctx.program.ast.statements.clear();
+   }
 
    // It would be nice to run this before deleting unreachable procedures,
    // but doing so would currently delete procedures that we take pointers to

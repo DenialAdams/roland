@@ -53,11 +53,11 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
       let mut total_registers = 0;
       let mut total_stack_slots = 0;
 
-      mark_escaping_vars_cfg(&program.cfg[proc_id], &mut escaping_vars, &program.ast);
+      mark_escaping_vars_cfg(&body.cfg, &mut escaping_vars, &program.ast);
 
       let mut live_intervals: IndexMap<VariableId, LiveInterval> = IndexMap::with_capacity(body.locals.len());
       {
-         let proc_liveness = liveness(&body.locals, &program.cfg[proc_id], &program.ast);
+         let proc_liveness = liveness(&body.locals, &body.cfg, &program.ast);
 
          for (pi, live_vars) in proc_liveness.iter() {
             for local_index in live_vars.iter_ones() {

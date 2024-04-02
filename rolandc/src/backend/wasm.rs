@@ -438,7 +438,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
    }
 
    for (proc_id, procedure) in program.procedures.iter() {
-      let Some(cfg) = program.cfg.get(proc_id) else {
+      let Some(cfg) = program.procedure_bodies.get(proc_id).map(|x| &x.cfg) else {
          continue;
       };
       generation_context.active_fcn =

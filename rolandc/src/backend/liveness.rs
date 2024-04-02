@@ -245,13 +245,7 @@ fn gen_for_expr(
             gen_for_expr(*expr, gen, kill, ast, procedure_vars);
          }
       }
-      Expression::FieldAccess(_, base_expr) => {
-         gen_for_expr(*base_expr, gen, kill, ast, procedure_vars);
-      }
-      Expression::Cast { expr, .. } => {
-         gen_for_expr(*expr, gen, kill, ast, procedure_vars);
-      }
-      Expression::UnaryOperator(_, expr) => {
+      Expression::FieldAccess(_, expr) | Expression::Cast { expr, .. } | Expression::UnaryOperator(_, expr) => {
          gen_for_expr(*expr, gen, kill, ast, procedure_vars);
       }
       Expression::Variable(var) => {

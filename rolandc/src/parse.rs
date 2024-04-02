@@ -5,7 +5,7 @@ use indexmap::{IndexMap, IndexSet};
 use slotmap::{new_key_type, SecondaryMap, SlotMap};
 
 use super::lex::{SourceToken, Token};
-use crate::backend::linearize::ProgramCfg;
+use crate::backend::linearize::Cfg;
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
@@ -385,6 +385,9 @@ pub struct UserDefinedTypeInfo {
 pub struct ProcedureBody {
    pub locals: IndexMap<VariableId, ExpressionType>,
    pub block: BlockNode,
+
+   // Populated late, for the backend
+   pub cfg: Cfg,
 }
 
 pub struct Program {
@@ -410,9 +413,6 @@ pub struct Program {
    pub procedure_name_table: HashMap<StrId, ProcedureId>,
    pub user_defined_types: UserDefinedTypeInfo,
    pub next_variable: VariableId,
-
-   // Finally, the CFG representation of the program is built and used in the backend
-   pub cfg: ProgramCfg,
 }
 
 // SlotMaps are deterministic, but the order that you get after clearing it is not the same as you would get
@@ -457,7 +457,6 @@ impl Program {
             expressions: ExpressionPool::with_key(),
             statements: StatementPool::with_key(),
          },
-         cfg: ProgramCfg::new(),
       }
    }
 
@@ -774,6 +773,7 @@ fn parse_procedure(
       },
       ProcedureBody {
          locals: IndexMap::new(),
+         cfg: Cfg { bbs: Vec::new() },
          block,
       },
    ))

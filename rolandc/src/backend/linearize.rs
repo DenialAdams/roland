@@ -1,13 +1,12 @@
 use std::collections::HashSet;
 
 use arrayvec::ArrayVec;
-use slotmap::SecondaryMap;
 
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
 use crate::parse::{
-   statement_always_or_never_returns, AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ProcedureId,
-   Statement, StatementId,
+   statement_always_or_never_returns, AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, Statement,
+   StatementId,
 };
 use crate::type_data::ExpressionType;
 use crate::Program;
@@ -125,9 +124,9 @@ fn simplify_cfg(cfg: &mut [BasicBlock], ast: &AstPool) {
    }
 }
 
-fn dump_program_cfg(all_cfg: &ProgramCfg, interner: &Interner, program: &Program) {
+fn dump_program_cfg(interner: &Interner, program: &Program) {
    let mut f = std::fs::File::create("cfg.dot").unwrap();
-   for (proc, cfg) in all_cfg.iter() {
+   for (proc, body) in program.procedure_bodies.iter() {
       use std::io::Write;
       writeln!(
          f,
@@ -135,8 +134,8 @@ fn dump_program_cfg(all_cfg: &ProgramCfg, interner: &Interner, program: &Program
          interner.lookup(program.procedures[proc].definition.name.str)
       )
       .unwrap();
-      for node in post_order(cfg) {
-         let successors = cfg.bbs[node].successors();
+      for node in post_order(&body.cfg) {
+         let successors = body.cfg.bbs[node].successors();
          for succ in successors.iter() {
             writeln!(f, "\"{}\" -> \"{}\"", bb_id_to_label(node), bb_id_to_label(*succ)).unwrap();
          }
@@ -145,17 +144,14 @@ fn dump_program_cfg(all_cfg: &ProgramCfg, interner: &Interner, program: &Program
    }
 }
 
-pub type ProgramCfg = SecondaryMap<ProcedureId, Cfg>;
-
-pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool) -> ProgramCfg {
+pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool) {
    let mut ctx = Ctx {
       bbs: vec![],
       current_block: 0,
       break_target: 0,
       continue_target: 0,
    };
-   let mut all_cfg: ProgramCfg = SecondaryMap::new();
-   for (id, body) in program.procedure_bodies.iter() {
+   for (id, body) in program.procedure_bodies.iter_mut() {
       ctx.bbs.push(BasicBlock {
          instructions: vec![],
          predecessors: HashSet::new(),
@@ -202,19 +198,12 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool) -> 
 
       simplify_cfg(&mut ctx.bbs, &program.ast);
 
-      all_cfg.insert(
-         id,
-         Cfg {
-            bbs: std::mem::take(&mut ctx.bbs),
-         },
-      );
+      body.cfg.bbs = std::mem::take(&mut ctx.bbs);
    }
 
    if dump_cfg {
-      dump_program_cfg(&all_cfg, interner, program);
+      dump_program_cfg(interner, program);
    }
-
-   all_cfg
 }
 
 fn bb_id_to_label(bb_id: usize) -> String {

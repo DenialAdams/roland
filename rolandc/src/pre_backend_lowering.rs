@@ -340,8 +340,7 @@ pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, intern
 }
 
 pub fn kill_zst_assignments(program: &mut Program, target: Target) {
-   for proc_id in program.procedure_bodies.keys() {
-      let cfg = &mut program.cfg[proc_id];
+   for cfg in program.procedure_bodies.values_mut().map(|x| &mut x.cfg) {
       for bb in cfg.bbs.iter_mut() {
          // This feels pretty inefficient :(
          // do this at cfg construction time?

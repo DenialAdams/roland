@@ -351,7 +351,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
    }
 
    for (proc_id, procedure) in program.procedures.iter() {
-      let Some(cfg) = program.cfg.get(proc_id) else {
+      let Some(cfg) = program.procedure_bodies.get(proc_id).map(|x| &x.cfg) else {
          continue;
       };
 
@@ -1108,12 +1108,26 @@ fn write_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &mut Gen
 
 pub fn replace_main_return_val(program: &mut Program, interner: &Interner) {
    let main_id = program.procedure_name_table[&interner.reverse_lookup("main").unwrap()];
-   program.procedures[main_id].definition.ret_type.e_type = ExpressionType::Int(IntType { signed: true, width: IntWidth::Four });
-   for instr in program.cfg[main_id].bbs.iter_mut().flat_map(|x| x.instructions.iter_mut()) {
+   program.procedures[main_id].definition.ret_type.e_type = ExpressionType::Int(IntType {
+      signed: true,
+      width: IntWidth::Four,
+   });
+   for instr in program.procedure_bodies[main_id]
+      .cfg
+      .bbs
+      .iter_mut()
+      .flat_map(|x| x.instructions.iter_mut())
+   {
       let CfgInstruction::Return(ret_val) = instr else {
          continue;
       };
-      program.ast.expressions[*ret_val].expression = Expression::IntLiteral { val: 0, synthetic: true };
-      program.ast.expressions[*ret_val].exp_type = Some(ExpressionType::Int(IntType { signed: true, width: IntWidth::Four }));
+      program.ast.expressions[*ret_val].expression = Expression::IntLiteral {
+         val: 0,
+         synthetic: true,
+      };
+      program.ast.expressions[*ret_val].exp_type = Some(ExpressionType::Int(IntType {
+         signed: true,
+         width: IntWidth::Four,
+      }));
    }
 }
