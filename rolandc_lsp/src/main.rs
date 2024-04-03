@@ -240,23 +240,33 @@ impl LanguageServer for Backend {
       let workspace_root = params.root_uri;
       let mode = if let Some(root_path) = workspace_root.and_then(|x| x.to_file_path().ok()) {
          if root_path.join("cart.rol").exists() {
-            self
-               .client
-               .log_message(MessageType::INFO, "detected wasm4 project")
-               .await;
-            WorkspaceMode::EntryPointAndTarget(root_path.join("cart.rol"), Target::Wasm4)
+            if root_path.join(".microw8").exists() {
+               self
+                  .client
+                  .log_message(MessageType::INFO, "detected microw8 project")
+                  .await;
+               WorkspaceMode::EntryPointAndTarget(root_path.join("cart.rol"), Target::Microw8)
+            } else {
+               self
+                  .client
+                  .log_message(MessageType::INFO, "detected wasm4 project")
+                  .await;
+               WorkspaceMode::EntryPointAndTarget(root_path.join("cart.rol"), Target::Wasm4)
+            }
          } else if root_path.join("main.rol").exists() {
-            self
-               .client
-               .log_message(MessageType::INFO, "detected wasi project")
-               .await;
-            WorkspaceMode::EntryPointAndTarget(root_path.join("main.rol"), Target::Wasi)
-         } else if root_path.join(".microw8").exists() && root_path.join("cart.rol").exists() {
-            self
-               .client
-               .log_message(MessageType::INFO, "detected microw8 project")
-               .await;
-            WorkspaceMode::EntryPointAndTarget(root_path.join("cart.rol"), Target::Microw8)
+            if root_path.join(".amd64").exists() {
+               self
+                  .client
+                  .log_message(MessageType::INFO, "detected amd64 project")
+                  .await;
+               WorkspaceMode::EntryPointAndTarget(root_path.join("main.rol"), Target::Qbe)
+            } else {
+               self
+                  .client
+                  .log_message(MessageType::INFO, "detected wasi project")
+                  .await;
+               WorkspaceMode::EntryPointAndTarget(root_path.join("main.rol"), Target::Wasi)
+            }
          } else if root_path.join(".i_assure_you_we're_std").exists() {
             self.client.log_message(MessageType::INFO, "detected stdlib").await;
             WorkspaceMode::StdLib
