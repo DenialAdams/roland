@@ -20,8 +20,8 @@ Usage: rolandc (source.rol) [OPTION]*
 Valid boolean options are:
 --wasm4   | Links the WASM-4 standard library and emits a WASM-4 cart
 --microw8 | Links the microw8 standard library and emits a microw8 cart
---wasi    | Links the full roland standard library and emits a binary for use with a WASI-compliant runtime
---amd64   | (EXPERIMENTAL)
+--wasi    | Links the standard library and emits a binary for use with a WASI-compliant runtime
+--amd64   | Links the standard library and emits a binary for use on an x86_64 linux system
 
 Valid options with arguments are:
 --output (output_file.wasm) | Specify the name of the output file
