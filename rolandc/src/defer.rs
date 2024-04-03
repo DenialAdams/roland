@@ -132,17 +132,9 @@ fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, ast: &mut As
 
    defer_ctx.deferred_stmts.truncate(deferred_stmts_before);
 
-   block.statements.retain(|x| {
-      if let Statement::Defer(stmt_id) = ast.statements[*x].statement {
-         // todo: this is a shallow delete of the stmt
-         // we should probably delete deeply or not delete it at all
-         ast.statements.remove(stmt_id);
-         ast.statements.remove(*x);
-         false
-      } else {
-         true
-      }
-   });
+   block
+      .statements
+      .retain(|x| !matches!(ast.statements[*x].statement, Statement::Defer(_)));
 }
 
 fn defer_statement(
@@ -185,9 +177,7 @@ fn defer_statement(
          defer_statement(*the_stmt, defer_ctx, ast, current_statement, vm);
          defer_ctx.deferred_stmts.push(*the_stmt);
       }
-      Statement::Assignment(_, _) => (),
-      Statement::Expression(_) => (),
-      Statement::VariableDeclaration(_, _, _, _) => (),
+      Statement::Assignment(_, _) | Statement::Expression(_) | Statement::VariableDeclaration(_, _, _, _) => (),
       Statement::For { .. } | Statement::While(_, _) => unreachable!(),
    }
    ast.statements[statement].statement = the_statement;
