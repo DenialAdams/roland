@@ -672,10 +672,12 @@ fn fold_expr_inner(
                   })
                }
                Expression::StructLiteral(_, fields) => {
-                  let inner_node_expression = folding_context.ast.expressions[fields.get(field_name).unwrap().unwrap()]
-                     .expression
-                     .clone();
-                  Some(inner_node_expression)
+                  if let Some(def_val) = fields[field_name] {
+                     let inner_node_expression = folding_context.ast.expressions[def_val].expression.clone();
+                     Some(inner_node_expression)
+                  } else {
+                     None
+                  }
                }
                Expression::ArrayLiteral(_) => unreachable!(), // covered by type check above
                _ => None,                                     // Some non-constant
