@@ -302,12 +302,13 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
       offset = aligned_address(offset, strictest_alignment);
    }
    for (static_var, static_details) in program.global_info.iter() {
+      debug_assert!(static_details.kind != GlobalKind::Const);
+
       generation_context.globals.insert(*static_var);
       if generation_context.var_to_slot.contains_key(static_var) {
          continue;
       }
 
-      debug_assert!(static_details.kind != GlobalKind::Const);
       generation_context.static_addresses.insert(*static_var, offset);
 
       offset += sizeof_type_mem(
@@ -373,6 +374,7 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
             1 + i as u32,
             interner.lookup(program.global_info.get(global.0).unwrap().name),
          );
+         debug_assert!(generation_context.var_to_slot[global.0] == VarSlot::Register(1 + i as u32));
       }
 
       (globals, global_names)

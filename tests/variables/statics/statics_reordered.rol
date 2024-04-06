@@ -1,0 +1,13 @@
+// The WASM backend will reorder these to (Y, X) to minimize padding
+// This can cause problems if we are not careful
+static X: u32 = 123;
+static Y: u64 = 456;
+
+proc main() {
+  println(uint_to_string(X as u64));
+  println(uint_to_string(Y));
+}
+__END__
+run:
+123
+456
