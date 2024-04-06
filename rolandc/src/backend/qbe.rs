@@ -6,7 +6,7 @@ use indexmap::{IndexMap, IndexSet};
 use slotmap::{Key, SlotMap};
 
 use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE, CFG_START_NODE};
-use super::regalloc::{self, VarSlot};
+use super::regalloc::{RegallocResult, VarSlot};
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -19,7 +19,7 @@ use crate::type_data::{
    ExpressionType, FloatType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE,
    U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE,
 };
-use crate::{CompilationConfig, Program, Target};
+use crate::{Program, Target};
 
 struct GenerationContext<'a> {
    buf: Vec<u8>,
@@ -224,7 +224,7 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
    }
 }
 
-pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &CompilationConfig) -> Vec<u8> {
+pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: RegallocResult) -> Vec<u8> {
    fn emit_aggregate_def(
       buf: &mut Vec<u8>,
       emitted: &mut IndexSet<ExpressionType>,
@@ -293,8 +293,6 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, config: &Compilation
          _ => unreachable!(),
       }
    }
-
-   let regalloc_result = regalloc::assign_variables_to_registers_and_mem(program, config);
 
    let mut ctx = GenerationContext {
       buf: vec![],

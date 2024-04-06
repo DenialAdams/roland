@@ -9,8 +9,7 @@ use wasm_encoder::{
 };
 
 use super::linearize::{Cfg, CfgInstruction, CFG_START_NODE};
-use super::regalloc::VarSlot;
-use crate::backend::regalloc;
+use super::regalloc::{RegallocResult, VarSlot};
 use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -184,28 +183,26 @@ impl<'u> TypeManager<'u> {
    }
 }
 
-// MEMORY LAYOUT
-// 0-l literals
-// l-s statics
-// s+ program stack (local variables and parameters are pushed here during runtime)
-pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &CompilationConfig) -> Vec<u8> {
-   // This will come in handy later, allowing us to avoid padding.
-   // Do it now, because we will iterate globals in regalloc and we want it to be consistent
+pub fn sort_globals(program: &mut Program, target: Target) {
    program.global_info.sort_by(|_k_1, v_1, _k_2, v_2| {
       let e_1 = &v_1.expr_type.e_type;
       let e_2 = &v_2.expr_type.e_type;
 
-      let alignment_1 = mem_alignment(e_1, &program.user_defined_types, config.target);
-      let alignment_2 = mem_alignment(e_2, &program.user_defined_types, config.target);
+      let alignment_1 = mem_alignment(e_1, &program.user_defined_types, target);
+      let alignment_2 = mem_alignment(e_2, &program.user_defined_types, target);
 
-      let sizeof_1 = sizeof_type_mem(e_1, &program.user_defined_types, config.target);
-      let sizeof_2 = sizeof_type_mem(e_2, &program.user_defined_types, config.target);
+      let sizeof_1 = sizeof_type_mem(e_1, &program.user_defined_types, target);
+      let sizeof_2 = sizeof_type_mem(e_2, &program.user_defined_types, target);
 
       compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
    });
+}
 
-   let mut regalloc_result = regalloc::assign_variables_to_registers_and_mem(program, config);
-
+// MEMORY LAYOUT
+// 0-l literals
+// l-s statics
+// s+ program stack (local variables and parameters are pushed here during runtime)
+pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &CompilationConfig, mut regalloc_result: RegallocResult) -> Vec<u8> {
    let mut generation_context = GenerationContext {
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
       type_manager: TypeManager::new(&program.user_defined_types, config.target),

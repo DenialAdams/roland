@@ -287,11 +287,17 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    // but doing so would currently delete procedures that we take pointers to
    pre_backend_lowering::kill_zst_assignments(&mut ctx.program, config.target);
 
+   if config.target != Target::Qbe {
+      backend::wasm::sort_globals(&mut ctx.program, config.target);
+   }
+
+   let regalloc_result = backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config);
+
    if config.target == Target::Qbe {
       backend::qbe::replace_main_return_val(&mut ctx.program, &ctx.interner);
-      Ok(backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, config))
+      Ok(backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, regalloc_result))
    } else {
-      Ok(backend::wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, config))
+      Ok(backend::wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, config, regalloc_result))
    }
 }
 
