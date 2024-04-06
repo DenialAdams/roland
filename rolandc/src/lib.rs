@@ -291,7 +291,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       backend::wasm::sort_globals(&mut ctx.program, config.target);
    }
 
-   let regalloc_result = backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config);
+   let regalloc_result = { backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config) };
 
    if config.target == Target::Qbe {
       backend::qbe::replace_main_return_val(&mut ctx.program, &ctx.interner);

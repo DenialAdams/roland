@@ -383,6 +383,7 @@ pub struct UserDefinedTypeInfo {
 
 #[derive(Clone)]
 pub struct ProcedureBody {
+   // Includes parameters
    pub locals: IndexMap<VariableId, ExpressionType>,
    pub block: BlockNode,
 

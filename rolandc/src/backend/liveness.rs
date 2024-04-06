@@ -3,7 +3,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE};
 use crate::backend::linearize::post_order;
-use crate::parse::{AstPool, Expression, ExpressionId, VariableId};
+use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, VariableId};
 use crate::type_data::ExpressionType;
 
 #[derive(Clone)]
@@ -15,10 +15,31 @@ struct LivenessState {
 }
 
 #[must_use]
-pub fn liveness(
+pub fn compute_live_intervals(body: &ProcedureBody, ast: &ExpressionPool) -> IndexMap<VariableId, LiveInterval> {
+   let proc_liveness = liveness(&body.locals, &body.cfg, ast);
+
+   let mut live_intervals: IndexMap<VariableId, LiveInterval> = IndexMap::with_capacity(body.locals.len());
+   for (pi, live_vars) in proc_liveness.iter() {
+      for local_index in live_vars.iter_ones() {
+         let var = body.locals.get_index(local_index).map(|x| *x.0).unwrap();
+         if let Some(existing_range) = live_intervals.get_mut(&var) {
+            existing_range.begin = std::cmp::min(existing_range.begin, *pi);
+            existing_range.end = std::cmp::max(existing_range.end, *pi);
+         } else {
+            live_intervals.insert(var, LiveInterval { begin: *pi, end: *pi });
+         }
+      }
+   }
+   live_intervals.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
+
+   live_intervals
+}
+
+#[must_use]
+fn liveness(
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
    cfg: &Cfg,
-   ast: &AstPool,
+   ast: &ExpressionPool,
 ) -> IndexMap<ProgramIndex, BitBox> {
    // Dataflow Analyis on the CFG
    let mut state = vec![
@@ -39,7 +60,7 @@ pub fn liveness(
             CfgInstruction::Assignment(lhs, rhs) => {
                gen_for_expr(*rhs, &mut s.gen, &mut s.kill, ast, procedure_vars);
                gen_for_expr(*lhs, &mut s.gen, &mut s.kill, ast, procedure_vars);
-               if let Expression::Variable(v) = ast.expressions[*lhs].expression {
+               if let Expression::Variable(v) = ast[*lhs].expression {
                   if let Some(di) = procedure_vars.get_index_of(&v) {
                      s.gen.set(di, false);
                      s.kill.set(di, true);
@@ -111,7 +132,7 @@ pub fn liveness(
                CfgInstruction::Assignment(lhs, rhs) => {
                   update_live_variables_for_expr(*rhs, &mut current_live_variables, ast, procedure_vars);
                   update_live_variables_for_expr(*lhs, &mut current_live_variables, ast, procedure_vars);
-                  if let Expression::Variable(v) = ast.expressions[*lhs].expression {
+                  if let Expression::Variable(v) = ast[*lhs].expression {
                      Some(v)
                   } else {
                      None
@@ -147,10 +168,10 @@ pub fn liveness(
 fn update_live_variables_for_expr(
    expr: ExpressionId,
    current_live_variables: &mut BitBox,
-   ast: &AstPool,
+   ast: &ExpressionPool,
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
 ) {
-   match &ast.expressions[expr].expression {
+   match &ast[expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
          update_live_variables_for_expr(*proc_expr, current_live_variables, ast, procedure_vars);
 
@@ -211,10 +232,10 @@ fn gen_for_expr(
    expr: ExpressionId,
    gen: &mut BitBox,
    kill: &mut BitBox,
-   ast: &AstPool,
+   ast: &ExpressionPool,
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
 ) {
-   match &ast.expressions[expr].expression {
+   match &ast[expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
          gen_for_expr(*proc_expr, gen, kill, ast, procedure_vars);
 
@@ -268,3 +289,9 @@ fn gen_for_expr(
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ProgramIndex(pub usize, pub usize); // (RPO basic block position, instruction inside of block)
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+pub struct LiveInterval {
+   pub begin: ProgramIndex,
+   pub end: ProgramIndex,
+}

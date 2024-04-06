@@ -5,9 +5,11 @@ use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
 use super::linearize::{post_order, Cfg, CfgInstruction};
-use super::liveness::{liveness, ProgramIndex};
+use super::liveness::compute_live_intervals;
 use crate::expression_hoisting::is_reinterpretable_transmute;
-use crate::parse::{AstPool, CastType, Expression, ExpressionId, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId};
+use crate::parse::{
+   CastType, Expression, ExpressionId, ExpressionPool, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId,
+};
 use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
 use crate::{CompilationConfig, Program, Target};
@@ -53,25 +55,9 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
       let mut total_registers = 0;
       let mut total_stack_slots = 0;
 
-      mark_escaping_vars_cfg(&body.cfg, &mut escaping_vars, &program.ast);
+      mark_escaping_vars_cfg(&body.cfg, &mut escaping_vars, &program.ast.expressions);
 
-      let mut live_intervals: IndexMap<VariableId, LiveInterval> = IndexMap::with_capacity(body.locals.len());
-      {
-         let proc_liveness = liveness(&body.locals, &body.cfg, &program.ast);
-
-         for (pi, live_vars) in proc_liveness.iter() {
-            for local_index in live_vars.iter_ones() {
-               let var = body.locals.get_index(local_index).map(|x| *x.0).unwrap();
-               if let Some(existing_range) = live_intervals.get_mut(&var) {
-                  existing_range.begin = std::cmp::min(existing_range.begin, *pi);
-                  existing_range.end = std::cmp::max(existing_range.end, *pi);
-               } else {
-                  live_intervals.insert(var, LiveInterval { begin: *pi, end: *pi });
-               }
-            }
-         }
-         live_intervals.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
-      }
+      let live_intervals = compute_live_intervals(body, &program.ast.expressions);
 
       if config.target != Target::Qbe {
          // For WASM, all parameters start in registers
@@ -192,7 +178,7 @@ enum EscapingKind {
    MustLiveOnStack,
 }
 
-fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashMap<VariableId, EscapingKind>, ast: &AstPool) {
+fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashMap<VariableId, EscapingKind>, ast: &ExpressionPool) {
    for bb in post_order(cfg) {
       for instr in cfg.bbs[bb].instructions.iter() {
          match instr {
@@ -221,9 +207,9 @@ fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashMap<VariableId, Esc
 fn mark_escaping_vars_expr(
    in_expr: ExpressionId,
    escaping_vars: &mut HashMap<VariableId, EscapingKind>,
-   ast: &AstPool,
+   ast: &ExpressionPool,
 ) {
-   match &ast.expressions[in_expr].expression {
+   match &ast[in_expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
          mark_escaping_vars_expr(*proc_expr, escaping_vars, ast);
 
@@ -262,11 +248,11 @@ fn mark_escaping_vars_expr(
 
          if *cast_type == CastType::Transmute
             && !is_reinterpretable_transmute(
-               ast.expressions[*expr].exp_type.as_ref().unwrap(),
-               ast.expressions[in_expr].exp_type.as_ref().unwrap(),
+               ast[*expr].exp_type.as_ref().unwrap(),
+               ast[in_expr].exp_type.as_ref().unwrap(),
             )
          {
-            if let Expression::Variable(v) = ast.expressions[*expr].expression {
+            if let Expression::Variable(v) = ast[*expr].expression {
                // Crucial here that we don't accidentally downgrade UnknownLifetime
                escaping_vars.entry(v).or_insert(EscapingKind::MustLiveOnStack);
             }
@@ -275,7 +261,7 @@ fn mark_escaping_vars_expr(
       Expression::UnaryOperator(op, expr) => {
          mark_escaping_vars_expr(*expr, escaping_vars, ast);
          if *op == UnOp::AddressOf {
-            if let Expression::Variable(v) = ast.expressions[*expr].expression {
+            if let Expression::Variable(v) = ast[*expr].expression {
                escaping_vars.insert(v, EscapingKind::MustLiveOnStackAlone);
             }
          }
@@ -291,12 +277,6 @@ fn mark_escaping_vars_expr(
       Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
-pub struct LiveInterval {
-   pub begin: ProgramIndex,
-   pub end: ProgramIndex,
 }
 
 fn type_to_slot_kind(
