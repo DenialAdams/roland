@@ -1,5 +1,4 @@
-use std::collections::{HashMap, HashSet};
-use std::iter;
+use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
 use wasm_encoder::{
@@ -16,7 +15,7 @@ use crate::parse::{
    AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureDefinition, ProcedureId, Program, UnOp,
    UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::GlobalKind;
+use crate::semantic_analysis::{GlobalInfo, GlobalKind};
 use crate::size_info::{aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm};
 use crate::type_data::{ExpressionType, FloatType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE};
 use crate::{CompilationConfig, Target};
@@ -28,7 +27,7 @@ struct GenerationContext<'a> {
    active_fcn: wasm_encoder::Function,
    type_manager: TypeManager<'a>,
    literal_offsets: HashMap<StrId, (u32, u32)>,
-   globals: HashSet<VariableId>,
+   global_info: &'a IndexMap<VariableId, GlobalInfo>,
    static_addresses: HashMap<VariableId, u32>,
    stack_offsets_mem: HashMap<usize, u32>,
    user_defined_types: &'a UserDefinedTypeInfo,
@@ -202,13 +201,18 @@ pub fn sort_globals(program: &mut Program, target: Target) {
 // 0-l literals
 // l-s statics
 // s+ program stack (local variables and parameters are pushed here during runtime)
-pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &CompilationConfig, mut regalloc_result: RegallocResult) -> Vec<u8> {
+pub fn emit_wasm(
+   program: &mut Program,
+   interner: &mut Interner,
+   config: &CompilationConfig,
+   mut regalloc_result: RegallocResult,
+) -> Vec<u8> {
    let mut generation_context = GenerationContext {
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
       type_manager: TypeManager::new(&program.user_defined_types, config.target),
       literal_offsets: HashMap::with_capacity(program.literals.len()),
       static_addresses: HashMap::with_capacity(program.global_info.len()),
-      globals: HashSet::with_capacity(program.global_info.len()),
+      global_info: &program.global_info,
       stack_offsets_mem: HashMap::new(),
       user_defined_types: &program.user_defined_types,
       sum_sizeof_locals_mem: 0,
@@ -301,7 +305,6 @@ pub fn emit_wasm(program: &mut Program, interner: &mut Interner, config: &Compil
    for (static_var, static_details) in program.global_info.iter() {
       debug_assert!(static_details.kind != GlobalKind::Const);
 
-      generation_context.globals.insert(*static_var);
       if generation_context.var_to_slot.contains_key(static_var) {
          continue;
       }
@@ -749,7 +752,7 @@ fn register_for_var(expr_id: ExpressionId, generation_context: &GenerationContex
          .var_to_slot
          .get(v)
          .and_then(|x| if let VarSlot::Register(v) = x { Some(*v) } else { None })
-         .map(|x| (generation_context.globals.contains(v), x)),
+         .map(|x| (generation_context.global_info.contains_key(v), x)),
       _ => None,
    }
 }
@@ -881,7 +884,7 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
 
 fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) {
    let size = sizeof_type_mem(expr_type, udt, target);
-   buf.extend(iter::repeat(0).take(size as usize));
+   buf.extend(std::iter::repeat(0).take(size as usize));
 }
 
 fn literal_as_wasm_const(expr_index: ExpressionId, generation_context: &mut GenerationContext) -> ConstExpr {

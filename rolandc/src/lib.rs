@@ -297,7 +297,12 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       backend::qbe::replace_main_return_val(&mut ctx.program, &ctx.interner);
       Ok(backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, regalloc_result))
    } else {
-      Ok(backend::wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, config, regalloc_result))
+      Ok(backend::wasm::emit_wasm(
+         &mut ctx.program,
+         &mut ctx.interner,
+         config,
+         regalloc_result,
+      ))
    }
 }
 
