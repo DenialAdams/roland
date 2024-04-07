@@ -326,3 +326,27 @@ fn bucket_alignment(x: u32) -> u32 {
       4
    }
 }
+
+pub fn kill_self_assignments(program: &mut Program, var_to_slot: &IndexMap<VariableId, VarSlot>) {
+   for body in program.procedure_bodies.values_mut() {
+      for bb in body.cfg.bbs.iter_mut() {
+         for instr in bb.instructions.iter_mut() {
+            let CfgInstruction::Assignment(lhs, rhs) = *instr else {
+               continue;
+            };
+            let Expression::Variable(l_var) = program.ast.expressions[lhs].expression else {
+               continue;
+            };
+            let Expression::Variable(r_var) = program.ast.expressions[rhs].expression else {
+               continue;
+            };
+            let lhs_slot = var_to_slot.get(&l_var);
+            let rhs_slot = var_to_slot.get(&r_var);
+            if lhs_slot.is_none() || lhs_slot != rhs_slot {
+               continue;
+            }
+            *instr = CfgInstruction::Nop;
+         }
+      }
+   }
+}
