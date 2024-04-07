@@ -5,7 +5,7 @@ use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
 use super::linearize::{post_order, Cfg, CfgInstruction};
-use super::liveness::compute_live_intervals;
+use super::liveness::LiveInterval;
 use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::parse::{
    CastType, Expression, ExpressionId, ExpressionPool, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId,
@@ -32,7 +32,11 @@ pub struct RegallocResult {
    pub procedure_stack_slots: SecondaryMap<ProcedureId, Vec<(u32, u32)>>,
 }
 
-pub fn assign_variables_to_registers_and_mem(program: &Program, config: &CompilationConfig) -> RegallocResult {
+pub fn assign_variables_to_registers_and_mem(
+   program: &Program,
+   config: &CompilationConfig,
+   program_liveness: &SecondaryMap<ProcedureId, IndexMap<VariableId, LiveInterval>>,
+) -> RegallocResult {
    let mut escaping_vars = HashMap::new();
 
    let mut result = RegallocResult {
@@ -56,8 +60,6 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
       let mut total_stack_slots = 0;
 
       mark_escaping_vars_cfg(&body.cfg, &mut escaping_vars, &program.ast.expressions);
-
-      let live_intervals = compute_live_intervals(body, &program.ast.expressions);
 
       if config.target != Target::Qbe {
          // For WASM, all parameters start in registers
@@ -83,6 +85,7 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
          }
       }
 
+      let live_intervals = &program_liveness[proc_id];
       for (var, range) in live_intervals.iter() {
          if result.var_to_slot.contains_key(var) {
             // We have already assigned this var, which means it must be a parameter

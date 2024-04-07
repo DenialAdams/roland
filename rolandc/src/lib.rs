@@ -53,6 +53,7 @@ use interner::Interner;
 pub use parse::Program;
 use parse::{ImportNode, ProcImplSource};
 use semantic_analysis::{definite_assignment, GlobalKind};
+use slotmap::SecondaryMap;
 use source_info::SourcePath;
 use type_data::IntWidth;
 
@@ -291,7 +292,21 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       backend::wasm::sort_globals(&mut ctx.program, config.target);
    }
 
-   let regalloc_result = { backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config) };
+   let regalloc_result = {
+      let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
+      for (id, body) in ctx.program.procedure_bodies.iter_mut() {
+         let live_intervals = backend::liveness::compute_live_intervals(body, &ctx.program.ast.expressions);
+         backend::liveness::kill_assignments_to_dead_variables(
+            body,
+            &live_intervals,
+            &ctx.program.ast.expressions,
+            &ctx.program.global_info,
+         );
+         program_liveness.insert(id, live_intervals);
+      }
+
+      backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config, &program_liveness)
+   };
 
    if config.target == Target::Qbe {
       backend::qbe::replace_main_return_val(&mut ctx.program, &ctx.interner);

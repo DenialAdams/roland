@@ -23,6 +23,7 @@ pub enum CfgInstruction {
    Return(ExpressionId),
    IfElse(ExpressionId, usize, usize, usize), // Condition, Then, Else, Merge
    Loop(usize, usize),                        // Continue, Break
+   Nop,
 }
 
 #[derive(Clone)]

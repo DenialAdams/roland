@@ -740,7 +740,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
                generation_context.active_fcn.instruction(&Instruction::Return);
             }
          }
-         CfgInstruction::ConditionalJump(_, _, _) | CfgInstruction::Jump(_) => (),
+         CfgInstruction::ConditionalJump(_, _, _) | CfgInstruction::Jump(_) | CfgInstruction::Nop => (),
       }
    }
 }

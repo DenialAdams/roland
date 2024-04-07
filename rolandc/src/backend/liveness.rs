@@ -3,7 +3,9 @@ use indexmap::{IndexMap, IndexSet};
 
 use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE};
 use crate::backend::linearize::post_order;
+use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, VariableId};
+use crate::semantic_analysis::GlobalInfo;
 use crate::type_data::ExpressionType;
 
 #[derive(Clone)]
@@ -12,6 +14,32 @@ struct LivenessState {
    live_out: BitBox,
    gen: BitBox,
    kill: BitBox,
+}
+
+pub fn kill_assignments_to_dead_variables(
+   body: &mut ProcedureBody,
+   live_intervals: &IndexMap<VariableId, LiveInterval>,
+   ast: &ExpressionPool,
+   globals: &IndexMap<VariableId, GlobalInfo>,
+) {
+   for bb in body.cfg.bbs.iter_mut() {
+      for instr in bb.instructions.iter_mut() {
+         let CfgInstruction::Assignment(lhs, rhs) = *instr else {
+            continue;
+         };
+         let Expression::Variable(l_var) = ast[lhs].expression else {
+            continue;
+         };
+         if live_intervals.contains_key(&l_var) || globals.contains_key(&l_var) {
+            continue;
+         }
+         *instr = if expression_could_have_side_effects(rhs, ast) {
+            CfgInstruction::Expression(rhs)
+         } else {
+            CfgInstruction::Nop
+         };
+      }
+   }
 }
 
 #[must_use]
@@ -59,12 +87,13 @@ fn liveness(
          match instruction {
             CfgInstruction::Assignment(lhs, rhs) => {
                gen_for_expr(*rhs, &mut s.gen, &mut s.kill, ast, procedure_vars);
-               gen_for_expr(*lhs, &mut s.gen, &mut s.kill, ast, procedure_vars);
                if let Expression::Variable(v) = ast[*lhs].expression {
                   if let Some(di) = procedure_vars.get_index_of(&v) {
                      s.gen.set(di, false);
                      s.kill.set(di, true);
                   }
+               } else {
+                  gen_for_expr(*lhs, &mut s.gen, &mut s.kill, ast, procedure_vars);
                }
             }
             CfgInstruction::Expression(expr)
@@ -73,8 +102,11 @@ fn liveness(
             | CfgInstruction::ConditionalJump(expr, _, _) => {
                gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, procedure_vars);
             }
-            CfgInstruction::Break | CfgInstruction::Continue => (),
-            CfgInstruction::Jump(_) | CfgInstruction::Loop(_, _) => (),
+            CfgInstruction::Break
+            | CfgInstruction::Continue
+            | CfgInstruction::Nop
+            | CfgInstruction::Jump(_)
+            | CfgInstruction::Loop(_, _) => (),
          }
       }
    }
@@ -128,36 +160,29 @@ fn liveness(
          let mut current_live_variables = s.live_out.clone();
          for (i, instruction) in bb.instructions.iter().enumerate().rev() {
             let pi = ProgramIndex(rpo_index, i);
-            let var_to_kill = match instruction {
+            match instruction {
                CfgInstruction::Assignment(lhs, rhs) => {
                   update_live_variables_for_expr(*rhs, &mut current_live_variables, ast, procedure_vars);
-                  update_live_variables_for_expr(*lhs, &mut current_live_variables, ast, procedure_vars);
                   if let Expression::Variable(v) = ast[*lhs].expression {
-                     Some(v)
+                     if let Some(di) = procedure_vars.get_index_of(&v) {
+                        current_live_variables.set(di, false);
+                     }
                   } else {
-                     None
+                     update_live_variables_for_expr(*lhs, &mut current_live_variables, ast, procedure_vars);
                   }
                }
                CfgInstruction::Expression(expr) => {
                   update_live_variables_for_expr(*expr, &mut current_live_variables, ast, procedure_vars);
-                  None
                }
                CfgInstruction::Return(expr) => {
                   update_live_variables_for_expr(*expr, &mut current_live_variables, ast, procedure_vars);
-                  None
                }
                CfgInstruction::IfElse(expr, _, _, _) | CfgInstruction::ConditionalJump(expr, _, _) => {
                   update_live_variables_for_expr(*expr, &mut current_live_variables, ast, procedure_vars);
-                  None
                }
-               _ => None,
+               _ => (),
             };
             all_liveness.insert(pi, current_live_variables.clone());
-            if let Some(v) = var_to_kill {
-               if let Some(di) = procedure_vars.get_index_of(&v) {
-                  current_live_variables.set(di, false);
-               }
-            }
          }
       }
    }
