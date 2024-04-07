@@ -1617,14 +1617,14 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
 
 fn complement_val(t_type: &ExpressionType, wasm_type: ValType, generation_context: &mut GenerationContext) {
    let magic_const: u64 = match *t_type {
-      crate::type_data::U8_TYPE => u64::from(std::u8::MAX),
-      crate::type_data::U16_TYPE => u64::from(std::u16::MAX),
-      crate::type_data::U32_TYPE => u64::from(std::u32::MAX),
-      crate::type_data::U64_TYPE => std::u64::MAX,
-      crate::type_data::I8_TYPE => u64::from(std::u32::MAX),
-      crate::type_data::I16_TYPE => u64::from(std::u32::MAX),
-      crate::type_data::I32_TYPE => u64::from(std::u32::MAX),
-      crate::type_data::I64_TYPE => std::u64::MAX,
+      crate::type_data::U8_TYPE => u64::from(u8::MAX),
+      crate::type_data::U16_TYPE => u64::from(u16::MAX),
+      crate::type_data::U32_TYPE => u64::from(u32::MAX),
+      crate::type_data::U64_TYPE => u64::MAX,
+      crate::type_data::I8_TYPE => u64::from(u32::MAX),
+      crate::type_data::I16_TYPE => u64::from(u32::MAX),
+      crate::type_data::I32_TYPE => u64::from(u32::MAX),
+      crate::type_data::I64_TYPE => u64::MAX,
       _ => unreachable!(),
    };
    match wasm_type {

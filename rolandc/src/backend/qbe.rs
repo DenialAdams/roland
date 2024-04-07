@@ -883,14 +883,14 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                   writeln!(ctx.buf, "ceqw {}, 0", inner_val).unwrap();
                } else {
                   let magic_const: u64 = match *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() {
-                     crate::type_data::U8_TYPE => u64::from(std::u8::MAX),
-                     crate::type_data::U16_TYPE => u64::from(std::u16::MAX),
-                     crate::type_data::U32_TYPE => u64::from(std::u32::MAX),
-                     crate::type_data::U64_TYPE => std::u64::MAX,
-                     crate::type_data::I8_TYPE => u64::from(std::u32::MAX),
-                     crate::type_data::I16_TYPE => u64::from(std::u32::MAX),
-                     crate::type_data::I32_TYPE => u64::from(std::u32::MAX),
-                     crate::type_data::I64_TYPE => std::u64::MAX,
+                     crate::type_data::U8_TYPE => u64::from(u8::MAX),
+                     crate::type_data::U16_TYPE => u64::from(u16::MAX),
+                     crate::type_data::U32_TYPE => u64::from(u32::MAX),
+                     crate::type_data::U64_TYPE => u64::MAX,
+                     crate::type_data::I8_TYPE => u64::from(u32::MAX),
+                     crate::type_data::I16_TYPE => u64::from(u32::MAX),
+                     crate::type_data::I32_TYPE => u64::from(u32::MAX),
+                     crate::type_data::I64_TYPE => u64::MAX,
                      _ => unreachable!(),
                   };
                   writeln!(ctx.buf, "xor {}, {}", inner_val, magic_const).unwrap();

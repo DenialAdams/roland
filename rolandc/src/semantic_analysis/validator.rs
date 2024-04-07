@@ -1819,7 +1819,7 @@ fn get_type(
          }
 
          // @U32Arrays
-         let max_elems = std::u32::MAX as usize;
+         let max_elems = u32::MAX as usize;
          if elems.len() > max_elems {
             any_error = true;
             rolandc_error!(
