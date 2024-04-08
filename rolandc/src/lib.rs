@@ -12,11 +12,9 @@
 #![allow(clippy::missing_errors_doc)] // Nothing is documented
 #![allow(clippy::missing_panics_doc)] // Nothing is documented
 #![allow(clippy::module_name_repetitions)] // I don't really care that much
-#![allow(clippy::match_wildcard_for_single_variants)] // False positives
 #![allow(clippy::new_without_default)] // I don't want dead code
 #![allow(clippy::result_unit_err)] // This is based on a notion of public that doesn't really apply for me
 #![allow(clippy::needless_bitwise_bool)] // Sometimes I just don't want branches, man
-#![allow(clippy::let_underscore_untyped)] // looks weird with no let
 #![feature(extract_if)]
 
 mod backend;
