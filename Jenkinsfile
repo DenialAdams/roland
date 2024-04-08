@@ -1,6 +1,10 @@
 pipeline {
    agent any
 
+   environment {
+      CARGO_INCREMENTAL = "0"
+   }
+
    stages {
       stage('Wasm Build') {
          steps {

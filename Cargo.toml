@@ -10,7 +10,10 @@ members = [
 
 [profile.release]
 panic = "abort"
+# Overriden in CI to false
+incremental = true
 
 [profile.dhat]
 inherits = "release"
 debug = true
+incremental = false
