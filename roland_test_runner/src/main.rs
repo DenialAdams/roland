@@ -29,6 +29,7 @@ struct Opts {
    tc_path: PathBuf,
    overwrite_error_files: bool,
    amd64: bool,
+   preserve_artifacts: bool,
 }
 
 fn parse_path(s: &std::ffi::OsStr) -> Result<std::path::PathBuf, &'static str> {
@@ -45,6 +46,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
       tc_path: cli_path,
       overwrite_error_files: pargs.contains("--overwrite-error-files"),
       amd64: pargs.contains("--amd64"),
+      preserve_artifacts: pargs.contains("--preserve-artifacts"),
    };
 
    let remaining_args = pargs.finish();
@@ -112,7 +114,7 @@ fn main() -> Result<(), &'static str> {
       } else {
          Command::new(&opts.tc_path).arg(entry.clone()).output().unwrap()
       };
-      let test_ok = test_result(&tc_output, entry, opts.amd64);
+      let test_ok = test_result(&tc_output, entry, opts.amd64, opts.preserve_artifacts);
       // prevents stdout and stderr from mixing
       let _ol = output_lock.lock();
       match test_ok {
@@ -250,7 +252,7 @@ fn print_diff<W: Write>(t: &mut W, expected: &str, actual: &str) {
    writeln!(t, "{}", SimpleDiff::from_str(expected, actual, "expected", "actual")).unwrap();
 }
 
-fn test_result(tc_output: &Output, t_file_path: &Path, amd64: bool) -> Result<(), TestFailureReason> {
+fn test_result(tc_output: &Output, t_file_path: &Path, amd64: bool, preserve_artifacts: bool) -> Result<(), TestFailureReason> {
    let td = extract_test_data(t_file_path, amd64);
 
    let stderr_text = String::from_utf8_lossy(&tc_output.stderr);
@@ -323,8 +325,19 @@ fn test_result(tc_output: &Output, t_file_path: &Path, amd64: bool) -> Result<()
          return Err(TestFailureReason::MismatchedExecutionOutput(ero, prog_output));
       }
 
+      if preserve_artifacts && !amd64 {
+         let mut out_path = prog_path.clone();
+         out_path.set_extension("wat");
+         let mut prog_command = Command::new("wasm2wat");
+         prog_command.arg("-o");
+         prog_command.arg(out_path.as_os_str());
+         prog_command.arg(prog_path.as_os_str());
+         prog_command.status().unwrap();
+      }
+
       std::fs::remove_file(&prog_path).unwrap();
-      if amd64 {
+
+      if amd64 && !preserve_artifacts {
          prog_path.set_extension("s");
          std::fs::remove_file(&prog_path).unwrap();
          prog_path.set_extension("ssa");

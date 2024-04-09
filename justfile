@@ -43,3 +43,9 @@ rolandc_samply *args:
    samply record -r 10000 {{justfile_directory()}}/target/dhat/rolandc_cli {{args}}
 prepare-release kind="patch":
    cd roland-vscode && npm version {{kind}}
+test-all-preserve-artifacts:
+   cargo build {{release_flag}} --bin rolandc_cli
+   cargo run --release --bin roland_test_runner -- --cli {{justfile_directory()}}/target/{{release_text}}/rolandc_cli tests/ --amd64 --preserve-artifacts
+   cargo run --release --bin roland_test_runner -- --cli {{justfile_directory()}}/target/{{release_text}}/rolandc_cli tests/ --preserve-artifacts
+baseline: test-all-preserve-artifacts
+   cp -r tests/ tests_baseline/
