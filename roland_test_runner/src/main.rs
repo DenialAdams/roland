@@ -252,7 +252,12 @@ fn print_diff<W: Write>(t: &mut W, expected: &str, actual: &str) {
    writeln!(t, "{}", SimpleDiff::from_str(expected, actual, "expected", "actual")).unwrap();
 }
 
-fn test_result(tc_output: &Output, t_file_path: &Path, amd64: bool, preserve_artifacts: bool) -> Result<(), TestFailureReason> {
+fn test_result(
+   tc_output: &Output,
+   t_file_path: &Path,
+   amd64: bool,
+   preserve_artifacts: bool,
+) -> Result<(), TestFailureReason> {
    let td = extract_test_data(t_file_path, amd64);
 
    let stderr_text = String::from_utf8_lossy(&tc_output.stderr);

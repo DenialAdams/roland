@@ -17,7 +17,6 @@ struct DceCtx<'a> {
    worklist: Vec<WorkItem>,
    global_info: &'a IndexMap<VariableId, GlobalInfo>,
    literals: &'a mut IndexSet<StrId>,
-   used_locals: HashSet<VariableId>,
 }
 
 pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner: &mut Interner, target: Target) {
@@ -25,7 +24,6 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
       worklist: Vec::new(),
       global_info: &program.global_info,
       literals: &mut program.literals,
-      used_locals: HashSet::new(),
    };
 
    let mut reachable_procedures: HashSet<ProcedureId> = HashSet::new();
@@ -49,19 +47,7 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
             }
 
             if let Some(body) = program.procedure_bodies.get_mut(reachable_proc) {
-               ctx.used_locals.clear();
-               for param_var in program.procedures[reachable_proc]
-                  .definition
-                  .parameters
-                  .iter()
-                  .map(|x| x.var_id)
-               {
-                  ctx.used_locals.insert(param_var);
-               }
-
                mark_reachable_block(&body.block, &program.ast, &mut ctx);
-
-               body.locals.retain(|k: &VariableId, _| ctx.used_locals.contains(k));
             }
          }
          WorkItem::Static(reachable_global) => {
@@ -147,9 +133,8 @@ fn mark_reachable_expr(expr: ExpressionId, ast: &AstPool, ctx: &mut DceCtx) {
       Expression::Variable(var_id) => {
          if ctx.global_info.contains_key(var_id) {
             ctx.worklist.push(WorkItem::Static(*var_id));
-         } else {
-            ctx.used_locals.insert(*var_id);
          }
+         // Local variables will be eliminated later, more proficiently, with liveness
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
          mark_reachable_expr(*lhs, ast, ctx);
