@@ -53,7 +53,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
 
    if !remaining_args.is_empty() {
       let remaining_args_unicode: Vec<_> = remaining_args.iter().map(|x| x.to_string_lossy()).collect();
-      eprintln!("Unrecognized arugments: '{}'", remaining_args_unicode.join("', '"));
+      eprintln!("Unrecognized arguments: '{}'", remaining_args_unicode.join("', '"));
       std::process::exit(1);
    }
 
