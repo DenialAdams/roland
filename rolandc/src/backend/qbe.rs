@@ -1075,7 +1075,7 @@ fn emit_load(buf: &mut Vec<u8>, load_target: &str, a_type: &ExpressionType) {
          writeln!(buf, "loads {}", load_target).unwrap();
       }
       &F64_TYPE => {
-         writeln!(buf, "loads {}", load_target).unwrap();
+         writeln!(buf, "loadd {}", load_target).unwrap();
       }
       _ => unreachable!(),
    }
