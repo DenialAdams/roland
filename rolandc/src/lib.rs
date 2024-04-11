@@ -6,7 +6,6 @@
 #![allow(clippy::cast_sign_loss)] // I am aware
 #![allow(clippy::cast_possible_wrap)] // I am aware
 #![allow(clippy::cast_possible_truncation)] // I am aware
-#![allow(clippy::single_match_else)] // Not always an improvement in my opinion
 #![allow(clippy::missing_errors_doc)] // Nothing is documented
 #![allow(clippy::missing_panics_doc)] // Nothing is documented
 #![allow(clippy::module_name_repetitions)] // I don't really care that much

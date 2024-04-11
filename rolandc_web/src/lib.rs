@@ -1,6 +1,5 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::uninlined_format_args)] // I'm an old man and I like the way it was before
-#![allow(clippy::single_match_else)] // Not always an improvement in my opinion
 #![allow(clippy::missing_panics_doc)] // We don't have any documentation
 #![allow(clippy::missing_errors_doc)] // We don't have any documentation
 
@@ -89,15 +88,11 @@ pub fn compile_and_update_all(source_code: &str) -> Option<CompilationOutput> {
 
    ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner);
 
-   let err_s = String::from_utf8(err_out).ok();
-   match compile_result {
-      Ok(v) => {
-         let disasm = wasmprinter::print_bytes(v.as_slice()).unwrap();
-         Some(CompilationOutput { bytes: v, disasm })
-      }
-      Err(_) => {
-         output_frame.set_text_content(err_s.as_deref());
-         None
-      }
+   if let Ok(v) = compile_result {
+      let disasm = wasmprinter::print_bytes(v.as_slice()).unwrap();
+      Some(CompilationOutput { bytes: v, disasm })
+   } else {
+      output_frame.set_text_content(String::from_utf8(err_out).ok().as_deref());
+      None
    }
 }

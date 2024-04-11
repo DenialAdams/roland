@@ -477,17 +477,14 @@ pub fn populate_type_and_procedure_info(
       }
 
       for constraint in proc.definition.constraints.iter() {
-         let matching_generic_param = match proc.definition.type_parameters.iter().find(|x| x.str == *constraint.0) {
-            Some(x) => x.str,
-            None => {
-               rolandc_error!(
-                  err_manager,
-                  proc.location,
-                  "A constraint was declared on {}, but there is no matching generic parameter by that name",
-                  interner.lookup(*constraint.0),
-               );
-               continue;
-            }
+         let Some(matching_generic_param) = proc.definition.type_parameters.iter().find(|x| x.str == *constraint.0).map(|x| x.str) else {
+            rolandc_error!(
+               err_manager,
+               proc.location,
+               "A constraint was declared on {}, but there is no matching generic parameter by that name",
+               interner.lookup(*constraint.0),
+            );
+            continue;
          };
 
          for constraint_trait_name in constraint.1.iter() {
