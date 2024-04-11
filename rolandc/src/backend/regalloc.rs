@@ -269,16 +269,18 @@ fn mark_escaping_vars_expr(
             }
          }
       }
-      Expression::Variable(_) => (),
-      Expression::EnumLiteral(_, _) => (),
-      Expression::BoundFcnLiteral(_, _) => (),
-      Expression::BoolLiteral(_) => (),
-      Expression::StringLiteral(_) => (),
-      Expression::UnitLiteral => (),
-      Expression::IntLiteral { .. } => (),
-      Expression::FloatLiteral(_) => (),
-      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      Expression::Variable(_)
+      | Expression::EnumLiteral(_, _)
+      | Expression::BoundFcnLiteral(_, _)
+      | Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_)
+      | Expression::UnitLiteral
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_) => (),
+      Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 }
 
