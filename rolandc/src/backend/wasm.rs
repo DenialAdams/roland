@@ -85,8 +85,7 @@ fn type_to_wasm_type_basic(t: &ExpressionType) -> ValType {
          FloatWidth::Eight => ValType::F64,
          FloatWidth::Four => ValType::F32,
       },
-      ExpressionType::Bool => ValType::I32,
-      ExpressionType::ProcedurePointer { .. } => ValType::I32,
+      ExpressionType::ProcedurePointer { .. } | ExpressionType::Bool => ValType::I32,
       x => {
          unreachable!("{:?}", x);
       }
@@ -791,7 +790,6 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
       Expression::BoolLiteral(x) => {
          buf.extend(u8::from(*x).to_le_bytes());
       }
-      Expression::EnumLiteral(_, _) => unreachable!(),
       Expression::IntLiteral { val: x, .. } => {
          let width = match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => x.width,
@@ -951,7 +949,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             .active_fcn
             .instruction(&Instruction::I32Const(i32::from(*x)));
       }
-      Expression::EnumLiteral(_, _) => unreachable!(),
       Expression::IntLiteral { val: x, .. } => {
          let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
          match wasm_type {
@@ -989,7 +986,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                IntWidth::Eight => (ValType::I64, x.signed),
                _ => (ValType::I32, x.signed),
             },
-            ExpressionType::Enum(_) => unreachable!(),
             ExpressionType::Float(x) => match x.width {
                FloatWidth::Eight => (ValType::F64, false),
                FloatWidth::Four => (ValType::F32, false),
@@ -1546,7 +1542,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             _ => unreachable!(),
          };
       }
-      Expression::StructLiteral(_, _) => unreachable!(),
       Expression::FieldAccess(field_name, lhs_id) => {
          fn calculate_offset(lhs_type: &ExpressionType, field_name: StrId, generation_context: &mut GenerationContext) {
             let mem_offset = match lhs_type {
@@ -1578,7 +1573,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          // TODO: for an expression like foo.bar.baz, we will emit 3 const adds, when they should be fused
          calculate_offset(lhs.exp_type.as_ref().unwrap(), *field_name, generation_context);
       }
-      Expression::ArrayLiteral(_) => unreachable!(),
       Expression::ArrayIndex { array, index } => {
          fn calculate_offset(array: ExpressionId, index_e: ExpressionId, generation_context: &mut GenerationContext) {
             let sizeof_inner = match &generation_context.ast.expressions[array].exp_type {
@@ -1607,8 +1601,13 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          do_emit(*array, generation_context);
          calculate_offset(*array, *index, generation_context);
       }
-      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      Expression::EnumLiteral(_, _)
+      | Expression::StructLiteral(_, _)
+      | Expression::ArrayLiteral(_)
+      | Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
    if expr_node.exp_type.as_ref().unwrap().is_never() {
       generation_context.active_fcn.instruction(&Instruction::Unreachable);
@@ -1619,12 +1618,11 @@ fn complement_val(t_type: &ExpressionType, wasm_type: ValType, generation_contex
    let magic_const: u64 = match *t_type {
       crate::type_data::U8_TYPE => u64::from(u8::MAX),
       crate::type_data::U16_TYPE => u64::from(u16::MAX),
-      crate::type_data::U32_TYPE => u64::from(u32::MAX),
-      crate::type_data::U64_TYPE => u64::MAX,
-      crate::type_data::I8_TYPE => u64::from(u32::MAX),
-      crate::type_data::I16_TYPE => u64::from(u32::MAX),
-      crate::type_data::I32_TYPE => u64::from(u32::MAX),
-      crate::type_data::I64_TYPE => u64::MAX,
+      crate::type_data::U32_TYPE
+      | crate::type_data::I8_TYPE
+      | crate::type_data::I16_TYPE
+      | crate::type_data::I32_TYPE => u64::from(u32::MAX),
+      crate::type_data::I64_TYPE | crate::type_data::U64_TYPE => u64::MAX,
       _ => unreachable!(),
    };
    match wasm_type {

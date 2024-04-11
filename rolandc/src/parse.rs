@@ -261,9 +261,8 @@ impl Expression {
    #[must_use]
    pub fn is_lvalue_disregard_consts(&self, expressions: &ExpressionPool) -> bool {
       match self {
-         Expression::Variable(_) => true,
+         Expression::Variable(_) | Expression::UnaryOperator(UnOp::Dereference, _) => true,
          Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue_disregard_consts(expressions),
-         Expression::UnaryOperator(UnOp::Dereference, _) => true,
          Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue_disregard_consts(expressions),
          Expression::UnresolvedVariable(_) => unreachable!(),
          _ => false,
@@ -658,8 +657,8 @@ pub fn astify(
             | Token::KeywordUnionDef
             | Token::KeywordEnumDef
             | Token::KeywordBuiltin
-            | Token::KeywordExtern => break,
-            Token::Eof => break,
+            | Token::KeywordExtern
+            | Token::Eof => break,
             _ => {
                let _ = lexer.next();
                continue;
@@ -1786,19 +1785,15 @@ fn pratt(
 
 fn prefix_binding_power(op: &Token) -> ((), u8) {
    match op {
-      Token::Exclam => ((), 19),
-      Token::Minus => ((), 19),
-      Token::Amp => ((), 19),
+      Token::Exclam | Token::Minus | Token::Amp => ((), 19),
       _ => unreachable!(),
    }
 }
 
 fn postfix_binding_power(op: Token) -> Option<(u8, ())> {
    match &op {
-      Token::OpenParen => Some((21, ())),
-      Token::OpenSquareBracket => Some((21, ())),
-      Token::KeywordAs => Some((18, ())),
-      Token::KeywordTransmute => Some((18, ())),
+      Token::OpenParen | Token::OpenSquareBracket => Some((21, ())),
+      Token::KeywordAs | Token::KeywordTransmute => Some((18, ())),
       Token::Deref => Some((20, ())),
       _ => None,
    }

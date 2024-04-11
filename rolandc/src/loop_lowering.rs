@@ -243,27 +243,14 @@ fn lower_block(block: &mut BlockNode, ctx: &mut LowerForContext, ast: &mut AstPo
 fn lower_statement(statement: StatementId, ctx: &mut LowerForContext, ast: &mut AstPool) {
    let mut the_statement = std::mem::replace(&mut ast.statements[statement].statement, Statement::Break);
    match &mut the_statement {
-      Statement::Block(block) => {
-         lower_block(block, ctx, ast);
-      }
       Statement::IfElse(_, if_block, else_statement) => {
          lower_block(if_block, ctx, ast);
          lower_statement(*else_statement, ctx, ast);
       }
-      Statement::For {
-         induction_var_name: _,
-         range_start: _,
-         range_end: _,
-         body: block,
-         range_inclusive: _,
-         induction_var: _,
-      } => {
-         lower_block(block, ctx, ast);
-      }
-      Statement::While(_, block) => {
-         lower_block(block, ctx, ast);
-      }
-      Statement::Loop(block) => {
+      Statement::Block(block)
+      | Statement::For { body: block, .. }
+      | Statement::While(_, block)
+      | Statement::Loop(block) => {
          lower_block(block, ctx, ast);
       }
       Statement::Defer(the_stmt) => {
@@ -280,11 +267,12 @@ fn lower_statement(statement: StatementId, ctx: &mut LowerForContext, ast: &mut 
          }
          lower_statement(*the_stmt, ctx, ast);
       }
-      Statement::Return(_) => (),
-      Statement::Break | Statement::Continue => (),
-      Statement::Assignment(_, _) => (),
-      Statement::Expression(_) => (),
-      Statement::VariableDeclaration(_, _, _, _) => (),
+      Statement::Return(_)
+      | Statement::Break
+      | Statement::Continue
+      | Statement::Assignment(_, _)
+      | Statement::Expression(_)
+      | Statement::VariableDeclaration(_, _, _, _) => (),
    }
    ast.statements[statement].statement = the_statement;
 }

@@ -186,13 +186,13 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
             cg_expr(*expr, cg_context, err_manager);
          }
       }
-      Expression::EnumLiteral(_, _) => (),
-      Expression::BoolLiteral(_) => (),
-      Expression::StringLiteral(_) => (),
-      Expression::IntLiteral { .. } => (),
-      Expression::FloatLiteral(_) => (),
-      Expression::UnitLiteral => (),
-      Expression::BoundFcnLiteral(_, _) => (),
+      Expression::EnumLiteral(_, _)
+      | Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_)
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_)
+      | Expression::UnitLiteral
+      | Expression::BoundFcnLiteral(_, _) => (),
    }
    cg_context.ast.expressions[expr_index].expression = the_expr;
 }

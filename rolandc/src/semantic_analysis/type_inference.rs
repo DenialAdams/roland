@@ -12,10 +12,10 @@ fn unknowns_are_compatible(x: TypeVariable, y: TypeVariable, validation_context:
 
    match (x_data.constraint, y_data.constraint) {
       (x, y) if x == y => true,
-      (TypeConstraint::None, _) => true,
-      (_, TypeConstraint::None) => true,
-      (TypeConstraint::Int, TypeConstraint::SignedInt) => true,
-      (TypeConstraint::SignedInt, TypeConstraint::Int) => true,
+      (TypeConstraint::None, _)
+      | (_, TypeConstraint::None)
+      | (TypeConstraint::Int, TypeConstraint::SignedInt)
+      | (TypeConstraint::SignedInt, TypeConstraint::Int) => true,
       _ => false,
    }
 }
@@ -257,18 +257,19 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             .as_mut()
             .unwrap() = e_type.clone();
       }
-      Expression::StringLiteral(_) => unreachable!(),
-      Expression::EnumLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedVariable(_) => unreachable!(),
-      Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::ProcedureCall { .. } => unreachable!(),
-      Expression::StructLiteral(_, _) => unreachable!(),
-      Expression::FieldAccess(_, _) => unreachable!(),
-      Expression::UnitLiteral => unreachable!(),
-      Expression::BoundFcnLiteral(_, _) => unreachable!(),
-      Expression::Cast { .. } => unreachable!(),
-      Expression::BoolLiteral(_) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      Expression::StringLiteral(_)
+      | Expression::EnumLiteral(_, _)
+      | Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::ProcedureCall { .. }
+      | Expression::StructLiteral(_, _)
+      | Expression::FieldAccess(_, _)
+      | Expression::UnitLiteral
+      | Expression::BoundFcnLiteral(_, _)
+      | Expression::Cast { .. }
+      | Expression::BoolLiteral(_)
+      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
    validation_context.ast.expressions[expr_index].expression = the_expr;
 }
@@ -280,10 +281,8 @@ fn get_type_variable_of_unknown_type_and_associated_e_type<'b>(
    // Strip down the provided type to get its associated type variable
    match (unknown_type, type_coming_in) {
       (ExpressionType::Unknown(x), y) => Some((*x, y)),
-      (ExpressionType::Array(unknown_type_inner, _), ExpressionType::Array(type_coming_in_inner, _)) => {
-         get_type_variable_of_unknown_type_and_associated_e_type(unknown_type_inner, type_coming_in_inner)
-      }
-      (ExpressionType::Pointer(unknown_type_inner), ExpressionType::Pointer(type_coming_in_inner)) => {
+      (ExpressionType::Array(unknown_type_inner, _), ExpressionType::Array(type_coming_in_inner, _))
+      | (ExpressionType::Pointer(unknown_type_inner), ExpressionType::Pointer(type_coming_in_inner)) => {
          get_type_variable_of_unknown_type_and_associated_e_type(unknown_type_inner, type_coming_in_inner)
       }
       // other types can't contain unknown values, at least right now

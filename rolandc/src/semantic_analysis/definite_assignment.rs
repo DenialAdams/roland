@@ -151,9 +151,7 @@ fn ensure_all_variables_assigned_in_stmt(
          *assigned_vars_after_loop.as_mut().unwrap() &= assigned_vars.as_bitslice();
          assigned_vars.fill(true);
       }
-      Statement::For { .. } => unreachable!(),
-      Statement::While(_, _) => unreachable!(),
-      Statement::Defer(_) => unreachable!(),
+      Statement::For { .. } | Statement::While(_, _) | Statement::Defer(_) => unreachable!(),
    }
 }
 
@@ -202,16 +200,14 @@ fn ensure_expression_does_not_use_unassigned_variable(
             ensure_expression_does_not_use_unassigned_variable(item, assigned_vars, procedure_vars, pool, err_manager);
          }
       }
-      Expression::ArrayIndex { array, index } => {
-         ensure_expression_does_not_use_unassigned_variable(*array, assigned_vars, procedure_vars, pool, err_manager);
-         ensure_expression_does_not_use_unassigned_variable(*index, assigned_vars, procedure_vars, pool, err_manager);
-      }
-      Expression::BinaryOperator { operator: _, lhs, rhs } => {
-         ensure_expression_does_not_use_unassigned_variable(*lhs, assigned_vars, procedure_vars, pool, err_manager);
-         ensure_expression_does_not_use_unassigned_variable(*rhs, assigned_vars, procedure_vars, pool, err_manager);
-      }
-      Expression::UnaryOperator(_, e) => {
-         ensure_expression_does_not_use_unassigned_variable(*e, assigned_vars, procedure_vars, pool, err_manager);
+      Expression::ArrayIndex { array: a, index: b }
+      | Expression::BinaryOperator {
+         operator: _,
+         lhs: a,
+         rhs: b,
+      } => {
+         ensure_expression_does_not_use_unassigned_variable(*a, assigned_vars, procedure_vars, pool, err_manager);
+         ensure_expression_does_not_use_unassigned_variable(*b, assigned_vars, procedure_vars, pool, err_manager);
       }
       Expression::IfX(a, b, c) => {
          ensure_expression_does_not_use_unassigned_variable(*a, assigned_vars, procedure_vars, pool, err_manager);
@@ -223,19 +219,16 @@ fn ensure_expression_does_not_use_unassigned_variable(
             ensure_expression_does_not_use_unassigned_variable(*e, assigned_vars, procedure_vars, pool, err_manager);
          }
       }
-      Expression::FieldAccess(_, e) => {
+      Expression::FieldAccess(_, e) | Expression::UnaryOperator(_, e) | Expression::Cast { expr: e, .. } => {
          ensure_expression_does_not_use_unassigned_variable(*e, assigned_vars, procedure_vars, pool, err_manager);
       }
-      Expression::Cast { expr, .. } => {
-         ensure_expression_does_not_use_unassigned_variable(*expr, assigned_vars, procedure_vars, pool, err_manager);
-      }
-      Expression::BoolLiteral(_) => (),
-      Expression::StringLiteral(_) => (),
-      Expression::IntLiteral { .. } => (),
-      Expression::FloatLiteral(_) => (),
-      Expression::UnitLiteral => (),
-      Expression::EnumLiteral(_, _) => (),
-      Expression::BoundFcnLiteral(_, _) => (),
+      Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_)
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_)
+      | Expression::UnitLiteral
+      | Expression::EnumLiteral(_, _)
+      | Expression::BoundFcnLiteral(_, _) => (),
       Expression::UnresolvedEnumLiteral(_, _)
       | Expression::UnresolvedProcLiteral(_, _)
       | Expression::UnresolvedVariable(_)

@@ -492,8 +492,7 @@ pub fn populate_type_and_procedure_info(
 
          for constraint_trait_name in constraint.1.iter() {
             match interner.lookup(*constraint_trait_name) {
-               "Enum" => (),
-               "Float" => (),
+               "Enum" | "Float" => (),
                _ => {
                   rolandc_error!(
                      err_manager,

@@ -81,13 +81,10 @@ fn mark_reachable_stmt(stmt: StatementId, ast: &AstPool, ctx: &mut DceCtx) {
          mark_reachable_expr(*lhs, ast, ctx);
          mark_reachable_expr(*rhs, ast, ctx);
       }
-      Statement::Block(bn) => {
+      Statement::Block(bn) | Statement::Loop(bn) => {
          mark_reachable_block(bn, ast, ctx);
       }
-      Statement::Loop(bn) => {
-         mark_reachable_block(bn, ast, ctx);
-      }
-      Statement::Expression(expr) => {
+      Statement::Expression(expr) | Statement::Return(expr) => {
          mark_reachable_expr(*expr, ast, ctx);
       }
       Statement::IfElse(cond, then, else_s) => {
@@ -95,14 +92,11 @@ fn mark_reachable_stmt(stmt: StatementId, ast: &AstPool, ctx: &mut DceCtx) {
          mark_reachable_block(then, ast, ctx);
          mark_reachable_stmt(*else_s, ast, ctx);
       }
-      Statement::Return(expr) => {
-         mark_reachable_expr(*expr, ast, ctx);
-      }
-      Statement::Continue => (),
-      Statement::Break => (),
-      Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
-      Statement::Defer(_) => unreachable!(),
-      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
+      Statement::Continue | Statement::Break => (),
+      Statement::VariableDeclaration(_, _, _, _)
+      | Statement::Defer(_)
+      | Statement::For { .. }
+      | Statement::While(_, _) => unreachable!(),
    }
 }
 
@@ -123,13 +117,9 @@ fn mark_reachable_expr(expr: ExpressionId, ast: &AstPool, ctx: &mut DceCtx) {
          mark_reachable_expr(*array, ast, ctx);
          mark_reachable_expr(*index, ast, ctx);
       }
-      Expression::BoolLiteral(_) => (),
       Expression::StringLiteral(lit) => {
          ctx.literals.insert(*lit);
       }
-      Expression::IntLiteral { .. } => (),
-      Expression::FloatLiteral(_) => (),
-      Expression::UnitLiteral => (),
       Expression::Variable(var_id) => {
          if ctx.global_info.contains_key(var_id) {
             ctx.worklist.push(WorkItem::Static(*var_id));
@@ -159,11 +149,17 @@ fn mark_reachable_expr(expr: ExpressionId, ast: &AstPool, ctx: &mut DceCtx) {
          mark_reachable_expr(*b, ast, ctx);
          mark_reachable_expr(*c, ast, ctx);
       }
-      Expression::EnumLiteral(_, _) => (),
       Expression::BoundFcnLiteral(id, _) => {
          ctx.worklist.push(WorkItem::Procedure(*id));
       }
-      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      Expression::BoolLiteral(_)
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_)
+      | Expression::UnitLiteral
+      | Expression::EnumLiteral(_, _) => (),
+      Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 }

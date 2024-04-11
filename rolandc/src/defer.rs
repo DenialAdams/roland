@@ -217,27 +217,20 @@ fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool, vm: &mut VarMigrator) -
          *lhs = deep_clone_expr(*lhs, &mut ast.expressions, vm);
          *rhs = deep_clone_expr(*rhs, &mut ast.expressions, vm);
       }
-      Statement::Block(bn) => {
+      Statement::Block(bn) | Statement::Loop(bn) => {
          deep_clone_block(bn, ast, vm);
       }
-      Statement::Loop(bn) => {
-         deep_clone_block(bn, ast, vm);
-      }
-      Statement::Continue => (),
-      Statement::Break => (),
+      Statement::Continue | Statement::Break => (),
       Statement::Defer(stmt) => {
          *stmt = deep_clone_stmt(*stmt, ast, vm);
       }
-      Statement::Expression(expr) => {
+      Statement::Expression(expr) | Statement::Return(expr) => {
          *expr = deep_clone_expr(*expr, &mut ast.expressions, vm);
       }
       Statement::IfElse(cond, then, else_s) => {
          *cond = deep_clone_expr(*cond, &mut ast.expressions, vm);
          deep_clone_block(then, ast, vm);
          *else_s = deep_clone_stmt(*else_s, ast, vm);
-      }
-      Statement::Return(expr) => {
-         *expr = deep_clone_expr(*expr, &mut ast.expressions, vm);
       }
       Statement::VariableDeclaration(_, decl_val, _, var_id) => {
          match decl_val {
@@ -271,16 +264,12 @@ fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool, vm: &mu
             *expr = deep_clone_expr(*expr, expressions, vm);
          }
       }
-      Expression::ArrayIndex { array, index } => {
-         *array = deep_clone_expr(*array, expressions, vm);
-         *index = deep_clone_expr(*index, expressions, vm);
-      }
       Expression::Variable(x) => {
          *x = vm.replacement_var(*x);
       }
-      Expression::BinaryOperator { lhs, rhs, .. } => {
-         *lhs = deep_clone_expr(*lhs, expressions, vm);
-         *rhs = deep_clone_expr(*rhs, expressions, vm);
+      Expression::BinaryOperator { lhs: a, rhs: b, .. } | Expression::ArrayIndex { array: a, index: b } => {
+         *a = deep_clone_expr(*a, expressions, vm);
+         *b = deep_clone_expr(*b, expressions, vm);
       }
       Expression::UnaryOperator(_, operand) => {
          *operand = deep_clone_expr(*operand, expressions, vm);
@@ -290,21 +279,20 @@ fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool, vm: &mu
             *field_expr = deep_clone_expr(*field_expr, expressions, vm);
          }
       }
-      Expression::FieldAccess(_, base) => {
-         *base = deep_clone_expr(*base, expressions, vm);
-      }
-      Expression::Cast { expr, .. } => {
+      Expression::FieldAccess(_, expr) | Expression::Cast { expr, .. } => {
          *expr = deep_clone_expr(*expr, expressions, vm);
       }
-      Expression::BoolLiteral(_) => (),
-      Expression::StringLiteral(_) => (),
-      Expression::IntLiteral { .. } => (),
-      Expression::FloatLiteral(_) => (),
-      Expression::UnitLiteral => (),
-      Expression::EnumLiteral(_, _) => (),
-      Expression::BoundFcnLiteral(_, _) => (),
-      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_)
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_)
+      | Expression::UnitLiteral
+      | Expression::EnumLiteral(_, _)
+      | Expression::BoundFcnLiteral(_, _) => (),
+      Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
    expressions.insert(cloned)
 }

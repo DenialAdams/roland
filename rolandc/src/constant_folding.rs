@@ -90,9 +90,6 @@ pub fn fold_statement(
          try_fold_and_replace_expr(*lhs_expr, err_manager, folding_context, interner);
          try_fold_and_replace_expr(*rhs_expr, err_manager, folding_context, interner);
       }
-      Statement::Block(block) => {
-         fold_block(block, err_manager, folding_context, interner);
-      }
       Statement::Break | Statement::Continue => (),
       Statement::IfElse(if_expr, if_block, else_statement) => {
          try_fold_and_replace_expr(*if_expr, err_manager, folding_context, interner);
@@ -107,7 +104,7 @@ pub fn fold_statement(
             rolandc_warn!(err_manager, if_expr_d.location, "This condition will always be true");
          }
       }
-      Statement::Loop(block) => {
+      Statement::Loop(block) | Statement::Block(block) => {
          fold_block(block, err_manager, folding_context, interner);
       }
       Statement::Expression(expr_id) => {
@@ -125,9 +122,10 @@ pub fn fold_statement(
       Statement::Return(expr) => {
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
       }
-      Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
-      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
-      Statement::Defer(_) => unreachable!(),
+      Statement::VariableDeclaration(_, _, _, _)
+      | Statement::For { .. }
+      | Statement::While(_, _)
+      | Statement::Defer(_) => unreachable!(),
    }
    folding_context.ast.statements[statement].statement = the_statement;
 }
@@ -238,8 +236,6 @@ fn fold_expr_inner(
 
          None
       }
-      Expression::BoolLiteral(_) => None,
-      Expression::StringLiteral(_) => None,
       Expression::IntLiteral { val, .. } => {
          let val = *val;
          let overflowing_literal = match expr_type {
@@ -253,7 +249,6 @@ fn fold_expr_inner(
                   (val as i64) > i64::from(i32::MAX) || (val as i64) < i64::from(i32::MIN)
                }
             }
-            &I64_TYPE => false,
             &U8_TYPE => val > u64::from(u8::MAX) || val < u64::from(u8::MIN),
             &U16_TYPE => val > u64::from(u16::MAX) || val < u64::from(u16::MIN),
             &U32_TYPE => val > u64::from(u32::MAX) || val < u64::from(u32::MIN),
@@ -264,7 +259,7 @@ fn fold_expr_inner(
                   val > u64::from(u32::MAX) || val < u64::from(u32::MIN)
                }
             }
-            &U64_TYPE => false,
+            &U64_TYPE | &I64_TYPE => false,
             _ => unreachable!(),
          };
 
@@ -303,8 +298,6 @@ fn fold_expr_inner(
 
          None
       }
-      Expression::FloatLiteral(_) => None,
-      Expression::UnitLiteral | Expression::BoundFcnLiteral(_, _) => None,
       Expression::BinaryOperator {
          operator,
          lhs: lhs_id,
@@ -436,16 +429,10 @@ fn fold_expr_inner(
                         synthetic: true,
                      });
                   }
-                  (Literal::Bool(true), BinOp::BitwiseOr) => {
+                  (Literal::Bool(true), BinOp::BitwiseOr | BinOp::LogicalOr) => {
                      return Some(Expression::BoolLiteral(true));
                   }
-                  (Literal::Bool(false), BinOp::BitwiseAnd) => {
-                     return Some(Expression::BoolLiteral(false));
-                  }
-                  (Literal::Bool(true), BinOp::LogicalOr) => {
-                     return Some(Expression::BoolLiteral(true));
-                  }
-                  (Literal::Bool(false), BinOp::LogicalAnd) => {
+                  (Literal::Bool(false), BinOp::BitwiseAnd | BinOp::LogicalAnd) => {
                      return Some(Expression::BoolLiteral(false));
                   }
                   (x, BinOp::Multiply) if x.is_int_zero() => {
@@ -532,8 +519,8 @@ fn fold_expr_inner(
             BinOp::GreaterThanOrEqualTo => Some(Expression::BoolLiteral(lhs >= rhs)),
             BinOp::LessThanOrEqualTo => Some(Expression::BoolLiteral(lhs <= rhs)),
             // int and bool
-            BinOp::BitwiseAnd => Some(lhs & rhs),
-            BinOp::BitwiseOr => Some(lhs | rhs),
+            BinOp::BitwiseAnd | BinOp::LogicalAnd => Some(lhs & rhs),
+            BinOp::BitwiseOr | BinOp::LogicalOr => Some(lhs | rhs),
             BinOp::BitwiseXor => Some(lhs ^ rhs),
             // int
             BinOp::BitwiseLeftShift => {
@@ -560,9 +547,6 @@ fn fold_expr_inner(
                   None
                }
             }
-            // bool
-            BinOp::LogicalAnd => Some(lhs & rhs),
-            BinOp::LogicalOr => Some(lhs | rhs),
          }
       }
       Expression::UnaryOperator(op, expr) => {
@@ -702,7 +686,12 @@ fn fold_expr_inner(
             None
          }
       }
-      Expression::EnumLiteral(_, _) => None,
+      Expression::FloatLiteral(_)
+      | Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_)
+      | Expression::UnitLiteral
+      | Expression::BoundFcnLiteral(_, _)
+      | Expression::EnumLiteral(_, _) => None,
       Expression::IfX(a, b, c) => {
          try_fold_and_replace_expr(*a, err_manager, folding_context, interner);
          try_fold_and_replace_expr(*b, err_manager, folding_context, interner);
@@ -743,9 +732,10 @@ fn fold_expr_inner(
 
          None
       }
-      Expression::UnresolvedVariable(_) => unreachable!(),
-      Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 }
 
@@ -791,12 +781,13 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
 
 pub fn is_const(expr: &Expression, expressions: &ExpressionPool) -> bool {
    match expr {
-      Expression::BoundFcnLiteral(_, _) => true,
-      Expression::UnitLiteral => true,
-      Expression::EnumLiteral(_, _) => true,
-      Expression::IntLiteral { .. } => true,
-      Expression::FloatLiteral(_) => true,
-      Expression::BoolLiteral(_) => true,
+      Expression::BoundFcnLiteral(_, _)
+      | Expression::UnitLiteral
+      | Expression::EnumLiteral(_, _)
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_)
+      | Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_) => true,
       Expression::ArrayLiteral(exprs) => exprs
          .iter()
          .copied()
@@ -805,7 +796,6 @@ pub fn is_const(expr: &Expression, expressions: &ExpressionPool) -> bool {
          .iter()
          .flat_map(|(_, x)| x)
          .all(|x| is_const(&expressions[*x].expression, expressions)),
-      Expression::StringLiteral(_) => true,
       _ => false,
    }
 }
@@ -899,6 +889,7 @@ impl Literal {
    }
 
    fn transmute(self, target_type: &ExpressionType) -> Option<Expression> {
+      #[allow(clippy::match_same_arms)]
       Some(match (self, target_type) {
          // Transmute int to float
          (Literal::Int32(i), &F32_TYPE) => Expression::FloatLiteral(f64::from(f32::from_bits(i as u32))),
@@ -1714,27 +1705,29 @@ pub fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &E
       Expression::BinaryOperator { lhs, rhs, .. } => {
          expression_could_have_side_effects(*lhs, expressions) || expression_could_have_side_effects(*rhs, expressions)
       }
-      Expression::UnaryOperator(_, expr) => expression_could_have_side_effects(*expr, expressions),
       Expression::StructLiteral(_, fields) => fields
          .iter()
          .flat_map(|(_, x)| x)
          .any(|x| expression_could_have_side_effects(*x, expressions)),
-      Expression::FieldAccess(_, expr) => expression_could_have_side_effects(*expr, expressions),
-      Expression::Cast { expr, .. } => expression_could_have_side_effects(*expr, expressions),
+      Expression::UnaryOperator(_, expr) | Expression::FieldAccess(_, expr) | Expression::Cast { expr, .. } => {
+         expression_could_have_side_effects(*expr, expressions)
+      }
       Expression::IfX(a, b, c) => {
          expression_could_have_side_effects(*a, expressions)
             || expression_could_have_side_effects(*b, expressions)
             || expression_could_have_side_effects(*c, expressions)
       }
-      Expression::EnumLiteral(_, _) => false,
-      Expression::BoolLiteral(_) => false,
-      Expression::StringLiteral(_) => false,
-      Expression::IntLiteral { .. } => false,
-      Expression::FloatLiteral(_) => false,
-      Expression::UnitLiteral | Expression::BoundFcnLiteral(_, _) => false,
-      Expression::Variable(_) => false,
-      Expression::UnresolvedVariable(_) => unreachable!(),
-      Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      Expression::EnumLiteral(_, _)
+      | Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_)
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_)
+      | Expression::UnitLiteral
+      | Expression::BoundFcnLiteral(_, _)
+      | Expression::Variable(_) => false,
+      Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 }

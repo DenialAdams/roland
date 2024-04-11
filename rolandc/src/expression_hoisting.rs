@@ -366,7 +366,7 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
             false,
          );
       }
-      Statement::Block(block) => {
+      Statement::Block(block) | Statement::Loop(block) => {
          vv_block(block, vv_context, ast);
       }
       Statement::Break | Statement::Continue => (),
@@ -381,9 +381,6 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
          );
          vv_block(if_block, vv_context, ast);
          vv_statement(*else_statement, vv_context, ast, current_statement);
-      }
-      Statement::Loop(block) => {
-         vv_block(block, vv_context, ast);
       }
       Statement::Expression(expr) => {
          vv_expr(
@@ -429,8 +426,7 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
             });
          }
       }
-      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
-      Statement::Defer(_) => unreachable!(),
+      Statement::For { .. } | Statement::While(_, _) | Statement::Defer(_) => unreachable!(),
    }
    ast.statements[statement].statement = the_statement;
 }
@@ -493,18 +489,12 @@ fn vv_expr(
       Expression::UnaryOperator(UnOp::Dereference, expr) => {
          vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
       }
-      Expression::UnaryOperator(_, expr) => {
-         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
-      }
       Expression::StructLiteral(_, field_exprs) => {
          for expr in field_exprs.values().flatten().copied() {
             vv_expr(expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
          }
       }
-      Expression::FieldAccess(_field_names, expr) => {
-         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
-      }
-      Expression::Cast { expr, .. } => {
+      Expression::UnaryOperator(_, expr) | Expression::FieldAccess(_, expr) | Expression::Cast { expr, .. } => {
          vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
       }
       Expression::ArrayLiteral(exprs) => {
@@ -535,8 +525,10 @@ fn vv_expr(
       | Expression::BoundFcnLiteral(_, _)
       | Expression::UnitLiteral
       | Expression::Variable(_) => (),
-      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 
    match ctx.mode {

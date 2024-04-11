@@ -116,8 +116,6 @@ pub fn calculate_struct_size_info(id: StructId, udt: &mut UserDefinedTypeInfo, t
 
 pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) -> u32 {
    match e {
-      ExpressionType::Unresolved(_) => unreachable!(),
-      ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Enum(x) => {
          let base_type = &udt.enum_info.get(*x).unwrap().base_type;
          mem_alignment(base_type, udt, target)
@@ -134,10 +132,6 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Targ
          FloatWidth::Four => 4,
       },
       ExpressionType::Pointer(_) | ExpressionType::ProcedurePointer { .. } => u32::from(target.pointer_width()),
-      ExpressionType::Bool => 1,
-      ExpressionType::Unit => 1,
-      ExpressionType::Never => 1,
-      ExpressionType::ProcedureItem(_, _) => 1,
       ExpressionType::Struct(x) => {
          udt.struct_info
             .get(*x)
@@ -148,9 +142,12 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Targ
             .strictest_alignment
       }
       ExpressionType::Array(a_type, _len) => mem_alignment(a_type, udt, target),
-      ExpressionType::CompileError => unreachable!(),
-      ExpressionType::GenericParam(_) => unreachable!(),
       ExpressionType::Union(x) => udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_alignment,
+      ExpressionType::Bool | ExpressionType::Unit | ExpressionType::Never | ExpressionType::ProcedureItem(_, _) => 1,
+      ExpressionType::Unresolved(_)
+      | ExpressionType::Unknown(_)
+      | ExpressionType::CompileError
+      | ExpressionType::GenericParam(_) => unreachable!(),
    }
 }
 
@@ -161,25 +158,23 @@ pub fn sizeof_type_values(e: &ExpressionType, udt: &UserDefinedTypeInfo, target:
    }
 
    match e {
-      ExpressionType::Unresolved(_) => unreachable!(),
-      ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Enum(x) => {
          let base_type = &udt.enum_info.get(*x).unwrap().base_type;
          sizeof_type_values(base_type, udt, target)
       }
-      ExpressionType::Int(_) => 1,
-      ExpressionType::Float(_) => 1,
-      ExpressionType::Pointer(_) => 1,
-      ExpressionType::Bool => 1,
-      ExpressionType::Unit => 0,
-      ExpressionType::Never => 0,
-      ExpressionType::Struct(_) => 1,
-      ExpressionType::Array(_, _) => 1,
-      ExpressionType::ProcedurePointer { .. } => 1,
-      ExpressionType::ProcedureItem(_, _) => 0,
-      ExpressionType::GenericParam(_) => unreachable!(),
-      ExpressionType::CompileError => unreachable!(),
-      ExpressionType::Union(_) => 1,
+      ExpressionType::Int(_)
+      | ExpressionType::Float(_)
+      | ExpressionType::Pointer(_)
+      | ExpressionType::Bool
+      | ExpressionType::Struct(_)
+      | ExpressionType::Array(_, _)
+      | ExpressionType::ProcedurePointer { .. }
+      | ExpressionType::Union(_) => 1,
+      ExpressionType::ProcedureItem(_, _) | ExpressionType::Unit | ExpressionType::Never => 0,
+      ExpressionType::GenericParam(_)
+      | ExpressionType::CompileError
+      | ExpressionType::Unresolved(_)
+      | ExpressionType::Unknown(_) => unreachable!(),
    }
 }
 
@@ -196,8 +191,6 @@ pub fn sizeof_type_wasm(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: T
 /// The size of a type as it's stored in memory
 pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) -> u32 {
    match e {
-      ExpressionType::Unresolved(_) => unreachable!(),
-      ExpressionType::Unknown(_) => unreachable!(),
       ExpressionType::Enum(x) => {
          let base_type = &udt.enum_info.get(*x).unwrap().base_type;
          sizeof_type_mem(base_type, udt, target)
@@ -206,13 +199,13 @@ pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Ta
       ExpressionType::Float(x) => u32::from(x.width.as_num_bytes()),
       ExpressionType::Pointer(_) | ExpressionType::ProcedurePointer { .. } => u32::from(target.pointer_width()),
       ExpressionType::Bool => 1,
-      ExpressionType::Unit => 0,
-      ExpressionType::Never => 0,
-      ExpressionType::ProcedureItem(_, _) => 0,
+      ExpressionType::Unit | ExpressionType::Never | ExpressionType::ProcedureItem(_, _) => 0,
       ExpressionType::Struct(x) => udt.struct_info.get(*x).unwrap().size.as_ref().unwrap().mem_size,
       ExpressionType::Array(a_type, len) => sizeof_type_mem(a_type, udt, target) * (*len),
       ExpressionType::Union(x) => udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_size,
-      ExpressionType::GenericParam(_) => unreachable!(),
-      ExpressionType::CompileError => unreachable!(),
+      ExpressionType::GenericParam(_)
+      | ExpressionType::CompileError
+      | ExpressionType::Unresolved(_)
+      | ExpressionType::Unknown(_) => unreachable!(),
    }
 }

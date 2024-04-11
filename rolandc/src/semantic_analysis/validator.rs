@@ -192,14 +192,6 @@ pub fn resolve_type(
          interner,
          location_for_error,
       ),
-      ExpressionType::Never => true,
-      ExpressionType::Unknown(_) => true,
-      ExpressionType::Int(_) => true,
-      ExpressionType::Float(_) => true,
-      ExpressionType::Bool => true,
-      ExpressionType::Unit => true,
-      ExpressionType::Struct(_) => true,
-      ExpressionType::Union(_) => true,
       ExpressionType::Array(exp, _) => resolve_type(
          exp,
          type_name_table,
@@ -208,8 +200,6 @@ pub fn resolve_type(
          interner,
          location_for_error,
       ),
-      ExpressionType::CompileError => true,
-      ExpressionType::Enum(_) => true,
       ExpressionType::ProcedurePointer {
          parameters,
          ret_type: ret_val,
@@ -235,8 +225,18 @@ pub fn resolve_type(
          );
          resolve_result
       }
-      ExpressionType::GenericParam(_) => true,
-      ExpressionType::ProcedureItem(_, _) => true, // This type contains other types, but this type itself can never be written down. It should always be valid
+      ExpressionType::CompileError
+      | ExpressionType::Enum(_)
+      | ExpressionType::Never
+      | ExpressionType::Unknown(_)
+      | ExpressionType::Int(_)
+      | ExpressionType::Float(_)
+      | ExpressionType::Bool
+      | ExpressionType::Unit
+      | ExpressionType::Struct(_)
+      | ExpressionType::Union(_)
+      | ExpressionType::GenericParam(_)
+      | ExpressionType::ProcedureItem(_, _) => true, // This type contains other types, but this type itself can never be written down. It should always be valid
       ExpressionType::Unresolved(x) => match type_name_table.get(x) {
          Some(UserDefinedTypeId::Enum(y)) => {
             *v_type = ExpressionType::Enum(*y);
@@ -811,8 +811,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
 
          let opt_en = match opt_enid {
             DeclarationValue::Expr(enid) => Some(&validation_context.ast.expressions[*enid]),
-            DeclarationValue::Uninit => None,
-            DeclarationValue::None => None,
+            DeclarationValue::Uninit | DeclarationValue::None => None,
          };
 
          let result_type = if dt_is_unresolved {
@@ -1619,7 +1618,6 @@ fn get_type(
             }
          }
       }
-      Expression::Variable(_) => unreachable!(),
       Expression::ProcedureCall { proc_expr, args } => {
          type_expression(err_manager, *proc_expr, validation_context);
          for arg in args.iter() {
@@ -2029,7 +2027,7 @@ fn get_type(
             ExpressionType::CompileError
          }
       }
-      Expression::StructLiteral(_, _) | Expression::EnumLiteral(_, _) => unreachable!(),
+      Expression::Variable(_) | Expression::StructLiteral(_, _) | Expression::EnumLiteral(_, _) => unreachable!(),
    }
 }
 
@@ -2342,10 +2340,7 @@ pub fn map_generic_to_concrete(
    generic_parameters: &IndexMap<StrId, IndexSet<StrId>>,
 ) {
    match param_type {
-      ExpressionType::Array(inner_type, _) => {
-         map_generic_to_concrete(inner_type, generic_args, generic_parameters);
-      }
-      ExpressionType::Pointer(inner_type) => {
+      ExpressionType::Array(inner_type, _) | ExpressionType::Pointer(inner_type) => {
          map_generic_to_concrete(inner_type, generic_args, generic_parameters);
       }
       ExpressionType::ProcedurePointer { parameters, ret_type } => {

@@ -163,8 +163,7 @@ impl ExpressionType {
    pub fn get_type_variable_of_unknown_type(&self) -> Option<TypeVariable> {
       match self {
          ExpressionType::Unknown(x) => Some(*x),
-         ExpressionType::Pointer(v) => v.get_type_variable_of_unknown_type(),
-         ExpressionType::Array(v, _) => v.get_type_variable_of_unknown_type(),
+         ExpressionType::Pointer(v) | ExpressionType::Array(v, _) => v.get_type_variable_of_unknown_type(),
          // other types can't contain unknown values, at least right now
          _ => None,
       }
@@ -195,8 +194,7 @@ impl ExpressionType {
          | ExpressionType::ProcedureItem(_, _)
          | ExpressionType::ProcedurePointer { .. }
          | ExpressionType::Enum(_) => false,
-         ExpressionType::Array(exp, _) => exp.is_or_contains_or_points_to_generic(),
-         ExpressionType::Pointer(exp) => exp.is_or_contains_or_points_to_generic(),
+         ExpressionType::Array(exp, _) | ExpressionType::Pointer(exp) => exp.is_or_contains_or_points_to_generic(),
       }
    }
 
@@ -224,8 +222,7 @@ impl ExpressionType {
    pub fn is_or_contains_or_points_to_error(&self) -> bool {
       match self {
          ExpressionType::CompileError => true,
-         ExpressionType::Array(exp, _) => exp.is_or_contains_or_points_to_error(),
-         ExpressionType::Pointer(exp) => exp.is_or_contains_or_points_to_error(),
+         ExpressionType::Array(exp, _) | ExpressionType::Pointer(exp) => exp.is_or_contains_or_points_to_error(),
          _ => false,
       }
    }
@@ -377,7 +374,6 @@ impl ExpressionType {
       udt: &UserDefinedTypeInfo,
    ) -> Cow<'i, str> {
       match self {
-         ExpressionType::Unknown(_) => unreachable!(),
          ExpressionType::Int(x) => match (x.signed, &x.width) {
             (true, IntWidth::Pointer) => Cow::Borrowed("isize"),
             (true, IntWidth::Eight) => Cow::Borrowed("i64"),
@@ -425,7 +421,7 @@ impl ExpressionType {
                ret_val.as_roland_type_info_like_source(interner, udt)
             ))
          }
-         ExpressionType::ProcedureItem(_, _) => unreachable!(),
+         ExpressionType::Unknown(_) | ExpressionType::ProcedureItem(_, _) => unreachable!(),
       }
    }
 }

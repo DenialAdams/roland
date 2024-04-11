@@ -1,7 +1,6 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::uninlined_format_args)] // I'm an old man and I like the way it was before
 #![allow(clippy::explicit_iter_loop)] // I find explicit iter more readable
-#![allow(clippy::match_same_arms)] // Sometimes I find this more clear (when it's just calling something)
 #![allow(clippy::too_many_lines)] // A procedure should have however many lines as it needs. More procedures is not better.
 #![allow(clippy::too_many_arguments)] // Similar to above, take the amount that you need
 #![allow(clippy::flat_map_option)] // Not sure how filter_map is any more clear than flat_map

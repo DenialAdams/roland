@@ -16,8 +16,9 @@ fn union_constraints(a: TypeConstraint, b: TypeConstraint) -> TypeConstraint {
    match (a, b) {
       (TypeConstraint::None, _) => b,
       (_, TypeConstraint::None) => a,
-      (TypeConstraint::Int, TypeConstraint::SignedInt) => TypeConstraint::SignedInt,
-      (TypeConstraint::SignedInt, TypeConstraint::Int) => TypeConstraint::SignedInt,
+      (TypeConstraint::Int, TypeConstraint::SignedInt) | (TypeConstraint::SignedInt, TypeConstraint::Int) => {
+         TypeConstraint::SignedInt
+      }
       _ => {
          debug_assert!(a == b);
          a

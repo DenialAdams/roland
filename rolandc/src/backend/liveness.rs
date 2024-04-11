@@ -171,13 +171,10 @@ fn liveness(
                      update_live_variables_for_expr(*lhs, &mut current_live_variables, ast, procedure_vars);
                   }
                }
-               CfgInstruction::Expression(expr) => {
-                  update_live_variables_for_expr(*expr, &mut current_live_variables, ast, procedure_vars);
-               }
-               CfgInstruction::Return(expr) => {
-                  update_live_variables_for_expr(*expr, &mut current_live_variables, ast, procedure_vars);
-               }
-               CfgInstruction::IfElse(expr, _, _, _) | CfgInstruction::ConditionalJump(expr, _, _) => {
+               CfgInstruction::Expression(expr)
+               | CfgInstruction::Return(expr)
+               | CfgInstruction::IfElse(expr, _, _, _)
+               | CfgInstruction::ConditionalJump(expr, _, _) => {
                   update_live_variables_for_expr(*expr, &mut current_live_variables, ast, procedure_vars);
                }
                _ => (),
@@ -227,13 +224,7 @@ fn update_live_variables_for_expr(
             update_live_variables_for_expr(*expr, current_live_variables, ast, procedure_vars);
          }
       }
-      Expression::FieldAccess(_, base_expr) => {
-         update_live_variables_for_expr(*base_expr, current_live_variables, ast, procedure_vars);
-      }
-      Expression::Cast { expr, .. } => {
-         update_live_variables_for_expr(*expr, current_live_variables, ast, procedure_vars);
-      }
-      Expression::UnaryOperator(_, expr) => {
+      Expression::FieldAccess(_, expr) | Expression::Cast { expr, .. } | Expression::UnaryOperator(_, expr) => {
          update_live_variables_for_expr(*expr, current_live_variables, ast, procedure_vars);
       }
       Expression::Variable(var) => {
@@ -241,15 +232,17 @@ fn update_live_variables_for_expr(
             current_live_variables.set(di, true);
          }
       }
-      Expression::EnumLiteral(_, _) => (),
-      Expression::BoundFcnLiteral(_, _) => (),
-      Expression::BoolLiteral(_) => (),
-      Expression::StringLiteral(_) => (),
-      Expression::UnitLiteral => (),
-      Expression::IntLiteral { .. } => (),
-      Expression::FloatLiteral(_) => (),
-      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      Expression::EnumLiteral(_, _)
+      | Expression::BoundFcnLiteral(_, _)
+      | Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_)
+      | Expression::UnitLiteral
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_) => (),
+      Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 }
 
@@ -273,13 +266,9 @@ fn gen_for_expr(
             gen_for_expr(val, gen, kill, ast, procedure_vars);
          }
       }
-      Expression::ArrayIndex { array, index } => {
-         gen_for_expr(*array, gen, kill, ast, procedure_vars);
-         gen_for_expr(*index, gen, kill, ast, procedure_vars);
-      }
-      Expression::BinaryOperator { lhs, rhs, .. } => {
-         gen_for_expr(*lhs, gen, kill, ast, procedure_vars);
-         gen_for_expr(*rhs, gen, kill, ast, procedure_vars);
+      Expression::ArrayIndex { array: a, index: b } | Expression::BinaryOperator { lhs: a, rhs: b, .. } => {
+         gen_for_expr(*a, gen, kill, ast, procedure_vars);
+         gen_for_expr(*b, gen, kill, ast, procedure_vars);
       }
       Expression::IfX(a, b, c) => {
          gen_for_expr(*a, gen, kill, ast, procedure_vars);
@@ -300,15 +289,17 @@ fn gen_for_expr(
             kill.set(di, false);
          };
       }
-      Expression::EnumLiteral(_, _) => (),
-      Expression::BoundFcnLiteral(_, _) => (),
-      Expression::BoolLiteral(_) => (),
-      Expression::StringLiteral(_) => (),
-      Expression::UnitLiteral => (),
-      Expression::IntLiteral { .. } => (),
-      Expression::FloatLiteral(_) => (),
-      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      Expression::EnumLiteral(_, _)
+      | Expression::BoundFcnLiteral(_, _)
+      | Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_)
+      | Expression::UnitLiteral
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_) => (),
+      Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 }
 

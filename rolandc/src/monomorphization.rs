@@ -230,7 +230,7 @@ fn deep_clone_stmt(
             variable_replacements,
          );
       }
-      Statement::Block(bn) => {
+      Statement::Block(bn) | Statement::Loop(bn) => {
          deep_clone_block(
             bn,
             ast,
@@ -241,32 +241,7 @@ fn deep_clone_stmt(
             variable_replacements,
          );
       }
-      Statement::Loop(bn) => {
-         deep_clone_block(
-            bn,
-            ast,
-            concrete_types,
-            type_parameters,
-            depth,
-            worklist,
-            variable_replacements,
-         );
-      }
-      Statement::Continue => (),
-      Statement::Break => (),
-      Statement::For { .. } | Statement::While(_, _) => unreachable!(),
-      Statement::Defer(_) => unreachable!(),
-      Statement::Expression(expr) => {
-         *expr = deep_clone_expr(
-            *expr,
-            &mut ast.expressions,
-            concrete_types,
-            type_parameters,
-            depth,
-            worklist,
-            variable_replacements,
-         );
-      }
+      Statement::Continue | Statement::Break => (),
       Statement::IfElse(cond, then, else_s) => {
          *cond = deep_clone_expr(
             *cond,
@@ -296,7 +271,7 @@ fn deep_clone_stmt(
             variable_replacements,
          );
       }
-      Statement::Return(expr) => {
+      Statement::Expression(expr) | Statement::Return(expr) => {
          *expr = deep_clone_expr(
             *expr,
             &mut ast.expressions,
@@ -307,7 +282,10 @@ fn deep_clone_stmt(
             variable_replacements,
          );
       }
-      Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
+      Statement::For { .. }
+      | Statement::While(_, _)
+      | Statement::Defer(_)
+      | Statement::VariableDeclaration(_, _, _, _) => unreachable!(),
    }
    ast.statements.insert(cloned)
 }
@@ -380,11 +358,12 @@ fn deep_clone_expr(
             variable_replacements,
          );
       }
-      Expression::BoolLiteral(_) => (),
-      Expression::StringLiteral(_) => (),
-      Expression::IntLiteral { .. } => (),
-      Expression::FloatLiteral(_) => (),
-      Expression::UnitLiteral => (),
+      Expression::EnumLiteral(_, _)
+      | Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_)
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_)
+      | Expression::UnitLiteral => (),
       Expression::Variable(var) => {
          if let Some(new_var) = variable_replacements.get(var).copied() {
             *var = new_var;
@@ -487,7 +466,6 @@ fn deep_clone_expr(
             variable_replacements,
          );
       }
-      Expression::EnumLiteral(_, _) => (),
       Expression::BoundFcnLiteral(id, generic_args) => {
          for garg in generic_args.iter_mut() {
             map_generic_to_concrete(&mut garg.e_type, concrete_types, type_parameters);
@@ -506,8 +484,10 @@ fn deep_clone_expr(
             });
          }
       }
-      Expression::UnresolvedVariable(_) | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
-      Expression::UnresolvedStructLiteral(_, _) | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
    expressions.insert(cloned)
 }
