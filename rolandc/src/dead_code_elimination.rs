@@ -35,7 +35,7 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
       }
    }
 
-   for static_expr in program.global_info.values().flat_map(|x| x.initializer) {
+   for static_expr in program.global_info.values().filter_map(|x| x.initializer) {
       mark_reachable_expr(static_expr, &program.ast, &mut ctx);
    }
 

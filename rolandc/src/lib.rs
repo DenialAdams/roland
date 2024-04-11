@@ -3,7 +3,6 @@
 #![allow(clippy::explicit_iter_loop)] // I find explicit iter more readable
 #![allow(clippy::too_many_lines)] // A procedure should have however many lines as it needs. More procedures is not better.
 #![allow(clippy::too_many_arguments)] // Similar to above, take the amount that you need
-#![allow(clippy::flat_map_option)] // Not sure how filter_map is any more clear than flat_map
 #![allow(clippy::cast_sign_loss)] // I am aware
 #![allow(clippy::cast_possible_wrap)] // I am aware
 #![allow(clippy::cast_possible_truncation)] // I am aware

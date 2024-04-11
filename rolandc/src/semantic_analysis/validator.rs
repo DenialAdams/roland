@@ -1486,7 +1486,7 @@ fn get_type(
          ExpressionType::CompileError
       }
       Expression::UnresolvedStructLiteral(struct_name, fields) => {
-         for field_val in fields.iter().flat_map(|x| x.1) {
+         for field_val in fields.iter().filter_map(|x| x.1) {
             type_expression(err_manager, field_val, validation_context);
          }
 
