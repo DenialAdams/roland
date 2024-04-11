@@ -139,7 +139,7 @@ impl Token {
          Token::Comma => "token ','",
          Token::Exclam => "token '!'",
          Token::Period => "token '.'",
-         Token::DoublePeriod => "token '.'",
+         Token::DoublePeriod => "token '..'",
          Token::ShiftLeft => "token '<<'",
          Token::ShiftRight => "token '>>'",
          Token::KeywordFor => "keyword 'for'",
