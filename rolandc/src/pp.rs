@@ -2,6 +2,7 @@ use std::io::Write;
 
 use slotmap::SlotMap;
 
+use crate::backend::linearize::{post_order, Cfg, CfgInstruction};
 use crate::interner::Interner;
 use crate::parse::{
    AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, ProcedureId, ProcedureNode,
@@ -75,7 +76,11 @@ pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> R
       write!(pp_ctx.output, ") -> ")?;
       pp_type(&proc.definition.ret_type.e_type, &mut pp_ctx)?;
       if let Some(b) = program.procedure_bodies.get(id) {
-         pp_block(&b.block, &mut pp_ctx)?;
+         if b.cfg.bbs.is_empty() {
+            pp_block(&b.block, &mut pp_ctx)?;
+         } else {
+            pp_cfg(&b.cfg, &mut pp_ctx)?;
+         }
       } else {
          writeln!(pp_ctx.output, ";")?;
       }
@@ -188,6 +193,52 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
          writeln!(pp_ctx.output, ";")?;
       }
    }
+   Ok(())
+}
+
+fn pp_cfg<W: Write>(cfg: &Cfg, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
+   writeln!(pp_ctx.output, " {{")?;
+   for bb in post_order(cfg).iter().rev() {
+      pp_ctx.indent()?;
+      writeln!(pp_ctx.output, ".{}", *bb)?;
+      pp_ctx.indentation_level += 1;
+      for instr in cfg.bbs[*bb].instructions.iter() {
+         pp_ctx.indent()?;
+         match instr {
+            CfgInstruction::Assignment(lhs, rhs) => {
+               pp_expr(*lhs, pp_ctx)?;
+               write!(pp_ctx.output, " = ")?;
+               pp_expr(*rhs, pp_ctx)?;
+               writeln!(pp_ctx.output, ";")?;
+            }
+            CfgInstruction::ConditionalJump(e, pass, fail) => {
+               write!(pp_ctx.output, "jnz ")?;
+               pp_expr(*e, pp_ctx)?;
+               writeln!(pp_ctx.output, " : {}, {}", pass, fail)?;
+            }
+            CfgInstruction::Jump(dst) => {
+               writeln!(pp_ctx.output, "jmp {}", dst)?;
+            }
+            CfgInstruction::Return(e) => {
+               write!(pp_ctx.output, "ret ")?;
+               pp_expr(*e, pp_ctx)?;
+               writeln!(pp_ctx.output)?;
+            }
+            CfgInstruction::Expression(e) => {
+               pp_expr(*e, pp_ctx)?;
+               writeln!(pp_ctx.output)?;
+            }
+            CfgInstruction::Break
+            | CfgInstruction::Continue
+            | CfgInstruction::IfElse(_, _, _, _)
+            | CfgInstruction::Loop(_, _) => writeln!(pp_ctx.output)?,
+            CfgInstruction::Nop => writeln!(pp_ctx.output, "nop")?,
+         }
+      }
+      pp_ctx.indentation_level -= 1;
+   }
+   pp_ctx.indent()?;
+   writeln!(pp_ctx.output, "}}")?;
    Ok(())
 }
 
