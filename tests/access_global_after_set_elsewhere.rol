@@ -1,0 +1,14 @@
+static X: u64 = 123;
+
+proc main() {
+   X = 111;
+   set_global();
+   println(uint_to_string(X));
+}
+
+proc set_global() {
+   X = 234;
+}
+__END__
+run:
+234

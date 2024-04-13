@@ -1,0 +1,23 @@
+proc main() {
+   println(uint_to_string(inc()));
+   println(uint_to_string(inc2()));
+}
+
+proc inc() -> u64 {
+   let x = 10;
+   x = x + 1;
+   return x;
+}
+
+proc inc2() -> u64 {
+   let y = 10;
+   y = y + 1;
+   let x = y;
+   y = y + 1;
+   return x;
+}
+
+__END__
+run:
+11
+11
