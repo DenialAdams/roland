@@ -338,6 +338,7 @@ pub fn emit_wasm(
          GlobalType {
             val_type: wasm_encoder::ValType::I32,
             mutable: true,
+            shared: false,
          },
          &ConstExpr::i32_const(offset as i32),
       );
@@ -366,6 +367,7 @@ pub fn emit_wasm(
             GlobalType {
                val_type: wt,
                mutable: true,
+               shared: false,
             },
             &initial_val,
          );
@@ -542,6 +544,7 @@ pub fn emit_wasm(
                maximum: Some(1),
                memory64: false,
                shared: false,
+               page_size_log2: None,
             }),
          );
          export_section.export(
@@ -562,6 +565,7 @@ pub fn emit_wasm(
                maximum: Some(4),
                memory64: false,
                shared: false,
+               page_size_log2: None,
             }),
          );
          export_section.export(
@@ -579,6 +583,7 @@ pub fn emit_wasm(
             maximum: None,
             memory64: false,
             shared: false,
+            page_size_log2: None,
          });
          export_section.export("memory", wasm_encoder::ExportKind::Memory, 0);
          export_section.export(
