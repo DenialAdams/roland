@@ -48,4 +48,5 @@ test-all-preserve-artifacts:
    cargo run --release --bin roland_test_runner -- --cli {{justfile_directory()}}/target/{{release_text}}/rolandc_cli tests/ --amd64 --preserve-artifacts
    cargo run --release --bin roland_test_runner -- --cli {{justfile_directory()}}/target/{{release_text}}/rolandc_cli tests/ --preserve-artifacts
 baseline: test-all-preserve-artifacts
+   rm -r tests_baseline/
    cp -r tests/ tests_baseline/
