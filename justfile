@@ -1,5 +1,5 @@
-release_flag := if env_var_or_default("DEBUG", "false") == "true" { "" } else { "--release" }
-release_text := if env_var_or_default("DEBUG", "false") == "true" { "debug" } else { "release" }
+release_flag := if env_var_or_default("DEBUG", "0") == "1" { "" } else { "--release" }
+release_text := if env_var_or_default("DEBUG", "0") == "1" { "debug" } else { "release" }
 
 test path="tests/":
    cargo build {{release_flag}} --bin rolandc_cli
@@ -43,6 +43,10 @@ rolandc_samply *args:
    samply record -r 10000 {{justfile_directory()}}/target/dhat/rolandc_cli {{args}}
 prepare-release kind="patch":
    cd roland-vscode && npm version {{kind}}
+test-all:
+   cargo build {{release_flag}} --bin rolandc_cli
+   cargo run --release --bin roland_test_runner -- --cli {{justfile_directory()}}/target/{{release_text}}/rolandc_cli tests/ --amd64
+   cargo run --release --bin roland_test_runner -- --cli {{justfile_directory()}}/target/{{release_text}}/rolandc_cli tests/
 test-all-preserve-artifacts:
    cargo build {{release_flag}} --bin rolandc_cli
    cargo run --release --bin roland_test_runner -- --cli {{justfile_directory()}}/target/{{release_text}}/rolandc_cli tests/ --amd64 --preserve-artifacts
