@@ -480,11 +480,14 @@ fn vv_expr(
          vv_expr(*rhs, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
       }
       Expression::UnaryOperator(UnOp::AddressOf, expr) => {
-         if expressions[*expr].expression.is_lvalue(expressions, ctx.global_info) {
-            vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, true);
-         } else {
-            vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
-         }
+         vv_expr(
+            *expr,
+            ctx,
+            expressions,
+            current_stmt,
+            ParentCtx::Expr,
+            expressions[*expr].expression.is_lvalue(expressions, ctx.global_info) || is_lhs_context,
+         );
       }
       Expression::UnaryOperator(UnOp::Dereference, expr) => {
          vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
@@ -558,15 +561,6 @@ fn vv_expr(
          _ => (),
       },
       HoistingMode::PreConstantFold => match &expressions[expr_index].expression {
-         Expression::ArrayIndex { array, .. } => {
-            let array_expression = &expressions[*array];
-
-            // If this is an rvalue, we need to store this array in memory to do the indexing
-            // and hence hoist here.
-            if !array_expression.expression.is_lvalue(expressions, ctx.global_info) {
-               ctx.mark_expr_for_hoisting(*array, current_stmt, HoistReason::Must);
-            }
-         }
          Expression::ProcedureCall { args, proc_expr } => {
             let mut any_named_arg = false;
             for arg in args.iter() {
@@ -597,7 +591,9 @@ fn vv_expr(
                ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
             }
          }
-         Expression::UnaryOperator(UnOp::AddressOf, expr) | Expression::FieldAccess(_, expr) => {
+         Expression::UnaryOperator(UnOp::AddressOf, expr)
+         | Expression::FieldAccess(_, expr)
+         | Expression::ArrayIndex { array: expr, .. } => {
             if !expressions[*expr].expression.is_lvalue(expressions, ctx.global_info) {
                ctx.mark_expr_for_hoisting(*expr, current_stmt, HoistReason::Must);
             }
@@ -621,10 +617,6 @@ fn vv_expr(
          Expression::IfX(_, _, _) => {
             ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
          }
-         Expression::UnresolvedVariable(_)
-         | Expression::UnresolvedProcLiteral(_, _)
-         | Expression::UnresolvedStructLiteral(_, _)
-         | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
          _ => (),
       },
       HoistingMode::ThreeAddressCode => {
