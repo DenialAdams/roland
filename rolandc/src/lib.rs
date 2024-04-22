@@ -36,6 +36,7 @@ mod semantic_analysis;
 mod size_info;
 pub mod source_info;
 pub mod type_data;
+mod variable_declaration_lowering;
 
 use std::borrow::Cow;
 use std::fmt::Display;
@@ -205,6 +206,17 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
 
    logical_op_lowering::lower_logical_ops(&mut ctx.program);
 
+   variable_declaration_lowering::lower_variable_decls(&mut ctx.program);
+
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp.rol").unwrap(),
+      )
+      .unwrap();
+   }
+
    expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::PreConstantFold);
 
    // must run after expression hoisting, so that re-ordering named arguments does not
@@ -252,15 +264,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    // (introduces usize types, so run this before those are lowered)
    expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::AggregateLiteralLowering);
-
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp.rol").unwrap(),
-      )
-      .unwrap();
-   }
 
    pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target);
 
