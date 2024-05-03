@@ -7,6 +7,7 @@ use slotmap::{Key, SlotMap};
 
 use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE, CFG_START_NODE};
 use super::regalloc::{RegallocResult, VarSlot};
+use crate::backend::linearize::post_order;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -400,8 +401,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
          }
          writeln!(ctx.buf, "   %v{} =l alloc{} {}", i, alignment, sz,).unwrap();
       }
-      emit_bb(cfg, CFG_START_NODE, &mut ctx);
-      for bb_id in 2..cfg.bbs.len() {
+      for bb_id in post_order(cfg).iter().rev().copied().filter(|x| *x != CFG_END_NODE) {
          emit_bb(cfg, bb_id, &mut ctx);
       }
       writeln!(ctx.buf, "}}").unwrap();
