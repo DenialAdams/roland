@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use indexmap::{IndexMap, IndexSet};
 use wasm_encoder::{
@@ -7,7 +7,7 @@ use wasm_encoder::{
    NameMap, NameSection, RefType, TableSection, TableType, TypeSection, ValType,
 };
 
-use super::linearize::{Cfg, CfgInstruction, CFG_START_NODE};
+use super::linearize::{post_order, Cfg, CfgInstruction, CFG_START_NODE};
 use super::regalloc::{RegallocResult, VarSlot};
 use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::interner::{Interner, StrId};
@@ -39,6 +39,7 @@ struct GenerationContext<'a> {
    stack_of_loop_jump_offsets: Vec<u32>,
    var_to_slot: IndexMap<VariableId, VarSlot>,
    target: Target,
+   live_bbs: HashSet<usize>,
 }
 
 impl GenerationContext<'_> {
@@ -222,6 +223,7 @@ pub fn emit_wasm(
       var_to_slot: regalloc_result.var_to_slot,
       proc_name_table: &program.procedure_name_table,
       target: config.target,
+      live_bbs: HashSet::new(),
    };
 
    let mut import_section = ImportSection::new();
@@ -501,6 +503,7 @@ pub fn emit_wasm(
          }
       }
 
+      generation_context.live_bbs = post_order(cfg).into_iter().collect();
       emit_bb(cfg, CFG_START_NODE, &mut generation_context);
 
       generation_context.active_fcn.instruction(&Instruction::End);
@@ -648,6 +651,10 @@ fn compare_alignment(alignment_1: u32, sizeof_1: u32, alignment_2: u32, sizeof_2
 }
 
 fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
+   if !generation_context.live_bbs.contains(&bb) {
+      generation_context.active_fcn.instruction(&Instruction::Unreachable);
+      return;
+   }
    for instr in cfg.bbs[bb].instructions.iter() {
       match instr {
          CfgInstruction::IfElse(condition, then, otherwise, merge) => {

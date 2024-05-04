@@ -5,7 +5,7 @@ use std::io::Write;
 use indexmap::{IndexMap, IndexSet};
 use slotmap::{Key, SlotMap};
 
-use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE, CFG_START_NODE};
+use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE};
 use super::regalloc::{RegallocResult, VarSlot};
 use crate::backend::linearize::post_order;
 use crate::constant_folding::expression_could_have_side_effects;

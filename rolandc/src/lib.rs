@@ -273,7 +273,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    // Convert nested, AST representation into CFG
    {
-      backend::linearize::linearize(&mut ctx.program, &ctx.interner, config.dump_debugging_info);
+      backend::linearize::linearize(&mut ctx.program, &ctx.interner, config.dump_debugging_info, config.target);
 
       // Clean up
       for old_body in ctx.program.procedure_bodies.values_mut().map(|x| &mut x.block) {

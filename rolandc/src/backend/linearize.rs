@@ -9,7 +9,7 @@ use crate::parse::{
    StatementId,
 };
 use crate::type_data::ExpressionType;
-use crate::Program;
+use crate::{Program, Target};
 
 // TODO: This is pretty bulky. Ideally this would be size <= 8 for storage in the BB.
 #[derive(Clone)]
@@ -145,7 +145,7 @@ fn dump_program_cfg(interner: &Interner, program: &Program) {
    }
 }
 
-pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool) {
+pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool, target: Target) {
    let mut ctx = Ctx {
       bbs: vec![],
       current_block: 0,
@@ -197,7 +197,13 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool) {
          }
       }
 
-      simplify_cfg(&mut ctx.bbs, &program.ast);
+      if target == Target::Qbe {
+         // We don't simplify the CFG for WASM targets, since
+         // simplification can result in the structured control flow
+         // statements going out of sync with their corresponding
+         // jumps.
+         simplify_cfg(&mut ctx.bbs, &program.ast);
+      }
 
       body.cfg.bbs = std::mem::take(&mut ctx.bbs);
    }

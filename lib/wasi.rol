@@ -81,8 +81,6 @@ proc count_digits(value: u64) -> u8 {
       digit_count = digit_count + 1;
       value = value / 10;
    }
-
-   unreachable();
 }
 
 proc f32_to_string(f: f32) -> String {
