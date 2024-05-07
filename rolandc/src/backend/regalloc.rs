@@ -314,13 +314,8 @@ fn bucket_alignment(x: u32) -> u32 {
    // These buckets are set due to QBE requirements
    // hopefully this is reasonable for wasm as well
    debug_assert!(x <= 16);
-   if x > 8 {
-      16
-   } else if x > 4 {
-      8
-   } else {
-      4
-   }
+   debug_assert!(x.is_power_of_two());
+   std::cmp::max(x, 4)
 }
 
 pub fn kill_self_assignments(program: &mut Program, var_to_slot: &IndexMap<VariableId, VarSlot>) {
