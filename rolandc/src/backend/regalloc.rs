@@ -286,7 +286,9 @@ fn type_to_slot_kind(
 ) -> VarSlotKind {
    let size = sizeof_type_mem(et, udt, target);
    if et.is_aggregate() || var_is_escaping || size == 0 {
-      VarSlotKind::Stack((size, bucket_alignment(mem_alignment(et, udt, target))))
+      // Minimum alignment is 4 for QBE, and that seems fine for WASM backends too
+      let slot_alignment = std::cmp::max(mem_alignment(et, udt, target), 4);
+      VarSlotKind::Stack((size, slot_alignment))
    } else {
       VarSlotKind::Register(match et {
          ExpressionType::Int(x) => match x.width {
@@ -308,14 +310,6 @@ fn type_to_slot_kind(
          _ => unreachable!(),
       })
    }
-}
-
-fn bucket_alignment(x: u32) -> u32 {
-   // These buckets are set due to QBE requirements
-   // hopefully this is reasonable for wasm as well
-   debug_assert!(x <= 16);
-   debug_assert!(x.is_power_of_two());
-   std::cmp::max(x, 4)
 }
 
 pub fn kill_self_assignments(program: &mut Program, var_to_slot: &IndexMap<VariableId, VarSlot>) {
