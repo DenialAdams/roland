@@ -24,9 +24,8 @@ pub fn monomorphize(
    err_manager: &mut ErrorManager,
    new_procedures: &mut IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId>
 ) {
-   let mut worklist: Vec<SpecializationWorkItem> = Vec::new();
+   let mut specializations_to_create: Vec<SpecializationWorkItem> = Vec::new();
 
-   // Construct initial worklist
    for expr in program.ast.expressions.values_mut() {
       if let Expression::BoundFcnLiteral(id, generic_args) = &expr.expression {
          if generic_args.is_empty() {
@@ -41,7 +40,7 @@ pub fn monomorphize(
             continue;
          }
 
-         worklist.push(SpecializationWorkItem {
+         specializations_to_create.push(SpecializationWorkItem {
             template_with_type_arguments: (
                *id,
                generic_args
@@ -55,7 +54,7 @@ pub fn monomorphize(
    }
 
    // Specialize procedures
-   while let Some(new_spec) = worklist.pop() {
+   for new_spec in specializations_to_create {
       if new_procedures.contains_key(&new_spec.template_with_type_arguments) {
          continue;
       }
@@ -63,7 +62,7 @@ pub fn monomorphize(
       let template_procedure = &program.procedures[new_spec.template_with_type_arguments.0];
 
       // It would be great to do this check before we push it onto the worklist, since at the moment
-      // that involes cloning a bunch of types
+      // that involves cloning a bunch of types
       let Some(body) = program.procedure_bodies.get(new_spec.template_with_type_arguments.0) else {
          continue;
       };
