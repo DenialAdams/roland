@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use indexmap::{IndexMap, IndexSet};
 
 use crate::error_handling::error_handling_macros::rolandc_error;
@@ -25,9 +23,11 @@ pub fn monomorphize(
    program: &mut Program,
    err_manager: &mut ErrorManager,
    type_checking_worklist: &mut Vec<ProcedureId>,
+   new_procedures: &mut IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId>
 ) {
    let mut worklist: Vec<SpecializationWorkItem> = Vec::new();
-   let mut new_procedures: HashMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId> = HashMap::new();
+
+   let new_procedures_len_before = new_procedures.len();
 
    // Construct initial worklist
    for expr in program.ast.expressions.values_mut() {
@@ -125,7 +125,7 @@ pub fn monomorphize(
       }
    }
 
-   type_checking_worklist.extend(new_procedures.values());
+   type_checking_worklist.extend(new_procedures[new_procedures_len_before..].values());
 }
 
 fn clone_procedure(

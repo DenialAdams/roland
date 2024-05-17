@@ -45,13 +45,14 @@ use std::path::{Path, PathBuf};
 use error_handling::error_handling_macros::rolandc_error;
 use error_handling::ErrorManager;
 use expression_hoisting::HoistingMode;
+use indexmap::IndexMap;
 use interner::Interner;
 pub use parse::Program;
 use parse::{ImportNode, ProcImplSource, ProcedureId};
 use semantic_analysis::{definite_assignment, GlobalKind};
 use slotmap::SecondaryMap;
 use source_info::SourcePath;
-use type_data::IntWidth;
+use type_data::{ExpressionType, IntWidth};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Target {
@@ -197,6 +198,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       .filter(|(_, v)| v.definition.type_parameters.is_empty() && v.impl_source == ProcImplSource::Native)
       .map(|(k, _)| k)
       .collect();
+   let mut specializations: IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId> = IndexMap::new();
 
    let mut first = true;
 
@@ -223,7 +225,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
          return Err(CompilationError::Semantic);
       }
 
-      monomorphization::monomorphize(&mut ctx.program, &mut ctx.err_manager, &mut worklist);
+      monomorphization::monomorphize(&mut ctx.program, &mut ctx.err_manager, &mut worklist, &mut specializations);
       first = false;
    }
    if !ctx.err_manager.errors.is_empty() {
