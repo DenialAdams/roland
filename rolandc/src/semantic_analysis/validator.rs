@@ -271,29 +271,116 @@ pub fn resolve_type(
    }
 }
 
+pub fn validate_special_procedure_signatures(
+   target: Target,
+   interner: &mut Interner,
+   proc_name_table: &HashMap<StrId, ProcedureId>,
+   udt: &UserDefinedTypeInfo,
+   procedures: &SlotMap<ProcedureId, ProcedureNode>,
+   err_manager: &mut ErrorManager,
+) {
+   let special_procs = get_special_procedures(target, interner);
+   for special_proc in special_procs.iter() {
+      let actual_proc = proc_name_table.get(&special_proc.name).and_then(|x| procedures.get(*x));
+      if let Some(p) = actual_proc {
+         if !p.named_parameters.is_empty() {
+            rolandc_error!(
+               err_manager,
+               p.location,
+               "`{}` is a special procedure for this target ({}) and is not allowed to have named parameters",
+               interner.lookup(special_proc.name),
+               target,
+            );
+         }
+         if !p.definition.type_parameters.is_empty() {
+            rolandc_error!(
+               err_manager,
+               p.location,
+               "`{}` is a special procedure for this target ({}) and is not allowed to have type parameters",
+               interner.lookup(special_proc.name),
+               target,
+            );
+         }
+         if !p
+            .definition
+            .parameters
+            .iter()
+            .map(|x| &x.p_type.e_type)
+            .eq(special_proc.input_types.iter())
+         {
+            if special_proc.input_types.is_empty() {
+               rolandc_error!(
+                  err_manager,
+                  p.location,
+                  "`{}` is a special procedure for this target ({}) and is not allowed to have parameters",
+                  interner.lookup(special_proc.name),
+                  target,
+               );
+            } else {
+               rolandc_error!(
+                  err_manager,
+                  p.location,
+                  "`{}` is a special procedure for this target ({}) and must have the following signature: ({})",
+                  interner.lookup(special_proc.name),
+                  target,
+                  special_proc
+                     .input_types
+                     .iter()
+                     .map(|x| x.as_roland_type_info_like_source(interner, udt,))
+                     .collect::<Vec<_>>()
+                     .join(", ")
+               );
+            }
+         }
+         if p.definition.ret_type.e_type != special_proc.return_type {
+            if special_proc.return_type == ExpressionType::Unit {
+               rolandc_error!(
+                  err_manager,
+                  p.location,
+                  "`{}` is a special procedure for this target ({}) and must not return a value",
+                  interner.lookup(special_proc.name),
+                  target,
+               );
+            } else {
+               rolandc_error!(
+                  err_manager,
+                  p.location,
+                  "`{}` is a special procedure for this target ({}) and must return {}",
+                  interner.lookup(special_proc.name),
+                  target,
+                  special_proc.return_type.as_roland_type_info_like_source(interner, udt),
+               );
+            }
+         }
+      } else if special_proc.required {
+         rolandc_error_no_loc!(
+            err_manager,
+            "A procedure with the name `{}` must be present for this target ({})",
+            interner.lookup(special_proc.name),
+            target,
+         );
+      }
+   }
+}
+
 pub fn type_and_check_validity(
    program: &mut Program,
    err_manager: &mut ErrorManager,
    interner: &mut Interner,
    target: Target,
+   worklist: &mut Vec<ProcedureId>,
+   check_globals: bool,
 ) {
    let string_struct_id = {
-      let udt_id = program
+      let UserDefinedTypeId::Struct(s_id) = program
          .user_defined_type_name_table
          .get(&interner.reverse_lookup("String").unwrap())
-         .unwrap();
-      let UserDefinedTypeId::Struct(s_id) = udt_id else {
-         unreachable!()
+         .unwrap()
+      else {
+         unreachable!();
       };
       *s_id
    };
-
-   for nd in program.procedures.values_mut() {
-      for parameter in nd.definition.parameters.iter_mut() {
-         parameter.var_id = program.next_variable;
-         program.next_variable = program.next_variable.next();
-      }
-   }
 
    let mut validation_context = ValidationContext {
       target,
@@ -307,7 +394,7 @@ pub fn type_and_check_validity(
       loop_depth: 0,
       unknown_literals: IndexSet::new(),
       ast: &mut program.ast,
-      type_variables: super::TypeVariableManager::new(),
+      type_variables: TypeVariableManager::new(),
       cur_procedure_locals: IndexMap::new(),
       source_to_definition: std::mem::replace(&mut program.source_to_definition, IndexMap::new()),
       interner,
@@ -329,121 +416,33 @@ pub fn type_and_check_validity(
       );
    }
 
-   let special_procs = get_special_procedures(target, validation_context.interner);
-   for special_proc in special_procs.iter() {
-      let actual_proc = validation_context
-         .proc_name_table
-         .get(&special_proc.name)
-         .and_then(|x| validation_context.procedures.get(*x));
-      if let Some(p) = actual_proc {
-         if !p.named_parameters.is_empty() {
-            rolandc_error!(
-               err_manager,
-               p.location,
-               "`{}` is a special procedure for this target ({}) and is not allowed to have named parameters",
-               validation_context.interner.lookup(special_proc.name),
-               validation_context.target,
-            );
-         }
-         if !p.definition.type_parameters.is_empty() {
-            rolandc_error!(
-               err_manager,
-               p.location,
-               "`{}` is a special procedure for this target ({}) and is not allowed to have type parameters",
-               validation_context.interner.lookup(special_proc.name),
-               validation_context.target,
-            );
-         }
-         if !p
-            .definition
-            .parameters
-            .iter()
-            .map(|x| &x.p_type.e_type)
-            .eq(special_proc.input_types.iter())
-         {
-            if special_proc.input_types.is_empty() {
-               rolandc_error!(
-                  err_manager,
-                  p.location,
-                  "`{}` is a special procedure for this target ({}) and is not allowed to have parameters",
-                  validation_context.interner.lookup(special_proc.name),
-                  validation_context.target,
-               );
-            } else {
-               rolandc_error!(
-                  err_manager,
-                  p.location,
-                  "`{}` is a special procedure for this target ({}) and must have the following signature: ({})",
-                  validation_context.interner.lookup(special_proc.name),
-                  validation_context.target,
-                  special_proc
-                     .input_types
-                     .iter()
-                     .map(|x| x.as_roland_type_info_like_source(
-                        validation_context.interner,
-                        validation_context.user_defined_types,
-                     ))
-                     .collect::<Vec<_>>()
-                     .join(", ")
-               );
-            }
-         }
-         if p.definition.ret_type.e_type != special_proc.return_type {
-            if special_proc.return_type == ExpressionType::Unit {
-               rolandc_error!(
-                  err_manager,
-                  p.location,
-                  "`{}` is a special procedure for this target ({}) and must not return a value",
-                  validation_context.interner.lookup(special_proc.name),
-                  validation_context.target,
-               );
-            } else {
-               rolandc_error!(
-                  err_manager,
-                  p.location,
-                  "`{}` is a special procedure for this target ({}) and must return {}",
-                  validation_context.interner.lookup(special_proc.name),
-                  validation_context.target,
-                  special_proc.return_type.as_roland_type_info_like_source(
-                     validation_context.interner,
-                     validation_context.user_defined_types
-                  ),
-               );
-            }
-         }
-      } else if special_proc.required {
-         rolandc_error_no_loc!(
+   // nocheckin this sucks ass
+   if check_globals {
+      for p_global in program.global_info.values().filter(|x| x.initializer.is_some()) {
+         type_expression(err_manager, p_global.initializer.unwrap(), &mut validation_context);
+         try_set_inferred_type(
+            &p_global.expr_type.e_type,
+            p_global.initializer.unwrap(),
+            &mut validation_context,
+         );
+
+         let p_static_expr = &validation_context.ast.expressions[p_global.initializer.unwrap()];
+
+         check_type_declared_vs_actual(
+            &p_global.expr_type,
+            p_static_expr,
+            validation_context.interner,
+            validation_context.user_defined_types,
+            validation_context.procedures,
+            &validation_context.type_variables,
             err_manager,
-            "A procedure with the name `{}` must be present for this target ({})",
-            validation_context.interner.lookup(special_proc.name),
-            validation_context.target,
          );
       }
    }
 
-   for p_global in program.global_info.values().filter(|x| x.initializer.is_some()) {
-      type_expression(err_manager, p_global.initializer.unwrap(), &mut validation_context);
-      try_set_inferred_type(
-         &p_global.expr_type.e_type,
-         p_global.initializer.unwrap(),
-         &mut validation_context,
-      );
-
-      let p_static_expr = &validation_context.ast.expressions[p_global.initializer.unwrap()];
-
-      check_type_declared_vs_actual(
-         &p_global.expr_type,
-         p_static_expr,
-         validation_context.interner,
-         validation_context.user_defined_types,
-         validation_context.procedures,
-         &validation_context.type_variables,
-         err_manager,
-      );
-   }
-
-   for (id, body) in program.procedure_bodies.iter_mut() {
+   for id in worklist.drain(..) {
       let proc = &program.procedures[id];
+      let body = &mut program.procedure_bodies[id];
       validation_context.cur_procedure = Some(id);
       let num_globals = validation_context.variable_types.len();
 
@@ -499,9 +498,11 @@ pub fn type_and_check_validity(
    // lower type variables
    {
       for (i, e) in validation_context.ast.expressions.iter_mut() {
-         let opt_tv = e.exp_type.as_ref().unwrap().get_type_variable_of_unknown_type();
-
-         if let Some(tv) = opt_tv {
+         if let Some(tv) = e
+            .exp_type
+            .as_ref()
+            .and_then(ExpressionType::get_type_variable_of_unknown_type)
+         {
             let the_type = validation_context.type_variables.get_data(tv);
             if let Some(t) = the_type.known_type.as_ref() {
                *e.exp_type.as_mut().unwrap().get_unknown_portion_of_type().unwrap() = t.clone();
@@ -792,13 +793,10 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
 
          let mut dt_is_unresolved = false;
          if let Some(v) = dt.as_mut() {
-            let cur_type_params = validation_context
-               .cur_procedure
-               .map(|x| &validation_context.procedures[x].type_parameters);
             if !resolve_type(
                &mut v.e_type,
                validation_context.user_defined_type_name_table,
-               cur_type_params,
+               None,
                err_manager,
                validation_context.interner,
                v.location,
@@ -926,13 +924,10 @@ fn type_expression(
    // Resolve types and names first
    match &mut validation_context.ast.expressions[expr_index].expression {
       Expression::Cast { target_type, .. } => {
-         let cur_type_params = validation_context
-            .cur_procedure
-            .map(|x| &validation_context.procedures[x].type_parameters);
          if !resolve_type(
             target_type,
             validation_context.user_defined_type_name_table,
-            cur_type_params,
+            None,
             err_manager,
             validation_context.interner,
             expr_location,
@@ -1449,14 +1444,10 @@ fn get_type(
             validation_context
                .source_to_definition
                .insert(proc.definition.name.location, proc.location);
-            let our_type_params = validation_context
-               .cur_procedure
-               .map(|x| &validation_context.procedures[x].type_parameters);
             check_procedure_item(
                *id,
                proc.definition.name.str,
                &proc.type_parameters,
-               our_type_params,
                expr_location,
                type_arguments,
                validation_context.interner,
@@ -2179,7 +2170,6 @@ fn check_procedure_item(
    callee_proc_id: ProcedureId,
    callee_proc_name: StrId,
    callee_type_params: &IndexMap<StrId, IndexSet<StrId>>,
-   our_type_params: Option<&IndexMap<StrId, IndexSet<StrId>>>,
    location: SourceInfo,
    type_arguments: &[ExpressionTypeNode],
    interner: &Interner,
@@ -2202,24 +2192,6 @@ fn check_procedure_item(
       match g_arg.e_type {
          ExpressionType::Unresolved(_) => {
             // We have already errored on this argument
-         }
-         ExpressionType::GenericParam(gp) => {
-            // this unwrap is safe, because nothing should be resolved to a generic param if we're not in a procedure body
-            let our_constraints = our_type_params.and_then(|x| x.get(&gp)).unwrap();
-            if !our_constraints.is_superset(constraints) {
-               let constraints_we_do_not_meet: Vec<String> = constraints
-                  .difference(our_constraints)
-                  .map(|x| format!("`{}`", interner.lookup(*x)))
-                  .collect();
-               rolandc_error!(
-                  err_manager,
-                  g_arg.location,
-                  "For procedure `{}`, encountered type argument of type {} which does not meet the constraints {}",
-                  interner.lookup(callee_proc_name),
-                  g_arg.e_type.as_roland_type_info_notv(interner, udt, procedures),
-                  constraints_we_do_not_meet.join(", "),
-               );
-            }
          }
          _ => {
             for constraint in constraints {

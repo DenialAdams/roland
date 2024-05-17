@@ -47,7 +47,7 @@ use error_handling::ErrorManager;
 use expression_hoisting::HoistingMode;
 use interner::Interner;
 pub use parse::Program;
-use parse::{ImportNode, ProcImplSource};
+use parse::{ImportNode, ProcImplSource, ProcedureId};
 use semantic_analysis::{definite_assignment, GlobalKind};
 use slotmap::SecondaryMap;
 use source_info::SourcePath;
@@ -181,16 +181,63 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       return Err(CompilationError::Semantic);
    }
 
-   semantic_analysis::validator::type_and_check_validity(
-      &mut ctx.program,
-      &mut ctx.err_manager,
-      &mut ctx.interner,
+   semantic_analysis::validator::validate_special_procedure_signatures(
       config.target,
+      &mut ctx.interner,
+      &ctx.program.procedure_name_table,
+      &ctx.program.user_defined_types,
+      &ctx.program.procedures,
+      &mut ctx.err_manager,
    );
 
+   let mut worklist: Vec<ProcedureId> = ctx
+      .program
+      .procedures
+      .iter()
+      .filter(|(_, v)| v.definition.type_parameters.is_empty() && v.impl_source == ProcImplSource::Native)
+      .map(|(k, _)| k)
+      .collect();
+
+   let mut first = true;
+
+   while !worklist.is_empty() {
+      for key in worklist.iter() {
+         for parameter in ctx.program.procedures[*key].definition.parameters.iter_mut() {
+            parameter.var_id = ctx.program.next_variable;
+            ctx.program.next_variable = ctx.program.next_variable.next();
+         }
+      }
+
+      semantic_analysis::validator::type_and_check_validity(
+         &mut ctx.program,
+         &mut ctx.err_manager,
+         &mut ctx.interner,
+         config.target,
+         &mut worklist,
+         first,
+      );
+      debug_assert!(worklist.is_empty());
+
+      // nocheckin: remove this
+      if !ctx.err_manager.errors.is_empty() {
+         return Err(CompilationError::Semantic);
+      }
+
+      monomorphization::monomorphize(&mut ctx.program, &mut ctx.err_manager, &mut worklist);
+      first = false;
+   }
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
+   ctx.program
+      .procedures
+      .retain(|_, x| x.definition.type_parameters.is_empty() || x.impl_source != ProcImplSource::Native);
+   ctx.program
+      .procedure_bodies
+      .retain(|k, _| ctx.program.procedures.contains_key(k));
+   // Throw out all untyped expressions, on the basis that untyped expressions should no
+   // longer be referenced now that we deleted all template procedures
+   ctx.program.ast.expressions.retain(|_, x| x.exp_type.is_some());
 
    loop_lowering::lower_fors_and_whiles(&mut ctx.program);
 
@@ -222,17 +269,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    // must run after expression hoisting, so that re-ordering named arguments does not
    // affect side-effect order
    named_argument_lowering::lower_named_args(&mut ctx.program);
-
-   monomorphization::monomorphize(&mut ctx.program, &mut ctx.err_manager);
-   if !ctx.err_manager.errors.is_empty() {
-      return Err(CompilationError::Semantic);
-   }
-   ctx.program
-      .procedures
-      .retain(|_, x| x.definition.type_parameters.is_empty() || x.impl_source != ProcImplSource::Native);
-   ctx.program
-      .procedure_bodies
-      .retain(|k, _| ctx.program.procedures.contains_key(k));
 
    constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner, config.target);
    ctx.program.global_info.retain(|_, v| v.kind != GlobalKind::Const);
@@ -273,7 +309,12 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    // Convert nested, AST representation into CFG
    {
-      backend::linearize::linearize(&mut ctx.program, &ctx.interner, config.dump_debugging_info, config.target);
+      backend::linearize::linearize(
+         &mut ctx.program,
+         &ctx.interner,
+         config.dump_debugging_info,
+         config.target,
+      );
 
       // Clean up
       for old_body in ctx.program.procedure_bodies.values_mut().map(|x| &mut x.block) {

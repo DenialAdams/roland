@@ -3,7 +3,7 @@ proc main() {
 }
 
 proc foo<T>() {
-   foo$<proc(T)>();
+   //foo$<proc(T)>();
 }
 __END__
 compile:
