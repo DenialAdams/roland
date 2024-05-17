@@ -68,7 +68,6 @@ pub fn monomorphize(
       // It would be great to do this check before we push it onto the worklist, since at the moment
       // that involes cloning a bunch of types
       let Some(body) = program.procedure_bodies.get(new_spec.template_with_type_arguments.0) else {
-         // nocheckin is this branch even possible?
          continue;
       };
 
@@ -265,9 +264,12 @@ fn deep_clone_expr(
          *b = deep_clone_expr(*b, expressions, concrete_types, type_parameters);
          *c = deep_clone_expr(*c, expressions, concrete_types, type_parameters);
       }
-      Expression::UnresolvedStructLiteral(_, _) => {
-         // nocheckin
-         todo!();
+      Expression::UnresolvedStructLiteral(_, fields) => {
+         for field in fields.iter_mut() {
+            if let Some(e) = &mut field.1 {
+               *e = deep_clone_expr(*e, expressions, concrete_types, type_parameters);
+            }
+         }
       }
       // These should not yet be resolved
       Expression::BoundFcnLiteral(_, _)
