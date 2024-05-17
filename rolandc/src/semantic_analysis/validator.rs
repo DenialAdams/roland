@@ -953,14 +953,11 @@ fn type_expression(
          }
       },
       Expression::UnresolvedProcLiteral(name, g_args) => {
-         let cur_type_params = validation_context
-            .cur_procedure
-            .map(|x| &validation_context.procedures[x].type_parameters);
          for g_arg in g_args.iter_mut() {
             resolve_type(
                &mut g_arg.e_type,
                validation_context.user_defined_type_name_table,
-               cur_type_params,
+               None,
                err_manager,
                validation_context.interner,
                g_arg.location,
