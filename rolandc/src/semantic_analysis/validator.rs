@@ -368,7 +368,7 @@ pub fn type_and_check_validity(
    err_manager: &mut ErrorManager,
    interner: &mut Interner,
    target: Target,
-   worklist: &mut Vec<ProcedureId>,
+   procedures_to_check: &[ProcedureId],
    check_globals: bool,
 ) {
    let string_struct_id = {
@@ -440,7 +440,7 @@ pub fn type_and_check_validity(
       }
    }
 
-   for id in worklist.drain(..) {
+   for id in procedures_to_check.iter().copied() {
       let proc = &program.procedures[id];
       let body = &mut program.procedure_bodies[id];
       validation_context.cur_procedure = Some(id);

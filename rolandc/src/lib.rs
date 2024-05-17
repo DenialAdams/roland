@@ -213,10 +213,10 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
          &mut ctx.err_manager,
          &mut ctx.interner,
          config.target,
-         &mut worklist,
+         &worklist,
          specializations.is_empty(),
       );
-      debug_assert!(worklist.is_empty());
+      worklist.clear();
 
       // nocheckin: remove this
       if !ctx.err_manager.errors.is_empty() {
