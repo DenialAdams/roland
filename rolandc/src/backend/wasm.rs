@@ -346,7 +346,8 @@ pub fn emit_wasm(
       );
       global_names.append(0, "stack_pointer");
 
-      for (i, global) in program.global_info.iter().enumerate() {
+      let mut i: u32 = 1;
+      for global in program.global_info.iter() {
          if !generation_context.var_to_slot.contains_key(global.0) {
             continue;
          }
@@ -374,10 +375,11 @@ pub fn emit_wasm(
             &initial_val,
          );
          global_names.append(
-            1 + i as u32,
+            i,
             interner.lookup(program.global_info.get(global.0).unwrap().name),
          );
-         debug_assert!(generation_context.var_to_slot[global.0] == VarSlot::Register(1 + i as u32));
+         debug_assert!(generation_context.var_to_slot[global.0] == VarSlot::Register(i));
+         i += 1;
       }
 
       (globals, global_names)
