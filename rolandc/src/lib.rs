@@ -200,8 +200,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       .collect();
    let mut specializations: IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId> = IndexMap::new();
 
-   let mut first = true;
-
    while !worklist.is_empty() {
       for key in worklist.iter() {
          for parameter in ctx.program.procedures[*key].definition.parameters.iter_mut() {
@@ -216,7 +214,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
          &mut ctx.interner,
          config.target,
          &mut worklist,
-         first,
+         specializations.is_empty(),
       );
       debug_assert!(worklist.is_empty());
 
@@ -225,8 +223,9 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
          return Err(CompilationError::Semantic);
       }
 
-      monomorphization::monomorphize(&mut ctx.program, &mut ctx.err_manager, &mut worklist, &mut specializations);
-      first = false;
+      let specializations_before = specializations.len();
+      monomorphization::monomorphize(&mut ctx.program, &mut ctx.err_manager, &mut specializations);
+      worklist.extend(specializations[specializations_before..].values());
    }
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
