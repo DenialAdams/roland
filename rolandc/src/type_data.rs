@@ -180,25 +180,6 @@ impl ExpressionType {
    }
 
    #[must_use]
-   pub fn is_or_contains_or_points_to_generic(&self) -> bool {
-      match self {
-         ExpressionType::Unknown(_) | ExpressionType::CompileError | ExpressionType::Unresolved(_) => unreachable!(),
-         ExpressionType::GenericParam(_) => true,
-         ExpressionType::Int(_)
-         | ExpressionType::Float(_)
-         | ExpressionType::Bool
-         | ExpressionType::Unit
-         | ExpressionType::Never
-         | ExpressionType::Struct(_)
-         | ExpressionType::Union(_)
-         | ExpressionType::ProcedureItem(_, _)
-         | ExpressionType::ProcedurePointer { .. }
-         | ExpressionType::Enum(_) => false,
-         ExpressionType::Array(exp, _) | ExpressionType::Pointer(exp) => exp.is_or_contains_or_points_to_generic(),
-      }
-   }
-
-   #[must_use]
    pub fn size_is_unknown(&self) -> bool {
       match self {
          ExpressionType::CompileError | ExpressionType::Unresolved(_) => unreachable!(),

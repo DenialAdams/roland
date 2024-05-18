@@ -399,7 +399,7 @@ pub fn type_and_check_validity(
       );
    }
 
-   // nocheckin this sucks ass
+   // TODO: move this to a dedicated function we can call outside of type checking loop
    if check_globals {
       for p_global in program.global_info.values().filter(|x| x.initializer.is_some()) {
          type_expression(err_manager, p_global.initializer.unwrap(), &mut validation_context);

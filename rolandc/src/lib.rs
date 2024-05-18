@@ -231,13 +231,8 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       );
       worklist.clear();
 
-      // nocheckin: remove this
-      if !ctx.err_manager.errors.is_empty() {
-         return Err(CompilationError::Semantic);
-      }
-
       let specializations_before = specializations.len();
-      monomorphization::monomorphize(&mut ctx.program, &mut ctx.err_manager, &mut specializations);
+      monomorphization::monomorphize(&mut ctx.program, &mut specializations);
       worklist.extend(specializations[specializations_before..].values());
    }
    if !ctx.err_manager.errors.is_empty() {

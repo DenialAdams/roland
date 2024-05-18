@@ -1,7 +1,5 @@
 use indexmap::{IndexMap, IndexSet};
 
-use crate::error_handling::error_handling_macros::rolandc_error;
-use crate::error_handling::ErrorManager;
 use crate::interner::StrId;
 use crate::parse::{
    AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureBody, ProcedureId, ProcedureNode, Statement,
@@ -13,18 +11,11 @@ use crate::Program;
 
 pub const DEPTH_LIMIT: u64 = 100;
 
-type TemplateWithTypeArguments = (ProcedureId, Box<[ExpressionType]>);
-
-struct SpecializationWorkItem {
-   template_with_type_arguments: TemplateWithTypeArguments,
-}
-
 pub fn monomorphize(
    program: &mut Program,
-   err_manager: &mut ErrorManager,
    specialized_procedures: &mut IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId>,
 ) {
-   let mut specializations_to_create: Vec<SpecializationWorkItem> = Vec::new();
+   let mut specializations_to_create: Vec<(ProcedureId, Box<[ExpressionType]>)> = Vec::new();
 
    for expr in program.ast.expressions.values_mut() {
       if let Expression::BoundFcnLiteral(id, generic_args) = &expr.expression {
@@ -32,45 +23,39 @@ pub fn monomorphize(
             continue;
          }
 
-         // This is a call to a generic function inside of a generic function - we'll come back to these.
-         if generic_args
-            .iter()
-            .any(|x| x.e_type.is_or_contains_or_points_to_generic())
-         {
+         if generic_args.iter().any(|x| !is_resolved(&x.e_type)) {
             continue;
          }
 
-         specializations_to_create.push(SpecializationWorkItem {
-            template_with_type_arguments: (
-               *id,
-               generic_args
-                  .iter()
-                  .map(|x| x.e_type.clone())
-                  .collect::<Vec<_>>()
-                  .into_boxed_slice(),
-            ),
-         });
+         specializations_to_create.push((
+            *id,
+            generic_args
+               .iter()
+               .map(|x| x.e_type.clone())
+               .collect::<Vec<_>>()
+               .into_boxed_slice(),
+         ));
       }
    }
 
    // Specialize procedures
    for new_spec in specializations_to_create {
-      if specialized_procedures.contains_key(&new_spec.template_with_type_arguments) {
+      if specialized_procedures.contains_key(&new_spec) {
          continue;
       }
 
-      let template_procedure = &program.procedures[new_spec.template_with_type_arguments.0];
+      let template_procedure = &program.procedures[new_spec.0];
 
       // It would be great to do this check before we push it onto the worklist, since at the moment
       // that involves cloning a bunch of types
-      let Some(body) = program.procedure_bodies.get(new_spec.template_with_type_arguments.0) else {
+      let Some(body) = program.procedure_bodies.get(new_spec.0) else {
          continue;
       };
 
       let cloned_procedure = clone_procedure(
          template_procedure,
          body,
-         &new_spec.template_with_type_arguments.1,
+         &new_spec.1,
          &template_procedure.type_parameters,
          &mut program.ast,
       );
@@ -78,7 +63,7 @@ pub fn monomorphize(
       let new_proc_id = program.procedures.insert(cloned_procedure.0);
       program.procedure_bodies.insert(new_proc_id, cloned_procedure.1);
 
-      specialized_procedures.insert(new_spec.template_with_type_arguments, new_proc_id);
+      specialized_procedures.insert(new_spec, new_proc_id);
    }
 
    // Update all procedure calls to refer to specialized procedures
@@ -267,4 +252,27 @@ fn deep_clone_expr(
       | Expression::Variable(_) => unreachable!(),
    }
    expressions.insert(cloned)
+}
+
+#[must_use]
+fn is_resolved(e: &ExpressionType) -> bool {
+   match e {
+      ExpressionType::GenericParam(_)
+      | ExpressionType::Unresolved(_)
+      | ExpressionType::Unknown(_)
+      | ExpressionType::CompileError => false,
+      ExpressionType::Int(_)
+      | ExpressionType::Float(_)
+      | ExpressionType::Bool
+      | ExpressionType::Unit
+      | ExpressionType::Never
+      | ExpressionType::Struct(_)
+      | ExpressionType::Union(_)
+      | ExpressionType::ProcedureItem(_, _)
+      | ExpressionType::Enum(_) => true,
+      ExpressionType::Array(exp, _) | ExpressionType::Pointer(exp) => is_resolved(exp),
+      ExpressionType::ProcedurePointer { parameters, ret_type } => {
+         is_resolved(ret_type) && parameters.iter().all(is_resolved)
+      }
+   }
 }
