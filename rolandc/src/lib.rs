@@ -199,8 +199,21 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       .map(|(k, _)| k)
       .collect();
    let mut specializations: IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId> = IndexMap::new();
+   let mut iteration: u64 = 0;
 
    while !worklist.is_empty() {
+      iteration += 1;
+      if iteration == monomorphization::DEPTH_LIMIT {
+         rolandc_error!(
+            ctx.err_manager,
+            ctx.program.procedures[worklist[0]].location,
+            "Reached depth limit of {} during monomorphization",
+            monomorphization::DEPTH_LIMIT
+         );
+
+         break;
+      }
+
       for key in worklist.iter() {
          for parameter in ctx.program.procedures[*key].definition.parameters.iter_mut() {
             parameter.var_id = ctx.program.next_variable;

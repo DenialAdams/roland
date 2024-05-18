@@ -374,10 +374,7 @@ pub fn emit_wasm(
             },
             &initial_val,
          );
-         global_names.append(
-            i,
-            interner.lookup(program.global_info.get(global.0).unwrap().name),
-         );
+         global_names.append(i, interner.lookup(program.global_info.get(global.0).unwrap().name));
          debug_assert!(generation_context.var_to_slot[global.0] == VarSlot::Register(i));
          i += 1;
       }

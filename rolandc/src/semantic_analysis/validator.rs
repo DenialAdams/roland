@@ -92,25 +92,6 @@ enum TypeValidator {
    Any,
 }
 
-pub fn is_type_param_with_trait(
-   validation_context: &ValidationContext,
-   the_type: &ExpressionType,
-   the_trait: &'static str,
-) -> bool {
-   if let ExpressionType::GenericParam(gp) = the_type {
-      let constraints = validation_context
-         .cur_procedure
-         .and_then(|x| validation_context.procedures[x].type_parameters.get(gp))
-         .unwrap();
-      validation_context
-         .interner
-         .reverse_lookup(the_trait)
-         .map_or(false, |enum_id| constraints.contains(&enum_id))
-   } else {
-      false
-   }
-}
-
 fn matches(type_validation: &TypeValidator, et: &ExpressionType, validation_context: &ValidationContext) -> bool {
    let normal_matches = matches!(
       (type_validation, et),
@@ -138,13 +119,7 @@ fn matches(type_validation: &TypeValidator, et: &ExpressionType, validation_cont
       false
    };
 
-   let type_param_matches = match type_validation {
-      TypeValidator::AnyEnum => is_type_param_with_trait(validation_context, et, "Enum"),
-      TypeValidator::AnyFloat => is_type_param_with_trait(validation_context, et, "Float"),
-      _ => false,
-   };
-
-   normal_matches | unknown_matches | type_param_matches
+   normal_matches | unknown_matches
 }
 
 fn any_match(type_validations: &[TypeValidator], et: &ExpressionType, validation_context: &ValidationContext) -> bool {
@@ -179,6 +154,7 @@ pub fn resolve_type(
    v_type: &mut ExpressionType,
    type_name_table: &HashMap<StrId, UserDefinedTypeId>,
    type_params: Option<&IndexMap<StrId, IndexSet<StrId>>>,
+   specialized_types: Option<&HashMap<StrId, ExpressionType>>,
    err_manager: &mut ErrorManager,
    interner: &Interner,
    location_for_error: SourceInfo,
@@ -188,6 +164,7 @@ pub fn resolve_type(
          vt,
          type_name_table,
          type_params,
+         specialized_types,
          err_manager,
          interner,
          location_for_error,
@@ -196,6 +173,7 @@ pub fn resolve_type(
          exp,
          type_name_table,
          type_params,
+         specialized_types,
          err_manager,
          interner,
          location_for_error,
@@ -210,6 +188,7 @@ pub fn resolve_type(
                parameter,
                type_name_table,
                type_params,
+               specialized_types,
                err_manager,
                interner,
                location_for_error,
@@ -219,6 +198,7 @@ pub fn resolve_type(
             ret_val,
             type_name_table,
             type_params,
+            specialized_types,
             err_manager,
             interner,
             location_for_error,
@@ -256,6 +236,9 @@ pub fn resolve_type(
                true
             } else if type_params.map_or(false, |tp| tp.contains_key(x)) {
                *v_type = ExpressionType::GenericParam(*x);
+               true
+            } else if let Some(spec_type) = specialized_types.and_then(|st| st.get(x)) {
+               *v_type = spec_type.clone();
                true
             } else {
                rolandc_error!(
@@ -793,10 +776,14 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
 
          let mut dt_is_unresolved = false;
          if let Some(v) = dt.as_mut() {
+            let spec_params = validation_context
+               .cur_procedure
+               .map(|x| &validation_context.procedures[x].specialized_type_parameters);
             if !resolve_type(
                &mut v.e_type,
                validation_context.user_defined_type_name_table,
                None,
+               spec_params,
                err_manager,
                validation_context.interner,
                v.location,
@@ -924,10 +911,14 @@ fn type_expression(
    // Resolve types and names first
    match &mut validation_context.ast.expressions[expr_index].expression {
       Expression::Cast { target_type, .. } => {
+         let spec_params = validation_context
+            .cur_procedure
+            .map(|x| &validation_context.procedures[x].specialized_type_parameters);
          if !resolve_type(
             target_type,
             validation_context.user_defined_type_name_table,
             None,
+            spec_params,
             err_manager,
             validation_context.interner,
             expr_location,
@@ -954,10 +945,14 @@ fn type_expression(
       },
       Expression::UnresolvedProcLiteral(name, g_args) => {
          for g_arg in g_args.iter_mut() {
+            let spec_params = validation_context
+               .cur_procedure
+               .map(|x| &validation_context.procedures[x].specialized_type_parameters);
             resolve_type(
                &mut g_arg.e_type,
                validation_context.user_defined_type_name_table,
                None,
+               spec_params,
                err_manager,
                validation_context.interner,
                g_arg.location,
@@ -1112,16 +1107,6 @@ fn get_type(
                      err_manager,
                      e.location,
                      "Transmute encountered an operand whose size is not yet known",
-                  );
-                  return ExpressionType::CompileError;
-               }
-
-               if target_type.size_is_unknown() {
-                  // This can only happen if the target is a type argument
-                  rolandc_error!(
-                     err_manager,
-                     e.location,
-                     "Transmute to a type parameter is currently unsupported",
                   );
                   return ExpressionType::CompileError;
                }

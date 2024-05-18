@@ -68,6 +68,7 @@ pub struct ProcedureNode {
    // Populated post-parse
    pub named_parameters: HashMap<StrId, ExpressionType>,
    pub type_parameters: IndexMap<StrId, IndexSet<StrId>>,
+   pub specialized_type_parameters: HashMap<StrId, ExpressionType>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -770,6 +771,7 @@ fn parse_procedure(
          location: combined_location,
          named_parameters: HashMap::new(),
          type_parameters: IndexMap::new(),
+         specialized_type_parameters: HashMap::new(),
       },
       ProcedureBody {
          locals: IndexMap::new(),
@@ -793,6 +795,7 @@ fn parse_external_procedure(
       impl_source: proc_impl_source,
       named_parameters: HashMap::new(),
       type_parameters: IndexMap::new(),
+      specialized_type_parameters: HashMap::new(),
    })
 }
 

@@ -1,7 +1,6 @@
 use std::ops::Deref;
 
 use super::type_variables::{TypeConstraint, TypeVariable};
-use super::validator::is_type_param_with_trait;
 use super::ValidationContext;
 use crate::parse::{Expression, ExpressionId};
 use crate::type_data::{ExpressionType, IntType};
@@ -43,10 +42,7 @@ fn inference_is_possible(
 
          match data.constraint {
             TypeConstraint::None => true,
-            TypeConstraint::Float => {
-               matches!(potential_type, ExpressionType::Float(_))
-                  || is_type_param_with_trait(validation_context, potential_type, "Float")
-            }
+            TypeConstraint::Float => matches!(potential_type, ExpressionType::Float(_)),
             TypeConstraint::SignedInt => matches!(potential_type, ExpressionType::Int(IntType { signed: true, .. })),
             TypeConstraint::Int => matches!(potential_type, ExpressionType::Int(_)),
          }

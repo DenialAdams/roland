@@ -11,7 +11,7 @@ use crate::semantic_analysis::validator::map_generic_to_concrete;
 use crate::type_data::ExpressionType;
 use crate::Program;
 
-const DEPTH_LIMIT: u64 = 100;
+pub const DEPTH_LIMIT: u64 = 100;
 
 type TemplateWithTypeArguments = (ProcedureId, Box<[ExpressionType]>);
 
@@ -22,7 +22,7 @@ struct SpecializationWorkItem {
 pub fn monomorphize(
    program: &mut Program,
    err_manager: &mut ErrorManager,
-   new_procedures: &mut IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId>
+   specialized_procedures: &mut IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId>,
 ) {
    let mut specializations_to_create: Vec<SpecializationWorkItem> = Vec::new();
 
@@ -55,7 +55,7 @@ pub fn monomorphize(
 
    // Specialize procedures
    for new_spec in specializations_to_create {
-      if new_procedures.contains_key(&new_spec.template_with_type_arguments) {
+      if specialized_procedures.contains_key(&new_spec.template_with_type_arguments) {
          continue;
       }
 
@@ -66,17 +66,6 @@ pub fn monomorphize(
       let Some(body) = program.procedure_bodies.get(new_spec.template_with_type_arguments.0) else {
          continue;
       };
-
-      if 0 >= DEPTH_LIMIT {
-         rolandc_error!(
-            err_manager,
-            template_procedure.location,
-            "Reached depth limit of {} during monomorphization",
-            DEPTH_LIMIT
-         );
-
-         return;
-      }
 
       let cloned_procedure = clone_procedure(
          template_procedure,
@@ -89,7 +78,7 @@ pub fn monomorphize(
       let new_proc_id = program.procedures.insert(cloned_procedure.0);
       program.procedure_bodies.insert(new_proc_id, cloned_procedure.1);
 
-      new_procedures.insert(new_spec.template_with_type_arguments, new_proc_id);
+      specialized_procedures.insert(new_spec.template_with_type_arguments, new_proc_id);
    }
 
    // Update all procedure calls to refer to specialized procedures
@@ -99,7 +88,7 @@ pub fn monomorphize(
             continue;
          }
 
-         if let Some(new_id) = new_procedures.get(&(*id, generic_args.clone())).copied() {
+         if let Some(new_id) = specialized_procedures.get(&(*id, generic_args.clone())).copied() {
             *id = new_id;
          }
       }
@@ -114,7 +103,7 @@ pub fn monomorphize(
             .collect::<Vec<_>>()
             .into_boxed_slice();
 
-         if let Some(new_id) = new_procedures.get(&(*id, gargs)).copied() {
+         if let Some(new_id) = specialized_procedures.get(&(*id, gargs)).copied() {
             *id = new_id;
             *generic_args = Box::new([]);
          }
@@ -145,6 +134,12 @@ fn clone_procedure(
 
    cloned_proc.definition.type_parameters.clear();
    cloned_proc.type_parameters.clear();
+
+   cloned_proc.specialized_type_parameters = type_parameters
+      .keys()
+      .copied()
+      .zip(concrete_types.iter().cloned())
+      .collect();
 
    (cloned_proc, cloned_body)
 }

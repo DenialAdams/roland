@@ -770,7 +770,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
             x => {
                dbg!(x);
                unreachable!();
-            },
+            }
          };
 
          Some(Expression::IntLiteral {

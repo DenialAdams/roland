@@ -1,4 +1,7 @@
 proc main() {
+    // This test was more meaningful when we had checked generics
+    // Nonetheless, leaving it for now
+    foo$<u8>(10);
 }
 
 proc foo<T>(x: T) -> T {
@@ -10,5 +13,5 @@ proc bar<T>(x: T) -> T where T: Enum {
 }
 __END__
 compile:
-For procedure `bar`, encountered type argument of type T which does not meet the constraints `Enum`
-↳ line 5, column 16 [tests/generics/forwarding_generic_not_meeting_constraint.rol]
+For procedure `bar`, encountered type argument of type u8 which does not meet the constraint `Enum`
+↳ line 8, column 16 [tests/generics/forwarding_generic_not_meeting_constraint.rol]
