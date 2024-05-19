@@ -2216,9 +2216,11 @@ fn check_type_declared_vs_actual(
    err_manager: &mut ErrorManager,
 ) {
    fn address_of_actual_matches_dt(actual_type: &ExpressionType, declared_type: &ExpressionType) -> bool {
-      let actual_type_ref = ExpressionType::Pointer(Box::new(actual_type.clone()));
+      let ExpressionType::Pointer(inner) = declared_type else {
+         return false;
+      };
 
-      actual_type_ref == *declared_type
+      actual_type == inner.as_ref()
    }
    fn deref_of_actual_matches_dt(actual_type: &ExpressionType, declared_type: &ExpressionType) -> bool {
       match actual_type {
