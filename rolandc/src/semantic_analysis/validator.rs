@@ -2216,11 +2216,7 @@ fn check_type_declared_vs_actual(
    err_manager: &mut ErrorManager,
 ) {
    fn address_of_actual_matches_dt(actual_type: &ExpressionType, declared_type: &ExpressionType) -> bool {
-      let ExpressionType::Pointer(inner) = declared_type else {
-         return false;
-      };
-
-      actual_type == inner.as_ref()
+      deref_of_actual_matches_dt(declared_type, actual_type)
    }
    fn deref_of_actual_matches_dt(actual_type: &ExpressionType, declared_type: &ExpressionType) -> bool {
       match actual_type {
