@@ -2224,7 +2224,7 @@ fn check_type_declared_vs_actual(
    }
    fn deref_of_actual_matches_dt(actual_type: &ExpressionType, declared_type: &ExpressionType) -> bool {
       match actual_type {
-         ExpressionType::Pointer(inner) => &**inner == declared_type,
+         ExpressionType::Pointer(inner) => inner.as_ref() == declared_type,
          _ => false,
       }
    }
