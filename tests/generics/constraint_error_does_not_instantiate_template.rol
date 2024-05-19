@@ -1,0 +1,11 @@
+proc main() {
+    foo$<u8>();
+}
+
+proc foo<T>() -> u64 where T: Enum {
+    return num_variants$<T>();
+}
+__END__
+compile:
+For procedure `foo`, encountered type argument of type u8 which does not meet the constraint `Enum`
+↳ line 2, column 10 [tests/generics/constraint_error_does_not_instantiate_template.rol]
