@@ -517,8 +517,9 @@ pub fn emit_wasm(
       if !generation_context.procedure_to_table_index.is_empty() {
          let table_type = TableType {
             element_type: RefType::FUNCREF,
-            minimum: generation_context.procedure_to_table_index.len() as u32,
-            maximum: Some(generation_context.procedure_to_table_index.len() as u32),
+            minimum: generation_context.procedure_to_table_index.len() as u64,
+            maximum: Some(generation_context.procedure_to_table_index.len() as u64),
+            table64: false,
          };
 
          table.table(table_type);
