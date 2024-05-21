@@ -14,30 +14,8 @@ pub const DEPTH_LIMIT: u64 = 100;
 pub fn monomorphize(
    program: &mut Program,
    specialized_procedures: &mut IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId>,
+   specializations_to_create: Vec<(ProcedureId, Box<[ExpressionType]>)>,
 ) {
-   let mut specializations_to_create: Vec<(ProcedureId, Box<[ExpressionType]>)> = Vec::new();
-
-   for expr in program.ast.expressions.values_mut() {
-      if let Expression::BoundFcnLiteral(id, generic_args) = &expr.expression {
-         if generic_args.is_empty() {
-            continue;
-         }
-
-         if generic_args.iter().any(|x| !is_resolved(&x.e_type)) {
-            continue;
-         }
-
-         specializations_to_create.push((
-            *id,
-            generic_args
-               .iter()
-               .map(|x| x.e_type.clone())
-               .collect::<Vec<_>>()
-               .into_boxed_slice(),
-         ));
-      }
-   }
-
    // Specialize procedures
    for new_spec in specializations_to_create {
       if specialized_procedures.contains_key(&new_spec) {
@@ -252,27 +230,4 @@ fn deep_clone_expr(
       | Expression::Variable(_) => unreachable!(),
    }
    expressions.insert(cloned)
-}
-
-#[must_use]
-fn is_resolved(e: &ExpressionType) -> bool {
-   match e {
-      ExpressionType::GenericParam(_)
-      | ExpressionType::Unresolved(_)
-      | ExpressionType::Unknown(_)
-      | ExpressionType::CompileError => false,
-      ExpressionType::Int(_)
-      | ExpressionType::Float(_)
-      | ExpressionType::Bool
-      | ExpressionType::Unit
-      | ExpressionType::Never
-      | ExpressionType::Struct(_)
-      | ExpressionType::Union(_)
-      | ExpressionType::ProcedureItem(_, _)
-      | ExpressionType::Enum(_) => true,
-      ExpressionType::Array(exp, _) | ExpressionType::Pointer(exp) => is_resolved(exp),
-      ExpressionType::ProcedurePointer { parameters, ret_type } => {
-         is_resolved(ret_type) && parameters.iter().all(is_resolved)
-      }
-   }
 }

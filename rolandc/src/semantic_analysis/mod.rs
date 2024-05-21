@@ -90,6 +90,7 @@ pub struct ValidationContext<'a> {
    pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
    pub interner: &'a mut Interner,
    pub string_struct_id: StructId,
+   pub procedures_to_specialize: Vec<(ProcedureId, Box<[ExpressionType]>)>,
    next_var_dont_access: VariableId,
 }
 

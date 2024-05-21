@@ -346,6 +346,7 @@ pub fn validate_special_procedure_signatures(
    }
 }
 
+#[must_use]
 pub fn type_and_check_validity(
    program: &mut Program,
    err_manager: &mut ErrorManager,
@@ -353,7 +354,7 @@ pub fn type_and_check_validity(
    target: Target,
    procedures_to_check: &[ProcedureId],
    check_globals: bool,
-) {
+) -> Vec<(ProcedureId, Box<[ExpressionType]>)> {
    let string_struct_id = {
       let UserDefinedTypeId::Struct(s_id) = program
          .user_defined_type_name_table
@@ -382,6 +383,7 @@ pub fn type_and_check_validity(
       source_to_definition: std::mem::replace(&mut program.source_to_definition, IndexMap::new()),
       interner,
       string_struct_id,
+      procedures_to_specialize: Vec::new(),
       next_var_dont_access: program.next_variable,
    };
 
@@ -515,6 +517,8 @@ pub fn type_and_check_validity(
 
    program.source_to_definition = validation_context.source_to_definition;
    program.next_variable = validation_context.next_var_dont_access;
+
+   validation_context.procedures_to_specialize
 }
 
 fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, validation_context: &mut ValidationContext) {
@@ -1426,7 +1430,7 @@ fn get_type(
             validation_context
                .source_to_definition
                .insert(proc.definition.name.location, proc.location);
-            check_procedure_item(
+            let check_result = check_procedure_item(
                *id,
                proc.definition.name.str,
                &proc.type_parameters,
@@ -1436,7 +1440,16 @@ fn get_type(
                validation_context.user_defined_types,
                validation_context.procedures,
                err_manager,
-            )
+            );
+
+            if check_result.1 && !type_arguments.is_empty() {
+               validation_context.procedures_to_specialize.push((*id, type_arguments.iter()
+               .map(|x| x.e_type.clone())
+               .collect::<Vec<_>>()
+               .into_boxed_slice()));
+            }
+
+            check_result.0
          }
          None => unreachable!(),
       },
@@ -2148,6 +2161,7 @@ fn check_procedure_call<'a, I>(
    }
 }
 
+#[must_use]
 fn check_procedure_item(
    callee_proc_id: ProcedureId,
    callee_proc_name: StrId,
@@ -2158,7 +2172,7 @@ fn check_procedure_item(
    udt: &UserDefinedTypeInfo,
    procedures: &SlotMap<ProcedureId, ProcedureNode>,
    err_manager: &mut ErrorManager,
-) -> ExpressionType {
+) -> (ExpressionType, bool) {
    if callee_type_params.len() != type_arguments.len() {
       rolandc_error!(
          err_manager,
@@ -2168,12 +2182,14 @@ fn check_procedure_item(
          callee_type_params.len(),
          type_arguments.len()
       );
-      return ExpressionType::CompileError;
+      return (ExpressionType::CompileError, false);
    }
+   let mut type_arguments_are_valid = true;
    for (g_arg, constraints) in type_arguments.iter().zip(callee_type_params.values()) {
       match g_arg.e_type {
          ExpressionType::Unresolved(_) => {
             // We have already errored on this argument
+            type_arguments_are_valid = false;
          }
          _ => {
             for constraint in constraints {
@@ -2191,19 +2207,20 @@ fn check_procedure_item(
                      g_arg.e_type.as_roland_type_info_notv(interner, udt, procedures),
                      interner.lookup(*constraint),
                   );
+                  type_arguments_are_valid = false;
                }
             }
          }
       }
    }
-   ExpressionType::ProcedureItem(
+   (ExpressionType::ProcedureItem(
       callee_proc_id,
       type_arguments
          .iter()
          .map(|x| x.e_type.clone())
          .collect::<Vec<_>>()
          .into_boxed_slice(),
-   )
+   ), type_arguments_are_valid)
 }
 
 fn check_type_declared_vs_actual(

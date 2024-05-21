@@ -221,7 +221,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
          }
       }
 
-      semantic_analysis::validator::type_and_check_validity(
+      let specs_to_create = semantic_analysis::validator::type_and_check_validity(
          &mut ctx.program,
          &mut ctx.err_manager,
          &mut ctx.interner,
@@ -232,7 +232,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       worklist.clear();
 
       let specializations_before = specializations.len();
-      monomorphization::monomorphize(&mut ctx.program, &mut specializations);
+      monomorphization::monomorphize(&mut ctx.program, &mut specializations, specs_to_create);
       worklist.extend(specializations[specializations_before..].values());
    }
    if !ctx.err_manager.errors.is_empty() {
