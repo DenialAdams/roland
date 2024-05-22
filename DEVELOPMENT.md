@@ -18,9 +18,9 @@ This command will automatically build the compiler if necessary, and run all tes
 Test artifacts will be cleaned up automatically for passing tests. Artifacts for faiiling tests (such as .s and .ssa files) will stick around for inspection.
 
 ## Comparing generated code before/after
-`just baseline`
-...(change rolandc, qbe, etc.)...
-`just test-all-preserve-artifacts`
+`just baseline`  
+...(change rolandc, qbe, etc.)...  
+`just test-all-preserve-artifacts`  
 
 The first command runs all tests, saving artifacts into the folder `tests_baseline`. The second runs all tests again, saving artifacts into the normal `tests` folder.
 
