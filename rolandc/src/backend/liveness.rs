@@ -193,7 +193,7 @@ fn liveness(
 
 fn update_live_variables_for_expr(
    expr: ExpressionId,
-   current_live_variables: &mut BitBox,
+   current_live_variables: &mut BitSlice,
    ast: &ExpressionPool,
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
 ) {
@@ -252,8 +252,8 @@ fn update_live_variables_for_expr(
 
 fn gen_for_expr(
    expr: ExpressionId,
-   gen: &mut BitBox,
-   kill: &mut BitBox,
+   gen: &mut BitSlice,
+   kill: &mut BitSlice,
    ast: &ExpressionPool,
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
 ) {

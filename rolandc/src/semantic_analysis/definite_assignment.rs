@@ -1,5 +1,7 @@
 use bitvec::bitbox;
 use bitvec::boxed::BitBox;
+use bitvec::slice::BitSlice;
+use bitvec::vec::BitVec;
 use indexmap::IndexMap;
 
 use crate::error_handling::error_handling_macros::rolandc_error;
@@ -11,8 +13,11 @@ use crate::type_data::ExpressionType;
 use crate::Program;
 
 pub fn ensure_variables_definitely_assigned(program: &Program, err_manager: &mut ErrorManager) {
+   let mut assigned_vars: BitVec = BitVec::new();
    for (id, body) in program.procedure_bodies.iter() {
-      let mut assigned_vars: BitBox = bitbox![0; body.locals.len()];
+      assigned_vars.clear();
+      assigned_vars.reserve(body.locals.len());
+      assigned_vars.extend(std::iter::repeat(false).take(body.locals.len()));
       for param in program.procedures[id].definition.parameters.iter() {
          assigned_vars.set(body.locals.get_index_of(&param.var_id).unwrap(), true);
       }
@@ -29,7 +34,7 @@ pub fn ensure_variables_definitely_assigned(program: &Program, err_manager: &mut
 
 fn ensure_all_variables_assigned_in_block(
    block: &BlockNode,
-   assigned_vars: &mut BitBox,
+   assigned_vars: &mut BitSlice,
    assigned_vars_after_loop: &mut Option<BitBox>,
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
    pool: &AstPool,
@@ -49,7 +54,7 @@ fn ensure_all_variables_assigned_in_block(
 
 fn ensure_all_variables_assigned_in_stmt(
    stmt_id: StatementId,
-   assigned_vars: &mut BitBox,
+   assigned_vars: &mut BitSlice,
    assigned_vars_after_loop: &mut Option<BitBox>,
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
    pool: &AstPool,
@@ -104,7 +109,7 @@ fn ensure_all_variables_assigned_in_stmt(
       Statement::IfElse(cond, then, otherwise) => {
          ensure_expression_does_not_use_unassigned_variable(*cond, assigned_vars, procedure_vars, pool, err_manager);
 
-         let mut else_unassigned = assigned_vars.clone();
+         let mut else_unassigned = assigned_vars.to_owned();
          ensure_all_variables_assigned_in_block(
             then,
             assigned_vars,
@@ -134,7 +139,7 @@ fn ensure_all_variables_assigned_in_stmt(
             pool,
             err_manager,
          );
-         *assigned_vars = assigned_after_new_loop.unwrap();
+         assigned_vars.clone_from_bitslice(assigned_after_new_loop.unwrap().as_bitslice());
       }
       Statement::Expression(e) => {
          ensure_expression_does_not_use_unassigned_variable(*e, assigned_vars, procedure_vars, pool, err_manager);
@@ -148,7 +153,7 @@ fn ensure_all_variables_assigned_in_stmt(
       }
       Statement::Continue => assigned_vars.fill(true),
       Statement::Break => {
-         *assigned_vars_after_loop.as_mut().unwrap() &= assigned_vars.as_bitslice();
+         *assigned_vars_after_loop.as_mut().unwrap() &= &*assigned_vars;
          assigned_vars.fill(true);
       }
       Statement::For { .. } | Statement::While(_, _) | Statement::Defer(_) => unreachable!(),
@@ -157,7 +162,7 @@ fn ensure_all_variables_assigned_in_stmt(
 
 fn ensure_expression_does_not_use_unassigned_variable(
    expr_id: ExpressionId,
-   assigned_vars: &mut BitBox,
+   assigned_vars: &mut BitSlice,
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
    pool: &AstPool,
    err_manager: &mut ErrorManager,
