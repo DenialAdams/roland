@@ -12,7 +12,6 @@
 #![allow(clippy::new_without_default)] // I don't want dead code
 #![allow(clippy::result_unit_err)] // This is based on a notion of public that doesn't really apply for me
 #![allow(clippy::needless_bitwise_bool)] // Sometimes I just don't want branches, man
-#![feature(extract_if)]
 
 mod backend;
 mod compile_consts;

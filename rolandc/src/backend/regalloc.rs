@@ -92,13 +92,17 @@ pub fn assign_variables_to_registers_and_mem(
             continue;
          }
 
-         for expired_var in active.extract_if(|v| live_intervals.get(v).unwrap().end < range.begin) {
-            let escaping_kind = escaping_vars.get(&expired_var).copied();
+
+         // when extract_if is stable:
+         // for expired_var in active.extract_if(|v| live_intervals.get(v).unwrap().end < range.begin)
+         // and can remove following retain
+         for expired_var in active.iter().filter(|v| live_intervals.get(*v).unwrap().end < range.begin) {
+            let escaping_kind = escaping_vars.get(expired_var).copied();
             if escaping_kind == Some(EscapingKind::MustLiveOnStackAlone) {
                continue;
             }
             let sk = type_to_slot_kind(
-               body.locals.get(&expired_var).unwrap(),
+               body.locals.get(expired_var).unwrap(),
                escaping_kind.is_some(),
                &program.user_defined_types,
                config.target,
@@ -111,8 +115,9 @@ pub fn assign_variables_to_registers_and_mem(
             free_slots
                .entry(sk)
                .or_default()
-               .push(result.var_to_slot.get(&expired_var).copied().unwrap());
+               .push(result.var_to_slot.get(expired_var).copied().unwrap());
          }
+         active.retain(|v| live_intervals.get(v).unwrap().end >= range.begin);
 
          let sk = type_to_slot_kind(
             body.locals.get(var).unwrap(),
