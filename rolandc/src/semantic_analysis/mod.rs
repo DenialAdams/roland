@@ -87,17 +87,17 @@ pub struct ValidationContext<'a> {
    pub ast: &'a mut AstPool,
    pub type_variables: TypeVariableManager,
    pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,
-   pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
+   pub source_to_definition: &'a mut IndexMap<SourceInfo, SourceInfo>,
    pub interner: &'a mut Interner,
    pub string_struct_id: StructId,
    pub procedures_to_specialize: Vec<(ProcedureId, Box<[ExpressionType]>)>,
-   next_var_dont_access: VariableId,
+   next_var_dont_access: &'a mut VariableId,
 }
 
 impl ValidationContext<'_> {
    pub fn next_var(&mut self) -> VariableId {
-      let ret_val = self.next_var_dont_access;
-      self.next_var_dont_access = self.next_var_dont_access.next();
+      let ret_val = *self.next_var_dont_access;
+      *self.next_var_dont_access = self.next_var_dont_access.next();
       ret_val
    }
 }

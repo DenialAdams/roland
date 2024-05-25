@@ -380,11 +380,11 @@ pub fn type_and_check_validity(
       ast: &mut program.ast,
       type_variables: TypeVariableManager::new(),
       cur_procedure_locals: IndexMap::new(),
-      source_to_definition: std::mem::replace(&mut program.source_to_definition, IndexMap::new()),
+      source_to_definition: &mut program.source_to_definition,
       interner,
       string_struct_id,
       procedures_to_specialize: Vec::new(),
-      next_var_dont_access: program.next_variable,
+      next_var_dont_access: &mut program.next_variable,
    };
 
    // Populate variable resolution with globals
@@ -514,9 +514,6 @@ pub fn type_and_check_validity(
          }
       }
    }
-
-   program.source_to_definition = validation_context.source_to_definition;
-   program.next_variable = validation_context.next_var_dont_access;
 
    validation_context.procedures_to_specialize
 }
