@@ -1,13 +1,13 @@
 use std::ops::Deref;
 
-use super::type_variables::{TypeConstraint, TypeVariable};
+use super::type_variables::{TypeConstraint, TypeVariable, TypeVariableManager};
 use super::ValidationContext;
 use crate::parse::{Expression, ExpressionId};
 use crate::type_data::{ExpressionType, IntType};
 
-fn unknowns_are_compatible(x: TypeVariable, y: TypeVariable, validation_context: &ValidationContext) -> bool {
-   let x_data = validation_context.type_variables.get_data(x);
-   let y_data = validation_context.type_variables.get_data(y);
+fn unknowns_are_compatible(x: TypeVariable, y: TypeVariable, type_variables: &TypeVariableManager) -> bool {
+   let x_data = type_variables.get_data(x);
+   let y_data = type_variables.get_data(y);
 
    match (x_data.constraint, y_data.constraint) {
       (x, y) if x == y => true,
@@ -37,7 +37,7 @@ fn inference_is_possible(
          }
 
          if let ExpressionType::Unknown(y) = potential_type {
-            return unknowns_are_compatible(*x, *y, validation_context);
+            return unknowns_are_compatible(*x, *y, &validation_context.type_variables);
          }
 
          match data.constraint {
@@ -87,7 +87,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             _ => unreachable!(),
          };
          if let ExpressionType::Unknown(e_tv) = e_type {
-            debug_assert!(unknowns_are_compatible(my_tv, *e_tv, validation_context));
+            debug_assert!(unknowns_are_compatible(my_tv, *e_tv, &validation_context.type_variables));
             validation_context.type_variables.union(my_tv, *e_tv);
          } else {
             debug_assert!(validation_context
@@ -166,7 +166,7 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          .unwrap();
 
          if let Some(e_tv) = e_type.get_type_variable_of_unknown_type() {
-            debug_assert!(unknowns_are_compatible(my_tv, e_tv, validation_context));
+            debug_assert!(unknowns_are_compatible(my_tv, e_tv, &validation_context.type_variables));
             validation_context.type_variables.union(my_tv, e_tv);
          } else {
             let my_tv = validation_context.type_variables.find(my_tv);
