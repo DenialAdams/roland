@@ -442,13 +442,15 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
          try_set_inferred_type(
             &validation_context.ast.expressions[*lhs].exp_type.clone().unwrap(),
             *rhs,
-            validation_context,
+            validation_context.owned,
+            &mut validation_context.ast.expressions,
          );
 
          try_set_inferred_type(
             &validation_context.ast.expressions[*rhs].exp_type.clone().unwrap(),
             *lhs,
-            validation_context,
+            validation_context.owned,
+            &mut validation_context.ast.expressions,
          );
 
          let len = &validation_context.ast.expressions[*lhs];
@@ -538,12 +540,14 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
          try_set_inferred_type(
             &validation_context.ast.expressions[*start].exp_type.clone().unwrap(),
             *end,
-            validation_context,
+            validation_context.owned,
+            &mut validation_context.ast.expressions,
          );
          try_set_inferred_type(
             &validation_context.ast.expressions[*end].exp_type.clone().unwrap(),
             *start,
-            validation_context,
+            validation_context.owned,
+            &mut validation_context.ast.expressions,
          );
 
          let start_expr = &validation_context.ast.expressions[*start];
@@ -652,7 +656,12 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             .e_type;
 
          // Type Inference
-         try_set_inferred_type(cur_procedure_ret, *en, validation_context);
+         try_set_inferred_type(
+            cur_procedure_ret,
+            *en,
+            validation_context.owned,
+            &mut validation_context.ast.expressions,
+         );
 
          let en = &validation_context.ast.expressions[*en];
 
@@ -701,7 +710,12 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             ) {
                dt_is_unresolved = true;
             } else if let DeclarationValue::Expr(enid) = opt_enid {
-               try_set_inferred_type(&v.e_type, *enid, validation_context);
+               try_set_inferred_type(
+                  &v.e_type,
+                  *enid,
+                  validation_context.owned,
+                  &mut validation_context.ast.expressions,
+               );
             }
          };
 
@@ -950,11 +964,26 @@ fn get_type(
 
          if from_type_is_unknown_int {
             if *cast_type == CastType::Transmute && target_type.is_pointer() {
-               try_set_inferred_type(&USIZE_TYPE, *expr_id, validation_context);
+               try_set_inferred_type(
+                  &USIZE_TYPE,
+                  *expr_id,
+                  validation_context.owned,
+                  &mut validation_context.ast.expressions,
+               );
             } else if *cast_type == CastType::Transmute && matches!(*target_type, F64_TYPE) {
-               try_set_inferred_type(&U64_TYPE, *expr_id, validation_context);
+               try_set_inferred_type(
+                  &U64_TYPE,
+                  *expr_id,
+                  validation_context.owned,
+                  &mut validation_context.ast.expressions,
+               );
             } else if *cast_type == CastType::Transmute && matches!(*target_type, F32_TYPE) {
-               try_set_inferred_type(&U32_TYPE, *expr_id, validation_context);
+               try_set_inferred_type(
+                  &U32_TYPE,
+                  *expr_id,
+                  validation_context.owned,
+                  &mut validation_context.ast.expressions,
+               );
             } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Enum(_)) {
                let enum_base_type = match target_type {
                   ExpressionType::Enum(x) => {
@@ -967,7 +996,12 @@ fn get_type(
                   }
                   _ => unreachable!(),
                };
-               try_set_inferred_type(enum_base_type, *expr_id, validation_context);
+               try_set_inferred_type(
+                  enum_base_type,
+                  *expr_id,
+                  validation_context.owned,
+                  &mut validation_context.ast.expressions,
+               );
             }
          };
 
@@ -1142,12 +1176,14 @@ fn get_type(
          try_set_inferred_type(
             &validation_context.ast.expressions[*lhs].exp_type.clone().unwrap(),
             *rhs,
-            validation_context,
+            validation_context.owned,
+            &mut validation_context.ast.expressions,
          );
          try_set_inferred_type(
             &validation_context.ast.expressions[*rhs].exp_type.clone().unwrap(),
             *lhs,
-            validation_context,
+            validation_context.owned,
+            &mut validation_context.ast.expressions,
          );
 
          let lhs_expr = &validation_context.ast.expressions[*lhs];
@@ -1458,7 +1494,12 @@ fn get_type(
                   }
 
                   if let Some(field_val) = field.1 {
-                     try_set_inferred_type(defined_type, field_val, validation_context);
+                     try_set_inferred_type(
+                        defined_type,
+                        field_val,
+                        validation_context.owned,
+                        &mut validation_context.ast.expressions,
+                     );
 
                      let field_expr = &validation_context.ast.expressions[field_val];
 
@@ -1672,11 +1713,21 @@ fn get_type(
                .exp_type
                .take()
                .unwrap();
-            try_set_inferred_type(&borrowed_type, elems[i], validation_context);
+            try_set_inferred_type(
+               &borrowed_type,
+               elems[i],
+               validation_context.owned,
+               &mut validation_context.ast.expressions,
+            );
             validation_context.ast.expressions[elems[i - 1]].exp_type = Some(borrowed_type);
 
             let borrowed_type = validation_context.ast.expressions[elems[i]].exp_type.take().unwrap();
-            try_set_inferred_type(&borrowed_type, elems[i - 1], validation_context);
+            try_set_inferred_type(
+               &borrowed_type,
+               elems[i - 1],
+               validation_context.owned,
+               &mut validation_context.ast.expressions,
+            );
             validation_context.ast.expressions[elems[i]].exp_type = Some(borrowed_type);
 
             let last_elem_expr = &validation_context.ast.expressions[elems[i - 1]];
@@ -1760,7 +1811,12 @@ fn get_type(
          type_expression(err_manager, *array, validation_context);
          type_expression(err_manager, *index, validation_context);
 
-         try_set_inferred_type(&USIZE_TYPE, *index, validation_context);
+         try_set_inferred_type(
+            &USIZE_TYPE,
+            *index,
+            validation_context.owned,
+            &mut validation_context.ast.expressions,
+         );
 
          let array_expression = &validation_context.ast.expressions[*array];
          let index_expression = &validation_context.ast.expressions[*index];
@@ -1878,12 +1934,14 @@ fn get_type(
          try_set_inferred_type(
             &validation_context.ast.expressions[*b].exp_type.clone().unwrap(),
             *c,
-            validation_context,
+            validation_context.owned,
+            &mut validation_context.ast.expressions,
          );
          try_set_inferred_type(
             &validation_context.ast.expressions[*c].exp_type.clone().unwrap(),
             *b,
-            validation_context,
+            validation_context.owned,
+            &mut validation_context.ast.expressions,
          );
 
          let en = &validation_context.ast.expressions[*a];
@@ -1988,7 +2046,12 @@ fn check_procedure_call<'a, I>(
 
          let expected = map_generic_to_concrete_cow(expected_raw, generic_args, generic_parameters);
 
-         try_set_inferred_type(&expected, actual.expr, validation_context);
+         try_set_inferred_type(
+            &expected,
+            actual.expr,
+            validation_context.owned,
+            &mut validation_context.ast.expressions,
+         );
 
          let actual_expr = &validation_context.ast.expressions[actual.expr];
          let actual_type = actual_expr.exp_type.as_ref().unwrap();
@@ -2032,7 +2095,12 @@ fn check_procedure_call<'a, I>(
 
          let expected = map_generic_to_concrete_cow(expected_raw.as_ref().unwrap(), generic_args, generic_parameters);
 
-         try_set_inferred_type(&expected, arg.expr, validation_context);
+         try_set_inferred_type(
+            &expected,
+            arg.expr,
+            validation_context.owned,
+            &mut validation_context.ast.expressions,
+         );
 
          let arg_expr = &validation_context.ast.expressions[arg.expr];
 
@@ -2274,7 +2342,8 @@ pub fn check_globals(
       try_set_inferred_type(
          &p_global.expr_type.e_type,
          p_global.initializer.unwrap(),
-         &mut validation_context,
+         validation_context.owned,
+         &mut validation_context.ast.expressions,
       );
 
       let p_static_expr = &validation_context.ast.expressions[p_global.initializer.unwrap()];
