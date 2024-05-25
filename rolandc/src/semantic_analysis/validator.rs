@@ -9,7 +9,7 @@ use slotmap::SlotMap;
 
 use super::type_inference::try_set_inferred_type;
 use super::type_variables::{TypeConstraint, TypeVariableManager};
-use super::{ValidationContext, VariableDetails, VariableKind};
+use super::{OwnedValidationContext, ValidationContext, VariableDetails, VariableKind};
 use crate::error_handling::error_handling_macros::{
    rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn,
 };
@@ -108,7 +108,7 @@ fn matches(type_validation: &TypeValidator, et: &ExpressionType, validation_cont
    );
 
    let unknown_matches = if let ExpressionType::Unknown(x) = et {
-      let type_constraint = validation_context.type_variables.get_data(*x).constraint;
+      let type_constraint = validation_context.owned.type_variables.get_data(*x).constraint;
       matches!(
          (type_validation, type_constraint),
          (TypeValidator::AnySignedInt, TypeConstraint::SignedInt)
@@ -351,88 +351,30 @@ pub fn type_and_check_validity(
    program: &mut Program,
    err_manager: &mut ErrorManager,
    interner: &mut Interner,
-   target: Target,
+   owned: &mut OwnedValidationContext,
    procedures_to_check: &[ProcedureId],
-   check_globals: bool,
 ) -> Vec<(ProcedureId, Box<[ExpressionType]>)> {
-   let string_struct_id = {
-      let UserDefinedTypeId::Struct(s_id) = program
-         .user_defined_type_name_table
-         .get(&interner.reverse_lookup("String").unwrap())
-         .unwrap()
-      else {
-         unreachable!();
-      };
-      *s_id
-   };
-
    let mut validation_context = ValidationContext {
-      target,
-      variable_types: IndexMap::new(),
+      owned,
+      source_to_definition: &mut program.source_to_definition,
+      next_var_dont_access: &mut program.next_variable,
+      interner,
+      ast: &mut program.ast,
       procedures: &program.procedures,
       proc_name_table: &program.procedure_name_table,
       user_defined_type_name_table: &program.user_defined_type_name_table,
       user_defined_types: &mut program.user_defined_types,
       global_info: &program.global_info,
-      cur_procedure: None,
-      loop_depth: 0,
-      unknown_literals: IndexSet::new(),
-      ast: &mut program.ast,
-      type_variables: TypeVariableManager::new(),
-      cur_procedure_locals: IndexMap::new(),
-      source_to_definition: &mut program.source_to_definition,
-      interner,
-      string_struct_id,
-      procedures_to_specialize: Vec::new(),
-      next_var_dont_access: &mut program.next_variable,
    };
-
-   // Populate variable resolution with globals
-   for gi in program.global_info.iter() {
-      validation_context.variable_types.insert(
-         gi.1.name,
-         VariableDetails {
-            var_type: gi.1.expr_type.e_type.clone(),
-            declaration_location: gi.1.location,
-            kind: VariableKind::Global,
-            used: false,
-            var_id: *gi.0,
-         },
-      );
-   }
-
-   // TODO: move this to a dedicated function we can call outside of type checking loop
-   if check_globals {
-      for p_global in program.global_info.values().filter(|x| x.initializer.is_some()) {
-         type_expression(err_manager, p_global.initializer.unwrap(), &mut validation_context);
-         try_set_inferred_type(
-            &p_global.expr_type.e_type,
-            p_global.initializer.unwrap(),
-            &mut validation_context,
-         );
-
-         let p_static_expr = &validation_context.ast.expressions[p_global.initializer.unwrap()];
-
-         check_type_declared_vs_actual(
-            &p_global.expr_type,
-            p_static_expr,
-            validation_context.interner,
-            validation_context.user_defined_types,
-            validation_context.procedures,
-            &validation_context.type_variables,
-            err_manager,
-         );
-      }
-   }
 
    for id in procedures_to_check.iter().copied() {
       let proc = &program.procedures[id];
       let body = &mut program.procedure_bodies[id];
-      validation_context.cur_procedure = Some(id);
-      let num_globals = validation_context.variable_types.len();
+      validation_context.owned.cur_procedure = Some(id);
+      let num_globals = validation_context.owned.variable_types.len();
 
       for parameter in proc.definition.parameters.iter() {
-         validation_context.variable_types.insert(
+         validation_context.owned.variable_types.insert(
             parameter.name,
             VariableDetails {
                var_type: parameter.p_type.e_type.clone(),
@@ -443,6 +385,7 @@ pub fn type_and_check_validity(
             },
          );
          validation_context
+            .owned
             .cur_procedure_locals
             .insert(parameter.var_id, parameter.p_type.e_type.clone());
       }
@@ -450,7 +393,7 @@ pub fn type_and_check_validity(
       type_block(err_manager, &body.block, &mut validation_context);
       fall_out_of_scope(err_manager, &mut validation_context, num_globals);
 
-      std::mem::swap(&mut validation_context.cur_procedure_locals, &mut body.locals);
+      std::mem::swap(&mut validation_context.owned.cur_procedure_locals, &mut body.locals);
 
       // Ensure that the last statement is a return statement
       // (it has already been type checked, so we don't have to check that)
@@ -462,7 +405,7 @@ pub fn type_and_check_validity(
                validation_context.interner,
                validation_context.user_defined_types,
                validation_context.procedures,
-               &validation_context.type_variables,
+               &validation_context.owned.type_variables,
             );
             let mut err_details = vec![(proc.location, "procedure defined")];
             if let Some(fs) = body.block.statements.last() {
@@ -479,43 +422,9 @@ pub fn type_and_check_validity(
          }
       }
    }
+   validation_context.owned.cur_procedure = None;
 
-   // lower type variables
-   {
-      for (i, e) in validation_context.ast.expressions.iter_mut() {
-         if let Some(tv) = e
-            .exp_type
-            .as_ref()
-            .and_then(ExpressionType::get_type_variable_of_unknown_type)
-         {
-            let the_type = validation_context.type_variables.get_data(tv);
-            if let Some(t) = the_type.known_type.as_ref() {
-               *e.exp_type.as_mut().unwrap().get_unknown_portion_of_type().unwrap() = t.clone();
-               validation_context.unknown_literals.swap_remove(&i);
-            }
-         }
-      }
-
-      if err_manager.errors.is_empty() {
-         error_on_unknown_literals(err_manager, &mut validation_context);
-      }
-
-      for body in program.procedure_bodies.values_mut() {
-         for lt in body.locals.values_mut() {
-            let Some(tv) = lt.get_type_variable_of_unknown_type() else {
-               continue;
-            };
-
-            if let Some(t) = validation_context.type_variables.get_data(tv).known_type.as_ref() {
-               *lt.get_unknown_portion_of_type().unwrap() = t.clone();
-            } else {
-               debug_assert!(!err_manager.errors.is_empty());
-            };
-         }
-      }
-   }
-
-   validation_context.procedures_to_specialize
+   std::mem::take(&mut validation_context.owned.procedures_to_specialize)
 }
 
 fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, validation_context: &mut ValidationContext) {
@@ -559,13 +468,13 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables
+                  &validation_context.owned.type_variables
                ),
                rhs_type.as_roland_type_info(
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables
+                  &validation_context.owned.type_variables
                ),
             );
          } else if !len
@@ -594,12 +503,12 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
          type_block(err_manager, bn, validation_context);
       }
       Statement::Continue => {
-         if validation_context.loop_depth == 0 {
+         if validation_context.owned.loop_depth == 0 {
             rolandc_error!(err_manager, stmt_loc, "Continue statement can only be used in a loop");
          }
       }
       Statement::Break => {
-         if validation_context.loop_depth == 0 {
+         if validation_context.owned.loop_depth == 0 {
             rolandc_error!(err_manager, stmt_loc, "Break statement can only be used in a loop");
          }
       }
@@ -621,7 +530,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                .unwrap()
                .get_type_variable_of_unknown_type()
             {
-               let tvd = validation_context.type_variables.get_data_mut(x);
+               let tvd = validation_context.owned.type_variables.get_data_mut(x);
                let _ = tvd.add_constraint(TypeConstraint::Int); // we'll handle the type mismatch below
             }
          }
@@ -660,13 +569,13 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                      validation_context.interner,
                      validation_context.user_defined_types,
                      validation_context.procedures,
-                     &validation_context.type_variables
+                     &validation_context.owned.type_variables
                   ),
                   end_expr.exp_type.as_ref().unwrap().as_roland_type_info(
                      validation_context.interner,
                      validation_context.user_defined_types,
                      validation_context.procedures,
-                     &validation_context.type_variables
+                     &validation_context.owned.type_variables
                   ),
                );
                ExpressionType::CompileError
@@ -677,7 +586,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             rolandc_error!(err_manager, stmt_loc, "Inclusive ranges are not currently supported.");
          }
 
-         let vars_before = validation_context.variable_types.len();
+         let vars_before = validation_context.owned.variable_types.len();
          *var_id = declare_variable(err_manager, var, result_type, validation_context);
 
          type_loop_block(err_manager, bn, validation_context);
@@ -698,7 +607,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables
+                  &validation_context.owned.type_variables
                )
             );
          }
@@ -730,14 +639,14 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables
+                  &validation_context.owned.type_variables
                )
             );
          }
       }
       Statement::Return(en) => {
          type_expression(err_manager, *en, validation_context);
-         let cur_procedure_ret = &validation_context.procedures[validation_context.cur_procedure.unwrap()]
+         let cur_procedure_ret = &validation_context.procedures[validation_context.owned.cur_procedure.unwrap()]
             .definition
             .ret_type
             .e_type;
@@ -759,13 +668,13 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables
+                  &validation_context.owned.type_variables
                ),
                en.exp_type.as_ref().unwrap().as_roland_type_info(
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables
+                  &validation_context.owned.type_variables
                )
             );
          }
@@ -778,6 +687,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
          let mut dt_is_unresolved = false;
          if let Some(v) = dt.as_mut() {
             let spec_params = validation_context
+               .owned
                .cur_procedure
                .map(|x| &validation_context.procedures[x].specialized_type_parameters);
             if !resolve_type(
@@ -810,7 +720,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables,
+                  &validation_context.owned.type_variables,
                   err_manager,
                );
             }
@@ -841,7 +751,7 @@ fn declare_variable(
    validation_context: &mut ValidationContext,
 ) -> VariableId {
    let next_var = validation_context.next_var();
-   if validation_context.variable_types.contains_key(&id.str) {
+   if validation_context.owned.variable_types.contains_key(&id.str) {
       rolandc_error!(
          err_manager,
          id.location,
@@ -849,7 +759,7 @@ fn declare_variable(
          validation_context.interner.lookup(id.str)
       );
    }
-   validation_context.variable_types.insert(
+   validation_context.owned.variable_types.insert(
       id.str,
       VariableDetails {
          var_type: var_type.clone(),
@@ -859,7 +769,7 @@ fn declare_variable(
          var_id: next_var,
       },
    );
-   validation_context.cur_procedure_locals.insert(next_var, var_type);
+   validation_context.owned.cur_procedure_locals.insert(next_var, var_type);
    next_var
 }
 
@@ -868,7 +778,7 @@ fn fall_out_of_scope(
    validation_context: &mut ValidationContext,
    first_var_in_scope: usize,
 ) {
-   for (k, v) in validation_context.variable_types.drain(first_var_in_scope..) {
+   for (k, v) in validation_context.owned.variable_types.drain(first_var_in_scope..) {
       if !v.used {
          let begin = match v.kind {
             VariableKind::Parameter => "Parameter",
@@ -887,13 +797,13 @@ fn fall_out_of_scope(
 }
 
 fn type_loop_block(err_manager: &mut ErrorManager, bn: &BlockNode, validation_context: &mut ValidationContext) {
-   validation_context.loop_depth += 1;
+   validation_context.owned.loop_depth += 1;
    type_block(err_manager, bn, validation_context);
-   validation_context.loop_depth -= 1;
+   validation_context.owned.loop_depth -= 1;
 }
 
 fn type_block(err_manager: &mut ErrorManager, bn: &BlockNode, validation_context: &mut ValidationContext) {
-   let num_vars = validation_context.variable_types.len();
+   let num_vars = validation_context.owned.variable_types.len();
 
    for statement in bn.statements.iter().copied() {
       type_statement(err_manager, statement, validation_context);
@@ -913,6 +823,7 @@ fn type_expression(
    match &mut validation_context.ast.expressions[expr_index].expression {
       Expression::Cast { target_type, .. } => {
          let spec_params = validation_context
+            .owned
             .cur_procedure
             .map(|x| &validation_context.procedures[x].specialized_type_parameters);
          if !resolve_type(
@@ -927,7 +838,7 @@ fn type_expression(
             *target_type = ExpressionType::CompileError;
          }
       }
-      Expression::UnresolvedVariable(id) => match validation_context.variable_types.get_mut(&id.str) {
+      Expression::UnresolvedVariable(id) => match validation_context.owned.variable_types.get_mut(&id.str) {
          Some(var_info) => {
             var_info.used = true;
             validation_context
@@ -947,6 +858,7 @@ fn type_expression(
       Expression::UnresolvedProcLiteral(name, g_args) => {
          for g_arg in g_args.iter_mut() {
             let spec_params = validation_context
+               .owned
                .cur_procedure
                .map(|x| &validation_context.procedures[x].specialized_type_parameters);
             resolve_type(
@@ -993,18 +905,22 @@ fn get_type(
       Expression::UnitLiteral => ExpressionType::Unit,
       Expression::BoolLiteral(_) => ExpressionType::Bool,
       Expression::IntLiteral { .. } => {
-         validation_context.unknown_literals.insert(expr_index);
-         let new_type_variable = validation_context.type_variables.new_type_variable(TypeConstraint::Int);
+         validation_context.owned.unknown_literals.insert(expr_index);
+         let new_type_variable = validation_context
+            .owned
+            .type_variables
+            .new_type_variable(TypeConstraint::Int);
          ExpressionType::Unknown(new_type_variable)
       }
       Expression::FloatLiteral(_) => {
-         validation_context.unknown_literals.insert(expr_index);
+         validation_context.owned.unknown_literals.insert(expr_index);
          let new_type_variable = validation_context
+            .owned
             .type_variables
             .new_type_variable(TypeConstraint::Float);
          ExpressionType::Unknown(new_type_variable)
       }
-      Expression::StringLiteral(_) => ExpressionType::Struct(validation_context.string_struct_id),
+      Expression::StringLiteral(_) => ExpressionType::Struct(validation_context.owned.string_struct_id),
       Expression::Cast {
          cast_type,
          target_type,
@@ -1024,7 +940,7 @@ fn get_type(
             match exp_type {
                ExpressionType::Unknown(v) => {
                   matches!(
-                     validation_context.type_variables.get_data(*v).constraint,
+                     validation_context.owned.type_variables.get_data(*v).constraint,
                      TypeConstraint::Int
                   )
                }
@@ -1090,13 +1006,13 @@ fn get_type(
                         validation_context.interner,
                         validation_context.user_defined_types,
                         validation_context.procedures,
-                        &validation_context.type_variables
+                        &validation_context.owned.type_variables
                      ),
                      target_type.as_roland_type_info(
                         validation_context.interner,
                         validation_context.user_defined_types,
                         validation_context.procedures,
-                        &validation_context.type_variables
+                        &validation_context.owned.type_variables
                      ),
                   );
                   ExpressionType::CompileError
@@ -1112,12 +1028,15 @@ fn get_type(
                   return ExpressionType::CompileError;
                }
 
-               let size_source =
-                  sizeof_type_mem(e_type, validation_context.user_defined_types, validation_context.target);
+               let size_source = sizeof_type_mem(
+                  e_type,
+                  validation_context.user_defined_types,
+                  validation_context.owned.target,
+               );
                let size_target = sizeof_type_mem(
                   target_type,
                   validation_context.user_defined_types,
-                  validation_context.target,
+                  validation_context.owned.target,
                );
 
                if size_source == size_target {
@@ -1147,7 +1066,7 @@ fn get_type(
                         if a_type.size_is_unknown() {
                            return AlignOrUnknown::Unknown;
                         }
-                        AlignOrUnknown::Alignment(mem_alignment(a_type, ctx.user_defined_types, ctx.target))
+                        AlignOrUnknown::Alignment(mem_alignment(a_type, ctx.user_defined_types, ctx.owned.target))
                      }
 
                      let source_base_type = e_type.get_type_or_type_being_pointed_to();
@@ -1172,8 +1091,8 @@ fn get_type(
                         err_manager,
                         e.location,
                         "Transmute encountered an operand of type {}, which can't be transmuted to type {} as the alignment requirements would not be met ({} vs {})",
-                        e_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedures, &validation_context.type_variables),
-                        target_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedures, &validation_context.type_variables),
+                        e_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedures, &validation_context.owned.type_variables),
+                        target_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedures, &validation_context.owned.type_variables),
                         alignment_source,
                         alignment_target,
                      );
@@ -1186,8 +1105,8 @@ fn get_type(
                      err_manager,
                      e.location,
                      "Transmute encountered an operand of type {} which can't be transmuted to type {} as the sizes do not match ({} vs {})",
-                     e_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedures, &validation_context.type_variables),
-                     target_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedures, &validation_context.type_variables),
+                     e_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedures, &validation_context.owned.type_variables),
+                     target_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedures, &validation_context.owned.type_variables),
                      size_source,
                      size_target,
                   );
@@ -1251,7 +1170,7 @@ fn get_type(
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables
+                  &validation_context.owned.type_variables
                )
             );
             ExpressionType::CompileError
@@ -1266,7 +1185,7 @@ fn get_type(
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables
+                  &validation_context.owned.type_variables
                )
             );
             ExpressionType::CompileError
@@ -1283,13 +1202,13 @@ fn get_type(
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables
+                  &validation_context.owned.type_variables
                ),
                rhs_type.as_roland_type_info(
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables
+                  &validation_context.owned.type_variables
                )
             );
             ExpressionType::CompileError
@@ -1367,7 +1286,7 @@ fn get_type(
 
          if *un_op == UnOp::Negate {
             if let Some(x) = e.exp_type.as_ref().unwrap().get_type_variable_of_unknown_type() {
-               let tvd = validation_context.type_variables.get_data_mut(x);
+               let tvd = validation_context.owned.type_variables.get_data_mut(x);
                if tvd.constraint == TypeConstraint::Int {
                   // could be a float, or totally unknown
                   tvd.add_constraint(TypeConstraint::SignedInt).unwrap();
@@ -1414,7 +1333,7 @@ fn get_type(
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables
+                  &validation_context.owned.type_variables
                )
             );
             ExpressionType::CompileError
@@ -1440,10 +1359,14 @@ fn get_type(
             );
 
             if check_result.1 && !type_arguments.is_empty() {
-               validation_context.procedures_to_specialize.push((*id, type_arguments.iter()
-               .map(|x| x.e_type.clone())
-               .collect::<Vec<_>>()
-               .into_boxed_slice()));
+               validation_context.owned.procedures_to_specialize.push((
+                  *id,
+                  type_arguments
+                     .iter()
+                     .map(|x| x.e_type.clone())
+                     .collect::<Vec<_>>()
+                     .into_boxed_slice(),
+               ));
             }
 
             check_result.0
@@ -1550,13 +1473,13 @@ fn get_type(
                            validation_context.interner,
                            validation_context.user_defined_types,
                            validation_context.procedures,
-                           &validation_context.type_variables,
+                           &validation_context.owned.type_variables,
                         );
                         let defined_type_str = defined_type.as_roland_type_info(
                            validation_context.interner,
                            validation_context.user_defined_types,
                            validation_context.procedures,
-                           &validation_context.type_variables,
+                           &validation_context.owned.type_variables,
                         );
                         rolandc_error_w_details!(
                            err_manager,
@@ -1650,7 +1573,7 @@ fn get_type(
                      validation_context.interner,
                      validation_context.user_defined_types,
                      validation_context.procedures,
-                     &validation_context.type_variables
+                     &validation_context.owned.type_variables
                   ),
                );
                ExpressionType::CompileError
@@ -1728,7 +1651,7 @@ fn get_type(
                      validation_context.interner,
                      validation_context.user_defined_types,
                      validation_context.procedures,
-                     &validation_context.type_variables
+                     &validation_context.owned.type_variables
                   )
                );
                lhs_type = ExpressionType::CompileError;
@@ -1785,14 +1708,14 @@ fn get_type(
                      validation_context.interner,
                      validation_context.user_defined_types,
                      validation_context.procedures,
-                     &validation_context.type_variables
+                     &validation_context.owned.type_variables
                   ),
                   i,
                   this_elem_expr.exp_type.as_ref().unwrap().as_roland_type_info(
                      validation_context.interner,
                      validation_context.user_defined_types,
                      validation_context.procedures,
-                     &validation_context.type_variables
+                     &validation_context.owned.type_variables
                   ),
                );
                any_error = true;
@@ -1816,9 +1739,10 @@ fn get_type(
             ExpressionType::CompileError
          } else if elems.is_empty() {
             let new_type_variable = validation_context
+               .owned
                .type_variables
                .new_type_variable(TypeConstraint::None);
-            validation_context.unknown_literals.insert(expr_index);
+            validation_context.owned.unknown_literals.insert(expr_index);
             ExpressionType::Array(Box::new(ExpressionType::Unknown(new_type_variable)), 0)
          } else {
             // We specifically want to type the array with the last element, because we have accumulated type information while iterating the literal
@@ -1857,7 +1781,7 @@ fn get_type(
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables
+                  &validation_context.owned.type_variables
                ),
             );
          }
@@ -1870,7 +1794,7 @@ fn get_type(
                   err_manager,
                   expr_location,
                   "Attempted to index expression of type {}, which is not an array type. Hint: Dereference this pointer with ~",
-                  x.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedures, &validation_context.type_variables),
+                  x.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedures, &validation_context.owned.type_variables),
                );
 
                ExpressionType::CompileError
@@ -1884,7 +1808,7 @@ fn get_type(
                      validation_context.interner,
                      validation_context.user_defined_types,
                      validation_context.procedures,
-                     &validation_context.type_variables
+                     &validation_context.owned.type_variables
                   ),
                );
 
@@ -1973,7 +1897,7 @@ fn get_type(
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables
+                  &validation_context.owned.type_variables
                )
             );
          }
@@ -1998,38 +1922,19 @@ fn get_type(
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables
+                  &validation_context.owned.type_variables
                ),
                else_type.as_roland_type_info(
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
-                  &validation_context.type_variables
+                  &validation_context.owned.type_variables
                )
             );
             ExpressionType::CompileError
          }
       }
       Expression::Variable(_) | Expression::StructLiteral(_, _) | Expression::EnumLiteral(_, _) => unreachable!(),
-   }
-}
-
-fn error_on_unknown_literals(err_manager: &mut ErrorManager, validation_context: &mut ValidationContext) {
-   if !validation_context.unknown_literals.is_empty() {
-      let err_details: Vec<_> = validation_context
-         .unknown_literals
-         .iter()
-         .map(|x| {
-            let loc = validation_context.ast.expressions[*x].location;
-            (loc, "literal")
-         })
-         .collect();
-      rolandc_error_w_details!(
-         err_manager,
-         &err_details,
-         "We weren't able to determine the types of {} literals",
-         validation_context.unknown_literals.len()
-      );
    }
 }
 
@@ -2093,13 +1998,13 @@ fn check_procedure_call<'a, I>(
                validation_context.interner,
                validation_context.user_defined_types,
                validation_context.procedures,
-               &validation_context.type_variables,
+               &validation_context.owned.type_variables,
             );
             let expected_type_str = expected.as_roland_type_info(
                validation_context.interner,
                validation_context.user_defined_types,
                validation_context.procedures,
-               &validation_context.type_variables,
+               &validation_context.owned.type_variables,
             );
             rolandc_error!(
                err_manager,
@@ -2137,13 +2042,13 @@ fn check_procedure_call<'a, I>(
                validation_context.interner,
                validation_context.user_defined_types,
                validation_context.procedures,
-               &validation_context.type_variables,
+               &validation_context.owned.type_variables,
             );
             let expected_type_str = expected.as_roland_type_info(
                validation_context.interner,
                validation_context.user_defined_types,
                validation_context.procedures,
-               &validation_context.type_variables,
+               &validation_context.owned.type_variables,
             );
             rolandc_error!(
                err_manager,
@@ -2210,14 +2115,17 @@ fn check_procedure_item(
          }
       }
    }
-   (ExpressionType::ProcedureItem(
-      callee_proc_id,
-      type_arguments
-         .iter()
-         .map(|x| x.e_type.clone())
-         .collect::<Vec<_>>()
-         .into_boxed_slice(),
-   ), type_arguments_are_valid)
+   (
+      ExpressionType::ProcedureItem(
+         callee_proc_id,
+         type_arguments
+            .iter()
+            .map(|x| x.e_type.clone())
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+      ),
+      type_arguments_are_valid,
+   )
 }
 
 fn check_type_declared_vs_actual(
@@ -2325,5 +2233,60 @@ pub fn map_generic_to_concrete(
          *param_type = generic_args[generic_param_index].clone();
       }
       _ => (),
+   }
+}
+
+pub fn check_globals(
+   program: &mut Program,
+   owned_validation_context: &mut OwnedValidationContext,
+   interner: &mut Interner,
+   err_manager: &mut ErrorManager,
+) {
+   let mut validation_context = ValidationContext {
+      owned: owned_validation_context,
+      source_to_definition: &mut program.source_to_definition,
+      next_var_dont_access: &mut program.next_variable,
+      interner,
+      ast: &mut program.ast,
+      procedures: &program.procedures,
+      proc_name_table: &program.procedure_name_table,
+      user_defined_type_name_table: &program.user_defined_type_name_table,
+      user_defined_types: &mut program.user_defined_types,
+      global_info: &program.global_info,
+   };
+
+   // Populate variable resolution with globals
+   for gi in program.global_info.iter() {
+      validation_context.owned.variable_types.insert(
+         gi.1.name,
+         VariableDetails {
+            var_type: gi.1.expr_type.e_type.clone(),
+            declaration_location: gi.1.location,
+            kind: VariableKind::Global,
+            used: false,
+            var_id: *gi.0,
+         },
+      );
+   }
+
+   for p_global in program.global_info.values().filter(|x| x.initializer.is_some()) {
+      type_expression(err_manager, p_global.initializer.unwrap(), &mut validation_context);
+      try_set_inferred_type(
+         &p_global.expr_type.e_type,
+         p_global.initializer.unwrap(),
+         &mut validation_context,
+      );
+
+      let p_static_expr = &validation_context.ast.expressions[p_global.initializer.unwrap()];
+
+      check_type_declared_vs_actual(
+         &p_global.expr_type,
+         p_static_expr,
+         validation_context.interner,
+         validation_context.user_defined_types,
+         validation_context.procedures,
+         &validation_context.owned.type_variables,
+         err_manager,
+      );
    }
 }

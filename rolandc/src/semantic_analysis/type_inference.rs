@@ -1,8 +1,12 @@
 use std::ops::Deref;
 
+use slotmap::SecondaryMap;
+
 use super::type_variables::{TypeConstraint, TypeVariable, TypeVariableManager};
-use super::ValidationContext;
-use crate::parse::{Expression, ExpressionId};
+use super::{OwnedValidationContext, ValidationContext};
+use crate::error_handling::error_handling_macros::rolandc_error_w_details;
+use crate::error_handling::ErrorManager;
+use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, ProcedureId};
 use crate::type_data::{ExpressionType, IntType};
 
 fn unknowns_are_compatible(x: TypeVariable, y: TypeVariable, type_variables: &TypeVariableManager) -> bool {
@@ -30,14 +34,14 @@ fn inference_is_possible(
          _ => false,
       },
       ExpressionType::Unknown(x) => {
-         let data = validation_context.type_variables.get_data(*x);
+         let data = validation_context.owned.type_variables.get_data(*x);
 
          if data.known_type.is_some() {
             return false;
          }
 
          if let ExpressionType::Unknown(y) = potential_type {
-            return unknowns_are_compatible(*x, *y, &validation_context.type_variables);
+            return unknowns_are_compatible(*x, *y, &validation_context.owned.type_variables);
          }
 
          match data.constraint {
@@ -87,21 +91,27 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             _ => unreachable!(),
          };
          if let ExpressionType::Unknown(e_tv) = e_type {
-            debug_assert!(unknowns_are_compatible(my_tv, *e_tv, &validation_context.type_variables));
-            validation_context.type_variables.union(my_tv, *e_tv);
+            debug_assert!(unknowns_are_compatible(
+               my_tv,
+               *e_tv,
+               &validation_context.owned.type_variables
+            ));
+            validation_context.owned.type_variables.union(my_tv, *e_tv);
          } else {
             debug_assert!(validation_context
+               .owned
                .type_variables
                .get_data(my_tv)
                .known_type
                .as_ref()
                .map_or(true, |x| x == e_type));
             validation_context
+               .owned
                .type_variables
                .get_data_mut(my_tv)
                .known_type
                .get_or_insert_with(|| e_type.clone());
-            validation_context.unknown_literals.swap_remove(&expr_index);
+            validation_context.owned.unknown_literals.swap_remove(&expr_index);
          }
          *validation_context.ast.expressions[expr_index]
             .exp_type
@@ -166,21 +176,25 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
          .unwrap();
 
          if let Some(e_tv) = e_type.get_type_variable_of_unknown_type() {
-            debug_assert!(unknowns_are_compatible(my_tv, e_tv, &validation_context.type_variables));
-            validation_context.type_variables.union(my_tv, e_tv);
+            debug_assert!(unknowns_are_compatible(
+               my_tv,
+               e_tv,
+               &validation_context.owned.type_variables
+            ));
+            validation_context.owned.type_variables.union(my_tv, e_tv);
          } else {
-            let my_tv = validation_context.type_variables.find(my_tv);
+            let my_tv = validation_context.owned.type_variables.find(my_tv);
 
             // Update existing variables immediately, so that error messages have good types
             // (this should _not_ affect correctness.)
             // (Is this a performance problem? It's obviously awkward, but straightforward)
             // (The alternative would be to update the type lazily)
-            for var_in_scope in validation_context.variable_types.values_mut() {
+            for var_in_scope in validation_context.owned.variable_types.values_mut() {
                let Some(inner_tv) = var_in_scope.var_type.get_type_variable_of_unknown_type() else {
                   continue;
                };
 
-               let representative = validation_context.type_variables.find(inner_tv);
+               let representative = validation_context.owned.type_variables.find(inner_tv);
 
                if representative == my_tv {
                   *var_in_scope.var_type.get_unknown_portion_of_type().unwrap() = incoming_definition.clone();
@@ -188,12 +202,14 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
             }
 
             debug_assert!(validation_context
+               .owned
                .type_variables
                .get_data(my_tv)
                .known_type
                .as_ref()
                .map_or(true, |x| x == incoming_definition));
             validation_context
+               .owned
                .type_variables
                .get_data_mut(my_tv)
                .known_type
@@ -222,17 +238,19 @@ fn set_inferred_type(e_type: &ExpressionType, expr_index: ExpressionId, validati
                      get_type_variable_of_unknown_type_and_associated_e_type(a_type, target_elem_type).unwrap();
 
                   debug_assert!(validation_context
+                     .owned
                      .type_variables
                      .get_data(my_tv)
                      .known_type
                      .as_ref()
                      .map_or(true, |x| x == incoming_definition));
                   validation_context
+                     .owned
                      .type_variables
                      .get_data_mut(my_tv)
                      .known_type
                      .get_or_insert_with(|| incoming_definition.clone());
-                  validation_context.unknown_literals.swap_remove(&expr_index);
+                  validation_context.owned.unknown_literals.swap_remove(&expr_index);
                }
 
                **a_type = target_elem_type.deref().clone();
@@ -283,5 +301,57 @@ fn get_type_variable_of_unknown_type_and_associated_e_type<'b>(
       }
       // other types can't contain unknown values, at least right now
       _ => None,
+   }
+}
+
+pub fn lower_type_variables(
+   ctx: &mut OwnedValidationContext,
+   procedure_bodies: &mut SecondaryMap<ProcedureId, ProcedureBody>,
+   expressions: &mut ExpressionPool,
+   err_manager: &mut ErrorManager,
+) {
+   for (i, e) in expressions.iter_mut() {
+      if let Some(tv) = e
+         .exp_type
+         .as_ref()
+         .and_then(ExpressionType::get_type_variable_of_unknown_type)
+      {
+         let the_type = ctx.type_variables.get_data(tv);
+         if let Some(t) = the_type.known_type.as_ref() {
+            *e.exp_type.as_mut().unwrap().get_unknown_portion_of_type().unwrap() = t.clone();
+            ctx.unknown_literals.swap_remove(&i);
+         }
+      }
+   }
+
+   if !ctx.unknown_literals.is_empty() {
+      let err_details: Vec<_> = ctx
+         .unknown_literals
+         .iter()
+         .map(|x| {
+            let loc = expressions[*x].location;
+            (loc, "literal")
+         })
+         .collect();
+      rolandc_error_w_details!(
+         err_manager,
+         &err_details,
+         "We weren't able to determine the types of {} literals",
+         ctx.unknown_literals.len()
+      );
+   }
+
+   for body in procedure_bodies.values_mut() {
+      for lt in body.locals.values_mut() {
+         let Some(tv) = lt.get_type_variable_of_unknown_type() else {
+            continue;
+         };
+
+         if let Some(t) = ctx.type_variables.get_data(tv).known_type.as_ref() {
+            *lt.get_unknown_portion_of_type().unwrap() = t.clone();
+         } else {
+            debug_assert!(!err_manager.errors.is_empty());
+         };
+      }
    }
 }

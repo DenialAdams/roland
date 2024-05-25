@@ -73,28 +73,32 @@ pub struct VariableDetails {
    pub used: bool,
 }
 
-pub struct ValidationContext<'a> {
+pub struct OwnedValidationContext {
    pub target: Target,
+   pub cur_procedure: Option<ProcedureId>,
+   pub variable_types: IndexMap<StrId, VariableDetails>,
+   pub loop_depth: u64,
+   pub unknown_literals: IndexSet<ExpressionId>,
+   pub type_variables: TypeVariableManager,
+   pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,
+   pub string_struct_id: StructId,
+   pub procedures_to_specialize: Vec<(ProcedureId, Box<[ExpressionType]>)>,
+}
+
+pub struct ValidationContext<'a, 'b> {
+   pub owned: &'b mut OwnedValidationContext,
+   pub ast: &'a mut AstPool,
+   pub source_to_definition: &'a mut IndexMap<SourceInfo, SourceInfo>,
+   pub interner: &'a mut Interner,
    pub procedures: &'a SlotMap<ProcedureId, ProcedureNode>,
    pub user_defined_type_name_table: &'a HashMap<StrId, UserDefinedTypeId>,
    pub proc_name_table: &'a HashMap<StrId, ProcedureId>,
    pub user_defined_types: &'a UserDefinedTypeInfo,
    pub global_info: &'a IndexMap<VariableId, GlobalInfo>,
-   pub cur_procedure: Option<ProcedureId>,
-   pub variable_types: IndexMap<StrId, VariableDetails>,
-   pub loop_depth: u64,
-   pub unknown_literals: IndexSet<ExpressionId>,
-   pub ast: &'a mut AstPool,
-   pub type_variables: TypeVariableManager,
-   pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,
-   pub source_to_definition: &'a mut IndexMap<SourceInfo, SourceInfo>,
-   pub interner: &'a mut Interner,
-   pub string_struct_id: StructId,
-   pub procedures_to_specialize: Vec<(ProcedureId, Box<[ExpressionType]>)>,
    next_var_dont_access: &'a mut VariableId,
 }
 
-impl ValidationContext<'_> {
+impl ValidationContext<'_, '_> {
    pub fn next_var(&mut self) -> VariableId {
       let ret_val = *self.next_var_dont_access;
       *self.next_var_dont_access = self.next_var_dont_access.next();

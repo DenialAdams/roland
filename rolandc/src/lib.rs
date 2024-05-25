@@ -44,11 +44,12 @@ use std::path::{Path, PathBuf};
 use error_handling::error_handling_macros::rolandc_error;
 use error_handling::ErrorManager;
 use expression_hoisting::HoistingMode;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use interner::Interner;
 pub use parse::Program;
-use parse::{ImportNode, ProcImplSource, ProcedureId};
-use semantic_analysis::{definite_assignment, GlobalKind};
+use parse::{ImportNode, ProcImplSource, ProcedureId, UserDefinedTypeId};
+use semantic_analysis::type_variables::TypeVariableManager;
+use semantic_analysis::{definite_assignment, GlobalKind, OwnedValidationContext};
 use slotmap::SecondaryMap;
 use source_info::SourcePath;
 use type_data::{ExpressionType, IntWidth};
@@ -200,6 +201,37 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    let mut specializations: IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId> = IndexMap::new();
    let mut iteration: u64 = 0;
 
+   let string_struct_id = {
+      let UserDefinedTypeId::Struct(s_id) = ctx
+         .program
+         .user_defined_type_name_table
+         .get(&ctx.interner.reverse_lookup("String").unwrap())
+         .unwrap()
+      else {
+         unreachable!();
+      };
+      *s_id
+   };
+
+   let mut owned_validation_ctx = OwnedValidationContext {
+      target: config.target,
+      variable_types: IndexMap::new(),
+      cur_procedure: None,
+      loop_depth: 0,
+      unknown_literals: IndexSet::new(),
+      type_variables: TypeVariableManager::new(),
+      cur_procedure_locals: IndexMap::new(),
+      string_struct_id,
+      procedures_to_specialize: Vec::new(),
+   };
+
+   semantic_analysis::validator::check_globals(
+      &mut ctx.program,
+      &mut owned_validation_ctx,
+      &mut ctx.interner,
+      &mut ctx.err_manager,
+   );
+
    while !worklist.is_empty() {
       iteration += 1;
       if iteration == monomorphization::DEPTH_LIMIT {
@@ -224,9 +256,8 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
          &mut ctx.program,
          &mut ctx.err_manager,
          &mut ctx.interner,
-         config.target,
+         &mut owned_validation_ctx,
          &worklist,
-         specializations.is_empty(),
       );
       worklist.clear();
 
@@ -234,6 +265,15 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       monomorphization::monomorphize(&mut ctx.program, &mut specializations, specs_to_create);
       worklist.extend(specializations[specializations_before..].values());
    }
+   if !ctx.err_manager.errors.is_empty() {
+      return Err(CompilationError::Semantic);
+   }
+   semantic_analysis::type_inference::lower_type_variables(
+      &mut owned_validation_ctx,
+      &mut ctx.program.procedure_bodies,
+      &mut ctx.program.ast.expressions,
+      &mut ctx.err_manager,
+   );
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
