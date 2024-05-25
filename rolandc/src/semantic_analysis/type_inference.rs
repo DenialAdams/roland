@@ -26,22 +26,22 @@ fn unknowns_are_compatible(x: TypeVariable, y: TypeVariable, type_variables: &Ty
 fn inference_is_possible(
    current_type: &ExpressionType,
    potential_type: &ExpressionType,
-   validation_context: &ValidationContext,
+   type_variables: &TypeVariableManager
 ) -> bool {
    match current_type {
       ExpressionType::Array(src_e, _) => match potential_type {
-         ExpressionType::Array(target_e, _) => inference_is_possible(src_e, target_e, validation_context),
+         ExpressionType::Array(target_e, _) => inference_is_possible(src_e, target_e, type_variables),
          _ => false,
       },
       ExpressionType::Unknown(x) => {
-         let data = validation_context.owned.type_variables.get_data(*x);
+         let data = type_variables.get_data(*x);
 
          if data.known_type.is_some() {
             return false;
          }
 
          if let ExpressionType::Unknown(y) = potential_type {
-            return unknowns_are_compatible(*x, *y, &validation_context.owned.type_variables);
+            return unknowns_are_compatible(*x, *y, type_variables);
          }
 
          match data.constraint {
@@ -52,7 +52,7 @@ fn inference_is_possible(
          }
       }
       ExpressionType::Pointer(src_e) => match potential_type {
-         ExpressionType::Pointer(target_e) => inference_is_possible(src_e, target_e, validation_context),
+         ExpressionType::Pointer(target_e) => inference_is_possible(src_e, target_e, type_variables),
          _ => false,
       },
       _ => false,
@@ -68,7 +68,7 @@ pub fn try_set_inferred_type(
       .exp_type
       .as_ref()
       .unwrap();
-   if !inference_is_possible(current_type, e_type, validation_context) {
+   if !inference_is_possible(current_type, e_type, &validation_context.owned.type_variables) {
       return;
    }
 
