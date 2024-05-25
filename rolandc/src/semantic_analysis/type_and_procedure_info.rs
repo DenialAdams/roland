@@ -365,10 +365,10 @@ pub fn populate_type_and_procedure_info(
          rolandc_error_w_details!(
             err_manager,
             &[
-               (old_value.location, "first static/const defined"),
-               (const_node.location, "second static/const defined"),
+               (old_value.location, "first global variable defined"),
+               (const_node.location, "second global variable defined"),
             ],
-            "Encountered duplicate static/const with the same name `{}`",
+            "Encountered duplicate global variable with the same name `{}`",
             interner.lookup(const_node.name.str),
          );
       }
@@ -399,10 +399,10 @@ pub fn populate_type_and_procedure_info(
          rolandc_error_w_details!(
             err_manager,
             &[
-               (old_value.location, "first static/const defined"),
-               (static_node.location, "second static/const defined")
+               (old_value.location, "first global variable defined"),
+               (static_node.location, "second global variable defined")
             ],
-            "Encountered duplicate static/const with the same name `{}`",
+            "Encountered duplicate global variable with the same name `{}`",
             interner.lookup(static_node.name.str),
          );
       }
