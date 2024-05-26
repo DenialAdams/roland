@@ -626,7 +626,11 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
          type_loop_block(err_manager, bn, validation_context);
       }
       Statement::Defer(si) => {
-         type_statement(err_manager, *si, validation_context);
+         if matches!(validation_context.ast.statements[*si].statement, Statement::VariableDeclaration { .. }) {
+            rolandc_error!(err_manager, validation_context.ast.statements[*si].location, "Deferring a variable declaration at top level is not allowed");
+         } else {
+            type_statement(err_manager, *si, validation_context);
+         }
       }
       Statement::Expression(en) => {
          type_expression(err_manager, *en, validation_context);

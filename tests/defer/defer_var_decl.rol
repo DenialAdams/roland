@@ -1,0 +1,13 @@
+proc main() {
+    defer let X: u64 = 123;
+    let x = X > 10;
+    if x {
+        return;
+    }
+}
+__END__
+compile:
+Deferring a variable declaration at top level is not allowed
+↳ line 2, column 11 [tests/defer/defer_var_decl.rol]
+Encountered undefined symbol `X`
+↳ line 3, column 13 [tests/defer/defer_var_decl.rol]
