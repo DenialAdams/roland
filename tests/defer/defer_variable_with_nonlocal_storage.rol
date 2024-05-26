@@ -1,0 +1,11 @@
+proc main() {
+    defer static X: u64 = 123;
+    let x = true;
+    if x {
+        return;
+    }
+}
+__END__
+compile:
+Local variable `X` is unused
+↳ line 2, column 18 [tests/defer/defer_variable_with_nonlocal_storage.rol]

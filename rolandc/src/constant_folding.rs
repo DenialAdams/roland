@@ -10,7 +10,7 @@ use crate::parse::{
    AstPool, BinOp, BlockNode, CastType, EnumId, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcedureId,
    ProcedureNode, Program, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::GlobalKind;
+use crate::semantic_analysis::StorageKind;
 use crate::source_info::SourceInfo;
 use crate::type_data::{
    ExpressionType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
@@ -30,7 +30,7 @@ pub struct FoldingContext<'a> {
 pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, interner: &Interner, target: Target) {
    let mut const_replacements: HashMap<VariableId, ExpressionId> = HashMap::new();
 
-   for p_const in program.global_info.iter().filter(|x| x.1.kind == GlobalKind::Const) {
+   for p_const in program.global_info.iter().filter(|x| x.1.kind == StorageKind::Const) {
       const_replacements.insert(*p_const.0, p_const.1.initializer.unwrap());
    }
 
@@ -122,10 +122,9 @@ pub fn fold_statement(
       Statement::Return(expr) => {
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
       }
-      Statement::VariableDeclaration(_, _, _, _)
-      | Statement::For { .. }
-      | Statement::While(_, _)
-      | Statement::Defer(_) => unreachable!(),
+      Statement::VariableDeclaration { .. } | Statement::For { .. } | Statement::While(_, _) | Statement::Defer(_) => {
+         unreachable!()
+      }
    }
    folding_context.ast.statements[statement].statement = the_statement;
 }
@@ -216,6 +215,7 @@ fn fold_expr_inner(
       }
       Expression::Variable(x) => {
          if let Some(replacement_index) = folding_context.const_replacements.get(x).copied() {
+            // todo: shallow clone does not look correct here?
             return Some(folding_context.ast.expressions[replacement_index].expression.clone());
          }
 

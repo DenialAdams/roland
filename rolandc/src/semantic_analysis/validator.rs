@@ -9,7 +9,7 @@ use slotmap::SlotMap;
 
 use super::type_inference::try_set_inferred_type;
 use super::type_variables::{TypeConstraint, TypeVariableManager};
-use super::{OwnedValidationContext, ValidationContext, VariableDetails, VariableKind};
+use super::{GlobalInfo, OwnedValidationContext, ValidationContext, VariableDetails, VariableScopeKind};
 use crate::error_handling::error_handling_macros::{
    rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn,
 };
@@ -364,7 +364,7 @@ pub fn type_and_check_validity(
       proc_name_table: &program.procedure_name_table,
       user_defined_type_name_table: &program.user_defined_type_name_table,
       user_defined_types: &mut program.user_defined_types,
-      global_info: &program.global_info,
+      global_info: &mut program.global_info,
    };
 
    for id in procedures_to_check.iter().copied() {
@@ -380,7 +380,7 @@ pub fn type_and_check_validity(
                var_type: parameter.p_type.e_type.clone(),
                used: false,
                declaration_location: parameter.location,
-               kind: VariableKind::Parameter,
+               kind: VariableScopeKind::Parameter,
                var_id: parameter.var_id,
             },
          );
@@ -591,7 +591,11 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
          }
 
          let vars_before = validation_context.owned.variable_types.len();
-         *var_id = declare_variable(err_manager, var, result_type, validation_context);
+         *var_id = declare_variable(err_manager, var, result_type.clone(), validation_context);
+         validation_context
+            .owned
+            .cur_procedure_locals
+            .insert(*var_id, result_type);
 
          type_loop_block(err_manager, bn, validation_context);
 
@@ -688,7 +692,13 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             );
          }
       }
-      Statement::VariableDeclaration(id, opt_enid, dt, var_id) => {
+      Statement::VariableDeclaration {
+         var_name: id,
+         value: opt_enid,
+         declared_type: dt,
+         var_id,
+         storage,
+      } => {
          if let DeclarationValue::Expr(enid) = opt_enid {
             type_expression(err_manager, *enid, validation_context);
          }
@@ -720,7 +730,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
          };
 
          let opt_en = match opt_enid {
-            DeclarationValue::Expr(enid) => Some(&validation_context.ast.expressions[*enid]),
+            DeclarationValue::Expr(enid) => Some(*enid),
             DeclarationValue::Uninit | DeclarationValue::None => None,
          };
 
@@ -730,7 +740,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             if let Some(en) = opt_en {
                check_type_declared_vs_actual(
                   dt_val,
-                  en,
+                  &validation_context.ast.expressions[en],
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
@@ -741,7 +751,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
 
             dt_val.e_type.clone()
          } else if let Some(en) = opt_en {
-            en.exp_type.clone().unwrap()
+            validation_context.ast.expressions[en].exp_type.clone().unwrap()
          } else {
             rolandc_error!(
                err_manager,
@@ -751,7 +761,30 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             ExpressionType::CompileError
          };
 
-         *var_id = declare_variable(err_manager, id, result_type, validation_context);
+         *var_id = declare_variable(err_manager, id, result_type.clone(), validation_context);
+
+         if let Some(storage_kind) = storage {
+            validation_context.global_info.insert(
+               *var_id,
+               GlobalInfo {
+                  expr_type: ExpressionTypeNode {
+                     // This location is _not_ right, but it's not used anywhere that matters right now.
+                     // and getting the right location isn't easy. TODO
+                     location: stmt_loc,
+                     e_type: result_type,
+                  },
+                  initializer: opt_en,
+                  location: stmt_loc,
+                  kind: *storage_kind,
+                  name: id.str,
+               },
+            );
+         } else {
+            validation_context
+               .owned
+               .cur_procedure_locals
+               .insert(*var_id, result_type);
+         }
       }
    }
    validation_context.ast.statements[statement].statement = the_statement;
@@ -776,14 +809,13 @@ fn declare_variable(
    validation_context.owned.variable_types.insert(
       id.str,
       VariableDetails {
-         var_type: var_type.clone(),
+         var_type,
          declaration_location: id.location,
          used: false,
-         kind: VariableKind::Local,
+         kind: VariableScopeKind::Local,
          var_id: next_var,
       },
    );
-   validation_context.owned.cur_procedure_locals.insert(next_var, var_type);
    next_var
 }
 
@@ -795,9 +827,9 @@ fn fall_out_of_scope(
    for (k, v) in validation_context.owned.variable_types.drain(first_var_in_scope..) {
       if !v.used {
          let begin = match v.kind {
-            VariableKind::Parameter => "Parameter",
-            VariableKind::Local => "Local variable",
-            VariableKind::Global => "Global variable",
+            VariableScopeKind::Parameter => "Parameter",
+            VariableScopeKind::Local => "Local variable",
+            VariableScopeKind::Global => "Global variable",
          };
          rolandc_warn!(
             err_manager,
@@ -2320,25 +2352,37 @@ pub fn check_globals(
       proc_name_table: &program.procedure_name_table,
       user_defined_type_name_table: &program.user_defined_type_name_table,
       user_defined_types: &mut program.user_defined_types,
-      global_info: &program.global_info,
+      global_info: &mut program.global_info,
    };
 
    // Populate variable resolution with globals
-   for gi in program.global_info.iter() {
+   for gi in validation_context.global_info.iter() {
       validation_context.owned.variable_types.insert(
          gi.1.name,
          VariableDetails {
             var_type: gi.1.expr_type.e_type.clone(),
             declaration_location: gi.1.location,
-            kind: VariableKind::Global,
+            kind: VariableScopeKind::Global,
             used: false,
             var_id: *gi.0,
          },
       );
    }
 
-   for p_global in program.global_info.values().filter(|x| x.initializer.is_some()) {
-      type_expression(err_manager, p_global.initializer.unwrap(), &mut validation_context);
+   let initializers: Vec<ExpressionId> = validation_context
+      .global_info
+      .values()
+      .filter_map(|x| x.initializer)
+      .collect();
+   for initializer in initializers {
+      type_expression(err_manager, initializer, &mut validation_context);
+   }
+
+   for p_global in validation_context
+      .global_info
+      .values()
+      .filter(|x| x.initializer.is_some())
+   {
       try_set_inferred_type(
          &p_global.expr_type.e_type,
          p_global.initializer.unwrap(),

@@ -93,10 +93,9 @@ fn mark_reachable_stmt(stmt: StatementId, ast: &AstPool, ctx: &mut DceCtx) {
          mark_reachable_stmt(*else_s, ast, ctx);
       }
       Statement::Continue | Statement::Break => (),
-      Statement::VariableDeclaration(_, _, _, _)
-      | Statement::Defer(_)
-      | Statement::For { .. }
-      | Statement::While(_, _) => unreachable!(),
+      Statement::VariableDeclaration { .. } | Statement::Defer(_) | Statement::For { .. } | Statement::While(_, _) => {
+         unreachable!()
+      }
    }
 }
 

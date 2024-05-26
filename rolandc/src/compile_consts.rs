@@ -9,7 +9,7 @@ use crate::interner::{Interner, StrId};
 use crate::parse::{
    AstPool, Expression, ExpressionId, ProcedureId, ProcedureNode, Program, UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::GlobalKind;
+use crate::semantic_analysis::StorageKind;
 use crate::source_info::SourceInfo;
 use crate::Target;
 
@@ -55,7 +55,7 @@ pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &
    let all_consts: HashMap<VariableId, (SourceInfo, ExpressionId, StrId)> = program
       .global_info
       .iter()
-      .filter(|x| x.1.kind == GlobalKind::Const)
+      .filter(|x| x.1.kind == StorageKind::Const)
       .map(|x| (*x.0, (x.1.location, x.1.initializer.unwrap(), x.1.name)))
       .collect();
    let mut consts_being_processed: HashSet<VariableId> = HashSet::new();
@@ -75,7 +75,7 @@ pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &
    for c_var_id in program
       .global_info
       .iter()
-      .filter(|x| x.1.kind == GlobalKind::Const)
+      .filter(|x| x.1.kind == StorageKind::Const)
       .map(|x| *x.0)
    {
       cg_const(c_var_id, &mut cg_ctx, err_manager);

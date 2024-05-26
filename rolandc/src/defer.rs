@@ -7,6 +7,7 @@ use crate::parse::{
    statement_always_or_never_returns, AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionNode,
    ExpressionPool, Program, Statement, StatementId, StatementNode, VariableId,
 };
+use crate::semantic_analysis::GlobalInfo;
 use crate::type_data::ExpressionType;
 
 enum CfKind {
@@ -37,6 +38,7 @@ pub fn process_defer_statements(program: &mut Program) {
       mapping: HashMap::new(),
       next_var: &mut program.next_variable,
       local_types: &mut IndexMap::new(),
+      global_info: &mut program.global_info,
    };
    for body in program.procedure_bodies.values_mut() {
       vm.local_types = &mut body.locals;
@@ -177,7 +179,7 @@ fn defer_statement(
          defer_statement(*the_stmt, defer_ctx, ast, current_statement, vm);
          defer_ctx.deferred_stmts.push(*the_stmt);
       }
-      Statement::Assignment(_, _) | Statement::Expression(_) | Statement::VariableDeclaration(_, _, _, _) => (),
+      Statement::Assignment(_, _) | Statement::Expression(_) | Statement::VariableDeclaration { .. } => (),
       Statement::For { .. } | Statement::While(_, _) => unreachable!(),
    }
    ast.statements[statement].statement = the_statement;
@@ -187,14 +189,20 @@ struct VarMigrator<'a> {
    next_var: &'a mut VariableId,
    mapping: HashMap<VariableId, VariableId>,
    local_types: &'a mut IndexMap<VariableId, ExpressionType>,
+   global_info: &'a mut IndexMap<VariableId, GlobalInfo>,
 }
 
 impl<'a> VarMigrator<'a> {
    fn new_var(&mut self, old_var: VariableId) -> VariableId {
       let new_var = std::mem::replace(self.next_var, self.next_var.next());
       self.mapping.insert(old_var, new_var);
-      let existing_type = self.local_types.get(&old_var).unwrap().clone();
-      self.local_types.insert(new_var, existing_type);
+      if let Some(existing_local_type) = self.local_types.get(&old_var) {
+         self.local_types.insert(new_var, existing_local_type.clone());
+      } else {
+         // This doesn't clone the initializer expression, which I think is OK?
+         let existing_global_info = self.global_info.get(&old_var).unwrap();
+         self.global_info.insert(new_var, existing_global_info.clone());
+      }
       new_var
    }
 
@@ -232,7 +240,13 @@ fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool, vm: &mut VarMigrator) -
          deep_clone_block(then, ast, vm);
          *else_s = deep_clone_stmt(*else_s, ast, vm);
       }
-      Statement::VariableDeclaration(_, decl_val, _, var_id) => {
+      Statement::VariableDeclaration {
+         var_name: _,
+         value: decl_val,
+         declared_type: _,
+         var_id,
+         storage: _,
+      } => {
          match decl_val {
             DeclarationValue::Expr(expr_id) => *expr_id = deep_clone_expr(*expr_id, &mut ast.expressions, vm),
             DeclarationValue::Uninit | DeclarationValue::None => (),

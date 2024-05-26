@@ -391,10 +391,9 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
             false,
          );
       }
-      Statement::VariableDeclaration(_, _, _, _)
-      | Statement::For { .. }
-      | Statement::While(_, _)
-      | Statement::Defer(_) => unreachable!(),
+      Statement::VariableDeclaration { .. } | Statement::For { .. } | Statement::While(_, _) | Statement::Defer(_) => {
+         unreachable!()
+      }
    }
    ast.statements[statement].statement = the_statement;
 }

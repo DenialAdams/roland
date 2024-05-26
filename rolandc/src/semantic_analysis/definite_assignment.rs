@@ -62,7 +62,13 @@ fn ensure_all_variables_assigned_in_stmt(
 ) {
    let sn = &pool.statements[stmt_id];
    match &sn.statement {
-      Statement::VariableDeclaration(_, decl_val, _, var_id) => match decl_val {
+      Statement::VariableDeclaration {
+         var_name: _,
+         value: decl_val,
+         declared_type: _,
+         var_id,
+         storage: _,
+      } => match decl_val {
          DeclarationValue::Expr(e) => {
             ensure_expression_does_not_use_unassigned_variable(*e, assigned_vars, procedure_vars, pool, err_manager);
             if let Some(index) = procedure_vars.get_index_of(var_id) {

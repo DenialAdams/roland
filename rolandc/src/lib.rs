@@ -49,7 +49,7 @@ use interner::Interner;
 pub use parse::Program;
 use parse::{ImportNode, ProcImplSource, ProcedureId, UserDefinedTypeId};
 use semantic_analysis::type_variables::TypeVariableManager;
-use semantic_analysis::{definite_assignment, GlobalKind, OwnedValidationContext};
+use semantic_analysis::{definite_assignment, OwnedValidationContext, StorageKind};
 use slotmap::SecondaryMap;
 use source_info::SourcePath;
 use type_data::{ExpressionType, IntWidth};
@@ -319,7 +319,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    named_argument_lowering::lower_named_args(&mut ctx.program);
 
    constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner, config.target);
-   ctx.program.global_info.retain(|_, v| v.kind != GlobalKind::Const);
+   ctx.program.global_info.retain(|_, v| v.kind != StorageKind::Const);
 
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);

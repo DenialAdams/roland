@@ -8,6 +8,7 @@ use crate::parse::{
    AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, ProcedureId, ProcedureNode,
    Statement, StatementId, UserDefinedTypeInfo, VariableId,
 };
+use crate::semantic_analysis::StorageKind;
 use crate::type_data::ExpressionType;
 use crate::Program;
 
@@ -175,8 +176,18 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
          pp_expr(*expr, pp_ctx)?;
          writeln!(pp_ctx.output, ";")?;
       }
-      Statement::VariableDeclaration(_, initializer, declared_type, var) => {
-         write!(pp_ctx.output, "let ")?;
+      Statement::VariableDeclaration {
+         var_name: _,
+         value: initializer,
+         declared_type,
+         var_id: var,
+         storage,
+      } => {
+         match storage {
+            None => write!(pp_ctx.output, "let "),
+            Some(StorageKind::Const) => write!(pp_ctx.output, "const "),
+            Some(StorageKind::Static) => write!(pp_ctx.output, "static "),
+         }?;
          pp_var(*var, pp_ctx)?;
          if let Some(dt) = declared_type {
             write!(pp_ctx.output, ": ")?;

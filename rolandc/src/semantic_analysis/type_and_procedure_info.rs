@@ -4,7 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 use slotmap::{SecondaryMap, SlotMap};
 
 use super::validator::str_to_builtin_type;
-use super::{EnumInfo, GlobalInfo, GlobalKind, StructInfo, UnionInfo};
+use super::{EnumInfo, GlobalInfo, StorageKind, StructInfo, UnionInfo};
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
@@ -358,7 +358,7 @@ pub fn populate_type_and_procedure_info(
             expr_type: const_node.const_type,
             initializer: Some(const_node.value),
             location: const_node.location,
-            kind: GlobalKind::Const,
+            kind: StorageKind::Const,
             name: const_node.name.str,
          },
       ) {
@@ -392,7 +392,7 @@ pub fn populate_type_and_procedure_info(
             expr_type: static_node.static_type,
             initializer: static_node.value,
             location: static_node.location,
-            kind: GlobalKind::Static,
+            kind: StorageKind::Static,
             name: static_node.name.str,
          },
       ) {

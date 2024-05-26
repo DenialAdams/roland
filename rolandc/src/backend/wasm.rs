@@ -15,7 +15,7 @@ use crate::parse::{
    AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureDefinition, ProcedureId, Program, UnOp,
    UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::{GlobalInfo, GlobalKind};
+use crate::semantic_analysis::{GlobalInfo, StorageKind};
 use crate::size_info::{aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm};
 use crate::type_data::{ExpressionType, FloatType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE};
 use crate::{CompilationConfig, Target};
@@ -184,14 +184,14 @@ impl<'u> TypeManager<'u> {
 
 pub fn sort_globals(program: &mut Program, target: Target) {
    program.global_info.sort_by(|_k_1, v_1, _k_2, v_2| {
-      let e_1 = &v_1.expr_type.e_type;
-      let e_2 = &v_2.expr_type.e_type;
+      let e_1 = &v_1.expr_type;
+      let e_2 = &v_2.expr_type;
 
-      let alignment_1 = mem_alignment(e_1, &program.user_defined_types, target);
-      let alignment_2 = mem_alignment(e_2, &program.user_defined_types, target);
+      let alignment_1 = mem_alignment(&e_1.e_type, &program.user_defined_types, target);
+      let alignment_2 = mem_alignment(&e_2.e_type, &program.user_defined_types, target);
 
-      let sizeof_1 = sizeof_type_mem(e_1, &program.user_defined_types, target);
-      let sizeof_2 = sizeof_type_mem(e_2, &program.user_defined_types, target);
+      let sizeof_1 = sizeof_type_mem(&e_1.e_type, &program.user_defined_types, target);
+      let sizeof_2 = sizeof_type_mem(&e_2.e_type, &program.user_defined_types, target);
 
       compare_alignment(alignment_1, sizeof_1, alignment_2, sizeof_2)
    });
@@ -304,7 +304,7 @@ pub fn emit_wasm(
       offset = aligned_address(offset, strictest_alignment);
    }
    for (static_var, static_details) in program.global_info.iter() {
-      debug_assert!(static_details.kind != GlobalKind::Const);
+      debug_assert!(static_details.kind != StorageKind::Const);
 
       if generation_context.var_to_slot.contains_key(static_var) {
          continue;

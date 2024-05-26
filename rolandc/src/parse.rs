@@ -10,7 +10,7 @@ use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
 use crate::lex::Lexer;
-use crate::semantic_analysis::{EnumInfo, GlobalInfo, GlobalKind, StructInfo, UnionInfo};
+use crate::semantic_analysis::{EnumInfo, GlobalInfo, StorageKind, StructInfo, UnionInfo};
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 
@@ -249,7 +249,7 @@ impl Expression {
    #[must_use]
    pub fn is_lvalue(&self, expressions: &ExpressionPool, global_info: &IndexMap<VariableId, GlobalInfo>) -> bool {
       match self {
-         Expression::Variable(x) => global_info.get(x).map_or(true, |x| x.kind != GlobalKind::Const),
+         Expression::Variable(x) => global_info.get(x).map_or(true, |x| x.kind != StorageKind::Const),
          Expression::ArrayIndex { array, .. } => expressions[*array].expression.is_lvalue(expressions, global_info),
          Expression::UnaryOperator(UnOp::Dereference, _) => true,
          Expression::FieldAccess(_, lhs) => expressions[*lhs].expression.is_lvalue(expressions, global_info),
@@ -305,7 +305,13 @@ pub enum Statement {
       induction_var: VariableId,
    },
    While(ExpressionId, BlockNode),
-   VariableDeclaration(StrNode, DeclarationValue, Option<ExpressionTypeNode>, VariableId),
+   VariableDeclaration {
+      var_name: StrNode,
+      value: DeclarationValue,
+      declared_type: Option<ExpressionTypeNode>,
+      var_id: VariableId,
+      storage: Option<StorageKind>,
+   },
    Defer(StatementId),
 }
 
@@ -1032,6 +1038,41 @@ fn parse_semicolon_terminated_statement(
          );
          return Err(());
       }
+      Token::KeywordConst => {
+         let _ = l.next();
+         let variable_name = parse_identifier(l, parse_context)?;
+         expect(l, parse_context, Token::Colon)?;
+         let const_type = parse_type(l, parse_context)?;
+         expect(l, parse_context, Token::Assignment)?;
+         let exp = parse_expression(l, parse_context, false, &mut ast.expressions)?;
+         Statement::VariableDeclaration {
+            var_name: variable_name,
+            value: DeclarationValue::Expr(exp),
+            declared_type: Some(const_type),
+            var_id: VariableId::first(),
+            storage: Some(StorageKind::Const),
+         }
+      }
+      Token::KeywordStatic => {
+         let _ = l.next();
+         let variable_name = parse_identifier(l, parse_context)?;
+         expect(l, parse_context, Token::Colon)?;
+         let static_type = parse_type(l, parse_context)?;
+         expect(l, parse_context, Token::Assignment)?;
+         let dv = if l.peek_token() == Token::TripleUnderscore {
+            let _ = l.next();
+            DeclarationValue::Uninit
+         } else {
+            DeclarationValue::Expr(parse_expression(l, parse_context, false, &mut ast.expressions)?)
+         };
+         Statement::VariableDeclaration {
+            var_name: variable_name,
+            value: dv,
+            declared_type: Some(static_type),
+            var_id: VariableId::first(),
+            storage: Some(StorageKind::Static),
+         }
+      }
       Token::KeywordLet => {
          let _ = l.next();
          let mut declared_type = None;
@@ -1051,7 +1092,13 @@ fn parse_semicolon_terminated_statement(
                DeclarationValue::Expr(parse_expression(l, parse_context, false, &mut ast.expressions)?)
             }
          };
-         Statement::VariableDeclaration(variable_name, e, declared_type, VariableId::first())
+         Statement::VariableDeclaration {
+            var_name: variable_name,
+            value: e,
+            declared_type,
+            var_id: VariableId::first(),
+            storage: None,
+         }
       }
       x if token_starts_expression(x) => {
          let e = parse_expression(l, parse_context, false, &mut ast.expressions)?;

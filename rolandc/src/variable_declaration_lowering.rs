@@ -19,8 +19,16 @@ fn lower_block(bn: &mut BlockNode, ast: &mut AstPool, locals: &IndexMap<Variable
 fn lower_stmt(s: StatementId, ast: &mut AstPool, locals: &IndexMap<VariableId, ExpressionType>) -> bool {
    let mut the_statement = std::mem::replace(&mut ast.statements[s].statement, Statement::Break);
    let retain = match &mut the_statement {
-      Statement::VariableDeclaration(str_node, dv, _, var) => {
-         if let DeclarationValue::Expr(rhs) = dv {
+      Statement::VariableDeclaration {
+         var_name: str_node,
+         value: dv,
+         declared_type: _,
+         var_id: var,
+         storage,
+      } => {
+         if storage.is_some() {
+            false
+         } else if let DeclarationValue::Expr(rhs) = dv {
             let lhs_type = locals.get(var).cloned();
             let lhs = ast.expressions.insert(ExpressionNode {
                expression: Expression::Variable(*var),

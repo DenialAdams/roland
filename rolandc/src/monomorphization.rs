@@ -146,7 +146,13 @@ fn deep_clone_stmt(
       Statement::Defer(ds) => {
          *ds = deep_clone_stmt(*ds, ast, concrete_types, type_parameters);
       }
-      Statement::VariableDeclaration(_, val, _, var_id) => {
+      Statement::VariableDeclaration {
+         var_name: _,
+         value: val,
+         declared_type: _,
+         var_id,
+         storage: _,
+      } => {
          debug_assert!(*var_id == VariableId::first());
          match val {
             crate::parse::DeclarationValue::Expr(e) => {

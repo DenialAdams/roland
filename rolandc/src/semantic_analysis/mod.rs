@@ -44,8 +44,8 @@ pub struct UnionInfo {
    pub name: StrId,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum GlobalKind {
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum StorageKind {
    Static,
    Const,
 }
@@ -55,11 +55,11 @@ pub struct GlobalInfo {
    pub expr_type: ExpressionTypeNode,
    pub initializer: Option<ExpressionId>,
    pub location: SourceInfo,
-   pub kind: GlobalKind,
+   pub kind: StorageKind,
    pub name: StrId,
 }
 
-pub enum VariableKind {
+pub enum VariableScopeKind {
    Parameter,
    Local,
    Global,
@@ -69,7 +69,7 @@ pub struct VariableDetails {
    pub var_type: ExpressionType,
    pub var_id: VariableId,
    pub declaration_location: SourceInfo,
-   pub kind: VariableKind,
+   pub kind: VariableScopeKind,
    pub used: bool,
 }
 
@@ -94,7 +94,7 @@ pub struct ValidationContext<'a, 'b> {
    pub user_defined_type_name_table: &'a HashMap<StrId, UserDefinedTypeId>,
    pub proc_name_table: &'a HashMap<StrId, ProcedureId>,
    pub user_defined_types: &'a UserDefinedTypeInfo,
-   pub global_info: &'a IndexMap<VariableId, GlobalInfo>,
+   pub global_info: &'a mut IndexMap<VariableId, GlobalInfo>,
    next_var_dont_access: &'a mut VariableId,
 }
 

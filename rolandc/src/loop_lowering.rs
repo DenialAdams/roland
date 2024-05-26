@@ -272,7 +272,7 @@ fn lower_statement(statement: StatementId, ctx: &mut LowerForContext, ast: &mut 
       | Statement::Continue
       | Statement::Assignment(_, _)
       | Statement::Expression(_)
-      | Statement::VariableDeclaration(_, _, _, _) => (),
+      | Statement::VariableDeclaration { .. } => (),
    }
    ast.statements[statement].statement = the_statement;
 }
