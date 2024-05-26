@@ -105,7 +105,9 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
 
    let p_const_expr = &cg_context.ast.expressions[c.1];
 
-   if !crate::constant_folding::is_const(&p_const_expr.expression, &cg_context.ast.expressions) {
+   if crate::constant_folding::is_const(&p_const_expr.expression, &cg_context.ast.expressions) {
+      cg_context.const_replacements.insert(c_id, c.1);
+   } else {
       rolandc_error!(
          err_manager,
          p_const_expr.location,
@@ -115,7 +117,6 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
    }
 
    cg_context.consts_being_processed.remove(&c_id);
-   cg_context.const_replacements.insert(c_id, c.1);
 }
 
 fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {

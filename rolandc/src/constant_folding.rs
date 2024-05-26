@@ -215,8 +215,7 @@ fn fold_expr_inner(
       }
       Expression::Variable(x) => {
          if let Some(replacement_index) = folding_context.const_replacements.get(x).copied() {
-            // todo: shallow clone does not look correct here?
-            return Some(folding_context.ast.expressions[replacement_index].expression.clone());
+            return Some(deep_clone_literal_expr(replacement_index, &mut folding_context.ast.expressions));
          }
 
          None
@@ -767,10 +766,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
       "num_variants" => {
          let num_variants = match &generic_args[0] {
             ExpressionType::Enum(enum_id) => fc.user_defined_types.enum_info.get(*enum_id).unwrap().variants.len(),
-            x => {
-               dbg!(x);
-               unreachable!();
-            }
+            _ => unreachable!(),
          };
 
          Some(Expression::IntLiteral {
@@ -1733,4 +1729,40 @@ pub fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &E
       | Expression::UnresolvedStructLiteral(_, _)
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
+}
+
+#[must_use]
+fn deep_clone_literal_expr(expr: ExpressionId, expressions: &mut ExpressionPool) -> Expression {
+   let mut cloned = expressions[expr].expression.clone();
+   match &mut cloned {
+      Expression::ArrayLiteral(exprs) => {
+         for elem_expr in exprs.iter_mut() {
+            let cloned_elem_expr = deep_clone_literal_expr(*elem_expr, expressions);
+            *elem_expr = expressions.insert(ExpressionNode {
+               expression: cloned_elem_expr,
+               location: expressions[*elem_expr].location,
+               exp_type: expressions[*elem_expr].exp_type.clone(),
+            });
+         }
+      }
+      Expression::StructLiteral(_, field_exprs) => {
+         for field_expr in field_exprs.values_mut().flatten() {
+            let cloned_field_expr = deep_clone_literal_expr(*field_expr, expressions);
+            *field_expr = expressions.insert(ExpressionNode {
+               expression: cloned_field_expr,
+               location: expressions[*field_expr].location,
+               exp_type: expressions[*field_expr].exp_type.clone(),
+            });
+         }
+      }
+      Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_)
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_)
+      | Expression::UnitLiteral
+      | Expression::EnumLiteral(_, _)
+      | Expression::BoundFcnLiteral(_, _) => (),
+      _ => unreachable!(),
+   }
+   cloned
 }
