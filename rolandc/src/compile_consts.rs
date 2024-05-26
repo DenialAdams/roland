@@ -53,7 +53,7 @@ pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &
    // As a result, we need to completely simplify constant expressions in the correct (DAG) order before we can proceed with the rest of compilation.
 
    let all_consts: HashMap<VariableId, (SourceInfo, ExpressionId, StrId)> = program
-      .global_info
+      .non_stack_var_info
       .iter()
       .filter(|x| x.1.kind == StorageKind::Const)
       .map(|x| (*x.0, (x.1.location, x.1.initializer.unwrap(), x.1.name)))
@@ -73,7 +73,7 @@ pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &
    };
 
    for c_var_id in program
-      .global_info
+      .non_stack_var_info
       .iter()
       .filter(|x| x.1.kind == StorageKind::Const)
       .map(|x| *x.0)

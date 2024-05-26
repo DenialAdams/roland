@@ -364,7 +364,7 @@ pub fn type_and_check_validity(
       proc_name_table: &program.procedure_name_table,
       user_defined_type_name_table: &program.user_defined_type_name_table,
       user_defined_types: &mut program.user_defined_types,
-      global_info: &mut program.global_info,
+      global_info: &mut program.non_stack_var_info,
    };
 
    for id in procedures_to_check.iter().copied() {
@@ -626,8 +626,15 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
          type_loop_block(err_manager, bn, validation_context);
       }
       Statement::Defer(si) => {
-         if matches!(validation_context.ast.statements[*si].statement, Statement::VariableDeclaration { .. }) {
-            rolandc_error!(err_manager, validation_context.ast.statements[*si].location, "Deferring a variable declaration at top level is not allowed");
+         if matches!(
+            validation_context.ast.statements[*si].statement,
+            Statement::VariableDeclaration { .. }
+         ) {
+            rolandc_error!(
+               err_manager,
+               validation_context.ast.statements[*si].location,
+               "Deferring a variable declaration at top level is not allowed"
+            );
          } else {
             type_statement(err_manager, *si, validation_context);
          }
@@ -2356,7 +2363,7 @@ pub fn check_globals(
       proc_name_table: &program.procedure_name_table,
       user_defined_type_name_table: &program.user_defined_type_name_table,
       user_defined_types: &mut program.user_defined_types,
-      global_info: &mut program.global_info,
+      global_info: &mut program.non_stack_var_info,
    };
 
    // Populate variable resolution with globals

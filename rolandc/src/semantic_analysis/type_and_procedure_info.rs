@@ -352,7 +352,7 @@ pub fn populate_type_and_procedure_info(
          const_node.const_type.location,
       );
 
-      if let Some(old_value) = program.global_info.insert(
+      if let Some(old_value) = program.non_stack_var_info.insert(
          program.next_variable,
          GlobalInfo {
             expr_type: const_node.const_type,
@@ -386,7 +386,7 @@ pub fn populate_type_and_procedure_info(
          static_node.static_type.location,
       );
 
-      if let Some(old_value) = program.global_info.insert(
+      if let Some(old_value) = program.non_stack_var_info.insert(
          program.next_variable,
          GlobalInfo {
             expr_type: static_node.static_type,

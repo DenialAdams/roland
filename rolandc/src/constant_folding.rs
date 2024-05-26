@@ -30,7 +30,11 @@ pub struct FoldingContext<'a> {
 pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, interner: &Interner, target: Target) {
    let mut const_replacements: HashMap<VariableId, ExpressionId> = HashMap::new();
 
-   for p_const in program.global_info.iter().filter(|x| x.1.kind == StorageKind::Const) {
+   for p_const in program
+      .non_stack_var_info
+      .iter()
+      .filter(|x| x.1.kind == StorageKind::Const)
+   {
       const_replacements.insert(*p_const.0, p_const.1.initializer.unwrap());
    }
 
@@ -43,7 +47,7 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
       target,
    };
 
-   for p_static in program.global_info.values().filter(|x| x.initializer.is_some()) {
+   for p_static in program.non_stack_var_info.values().filter(|x| x.initializer.is_some()) {
       if let Some(v) = p_static.initializer.as_ref().copied() {
          try_fold_and_replace_expr(v, err_manager, &mut folding_context, interner);
          let v = &folding_context.ast.expressions[v];
@@ -215,7 +219,10 @@ fn fold_expr_inner(
       }
       Expression::Variable(x) => {
          if let Some(replacement_index) = folding_context.const_replacements.get(x).copied() {
-            return Some(deep_clone_literal_expr(replacement_index, &mut folding_context.ast.expressions));
+            return Some(deep_clone_literal_expr(
+               replacement_index,
+               &mut folding_context.ast.expressions,
+            ));
          }
 
          None

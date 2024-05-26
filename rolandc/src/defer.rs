@@ -38,7 +38,7 @@ pub fn process_defer_statements(program: &mut Program) {
       mapping: HashMap::new(),
       next_var: &mut program.next_variable,
       local_types: &mut IndexMap::new(),
-      global_info: &mut program.global_info,
+      global_info: &mut program.non_stack_var_info,
    };
    for body in program.procedure_bodies.values_mut() {
       vm.local_types = &mut body.locals;

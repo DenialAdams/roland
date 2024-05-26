@@ -22,7 +22,7 @@ struct DceCtx<'a> {
 pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner: &mut Interner, target: Target) {
    let mut ctx: DceCtx<'_> = DceCtx {
       worklist: Vec::new(),
-      global_info: &program.global_info,
+      global_info: &program.non_stack_var_info,
       literals: &mut program.literals,
    };
 
@@ -35,7 +35,7 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
       }
    }
 
-   for static_expr in program.global_info.values().filter_map(|x| x.initializer) {
+   for static_expr in program.non_stack_var_info.values().filter_map(|x| x.initializer) {
       mark_reachable_expr(static_expr, &program.ast, &mut ctx);
    }
 
@@ -55,7 +55,7 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
                continue;
             }
 
-            if let Some(val_expr) = program.global_info[&reachable_global].initializer {
+            if let Some(val_expr) = program.non_stack_var_info[&reachable_global].initializer {
                mark_reachable_expr(val_expr, &program.ast, &mut ctx);
             }
          }
@@ -66,7 +66,7 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
    program
       .procedure_bodies
       .retain(|k, _| program.procedures.contains_key(k));
-   program.global_info.retain(|k, _| reachable_globals.contains(k));
+   program.non_stack_var_info.retain(|k, _| reachable_globals.contains(k));
 }
 
 fn mark_reachable_block(block: &BlockNode, ast: &AstPool, ctx: &mut DceCtx) {

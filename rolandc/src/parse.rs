@@ -415,7 +415,7 @@ pub struct Program {
 
    // These fields are populated during semantic analysis
    pub literals: IndexSet<StrId>,
-   pub global_info: IndexMap<VariableId, GlobalInfo>,
+   pub non_stack_var_info: IndexMap<VariableId, GlobalInfo>,
    pub user_defined_type_name_table: HashMap<StrId, UserDefinedTypeId>,
    pub procedure_name_table: HashMap<StrId, ProcedureId>,
    pub user_defined_types: UserDefinedTypeInfo,
@@ -455,7 +455,7 @@ impl Program {
             struct_info: SlotMap::with_key(),
             union_info: SlotMap::with_key(),
          },
-         global_info: IndexMap::new(),
+         non_stack_var_info: IndexMap::new(),
          procedure_name_table: HashMap::new(),
          user_defined_type_name_table: HashMap::new(),
          source_to_definition: IndexMap::new(),
@@ -480,7 +480,7 @@ impl Program {
       reset_slotmap(&mut self.user_defined_types.enum_info);
       reset_slotmap(&mut self.user_defined_types.struct_info);
       reset_slotmap(&mut self.user_defined_types.union_info);
-      self.global_info.clear();
+      self.non_stack_var_info.clear();
       self.user_defined_type_name_table.clear();
       self.procedure_name_table.clear();
       self.source_to_definition.clear();

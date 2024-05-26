@@ -183,7 +183,7 @@ impl<'u> TypeManager<'u> {
 }
 
 pub fn sort_globals(program: &mut Program, target: Target) {
-   program.global_info.sort_by(|_k_1, v_1, _k_2, v_2| {
+   program.non_stack_var_info.sort_by(|_k_1, v_1, _k_2, v_2| {
       let e_1 = &v_1.expr_type;
       let e_2 = &v_2.expr_type;
 
@@ -211,8 +211,8 @@ pub fn emit_wasm(
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
       type_manager: TypeManager::new(&program.user_defined_types, config.target),
       literal_offsets: HashMap::with_capacity(program.literals.len()),
-      static_addresses: HashMap::with_capacity(program.global_info.len()),
-      global_info: &program.global_info,
+      static_addresses: HashMap::with_capacity(program.non_stack_var_info.len()),
+      global_info: &program.non_stack_var_info,
       stack_offsets_mem: HashMap::new(),
       user_defined_types: &program.user_defined_types,
       sum_sizeof_locals_mem: 0,
@@ -288,7 +288,7 @@ pub fn emit_wasm(
    // Handle alignment of statics
    {
       let strictest_alignment = if let Some(v) = program
-         .global_info
+         .non_stack_var_info
          .iter()
          .find(|x| !matches!(generation_context.var_to_slot.get(x.0), Some(VarSlot::Register(_))))
       {
@@ -303,7 +303,7 @@ pub fn emit_wasm(
 
       offset = aligned_address(offset, strictest_alignment);
    }
-   for (static_var, static_details) in program.global_info.iter() {
+   for (static_var, static_details) in program.non_stack_var_info.iter() {
       debug_assert!(static_details.kind != StorageKind::Const);
 
       if generation_context.var_to_slot.contains_key(static_var) {
@@ -320,7 +320,7 @@ pub fn emit_wasm(
    }
 
    let mut buf = vec![];
-   for (p_var, p_static) in program.global_info.iter().filter(|x| x.1.initializer.is_some()) {
+   for (p_var, p_static) in program.non_stack_var_info.iter().filter(|x| x.1.initializer.is_some()) {
       if generation_context.var_to_slot.contains_key(p_var) {
          continue;
       }
@@ -347,7 +347,7 @@ pub fn emit_wasm(
       global_names.append(0, "stack_pointer");
 
       let mut i: u32 = 1;
-      for global in program.global_info.iter() {
+      for global in program.non_stack_var_info.iter() {
          if !generation_context.var_to_slot.contains_key(global.0) {
             continue;
          }
@@ -374,7 +374,10 @@ pub fn emit_wasm(
             },
             &initial_val,
          );
-         global_names.append(i, interner.lookup(program.global_info.get(global.0).unwrap().name));
+         global_names.append(
+            i,
+            interner.lookup(program.non_stack_var_info.get(global.0).unwrap().name),
+         );
          debug_assert!(generation_context.var_to_slot[global.0] == VarSlot::Register(i));
          i += 1;
       }

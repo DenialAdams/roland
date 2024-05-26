@@ -304,7 +304,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
       udt: &program.user_defined_types,
       string_literals: &program.literals,
       address_temp: 0,
-      global_info: &program.global_info,
+      global_info: &program.non_stack_var_info,
       aggregate_defs: IndexSet::new(),
    };
 
@@ -318,7 +318,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
       writeln!(ctx.buf, "}}").unwrap();
    }
 
-   for a_global in program.global_info.iter() {
+   for a_global in program.non_stack_var_info.iter() {
       write!(ctx.buf, "data $.v{} = {{ ", a_global.0 .0).unwrap();
       match a_global.1.initializer {
          Some(e) => {

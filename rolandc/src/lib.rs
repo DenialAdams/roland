@@ -319,7 +319,9 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    named_argument_lowering::lower_named_args(&mut ctx.program);
 
    constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner, config.target);
-   ctx.program.global_info.retain(|_, v| v.kind != StorageKind::Const);
+   ctx.program
+      .non_stack_var_info
+      .retain(|_, v| v.kind != StorageKind::Const);
 
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
@@ -387,7 +389,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
             body,
             &live_intervals,
             &ctx.program.ast.expressions,
-            &ctx.program.global_info,
+            &ctx.program.non_stack_var_info,
          );
          program_liveness.insert(id, live_intervals);
       }

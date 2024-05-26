@@ -117,7 +117,7 @@ pub fn lower_enums_and_pointers(program: &mut Program, target: Target) {
       }
    }
 
-   for a_global in program.global_info.iter_mut() {
+   for a_global in program.non_stack_var_info.iter_mut() {
       lower_type(
          &mut a_global.1.expr_type.e_type,
          &program.user_defined_types.enum_info,

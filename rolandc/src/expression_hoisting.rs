@@ -89,7 +89,7 @@ pub fn expression_hoisting(program: &mut Program, interner: &Interner, mode: Hoi
    let mut vv_context = VvContext {
       cur_procedure_locals: &mut IndexMap::new(),
       pending_hoists: IndexSet::new(),
-      global_info: &program.global_info,
+      global_info: &program.non_stack_var_info,
       next_variable: program.next_variable,
       exprs_to_hoist: Vec::new(),
       statements_that_need_hoisting: Vec::new(),
