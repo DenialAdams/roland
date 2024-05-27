@@ -193,15 +193,17 @@ struct VarMigrator<'a> {
 }
 
 impl<'a> VarMigrator<'a> {
-   fn new_var(&mut self, old_var: VariableId) -> VariableId {
+   fn new_var(&mut self, old_var: VariableId, expressions: &mut ExpressionPool) -> VariableId {
       let new_var = std::mem::replace(self.next_var, self.next_var.next());
       self.mapping.insert(old_var, new_var);
       if let Some(existing_local_type) = self.local_types.get(&old_var) {
          self.local_types.insert(new_var, existing_local_type.clone());
       } else {
-         // This doesn't clone the initializer expression, which I think is OK?
-         let existing_global_info = self.global_info.get(&old_var).unwrap();
-         self.global_info.insert(new_var, existing_global_info.clone());
+         let mut new_global_info = self.global_info.get(&old_var).unwrap().clone();
+         if let Some(e) = new_global_info.initializer.as_mut() {
+            *e = deep_clone_expr(*e, expressions, self);
+         }
+         self.global_info.insert(new_var, new_global_info);
       }
       new_var
    }
@@ -251,7 +253,7 @@ fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool, vm: &mut VarMigrator) -
             DeclarationValue::Expr(expr_id) => *expr_id = deep_clone_expr(*expr_id, &mut ast.expressions, vm),
             DeclarationValue::Uninit | DeclarationValue::None => (),
          }
-         *var_id = vm.new_var(*var_id);
+         *var_id = vm.new_var(*var_id, &mut ast.expressions);
       }
       Statement::For { .. } | Statement::While(_, _) => unreachable!(),
    }
