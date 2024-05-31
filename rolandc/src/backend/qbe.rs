@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::io::Write;
 
 use indexmap::{IndexMap, IndexSet};
@@ -11,8 +11,8 @@ use crate::backend::linearize::post_order;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   ArgumentNode, AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ProcImplSource, ProcedureId,
-   ProcedureNode, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
+   ArgumentNode, AstPool, CastType, Expression, ExpressionId, ProcImplSource, ProcedureId, ProcedureNode, UnOp,
+   UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
 use crate::size_info::sizeof_type_mem;
@@ -354,17 +354,11 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
          continue;
       };
 
-      let export_txt = if interner.lookup(procedure.definition.name.str) == "main" {
-         "export "
-      } else {
-         ""
-      };
       let abi_ret_type = roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs)
          .unwrap_or_else(|| "".into());
       write!(
          ctx.buf,
-         "{}function {} ${}(",
-         export_txt,
+         "function {} ${}(",
          abi_ret_type,
          mangle(proc_id, &ctx.procedures[proc_id], ctx.interner)
       )
@@ -440,6 +434,14 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
       }
       writeln!(ctx.buf, "}}").unwrap();
    }
+
+   ctx.buf.write_all(b"export
+function $_start() {
+@entry
+   call $main()
+   call $syscall1(l 231, l 0)
+   hlt
+}").unwrap();
 
    ctx.buf
 }
@@ -616,10 +618,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
 
 fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner) -> Cow<'a, str> {
    let proc_name = interner.lookup(proc.definition.name.str);
-   if proc_name == "main" {
-      return Cow::Borrowed("_start");
-   }
-   if proc.impl_source != ProcImplSource::Native {
+   if proc.impl_source != ProcImplSource::Native || proc_name == "main" {
       // builtin procedures can't be monomorphized and thus don't need to be mangled
       // external procedures mustn't be mangled, for obvious reasons
       return Cow::Borrowed(proc_name);
@@ -1089,68 +1088,4 @@ fn write_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &mut Gen
       }
    }
    writeln!(ctx.buf, ")").unwrap();
-}
-
-pub fn replace_main_return_with_exit(program: &mut Program, interner: &Interner) {
-   let main_id = program.procedure_name_table[&interner.reverse_lookup("main").unwrap()];
-   replace_main_return_block(
-      &program.procedure_bodies[main_id].block,
-      &mut program.ast,
-      interner,
-      &program.procedure_name_table,
-   );
-}
-
-fn replace_main_return_block(
-   block_node: &BlockNode,
-   ast: &mut AstPool,
-   interner: &Interner,
-   procedure_name_table: &HashMap<StrId, ProcedureId>,
-) {
-   for stmt in block_node.statements.iter() {
-      replace_main_return_stmt(*stmt, ast, interner, procedure_name_table);
-   }
-}
-
-fn replace_main_return_stmt(
-   stmt_id: StatementId,
-   ast: &mut AstPool,
-   interner: &Interner,
-   procedure_name_table: &HashMap<StrId, ProcedureId>,
-) {
-   let mut the_statement = std::mem::replace(&mut ast.statements[stmt_id].statement, Statement::Break);
-   match &the_statement {
-      Statement::Block(bn) | Statement::Loop(bn) => replace_main_return_block(bn, ast, interner, procedure_name_table),
-      Statement::IfElse(_, then, otherwise) => {
-         replace_main_return_block(then, ast, interner, procedure_name_table);
-         replace_main_return_stmt(*otherwise, ast, interner, procedure_name_table);
-      }
-      Statement::Return(ret_val) => {
-         let exit_group = procedure_name_table[&interner.reverse_lookup("exit_group").unwrap()];
-         let proc_expr = ast.expressions.insert(ExpressionNode {
-            expression: Expression::BoundFcnLiteral(exit_group, Box::new([])),
-            exp_type: Some(ExpressionType::ProcedureItem(exit_group, Box::new([]))),
-            location: ast.expressions[*ret_val].location,
-         });
-         let zero = ast.expressions.insert(ExpressionNode {
-            expression: Expression::IntLiteral {
-               val: 0,
-               synthetic: true,
-            },
-            exp_type: Some(I32_TYPE),
-            location: ast.expressions[*ret_val].location,
-         });
-         ast.expressions[*ret_val].expression = Expression::ProcedureCall {
-            args: vec![ArgumentNode { name: None, expr: zero }].into_boxed_slice(),
-            proc_expr,
-         };
-         ast.expressions[*ret_val].exp_type = Some(ExpressionType::Never);
-         the_statement = Statement::Expression(*ret_val);
-      }
-      Statement::Assignment(_, _) | Statement::Continue | Statement::Expression(_) | Statement::Break => (),
-      Statement::For { .. } | Statement::While(_, _) | Statement::VariableDeclaration { .. } | Statement::Defer(_) => {
-         unreachable!()
-      }
-   }
-   ast.statements[stmt_id].statement = the_statement;
 }

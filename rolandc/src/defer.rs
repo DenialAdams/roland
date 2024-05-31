@@ -4,7 +4,8 @@ use indexmap::IndexMap;
 
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
-   statement_always_or_never_returns, AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement, StatementId, StatementNode, VariableId
+   statement_always_or_never_returns, AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionNode,
+   ExpressionPool, Program, Statement, StatementId, StatementNode, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
 use crate::type_data::ExpressionType;

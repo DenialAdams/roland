@@ -372,10 +372,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    pre_backend_lowering::replace_nonnative_casts_and_unique_overflow(&mut ctx.program, &ctx.interner, config.target);
 
-   if config.target == Target::Qbe {
-      backend::qbe::replace_main_return_with_exit(&mut ctx.program, &ctx.interner);
-   }
-
    dead_code_elimination::delete_unreachable_procedures_and_globals(&mut ctx.program, &mut ctx.interner, config.target);
 
    // (introduces usize types, so run this before those are lowered)
