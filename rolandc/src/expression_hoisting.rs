@@ -556,6 +556,11 @@ fn vv_expr(
             // @PureCalls
             if parent_ctx == ParentCtx::Expr {
                ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
+            } else if parent_ctx == ParentCtx::Return {
+               // See main_return_side_effects.rol
+               // This is way overkill to solve a small problem, but I am OK putting in a hack for 
+               // on the hopes that we will have a better story for all of this hoisting in the future
+               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
             }
          }
          Expression::UnaryOperator(UnOp::AddressOf, expr)
