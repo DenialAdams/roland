@@ -11,9 +11,8 @@ use crate::backend::linearize::post_order;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   statement_always_or_never_returns, ArgumentNode, AstPool, BlockNode, CastType, Expression, ExpressionId,
-   ExpressionNode, ProcImplSource, ProcedureId, ProcedureNode, Statement, StatementId, StatementNode, UnOp,
-   UserDefinedTypeInfo, VariableId,
+   ArgumentNode, AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ProcImplSource, ProcedureId,
+   ProcedureNode, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
 use crate::size_info::sizeof_type_mem;
@@ -1094,26 +1093,6 @@ fn write_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &mut Gen
 
 pub fn replace_main_return_with_exit(program: &mut Program, interner: &Interner) {
    let main_id = program.procedure_name_table[&interner.reverse_lookup("main").unwrap()];
-   if !program.procedure_bodies[main_id]
-      .block
-      .statements
-      .last()
-      .copied()
-      .map_or(false, |x| statement_always_or_never_returns(x, &program.ast))
-   {
-      // There is an implicit final return - make it explicit
-      // TODO do this much, much earlier. before defer
-      let unit_lit = program.ast.expressions.insert(ExpressionNode {
-         expression: Expression::UnitLiteral,
-         exp_type: Some(ExpressionType::Unit),
-         location: program.procedures[main_id].location,
-      });
-      let ret_stmt = program.ast.statements.insert(StatementNode {
-         statement: Statement::Return(unit_lit),
-         location: program.procedures[main_id].location,
-      });
-      program.procedure_bodies[main_id].block.statements.push(ret_stmt);
-   }
    replace_main_return_block(
       &program.procedure_bodies[main_id].block,
       &mut program.ast,
@@ -1141,7 +1120,7 @@ fn replace_main_return_stmt(
 ) {
    let mut the_statement = std::mem::replace(&mut ast.statements[stmt_id].statement, Statement::Break);
    match &the_statement {
-      Statement::Block(bn) | Statement::Loop(bn) => replace_main_return_block(&bn, ast, interner, procedure_name_table),
+      Statement::Block(bn) | Statement::Loop(bn) => replace_main_return_block(bn, ast, interner, procedure_name_table),
       Statement::IfElse(_, then, otherwise) => {
          replace_main_return_block(then, ast, interner, procedure_name_table);
          replace_main_return_stmt(*otherwise, ast, interner, procedure_name_table);

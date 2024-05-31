@@ -4,8 +4,7 @@ use indexmap::IndexMap;
 
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
-   statement_always_or_never_returns, AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionNode,
-   ExpressionPool, Program, Statement, StatementId, StatementNode, VariableId,
+   statement_always_or_never_returns, AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement, StatementId, StatementNode, VariableId
 };
 use crate::semantic_analysis::GlobalInfo;
 use crate::type_data::ExpressionType;
@@ -113,23 +112,23 @@ fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, ast: &mut As
       defer_statement(statement, defer_ctx, ast, current_stmt, vm);
    }
 
-   for point_details in defer_ctx.insertion_points.drain(insertion_points_before..).rev() {
-      let deferred_stmts = match point_details.kind {
-         CfKind::Loop => &defer_ctx.deferred_stmts[defer_ctx.num_stmts_at_loop_begin..point_details.num_stmts_at_point],
-         CfKind::Return => &defer_ctx.deferred_stmts[..point_details.num_stmts_at_point],
-      };
-      insert_deferred_stmt(point_details.insert_at, deferred_stmts, block, ast, vm);
-   }
-
    if !block
       .statements
       .last()
       .copied()
       .map_or(false, |x| statement_always_or_never_returns(x, ast))
    {
-      // There is an implicit final return
+      // Falling out of the scope
       let deferred_stmts = &defer_ctx.deferred_stmts[deferred_stmts_before..];
       insert_deferred_stmt(block.statements.len(), deferred_stmts, block, ast, vm);
+   }
+
+   for point_details in defer_ctx.insertion_points.drain(insertion_points_before..).rev() {
+      let deferred_stmts = match point_details.kind {
+         CfKind::Loop => &defer_ctx.deferred_stmts[defer_ctx.num_stmts_at_loop_begin..point_details.num_stmts_at_point],
+         CfKind::Return => &defer_ctx.deferred_stmts[..point_details.num_stmts_at_point],
+      };
+      insert_deferred_stmt(point_details.insert_at, deferred_stmts, block, ast, vm);
    }
 
    defer_ctx.deferred_stmts.truncate(deferred_stmts_before);

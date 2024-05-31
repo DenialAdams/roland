@@ -47,7 +47,10 @@ use expression_hoisting::HoistingMode;
 use indexmap::{IndexMap, IndexSet};
 use interner::Interner;
 pub use parse::Program;
-use parse::{ImportNode, ProcImplSource, ProcedureId, UserDefinedTypeId};
+use parse::{
+   statement_always_or_never_returns, Expression, ExpressionNode, ImportNode, ProcImplSource, ProcedureId, Statement,
+   StatementNode, UserDefinedTypeId,
+};
 use semantic_analysis::type_variables::TypeVariableManager;
 use semantic_analysis::{definite_assignment, OwnedValidationContext, StorageKind};
 use slotmap::SecondaryMap;
@@ -289,6 +292,38 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
 
    loop_lowering::lower_fors_and_whiles(&mut ctx.program);
 
+   for body in ctx.program.procedure_bodies.values_mut() {
+      let location = body.block.location;
+      if !body
+         .block
+         .statements
+         .last()
+         .copied()
+         .map_or(false, |x| statement_always_or_never_returns(x, &ctx.program.ast))
+      {
+         // There is an implicit final return - make it explicit
+         let unit_lit = ctx.program.ast.expressions.insert(ExpressionNode {
+            expression: Expression::UnitLiteral,
+            exp_type: Some(ExpressionType::Unit),
+            location,
+         });
+         let ret_stmt = ctx.program.ast.statements.insert(StatementNode {
+            statement: Statement::Return(unit_lit),
+            location,
+         });
+         body.block.statements.push(ret_stmt);
+      }
+   }
+
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp.rol").unwrap(),
+      )
+      .unwrap();
+   }
+
    defer::process_defer_statements(&mut ctx.program);
 
    definite_assignment::ensure_variables_definitely_assigned(&ctx.program, &mut ctx.err_manager);
@@ -302,15 +337,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    logical_op_lowering::lower_logical_ops(&mut ctx.program);
 
    variable_declaration_lowering::lower_variable_decls(&mut ctx.program);
-
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp.rol").unwrap(),
-      )
-      .unwrap();
-   }
 
    expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::PreConstantFold);
 

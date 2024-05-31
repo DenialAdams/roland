@@ -4,10 +4,7 @@ use arrayvec::ArrayVec;
 
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
-use crate::parse::{
-   statement_always_or_never_returns, AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, Statement,
-   StatementId,
-};
+use crate::parse::{AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, Statement, StatementId};
 use crate::type_data::ExpressionType;
 use crate::{Program, Target};
 
@@ -165,36 +162,14 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool, tar
 
       if !linearize_block(&mut ctx, &body.block, &mut program.ast) {
          let location = program.procedures[id].location;
-         if body
-            .block
-            .statements
-            .last()
-            .copied()
-            .map_or(false, |x| statement_always_or_never_returns(x, &program.ast))
-         {
-            let return_expr = program.ast.expressions.insert(ExpressionNode {
-               expression: Expression::UnitLiteral,
-               exp_type: Some(ExpressionType::Never),
-               location,
-            });
-            ctx.bbs[ctx.current_block]
-               .instructions
-               .push(CfgInstruction::Return(return_expr));
-         } else {
-            let return_expr = program.ast.expressions.insert(ExpressionNode {
-               expression: Expression::UnitLiteral,
-               exp_type: Some(ExpressionType::Unit),
-               location,
-            });
-            ctx.bbs[ctx.current_block]
-               .instructions
-               .push(CfgInstruction::Return(return_expr));
-
-            ctx.bbs[ctx.current_block]
-               .instructions
-               .push(CfgInstruction::Jump(CFG_END_NODE));
-            ctx.bbs[CFG_END_NODE].predecessors.insert(ctx.current_block);
-         }
+         let return_expr = program.ast.expressions.insert(ExpressionNode {
+            expression: Expression::UnitLiteral,
+            exp_type: Some(ExpressionType::Never),
+            location,
+         });
+         ctx.bbs[ctx.current_block]
+            .instructions
+            .push(CfgInstruction::Return(return_expr));
       }
 
       if target == Target::Qbe {
