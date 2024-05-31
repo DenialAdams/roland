@@ -2,6 +2,7 @@
 rolandc/target
 **/*.wasm
 **/*.s
+**/*.o
 **/*.ssa
 **/*.wat
 **/*.out

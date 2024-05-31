@@ -2,9 +2,21 @@ import "shared.rol";
 import "ryu/f2s.rol";
 import "ryu/d2s.rol";
 
-extern proc malloc(bytes: usize) -> &u8;
-extern proc free(ptr: &u8);
-extern proc write(fd: i32, buf: &u8, nbyte: usize) -> isize;
+extern proc syscall1(code: u64, a1: u64) -> u64;
+extern proc syscall3(code: u64, a1: u64, a2: u64, a3: u64) -> u64;
+
+proc exit_group(status: i32) -> ! {
+   syscall1(231, status as u64);
+   unreachable();
+}
+
+proc brk(address: u64) -> u64 {
+   return syscall1(12, address);
+}
+
+proc write(fd: i32, buf: &u8, nbyte: usize) -> isize {
+   return syscall3(1, fd as u64, buf transmute u64, nbyte transmute u64) as isize;
+}
 
 proc print(s: String) {
 
@@ -174,4 +186,67 @@ proc shl_u16(x: u16, y: u16) -> u16 {
 
 proc shl_i16(x: i16, y: i16) -> i16 {
    return (x as i32 << (y & 0b1111) as i32) as i16;
+}
+
+// MARK: allocator
+
+// This struct field ordering is very important!
+struct _free_list_node {
+   size: usize,
+   next: &_free_list_node,
+}
+
+static free_list_head: &_free_list_node = 0 transmute &_free_list_node;
+
+proc malloc(bytes: usize) -> &u8 {
+   if bytes == 0 {
+      return 0 transmute &u8;
+   }
+
+   // ALLOCATED: [size, XXXX]
+   // FREE: [size, ptr, ____]
+
+   bytes = bytes + sizeof$<usize>();
+   if bytes < sizeof$<_free_list_node>() {
+      bytes = sizeof$<_free_list_node>();
+   }
+
+   let prev_ptr: &&_free_list_node = &free_list_head;
+   let cur_node = &free_list_head;
+   while (cur_node~ transmute usize != 0) {
+      if cur_node~~.size >= bytes {
+         let saved = (cur_node~ transmute usize + sizeof$<usize>()) transmute &u8;
+
+         // Remove this node from the list
+         prev_ptr~ = cur_node~~.next;
+
+         return saved;
+      } else {
+         prev_ptr = cur_node;
+         cur_node = &cur_node~~.next;
+      }
+   }
+
+   // No suitable node. Allocate a new one.
+   let cur_address = brk(0);
+   let new_address = brk(cur_address + bytes as u64);
+   if new_address < cur_address + bytes as u64 {
+      return 0 transmute &u8;
+   }
+   (cur_address transmute &usize)~ = bytes;
+   return (cur_address as usize + sizeof$<usize>()) transmute &u8;
+}
+
+proc free(ptr: &u8) {
+   if ptr transmute usize == 0 {
+      return;
+   }
+
+   let cur_node = &free_list_head;
+   while cur_node~ transmute usize != 0 {
+      cur_node = &cur_node~~.next;
+   }
+
+   cur_node~ = (ptr transmute usize - sizeof$<usize>()) transmute &_free_list_node;
+   cur_node~~.next = 0 transmute &_free_list_node;
 }

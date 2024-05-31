@@ -4,7 +4,9 @@
 
 use std::borrow::Cow;
 use std::error::Error;
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use rolandc::{CompilationContext, CompilationEntryPoint, FileResolver, Target};
@@ -188,6 +190,19 @@ fn main() {
 }
 
 fn compile_qbe(mut ssa_path: PathBuf, final_path: Option<PathBuf>) -> std::result::Result<(), Box<dyn Error>> {
+   fn assemble_file(asm_path: &Path) -> Result<PathBuf, Box<dyn Error>> {
+      let mut the_object_path = asm_path.to_owned();
+      the_object_path.set_extension("o");
+      let as_stat = Command::new("as")
+         .arg("-o")
+         .arg(&the_object_path)
+         .arg(asm_path)
+         .status()?;
+      if !as_stat.success() {
+         return Err(format!("as failed to execute with code {}", as_stat).into());
+      }
+      Ok(the_object_path)
+   }
    let mut asm_path = ssa_path.clone();
    asm_path.set_extension("s");
    let mut qbe_command = if let Some(extant_local_qbe) = std::env::current_exe()
@@ -206,19 +221,32 @@ fn compile_qbe(mut ssa_path: PathBuf, final_path: Option<PathBuf>) -> std::resul
    if !qbe_stat.success() {
       return Err(format!("QBE failed to execute with code {}", qbe_stat).into());
    }
+   let program_object_path = assemble_file(&asm_path)?;
+   let mut syscall_lib_path = asm_path.clone();
+   syscall_lib_path.set_file_name(&format!("{}_syscall.s", ssa_path.file_stem().unwrap().to_string_lossy()));
+   let syscall_lib_bytes = include_bytes!("syscall.s");
+   File::create(&syscall_lib_path)
+      .unwrap()
+      .write_all(syscall_lib_bytes)
+      .unwrap();
+   let syscall_object_path = assemble_file(&syscall_lib_path)?;
+
    let the_final_path = if let Some(final_path) = final_path {
       final_path
    } else {
       ssa_path.set_extension("");
       ssa_path
    };
-   let cc_stat = Command::new("cc")
+
+   let ld_stat = Command::new("ld")
       .arg("-o")
-      .arg(the_final_path)
-      .arg(&asm_path)
+      .arg(&the_final_path)
+      .arg(&program_object_path)
+      .arg(&syscall_object_path)
       .status()?;
-   if !cc_stat.success() {
-      return Err(format!("cc failed to execute with code {}", qbe_stat).into());
+   if !ld_stat.success() {
+      return Err(format!("ld failed to execute with code {}", ld_stat).into());
    }
+
    Ok(())
 }

@@ -1,0 +1,11 @@
+proc main() {
+   // main returns are replaced
+   return unit_side_effect();
+}
+
+proc unit_side_effect() {
+   println("kabloom");
+}
+__END__
+run:
+kabloom

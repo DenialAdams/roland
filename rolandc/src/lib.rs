@@ -346,6 +346,10 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    pre_backend_lowering::replace_nonnative_casts_and_unique_overflow(&mut ctx.program, &ctx.interner, config.target);
 
+   if config.target == Target::Qbe {
+      backend::qbe::replace_main_return_with_exit(&mut ctx.program, &ctx.interner);
+   }
+
    dead_code_elimination::delete_unreachable_procedures_and_globals(&mut ctx.program, &mut ctx.interner, config.target);
 
    // (introduces usize types, so run this before those are lowered)
@@ -400,7 +404,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    backend::regalloc::kill_self_assignments(&mut ctx.program, &regalloc_result.var_to_slot);
 
    if config.target == Target::Qbe {
-      backend::qbe::replace_main_return_val(&mut ctx.program, &ctx.interner);
       Ok(backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, regalloc_result))
    } else {
       Ok(backend::wasm::emit_wasm(
