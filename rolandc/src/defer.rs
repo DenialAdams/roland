@@ -7,7 +7,6 @@ use crate::parse::{
    statement_always_or_never_returns, AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionNode,
    ExpressionPool, Program, Statement, StatementId, StatementNode, VariableId,
 };
-use crate::semantic_analysis::GlobalInfo;
 use crate::type_data::ExpressionType;
 
 enum CfKind {
@@ -38,7 +37,6 @@ pub fn process_defer_statements(program: &mut Program) {
       mapping: HashMap::new(),
       next_var: &mut program.next_variable,
       local_types: &mut IndexMap::new(),
-      global_info: &mut program.non_stack_var_info,
    };
    for body in program.procedure_bodies.values_mut() {
       vm.local_types = &mut body.locals;
@@ -189,23 +187,23 @@ struct VarMigrator<'a> {
    next_var: &'a mut VariableId,
    mapping: HashMap<VariableId, VariableId>,
    local_types: &'a mut IndexMap<VariableId, ExpressionType>,
-   global_info: &'a mut IndexMap<VariableId, GlobalInfo>,
 }
 
 impl<'a> VarMigrator<'a> {
-   fn new_var(&mut self, old_var: VariableId, expressions: &mut ExpressionPool) -> VariableId {
-      let new_var = std::mem::replace(self.next_var, self.next_var.next());
-      self.mapping.insert(old_var, new_var);
+   fn new_var(&mut self, old_var: VariableId) -> VariableId {
       if let Some(existing_local_type) = self.local_types.get(&old_var) {
+         let new_var = std::mem::replace(self.next_var, self.next_var.next());
+         self.mapping.insert(old_var, new_var);
          self.local_types.insert(new_var, existing_local_type.clone());
+         new_var
       } else {
-         let mut new_global_info = self.global_info.get(&old_var).unwrap().clone();
-         if let Some(e) = new_global_info.initializer.as_mut() {
-            *e = deep_clone_expr(*e, expressions, self);
-         }
-         self.global_info.insert(new_var, new_global_info);
+         // For consts and statics, do nothing.
+         // For consts, not cloning will not affect semantics.
+         // For statics, we explicitly want there to only be one variable.
+         // We are relying on the fact that const and static var declarations are lowered to nothing,
+         // otherwise we would need to ensure that we skip the var decalartion when cloning for defer.
+         old_var
       }
-      new_var
    }
 
    fn replacement_var(&self, the_var: VariableId) -> VariableId {
@@ -253,7 +251,7 @@ fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool, vm: &mut VarMigrator) -
             DeclarationValue::Expr(expr_id) => *expr_id = deep_clone_expr(*expr_id, &mut ast.expressions, vm),
             DeclarationValue::Uninit | DeclarationValue::None => (),
          }
-         *var_id = vm.new_var(*var_id, &mut ast.expressions);
+         *var_id = vm.new_var(*var_id);
       }
       Statement::For { .. } | Statement::While(_, _) => unreachable!(),
    }

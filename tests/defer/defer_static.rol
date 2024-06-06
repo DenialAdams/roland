@@ -1,0 +1,18 @@
+proc main() {
+    let three: u8 = 3;
+    for i in 0..three {
+        defer {
+            static K: u64 = 0;
+            K = K + 1;
+            println(uint_to_string(K));
+        }
+        if i > 1 {
+            break;
+        }
+    }
+}
+__END__
+run:
+1
+2
+3

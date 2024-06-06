@@ -435,13 +435,17 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
       writeln!(ctx.buf, "}}").unwrap();
    }
 
-   ctx.buf.write_all(b"export
+   ctx.buf
+      .write_all(
+         b"export
 function $_start() {
 @entry
    call $main()
    call $syscall1(l 231, l 0)
    hlt
-}").unwrap();
+}",
+      )
+      .unwrap();
 
    ctx.buf
 }
