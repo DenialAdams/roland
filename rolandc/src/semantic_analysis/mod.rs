@@ -34,7 +34,6 @@ pub struct StructInfo {
    pub location: SourceInfo,
    pub size: Option<StructSizeInfo>,
    pub name: StrId,
-   pub type_parameters: IndexSet<StrId>,
 }
 
 #[derive(Clone)]
@@ -96,6 +95,7 @@ pub struct ValidationContext<'a, 'b> {
    pub proc_name_table: &'a HashMap<StrId, ProcedureId>,
    pub user_defined_types: &'a UserDefinedTypeInfo,
    pub global_info: &'a mut IndexMap<VariableId, GlobalInfo>,
+   pub templated_types: &'a HashMap<UserDefinedTypeId, IndexSet<StrId>>,
    next_var_dont_access: &'a mut VariableId,
 }
 

@@ -420,6 +420,7 @@ pub struct Program {
    pub user_defined_type_name_table: HashMap<StrId, UserDefinedTypeId>,
    pub procedure_name_table: HashMap<StrId, ProcedureId>,
    pub user_defined_types: UserDefinedTypeInfo,
+   pub templated_types: HashMap<UserDefinedTypeId, IndexSet<StrId>>,
    pub next_variable: VariableId,
 }
 
@@ -465,6 +466,7 @@ impl Program {
             expressions: ExpressionPool::with_key(),
             statements: StatementPool::with_key(),
          },
+         templated_types: HashMap::new(),
       }
    }
 
@@ -487,6 +489,7 @@ impl Program {
       self.source_to_definition.clear();
       reset_slotmap(&mut self.ast.expressions);
       reset_slotmap(&mut self.ast.statements);
+      self.templated_types.clear();
       self.next_variable = VariableId::first();
    }
 }
@@ -498,11 +501,11 @@ fn token_starts_expression(token: Token) -> bool {
          | Token::StringLiteral(_)
          | Token::IntLiteral(_)
          | Token::FloatLiteral(_)
-         | Token::OpenParen
          | Token::OpenSquareBracket
          | Token::Exclam
          | Token::Amp
          | Token::Identifier(_)
+         | Token::OpenParen
          | Token::Minus
          | Token::KeywordIfx
    )

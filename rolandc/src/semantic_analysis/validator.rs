@@ -180,6 +180,7 @@ pub fn resolve_type<T>(
    err_manager: &mut ErrorManager,
    interner: &Interner,
    location_for_error: SourceInfo,
+   template_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
 ) -> bool where T: CanCheckContainsStrId {
    match v_type {
       ExpressionType::Pointer(vt) => resolve_type(
@@ -190,6 +191,7 @@ pub fn resolve_type<T>(
          err_manager,
          interner,
          location_for_error,
+         template_types,
       ),
       ExpressionType::Array(exp, _) => resolve_type(
          exp,
@@ -199,6 +201,7 @@ pub fn resolve_type<T>(
          err_manager,
          interner,
          location_for_error,
+         template_types,
       ),
       ExpressionType::ProcedurePointer {
          parameters,
@@ -214,6 +217,7 @@ pub fn resolve_type<T>(
                err_manager,
                interner,
                location_for_error,
+               template_types,
             );
          }
          resolve_result &= resolve_type(
@@ -224,6 +228,7 @@ pub fn resolve_type<T>(
             err_manager,
             interner,
             location_for_error,
+            template_types,
          );
          resolve_result
       }
@@ -250,6 +255,7 @@ pub fn resolve_type<T>(
                err_manager,
                interner,
                location_for_error,
+               template_types,
             );
          }
 
@@ -266,8 +272,36 @@ pub fn resolve_type<T>(
                }
                ExpressionType::Enum(*y)
             }
-            Some(UserDefinedTypeId::Union(y)) => ExpressionType::Union(*y),
-            Some(UserDefinedTypeId::Struct(y)) => ExpressionType::Struct(*y),
+            Some(UserDefinedTypeId::Union(y)) => {
+               let expected_num_type_args = template_types.get(&UserDefinedTypeId::Union(*y)).unwrap_or(&IndexSet::new()).len();
+               if expected_num_type_args != generic_args.len() {
+                  rolandc_error!(
+                     err_manager,
+                     location_for_error,
+                     "Expected {} type arguments but got {}",
+                     expected_num_type_args,
+                     generic_args.len(),
+                  );
+
+                  return false;
+               }
+               ExpressionType::Union(*y)
+            },
+            Some(UserDefinedTypeId::Struct(y)) => {
+               let expected_num_type_args = template_types.get(&UserDefinedTypeId::Struct(*y)).unwrap_or(&IndexSet::new()).len();
+               if expected_num_type_args != generic_args.len() {
+                  rolandc_error!(
+                     err_manager,
+                     location_for_error,
+                     "Expected {} type arguments but got {}",
+                     expected_num_type_args,
+                     generic_args.len(),
+                  );
+
+                  return false;
+               }
+               ExpressionType::Struct(*y)
+            },
             None => {
                if let Some(bt) = str_to_builtin_type(interner.lookup(*x)) {
                   if !generic_args.is_empty() {
@@ -430,6 +464,7 @@ pub fn type_and_check_validity(
       user_defined_type_name_table: &program.user_defined_type_name_table,
       user_defined_types: &mut program.user_defined_types,
       global_info: &mut program.non_stack_var_info,
+      templated_types: &program.templated_types,
    };
 
    for id in procedures_to_check.iter().copied() {
@@ -793,6 +828,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                err_manager,
                validation_context.interner,
                v.location,
+               validation_context.templated_types,
             ) {
                dt_is_unresolved = true;
             } else if let DeclarationValue::Expr(enid) = opt_enid {
@@ -956,6 +992,7 @@ fn type_expression(
             err_manager,
             validation_context.interner,
             expr_location,
+            validation_context.templated_types,
          ) {
             *target_type = ExpressionType::CompileError;
          }
@@ -991,6 +1028,7 @@ fn type_expression(
                err_manager,
                validation_context.interner,
                g_arg.location,
+               validation_context.templated_types,
             );
          }
 
@@ -2432,6 +2470,7 @@ pub fn check_globals(
       user_defined_type_name_table: &program.user_defined_type_name_table,
       user_defined_types: &mut program.user_defined_types,
       global_info: &mut program.non_stack_var_info,
+      templated_types: &program.templated_types,
    };
 
    // Populate variable resolution with globals

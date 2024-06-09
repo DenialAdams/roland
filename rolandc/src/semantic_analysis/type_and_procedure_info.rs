@@ -173,11 +173,13 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          location: a_struct.location,
          size: None,
          name: a_struct.name,
-         type_parameters,
       });
       program
          .user_defined_type_name_table
          .insert(a_struct.name, UserDefinedTypeId::Struct(struct_id));
+      program
+         .templated_types
+         .insert(UserDefinedTypeId::Struct(struct_id), type_parameters);
    }
 
    for a_union in program.unions.drain(..) {
@@ -218,6 +220,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          err_manager,
          interner,
          base_type_location,
+         &program.templated_types,
       ) {
          continue;
       };
@@ -281,16 +284,17 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          }
       }
    }
-   for struct_i in program.user_defined_types.struct_info.values_mut() {
+   for (struct_id, struct_i) in program.user_defined_types.struct_info.iter_mut() {
       for etn in struct_i.field_types.values_mut() {
          resolve_type(
             &mut etn.e_type,
             &program.user_defined_type_name_table,
-            Some(&struct_i.type_parameters),
+            program.templated_types.get(&UserDefinedTypeId::Struct(struct_id)),
             None,
             err_manager,
             interner,
             etn.location,
+            &program.templated_types,
          );
       }
    }
@@ -304,6 +308,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
             err_manager,
             interner,
             etn.location,
+            &program.templated_types,
          );
       }
    }
@@ -364,6 +369,7 @@ pub fn populate_type_and_procedure_info(
          err_manager,
          interner,
          const_node.const_type.location,
+         &program.templated_types,
       );
 
       if let Some(old_value) = program.non_stack_var_info.insert(
@@ -398,6 +404,7 @@ pub fn populate_type_and_procedure_info(
          err_manager,
          interner,
          static_node.static_type.location,
+         &program.templated_types,
       );
 
       if let Some(old_value) = program.non_stack_var_info.insert(
@@ -553,6 +560,7 @@ pub fn populate_type_and_procedure_info(
             err_manager,
             interner,
             parameter.p_type.location,
+            &program.templated_types,
          );
       }
 
@@ -564,6 +572,7 @@ pub fn populate_type_and_procedure_info(
          err_manager,
          interner,
          proc.definition.ret_type.location,
+         &program.templated_types,
       );
 
       proc.type_parameters = type_parameters_with_constraints;
