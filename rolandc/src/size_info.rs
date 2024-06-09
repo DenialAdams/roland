@@ -35,7 +35,7 @@ pub fn calculate_union_size_info(id: UnionId, udt: &mut UserDefinedTypeInfo, tar
    let ft = std::mem::take(&mut udt.union_info.get_mut(id).unwrap().field_types);
    for field_t in ft.values() {
       match field_t.e_type {
-         ExpressionType::Struct(s) => calculate_struct_size_info(s, udt, target),
+         ExpressionType::Struct(s, _) => calculate_struct_size_info(s, udt, target),
          ExpressionType::Union(s) => calculate_union_size_info(s, udt, target),
          _ => (),
       }
@@ -66,7 +66,7 @@ pub fn calculate_struct_size_info(id: StructId, udt: &mut UserDefinedTypeInfo, t
    let ft = std::mem::take(&mut udt.struct_info.get_mut(id).unwrap().field_types);
    for field_t in ft.values() {
       match field_t.e_type {
-         ExpressionType::Struct(s) => calculate_struct_size_info(s, udt, target),
+         ExpressionType::Struct(s, _) => calculate_struct_size_info(s, udt, target),
          ExpressionType::Union(s) => calculate_union_size_info(s, udt, target),
          _ => (),
       }
@@ -132,7 +132,7 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Targ
          FloatWidth::Four => 4,
       },
       ExpressionType::Pointer(_) | ExpressionType::ProcedurePointer { .. } => u32::from(target.pointer_width()),
-      ExpressionType::Struct(x) => {
+      ExpressionType::Struct(x, generic_args) => {
          udt.struct_info
             .get(*x)
             .unwrap()
@@ -166,7 +166,7 @@ pub fn sizeof_type_values(e: &ExpressionType, udt: &UserDefinedTypeInfo, target:
       | ExpressionType::Float(_)
       | ExpressionType::Pointer(_)
       | ExpressionType::Bool
-      | ExpressionType::Struct(_)
+      | ExpressionType::Struct(_, _)
       | ExpressionType::Array(_, _)
       | ExpressionType::ProcedurePointer { .. }
       | ExpressionType::Union(_) => 1,
@@ -200,7 +200,7 @@ pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Ta
       ExpressionType::Pointer(_) | ExpressionType::ProcedurePointer { .. } => u32::from(target.pointer_width()),
       ExpressionType::Bool => 1,
       ExpressionType::Unit | ExpressionType::Never | ExpressionType::ProcedureItem(_, _) => 0,
-      ExpressionType::Struct(x) => udt.struct_info.get(*x).unwrap().size.as_ref().unwrap().mem_size,
+      ExpressionType::Struct(x, generic_args) => udt.struct_info.get(*x).unwrap().size.as_ref().unwrap().mem_size,
       ExpressionType::Array(a_type, len) => sizeof_type_mem(a_type, udt, target) * (*len),
       ExpressionType::Union(x) => udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_size,
       ExpressionType::GenericParam(_)

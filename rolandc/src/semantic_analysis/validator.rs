@@ -152,11 +152,16 @@ pub fn str_to_builtin_type(x: &str) -> Option<ExpressionType> {
 
 pub trait CanCheckContainsStrId {
    fn contains(&self, x: StrId) -> bool;
+   fn get_index_of(&self, x: StrId) -> Option<usize>;
 }
 
 impl<V> CanCheckContainsStrId for IndexMap<StrId, V> {
    fn contains(&self, x: StrId) -> bool {
       self.contains_key(&x)
+   }
+
+   fn get_index_of(&self, x: StrId) -> Option<usize> {
+      self.get_index_of(&x)
    }
 }
 
@@ -164,12 +169,20 @@ impl CanCheckContainsStrId for IndexSet<StrId> {
    fn contains(&self, x: StrId) -> bool {
       self.contains(&x)
    }
+
+   fn get_index_of(&self, x: StrId) -> Option<usize> {
+      self.get_index_of(&x)
+   }
 }
 
 impl CanCheckContainsStrId for () {
-    fn contains(&self, _: StrId) -> bool {
-        false
-    }
+   fn contains(&self, _: StrId) -> bool {
+      false
+   }
+
+   fn get_index_of(&self, _: StrId) -> Option<usize> {
+      None
+   }
 }
 
 pub fn resolve_type<T>(
@@ -181,7 +194,10 @@ pub fn resolve_type<T>(
    interner: &Interner,
    location_for_error: SourceInfo,
    template_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
-) -> bool where T: CanCheckContainsStrId {
+) -> bool
+where
+   T: CanCheckContainsStrId,
+{
    match v_type {
       ExpressionType::Pointer(vt) => resolve_type(
          vt,
@@ -240,7 +256,7 @@ pub fn resolve_type<T>(
       | ExpressionType::Float(_)
       | ExpressionType::Bool
       | ExpressionType::Unit
-      | ExpressionType::Struct(_)
+      | ExpressionType::Struct(_, _)
       | ExpressionType::Union(_)
       | ExpressionType::GenericParam(_)
       | ExpressionType::ProcedureItem(_, _) => true, // This type contains other types, but this type itself can never be written down. It should always be valid
@@ -273,7 +289,10 @@ pub fn resolve_type<T>(
                ExpressionType::Enum(*y)
             }
             Some(UserDefinedTypeId::Union(y)) => {
-               let expected_num_type_args = template_types.get(&UserDefinedTypeId::Union(*y)).unwrap_or(&IndexSet::new()).len();
+               let expected_num_type_args = template_types
+                  .get(&UserDefinedTypeId::Union(*y))
+                  .unwrap_or(&IndexSet::new())
+                  .len();
                if expected_num_type_args != generic_args.len() {
                   rolandc_error!(
                      err_manager,
@@ -286,9 +305,12 @@ pub fn resolve_type<T>(
                   return false;
                }
                ExpressionType::Union(*y)
-            },
+            }
             Some(UserDefinedTypeId::Struct(y)) => {
-               let expected_num_type_args = template_types.get(&UserDefinedTypeId::Struct(*y)).unwrap_or(&IndexSet::new()).len();
+               let expected_num_type_args = template_types
+                  .get(&UserDefinedTypeId::Struct(*y))
+                  .unwrap_or(&IndexSet::new())
+                  .len();
                if expected_num_type_args != generic_args.len() {
                   rolandc_error!(
                      err_manager,
@@ -300,8 +322,8 @@ pub fn resolve_type<T>(
 
                   return false;
                }
-               ExpressionType::Struct(*y)
-            },
+               ExpressionType::Struct(*y, std::mem::take(generic_args))
+            }
             None => {
                if let Some(bt) = str_to_builtin_type(interner.lookup(*x)) {
                   if !generic_args.is_empty() {
@@ -1080,7 +1102,7 @@ fn get_type(
             .new_type_variable(TypeConstraint::Float);
          ExpressionType::Unknown(new_type_variable)
       }
-      Expression::StringLiteral(_) => ExpressionType::Struct(validation_context.owned.string_struct_id),
+      Expression::StringLiteral(_) => ExpressionType::Struct(validation_context.owned.string_struct_id, Box::new([])),
       Expression::Cast {
          cast_type,
          target_type,
@@ -1574,6 +1596,7 @@ fn get_type(
          ExpressionType::CompileError
       }
       Expression::UnresolvedStructLiteral(struct_name, fields) => {
+         // nocheckin - struct_name should be a type!
          for field_val in fields.iter().filter_map(|x| x.1) {
             type_expression(err_manager, field_val, validation_context);
          }
@@ -1698,7 +1721,7 @@ fn get_type(
 
                *expr = Expression::StructLiteral(defined_struct, fields.iter().map(|x| (x.0, x.1)).collect());
 
-               ExpressionType::Struct(defined_struct)
+               ExpressionType::Struct(defined_struct, Box::new([]))
             }
             None => {
                rolandc_error!(
@@ -1779,7 +1802,7 @@ fn get_type(
          let length_token = validation_context.interner.reverse_lookup("length");
 
          match lhs_type {
-            ExpressionType::Struct(struct_id) => {
+            ExpressionType::Struct(struct_id, generic_args) => {
                let si = validation_context
                   .user_defined_types
                   .struct_info
@@ -1787,6 +1810,12 @@ fn get_type(
                   .unwrap();
                if let Some(new_t_node) = si.field_types.get(&field) {
                   lhs_type = new_t_node.e_type.clone();
+                  if let Some(generic_params) = validation_context
+                     .templated_types
+                     .get(&UserDefinedTypeId::Struct(struct_id))
+                  {
+                     map_generic_to_concrete(&mut lhs_type, &generic_args, generic_params);
+                  }
                } else {
                   rolandc_error!(
                      err_manager,
@@ -2425,11 +2454,13 @@ pub fn map_generic_to_concrete_cow<'a>(
    }
 }
 
-pub fn map_generic_to_concrete(
+pub fn map_generic_to_concrete<T>(
    param_type: &mut ExpressionType,
    generic_args: &[ExpressionType],
-   generic_parameters: &IndexMap<StrId, IndexSet<StrId>>,
-) {
+   generic_parameters: &T,
+) where
+   T: CanCheckContainsStrId,
+{
    match param_type {
       ExpressionType::Array(inner_type, _) | ExpressionType::Pointer(inner_type) => {
          map_generic_to_concrete(inner_type, generic_args, generic_parameters);
@@ -2445,8 +2476,13 @@ pub fn map_generic_to_concrete(
             map_generic_to_concrete(type_param, generic_args, generic_parameters);
          }
       }
+      ExpressionType::Struct(_, struct_type_arguments) => {
+         for struct_type_argument in struct_type_arguments.iter_mut() {
+            map_generic_to_concrete(struct_type_argument, generic_args, generic_parameters);
+         }
+      }
       ExpressionType::GenericParam(x) => {
-         let generic_param_index = generic_parameters.get_index_of(x).unwrap();
+         let generic_param_index = generic_parameters.get_index_of(*x).unwrap();
          *param_type = generic_args[generic_param_index].clone();
       }
       _ => (),

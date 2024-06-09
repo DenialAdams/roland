@@ -26,7 +26,7 @@ fn recursive_struct_union_check(
 
    for field in struct_or_union_fields.iter() {
       match &field.1.e_type {
-         ExpressionType::Struct(x) => {
+         ExpressionType::Struct(x, _) => {
             if UserDefinedTypeId::Struct(*x) == base_id {
                is_recursive = true;
                break;

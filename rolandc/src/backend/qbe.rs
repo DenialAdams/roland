@@ -94,7 +94,7 @@ fn roland_type_to_abi_type(
          width: IntWidth::One,
       })
       | ExpressionType::Bool => Cow::Borrowed("ub"),
-      ExpressionType::Struct(_) => {
+      ExpressionType::Struct(_, _) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
          Cow::Owned(format!(":s{}", index))
       }
@@ -119,7 +119,7 @@ fn roland_type_to_sub_type(
       return None;
    }
    Some(match r_type {
-      ExpressionType::Struct(_) => {
+      ExpressionType::Struct(_, _) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
          Cow::Owned(format!(":s{}", index))
       }
@@ -247,7 +247,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
       }
 
       match et {
-         ExpressionType::Struct(sid) => {
+         ExpressionType::Struct(sid, _) => {
             let si = udt.struct_info.get(*sid).unwrap();
             let ssi = si.size.as_ref().unwrap();
             for field_t in si.field_types.iter().map(|x| &x.1.e_type) {
@@ -455,7 +455,7 @@ fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<Str
       Expression::FieldAccess(field, base) => {
          let base_mem = compute_offset(base, ctx).unwrap();
          match ctx.ast.expressions[base].exp_type.as_ref().unwrap() {
-            ExpressionType::Struct(sid) => {
+            ExpressionType::Struct(sid, _) => {
                let offset = ctx
                   .udt
                   .struct_info

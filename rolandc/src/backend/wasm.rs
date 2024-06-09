@@ -71,7 +71,7 @@ fn type_to_wasm_type(t: &ExpressionType, udt: &UserDefinedTypeInfo, target: Targ
    }
 
    match t {
-      ExpressionType::Union(_) | ExpressionType::Struct(_) | ExpressionType::Array(_, _) => buf.push(ValType::I32),
+      ExpressionType::Union(_) | ExpressionType::Struct(_, _) | ExpressionType::Array(_, _) => buf.push(ValType::I32),
       _ => buf.push(type_to_wasm_type_basic(t)),
    }
 }
@@ -1560,7 +1560,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       Expression::FieldAccess(field_name, lhs_id) => {
          fn calculate_offset(lhs_type: &ExpressionType, field_name: StrId, generation_context: &mut GenerationContext) {
             let mem_offset = match lhs_type {
-               ExpressionType::Struct(s) => *generation_context
+               ExpressionType::Struct(s, _) => *generation_context
                   .user_defined_types
                   .struct_info
                   .get(*s)
