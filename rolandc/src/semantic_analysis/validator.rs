@@ -150,15 +150,37 @@ pub fn str_to_builtin_type(x: &str) -> Option<ExpressionType> {
    }
 }
 
-pub fn resolve_type(
+pub trait CanCheckContainsStrId {
+   fn contains(&self, x: StrId) -> bool;
+}
+
+impl<V> CanCheckContainsStrId for IndexMap<StrId, V> {
+   fn contains(&self, x: StrId) -> bool {
+      self.contains_key(&x)
+   }
+}
+
+impl CanCheckContainsStrId for IndexSet<StrId> {
+   fn contains(&self, x: StrId) -> bool {
+      self.contains(&x)
+   }
+}
+
+impl CanCheckContainsStrId for () {
+    fn contains(&self, _: StrId) -> bool {
+        false
+    }
+}
+
+pub fn resolve_type<T>(
    v_type: &mut ExpressionType,
    type_name_table: &HashMap<StrId, UserDefinedTypeId>,
-   type_params: Option<&IndexMap<StrId, IndexSet<StrId>>>,
+   type_params: Option<&T>,
    specialized_types: Option<&HashMap<StrId, ExpressionType>>,
    err_manager: &mut ErrorManager,
    interner: &Interner,
    location_for_error: SourceInfo,
-) -> bool {
+) -> bool where T: CanCheckContainsStrId {
    match v_type {
       ExpressionType::Pointer(vt) => resolve_type(
          vt,
@@ -258,7 +280,7 @@ pub fn resolve_type(
                      return false;
                   }
                   bt
-               } else if type_params.map_or(false, |tp| tp.contains_key(x)) {
+               } else if type_params.map_or(false, |tp| tp.contains(*x)) {
                   if !generic_args.is_empty() {
                      rolandc_error!(
                         err_manager,
@@ -763,7 +785,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
                .owned
                .cur_procedure
                .map(|x| &validation_context.procedures[x].specialized_type_parameters);
-            if !resolve_type(
+            if !resolve_type::<()>(
                &mut v.e_type,
                validation_context.user_defined_type_name_table,
                None,
@@ -926,7 +948,7 @@ fn type_expression(
             .owned
             .cur_procedure
             .map(|x| &validation_context.procedures[x].specialized_type_parameters);
-         if !resolve_type(
+         if !resolve_type::<()>(
             target_type,
             validation_context.user_defined_type_name_table,
             None,
@@ -961,7 +983,7 @@ fn type_expression(
                .owned
                .cur_procedure
                .map(|x| &validation_context.procedures[x].specialized_type_parameters);
-            resolve_type(
+            resolve_type::<()>(
                &mut g_arg.e_type,
                validation_context.user_defined_type_name_table,
                None,

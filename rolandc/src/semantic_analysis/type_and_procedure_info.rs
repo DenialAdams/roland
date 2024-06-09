@@ -154,12 +154,26 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          }
       }
 
+      let mut type_parameters = IndexSet::new();
+      for type_param in a_struct.generic_parameters.iter() {
+         if !type_parameters.insert(type_param.str) {
+            rolandc_error!(
+               err_manager,
+               type_param.location,
+               "Struct `{}` has a duplicate type parameter `{}`",
+               interner.lookup(a_struct.name),
+               interner.lookup(type_param.str),
+            );
+         }
+      }
+
       insert_or_error_duplicated(&mut all_types, err_manager, a_struct.name, a_struct.location, interner);
       let struct_id = program.user_defined_types.struct_info.insert(StructInfo {
          field_types: field_map,
          location: a_struct.location,
          size: None,
          name: a_struct.name,
+         type_parameters,
       });
       program
          .user_defined_type_name_table
@@ -196,7 +210,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
    for (id, enum_i) in program.user_defined_types.enum_info.iter_mut() {
       let base_type_location = enum_base_type_locations[id];
 
-      if !resolve_type(
+      if !resolve_type::<()>(
          &mut enum_i.base_type,
          &program.user_defined_type_name_table,
          None,
@@ -272,7 +286,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          resolve_type(
             &mut etn.e_type,
             &program.user_defined_type_name_table,
-            None,
+            Some(&struct_i.type_parameters),
             None,
             err_manager,
             interner,
@@ -282,7 +296,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
    }
    for union_i in program.user_defined_types.union_info.values_mut() {
       for etn in union_i.field_types.values_mut() {
-         resolve_type(
+         resolve_type::<()>(
             &mut etn.e_type,
             &program.user_defined_type_name_table,
             None,
@@ -342,7 +356,7 @@ pub fn populate_type_and_procedure_info(
    }
 
    for mut const_node in program.consts.drain(..) {
-      resolve_type(
+      resolve_type::<()>(
          &mut const_node.const_type.e_type,
          &program.user_defined_type_name_table,
          None,
@@ -376,7 +390,7 @@ pub fn populate_type_and_procedure_info(
    }
 
    for mut static_node in program.statics.drain(..) {
-      resolve_type(
+      resolve_type::<()>(
          &mut static_node.static_type.e_type,
          &program.user_defined_type_name_table,
          None,

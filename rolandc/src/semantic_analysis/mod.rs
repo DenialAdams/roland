@@ -34,6 +34,7 @@ pub struct StructInfo {
    pub location: SourceInfo,
    pub size: Option<StructSizeInfo>,
    pub name: StrId,
+   pub type_parameters: IndexSet<StrId>,
 }
 
 #[derive(Clone)]
