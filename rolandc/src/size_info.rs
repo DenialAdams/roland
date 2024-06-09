@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
+use indexmap::IndexSet;
+
 use crate::interner::StrId;
-use crate::parse::{StructId, UnionId, UserDefinedTypeInfo};
+use crate::parse::{StructId, UnionId, UserDefinedTypeId, UserDefinedTypeInfo};
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
 use crate::Target;
 
@@ -27,16 +29,25 @@ pub fn aligned_address(v: u32, a: u32) -> u32 {
    }
 }
 
-pub fn calculate_union_size_info(id: UnionId, udt: &mut UserDefinedTypeInfo, target: Target) {
+pub fn calculate_union_size_info(
+   id: UnionId,
+   udt: &mut UserDefinedTypeInfo,
+   target: Target,
+   templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
+) {
    if udt.union_info.get(id).unwrap().size.is_some() {
+      return;
+   }
+
+   if templated_types.contains_key(&UserDefinedTypeId::Union(id)) {
       return;
    }
 
    let ft = std::mem::take(&mut udt.union_info.get_mut(id).unwrap().field_types);
    for field_t in ft.values() {
       match field_t.e_type {
-         ExpressionType::Struct(s, _) => calculate_struct_size_info(s, udt, target),
-         ExpressionType::Union(s) => calculate_union_size_info(s, udt, target),
+         ExpressionType::Struct(s, _) => calculate_struct_size_info(s, udt, target, templated_types),
+         ExpressionType::Union(s) => calculate_union_size_info(s, udt, target, templated_types),
          _ => (),
       }
    }
@@ -58,16 +69,25 @@ pub fn calculate_union_size_info(id: UnionId, udt: &mut UserDefinedTypeInfo, tar
    });
 }
 
-pub fn calculate_struct_size_info(id: StructId, udt: &mut UserDefinedTypeInfo, target: Target) {
+pub fn calculate_struct_size_info(
+   id: StructId,
+   udt: &mut UserDefinedTypeInfo,
+   target: Target,
+   templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
+) {
    if udt.struct_info.get(id).unwrap().size.is_some() {
+      return;
+   }
+
+   if templated_types.contains_key(&UserDefinedTypeId::Struct(id)) {
       return;
    }
 
    let ft = std::mem::take(&mut udt.struct_info.get_mut(id).unwrap().field_types);
    for field_t in ft.values() {
       match field_t.e_type {
-         ExpressionType::Struct(s, _) => calculate_struct_size_info(s, udt, target),
-         ExpressionType::Union(s) => calculate_union_size_info(s, udt, target),
+         ExpressionType::Struct(s, _) => calculate_struct_size_info(s, udt, target, templated_types),
+         ExpressionType::Union(s) => calculate_union_size_info(s, udt, target, templated_types),
          _ => (),
       }
    }

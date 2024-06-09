@@ -290,6 +290,8 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    // longer be referenced now that we deleted all template procedures
    ctx.program.ast.expressions.retain(|_, x| x.exp_type.is_some());
 
+   monomorphization::monomorphize_types(&mut ctx.program, config.target);
+
    loop_lowering::lower_fors_and_whiles(&mut ctx.program);
 
    for body in ctx.program.procedure_bodies.values_mut() {

@@ -1,13 +1,16 @@
+use std::collections::HashMap;
+
 use indexmap::{IndexMap, IndexSet};
 
 use crate::interner::StrId;
 use crate::parse::{
-   AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureBody, ProcedureId, ProcedureNode, Statement,
-   StatementId, VariableId,
+   AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureBody, ProcedureId, ProcedureNode, Statement, StatementId, StructId, UnionId, UserDefinedTypeId, UserDefinedTypeInfo, VariableId
 };
 use crate::semantic_analysis::validator::map_generic_to_concrete;
+use crate::semantic_analysis::StructInfo;
+use crate::size_info::calculate_struct_size_info;
 use crate::type_data::ExpressionType;
-use crate::Program;
+use crate::{Program, Target};
 
 pub const DEPTH_LIMIT: u64 = 100;
 
@@ -220,4 +223,182 @@ fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool) -> Expr
       | Expression::Variable(_) => unreachable!(),
    }
    expressions.insert(cloned)
+}
+
+pub fn monomorphize_types(program: &mut Program, target: Target) {
+   fn lower_type(
+      e: &mut ExpressionType,
+      udt: &mut UserDefinedTypeInfo,
+      tt: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
+      target: Target,
+      already_lowered: &mut HashMap<(UserDefinedTypeId, Box<[ExpressionType]>), UserDefinedTypeId>,
+   ) {
+      match e {
+         ExpressionType::Unknown(_)
+         | ExpressionType::CompileError
+         | ExpressionType::Unresolved { .. }
+         | ExpressionType::GenericParam(_) => {
+            unreachable!()
+         }
+         ExpressionType::Never
+         | ExpressionType::Enum(_)
+         | ExpressionType::Int(_)
+         | ExpressionType::Float(_)
+         | ExpressionType::Bool
+         | ExpressionType::Unit => (),
+         ExpressionType::Struct(s_id, type_arguments) => {
+            if type_arguments.is_empty() {
+               return;
+            }
+
+            // sad clone...
+            if let Some(lowered_sid) = already_lowered.get(&(UserDefinedTypeId::Struct(*s_id), type_arguments.clone())) {
+               *s_id = match lowered_sid {
+                  UserDefinedTypeId::Struct(x) => *x,
+                  _ => unreachable!(),
+               };
+               *type_arguments = Box::new([]);
+            } else {
+               let template_si = udt.struct_info.get(*s_id).unwrap();
+
+               let new_location = template_si.location;
+               let new_name = template_si.name;
+               let mut new_field_types = template_si.field_types.clone();
+               let new_sid = udt.struct_info.insert(StructInfo {
+                  size: None,
+                  location: new_location,
+                  name: new_name,
+                  field_types: IndexMap::new(),
+               });
+
+               // plant the flag first to avoid infinte recursion
+               already_lowered.insert((UserDefinedTypeId::Struct(*s_id), type_arguments.clone()), UserDefinedTypeId::Struct(new_sid));
+
+               for new_ft in new_field_types.iter_mut() {
+                  map_generic_to_concrete(
+                     &mut new_ft.1.e_type,
+                     type_arguments,
+                     &tt[&UserDefinedTypeId::Struct(*s_id)],
+                  );
+                  lower_type(&mut new_ft.1.e_type, udt, tt, target, already_lowered);
+               }
+               udt.struct_info[new_sid].field_types = new_field_types;
+
+               *s_id = new_sid;
+               *type_arguments = Box::new([]);
+
+               calculate_struct_size_info(*s_id, udt, target, tt);
+            }
+         }
+         ExpressionType::Union(_) => todo!(),
+         ExpressionType::Array(base_type, _) | ExpressionType::Pointer(base_type) => {
+            lower_type(base_type, udt, tt, target, already_lowered);
+         }
+         ExpressionType::ProcedureItem(_, type_arguments) => {
+            for a in type_arguments.iter_mut() {
+               lower_type(a, udt, tt, target, already_lowered);
+            }
+         }
+         ExpressionType::ProcedurePointer { parameters, ret_type } => {
+            for p in parameters.iter_mut() {
+               lower_type(p, udt, tt, target, already_lowered);
+            }
+            lower_type(ret_type, udt, tt, target, already_lowered);
+         }
+      }
+   }
+
+   let mut lowered = HashMap::new();
+
+   for exp_type in program
+      .ast
+      .expressions
+      .iter_mut()
+      .map(|x| x.1.exp_type.as_mut().unwrap())
+   {
+      lower_type(
+         exp_type,
+         &mut program.user_defined_types,
+         &program.templated_types,
+         target,
+         &mut lowered,
+      );
+   }
+
+   let struct_ids: Vec<StructId> = program.user_defined_types.struct_info.iter().filter(|x| x.1.size.is_some()).map(|x| x.0).collect();
+   for struct_id in struct_ids {
+      // Taking field_types temporarily is fine, since lower_type should only ready field_types from
+      // template structs (i.e. size is_none)
+      let mut fts = std::mem::take(&mut program.user_defined_types.struct_info[struct_id].field_types);
+      for field_type in fts.values_mut() {
+         lower_type(&mut field_type.e_type,
+            &mut program.user_defined_types,
+            &program.templated_types,
+            target,
+            &mut lowered,
+         );
+      }
+      program.user_defined_types.struct_info[struct_id].field_types = fts;
+   }
+
+   let union_ids: Vec<UnionId> = program.user_defined_types.union_info.iter().filter(|x| x.1.size.is_some()).map(|x| x.0).collect();
+   for union_id in union_ids {
+      // Taking field_types temporarily is fine, since lower_type should only ready field_types from
+      // template unions (i.e. size is_none)
+      let mut fts = std::mem::take(&mut program.user_defined_types.union_info[union_id].field_types);
+      for field_type in fts.values_mut() {
+         lower_type(&mut field_type.e_type,
+            &mut program.user_defined_types,
+            &program.templated_types,
+            target,
+            &mut lowered,
+         );
+      }
+      program.user_defined_types.union_info[union_id].field_types = fts;
+   }
+
+   for procedure in program.procedures.values_mut() {
+      lower_type(
+         &mut procedure.definition.ret_type.e_type,
+         &mut program.user_defined_types,
+         &program.templated_types,
+         target,
+         &mut lowered,
+      );
+      for param in procedure.definition.parameters.iter_mut() {
+         lower_type(
+            &mut param.p_type.e_type,
+            &mut program.user_defined_types,
+            &program.templated_types,
+            target,
+            &mut lowered,
+         );
+      }
+   }
+
+   for body in program.procedure_bodies.values_mut() {
+      for var_type in body.locals.values_mut() {
+         lower_type(
+            var_type,
+            &mut program.user_defined_types,
+            &program.templated_types,
+            target,
+            &mut lowered,
+         );
+      }
+   }
+
+   for a_global in program.non_stack_var_info.iter_mut() {
+      lower_type(
+         &mut a_global.1.expr_type.e_type,
+         &mut program.user_defined_types,
+         &program.templated_types,
+         target,
+         &mut lowered,
+      );
+   }
+
+   program.templated_types.clear();
+   program.user_defined_types.struct_info.retain(|_, v| v.size.is_some());
+   program.user_defined_types.union_info.retain(|_, v| v.size.is_some());
 }

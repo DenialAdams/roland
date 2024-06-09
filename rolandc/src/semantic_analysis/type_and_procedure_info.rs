@@ -177,9 +177,11 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       program
          .user_defined_type_name_table
          .insert(a_struct.name, UserDefinedTypeId::Struct(struct_id));
-      program
-         .templated_types
-         .insert(UserDefinedTypeId::Struct(struct_id), type_parameters);
+      if !type_parameters.is_empty() {
+         program
+            .templated_types
+            .insert(UserDefinedTypeId::Struct(struct_id), type_parameters);
+      }
    }
 
    for a_union in program.unions.drain(..) {
@@ -612,12 +614,22 @@ pub fn populate_type_and_procedure_info(
 
    let ids: Vec<StructId> = program.user_defined_types.struct_info.keys().collect();
    for id in ids {
-      calculate_struct_size_info(id, &mut program.user_defined_types, config.target);
+      calculate_struct_size_info(
+         id,
+         &mut program.user_defined_types,
+         config.target,
+         &program.templated_types,
+      );
    }
 
    let ids: Vec<UnionId> = program.user_defined_types.union_info.keys().collect();
    for id in ids {
-      calculate_union_size_info(id, &mut program.user_defined_types, config.target);
+      calculate_union_size_info(
+         id,
+         &mut program.user_defined_types,
+         config.target,
+         &program.templated_types,
+      );
    }
 }
 

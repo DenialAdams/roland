@@ -88,14 +88,14 @@ pub fn lower_enums_and_pointers(program: &mut Program, target: Target) {
       lower_single_expression(e, &program.user_defined_types.enum_info, target);
    }
 
-   for struct_info in program.user_defined_types.struct_info.iter_mut() {
-      for field_type in struct_info.1.field_types.values_mut() {
+   for struct_info in program.user_defined_types.struct_info.values_mut() {
+      for field_type in struct_info.field_types.values_mut() {
          lower_type(&mut field_type.e_type, &program.user_defined_types.enum_info, target);
       }
    }
 
-   for union_info in program.user_defined_types.union_info.iter_mut() {
-      for field_type in union_info.1.field_types.values_mut() {
+   for union_info in program.user_defined_types.union_info.values_mut() {
+      for field_type in union_info.field_types.values_mut() {
          lower_type(&mut field_type.e_type, &program.user_defined_types.enum_info, target);
       }
    }
