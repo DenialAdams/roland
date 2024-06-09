@@ -92,6 +92,7 @@ pub struct StructNode {
    pub name: StrId,
    pub fields: Vec<(StrId, ExpressionTypeNode)>,
    pub location: SourceInfo,
+   pub generic_parameters: Vec<StrNode>,
 }
 
 #[derive(Clone)]
@@ -807,6 +808,11 @@ fn parse_external_procedure(
 
 fn parse_struct(l: &mut Lexer, parse_context: &mut ParseContext, source_info: SourceInfo) -> Result<StructNode, ()> {
    let struct_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
+   let generic_parameters = if l.peek_token() == Token::LessThan {
+      parse_generic_parameters(l, parse_context)?
+   } else {
+      vec![]
+   };
    expect(l, parse_context, Token::OpenBrace)?;
    let mut fields: Vec<(StrId, ExpressionTypeNode)> = vec![];
    let close_brace = loop {
@@ -837,6 +843,7 @@ fn parse_struct(l: &mut Lexer, parse_context: &mut ParseContext, source_info: So
       name: struct_name,
       fields,
       location: merge_locations(source_info, close_brace.source_info),
+      generic_parameters,
    })
 }
 
@@ -1287,8 +1294,7 @@ fn parse_generic_arguments(
    l: &mut Lexer,
    parse_context: &mut ParseContext,
 ) -> Result<(Vec<ExpressionTypeNode>, SourceInfo), ()> {
-   let start_token = expect(l, parse_context, Token::Dollar)?;
-   expect(l, parse_context, Token::LessThan)?;
+   let start_token = expect(l, parse_context, Token::LessThan)?;
 
    let mut generic_arguments = vec![];
 
@@ -1452,11 +1458,20 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
       _ => {
          let type_token = expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?;
          let type_s = extract_identifier(type_token.token);
+         let (generic_args, final_location) = if l.peek_token() == Token::LessThan {
+            let (g_args, g_args_location) = parse_generic_arguments(l, parse_context)?;
+            (
+               g_args.into_iter().map(|x| x.e_type).collect(),
+               merge_locations(type_token.source_info, g_args_location),
+            )
+         } else {
+            (vec![], type_token.source_info)
+         };
          (
-            type_token.source_info,
+            final_location,
             ExpressionType::Unresolved {
                name: type_s,
-               generic_args: Box::new([]),
+               generic_args: generic_args.into_boxed_slice(),
             },
          )
       }
@@ -1512,6 +1527,7 @@ fn pratt(
       Token::Identifier(s) => {
          let _ = l.next();
          if l.peek_token() == Token::Dollar {
+            let _ = l.next();
             let (generic_args, args_location) = parse_generic_arguments(l, parse_context)?;
             let combined_location = merge_locations(begin_source, args_location);
             wrap(
