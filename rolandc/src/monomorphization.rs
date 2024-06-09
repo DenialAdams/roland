@@ -93,7 +93,7 @@ fn clone_procedure(
       type_parameters,
    );
 
-   deep_clone_block(&mut cloned_body.block, ast, concrete_types, type_parameters);
+   deep_clone_block(&mut cloned_body.block, ast);
 
    cloned_proc.definition.type_parameters.clear();
    cloned_proc.type_parameters.clear();
@@ -107,44 +107,34 @@ fn clone_procedure(
    (cloned_proc, cloned_body)
 }
 
-fn deep_clone_block(
-   block: &mut BlockNode,
-   ast: &mut AstPool,
-   concrete_types: &[ExpressionType],
-   type_parameters: &IndexMap<StrId, IndexSet<StrId>>,
-) {
+fn deep_clone_block(block: &mut BlockNode, ast: &mut AstPool) {
    for stmt in block.statements.iter_mut() {
-      *stmt = deep_clone_stmt(*stmt, ast, concrete_types, type_parameters);
+      *stmt = deep_clone_stmt(*stmt, ast);
    }
 }
 
 #[must_use]
-fn deep_clone_stmt(
-   stmt: StatementId,
-   ast: &mut AstPool,
-   concrete_types: &[ExpressionType],
-   type_parameters: &IndexMap<StrId, IndexSet<StrId>>,
-) -> StatementId {
+fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool) -> StatementId {
    let mut cloned = ast.statements[stmt].clone();
    match &mut cloned.statement {
       Statement::Assignment(lhs, rhs) => {
-         *lhs = deep_clone_expr(*lhs, &mut ast.expressions, concrete_types, type_parameters);
-         *rhs = deep_clone_expr(*rhs, &mut ast.expressions, concrete_types, type_parameters);
+         *lhs = deep_clone_expr(*lhs, &mut ast.expressions);
+         *rhs = deep_clone_expr(*rhs, &mut ast.expressions);
       }
       Statement::Block(bn) | Statement::Loop(bn) => {
-         deep_clone_block(bn, ast, concrete_types, type_parameters);
+         deep_clone_block(bn, ast);
       }
       Statement::Continue | Statement::Break => (),
       Statement::IfElse(cond, then, else_s) => {
-         *cond = deep_clone_expr(*cond, &mut ast.expressions, concrete_types, type_parameters);
-         deep_clone_block(then, ast, concrete_types, type_parameters);
-         *else_s = deep_clone_stmt(*else_s, ast, concrete_types, type_parameters);
+         *cond = deep_clone_expr(*cond, &mut ast.expressions);
+         deep_clone_block(then, ast);
+         *else_s = deep_clone_stmt(*else_s, ast);
       }
       Statement::Expression(expr) | Statement::Return(expr) => {
-         *expr = deep_clone_expr(*expr, &mut ast.expressions, concrete_types, type_parameters);
+         *expr = deep_clone_expr(*expr, &mut ast.expressions);
       }
       Statement::Defer(ds) => {
-         *ds = deep_clone_stmt(*ds, ast, concrete_types, type_parameters);
+         *ds = deep_clone_stmt(*ds, ast);
       }
       Statement::VariableDeclaration {
          var_name: _,
@@ -156,14 +146,14 @@ fn deep_clone_stmt(
          debug_assert!(*var_id == VariableId::first());
          match val {
             crate::parse::DeclarationValue::Expr(e) => {
-               *e = deep_clone_expr(*e, &mut ast.expressions, concrete_types, type_parameters);
+               *e = deep_clone_expr(*e, &mut ast.expressions);
             }
             crate::parse::DeclarationValue::Uninit | crate::parse::DeclarationValue::None => (),
          }
       }
       Statement::While(e, body) => {
-         *e = deep_clone_expr(*e, &mut ast.expressions, concrete_types, type_parameters);
-         deep_clone_block(body, ast, concrete_types, type_parameters);
+         *e = deep_clone_expr(*e, &mut ast.expressions);
+         deep_clone_block(body, ast);
       }
       Statement::For { .. } => unreachable!(),
    }
@@ -171,29 +161,24 @@ fn deep_clone_stmt(
 }
 
 #[must_use]
-fn deep_clone_expr(
-   expr: ExpressionId,
-   expressions: &mut ExpressionPool,
-   concrete_types: &[ExpressionType],
-   type_parameters: &IndexMap<StrId, IndexSet<StrId>>,
-) -> ExpressionId {
+fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool) -> ExpressionId {
    let mut cloned = expressions[expr].clone();
    debug_assert!(cloned.exp_type.is_none());
    match &mut cloned.expression {
       Expression::ProcedureCall { proc_expr, args } => {
-         *proc_expr = deep_clone_expr(*proc_expr, expressions, concrete_types, type_parameters);
+         *proc_expr = deep_clone_expr(*proc_expr, expressions);
          for arg in args.iter_mut() {
-            arg.expr = deep_clone_expr(arg.expr, expressions, concrete_types, type_parameters);
+            arg.expr = deep_clone_expr(arg.expr, expressions);
          }
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter_mut() {
-            *expr = deep_clone_expr(*expr, expressions, concrete_types, type_parameters);
+            *expr = deep_clone_expr(*expr, expressions);
          }
       }
       Expression::ArrayIndex { array, index } => {
-         *array = deep_clone_expr(*array, expressions, concrete_types, type_parameters);
-         *index = deep_clone_expr(*index, expressions, concrete_types, type_parameters);
+         *array = deep_clone_expr(*array, expressions);
+         *index = deep_clone_expr(*index, expressions);
       }
       Expression::UnresolvedEnumLiteral(_, _)
       | Expression::UnresolvedProcLiteral(_, _)
@@ -204,28 +189,27 @@ fn deep_clone_expr(
       | Expression::FloatLiteral(_)
       | Expression::UnitLiteral => (),
       Expression::BinaryOperator { lhs, rhs, .. } => {
-         *lhs = deep_clone_expr(*lhs, expressions, concrete_types, type_parameters);
-         *rhs = deep_clone_expr(*rhs, expressions, concrete_types, type_parameters);
+         *lhs = deep_clone_expr(*lhs, expressions);
+         *rhs = deep_clone_expr(*rhs, expressions);
       }
       Expression::UnaryOperator(_, operand) => {
-         *operand = deep_clone_expr(*operand, expressions, concrete_types, type_parameters);
+         *operand = deep_clone_expr(*operand, expressions);
       }
       Expression::FieldAccess(_, base) => {
-         *base = deep_clone_expr(*base, expressions, concrete_types, type_parameters);
+         *base = deep_clone_expr(*base, expressions);
       }
-      Expression::Cast { target_type, expr, .. } => {
-         map_generic_to_concrete(target_type, concrete_types, type_parameters);
-         *expr = deep_clone_expr(*expr, expressions, concrete_types, type_parameters);
+      Expression::Cast { expr, .. } => {
+         *expr = deep_clone_expr(*expr, expressions);
       }
       Expression::IfX(a, b, c) => {
-         *a = deep_clone_expr(*a, expressions, concrete_types, type_parameters);
-         *b = deep_clone_expr(*b, expressions, concrete_types, type_parameters);
-         *c = deep_clone_expr(*c, expressions, concrete_types, type_parameters);
+         *a = deep_clone_expr(*a, expressions);
+         *b = deep_clone_expr(*b, expressions);
+         *c = deep_clone_expr(*c, expressions);
       }
-      Expression::UnresolvedStructLiteral(_, fields) => {
+      Expression::UnresolvedStructLiteral(_, fields, _) => {
          for field in fields.iter_mut() {
             if let Some(e) = &mut field.1 {
-               *e = deep_clone_expr(*e, expressions, concrete_types, type_parameters);
+               *e = deep_clone_expr(*e, expressions);
             }
          }
       }

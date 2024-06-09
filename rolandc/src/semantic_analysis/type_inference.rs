@@ -245,7 +245,7 @@ fn set_inferred_type(
       | Expression::BoundFcnLiteral(_, _)
       | Expression::Cast { .. }
       | Expression::BoolLiteral(_)
-      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
    expressions[expr_index].expression = the_expr;

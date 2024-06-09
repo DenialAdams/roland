@@ -158,7 +158,7 @@ fn mark_reachable_expr(expr: ExpressionId, ast: &AstPool, ctx: &mut DceCtx) {
       | Expression::EnumLiteral(_, _) => (),
       Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 }

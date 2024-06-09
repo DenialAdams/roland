@@ -225,7 +225,7 @@ pub enum Expression {
       rhs: ExpressionId,
    },
    UnaryOperator(UnOp, ExpressionId),
-   UnresolvedStructLiteral(StrNode, Box<[(StrId, Option<ExpressionId>)]>),
+   UnresolvedStructLiteral(ExpressionTypeNode, Box<[(StrId, Option<ExpressionId>)]>, SourceInfo),
    StructLiteral(StructId, IndexMap<StrId, Option<ExpressionId>>),
    FieldAccess(StrId, ExpressionId),
    Cast {
@@ -235,7 +235,7 @@ pub enum Expression {
    },
    EnumLiteral(EnumId, StrId),
    UnresolvedEnumLiteral(StrNode, StrNode),
-   UnresolvedProcLiteral(StrNode, Vec<ExpressionTypeNode>),
+   UnresolvedProcLiteral(StrNode, Box<[ExpressionTypeNode]>),
    BoundFcnLiteral(ProcedureId, Box<[ExpressionTypeNode]>),
    IfX(ExpressionId, ExpressionId, ExpressionId),
 }
@@ -1528,39 +1528,14 @@ fn pratt(
          wrap(Expression::StringLiteral(x), begin_source, expressions)
       }
       Token::Identifier(s) => {
-         let _ = l.next();
-         if l.peek_token() == Token::Dollar {
-            let _ = l.next();
-            let (generic_args, args_location) = parse_generic_arguments(l, parse_context)?;
-            let combined_location = merge_locations(begin_source, args_location);
-            wrap(
-               Expression::UnresolvedProcLiteral(
-                  StrNode {
-                     str: s,
-                     location: begin_source,
-                  },
-                  generic_args,
-               ),
-               combined_location,
-               expressions,
-            )
-         } else if l.peek_token() == Token::DoubleColon {
-            let _ = l.next();
-            let variant = parse_identifier(l, parse_context)?;
-            let combined_location = merge_locations(begin_source, variant.location);
-            wrap(
-               Expression::UnresolvedEnumLiteral(
-                  StrNode {
-                     str: s,
-                     location: begin_source,
-                  },
-                  variant,
-               ),
-               combined_location,
-               expressions,
-            )
-         } else if !if_head && l.peek_token() == Token::OpenBrace {
-            let _ = l.next();
+         fn parse_struct_literal(
+            l: &mut Lexer,
+            parse_context: &mut ParseContext,
+            base_ident_location: SourceInfo,
+            expressions: &mut ExpressionPool,
+            struct_type: ExpressionTypeNode,
+         ) -> Result<ExpressionId, ()> {
+            let _ = l.next(); // open brace
             let mut fields: Vec<(StrId, Option<ExpressionId>)> = vec![];
             let close_brace = loop {
                if l.peek_token() == Token::CloseBrace {
@@ -1578,31 +1553,75 @@ fn pratt(
                if l.peek_token() == Token::CloseBrace {
                   break l.next();
                } else if let Token::Identifier(x) = l.peek_token() {
-                  let struct_str = parse_context.interner.lookup(s);
                   let identifier_str = parse_context.interner.lookup(x);
                   rolandc_error!(
                      &mut parse_context.err_manager,
                      l.peek_source(),
-                     "While parsing instantiation of struct `{}`, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?",
-                     struct_str,
+                     "While parsing struct instantiation, encountered an unexpected identifier `{}`. Hint: Are you missing a comma?",
                      identifier_str,
                   );
                   return Result::Err(());
                };
                expect(l, parse_context, Token::Comma)?;
             };
-            let combined_location = merge_locations(begin_source, close_brace.source_info);
+            let combined_location = merge_locations(base_ident_location, close_brace.source_info);
+            Ok(wrap(
+               Expression::UnresolvedStructLiteral(struct_type, fields.into_boxed_slice(), base_ident_location),
+               combined_location,
+               expressions,
+            ))
+         }
+         let _ = l.next();
+         if l.peek_token() == Token::Dollar {
+            let _ = l.next();
+            let (generic_args, args_location) = parse_generic_arguments(l, parse_context)?;
+            let combined_location = merge_locations(begin_source, args_location);
+            if !if_head && l.peek_token() == Token::OpenBrace {
+               let unresolved_type = ExpressionTypeNode {
+                  e_type: ExpressionType::Unresolved {
+                     name: s,
+                     generic_args: generic_args.into_iter().map(|x| x.e_type.clone()).collect(),
+                  },
+                  location: combined_location,
+               };
+               parse_struct_literal(l, parse_context, begin_source, expressions, unresolved_type)?
+            } else {
+               wrap(
+                  Expression::UnresolvedProcLiteral(
+                     StrNode {
+                        str: s,
+                        location: begin_source,
+                     },
+                     generic_args.into_boxed_slice(),
+                  ),
+                  combined_location,
+                  expressions,
+               )
+            }
+         } else if l.peek_token() == Token::DoubleColon {
+            let _ = l.next();
+            let variant = parse_identifier(l, parse_context)?;
+            let combined_location = merge_locations(begin_source, variant.location);
             wrap(
-               Expression::UnresolvedStructLiteral(
+               Expression::UnresolvedEnumLiteral(
                   StrNode {
                      str: s,
                      location: begin_source,
                   },
-                  fields.into_boxed_slice(),
+                  variant,
                ),
                combined_location,
                expressions,
             )
+         } else if !if_head && l.peek_token() == Token::OpenBrace {
+            let unresolved_type = ExpressionTypeNode {
+               e_type: ExpressionType::Unresolved {
+                  name: s,
+                  generic_args: Box::new([]),
+               },
+               location: begin_source,
+            };
+            parse_struct_literal(l, parse_context, begin_source, expressions, unresolved_type)?
          } else {
             wrap(
                Expression::UnresolvedVariable(StrNode {

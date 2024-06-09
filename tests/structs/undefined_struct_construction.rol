@@ -3,5 +3,5 @@ proc main() {
 }
 __END__
 compile:
-Encountered construction of undefined struct `Y`
+Undeclared type `Y`
 ↳ line 2, column 12 [tests/structs/undefined_struct_construction.rol]

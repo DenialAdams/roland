@@ -280,7 +280,7 @@ fn mark_escaping_vars_expr(
       | Expression::FloatLiteral(_) => (),
       Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 }

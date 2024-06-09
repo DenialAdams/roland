@@ -245,7 +245,7 @@ fn update_live_variables_for_expr(
       | Expression::FloatLiteral(_) => (),
       Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 }
@@ -302,7 +302,7 @@ fn gen_for_expr(
       | Expression::FloatLiteral(_) => (),
       Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 }

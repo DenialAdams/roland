@@ -740,7 +740,7 @@ fn fold_expr_inner(
       }
       Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 }
@@ -1733,7 +1733,7 @@ pub fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &E
       | Expression::Variable(_) => false,
       Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 }

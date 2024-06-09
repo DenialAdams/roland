@@ -1056,7 +1056,25 @@ fn type_expression(
 
          if let Some(proc_id) = validation_context.proc_name_table.get(&name.str).copied() {
             validation_context.ast.expressions[expr_index].expression =
-               Expression::BoundFcnLiteral(proc_id, std::mem::take(g_args).into_boxed_slice());
+               Expression::BoundFcnLiteral(proc_id, std::mem::take(g_args));
+         }
+      }
+      Expression::UnresolvedStructLiteral(base_type_node, _, _) => {
+         let spec_params = validation_context
+            .owned
+            .cur_procedure
+            .map(|x| &validation_context.procedures[x].specialized_type_parameters);
+         if !resolve_type::<()>(
+            &mut base_type_node.e_type,
+            validation_context.user_defined_type_name_table,
+            None,
+            spec_params,
+            err_manager,
+            validation_context.interner,
+            base_type_node.location,
+            validation_context.templated_types,
+         ) {
+            base_type_node.e_type = ExpressionType::CompileError;
          }
       }
       _ => (),
@@ -1595,47 +1613,23 @@ fn get_type(
          );
          ExpressionType::CompileError
       }
-      Expression::UnresolvedStructLiteral(struct_name, fields) => {
-         // nocheckin - struct_name should be a type!
+      Expression::UnresolvedStructLiteral(provided_type, fields, base_ident_location) => {
+         // nocheckin - generic_args should match struct_info type parameter length
+         // have to duplicate checking in resolve_type which is kinda sadge
          for field_val in fields.iter().filter_map(|x| x.1) {
             type_expression(err_manager, field_val, validation_context);
          }
 
-         match validation_context
-            .user_defined_type_name_table
-            .get(&struct_name.str)
-            .copied()
-         {
-            Some(UserDefinedTypeId::Enum(_)) => {
-               rolandc_error!(
-                  err_manager,
-                  expr_location,
-                  "Attempted to instantiate enum `{}` as a struct",
-                  validation_context.interner.lookup(struct_name.str),
-               );
-               ExpressionType::CompileError
-            }
-            Some(UserDefinedTypeId::Union(_)) => {
-               rolandc_error!(
-                  err_manager,
-                  expr_location,
-                  "Attempted to instantiate union `{}` as a struct",
-                  validation_context.interner.lookup(struct_name.str),
-               );
-               ExpressionType::CompileError
-            }
-            Some(UserDefinedTypeId::Struct(defined_struct)) => {
-               let si = validation_context
-                  .user_defined_types
-                  .struct_info
-                  .get(defined_struct)
-                  .unwrap();
+         let final_type = std::mem::replace(&mut provided_type.e_type, ExpressionType::Unit);
+         match &final_type {
+            ExpressionType::CompileError => (),
+            ExpressionType::Struct(s_id, generic_args) => {
+               let si = validation_context.user_defined_types.struct_info.get(*s_id).unwrap();
 
                validation_context
                   .source_to_definition
-                  .insert(struct_name.location, si.location);
+                  .insert(*base_ident_location, si.location);
                let defined_fields = &si.field_types;
-
                let mut unmatched_fields: HashSet<StrId> = defined_fields.keys().copied().collect();
                for field in fields.iter() {
                   // Extraneous field check
@@ -1645,11 +1639,18 @@ fn get_type(
                         &[(expr_location, "struct instantiated"), (si.location, "struct defined"),],
                         "`{}` is not a known field of struct `{}`",
                         validation_context.interner.lookup(field.0),
-                        validation_context.interner.lookup(struct_name.str),
+                        validation_context.interner.lookup(si.name),
                      );
                      continue;
                   };
-                  let defined_type = &defined_type_node.e_type;
+                  let defined_type = map_generic_to_concrete_cow(
+                     &defined_type_node.e_type,
+                     generic_args,
+                     validation_context
+                        .templated_types
+                        .get(&UserDefinedTypeId::Struct(*s_id))
+                        .unwrap_or(&IndexSet::new()),
+                  );
 
                   // Duplicate field check
                   if !unmatched_fields.remove(&field.0) {
@@ -1658,13 +1659,13 @@ fn get_type(
                         &[(expr_location, "struct instantiated"), (si.location, "struct defined"),],
                         "`{}` is a valid field of struct `{}`, but is duplicated",
                         validation_context.interner.lookup(field.0),
-                        validation_context.interner.lookup(struct_name.str),
+                        validation_context.interner.lookup(si.name),
                      );
                   }
 
                   if let Some(field_val) = field.1 {
                      try_set_inferred_type(
-                        defined_type,
+                        &defined_type,
                         field_val,
                         validation_context.owned,
                         &mut validation_context.ast.expressions,
@@ -1672,7 +1673,7 @@ fn get_type(
 
                      let field_expr = &validation_context.ast.expressions[field_val];
 
-                     if field_expr.exp_type.as_ref().unwrap() != defined_type
+                     if field_expr.exp_type.as_ref().unwrap() != defined_type.as_ref()
                         && !field_expr
                            .exp_type
                            .as_ref()
@@ -1696,7 +1697,7 @@ fn get_type(
                            &[(field_expr.location, "field value"), (si.location, "struct defined"),],
                            "For field `{}` of struct `{}`, encountered value of type {} when we expected {}",
                            validation_context.interner.lookup(field.0),
-                           validation_context.interner.lookup(struct_name.str),
+                           validation_context.interner.lookup(si.name),
                            field_1_type_str,
                            defined_type_str,
                         );
@@ -1714,25 +1715,29 @@ fn get_type(
                      err_manager,
                      &[(expr_location, "struct instantiated"), (si.location, "struct defined"),],
                      "Literal of struct `{}` is missing fields [{}]",
-                     validation_context.interner.lookup(struct_name.str),
+                     validation_context.interner.lookup(si.name),
                      unmatched_fields_str.join(", "),
                   );
                }
 
-               *expr = Expression::StructLiteral(defined_struct, fields.iter().map(|x| (x.0, x.1)).collect());
-
-               ExpressionType::Struct(defined_struct, Box::new([]))
+               *expr = Expression::StructLiteral(*s_id, fields.iter().map(|x| (x.0, x.1)).collect());
             }
-            None => {
+            _ => {
                rolandc_error!(
                   err_manager,
                   expr_location,
-                  "Encountered construction of undefined struct `{}`",
-                  validation_context.interner.lookup(struct_name.str)
+                  "Attempted to instantiate `{}` as a struct",
+                  final_type.as_roland_type_info(
+                     validation_context.interner,
+                     validation_context.user_defined_types,
+                     validation_context.procedures,
+                     &validation_context.owned.type_variables
+                  ),
                );
-               ExpressionType::CompileError
             }
          }
+
+         final_type
       }
       Expression::ProcedureCall { proc_expr, args } => {
          type_expression(err_manager, *proc_expr, validation_context);
@@ -2440,11 +2445,14 @@ fn check_type_declared_vs_actual(
    }
 }
 
-pub fn map_generic_to_concrete_cow<'a>(
+fn map_generic_to_concrete_cow<'a, T>(
    param_type: &'a ExpressionType,
    generic_args: &[ExpressionType],
-   generic_parameters: &IndexMap<StrId, IndexSet<StrId>>,
-) -> Cow<'a, ExpressionType> {
+   generic_parameters: &T,
+) -> Cow<'a, ExpressionType>
+where
+   T: CanCheckContainsStrId,
+{
    if generic_args.is_empty() {
       Cow::Borrowed(param_type)
    } else {

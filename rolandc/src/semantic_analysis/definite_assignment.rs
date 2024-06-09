@@ -243,6 +243,6 @@ fn ensure_expression_does_not_use_unassigned_variable(
       Expression::UnresolvedEnumLiteral(_, _)
       | Expression::UnresolvedProcLiteral(_, _)
       | Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedStructLiteral(_, _) => unreachable!(),
+      | Expression::UnresolvedStructLiteral(_, _, _) => unreachable!(),
    }
 }

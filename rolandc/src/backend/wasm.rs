@@ -1621,7 +1621,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       | Expression::ArrayLiteral(_)
       | Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
    if expr_node.exp_type.as_ref().unwrap().is_never() {

@@ -305,7 +305,7 @@ fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool, vm: &mu
       | Expression::BoundFcnLiteral(_, _) => (),
       Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
    expressions.insert(cloned)
