@@ -257,7 +257,7 @@ where
       | ExpressionType::Bool
       | ExpressionType::Unit
       | ExpressionType::Struct(_, _)
-      | ExpressionType::Union(_)
+      | ExpressionType::Union(_, _)
       | ExpressionType::GenericParam(_)
       | ExpressionType::ProcedureItem(_, _) => true, // This type contains other types, but this type itself can never be written down. It should always be valid
       ExpressionType::Unresolved { name: x, generic_args } => {
@@ -304,7 +304,7 @@ where
 
                   return false;
                }
-               ExpressionType::Union(*y)
+               ExpressionType::Union(*y, std::mem::take(generic_args))
             }
             Some(UserDefinedTypeId::Struct(y)) => {
                let expected_num_type_args = template_types
@@ -1832,10 +1832,16 @@ fn get_type(
                   lhs_type = ExpressionType::CompileError;
                }
             }
-            ExpressionType::Union(union_id) => {
+            ExpressionType::Union(union_id, generic_args) => {
                let ui = validation_context.user_defined_types.union_info.get(union_id).unwrap();
                if let Some(new_t_node) = ui.field_types.get(&field) {
                   lhs_type = new_t_node.e_type.clone();
+                  if let Some(generic_params) = validation_context
+                     .templated_types
+                     .get(&UserDefinedTypeId::Union(union_id))
+                  {
+                     map_generic_to_concrete(&mut lhs_type, &generic_args, generic_params);
+                  }
                } else {
                   rolandc_error!(
                      err_manager,

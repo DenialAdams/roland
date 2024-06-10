@@ -74,7 +74,7 @@ pub enum ExpressionType {
    Bool,
    Unit,
    Struct(StructId, Box<[ExpressionType]>),
-   Union(UnionId),
+   Union(UnionId, Box<[ExpressionType]>),
    Array(Box<ExpressionType>, u32),
    Pointer(Box<ExpressionType>),
    CompileError,
@@ -187,13 +187,15 @@ impl ExpressionType {
       match self {
          ExpressionType::CompileError | ExpressionType::Unresolved { .. } => unreachable!(),
          ExpressionType::Unknown(_) | ExpressionType::GenericParam(_) => true,
+         // TODO: a struct or union paramaterized on unknown thing should be size_is_unknown,
+         // although in practice that probably doesn't matter
          ExpressionType::Int(_)
          | ExpressionType::Float(_)
          | ExpressionType::Bool
          | ExpressionType::Unit
          | ExpressionType::Never
          | ExpressionType::Struct(_, _)
-         | ExpressionType::Union(_)
+         | ExpressionType::Union(_, _)
          | ExpressionType::ProcedureItem(_, _)
          | ExpressionType::ProcedurePointer { .. }
          | ExpressionType::Enum(_)
@@ -225,7 +227,7 @@ impl ExpressionType {
    pub fn is_aggregate(&self) -> bool {
       matches!(
          self,
-         ExpressionType::Array(_, _) | ExpressionType::Struct(_, _) | ExpressionType::Union(_)
+         ExpressionType::Array(_, _) | ExpressionType::Struct(_, _) | ExpressionType::Union(_, _)
       )
    }
 
@@ -289,7 +291,7 @@ impl ExpressionType {
                Cow::Owned(format!("Struct {}", name))
             }
          }
-         ExpressionType::Union(x) => Cow::Owned(format!(
+         ExpressionType::Union(x, _) => Cow::Owned(format!(
             "Union {}",
             interner.lookup(udt.union_info.get(*x).unwrap().name)
          )),
@@ -408,7 +410,23 @@ impl ExpressionType {
                ))
             }
          }
-         ExpressionType::Union(x) => Cow::Borrowed(interner.lookup(udt.union_info.get(*x).unwrap().name)),
+         ExpressionType::Union(x, generic_args) => {
+            if generic_args.is_empty() {
+               Cow::Borrowed(interner.lookup(udt.union_info.get(*x).unwrap().name))
+            } else {
+               let g_args: String = generic_args
+                  .iter()
+                  .map(|x| x.as_roland_type_info_like_source(interner, udt))
+                  .collect::<Vec<_>>()
+                  .join(", ");
+
+               Cow::Owned(format!(
+                  "{}<{}>",
+                  interner.lookup(udt.union_info.get(*x).unwrap().name),
+                  g_args,
+               ))
+            }
+         }
          ExpressionType::Enum(x) => Cow::Borrowed(interner.lookup(udt.enum_info.get(*x).unwrap().name)),
          ExpressionType::Array(i_type, length) => Cow::Owned(format!(
             "[{}; {}]",

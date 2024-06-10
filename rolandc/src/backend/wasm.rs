@@ -71,7 +71,9 @@ fn type_to_wasm_type(t: &ExpressionType, udt: &UserDefinedTypeInfo, target: Targ
    }
 
    match t {
-      ExpressionType::Union(_) | ExpressionType::Struct(_, _) | ExpressionType::Array(_, _) => buf.push(ValType::I32),
+      ExpressionType::Union(_, _) | ExpressionType::Struct(_, _) | ExpressionType::Array(_, _) => {
+         buf.push(ValType::I32);
+      }
       _ => buf.push(type_to_wasm_type_basic(t)),
    }
 }
@@ -1571,7 +1573,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                   .field_offsets_mem
                   .get(&field_name)
                   .unwrap(),
-               ExpressionType::Union(_) => 0,
+               ExpressionType::Union(_, _) => 0,
                _ => unreachable!(),
             };
 

@@ -91,7 +91,7 @@ fn ensure_all_variables_assigned_in_stmt(
             }
          } else if let Expression::FieldAccess(_, inner_expr_id) = pool.expressions[*lhs].expression {
             if let Expression::Variable(var_id) = pool.expressions[inner_expr_id].expression {
-               if let Some(ExpressionType::Union(_)) = procedure_vars.get(&var_id) {
+               if let Some(ExpressionType::Union(_, _)) = procedure_vars.get(&var_id) {
                   // Assigning one field of a union fully assigns the variable
                   if let Some(index) = procedure_vars.get_index_of(&var_id) {
                      assigned_vars.set(index, true);

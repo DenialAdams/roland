@@ -4,11 +4,12 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::interner::StrId;
 use crate::parse::{
-   AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureBody, ProcedureId, ProcedureNode, Statement, StatementId, StructId, UnionId, UserDefinedTypeId, UserDefinedTypeInfo, VariableId
+   AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureBody, ProcedureId, ProcedureNode, Statement,
+   StatementId, StructId, UnionId, UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::validator::map_generic_to_concrete;
-use crate::semantic_analysis::StructInfo;
-use crate::size_info::calculate_struct_size_info;
+use crate::semantic_analysis::{StructInfo, UnionInfo};
+use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
 use crate::type_data::ExpressionType;
 use crate::{Program, Target};
 
@@ -252,7 +253,8 @@ pub fn monomorphize_types(program: &mut Program, target: Target) {
             }
 
             // sad clone...
-            if let Some(lowered_sid) = already_lowered.get(&(UserDefinedTypeId::Struct(*s_id), type_arguments.clone())) {
+            if let Some(lowered_sid) = already_lowered.get(&(UserDefinedTypeId::Struct(*s_id), type_arguments.clone()))
+            {
                *s_id = match lowered_sid {
                   UserDefinedTypeId::Struct(x) => *x,
                   _ => unreachable!(),
@@ -272,7 +274,10 @@ pub fn monomorphize_types(program: &mut Program, target: Target) {
                });
 
                // plant the flag first to avoid infinte recursion
-               already_lowered.insert((UserDefinedTypeId::Struct(*s_id), type_arguments.clone()), UserDefinedTypeId::Struct(new_sid));
+               already_lowered.insert(
+                  (UserDefinedTypeId::Struct(*s_id), type_arguments.clone()),
+                  UserDefinedTypeId::Struct(new_sid),
+               );
 
                for new_ft in new_field_types.iter_mut() {
                   map_generic_to_concrete(
@@ -290,7 +295,53 @@ pub fn monomorphize_types(program: &mut Program, target: Target) {
                calculate_struct_size_info(*s_id, udt, target, tt);
             }
          }
-         ExpressionType::Union(_) => todo!(),
+         ExpressionType::Union(u_id, type_arguments) => {
+            if type_arguments.is_empty() {
+               return;
+            }
+
+            // sad clone...
+            if let Some(lowered_uid) = already_lowered.get(&(UserDefinedTypeId::Union(*u_id), type_arguments.clone())) {
+               *u_id = match lowered_uid {
+                  UserDefinedTypeId::Union(x) => *x,
+                  _ => unreachable!(),
+               };
+               *type_arguments = Box::new([]);
+            } else {
+               let template_ui = udt.union_info.get(*u_id).unwrap();
+
+               let new_location = template_ui.location;
+               let new_name = template_ui.name;
+               let mut new_field_types = template_ui.field_types.clone();
+               let new_uid = udt.union_info.insert(UnionInfo {
+                  size: None,
+                  location: new_location,
+                  name: new_name,
+                  field_types: IndexMap::new(),
+               });
+
+               // plant the flag first to avoid infinte recursion
+               already_lowered.insert(
+                  (UserDefinedTypeId::Union(*u_id), type_arguments.clone()),
+                  UserDefinedTypeId::Union(new_uid),
+               );
+
+               for new_ft in new_field_types.iter_mut() {
+                  map_generic_to_concrete(
+                     &mut new_ft.1.e_type,
+                     type_arguments,
+                     &tt[&UserDefinedTypeId::Union(*u_id)],
+                  );
+                  lower_type(&mut new_ft.1.e_type, udt, tt, target, already_lowered);
+               }
+               udt.union_info[new_uid].field_types = new_field_types;
+
+               *u_id = new_uid;
+               *type_arguments = Box::new([]);
+
+               calculate_union_size_info(*u_id, udt, target, tt);
+            }
+         }
          ExpressionType::Array(base_type, _) | ExpressionType::Pointer(base_type) => {
             lower_type(base_type, udt, tt, target, already_lowered);
          }
@@ -325,13 +376,20 @@ pub fn monomorphize_types(program: &mut Program, target: Target) {
       );
    }
 
-   let struct_ids: Vec<StructId> = program.user_defined_types.struct_info.iter().filter(|x| x.1.size.is_some()).map(|x| x.0).collect();
+   let struct_ids: Vec<StructId> = program
+      .user_defined_types
+      .struct_info
+      .iter()
+      .filter(|x| x.1.size.is_some())
+      .map(|x| x.0)
+      .collect();
    for struct_id in struct_ids {
       // Taking field_types temporarily is fine, since lower_type should only ready field_types from
       // template structs (i.e. size is_none)
       let mut fts = std::mem::take(&mut program.user_defined_types.struct_info[struct_id].field_types);
       for field_type in fts.values_mut() {
-         lower_type(&mut field_type.e_type,
+         lower_type(
+            &mut field_type.e_type,
             &mut program.user_defined_types,
             &program.templated_types,
             target,
@@ -341,13 +399,20 @@ pub fn monomorphize_types(program: &mut Program, target: Target) {
       program.user_defined_types.struct_info[struct_id].field_types = fts;
    }
 
-   let union_ids: Vec<UnionId> = program.user_defined_types.union_info.iter().filter(|x| x.1.size.is_some()).map(|x| x.0).collect();
+   let union_ids: Vec<UnionId> = program
+      .user_defined_types
+      .union_info
+      .iter()
+      .filter(|x| x.1.size.is_some())
+      .map(|x| x.0)
+      .collect();
    for union_id in union_ids {
       // Taking field_types temporarily is fine, since lower_type should only ready field_types from
       // template unions (i.e. size is_none)
       let mut fts = std::mem::take(&mut program.user_defined_types.union_info[union_id].field_types);
       for field_type in fts.values_mut() {
-         lower_type(&mut field_type.e_type,
+         lower_type(
+            &mut field_type.e_type,
             &mut program.user_defined_types,
             &program.templated_types,
             target,

@@ -44,7 +44,7 @@ fn recursive_struct_union_check(
                union_info,
             );
          }
-         ExpressionType::Union(x) => {
+         ExpressionType::Union(x, _) => {
             if UserDefinedTypeId::Union(*x) == base_id {
                is_recursive = true;
                break;
@@ -199,6 +199,19 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          }
       }
 
+      let mut type_parameters = IndexSet::new();
+      for type_param in a_union.generic_parameters.iter() {
+         if !type_parameters.insert(type_param.str) {
+            rolandc_error!(
+               err_manager,
+               type_param.location,
+               "Union `{}` has a duplicate type parameter `{}`",
+               interner.lookup(a_union.name),
+               interner.lookup(type_param.str),
+            );
+         }
+      }
+
       insert_or_error_duplicated(&mut all_types, err_manager, a_union.name, a_union.location, interner);
       let union_id = program.user_defined_types.union_info.insert(UnionInfo {
          field_types: field_map,
@@ -209,6 +222,11 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       program
          .user_defined_type_name_table
          .insert(a_union.name, UserDefinedTypeId::Union(union_id));
+      if !type_parameters.is_empty() {
+         program
+            .templated_types
+            .insert(UserDefinedTypeId::Union(union_id), type_parameters);
+      }
    }
 
    for (id, enum_i) in program.user_defined_types.enum_info.iter_mut() {

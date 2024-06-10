@@ -100,6 +100,7 @@ pub struct UnionNode {
    pub name: StrId,
    pub fields: Vec<(StrId, ExpressionTypeNode)>,
    pub location: SourceInfo,
+   pub generic_parameters: Vec<StrNode>,
 }
 
 #[derive(Clone)]
@@ -852,6 +853,11 @@ fn parse_struct(l: &mut Lexer, parse_context: &mut ParseContext, source_info: So
 
 fn parse_union(l: &mut Lexer, parse_context: &mut ParseContext, source_info: SourceInfo) -> Result<UnionNode, ()> {
    let struct_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
+   let generic_parameters = if l.peek_token() == Token::LessThan {
+      parse_generic_parameters(l, parse_context)?
+   } else {
+      vec![]
+   };
    expect(l, parse_context, Token::OpenBrace)?;
    let mut fields: Vec<(StrId, ExpressionTypeNode)> = vec![];
    let close_brace = loop {
@@ -882,6 +888,7 @@ fn parse_union(l: &mut Lexer, parse_context: &mut ParseContext, source_info: Sou
       name: struct_name,
       fields,
       location: merge_locations(source_info, close_brace.source_info),
+      generic_parameters,
    })
 }
 

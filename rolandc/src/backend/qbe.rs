@@ -98,7 +98,7 @@ fn roland_type_to_abi_type(
          let index = aggregate_defs.get_index_of(r_type).unwrap();
          Cow::Owned(format!(":s{}", index))
       }
-      ExpressionType::Union(_) => {
+      ExpressionType::Union(_, _) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
          Cow::Owned(format!(":u{}", index))
       }
@@ -123,7 +123,7 @@ fn roland_type_to_sub_type(
          let index = aggregate_defs.get_index_of(r_type).unwrap();
          Cow::Owned(format!(":s{}", index))
       }
-      ExpressionType::Union(_) => {
+      ExpressionType::Union(_, _) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
          Cow::Owned(format!(":u{}", index))
       }
@@ -273,7 +273,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
             }
             writeln!(buf, "}}").unwrap();
          }
-         ExpressionType::Union(uid) => {
+         ExpressionType::Union(uid, _) => {
             let ui = udt.union_info.get(*uid).unwrap();
             for field_t in ui.field_types.iter().map(|x| &x.1.e_type) {
                emit_aggregate_def(buf, emitted, udt, field_t);
@@ -475,7 +475,7 @@ fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<Str
                writeln!(ctx.buf, "   %a{} =l add {}, {}", at, base_mem, offset).unwrap();
                Some(format!("%a{}", at))
             }
-            ExpressionType::Union(_) => Some(base_mem),
+            ExpressionType::Union(_, _) => Some(base_mem),
             _ => unreachable!(),
          }
       }

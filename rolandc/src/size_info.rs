@@ -47,7 +47,7 @@ pub fn calculate_union_size_info(
    for field_t in ft.values() {
       match field_t.e_type {
          ExpressionType::Struct(s, _) => calculate_struct_size_info(s, udt, target, templated_types),
-         ExpressionType::Union(s) => calculate_union_size_info(s, udt, target, templated_types),
+         ExpressionType::Union(s, _) => calculate_union_size_info(s, udt, target, templated_types),
          _ => (),
       }
    }
@@ -87,7 +87,7 @@ pub fn calculate_struct_size_info(
    for field_t in ft.values() {
       match field_t.e_type {
          ExpressionType::Struct(s, _) => calculate_struct_size_info(s, udt, target, templated_types),
-         ExpressionType::Union(s) => calculate_union_size_info(s, udt, target, templated_types),
+         ExpressionType::Union(s, _) => calculate_union_size_info(s, udt, target, templated_types),
          _ => (),
       }
    }
@@ -162,7 +162,7 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Targ
             .strictest_alignment
       }
       ExpressionType::Array(a_type, _len) => mem_alignment(a_type, udt, target),
-      ExpressionType::Union(x) => udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_alignment,
+      ExpressionType::Union(x, generic_args) => udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_alignment,
       ExpressionType::Bool | ExpressionType::Unit | ExpressionType::Never | ExpressionType::ProcedureItem(_, _) => 1,
       ExpressionType::Unresolved { .. }
       | ExpressionType::Unknown(_)
@@ -189,7 +189,7 @@ pub fn sizeof_type_values(e: &ExpressionType, udt: &UserDefinedTypeInfo, target:
       | ExpressionType::Struct(_, _)
       | ExpressionType::Array(_, _)
       | ExpressionType::ProcedurePointer { .. }
-      | ExpressionType::Union(_) => 1,
+      | ExpressionType::Union(_, _) => 1,
       ExpressionType::ProcedureItem(_, _) | ExpressionType::Unit | ExpressionType::Never => 0,
       ExpressionType::GenericParam(_)
       | ExpressionType::CompileError
@@ -222,7 +222,7 @@ pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Ta
       ExpressionType::Unit | ExpressionType::Never | ExpressionType::ProcedureItem(_, _) => 0,
       ExpressionType::Struct(x, generic_args) => udt.struct_info.get(*x).unwrap().size.as_ref().unwrap().mem_size,
       ExpressionType::Array(a_type, len) => sizeof_type_mem(a_type, udt, target) * (*len),
-      ExpressionType::Union(x) => udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_size,
+      ExpressionType::Union(x, generic_args) => udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_size,
       ExpressionType::GenericParam(_)
       | ExpressionType::CompileError
       | ExpressionType::Unresolved { .. }

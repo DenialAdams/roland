@@ -650,7 +650,7 @@ fn fold_expr_inner(
                      synthetic: true,
                   });
                }
-               ExpressionType::Struct(_, _) | ExpressionType::Union(_) => (),
+               ExpressionType::Struct(_, _) | ExpressionType::Union(_, _) => (),
                _ => unreachable!(),
             }
 
