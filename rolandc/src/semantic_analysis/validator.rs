@@ -20,7 +20,7 @@ use crate::parse::{
    ExpressionId, ExpressionNode, ExpressionTypeNode, ProcImplSource, ProcedureId, ProcedureNode, Program, Statement,
    StatementId, StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
 };
-use crate::size_info::{mem_alignment, sizeof_type_mem};
+use crate::size_info::{template_type_aware_mem_alignment, template_type_aware_mem_size};
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, IntType, F32_TYPE, F64_TYPE, I32_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE};
 use crate::Target;
@@ -1248,15 +1248,17 @@ fn get_type(
                   return ExpressionType::CompileError;
                }
 
-               let size_source = sizeof_type_mem(
+               let size_source = template_type_aware_mem_size(
                   e_type,
                   validation_context.user_defined_types,
                   validation_context.owned.target,
+                  validation_context.templated_types,
                );
-               let size_target = sizeof_type_mem(
+               let size_target = template_type_aware_mem_size(
                   target_type,
                   validation_context.user_defined_types,
                   validation_context.owned.target,
+                  validation_context.templated_types,
                );
 
                if size_source == size_target {
@@ -1286,7 +1288,12 @@ fn get_type(
                         if a_type.size_is_unknown() {
                            return AlignOrUnknown::Unknown;
                         }
-                        AlignOrUnknown::Alignment(mem_alignment(a_type, ctx.user_defined_types, ctx.owned.target))
+                        AlignOrUnknown::Alignment(template_type_aware_mem_alignment(
+                           a_type,
+                           ctx.user_defined_types,
+                           ctx.owned.target,
+                           ctx.templated_types,
+                        ))
                      }
 
                      let source_base_type = e_type.get_type_or_type_being_pointed_to();
@@ -2451,7 +2458,7 @@ fn check_type_declared_vs_actual(
    }
 }
 
-fn map_generic_to_concrete_cow<'a, T>(
+pub fn map_generic_to_concrete_cow<'a, T>(
    param_type: &'a ExpressionType,
    generic_args: &[ExpressionType],
    generic_parameters: &T,

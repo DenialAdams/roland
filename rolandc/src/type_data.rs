@@ -187,15 +187,14 @@ impl ExpressionType {
       match self {
          ExpressionType::CompileError | ExpressionType::Unresolved { .. } => unreachable!(),
          ExpressionType::Unknown(_) | ExpressionType::GenericParam(_) => true,
-         // TODO: a struct or union paramaterized on unknown thing should be size_is_unknown,
-         // although in practice that probably doesn't matter
+         ExpressionType::Struct(_, type_arguments) | ExpressionType::Union(_, type_arguments) => {
+            type_arguments.iter().any(ExpressionType::size_is_unknown)
+         }
          ExpressionType::Int(_)
          | ExpressionType::Float(_)
          | ExpressionType::Bool
          | ExpressionType::Unit
          | ExpressionType::Never
-         | ExpressionType::Struct(_, _)
-         | ExpressionType::Union(_, _)
          | ExpressionType::ProcedureItem(_, _)
          | ExpressionType::ProcedurePointer { .. }
          | ExpressionType::Enum(_)

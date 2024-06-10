@@ -4,6 +4,7 @@ use indexmap::IndexSet;
 
 use crate::interner::StrId;
 use crate::parse::{StructId, UnionId, UserDefinedTypeId, UserDefinedTypeInfo};
+use crate::semantic_analysis::validator::map_generic_to_concrete_cow;
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
 use crate::Target;
 
@@ -96,35 +97,32 @@ pub fn calculate_struct_size_info(
    let mut sum_mem = 0;
    let mut strictest_alignment = 1;
    let mut field_offsets_mem = HashMap::with_capacity(udt.struct_info.get(id).unwrap().field_types.len());
-   for ((field_name, field_t), next_field_t) in udt
-      .struct_info
-      .get(id)
-      .unwrap()
-      .field_types
-      .iter()
-      .zip(udt.struct_info.get(id).unwrap().field_types.values().skip(1))
-   {
+   for ((field_name, field_t), next_field_t) in udt.struct_info.get(id).unwrap().field_types.iter().zip(
+      udt.struct_info
+         .get(id)
+         .unwrap()
+         .field_types
+         .values()
+         .skip(1)
+         .map(Some)
+         .chain(std::iter::once(None)),
+   ) {
       let field_t = &field_t.e_type;
-      let next_field_t = &next_field_t.e_type;
 
       field_offsets_mem.insert(*field_name, sum_mem);
 
-      let our_mem_size = sizeof_type_mem(field_t, udt, target);
-      // We align our size with the alignment of the next field to account for potential padding
-      let next_mem_alignment = mem_alignment(next_field_t, udt, target);
+      let next_mem_alignment = next_field_t.map_or(1, |x| {
+         template_type_aware_mem_alignment(&x.e_type, udt, target, templated_types)
+      });
+      sum_mem += aligned_address(
+         template_type_aware_mem_size(field_t, udt, target, templated_types),
+         next_mem_alignment,
+      );
 
-      sum_mem += aligned_address(our_mem_size, next_mem_alignment);
-
-      strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(field_t, udt, target));
-   }
-
-   if let Some((last_field_name, last_field_t_node)) = udt.struct_info.get(id).unwrap().field_types.iter().last() {
-      let last_field_t = &last_field_t_node.e_type;
-
-      field_offsets_mem.insert(*last_field_name, sum_mem);
-
-      sum_mem += sizeof_type_mem(last_field_t, udt, target);
-      strictest_alignment = std::cmp::max(strictest_alignment, mem_alignment(last_field_t, udt, target));
+      strictest_alignment = std::cmp::max(
+         strictest_alignment,
+         template_type_aware_mem_alignment(field_t, udt, target, templated_types),
+      );
    }
 
    udt.struct_info.get_mut(id).unwrap().size = Some(StructSizeInfo {
@@ -132,6 +130,56 @@ pub fn calculate_struct_size_info(
       strictest_alignment,
       field_offsets_mem,
    });
+}
+
+pub fn template_type_aware_mem_alignment(
+   e: &ExpressionType,
+   udt: &UserDefinedTypeInfo,
+   target: Target,
+   templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
+) -> u32 {
+   match e {
+      ExpressionType::Array(a_type, _len) => template_type_aware_mem_alignment(a_type, udt, target, templated_types),
+      ExpressionType::Union(union_id, generic_args) => {
+         if generic_args.is_empty() {
+            mem_alignment(e, udt, target)
+         } else {
+            udt.union_info[*union_id]
+               .field_types
+               .values()
+               .map(|x| {
+                  map_generic_to_concrete_cow(
+                     &x.e_type,
+                     generic_args,
+                     &templated_types[&UserDefinedTypeId::Union(*union_id)],
+                  )
+               })
+               .map(|x| template_type_aware_mem_alignment(&x, udt, target, templated_types))
+               .max()
+               .unwrap_or(1)
+         }
+      }
+      ExpressionType::Struct(struct_id, generic_args) => {
+         if generic_args.is_empty() {
+            mem_alignment(e, udt, target)
+         } else {
+            udt.struct_info[*struct_id]
+               .field_types
+               .values()
+               .map(|x| {
+                  map_generic_to_concrete_cow(
+                     &x.e_type,
+                     generic_args,
+                     &templated_types[&UserDefinedTypeId::Struct(*struct_id)],
+                  )
+               })
+               .map(|x| template_type_aware_mem_alignment(&x, udt, target, templated_types))
+               .max()
+               .unwrap_or(1)
+         }
+      }
+      _ => mem_alignment(e, udt, target),
+   }
 }
 
 pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) -> u32 {
@@ -152,7 +200,8 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Targ
          FloatWidth::Four => 4,
       },
       ExpressionType::Pointer(_) | ExpressionType::ProcedurePointer { .. } => u32::from(target.pointer_width()),
-      ExpressionType::Struct(x, generic_args) => {
+      ExpressionType::Struct(x, type_args) => {
+         debug_assert!(type_args.is_empty());
          udt.struct_info
             .get(*x)
             .unwrap()
@@ -162,7 +211,10 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Targ
             .strictest_alignment
       }
       ExpressionType::Array(a_type, _len) => mem_alignment(a_type, udt, target),
-      ExpressionType::Union(x, generic_args) => udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_alignment,
+      ExpressionType::Union(x, type_args) => {
+         debug_assert!(type_args.is_empty());
+         udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_alignment
+      }
       ExpressionType::Bool | ExpressionType::Unit | ExpressionType::Never | ExpressionType::ProcedureItem(_, _) => 1,
       ExpressionType::Unresolved { .. }
       | ExpressionType::Unknown(_)
@@ -208,6 +260,62 @@ pub fn sizeof_type_wasm(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: T
    }
 }
 
+pub fn template_type_aware_mem_size(
+   e: &ExpressionType,
+   udt: &UserDefinedTypeInfo,
+   target: Target,
+   templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
+) -> u32 {
+   match e {
+      ExpressionType::Array(a_type, _len) => template_type_aware_mem_size(a_type, udt, target, templated_types),
+      ExpressionType::Union(union_id, generic_args) => {
+         if generic_args.is_empty() {
+            sizeof_type_mem(e, udt, target)
+         } else {
+            udt.union_info[*union_id]
+               .field_types
+               .values()
+               .map(|x| {
+                  map_generic_to_concrete_cow(
+                     &x.e_type,
+                     generic_args,
+                     &templated_types[&UserDefinedTypeId::Union(*union_id)],
+                  )
+               })
+               .map(|x| template_type_aware_mem_size(x.as_ref(), udt, target, templated_types))
+               .max()
+               .unwrap_or(0)
+         }
+      }
+      ExpressionType::Struct(struct_id, generic_args) => {
+         if generic_args.is_empty() {
+            sizeof_type_mem(e, udt, target)
+         } else {
+            let iter = udt.struct_info[*struct_id].field_types.values().map(|x| {
+               map_generic_to_concrete_cow(
+                  &x.e_type,
+                  generic_args,
+                  &templated_types[&UserDefinedTypeId::Struct(*struct_id)],
+               )
+            });
+            let zip_iter = iter.clone().skip(1).map(Some).chain(std::iter::once(None));
+
+            iter
+               .zip(zip_iter)
+               .map(|(field_type, next_field_type)| {
+                  let next_mem_alignment = next_field_type.map_or(1, |x| mem_alignment(&x, udt, target));
+                  aligned_address(
+                     template_type_aware_mem_size(&field_type, udt, target, templated_types),
+                     next_mem_alignment,
+                  )
+               })
+               .sum()
+         }
+      }
+      _ => sizeof_type_mem(e, udt, target),
+   }
+}
+
 /// The size of a type as it's stored in memory
 pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) -> u32 {
    match e {
@@ -220,9 +328,15 @@ pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Ta
       ExpressionType::Pointer(_) | ExpressionType::ProcedurePointer { .. } => u32::from(target.pointer_width()),
       ExpressionType::Bool => 1,
       ExpressionType::Unit | ExpressionType::Never | ExpressionType::ProcedureItem(_, _) => 0,
-      ExpressionType::Struct(x, generic_args) => udt.struct_info.get(*x).unwrap().size.as_ref().unwrap().mem_size,
+      ExpressionType::Struct(x, type_args) => {
+         debug_assert!(type_args.is_empty());
+         udt.struct_info.get(*x).unwrap().size.as_ref().unwrap().mem_size
+      }
       ExpressionType::Array(a_type, len) => sizeof_type_mem(a_type, udt, target) * (*len),
-      ExpressionType::Union(x, generic_args) => udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_size,
+      ExpressionType::Union(x, type_args) => {
+         debug_assert!(type_args.is_empty());
+         udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_size
+      }
       ExpressionType::GenericParam(_)
       | ExpressionType::CompileError
       | ExpressionType::Unresolved { .. }
