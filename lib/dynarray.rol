@@ -1,0 +1,43 @@
+struct DynArray<T> {
+   buf: &T,
+   length: usize,
+   capacity: usize,
+}
+
+proc _da_memcpy(dest: &u8, src: &u8, length: usize) {
+  for i in 0..length {
+    (((dest transmute usize) + i) transmute &u8)~ = (((src transmute usize) + i) transmute &u8)~;
+  }
+}
+
+proc _da_next_capacity(cap: usize) -> usize {
+    if cap == 0 {
+        return 4;
+    }
+    return cap * 2;
+}
+
+proc da_append<T>(x: &DynArray<T>, item: T) {
+    if x~.length == x~.capacity {
+        let old_ptr = x~.buf;
+        x~.capacity = _da_next_capacity(x~.capacity);
+        // TODO: we need alignment parameter to malloc. oops lol
+        x~.buf = malloc(sizeof$<T>() * x~.capacity) transmute &unit transmute &T; 
+        assert(x~.buf transmute usize != 0);
+        _da_memcpy(x~.buf transmute &u8, old_ptr transmute &u8, x~.length * sizeof$<T>());
+    }
+    (((x~.buf transmute usize) + sizeof$<T>() * x~.length) transmute &T)~ = item;
+    x~.length = x~.length + 1;
+}
+
+proc da_get<T>(x: &DynArray<T>, index: usize) -> T{
+    return (((x~.buf transmute usize) + sizeof$<T>() * index) transmute &T)~;
+}
+
+proc da_init<T>() -> DynArray<T> {
+    return DynArray$<T> {
+        buf: 0 transmute &T,
+        length: 0,
+        capacity: 0,
+    };
+}
