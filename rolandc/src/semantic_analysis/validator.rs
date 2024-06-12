@@ -2497,9 +2497,9 @@ pub fn map_generic_to_concrete<T>(
             map_generic_to_concrete(type_param, generic_args, generic_parameters);
          }
       }
-      ExpressionType::Struct(_, struct_type_arguments) => {
-         for struct_type_argument in struct_type_arguments.iter_mut() {
-            map_generic_to_concrete(struct_type_argument, generic_args, generic_parameters);
+      ExpressionType::Struct(_, type_arguments) | ExpressionType::Union(_, type_arguments) => {
+         for type_argument in type_arguments.iter_mut() {
+            map_generic_to_concrete(type_argument, generic_args, generic_parameters);
          }
       }
       ExpressionType::GenericParam(x) => {

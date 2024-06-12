@@ -318,12 +318,12 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          );
       }
    }
-   for union_i in program.user_defined_types.union_info.values_mut() {
+   for (union_id, union_i) in program.user_defined_types.union_info.iter_mut() {
       for etn in union_i.field_types.values_mut() {
-         resolve_type::<()>(
+         resolve_type(
             &mut etn.e_type,
             &program.user_defined_type_name_table,
-            None,
+            program.templated_types.get(&UserDefinedTypeId::Union(union_id)),
             None,
             err_manager,
             interner,
