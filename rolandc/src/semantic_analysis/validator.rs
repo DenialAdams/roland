@@ -1621,8 +1621,6 @@ fn get_type(
          ExpressionType::CompileError
       }
       Expression::UnresolvedStructLiteral(provided_type, fields, base_ident_location) => {
-         // nocheckin - generic_args should match struct_info type parameter length
-         // have to duplicate checking in resolve_type which is kinda sadge
          for field_val in fields.iter().filter_map(|x| x.1) {
             type_expression(err_manager, field_val, validation_context);
          }
