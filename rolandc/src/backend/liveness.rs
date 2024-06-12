@@ -148,6 +148,7 @@ fn liveness(
 
    // Construct the final results
    let mut all_liveness: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
+   let mut current_live_variables = BitVec::new();
    for (rpo_index, node_id) in post_order(cfg).iter().copied().rev().enumerate() {
       if node_id == CFG_END_NODE {
          // slightly faster to skip this node which by construction has no instructions
@@ -156,7 +157,9 @@ fn liveness(
       let bb = &cfg.bbs[node_id];
       let s = &state[node_id];
       {
-         let mut current_live_variables = s.live_out.clone();
+         current_live_variables.clear();
+         current_live_variables.extend_from_bitslice(&s.live_out);
+         all_liveness.reserve(bb.instructions.len());
          for (i, instruction) in bb.instructions.iter().enumerate().rev() {
             let pi = ProgramIndex(rpo_index, i);
             let var_to_kill = match instruction {
@@ -178,7 +181,7 @@ fn liveness(
                }
                _ => None,
             };
-            all_liveness.insert(pi, current_live_variables.clone());
+            all_liveness.insert(pi, current_live_variables.clone().into_boxed_bitslice());
             if let Some(v) = var_to_kill {
                if let Some(di) = procedure_vars.get_index_of(&v) {
                   current_live_variables.set(di, false);

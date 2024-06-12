@@ -203,8 +203,8 @@ fn bb_id_to_label(bb_id: usize) -> String {
 }
 
 pub fn post_order(cfg: &Cfg) -> Vec<usize> {
-   let mut visited = HashSet::new();
-   let mut post_order = vec![];
+   let mut visited = HashSet::with_capacity(cfg.bbs.len());
+   let mut post_order = Vec::with_capacity(cfg.bbs.len());
    post_order_inner(&cfg.bbs, CFG_START_NODE, &mut visited, &mut post_order);
    post_order
 }
