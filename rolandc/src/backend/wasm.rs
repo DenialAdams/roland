@@ -1525,28 +1525,23 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          }
       }
       Expression::ProcedureCall { proc_expr, args } => {
-         if !matches!(
-            generation_context.ast.expressions[*proc_expr].exp_type,
-            Some(ExpressionType::ProcedurePointer { .. })
-         ) {
-            // shouldn't place anything on the stack
-            do_emit_and_load_lval(*proc_expr, generation_context);
-         }
-
-         for arg in args.iter() {
-            do_emit_and_load_lval(arg.expr, generation_context);
-         }
-
          match generation_context.ast.expressions[*proc_expr]
             .exp_type
             .as_ref()
             .unwrap()
          {
             ExpressionType::ProcedureItem(proc_name, _) => {
+               do_emit_and_load_lval(*proc_expr, generation_context);
+               for arg in args.iter() {
+                  do_emit_and_load_lval(arg.expr, generation_context);
+               }
                let idx = generation_context.procedure_indices.get_index_of(proc_name).unwrap() as u32;
                generation_context.active_fcn.instruction(&Instruction::Call(idx));
             }
             ExpressionType::ProcedurePointer { parameters, ret_type } => {
+               for arg in args.iter() {
+                  do_emit_and_load_lval(arg.expr, generation_context);
+               }
                do_emit_and_load_lval(*proc_expr, generation_context);
                let type_index = generation_context
                   .type_manager
