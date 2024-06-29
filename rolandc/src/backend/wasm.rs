@@ -1552,8 +1552,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                   .type_manager
                   .register_or_find_type(parameters.iter(), ret_type);
                generation_context.active_fcn.instruction(&Instruction::CallIndirect {
-                  ty: type_index,
-                  table: 0,
+                  type_index,
+                  table_index: 0,
                });
             }
             _ => unreachable!(),
