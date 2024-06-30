@@ -189,7 +189,7 @@ x transmute i32;
 
 ## Compilation Targets
 
-Roland currently supports compiling to two different flavors of WebAssembly.
+Roland currently supports compiling to two different flavors of WebAssembly, and x86_64 linux.
 
 ### WASI
 This is the default target. A `.wasm` file is emitted that can be run directly with `wasmtime`.
@@ -202,6 +202,10 @@ By providing the `--wasm4` flag to the roland compiler, you'll instead compile f
 When compiling for the WASM-4 target, all WASM-4 APIs will be automatically made available to you. No extra configuration is needed.
 
 An example WASM-4 game can be viewed here: https://github.com/DenialAdams/roland/blob/master/samples/wasm4/endless-runner/cart.rol
+
+### Linux x86_64
+
+By providing the `--amd64` flag to the roland compiler, a 64 bit ELF binary will be produced. By default the binary is completely static, directly using linux system calls. For this compilation target, you will need `qbe` and `as` installed on your system.
 
 ## Tooling
 
