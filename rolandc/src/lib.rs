@@ -20,6 +20,7 @@ mod dead_code_elimination;
 mod defer;
 mod disjoint_set;
 pub mod error_handling;
+mod escape_analysis;
 mod expression_hoisting;
 mod imports;
 pub mod interner;

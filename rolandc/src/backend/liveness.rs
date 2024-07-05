@@ -1,7 +1,7 @@
 use bitvec::prelude::*;
 use indexmap::{IndexMap, IndexSet};
 
-use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE};
+use super::linearize::{Cfg, CfgInstruction};
 use crate::backend::linearize::post_order;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, VariableId};
@@ -115,12 +115,12 @@ fn liveness(
    while let Some(node_id) = worklist.pop() {
       // Update live_out
       {
-         let mut new_live_out = bitbox![0; procedure_vars.len()];
+         let mut new_live_out = std::mem::replace(&mut state[node_id].live_out, bitbox![0; 0]);
+         new_live_out.fill(false);
          for successor in cfg.bbs[node_id].successors() {
             let successor_s = &state[successor];
             new_live_out |= &successor_s.live_in;
          }
-
          state[node_id].live_out = new_live_out;
       }
 
@@ -150,42 +150,36 @@ fn liveness(
    let mut all_liveness: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
    let mut current_live_variables = BitVec::new();
    for (rpo_index, node_id) in post_order(cfg).iter().copied().rev().enumerate() {
-      if node_id == CFG_END_NODE {
-         // slightly faster to skip this node which by construction has no instructions
-         continue;
-      }
       let bb = &cfg.bbs[node_id];
       let s = &state[node_id];
-      {
-         current_live_variables.clear();
-         current_live_variables.extend_from_bitslice(&s.live_out);
-         all_liveness.reserve(bb.instructions.len());
-         for (i, instruction) in bb.instructions.iter().enumerate().rev() {
-            let pi = ProgramIndex(rpo_index, i);
-            let var_to_kill = match instruction {
-               CfgInstruction::Assignment(lhs, rhs) => {
-                  update_live_variables_for_expr(*rhs, &mut current_live_variables, ast, procedure_vars);
-                  update_live_variables_for_expr(*lhs, &mut current_live_variables, ast, procedure_vars);
-                  if let Expression::Variable(v) = ast[*lhs].expression {
-                     Some(v)
-                  } else {
-                     None
-                  }
-               }
-               CfgInstruction::Expression(expr)
-               | CfgInstruction::Return(expr)
-               | CfgInstruction::IfElse(expr, _, _, _)
-               | CfgInstruction::ConditionalJump(expr, _, _) => {
-                  update_live_variables_for_expr(*expr, &mut current_live_variables, ast, procedure_vars);
+      current_live_variables.clear();
+      current_live_variables.extend_from_bitslice(&s.live_out);
+      all_liveness.reserve(bb.instructions.len());
+      for (i, instruction) in bb.instructions.iter().enumerate().rev() {
+         let pi = ProgramIndex(rpo_index, i);
+         let var_to_kill = match instruction {
+            CfgInstruction::Assignment(lhs, rhs) => {
+               update_live_variables_for_expr(*rhs, &mut current_live_variables, ast, procedure_vars);
+               update_live_variables_for_expr(*lhs, &mut current_live_variables, ast, procedure_vars);
+               if let Expression::Variable(v) = ast[*lhs].expression {
+                  Some(v)
+               } else {
                   None
                }
-               _ => None,
-            };
-            all_liveness.insert(pi, current_live_variables.clone().into_boxed_bitslice());
-            if let Some(v) = var_to_kill {
-               if let Some(di) = procedure_vars.get_index_of(&v) {
-                  current_live_variables.set(di, false);
-               }
+            }
+            CfgInstruction::Expression(expr)
+            | CfgInstruction::Return(expr)
+            | CfgInstruction::IfElse(expr, _, _, _)
+            | CfgInstruction::ConditionalJump(expr, _, _) => {
+               update_live_variables_for_expr(*expr, &mut current_live_variables, ast, procedure_vars);
+               None
+            }
+            _ => None,
+         };
+         all_liveness.insert(pi, current_live_variables.clone().into_boxed_bitslice());
+         if let Some(v) = var_to_kill {
+            if let Some(di) = procedure_vars.get_index_of(&v) {
+               current_live_variables.set(di, false);
             }
          }
       }
