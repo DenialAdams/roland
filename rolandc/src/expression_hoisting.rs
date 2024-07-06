@@ -464,8 +464,11 @@ fn vv_expr(
             vv_expr(expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
          }
       }
-      Expression::UnaryOperator(_, expr) | Expression::FieldAccess(_, expr) | Expression::Cast { expr, .. } => {
+      Expression::UnaryOperator(_, expr) | Expression::Cast { expr, .. } => {
          vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
+      }
+      Expression::FieldAccess(_, expr) => {
+         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, true);
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter().copied() {
