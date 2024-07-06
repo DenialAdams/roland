@@ -79,7 +79,7 @@ fn mark_escaping_vars_expr(
             )
          {
             if let Expression::Variable(v) = ast[*expr].expression {
-               // Crucial here that we don't accidentally downgrade UnknownLifetime
+               // Crucial here that we don't accidentally downgrade MustLiveOnStackAlone
                escaping_vars.entry(v).or_insert(EscapingKind::MustLiveOnStack);
             }
          }
