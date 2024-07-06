@@ -446,18 +446,11 @@ fn vv_expr(
          vv_expr(*lhs, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
          vv_expr(*rhs, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
       }
-      Expression::UnaryOperator(UnOp::AddressOf, expr) => {
-         vv_expr(
-            *expr,
-            ctx,
-            expressions,
-            current_stmt,
-            ParentCtx::Expr,
-            expressions[*expr].expression.is_lvalue(expressions, ctx.global_info) || is_lhs_context,
-         );
-      }
       Expression::UnaryOperator(UnOp::Dereference, expr) => {
          vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
+      }
+      Expression::FieldAccess(_, expr) | Expression::UnaryOperator(UnOp::AddressOf, expr) => {
+         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, true);
       }
       Expression::StructLiteral(_, field_exprs) => {
          for expr in field_exprs.values().flatten().copied() {
@@ -466,9 +459,6 @@ fn vv_expr(
       }
       Expression::UnaryOperator(_, expr) | Expression::Cast { expr, .. } => {
          vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
-      }
-      Expression::FieldAccess(_, expr) => {
-         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, true);
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter().copied() {
