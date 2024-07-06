@@ -1,0 +1,11 @@
+struct X { y: usize }
+
+proc main() {
+   // This test demonstrates that we can't propagate a constant value into a transmute
+   let x: usize = 10;
+   let y = x transmute X;
+   println(uint_to_string(y.y as u64));
+}
+__END__
+run:
+10
