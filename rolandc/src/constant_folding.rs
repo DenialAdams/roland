@@ -1041,53 +1041,64 @@ impl Literal {
    }
 
    fn do_as(self, target_type: &ExpressionType, target: Target) -> Option<Expression> {
-      Some(match (self, target_type) {
-         (Literal::Int64(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes(target) >= 8 => {
+      fn make_int_type_concrete(e: &ExpressionType, target: Target) -> &ExpressionType {
+         match *e {
+            USIZE_TYPE if target.pointer_width() == 8 => &U64_TYPE,
+            USIZE_TYPE if target.pointer_width() == 4 => &U32_TYPE,
+            ISIZE_TYPE if target.pointer_width() == 8 => &I64_TYPE,
+            ISIZE_TYPE if target.pointer_width() == 4 => &I32_TYPE,
+            _ => e,
+         }
+      }
+      Some(match (self, make_int_type_concrete(target_type, target)) {
+         // Extend
+         (Literal::Int64(i), &ExpressionType::Int(tt)) if tt.signed && tt.width.as_num_bytes(target) >= 8 => {
             Expression::IntLiteral {
                val: i as u64,
                synthetic: true,
             }
          }
-         (Literal::Int32(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes(target) >= 4 => {
+         (Literal::Int32(i), &ExpressionType::Int(tt)) if tt.signed && tt.width.as_num_bytes(target) >= 4 => {
             Expression::IntLiteral {
                val: i64::from(i) as u64,
                synthetic: true,
             }
          }
-         (Literal::Int16(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes(target) >= 2 => {
+         (Literal::Int16(i), &ExpressionType::Int(tt)) if tt.signed && tt.width.as_num_bytes(target) >= 2 => {
             Expression::IntLiteral {
                val: i64::from(i) as u64,
                synthetic: true,
             }
          }
-         (Literal::Int8(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
+         (Literal::Int8(i), &ExpressionType::Int(tt)) if tt.signed => Expression::IntLiteral {
             val: i64::from(i) as u64,
             synthetic: true,
          },
-         (Literal::Uint64(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes(target) >= 8 => {
+         (Literal::Uint64(i), &ExpressionType::Int(tt)) if !tt.signed && tt.width.as_num_bytes(target) >= 8 => {
             Expression::IntLiteral {
                val: i,
                synthetic: true,
             }
          }
-         (Literal::Uint32(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes(target) >= 4 => {
+         (Literal::Uint32(i), &ExpressionType::Int(tt)) if !tt.signed && tt.width.as_num_bytes(target) >= 4 => {
             Expression::IntLiteral {
                val: u64::from(i),
                synthetic: true,
             }
          }
-         (Literal::Uint16(i), &ExpressionType::Int(tt)) if tt.width.as_num_bytes(target) >= 2 => {
+         (Literal::Uint16(i), &ExpressionType::Int(tt)) if !tt.signed && tt.width.as_num_bytes(target) >= 2 => {
             Expression::IntLiteral {
                val: u64::from(i),
                synthetic: true,
             }
          }
-         (Literal::Uint8(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
+         (Literal::Uint8(i), &ExpressionType::Int(tt)) if !tt.signed => Expression::IntLiteral {
             val: u64::from(i),
             synthetic: true,
          },
-         (Literal::Float64(f), &F32_TYPE) => Expression::FloatLiteral(f64::from(f as f32)),
          (Literal::Float32(f), &F64_TYPE) => Expression::FloatLiteral(f64::from(f)),
+         // Truncate
+         (Literal::Float64(f), &F32_TYPE) => Expression::FloatLiteral(f64::from(f as f32)),
          (Literal::Uint64(i), &U32_TYPE) => Expression::IntLiteral {
             val: u64::from(i as u32),
             synthetic: true,
