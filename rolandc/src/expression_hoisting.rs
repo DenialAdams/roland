@@ -452,6 +452,20 @@ fn vv_expr(
       Expression::FieldAccess(_, expr) | Expression::UnaryOperator(UnOp::AddressOf, expr) => {
          vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, true);
       }
+      Expression::Cast {
+         cast_type: CastType::Transmute,
+         expr,
+         target_type,
+      } => {
+         vv_expr(
+            *expr,
+            ctx,
+            expressions,
+            current_stmt,
+            ParentCtx::Expr,
+            !is_reinterpretable_transmute(expressions[*expr].exp_type.as_ref().unwrap(), target_type),
+         );
+      }
       Expression::StructLiteral(_, field_exprs) => {
          for expr in field_exprs.values().flatten().copied() {
             vv_expr(expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
