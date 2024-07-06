@@ -1,0 +1,22 @@
+struct S {
+   x: [u32; 2],
+}
+
+proc main() {
+   // This test presents a situation where copy propagating y would give a wrong answer
+   // tricky because we must be vigilant for both partial updates and escaping
+   let y = get_y();
+   let x = y;
+   update_val(&y.x[1]);
+   println(uint_to_string(x.x[1] as u64));
+}
+proc get_y() -> S {
+   return S { x: [111, 115] };
+}
+
+proc update_val(x: &u32) {
+   x~ = 222;
+}
+__END__
+run:
+115
