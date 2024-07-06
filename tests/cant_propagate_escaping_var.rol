@@ -1,0 +1,18 @@
+proc main() {
+   // This test presents a situation where copy propagating y would give a wrong answer
+   let y = get_y();
+   let x = y;
+   update_val(&y);
+   println(uint_to_string(x as u64));
+}
+
+proc get_y() -> u32 {
+   return 111;
+}
+
+proc update_val(x: &u32) {
+   x~ = 222;
+}
+__END__
+run:
+111

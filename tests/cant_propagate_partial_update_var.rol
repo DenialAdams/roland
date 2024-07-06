@@ -1,0 +1,23 @@
+struct S {
+   x: u64,
+}
+
+proc main() {
+   // This test presents a situation where copy propagating y would give a wrong answer
+   let y = get_y();
+   let x = y;
+   y.x = 222;
+   print_inner(x);
+}
+
+
+proc get_y() -> S {
+   return S { x: 111 };
+}
+
+proc print_inner(x: S) {
+   println(uint_to_string(x.x));
+}
+__END__
+run:
+111
