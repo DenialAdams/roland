@@ -342,12 +342,18 @@ fn test_result(
 
       std::fs::remove_file(&prog_path).unwrap();
 
-      if amd64 && !preserve_artifacts {
-         prog_path.set_extension("o");
+      if !amd64 && !preserve_artifacts {
+         prog_path.set_extension("wat");
          std::fs::remove_file(&prog_path).unwrap();
+      } else if !preserve_artifacts {
          prog_path.set_extension("s");
          std::fs::remove_file(&prog_path).unwrap();
          prog_path.set_extension("ssa");
+         std::fs::remove_file(&prog_path).unwrap();
+      }
+
+      if amd64 {
+         prog_path.set_extension("o");
          std::fs::remove_file(&prog_path).unwrap();
          let syscall_path = format!("{}_syscall.s", prog_path.file_stem().unwrap().to_string_lossy());
          prog_path.set_file_name(syscall_path);
