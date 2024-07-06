@@ -403,7 +403,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       .unwrap();
    }
 
-   constant_propagation::propagate_constants(&mut ctx.program);
+   constant_propagation::propagate_constants(&mut ctx.program, &ctx.interner, config.target);
 
    if config.dump_debugging_info {
       pp::pp(

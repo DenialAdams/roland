@@ -19,7 +19,6 @@ fn fold_expr_id(
    ast: &mut AstPool,
    procedures: &SlotMap<ProcedureId, ProcedureNode>,
    user_defined_types: &UserDefinedTypeInfo,
-   reaching_values: &HashMap<VariableId, ExpressionId>,
    interner: &Interner,
    target: Target,
 ) {
@@ -27,7 +26,7 @@ fn fold_expr_id(
       ast,
       procedures,
       user_defined_types,
-      const_replacements: reaching_values,
+      const_replacements: &HashMap::new(),
       current_proc_name: None,
       target,
    };
@@ -53,54 +52,60 @@ fn find_reaching_val(x: Definition, body: &Cfg, rpo: &[usize], exprs: &Expressio
 
 fn propagate_vals(
    instruction: &CfgInstruction,
-   ast: &mut ExpressionPool,
+   ast: &mut AstPool,
    reaching_values: &HashMap<VariableId, ExpressionId>,
+   procedures: &SlotMap<ProcedureId, ProcedureNode>,
+   user_defined_types: &UserDefinedTypeInfo,
+   interner: &Interner,
+   target: Target,
 ) {
    fn propagate_val_expr(
       e: ExpressionId,
       ast: &mut ExpressionPool,
       reaching_values: &HashMap<VariableId, ExpressionId>,
       is_lhs_context: bool,
-   ) {
+   ) -> bool {
+      let mut propagated_any = false;
       let mut the_expression = std::mem::replace(&mut ast[e].expression, Expression::UnitLiteral);
       match &the_expression {
          Expression::Variable(v) => {
             if !is_lhs_context {
                if let Some(replacement) = reaching_values.get(v) {
                   the_expression = ast[*replacement].expression.clone();
+                  propagated_any = true;
                }
             }
          }
          Expression::UnaryOperator(UnOp::AddressOf, child) => {
-            propagate_val_expr(*child, ast, reaching_values, true);
+            propagated_any |= propagate_val_expr(*child, ast, reaching_values, true);
          }
          Expression::UnaryOperator(UnOp::Dereference, child) => {
-            propagate_val_expr(*child, ast, reaching_values, false);
+            propagated_any |= propagate_val_expr(*child, ast, reaching_values, false);
          }
          Expression::UnaryOperator(_, child) | Expression::Cast { expr: child, .. } => {
-            propagate_val_expr(*child, ast, reaching_values, is_lhs_context);
+            propagated_any |= propagate_val_expr(*child, ast, reaching_values, is_lhs_context);
          }
          Expression::ArrayIndex { array, index } => {
-            propagate_val_expr(*array, ast, reaching_values, true);
-            propagate_val_expr(*index, ast, reaching_values, false);
+            propagated_any |= propagate_val_expr(*array, ast, reaching_values, true);
+            propagated_any |= propagate_val_expr(*index, ast, reaching_values, false);
          }
          Expression::ProcedureCall { proc_expr, args } => {
-            propagate_val_expr(*proc_expr, ast, reaching_values, is_lhs_context);
+            propagated_any |= propagate_val_expr(*proc_expr, ast, reaching_values, is_lhs_context);
             for arg in args.iter() {
-               propagate_val_expr(arg.expr, ast, reaching_values, is_lhs_context);
+               propagated_any |= propagate_val_expr(arg.expr, ast, reaching_values, is_lhs_context);
             }
          }
          Expression::BinaryOperator { lhs, rhs, .. } => {
-            propagate_val_expr(*lhs, ast, reaching_values, true);
-            propagate_val_expr(*rhs, ast, reaching_values, false);
+            propagated_any |= propagate_val_expr(*lhs, ast, reaching_values, true);
+            propagated_any |= propagate_val_expr(*rhs, ast, reaching_values, false);
          }
          Expression::FieldAccess(_, base) => {
-            propagate_val_expr(*base, ast, reaching_values, true);
+            propagated_any |= propagate_val_expr(*base, ast, reaching_values, true);
          }
          Expression::IfX(a, b, c) => {
-            propagate_val_expr(*a, ast, reaching_values, is_lhs_context);
-            propagate_val_expr(*b, ast, reaching_values, is_lhs_context);
-            propagate_val_expr(*c, ast, reaching_values, is_lhs_context);
+            propagated_any |= propagate_val_expr(*a, ast, reaching_values, is_lhs_context);
+            propagated_any |= propagate_val_expr(*b, ast, reaching_values, is_lhs_context);
+            propagated_any |= propagate_val_expr(*c, ast, reaching_values, is_lhs_context);
          }
          Expression::BoolLiteral(_)
          | Expression::StringLiteral(_)
@@ -117,17 +122,24 @@ fn propagate_vals(
          | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
       }
       ast[e].expression = the_expression;
+      propagated_any
    }
    match instruction {
       CfgInstruction::Assignment(lhs, rhs) => {
-         propagate_val_expr(*lhs, ast, reaching_values, true);
-         propagate_val_expr(*rhs, ast, reaching_values, false);
+         if propagate_val_expr(*lhs, &mut ast.expressions, reaching_values, true) {
+            fold_expr_id(*lhs, ast, procedures, user_defined_types, interner, target);
+         }
+         if propagate_val_expr(*rhs, &mut ast.expressions, reaching_values, false) {
+            fold_expr_id(*rhs, ast, procedures, user_defined_types, interner, target);
+         }
       }
       CfgInstruction::Expression(expr)
       | CfgInstruction::Return(expr)
       | CfgInstruction::IfElse(expr, _, _, _)
       | CfgInstruction::ConditionalJump(expr, _, _) => {
-         propagate_val_expr(*expr, ast, reaching_values, false);
+         if propagate_val_expr(*expr, &mut ast.expressions, reaching_values, false) {
+            fold_expr_id(*expr, ast, procedures, user_defined_types, interner, target);
+         }
       }
       CfgInstruction::Break
       | CfgInstruction::Continue
@@ -137,7 +149,7 @@ fn propagate_vals(
    }
 }
 
-pub fn propagate_constants(program: &mut Program) {
+pub fn propagate_constants(program: &mut Program, interner: &Interner, target: Target) {
    for proc in program.procedure_bodies.values() {
       let mut escaping_vars = HashMap::new();
       escape_analysis::mark_escaping_vars_cfg(&proc.cfg, &mut escaping_vars, &program.ast.expressions);
@@ -175,9 +187,15 @@ pub fn propagate_constants(program: &mut Program) {
                }
             }
 
-            propagate_vals(instr, &mut program.ast.expressions, &reaching_values);
-            // Constant fold the current instruction with current reaching values map
-            // It might succeed, might not
+            propagate_vals(
+               instr,
+               &mut program.ast,
+               &reaching_values,
+               &program.procedures,
+               &program.user_defined_types,
+               interner,
+               target,
+            );
 
             // BONUS TODO if we can now constant fold a conditional jump, should rewrite it to unconditional jump,
             // then need dirty bit because we must recompute CFG predecessors when we are done
