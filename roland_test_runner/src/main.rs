@@ -344,7 +344,8 @@ fn test_result(
 
       if !amd64 && !preserve_artifacts {
          prog_path.set_extension("wat");
-         std::fs::remove_file(&prog_path).unwrap();
+         // it might not exist.
+         let _ = std::fs::remove_file(&prog_path);
       } else if !preserve_artifacts {
          prog_path.set_extension("s");
          std::fs::remove_file(&prog_path).unwrap();
