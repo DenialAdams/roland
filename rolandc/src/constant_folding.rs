@@ -49,7 +49,7 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
 
    for p_static in program.non_stack_var_info.values().filter(|x| x.initializer.is_some()) {
       if let Some(v) = p_static.initializer.as_ref().copied() {
-         try_fold_and_replace_expr(v, err_manager, &mut folding_context, interner);
+         try_fold_and_replace_expr(v, &mut Some(err_manager), &mut folding_context, interner);
          let v = &folding_context.ast.expressions[v];
          if !is_const(&v.expression, &folding_context.ast.expressions) {
             rolandc_error!(
@@ -91,12 +91,12 @@ pub fn fold_statement(
    );
    match &the_statement {
       Statement::Assignment(lhs_expr, rhs_expr) => {
-         try_fold_and_replace_expr(*lhs_expr, err_manager, folding_context, interner);
-         try_fold_and_replace_expr(*rhs_expr, err_manager, folding_context, interner);
+         try_fold_and_replace_expr(*lhs_expr, &mut Some(err_manager), folding_context, interner);
+         try_fold_and_replace_expr(*rhs_expr, &mut Some(err_manager), folding_context, interner);
       }
       Statement::Break | Statement::Continue => (),
       Statement::IfElse(if_expr, if_block, else_statement) => {
-         try_fold_and_replace_expr(*if_expr, err_manager, folding_context, interner);
+         try_fold_and_replace_expr(*if_expr, &mut Some(err_manager), folding_context, interner);
          fold_block(if_block, err_manager, folding_context, interner);
          fold_statement(*else_statement, err_manager, folding_context, interner);
 
@@ -112,7 +112,7 @@ pub fn fold_statement(
          fold_block(block, err_manager, folding_context, interner);
       }
       Statement::Expression(expr_id) => {
-         try_fold_and_replace_expr(*expr_id, err_manager, folding_context, interner);
+         try_fold_and_replace_expr(*expr_id, &mut Some(err_manager), folding_context, interner);
 
          let expression = &folding_context.ast.expressions[*expr_id];
          if !matches!(expression.expression, Expression::ProcedureCall { .. }) {
@@ -124,7 +124,7 @@ pub fn fold_statement(
          }
       }
       Statement::Return(expr) => {
-         try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
+         try_fold_and_replace_expr(*expr, &mut Some(err_manager), folding_context, interner);
       }
       Statement::VariableDeclaration { .. } | Statement::For { .. } | Statement::While(_, _) | Statement::Defer(_) => {
          unreachable!()
@@ -135,7 +135,7 @@ pub fn fold_statement(
 
 pub fn try_fold_and_replace_expr(
    node: ExpressionId,
-   err_manager: &mut ErrorManager,
+   err_manager: &mut Option<&mut ErrorManager>,
    folding_context: &mut FoldingContext,
    interner: &Interner,
 ) {
@@ -147,7 +147,7 @@ pub fn try_fold_and_replace_expr(
 #[must_use]
 fn fold_expr(
    expr_index: ExpressionId,
-   err_manager: &mut ErrorManager,
+   err_manager: &mut Option<&mut ErrorManager>,
    folding_context: &mut FoldingContext,
    interner: &Interner,
 ) -> Option<Expression> {
@@ -167,7 +167,7 @@ fn fold_expr(
 
 fn fold_expr_inner(
    expr: &ExpressionNode,
-   err_manager: &mut ErrorManager,
+   err_manager: &mut Option<&mut ErrorManager>,
    folding_context: &mut FoldingContext,
    interner: &Interner,
 ) -> Option<Expression> {
@@ -192,13 +192,15 @@ fn fold_expr_inner(
          };
 
          if v >= u64::from(len) {
-            rolandc_error!(
-               err_manager,
-               expr_to_fold_location,
-               "At runtime, index will be {}, which is out of bounds for the array of length {}",
-               v,
-               len,
-            );
+            if let Some(em) = err_manager {
+               rolandc_error!(
+                  em,
+                  expr_to_fold_location,
+                  "At runtime, index will be {}, which is out of bounds for the array of length {}",
+                  v,
+                  len,
+               );
+            }
          } else if is_const(&array.expression, &folding_context.ast.expressions) {
             let Expression::ArrayLiteral(array_elems) = &array.expression else {
                unreachable!();
@@ -270,35 +272,37 @@ fn fold_expr_inner(
          };
 
          if overflowing_literal {
-            let signed = match expr_type {
-               ExpressionType::Int(x) => x.signed,
-               _ => unreachable!(),
-            };
+            if let Some(em) = err_manager {
+               let signed = match expr_type {
+                  ExpressionType::Int(x) => x.signed,
+                  _ => unreachable!(),
+               };
 
-            if signed {
-               rolandc_error!(
-                  err_manager,
-                  expr_to_fold_location,
-                  "Literal of type {} has value `{}` which would immediately over/underflow",
-                  expr_type.as_roland_type_info_notv(
-                     interner,
-                     folding_context.user_defined_types,
-                     folding_context.procedures
-                  ),
-                  val as i64
-               );
-            } else {
-               rolandc_error!(
-                  err_manager,
-                  expr_to_fold_location,
-                  "Literal of type {} has value `{}` which would immediately over/underflow",
-                  expr_type.as_roland_type_info_notv(
-                     interner,
-                     folding_context.user_defined_types,
-                     folding_context.procedures
-                  ),
-                  val
-               );
+               if signed {
+                  rolandc_error!(
+                     em,
+                     expr_to_fold_location,
+                     "Literal of type {} has value `{}` which would immediately over/underflow",
+                     expr_type.as_roland_type_info_notv(
+                        interner,
+                        folding_context.user_defined_types,
+                        folding_context.procedures
+                     ),
+                     val as i64
+                  );
+               } else {
+                  rolandc_error!(
+                     em,
+                     expr_to_fold_location,
+                     "Literal of type {} has value `{}` which would immediately over/underflow",
+                     expr_type.as_roland_type_info_notv(
+                        interner,
+                        folding_context.user_defined_types,
+                        folding_context.procedures
+                     ),
+                     val
+                  );
+               }
             }
          }
 
@@ -370,11 +374,13 @@ fn fold_expr_inner(
             // First we handle the non-commutative cases
             match (rhs, operator) {
                (Some(x), BinOp::Divide) if x.is_int_zero() => {
-                  rolandc_error!(
-                     err_manager,
-                     expr_to_fold_location,
-                     "During constant folding, got a divide by zero",
-                  );
+                  if let Some(em) = err_manager {
+                     rolandc_error!(
+                        em,
+                        expr_to_fold_location,
+                        "During constant folding, got a divide by zero",
+                     );
+                  }
                   return None;
                }
                (Some(x), BinOp::Divide) if x.is_int_one() => {
@@ -468,11 +474,13 @@ fn fold_expr_inner(
                if let Some(v) = lhs.checked_add(rhs) {
                   Some(v)
                } else {
-                  rolandc_error!(
-                     err_manager,
-                     expr_to_fold_location,
-                     "During constant folding, got overflow while adding",
-                  );
+                  if let Some(em) = err_manager {
+                     rolandc_error!(
+                        em,
+                        expr_to_fold_location,
+                        "During constant folding, got overflow while adding",
+                     );
+                  }
                   None
                }
             }
@@ -480,11 +488,13 @@ fn fold_expr_inner(
                if let Some(v) = lhs.checked_sub(rhs) {
                   Some(v)
                } else {
-                  rolandc_error!(
-                     err_manager,
-                     expr_to_fold_location,
-                     "During constant folding, got overflow while subtracting",
-                  );
+                  if let Some(em) = err_manager {
+                     rolandc_error!(
+                        em,
+                        expr_to_fold_location,
+                        "During constant folding, got overflow while subtracting",
+                     );
+                  }
                   None
                }
             }
@@ -492,11 +502,13 @@ fn fold_expr_inner(
                if let Some(v) = lhs.checked_mul(rhs) {
                   Some(v)
                } else {
-                  rolandc_error!(
-                     err_manager,
-                     expr_to_fold_location,
-                     "During constant folding, got overflow while multiplying",
-                  );
+                  if let Some(em) = err_manager {
+                     rolandc_error!(
+                        em,
+                        expr_to_fold_location,
+                        "During constant folding, got overflow while multiplying",
+                     );
+                  }
                   None
                }
             }
@@ -512,11 +524,13 @@ fn fold_expr_inner(
                if let Some(v) = lhs.checked_rem(rhs) {
                   Some(v)
                } else {
-                  rolandc_error!(
-                     err_manager,
-                     expr_to_fold_location,
-                     "During constant folding, got a divide by zero",
-                  );
+                  if let Some(em) = err_manager {
+                     rolandc_error!(
+                        em,
+                        expr_to_fold_location,
+                        "During constant folding, got a divide by zero",
+                     );
+                  }
                   None
                }
             }
@@ -533,11 +547,13 @@ fn fold_expr_inner(
                if let Some(v) = lhs.checked_shl(rhs) {
                   Some(v)
                } else {
-                  rolandc_error!(
-                     err_manager,
-                     expr_to_fold_location,
-                     "During constant folding, got a bad left shift",
-                  );
+                  if let Some(em) = err_manager {
+                     rolandc_error!(
+                        em,
+                        expr_to_fold_location,
+                        "During constant folding, got a bad left shift",
+                     );
+                  }
                   None
                }
             }
@@ -545,11 +561,13 @@ fn fold_expr_inner(
                if let Some(v) = lhs.checked_shr(rhs) {
                   Some(v)
                } else {
-                  rolandc_error!(
-                     err_manager,
-                     expr_to_fold_location,
-                     "During constant folding, got a bad right shift",
-                  );
+                  if let Some(em) = err_manager {
+                     rolandc_error!(
+                        em,
+                        expr_to_fold_location,
+                        "During constant folding, got a bad right shift",
+                     );
+                  }
                   None
                }
             }
@@ -572,17 +590,19 @@ fn fold_expr_inner(
             {
                if *x > (i64::MAX as u64 + 1) {
                   // This negation is impossible, so have to die
-                  rolandc_error!(
-                     err_manager,
-                     expr_to_fold_location,
-                     "Literal of type {} has value `-{}` which would immediately underflow",
-                     f_expr.exp_type.as_ref().unwrap().as_roland_type_info_notv(
-                        interner,
-                        folding_context.user_defined_types,
-                        folding_context.procedures
-                     ),
-                     *x,
-                  );
+                  if let Some(em) = err_manager {
+                     rolandc_error!(
+                        em,
+                        expr_to_fold_location,
+                        "Literal of type {} has value `-{}` which would immediately underflow",
+                        f_expr.exp_type.as_ref().unwrap().as_roland_type_info_notv(
+                           interner,
+                           folding_context.user_defined_types,
+                           folding_context.procedures
+                        ),
+                        *x,
+                     );
+                  }
                   return None;
                }
                let val = (*x as i64).wrapping_neg() as u64;
@@ -606,11 +626,13 @@ fn fold_expr_inner(
                   if let Some(v) = literal.checked_negate() {
                      Some(v)
                   } else {
-                     rolandc_error!(
-                        err_manager,
-                        expr_to_fold_location,
-                        "During constant folding, tried to negate the minimum value of a signed integer"
-                     );
+                     if let Some(em) = err_manager {
+                        rolandc_error!(
+                           em,
+                           expr_to_fold_location,
+                           "During constant folding, tried to negate the minimum value of a signed integer"
+                        );
+                     }
                      None
                   }
                }
@@ -786,14 +808,15 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
 }
 
 pub fn is_non_aggregate_const(expr: &Expression) -> bool {
-   matches!(expr,
+   matches!(
+      expr,
       Expression::BoundFcnLiteral(_, _)
-      | Expression::UnitLiteral
-      | Expression::EnumLiteral(_, _)
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_)
-      | Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_)
+         | Expression::UnitLiteral
+         | Expression::EnumLiteral(_, _)
+         | Expression::IntLiteral { .. }
+         | Expression::FloatLiteral(_)
+         | Expression::BoolLiteral(_)
+         | Expression::StringLiteral(_)
    )
 }
 

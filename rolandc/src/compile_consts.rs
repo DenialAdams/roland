@@ -42,7 +42,7 @@ fn fold_expr_id(
       current_proc_name: None,
       target,
    };
-   constant_folding::try_fold_and_replace_expr(expr_id, err_manager, &mut fc, interner);
+   constant_folding::try_fold_and_replace_expr(expr_id, &mut Some(err_manager), &mut fc, interner);
 }
 
 pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &mut ErrorManager, target: Target) {

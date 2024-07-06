@@ -16,6 +16,7 @@
 mod backend;
 mod compile_consts;
 mod constant_folding;
+mod constant_propagation;
 mod dead_code_elimination;
 mod defer;
 mod disjoint_set;
@@ -318,15 +319,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       }
    }
 
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp.rol").unwrap(),
-      )
-      .unwrap();
-   }
-
    defer::process_defer_statements(&mut ctx.program);
 
    definite_assignment::ensure_variables_definitely_assigned(&ctx.program, &mut ctx.err_manager);
@@ -400,6 +392,26 @@ pub fn compile<'a, FR: FileResolver<'a>>(
          old_body.statements.clear();
       }
       ctx.program.ast.statements.clear();
+   }
+
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp_before.rol").unwrap(),
+      )
+      .unwrap();
+   }
+
+   constant_propagation::propagate_constants(&mut ctx.program);
+
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp_after.rol").unwrap(),
+      )
+      .unwrap();
    }
 
    // It would be nice to run this before deleting unreachable procedures,
