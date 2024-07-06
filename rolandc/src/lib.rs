@@ -43,6 +43,7 @@ use std::borrow::Cow;
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 
+use constant_propagation::prune_dead_branches;
 use error_handling::error_handling_macros::rolandc_error;
 use error_handling::ErrorManager;
 use expression_hoisting::HoistingMode;
@@ -404,6 +405,10 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    }
 
    constant_propagation::propagate_constants(&mut ctx.program, &ctx.interner, config.target);
+
+   if config.target == Target::Qbe {
+      prune_dead_branches(&mut ctx.program);
+   }
 
    if config.dump_debugging_info {
       pp::pp(

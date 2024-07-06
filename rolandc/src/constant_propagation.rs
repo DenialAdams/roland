@@ -149,6 +149,26 @@ fn propagate_vals(
    }
 }
 
+pub fn prune_dead_branches(program: &mut Program) {
+   for proc in program.procedure_bodies.values_mut() {
+      for i in post_order(&proc.cfg).iter().rev() {
+         let bb = &mut proc.cfg.bbs[*i];
+         let (jump_target, dead_target) =
+            if let Some(CfgInstruction::ConditionalJump(cond, then_target, else_target)) = bb.instructions.last_mut() {
+               match program.ast.expressions[*cond].expression {
+                  Expression::BoolLiteral(true) => (*then_target, *else_target),
+                  Expression::BoolLiteral(false) => (*else_target, *then_target),
+                  _ => continue,
+               }
+            } else {
+               continue;
+            };
+         *bb.instructions.last_mut().unwrap() = CfgInstruction::Jump(jump_target);
+         proc.cfg.bbs[dead_target].predecessors.remove(i);
+      }
+   }
+}
+
 pub fn propagate_constants(program: &mut Program, interner: &Interner, target: Target) {
    for proc in program.procedure_bodies.values() {
       let mut escaping_vars = HashMap::new();
@@ -196,9 +216,6 @@ pub fn propagate_constants(program: &mut Program, interner: &Interner, target: T
                interner,
                target,
             );
-
-            // BONUS TODO if we can now constant fold a conditional jump, should rewrite it to unconditional jump,
-            // then need dirty bit because we must recompute CFG predecessors when we are done
          }
       }
    }
