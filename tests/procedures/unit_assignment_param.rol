@@ -1,6 +1,7 @@
 proc main() {
    let x = unit();
    foo(x);
+   foo(unit());
    println("hello");
 }
 

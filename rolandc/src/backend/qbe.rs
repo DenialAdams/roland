@@ -1082,12 +1082,12 @@ fn write_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &mut Gen
       _ => unreachable!(),
    };
    for arg in args.iter() {
-      let val = expr_to_val(arg.expr, ctx);
       if let Some(arg_type) = roland_type_to_abi_type(
          ctx.ast.expressions[arg.expr].exp_type.as_ref().unwrap(),
          ctx.udt,
          &ctx.aggregate_defs,
       ) {
+         let val = expr_to_val(arg.expr, ctx);
          write!(ctx.buf, "{} {}, ", arg_type, val).unwrap();
       }
    }

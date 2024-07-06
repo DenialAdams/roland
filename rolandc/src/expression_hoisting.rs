@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::constant_folding::expression_could_have_side_effects;
+use crate::constant_folding::{expression_could_have_side_effects, is_non_aggregate_const};
 use crate::interner::Interner;
 use crate::parse::{
    AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement,
@@ -590,15 +590,7 @@ fn vv_expr(
             || parent_ctx == ParentCtx::ExprStmt;
          let is_rhs_var = parent_ctx == ParentCtx::AssignmentRhs
             && matches!(expressions[expr_index].expression, Expression::Variable(_));
-         let is_literal = matches!(
-            expressions[expr_index].expression,
-            Expression::BoundFcnLiteral(_, _)
-               | Expression::IntLiteral { .. }
-               | Expression::FloatLiteral { .. }
-               | Expression::BoolLiteral { .. }
-               | Expression::EnumLiteral { .. }
-               | Expression::StringLiteral(_)
-         );
+         let is_literal = is_non_aggregate_const(&expressions[expr_index].expression);
          if is_ifx || (!is_lhs_context && !is_effective_top_level && !is_literal && !is_rhs_var) {
             ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
          }

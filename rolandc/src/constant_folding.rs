@@ -785,15 +785,20 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
    }
 }
 
-pub fn is_const(expr: &Expression, expressions: &ExpressionPool) -> bool {
-   match expr {
+pub fn is_non_aggregate_const(expr: &Expression) -> bool {
+   matches!(expr,
       Expression::BoundFcnLiteral(_, _)
       | Expression::UnitLiteral
       | Expression::EnumLiteral(_, _)
       | Expression::IntLiteral { .. }
       | Expression::FloatLiteral(_)
       | Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_) => true,
+      | Expression::StringLiteral(_)
+   )
+}
+
+pub fn is_const(expr: &Expression, expressions: &ExpressionPool) -> bool {
+   match expr {
       Expression::ArrayLiteral(exprs) => exprs
          .iter()
          .copied()
@@ -802,7 +807,7 @@ pub fn is_const(expr: &Expression, expressions: &ExpressionPool) -> bool {
          .iter()
          .flat_map(|(_, x)| x)
          .all(|x| is_const(&expressions[*x].expression, expressions)),
-      _ => false,
+      _ => is_non_aggregate_const(expr),
    }
 }
 
