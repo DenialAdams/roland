@@ -281,11 +281,6 @@ fn mark_escaping_vars_expr(
             mark_escaping_vars_expr(val, escaping_vars, ast);
          }
       }
-      Expression::ArrayLiteral(vals) => {
-         for val in vals.iter().copied() {
-            mark_escaping_vars_expr(val, escaping_vars, ast);
-         }
-      }
       Expression::ArrayIndex { array, index } => {
          mark_escaping_vars_expr(*array, escaping_vars, ast);
          mark_escaping_vars_expr(*index, escaping_vars, ast);
@@ -298,11 +293,6 @@ fn mark_escaping_vars_expr(
          mark_escaping_vars_expr(*a, escaping_vars, ast);
          mark_escaping_vars_expr(*b, escaping_vars, ast);
          mark_escaping_vars_expr(*c, escaping_vars, ast);
-      }
-      Expression::StructLiteral(_, exprs) => {
-         for expr in exprs.values().flatten() {
-            mark_escaping_vars_expr(*expr, escaping_vars, ast);
-         }
       }
       Expression::FieldAccess(_, base_expr) => {
          mark_escaping_vars_expr(*base_expr, escaping_vars, ast);
@@ -338,7 +328,9 @@ fn mark_escaping_vars_expr(
       | Expression::UnitLiteral
       | Expression::IntLiteral { .. }
       | Expression::FloatLiteral(_) => (),
-      Expression::UnresolvedVariable(_)
+      Expression::ArrayLiteral(_)
+      | Expression::StructLiteral(_, _)
+      | Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)
       | Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
