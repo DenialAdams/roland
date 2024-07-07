@@ -267,7 +267,7 @@ pub fn template_type_aware_mem_size(
    templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
 ) -> u32 {
    match e {
-      ExpressionType::Array(a_type, _len) => template_type_aware_mem_size(a_type, udt, target, templated_types),
+      ExpressionType::Array(a_type, len) => template_type_aware_mem_size(a_type, udt, target, templated_types) * len,
       ExpressionType::Union(union_id, generic_args) => {
          if generic_args.is_empty() {
             sizeof_type_mem(e, udt, target)
