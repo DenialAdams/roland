@@ -361,7 +361,6 @@ pub fn monomorphize_types(program: &mut Program, target: Target) {
 
    let mut lowered = HashMap::new();
 
-   // nocheckin do other type lowerings need this
    for exp in program.ast.expressions.values_mut() {
       match &mut exp.expression {
          Expression::BoundFcnLiteral(_, type_arg_nodes) => {
