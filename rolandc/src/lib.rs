@@ -21,7 +21,6 @@ mod dead_code_elimination;
 mod defer;
 mod disjoint_set;
 pub mod error_handling;
-mod escape_analysis;
 mod expression_hoisting;
 mod imports;
 pub mod interner;
@@ -293,6 +292,15 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    // longer be referenced now that we deleted all template procedures
    ctx.program.ast.expressions.retain(|_, x| x.exp_type.is_some());
 
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp.rol").unwrap(),
+      )
+      .unwrap();
+   }
+
    monomorphization::monomorphize_types(&mut ctx.program, config.target);
 
    loop_lowering::lower_fors_and_whiles(&mut ctx.program);
@@ -395,28 +403,10 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       ctx.program.ast.statements.clear();
    }
 
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp_before.rol").unwrap(),
-      )
-      .unwrap();
-   }
-
    constant_propagation::propagate_constants(&mut ctx.program, &ctx.interner, config.target);
 
    if config.target == Target::Qbe {
       prune_dead_branches(&mut ctx.program);
-   }
-
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp_after.rol").unwrap(),
-      )
-      .unwrap();
    }
 
    // It would be nice to run this before deleting unreachable procedures,

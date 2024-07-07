@@ -7,7 +7,6 @@ use slotmap::SlotMap;
 use crate::backend::linearize::{post_order, Cfg, CfgInstruction, CFG_START_NODE};
 use crate::backend::liveness::ProgramIndex;
 use crate::constant_folding::{self, is_non_aggregate_const, FoldingContext};
-use crate::escape_analysis::EscapingKind;
 use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::interner::Interner;
 use crate::parse::{
@@ -15,7 +14,7 @@ use crate::parse::{
    VariableId,
 };
 use crate::type_data::ExpressionType;
-use crate::{escape_analysis, Program, Target};
+use crate::{Program, Target};
 
 fn fold_expr_id(
    expr_id: ExpressionId,
@@ -52,8 +51,7 @@ fn find_reaching_val(x: Definition, body: &Cfg, rpo: &[usize], exprs: &Expressio
          if is_non_aggregate_const(e) {
             Some(ReachingVal::Const(rhs))
          } else if let Expression::Variable(v) = e {
-            //Some(ReachingVal::Var(*v))
-            None
+            Some(ReachingVal::Var(*v))
          } else {
             None
          }
@@ -201,8 +199,8 @@ pub fn prune_dead_branches(program: &mut Program) {
 
 pub fn propagate_constants(program: &mut Program, interner: &Interner, target: Target) {
    for proc in program.procedure_bodies.values() {
-      let mut escaping_vars = HashMap::new();
-      escape_analysis::mark_escaping_vars_cfg(&proc.cfg, &mut escaping_vars, &program.ast.expressions);
+      let mut escaping_vars = HashSet::new();
+      mark_escaping_vars_cfg(&proc.cfg, &mut escaping_vars, &program.ast.expressions);
       let reaching_defs = reaching_definitions(&proc.locals, &proc.cfg, &program.ast.expressions);
 
       let mut reaching_values: HashMap<VariableId, ReachingVal> = HashMap::new();
@@ -218,7 +216,7 @@ pub fn propagate_constants(program: &mut Program, interner: &Interner, target: T
                let rds = &reaching_defs[&ProgramIndex(rpo_index, i)];
                reaching_values.clear();
                for (var, var_rd) in rds.iter() {
-                  if escaping_vars.get(var).copied() == Some(EscapingKind::MustLiveOnStackAlone) {
+                  if escaping_vars.contains(var) {
                      continue;
                   }
                   let Some(the_reaching_val) = var_rd
@@ -235,8 +233,27 @@ pub fn propagate_constants(program: &mut Program, interner: &Interner, target: T
                   }
                   // We have ensured that there is a single reaching value, or multiple equivalent reaching values
                   // For constants, we are done. For vars, this is insufficient.
-                  // 1. The var may be escaping, in which case its value may have changed
+                  // 1. The var may be escaping or a global, in which case its value may have changed
                   // 2. Partial assignments are not modeled by this analysis, so a partially written var must also be considered escaping
+                  // 3. The var may have been updated in a _modeled_ way, which we must check for explicitly
+                  if let ReachingVal::Var(v) = the_reaching_val {
+                     if escaping_vars.contains(&v) {
+                        continue;
+                     }
+                     if !proc.locals.contains_key(&v) {
+                        continue;
+                     }
+                     // The reaching def of this var must not have changed between this use and the def
+                     let reaching_defs_of_v_here = &rds.get(&v);
+                     if !var_rd.iter().all(|def_this_val_came_from| {
+                        let Definition::DefinedAt(loc) = def_this_val_came_from else {
+                           unreachable!()
+                        };
+                        reaching_defs[loc].get(&v) == *reaching_defs_of_v_here
+                     }) {
+                        continue;
+                     }
+                  }
                   reaching_values.insert(*var, the_reaching_val);
                }
             }
@@ -376,3 +393,110 @@ fn reaching_definitions(
 
    all_reaching_defs
 }
+
+// MARK: Escape Analysis
+
+fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, ast: &ExpressionPool) {
+   for bb in post_order(cfg) {
+      for instr in cfg.bbs[bb].instructions.iter() {
+         match instr {
+            CfgInstruction::Assignment(lhs, rhs) => {
+               mark_escaping_vars_expr(*lhs, escaping_vars, ast);
+               mark_escaping_vars_expr(*rhs, escaping_vars, ast);
+            }
+            CfgInstruction::Expression(e)
+            | CfgInstruction::ConditionalJump(e, _, _)
+            | CfgInstruction::Return(e)
+            | CfgInstruction::IfElse(e, _, _, _) => {
+               mark_escaping_vars_expr(*e, escaping_vars, ast);
+            }
+            _ => (),
+         }
+      }
+   }
+}
+
+fn partially_accessed_var(e: ExpressionId, ast: &ExpressionPool) -> Option<VariableId> {
+   match &ast[e].expression {
+      Expression::ArrayIndex { array, .. } => partially_accessed_var(*array, ast),
+      Expression::FieldAccess(_, base) => partially_accessed_var(*base, ast),
+      Expression::Variable(v) => Some(*v),
+      _ => None,
+   }
+}
+
+fn mark_escaping_vars_expr(
+   in_expr: ExpressionId,
+   escaping_vars: &mut HashSet<VariableId>,
+   ast: &ExpressionPool,
+) {
+   match &ast[in_expr].expression {
+      Expression::ProcedureCall { proc_expr, args } => {
+         mark_escaping_vars_expr(*proc_expr, escaping_vars, ast);
+
+         for val in args.iter().map(|x| x.expr) {
+            mark_escaping_vars_expr(val, escaping_vars, ast);
+         }
+      }
+      Expression::ArrayLiteral(vals) => {
+         for val in vals.iter().copied() {
+            mark_escaping_vars_expr(val, escaping_vars, ast);
+         }
+      }
+      Expression::ArrayIndex { array, index } => {
+         // This is overly conservative by far - we are only concerned about LHS accesses
+         // TODO
+         if let Some(v) = partially_accessed_var(in_expr, ast) {
+            escaping_vars.insert(v);
+         }
+         mark_escaping_vars_expr(*array, escaping_vars, ast);
+         mark_escaping_vars_expr(*index, escaping_vars, ast);
+      }
+      Expression::BinaryOperator { lhs, rhs, .. } => {
+         mark_escaping_vars_expr(*lhs, escaping_vars, ast);
+         mark_escaping_vars_expr(*rhs, escaping_vars, ast);
+      }
+      Expression::IfX(a, b, c) => {
+         mark_escaping_vars_expr(*a, escaping_vars, ast);
+         mark_escaping_vars_expr(*b, escaping_vars, ast);
+         mark_escaping_vars_expr(*c, escaping_vars, ast);
+      }
+      Expression::StructLiteral(_, exprs) => {
+         for expr in exprs.values().flatten() {
+            mark_escaping_vars_expr(*expr, escaping_vars, ast);
+         }
+      }
+      Expression::FieldAccess(_, base_expr) => {
+         // This is overly conservative by far - we are only concerned about LHS accesses
+         // TODO
+         if let Some(v) = partially_accessed_var(in_expr, ast) {
+            escaping_vars.insert(v);
+         }
+         mark_escaping_vars_expr(*base_expr, escaping_vars, ast);
+      }
+      Expression::Cast { expr, .. } => {
+         mark_escaping_vars_expr(*expr, escaping_vars, ast);
+      }
+      Expression::UnaryOperator(op, expr) => {
+         mark_escaping_vars_expr(*expr, escaping_vars, ast);
+         if *op == UnOp::AddressOf {
+            if let Some(v) = partially_accessed_var(*expr, ast) {
+               escaping_vars.insert(v);
+            }
+         }
+      }
+      Expression::Variable(_)
+      | Expression::EnumLiteral(_, _)
+      | Expression::BoundFcnLiteral(_, _)
+      | Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_)
+      | Expression::UnitLiteral
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_) => (),
+      Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _, _)
+      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+   }
+}
+
