@@ -272,7 +272,7 @@ pub fn propagate_constants(program: &mut Program, interner: &Interner, target: T
    }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 enum Definition {
    NoDefinitionInProc,
    DefinedAt(ProgramIndex),
@@ -401,6 +401,12 @@ fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, as
       for instr in cfg.bbs[bb].instructions.iter() {
          match instr {
             CfgInstruction::Assignment(lhs, rhs) => {
+               // Partial updates are not modeled, so we treat them as escaping
+               if !matches!(ast[*lhs].expression, Expression::Variable(_)) {
+                  if let Some(v) = partially_accessed_var(*lhs, ast) {
+                     escaping_vars.insert(v);
+                  }
+               }
                mark_escaping_vars_expr(*lhs, escaping_vars, ast);
                mark_escaping_vars_expr(*rhs, escaping_vars, ast);
             }
@@ -444,11 +450,6 @@ fn mark_escaping_vars_expr(
          }
       }
       Expression::ArrayIndex { array, index } => {
-         // This is overly conservative by far - we are only concerned about LHS accesses
-         // TODO
-         if let Some(v) = partially_accessed_var(in_expr, ast) {
-            escaping_vars.insert(v);
-         }
          mark_escaping_vars_expr(*array, escaping_vars, ast);
          mark_escaping_vars_expr(*index, escaping_vars, ast);
       }
@@ -467,11 +468,6 @@ fn mark_escaping_vars_expr(
          }
       }
       Expression::FieldAccess(_, base_expr) => {
-         // This is overly conservative by far - we are only concerned about LHS accesses
-         // TODO
-         if let Some(v) = partially_accessed_var(in_expr, ast) {
-            escaping_vars.insert(v);
-         }
          mark_escaping_vars_expr(*base_expr, escaping_vars, ast);
       }
       Expression::Cast { expr, .. } => {

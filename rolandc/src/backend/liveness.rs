@@ -304,7 +304,7 @@ fn gen_for_expr(
    }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub struct ProgramIndex(pub usize, pub usize); // (RPO basic block position, instruction inside of block)
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
