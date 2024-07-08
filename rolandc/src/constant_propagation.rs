@@ -422,7 +422,7 @@ fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, as
    }
 }
 
-fn partially_accessed_var(e: ExpressionId, ast: &ExpressionPool) -> Option<VariableId> {
+pub fn partially_accessed_var(e: ExpressionId, ast: &ExpressionPool) -> Option<VariableId> {
    match &ast[e].expression {
       Expression::ArrayIndex { array, .. } => partially_accessed_var(*array, ast),
       Expression::FieldAccess(_, base) => partially_accessed_var(*base, ast),

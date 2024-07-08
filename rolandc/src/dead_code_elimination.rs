@@ -4,6 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::backend::linearize::{post_order, CfgInstruction};
 use crate::constant_folding::expression_could_have_side_effects;
+use crate::constant_propagation::partially_accessed_var;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureId, Statement, StatementId, VariableId,
@@ -183,18 +184,14 @@ pub fn remove_unused_locals(program: &mut Program) {
          for instruction in proc_body.cfg.bbs[bb_index].instructions.iter() {
             match instruction {
                CfgInstruction::Assignment(lhs, rhs) => {
-                  if !matches!(program.ast.expressions[*lhs].expression, Expression::Variable(_)) {
-                     // Note that we're punting on partial writes - mostly because I don't want to deal with preserving side effects for now
-                     // TODO
-                     mark_used_vars_in_expr(*lhs, &mut used_vars, &program.ast.expressions);
-                  }
-                  mark_used_vars_in_expr(*rhs, &mut used_vars, &program.ast.expressions);
+                  mark_used_vars_in_expr(*lhs, &mut used_vars, &program.ast.expressions, true);
+                  mark_used_vars_in_expr(*rhs, &mut used_vars, &program.ast.expressions, false);
                }
                CfgInstruction::Expression(expr)
                | CfgInstruction::Return(expr)
                | CfgInstruction::IfElse(expr, _, _, _)
                | CfgInstruction::ConditionalJump(expr, _, _) => {
-                  mark_used_vars_in_expr(*expr, &mut used_vars, &program.ast.expressions);
+                  mark_used_vars_in_expr(*expr, &mut used_vars, &program.ast.expressions, false);
                }
                CfgInstruction::Break
                | CfgInstruction::Continue
@@ -209,8 +206,9 @@ pub fn remove_unused_locals(program: &mut Program) {
       for bb_index in post_order.iter().copied().rev() {
          proc_body.cfg.bbs[bb_index].instructions.retain_mut(|instr| {
             if let CfgInstruction::Assignment(lhs, rhs) = instr {
-               if let Expression::Variable(v) = program.ast.expressions[*lhs].expression {
+               if let Some(v) = partially_accessed_var(*lhs, &program.ast.expressions) {
                   if !used_vars.contains(&v) && proc_body.locals.contains_key(&v) {
+                     debug_assert!(!expression_could_have_side_effects(*lhs, &program.ast.expressions));
                      if expression_could_have_side_effects(*rhs, &program.ast.expressions) {
                         *instr = CfgInstruction::Expression(*rhs);
                      } else {
@@ -226,29 +224,46 @@ pub fn remove_unused_locals(program: &mut Program) {
    }
 }
 
-fn mark_used_vars_in_expr(in_expr: ExpressionId, used_vars: &mut HashSet<VariableId>, ast: &ExpressionPool) {
+fn mark_used_vars_in_expr(in_expr: ExpressionId, used_vars: &mut HashSet<VariableId>, ast: &ExpressionPool, is_write: bool) {
    match &ast[in_expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
-         mark_used_vars_in_expr(*proc_expr, used_vars, ast);
+         mark_used_vars_in_expr(*proc_expr, used_vars, ast, false);
 
          for val in args.iter().map(|x| x.expr) {
-            mark_used_vars_in_expr(val, used_vars, ast);
+            mark_used_vars_in_expr(val, used_vars, ast, false);
          }
       }
-      Expression::ArrayIndex { array: lhs, index: rhs } | Expression::BinaryOperator { lhs, rhs, .. } => {
-         mark_used_vars_in_expr(*lhs, used_vars, ast);
-         mark_used_vars_in_expr(*rhs, used_vars, ast);
+      Expression::FieldAccess(_, base) => {
+         mark_used_vars_in_expr(*base, used_vars, ast, is_write);
+      }
+      Expression::ArrayIndex { array, index } => {
+         if expression_could_have_side_effects(*index, ast) {
+            // conservatively, we consider any side effects in an index expression
+            // disqualifying, since the subsequent transformation doesn't preserve
+            // LHS side effects.
+            // this should only be hittable in WASM, where we don't go into TAC
+            mark_used_vars_in_expr(*array, used_vars, ast, false);
+         } else {
+            mark_used_vars_in_expr(*array, used_vars, ast, is_write);
+         }
+         mark_used_vars_in_expr(*index, used_vars, ast, false);
+      }
+      Expression::BinaryOperator { lhs, rhs, .. } => {
+         mark_used_vars_in_expr(*lhs, used_vars, ast, false);
+         mark_used_vars_in_expr(*rhs, used_vars, ast, false);
       }
       Expression::IfX(a, b, c) => {
-         mark_used_vars_in_expr(*a, used_vars, ast);
-         mark_used_vars_in_expr(*b, used_vars, ast);
-         mark_used_vars_in_expr(*c, used_vars, ast);
+         mark_used_vars_in_expr(*a, used_vars, ast, false);
+         mark_used_vars_in_expr(*b, used_vars, ast, false);
+         mark_used_vars_in_expr(*c, used_vars, ast, false);
       }
-      Expression::Cast { expr, .. } | Expression::UnaryOperator(_, expr) | Expression::FieldAccess(_, expr) => {
-         mark_used_vars_in_expr(*expr, used_vars, ast);
+      Expression::Cast { expr, .. } | Expression::UnaryOperator(_, expr) => {
+         mark_used_vars_in_expr(*expr, used_vars, ast, false);
       }
       Expression::Variable(v) => {
-         used_vars.insert(*v);
+         if !is_write {
+            used_vars.insert(*v);
+         }
       }
       Expression::EnumLiteral(_, _)
       | Expression::BoundFcnLiteral(_, _)
