@@ -422,6 +422,8 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    // but doing so would currently delete procedures that we take pointers to
    pre_backend_lowering::kill_zst_assignments(&mut ctx.program, config.target);
 
+   dead_code_elimination::remove_unused_locals(&mut ctx.program);
+
    if config.target != Target::Qbe {
       backend::wasm::sort_globals(&mut ctx.program, config.target);
    }

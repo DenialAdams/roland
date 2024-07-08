@@ -431,11 +431,7 @@ fn partially_accessed_var(e: ExpressionId, ast: &ExpressionPool) -> Option<Varia
    }
 }
 
-fn mark_escaping_vars_expr(
-   in_expr: ExpressionId,
-   escaping_vars: &mut HashSet<VariableId>,
-   ast: &ExpressionPool,
-) {
+fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<VariableId>, ast: &ExpressionPool) {
    match &ast[in_expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
          mark_escaping_vars_expr(*proc_expr, escaping_vars, ast);
@@ -487,4 +483,3 @@ fn mark_escaping_vars_expr(
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
 }
-
