@@ -223,7 +223,7 @@ fn compile_qbe(mut ssa_path: PathBuf, final_path: Option<PathBuf>) -> std::resul
    }
    let program_object_path = assemble_file(&asm_path)?;
    let mut syscall_lib_path = asm_path.clone();
-   syscall_lib_path.set_file_name(&format!(
+   syscall_lib_path.set_file_name(format!(
       "{}_syscall.s",
       ssa_path.file_stem().unwrap().to_string_lossy()
    ));
