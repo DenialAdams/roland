@@ -35,7 +35,7 @@ fn fold_expr_id(
    constant_folding::try_fold_and_replace_expr(expr_id, &mut None, &mut fc, interner);
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 enum ReachingVal {
    Const(ExpressionId),
    Var(VariableId),
@@ -214,14 +214,14 @@ pub fn propagate_constants(program: &mut Program, interner: &Interner, target: T
             // Compute the reaching values
             {
                let rds = &reaching_defs[&ProgramIndex(rpo_index, i)].def;
+               let reaching_partial_defs = &reaching_defs[&ProgramIndex(rpo_index, i)].partials;
                reaching_values.clear();
                for (var, var_rd) in rds.iter() {
                   if escaping_vars.contains(var) {
                      continue;
                   }
-                  if !reaching_defs[&ProgramIndex(rpo_index, i)].partials.get(var).map_or(true, HashSet::is_empty) {
-                     // todo ensure we have test coverage for this
-                     //continue;
+                  if !reaching_partial_defs.get(var).map_or(true, HashSet::is_empty) {
+                     continue;
                   }
                   let Some(the_reaching_val) = var_rd
                      .iter()
@@ -247,14 +247,16 @@ pub fn propagate_constants(program: &mut Program, interner: &Interner, target: T
                         continue;
                      }
                      // The reaching def of this var must not have changed between this use and the def
-                     let reaching_defs_of_v_here = &rds.get(&v);
-                     let partial_reaching_defs_of_v_here = &reaching_defs[&ProgramIndex(rpo_index, i)].partials.get(&v);
+                     let empty_definitions = HashSet::new();
+                     let reaching_defs_of_v_here = &rds.get(&v).unwrap_or(&empty_definitions);
+                     let partial_reaching_defs_of_v_here = &reaching_partial_defs.get(&v).unwrap_or(&empty_definitions);
                      if !var_rd.iter().all(|def_this_val_came_from| {
                         let Definition::DefinedAt(loc) = def_this_val_came_from else {
                            unreachable!()
                         };
-                        reaching_defs[loc].def.get(&v) == *reaching_defs_of_v_here
-                        && reaching_defs[loc].partials.get(&v) == *partial_reaching_defs_of_v_here
+                        reaching_defs[loc].def.get(&v).unwrap_or(&empty_definitions) == *reaching_defs_of_v_here
+                           && reaching_defs[loc].partials.get(&v).unwrap_or(&empty_definitions)
+                              == *partial_reaching_defs_of_v_here
                      }) {
                         continue;
                      }

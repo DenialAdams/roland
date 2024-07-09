@@ -1,0 +1,26 @@
+struct S {
+   p: u64,
+}
+
+proc main() {
+   let a = get_something_else();
+   let x = a;
+   if get_something() {
+      x.p = 2;
+   }
+   // There is 1 reaching def of x and 1 reaching partial def
+   // it would be incorrect to propagate a in for x
+   let y = x;
+   println(uint_to_string(y.p));
+}
+
+proc get_something() -> bool {
+   return true;
+}
+
+proc get_something_else() -> S {
+   return S { p: 1 };
+}
+__END__
+run:
+2
