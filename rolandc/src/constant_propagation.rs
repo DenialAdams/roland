@@ -213,11 +213,15 @@ pub fn propagate_constants(program: &mut Program, interner: &Interner, target: T
          for (i, instr) in proc.cfg.bbs[*bb_index].instructions.iter().enumerate() {
             // Compute the reaching values
             {
-               let rds = &reaching_defs[&ProgramIndex(rpo_index, i)];
+               let rds = &reaching_defs[&ProgramIndex(rpo_index, i)].def;
                reaching_values.clear();
                for (var, var_rd) in rds.iter() {
                   if escaping_vars.contains(var) {
                      continue;
+                  }
+                  if !reaching_defs[&ProgramIndex(rpo_index, i)].partials.get(var).map_or(true, HashSet::is_empty) {
+                     // todo ensure we have test coverage for this
+                     //continue;
                   }
                   let Some(the_reaching_val) = var_rd
                      .iter()
@@ -234,8 +238,7 @@ pub fn propagate_constants(program: &mut Program, interner: &Interner, target: T
                   // We have ensured that there is a single reaching value, or multiple equivalent reaching values
                   // For constants, we are done. For vars, this is insufficient.
                   // 1. The var may be escaping or a global, in which case its value may have changed
-                  // 2. Partial assignments are not modeled by this analysis, so a partially written var must also be considered escaping
-                  // 3. The var may have been updated in a _modeled_ way, which we must check for explicitly
+                  // 2. The var may have been updated either partially or fully
                   if let ReachingVal::Var(v) = the_reaching_val {
                      if escaping_vars.contains(&v) {
                         continue;
@@ -245,11 +248,13 @@ pub fn propagate_constants(program: &mut Program, interner: &Interner, target: T
                      }
                      // The reaching def of this var must not have changed between this use and the def
                      let reaching_defs_of_v_here = &rds.get(&v);
+                     let partial_reaching_defs_of_v_here = &reaching_defs[&ProgramIndex(rpo_index, i)].partials.get(&v);
                      if !var_rd.iter().all(|def_this_val_came_from| {
                         let Definition::DefinedAt(loc) = def_this_val_came_from else {
                            unreachable!()
                         };
-                        reaching_defs[loc].get(&v) == *reaching_defs_of_v_here
+                        reaching_defs[loc].def.get(&v) == *reaching_defs_of_v_here
+                        && reaching_defs[loc].partials.get(&v) == *partial_reaching_defs_of_v_here
                      }) {
                         continue;
                      }
@@ -280,12 +285,49 @@ enum Definition {
 
 type DefinitionMap = HashMap<VariableId, Definition>;
 type MultiDefMap = HashMap<VariableId, HashSet<Definition>>;
+type PartialDefMap = HashMap<VariableId, HashSet<Definition>>;
+
+#[derive(Clone, Default, PartialEq)]
+struct MultiDefsAndPartials {
+   def: MultiDefMap,
+   partials: PartialDefMap,
+}
+
+impl MultiDefsAndPartials {
+   fn new() -> MultiDefsAndPartials {
+      MultiDefsAndPartials {
+         def: MultiDefMap::new(),
+         partials: PartialDefMap::new(),
+      }
+   }
+
+   fn clear(&mut self) {
+      self.def.clear();
+      self.partials.clear();
+   }
+}
+
+#[derive(Clone, Default, PartialEq)]
+
+struct SingleDefAndPartials {
+   def: DefinitionMap,
+   partials: PartialDefMap,
+}
+
+impl SingleDefAndPartials {
+   fn new() -> SingleDefAndPartials {
+      SingleDefAndPartials {
+         def: DefinitionMap::new(),
+         partials: PartialDefMap::new(),
+      }
+   }
+}
 
 #[derive(Clone)]
 struct ReachingDefsState {
-   r_in: MultiDefMap,
-   r_out: MultiDefMap,
-   gen: DefinitionMap,
+   r_in: MultiDefsAndPartials,
+   r_out: MultiDefsAndPartials,
+   gen: SingleDefAndPartials,
    // kill is implicit from gen
 }
 
@@ -294,13 +336,13 @@ fn reaching_definitions(
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
    cfg: &Cfg,
    ast: &ExpressionPool,
-) -> IndexMap<ProgramIndex, MultiDefMap> {
+) -> IndexMap<ProgramIndex, MultiDefsAndPartials> {
    // Dataflow Analyis on the CFG
    let mut state = vec![
       ReachingDefsState {
-         r_in: MultiDefMap::new(),
-         r_out: MultiDefMap::new(),
-         gen: DefinitionMap::new(),
+         r_in: MultiDefsAndPartials::new(),
+         r_out: MultiDefsAndPartials::new(),
+         gen: SingleDefAndPartials::new(),
       };
       cfg.bbs.len()
    ];
@@ -314,8 +356,18 @@ fn reaching_definitions(
                if procedure_vars.contains_key(&v) {
                   state[*bb_index]
                      .gen
+                     .def
                      .entry(v)
                      .or_insert(Definition::DefinedAt(ProgramIndex(i, j)));
+               }
+            } else if let Some(v) = partially_accessed_var(*lhs, ast) {
+               if procedure_vars.contains_key(&v) && !state[*bb_index].gen.def.contains_key(&v) {
+                  state[*bb_index]
+                     .gen
+                     .partials
+                     .entry(v)
+                     .or_default()
+                     .insert(Definition::DefinedAt(ProgramIndex(i, j)));
                }
             }
          }
@@ -327,6 +379,7 @@ fn reaching_definitions(
    for proc_var in procedure_vars.keys().copied() {
       state[CFG_START_NODE]
          .gen
+         .def
          .entry(proc_var)
          .or_insert(Definition::NoDefinitionInProc);
    }
@@ -339,8 +392,11 @@ fn reaching_definitions(
          new_r_in.clear();
          for predecessor in cfg.bbs[node_id].predecessors.iter().copied() {
             let pred_out = &state[predecessor].r_out;
-            for (var, defs) in pred_out {
-               new_r_in.entry(*var).or_default().extend(defs.iter());
+            for (var, defs) in &pred_out.def {
+               new_r_in.def.entry(*var).or_default().extend(defs.iter());
+            }
+            for (var, partial_defs) in &pred_out.partials {
+               new_r_in.partials.entry(*var).or_default().extend(partial_defs.iter());
             }
          }
          state[node_id].r_in = new_r_in;
@@ -351,14 +407,23 @@ fn reaching_definitions(
          let s = &mut state[node_id];
          let old_r_out = std::mem::replace(
             &mut s.r_out,
-            s.gen.iter().map(|(k, v)| (*k, iter::once(*v).collect())).collect(),
+            MultiDefsAndPartials {
+               def: s.gen.def.iter().map(|(k, v)| (*k, iter::once(*v).collect())).collect(),
+               partials: s.gen.partials.clone(),
+            },
          );
 
-         for (var, defs) in s.r_in.iter() {
-            if s.gen.contains_key(var) {
+         for (var, defs) in s.r_in.def.iter() {
+            if s.gen.def.contains_key(var) {
                continue;
             }
-            s.r_out.entry(*var).or_default().extend(defs);
+            s.r_out.def.entry(*var).or_default().extend(defs);
+         }
+         for (var, partial_defs) in s.r_in.partials.iter() {
+            if s.gen.def.contains_key(var) {
+               continue;
+            }
+            s.r_out.partials.entry(*var).or_default().extend(partial_defs);
          }
 
          if old_r_out != s.r_out {
@@ -368,13 +433,15 @@ fn reaching_definitions(
    }
 
    // Construct the final results
-   let mut all_reaching_defs: IndexMap<ProgramIndex, MultiDefMap> = IndexMap::new();
-   let mut current_reaching_defs = MultiDefMap::new();
+   let mut all_reaching_defs: IndexMap<ProgramIndex, MultiDefsAndPartials> = IndexMap::new();
+   let mut current_reaching_defs = MultiDefsAndPartials::new();
    for (rpo_index, node_id) in post_order(cfg).iter().copied().rev().enumerate() {
       let bb = &cfg.bbs[node_id];
       let s = &state[node_id];
       current_reaching_defs.clear();
-      current_reaching_defs.extend(s.r_in.iter().map(|(k, v)| (*k, v.clone())));
+      current_reaching_defs
+         .def
+         .extend(s.r_in.def.iter().map(|(k, v)| (*k, v.clone())));
       all_reaching_defs.reserve(bb.instructions.len());
       for (i, instruction) in bb.instructions.iter().enumerate() {
          let pi = ProgramIndex(rpo_index, i);
@@ -382,9 +449,18 @@ fn reaching_definitions(
          if let CfgInstruction::Assignment(lhs, _) = instruction {
             if let Expression::Variable(v) = ast[*lhs].expression {
                if procedure_vars.contains_key(&v) {
-                  let reaching_defs = current_reaching_defs.entry(v).or_default();
+                  let reaching_defs = current_reaching_defs.def.entry(v).or_default();
                   reaching_defs.clear();
                   reaching_defs.insert(Definition::DefinedAt(ProgramIndex(rpo_index, i)));
+                  current_reaching_defs.partials.entry(v).or_default().clear();
+               }
+            } else if let Some(v) = partially_accessed_var(*lhs, ast) {
+               if procedure_vars.contains_key(&v) {
+                  current_reaching_defs
+                     .partials
+                     .entry(v)
+                     .or_default()
+                     .insert(Definition::DefinedAt(ProgramIndex(rpo_index, i)));
                }
             }
          }
@@ -401,12 +477,6 @@ fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, as
       for instr in cfg.bbs[bb].instructions.iter() {
          match instr {
             CfgInstruction::Assignment(lhs, rhs) => {
-               // Partial updates are not modeled, so we treat them as escaping
-               if !matches!(ast[*lhs].expression, Expression::Variable(_)) {
-                  if let Some(v) = partially_accessed_var(*lhs, ast) {
-                     escaping_vars.insert(v);
-                  }
-               }
                mark_escaping_vars_expr(*lhs, escaping_vars, ast);
                mark_escaping_vars_expr(*rhs, escaping_vars, ast);
             }

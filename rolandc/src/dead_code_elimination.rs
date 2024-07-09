@@ -224,7 +224,12 @@ pub fn remove_unused_locals(program: &mut Program) {
    }
 }
 
-fn mark_used_vars_in_expr(in_expr: ExpressionId, used_vars: &mut HashSet<VariableId>, ast: &ExpressionPool, is_write: bool) {
+fn mark_used_vars_in_expr(
+   in_expr: ExpressionId,
+   used_vars: &mut HashSet<VariableId>,
+   ast: &ExpressionPool,
+   is_write: bool,
+) {
    match &ast[in_expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
          mark_used_vars_in_expr(*proc_expr, used_vars, ast, false);
