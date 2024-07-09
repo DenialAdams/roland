@@ -289,7 +289,7 @@ type DefinitionMap = HashMap<VariableId, Definition>;
 type MultiDefMap = HashMap<VariableId, HashSet<Definition>>;
 type PartialDefMap = HashMap<VariableId, HashSet<Definition>>;
 
-#[derive(Clone, Default, PartialEq)]
+#[derive(Clone, Default, PartialEq, Debug)]
 struct MultiDefsAndPartials {
    def: MultiDefMap,
    partials: PartialDefMap,
@@ -309,7 +309,7 @@ impl MultiDefsAndPartials {
    }
 }
 
-#[derive(Clone, Default, PartialEq)]
+#[derive(Clone, Default, PartialEq, Debug)]
 
 struct SingleDefAndPartials {
    def: DefinitionMap,
@@ -444,6 +444,9 @@ fn reaching_definitions(
       current_reaching_defs
          .def
          .extend(s.r_in.def.iter().map(|(k, v)| (*k, v.clone())));
+      current_reaching_defs
+         .partials
+         .extend(s.r_in.partials.iter().map(|(k, v)| (*k, v.clone())));
       all_reaching_defs.reserve(bb.instructions.len());
       for (i, instruction) in bb.instructions.iter().enumerate() {
          let pi = ProgramIndex(rpo_index, i);
