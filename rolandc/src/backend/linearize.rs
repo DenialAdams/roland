@@ -4,7 +4,7 @@ use arrayvec::ArrayVec;
 
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
-use crate::parse::{AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, Statement, StatementId};
+use crate::parse::{AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ExpressionPool, Statement, StatementId};
 use crate::type_data::ExpressionType;
 use crate::{Program, Target};
 
@@ -64,7 +64,7 @@ struct Ctx {
    continue_target: usize,
 }
 
-fn simplify_cfg(cfg: &mut [BasicBlock], ast: &AstPool) {
+fn simplify_cfg(cfg: &mut [BasicBlock], ast: &ExpressionPool) {
    // TODO: can we do this without the outer loop? can't find any theoretical references
    let mut did_something = true;
    while did_something {
@@ -99,7 +99,7 @@ fn simplify_cfg(cfg: &mut [BasicBlock], ast: &AstPool) {
                      y = dest;
                   }
                   if x == y {
-                     if expression_could_have_side_effects(cond_expr, &ast.expressions) {
+                     if expression_could_have_side_effects(cond_expr, &ast) {
                         cfg[pred].instructions.push(CfgInstruction::Expression(cond_expr));
                      }
                      cfg[pred].instructions.push(CfgInstruction::Jump(dest));
@@ -177,7 +177,7 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool, tar
          // simplification can result in the structured control flow
          // statements going out of sync with their corresponding
          // jumps.
-         simplify_cfg(&mut ctx.bbs, &program.ast);
+         simplify_cfg(&mut ctx.bbs, &program.ast.expressions);
       }
 
       body.cfg.bbs = std::mem::take(&mut ctx.bbs);
