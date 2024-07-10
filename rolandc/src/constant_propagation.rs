@@ -177,31 +177,11 @@ fn propagate_vals(
    }
 }
 
-pub fn prune_dead_branches(program: &mut Program) {
-   for proc in program.procedure_bodies.values_mut() {
-      for i in post_order(&proc.cfg).iter().rev() {
-         let bb = &mut proc.cfg.bbs[*i];
-         let (jump_target, dead_target) =
-            if let Some(CfgInstruction::ConditionalJump(cond, then_target, else_target)) = bb.instructions.last_mut() {
-               match program.ast.expressions[*cond].expression {
-                  Expression::BoolLiteral(true) => (*then_target, *else_target),
-                  Expression::BoolLiteral(false) => (*else_target, *then_target),
-                  _ => continue,
-               }
-            } else {
-               continue;
-            };
-         *bb.instructions.last_mut().unwrap() = CfgInstruction::Jump(jump_target);
-         proc.cfg.bbs[dead_target].predecessors.remove(i);
-      }
-   }
-}
-
 pub fn propagate_constants(program: &mut Program, interner: &Interner, target: Target) {
-   for proc in program.procedure_bodies.values() {
+   for proc in program.procedure_bodies.values_mut() {
       let mut escaping_vars = HashSet::new();
       mark_escaping_vars_cfg(&proc.cfg, &mut escaping_vars, &program.ast.expressions);
-      let reaching_defs = reaching_definitions(&proc.locals, &proc.cfg, &program.ast.expressions);
+      let mut all_reaching_defs = reaching_definitions(&proc.locals, &proc.cfg, &program.ast.expressions);
 
       let mut reaching_values: HashMap<VariableId, ReachingVal> = HashMap::new();
       let rpo = {
@@ -209,14 +189,15 @@ pub fn propagate_constants(program: &mut Program, interner: &Interner, target: T
          x.reverse();
          x
       };
+      let mut reachable_bbs: HashSet<usize> = HashSet::from_iter(rpo.iter().copied());
       for (rpo_index, bb_index) in rpo.iter().enumerate() {
          for (i, instr) in proc.cfg.bbs[*bb_index].instructions.iter().enumerate() {
             // Compute the reaching values
             {
-               let rds = &reaching_defs[&ProgramIndex(rpo_index, i)].def;
-               let reaching_partial_defs = &reaching_defs[&ProgramIndex(rpo_index, i)].partials;
+               let reaching_defs = &all_reaching_defs[&ProgramIndex(rpo_index, i)].def;
+               let reaching_partial_defs = &all_reaching_defs[&ProgramIndex(rpo_index, i)].partials;
                reaching_values.clear();
-               for (var, var_rd) in rds.iter() {
+               for (var, var_rd) in reaching_defs.iter() {
                   if escaping_vars.contains(var) {
                      continue;
                   }
@@ -248,14 +229,14 @@ pub fn propagate_constants(program: &mut Program, interner: &Interner, target: T
                      }
                      // The reaching def of this var must not have changed between this use and the def
                      let empty_definitions = HashSet::new();
-                     let reaching_defs_of_v_here = &rds.get(&v).unwrap_or(&empty_definitions);
+                     let reaching_defs_of_v_here = &reaching_defs.get(&v).unwrap_or(&empty_definitions);
                      let partial_reaching_defs_of_v_here = &reaching_partial_defs.get(&v).unwrap_or(&empty_definitions);
                      if !var_rd.iter().all(|def_this_val_came_from| {
                         let Definition::DefinedAt(loc) = def_this_val_came_from else {
                            unreachable!()
                         };
-                        reaching_defs[loc].def.get(&v).unwrap_or(&empty_definitions) == *reaching_defs_of_v_here
-                           && reaching_defs[loc].partials.get(&v).unwrap_or(&empty_definitions)
+                        all_reaching_defs[loc].def.get(&v).unwrap_or(&empty_definitions) == *reaching_defs_of_v_here
+                           && all_reaching_defs[loc].partials.get(&v).unwrap_or(&empty_definitions)
                               == *partial_reaching_defs_of_v_here
                      }) {
                         continue;
@@ -274,6 +255,43 @@ pub fn propagate_constants(program: &mut Program, interner: &Interner, target: T
                interner,
                target,
             );
+         }
+
+         // If we are conditionally jumping, try to prune it now that we have propagated constants.
+         // This may prune reaching definitions, making our optimization more precise.
+         if target == Target::Qbe {
+            let (jump_target, dead_target) =
+               if let Some(CfgInstruction::ConditionalJump(cond, then_target, else_target)) =
+                  proc.cfg.bbs[*bb_index].instructions.last()
+               {
+                  match program.ast.expressions[*cond].expression {
+                     Expression::BoolLiteral(true) => (*then_target, *else_target),
+                     Expression::BoolLiteral(false) => (*else_target, *then_target),
+                     _ => continue,
+                  }
+               } else {
+                  continue;
+               };
+            *proc.cfg.bbs[*bb_index].instructions.last_mut().unwrap() = CfgInstruction::Jump(jump_target);
+            proc.cfg.bbs[dead_target].predecessors.remove(bb_index);
+            reachable_bbs.clear();
+            reachable_bbs.extend(post_order(&proc.cfg).iter().copied());
+
+            // Update reaching definitions
+            for defs_at_given_location in all_reaching_defs.values_mut() {
+               for defs in defs_at_given_location.def.values_mut() {
+                  defs.retain(|x| match x {
+                     Definition::DefinedAt(loc) => reachable_bbs.contains(&rpo[loc.0]),
+                     Definition::NoDefinitionInProc => true,
+                  })
+               }
+               for partial_defs in defs_at_given_location.partials.values_mut() {
+                  partial_defs.retain(|x| match x {
+                     Definition::DefinedAt(loc) => reachable_bbs.contains(&rpo[loc.0]),
+                     Definition::NoDefinitionInProc => true,
+                  })
+               }
+            }
          }
       }
    }
