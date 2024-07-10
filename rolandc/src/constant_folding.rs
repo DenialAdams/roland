@@ -1050,151 +1050,324 @@ impl Literal {
             _ => e,
          }
       }
+      #[allow(clippy::match_same_arms, clippy::cast_precision_loss)]
       Some(match (self, make_int_type_concrete(target_type, target)) {
-         // Extend
-         (Literal::Int64(i), &ExpressionType::Int(tt)) if tt.signed && tt.width.as_num_bytes(target) >= 8 => {
-            Expression::IntLiteral {
-               val: i as u64,
-               synthetic: true,
-            }
-         }
-         (Literal::Int32(i), &ExpressionType::Int(tt)) if tt.signed && tt.width.as_num_bytes(target) >= 4 => {
-            Expression::IntLiteral {
-               val: i64::from(i) as u64,
-               synthetic: true,
-            }
-         }
-         (Literal::Int16(i), &ExpressionType::Int(tt)) if tt.signed && tt.width.as_num_bytes(target) >= 2 => {
-            Expression::IntLiteral {
-               val: i64::from(i) as u64,
-               synthetic: true,
-            }
-         }
-         (Literal::Int8(i), &ExpressionType::Int(tt)) if tt.signed => Expression::IntLiteral {
-            val: i64::from(i) as u64,
-            synthetic: true,
-         },
-         (Literal::Uint64(i), &ExpressionType::Int(tt)) if !tt.signed && tt.width.as_num_bytes(target) >= 8 => {
-            Expression::IntLiteral {
-               val: i,
-               synthetic: true,
-            }
-         }
-         (Literal::Uint32(i), &ExpressionType::Int(tt)) if !tt.signed && tt.width.as_num_bytes(target) >= 4 => {
-            Expression::IntLiteral {
-               val: u64::from(i),
-               synthetic: true,
-            }
-         }
-         (Literal::Uint16(i), &ExpressionType::Int(tt)) if !tt.signed && tt.width.as_num_bytes(target) >= 2 => {
-            Expression::IntLiteral {
-               val: u64::from(i),
-               synthetic: true,
-            }
-         }
-         (Literal::Uint8(i), &ExpressionType::Int(tt)) if !tt.signed => Expression::IntLiteral {
-            val: u64::from(i),
-            synthetic: true,
-         },
+         // Float -> Float
          (Literal::Float32(f), &F64_TYPE) => Expression::FloatLiteral(f64::from(f)),
-         // Truncate
          (Literal::Float64(f), &F32_TYPE) => Expression::FloatLiteral(f64::from(f as f32)),
-         (Literal::Uint64(i), &U32_TYPE) => Expression::IntLiteral {
-            val: u64::from(i as u32),
+         // Int -> Float
+         (Literal::Uint8(v), &F32_TYPE) => Expression::FloatLiteral(f64::from(f32::from(v))),
+         (Literal::Uint8(v), &F64_TYPE) => Expression::FloatLiteral(f64::from(v)),
+         (Literal::Uint16(v), &F32_TYPE) => Expression::FloatLiteral(f64::from(f32::from(v))),
+         (Literal::Uint16(v), &F64_TYPE) => Expression::FloatLiteral(f64::from(v)),
+         (Literal::Uint32(v), &F32_TYPE) => Expression::FloatLiteral(f64::from(v as f32)),
+         (Literal::Uint32(v), &F64_TYPE) => Expression::FloatLiteral(f64::from(v)),
+         (Literal::Uint64(v), &F32_TYPE) => Expression::FloatLiteral(f64::from(v as f32)),
+         (Literal::Uint64(v), &F64_TYPE) => Expression::FloatLiteral(v as f64),
+         (Literal::Int8(v), &F32_TYPE) => Expression::FloatLiteral(f64::from(f32::from(v))),
+         (Literal::Int8(v), &F64_TYPE) => Expression::FloatLiteral(f64::from(v)),
+         (Literal::Int16(v), &F32_TYPE) => Expression::FloatLiteral(f64::from(f32::from(v))),
+         (Literal::Int16(v), &F64_TYPE) => Expression::FloatLiteral(f64::from(v)),
+         (Literal::Int32(v), &F32_TYPE) => Expression::FloatLiteral(f64::from(v as f32)),
+         (Literal::Int32(v), &F64_TYPE) => Expression::FloatLiteral(f64::from(v)),
+         (Literal::Int64(v), &F32_TYPE) => Expression::FloatLiteral(f64::from(v as f32)),
+         (Literal::Int64(v), &F64_TYPE) => Expression::FloatLiteral(v as f64),
+         // Float -> Int
+         (Literal::Float32(v), &U8_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u8),
             synthetic: true,
          },
-         (Literal::Uint64(i), &U16_TYPE) => Expression::IntLiteral {
-            val: u64::from(i as u16),
+         (Literal::Float32(v), &U16_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u16),
             synthetic: true,
          },
-         (Literal::Uint64(i), &U8_TYPE) => Expression::IntLiteral {
-            val: u64::from(i as u8),
+         (Literal::Float32(v), &U32_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u32),
             synthetic: true,
          },
-         (Literal::Uint32(i), &U16_TYPE) => Expression::IntLiteral {
-            val: u64::from(i as u16),
+         (Literal::Float32(v), &U64_TYPE) => Expression::IntLiteral {
+            val: v as u64,
             synthetic: true,
          },
-         (Literal::Uint32(i), &U8_TYPE) => Expression::IntLiteral {
-            val: u64::from(i as u8),
+         (Literal::Float32(v), &I8_TYPE) => Expression::IntLiteral {
+            val: v as i8 as u64,
             synthetic: true,
          },
-         (Literal::Uint16(i), &U8_TYPE) => Expression::IntLiteral {
-            val: u64::from(i as u8),
+         (Literal::Float32(v), &I16_TYPE) => Expression::IntLiteral {
+            val: v as i16 as u64,
             synthetic: true,
          },
-         (Literal::Uint64(i), &I32_TYPE) => Expression::IntLiteral {
-            val: i64::from(i as i32) as u64,
+         (Literal::Float32(v), &I32_TYPE) => Expression::IntLiteral {
+            val: v as i32 as u64,
             synthetic: true,
          },
-         (Literal::Uint64(i), &I16_TYPE) => Expression::IntLiteral {
-            val: i64::from(i as i16) as u64,
+         (Literal::Float32(v), &I64_TYPE) => Expression::IntLiteral {
+            val: v as i64 as u64,
             synthetic: true,
          },
-         (Literal::Uint64(i), &I8_TYPE) => Expression::IntLiteral {
-            val: i64::from(i as i8) as u64,
+         (Literal::Float64(v), &U8_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u8),
             synthetic: true,
          },
-         (Literal::Uint32(i), &I16_TYPE) => Expression::IntLiteral {
-            val: i64::from(i as i16) as u64,
+         (Literal::Float64(v), &U16_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u16),
             synthetic: true,
          },
-         (Literal::Uint32(i), &I8_TYPE) => Expression::IntLiteral {
-            val: i64::from(i as i8) as u64,
+         (Literal::Float64(v), &U32_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u32),
             synthetic: true,
          },
-         (Literal::Uint16(i), &I8_TYPE) => Expression::IntLiteral {
-            val: i64::from(i as i8) as u64,
+         (Literal::Float64(v), &U64_TYPE) => Expression::IntLiteral {
+            val: v as u64,
             synthetic: true,
          },
-         (Literal::Int64(i), &U32_TYPE) => Expression::IntLiteral {
-            val: u64::from(i as u32),
+         (Literal::Float64(v), &I8_TYPE) => Expression::IntLiteral {
+            val: v as i8 as u64,
             synthetic: true,
          },
-         (Literal::Int64(i), &U16_TYPE) => Expression::IntLiteral {
-            val: u64::from(i as u16),
+         (Literal::Float64(v), &I16_TYPE) => Expression::IntLiteral {
+            val: v as i16 as u64,
             synthetic: true,
          },
-         (Literal::Int64(i), &U8_TYPE) => Expression::IntLiteral {
-            val: u64::from(i as u8),
+         (Literal::Float64(v), &I32_TYPE) => Expression::IntLiteral {
+            val: v as i32 as u64,
             synthetic: true,
          },
-         (Literal::Int32(i), &U16_TYPE) => Expression::IntLiteral {
-            val: u64::from(i as u16),
+         (Literal::Float64(v), &I64_TYPE) => Expression::IntLiteral {
+            val: v as i64 as u64,
             synthetic: true,
          },
-         (Literal::Int32(i), &U8_TYPE) => Expression::IntLiteral {
-            val: u64::from(i as u8),
+         // Bool -> Int
+         (Literal::Bool(v), ExpressionType::Int(_)) => Expression::IntLiteral {
+            val: u64::from(v),
             synthetic: true,
          },
-         (Literal::Int16(i), &U8_TYPE) => Expression::IntLiteral {
-            val: u64::from(i as u8),
+         // Int -> Int
+         (Literal::Uint8(v), &U16_TYPE) => Expression::IntLiteral {
+            val: u64::from(v),
             synthetic: true,
          },
-         (Literal::Int64(i), &I32_TYPE) => Expression::IntLiteral {
-            val: i64::from(i as i32) as u64,
+         (Literal::Uint8(v), &U32_TYPE) => Expression::IntLiteral {
+            val: u64::from(v),
             synthetic: true,
          },
-         (Literal::Int64(i), &I16_TYPE) => Expression::IntLiteral {
-            val: i64::from(i as i16) as u64,
+         (Literal::Uint8(v), &U64_TYPE) => Expression::IntLiteral {
+            val: u64::from(v),
             synthetic: true,
          },
-         (Literal::Int64(i), &I8_TYPE) => Expression::IntLiteral {
-            val: i64::from(i as i8) as u64,
+         (Literal::Uint8(v), &I8_TYPE) => Expression::IntLiteral {
+            val: v as i8 as u64,
             synthetic: true,
          },
-         (Literal::Int32(i), &I16_TYPE) => Expression::IntLiteral {
-            val: i64::from(i as i16) as u64,
+         (Literal::Uint8(v), &I16_TYPE) => Expression::IntLiteral {
+            val: i16::from(v) as u64,
             synthetic: true,
          },
-         (Literal::Int32(i), &I8_TYPE) => Expression::IntLiteral {
-            val: i64::from(i as i8) as u64,
+         (Literal::Uint8(v), &I32_TYPE) => Expression::IntLiteral {
+            val: i32::from(v) as u64,
             synthetic: true,
          },
-         (Literal::Int16(i), &I8_TYPE) => Expression::IntLiteral {
-            val: i64::from(i as i8) as u64,
+         (Literal::Uint8(v), &I64_TYPE) => Expression::IntLiteral {
+            val: i64::from(v) as u64,
             synthetic: true,
          },
+         (Literal::Uint16(v), &U8_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u8),
+            synthetic: true,
+         },
+         (Literal::Uint16(v), &U32_TYPE) => Expression::IntLiteral {
+            val: u64::from(v),
+            synthetic: true,
+         },
+         (Literal::Uint16(v), &U64_TYPE) => Expression::IntLiteral {
+            val: u64::from(v),
+            synthetic: true,
+         },
+         (Literal::Uint16(v), &I8_TYPE) => Expression::IntLiteral {
+            val: v as i8 as u64,
+            synthetic: true,
+         },
+         (Literal::Uint16(v), &I16_TYPE) => Expression::IntLiteral {
+            val: v as i16 as u64,
+            synthetic: true,
+         },
+         (Literal::Uint16(v), &I32_TYPE) => Expression::IntLiteral {
+            val: i32::from(v) as u64,
+            synthetic: true,
+         },
+         (Literal::Uint16(v), &I64_TYPE) => Expression::IntLiteral {
+            val: i64::from(v) as u64,
+            synthetic: true,
+         },
+         (Literal::Uint32(v), &U8_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u8),
+            synthetic: true,
+         },
+         (Literal::Uint32(v), &U16_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u16),
+            synthetic: true,
+         },
+         (Literal::Uint32(v), &U64_TYPE) => Expression::IntLiteral {
+            val: u64::from(v),
+            synthetic: true,
+         },
+         (Literal::Uint32(v), &I8_TYPE) => Expression::IntLiteral {
+            val: v as i8 as u64,
+            synthetic: true,
+         },
+         (Literal::Uint32(v), &I16_TYPE) => Expression::IntLiteral {
+            val: v as i16 as u64,
+            synthetic: true,
+         },
+         (Literal::Uint32(v), &I32_TYPE) => Expression::IntLiteral {
+            val: v as i32 as u64,
+            synthetic: true,
+         },
+         (Literal::Uint32(v), &I64_TYPE) => Expression::IntLiteral {
+            val: i64::from(v) as u64,
+            synthetic: true,
+         },
+         (Literal::Uint64(v), &U8_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u8),
+            synthetic: true,
+         },
+         (Literal::Uint64(v), &U16_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u16),
+            synthetic: true,
+         },
+         (Literal::Uint64(v), &U32_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u32),
+            synthetic: true,
+         },
+         (Literal::Uint64(v), &I8_TYPE) => Expression::IntLiteral {
+            val: v as i8 as u64,
+            synthetic: true,
+         },
+         (Literal::Uint64(v), &I16_TYPE) => Expression::IntLiteral {
+            val: v as i16 as u64,
+            synthetic: true,
+         },
+         (Literal::Uint64(v), &I32_TYPE) => Expression::IntLiteral {
+            val: v as i32 as u64,
+            synthetic: true,
+         },
+         (Literal::Uint64(v), &I64_TYPE) => Expression::IntLiteral {
+            val: v as i64 as u64,
+            synthetic: true,
+         },
+         (Literal::Int8(v), &U8_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u8),
+            synthetic: true,
+         },
+         (Literal::Int8(v), &U16_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u16),
+            synthetic: true,
+         },
+         (Literal::Int8(v), &U32_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u32),
+            synthetic: true,
+         },
+         (Literal::Int8(v), &U64_TYPE) => Expression::IntLiteral {
+            val: v as u64,
+            synthetic: true,
+         },
+         (Literal::Int8(v), &I16_TYPE) => Expression::IntLiteral {
+            val: i16::from(v) as u64,
+            synthetic: true,
+         },
+         (Literal::Int8(v), &I32_TYPE) => Expression::IntLiteral {
+            val: i32::from(v) as u64,
+            synthetic: true,
+         },
+         (Literal::Int8(v), &I64_TYPE) => Expression::IntLiteral {
+            val: i64::from(v) as u64,
+            synthetic: true,
+         },
+         (Literal::Int16(v), &U8_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u8),
+            synthetic: true,
+         },
+         (Literal::Int16(v), &U16_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u16),
+            synthetic: true,
+         },
+         (Literal::Int16(v), &U32_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u32),
+            synthetic: true,
+         },
+         (Literal::Int16(v), &U64_TYPE) => Expression::IntLiteral {
+            val: v as u64,
+            synthetic: true,
+         },
+         (Literal::Int16(v), &I8_TYPE) => Expression::IntLiteral {
+            val: v as i8 as u64,
+            synthetic: true,
+         },
+         (Literal::Int16(v), &I32_TYPE) => Expression::IntLiteral {
+            val: i32::from(v) as u64,
+            synthetic: true,
+         },
+         (Literal::Int16(v), &I64_TYPE) => Expression::IntLiteral {
+            val: i64::from(v) as u64,
+            synthetic: true,
+         },
+         (Literal::Int32(v), &U8_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u8),
+            synthetic: true,
+         },
+         (Literal::Int32(v), &U16_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u16),
+            synthetic: true,
+         },
+         (Literal::Int32(v), &U32_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u32),
+            synthetic: true,
+         },
+         (Literal::Int32(v), &U64_TYPE) => Expression::IntLiteral {
+            val: v as u64,
+            synthetic: true,
+         },
+         (Literal::Int32(v), &I8_TYPE) => Expression::IntLiteral {
+            val: v as i8 as u64,
+            synthetic: true,
+         },
+         (Literal::Int32(v), &I16_TYPE) => Expression::IntLiteral {
+            val: v as i16 as u64,
+            synthetic: true,
+         },
+         (Literal::Int32(v), &I64_TYPE) => Expression::IntLiteral {
+            val: i64::from(v) as u64,
+            synthetic: true,
+         },
+         (Literal::Int64(v), &U8_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u8),
+            synthetic: true,
+         },
+         (Literal::Int64(v), &U16_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u16),
+            synthetic: true,
+         },
+         (Literal::Int64(v), &U32_TYPE) => Expression::IntLiteral {
+            val: u64::from(v as u32),
+            synthetic: true,
+         },
+         (Literal::Int64(v), &U64_TYPE) => Expression::IntLiteral {
+            val: v as u64,
+            synthetic: true,
+         },
+         (Literal::Int64(v), &I8_TYPE) => Expression::IntLiteral {
+            val: v as i8 as u64,
+            synthetic: true,
+         },
+         (Literal::Int64(v), &I16_TYPE) => Expression::IntLiteral {
+            val: v as i16 as u64,
+            synthetic: true,
+         },
+         (Literal::Int64(v), &I32_TYPE) => Expression::IntLiteral {
+            val: v as i32 as u64,
+            synthetic: true,
+         },
+
          _ => return None,
       })
    }
