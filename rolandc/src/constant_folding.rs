@@ -701,7 +701,9 @@ fn fold_expr_inner(
 
          let operand = &folding_context.ast.expressions[*expr];
 
-         if expr_type == operand.exp_type.as_ref().unwrap() {
+         if make_int_type_concrete(expr_type, folding_context.target)
+            == make_int_type_concrete(operand.exp_type.as_ref().unwrap(), folding_context.target)
+         {
             return Some(operand.expression.clone());
          }
 
@@ -1003,53 +1005,11 @@ impl Literal {
             synthetic: true,
          },
 
-         // Noop
-         (Literal::Int64(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
-            val: i as u64,
-            synthetic: true,
-         },
-         (Literal::Int32(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
-            val: i64::from(i) as u64,
-            synthetic: true,
-         },
-         (Literal::Int16(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
-            val: i64::from(i) as u64,
-            synthetic: true,
-         },
-         (Literal::Int8(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
-            val: i64::from(i) as u64,
-            synthetic: true,
-         },
-         (Literal::Uint64(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
-            val: i,
-            synthetic: true,
-         },
-         (Literal::Uint32(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
-            val: u64::from(i),
-            synthetic: true,
-         },
-         (Literal::Uint16(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
-            val: u64::from(i),
-            synthetic: true,
-         },
-         (Literal::Uint8(i), &ExpressionType::Int(_)) => Expression::IntLiteral {
-            val: u64::from(i),
-            synthetic: true,
-         },
          _ => return None,
       })
    }
 
    fn do_as(self, target_type: &ExpressionType, target: Target) -> Option<Expression> {
-      fn make_int_type_concrete(e: &ExpressionType, target: Target) -> &ExpressionType {
-         match *e {
-            USIZE_TYPE if target.pointer_width() == 8 => &U64_TYPE,
-            USIZE_TYPE if target.pointer_width() == 4 => &U32_TYPE,
-            ISIZE_TYPE if target.pointer_width() == 8 => &I64_TYPE,
-            ISIZE_TYPE if target.pointer_width() == 4 => &I32_TYPE,
-            _ => e,
-         }
-      }
       #[allow(clippy::match_same_arms, clippy::cast_precision_loss)]
       Some(match (self, make_int_type_concrete(target_type, target)) {
          // Float -> Float
@@ -1984,4 +1944,14 @@ fn deep_clone_literal_expr(expr: ExpressionId, expressions: &mut ExpressionPool)
       _ => unreachable!(),
    }
    cloned
+}
+
+fn make_int_type_concrete(e: &ExpressionType, target: Target) -> &ExpressionType {
+   match *e {
+      USIZE_TYPE if target.pointer_width() == 8 => &U64_TYPE,
+      USIZE_TYPE if target.pointer_width() == 4 => &U32_TYPE,
+      ISIZE_TYPE if target.pointer_width() == 8 => &I64_TYPE,
+      ISIZE_TYPE if target.pointer_width() == 4 => &I32_TYPE,
+      _ => e,
+   }
 }
