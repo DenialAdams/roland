@@ -99,7 +99,7 @@ fn simplify_cfg(cfg: &mut [BasicBlock], ast: &ExpressionPool) {
                      y = dest;
                   }
                   if x == y {
-                     if expression_could_have_side_effects(cond_expr, &ast) {
+                     if expression_could_have_side_effects(cond_expr, ast) {
                         cfg[pred].instructions.push(CfgInstruction::Expression(cond_expr));
                      }
                      cfg[pred].instructions.push(CfgInstruction::Jump(dest));

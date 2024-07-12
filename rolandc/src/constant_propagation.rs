@@ -189,7 +189,7 @@ pub fn propagate_constants(program: &mut Program, interner: &Interner, target: T
          x.reverse();
          x
       };
-      let mut reachable_bbs: HashSet<usize> = HashSet::from_iter(rpo.iter().copied());
+      let mut reachable_bbs: HashSet<usize> = rpo.iter().copied().collect();
       for (rpo_index, bb_index) in rpo.iter().enumerate() {
          for (i, instr) in proc.cfg.bbs[*bb_index].instructions.iter().enumerate() {
             // Compute the reaching values
@@ -283,13 +283,13 @@ pub fn propagate_constants(program: &mut Program, interner: &Interner, target: T
                   defs.retain(|x| match x {
                      Definition::DefinedAt(loc) => reachable_bbs.contains(&rpo[loc.0]),
                      Definition::NoDefinitionInProc => true,
-                  })
+                  });
                }
                for partial_defs in defs_at_given_location.partials.values_mut() {
                   partial_defs.retain(|x| match x {
                      Definition::DefinedAt(loc) => reachable_bbs.contains(&rpo[loc.0]),
                      Definition::NoDefinitionInProc => true,
-                  })
+                  });
                }
             }
          }
