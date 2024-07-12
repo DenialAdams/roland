@@ -160,7 +160,7 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool, tar
       });
       ctx.current_block = CFG_START_NODE;
 
-      if !linearize_block(&mut ctx, &body.block, &mut program.ast) {
+      if !linearize_block(&mut ctx, &body.block, &mut program.ast, target) {
          let location = program.procedures[id].location;
          let return_expr = program.ast.expressions.insert(ExpressionNode {
             expression: Expression::UnitLiteral,
@@ -223,9 +223,9 @@ fn post_order_inner(cfg: &[BasicBlock], node: usize, visited: &mut HashSet<usize
 }
 
 #[must_use]
-fn linearize_block(ctx: &mut Ctx, block: &BlockNode, ast: &mut AstPool) -> bool {
+fn linearize_block(ctx: &mut Ctx, block: &BlockNode, ast: &mut AstPool, target: Target) -> bool {
    for stmt in block.statements.iter() {
-      if linearize_stmt(ctx, *stmt, ast) {
+      if linearize_stmt(ctx, *stmt, ast, target) {
          return true;
       }
    }
@@ -234,7 +234,7 @@ fn linearize_block(ctx: &mut Ctx, block: &BlockNode, ast: &mut AstPool) -> bool 
 }
 
 #[must_use]
-fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool) -> bool {
+fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool, target: Target) -> bool {
    let borrowed_stmt = std::mem::replace(&mut ast.statements[stmt].statement, Statement::Break);
    let sealed = match &borrowed_stmt {
       Statement::IfElse(condition, consequent, alternative) => {
@@ -253,12 +253,14 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool) -> bool {
             instructions: vec![],
             predecessors: HashSet::new(),
          });
-         ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::IfElse(
-            *condition,
-            then_dest,
-            else_dest,
-            afterwards_dest,
-         ));
+         if target != Target::Qbe {
+            ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::IfElse(
+               *condition,
+               then_dest,
+               else_dest,
+               afterwards_dest,
+            ));
+         }
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::ConditionalJump(*condition, then_dest, else_dest));
@@ -266,7 +268,7 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool) -> bool {
          ctx.bbs[else_dest].predecessors.insert(ctx.current_block);
 
          ctx.current_block = then_dest;
-         if !linearize_block(ctx, consequent, ast) {
+         if !linearize_block(ctx, consequent, ast, target) {
             ctx.bbs[ctx.current_block]
                .instructions
                .push(CfgInstruction::Jump(afterwards_dest));
@@ -274,7 +276,7 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool) -> bool {
          }
 
          ctx.current_block = else_dest;
-         if !linearize_stmt(ctx, *alternative, ast) {
+         if !linearize_stmt(ctx, *alternative, ast, target) {
             ctx.bbs[ctx.current_block]
                .instructions
                .push(CfgInstruction::Jump(afterwards_dest));
@@ -300,9 +302,11 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool) -> bool {
             predecessors: HashSet::new(),
          });
 
-         ctx.bbs[ctx.current_block]
+         if target != Target::Qbe {
+            ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Loop(ctx.continue_target, ctx.break_target));
+         }
 
          ctx.bbs[ctx.current_block]
             .instructions
@@ -310,7 +314,7 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool) -> bool {
          ctx.bbs[ctx.continue_target].predecessors.insert(ctx.current_block);
          ctx.current_block = ctx.continue_target;
 
-         if !linearize_block(ctx, bn, ast) {
+         if !linearize_block(ctx, bn, ast, target) {
             ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Continue);
             ctx.bbs[ctx.current_block]
                .instructions
@@ -325,7 +329,9 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool) -> bool {
          false
       }
       Statement::Break => {
-         ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Break);
+         if target != Target::Qbe {
+            ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Break);
+         }
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(ctx.break_target));
@@ -333,14 +339,16 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool) -> bool {
          true
       }
       Statement::Continue => {
-         ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Continue);
+         if target != Target::Qbe {
+            ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Continue);
+         }
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(ctx.continue_target));
          ctx.bbs[ctx.continue_target].predecessors.insert(ctx.current_block);
          true
       }
-      Statement::Block(bn) => linearize_block(ctx, bn, ast),
+      Statement::Block(bn) => linearize_block(ctx, bn, ast, target),
       Statement::Return(e) => {
          ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Return(*e));
          ctx.bbs[ctx.current_block]
