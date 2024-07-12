@@ -4,7 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::backend::linearize::{post_order, CfgInstruction};
 use crate::constant_folding::expression_could_have_side_effects;
-use crate::constant_propagation::partially_accessed_var;
+use crate::propagation::partially_accessed_var;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureId, Statement, StatementId, VariableId,

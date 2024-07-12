@@ -177,7 +177,8 @@ fn propagate_vals(
    }
 }
 
-pub fn propagate_constants(program: &mut Program, interner: &Interner, target: Target) {
+// Conditional Copy/Constant Propagation
+pub fn propagate(program: &mut Program, interner: &Interner, target: Target) {
    for proc in program.procedure_bodies.values_mut() {
       let mut escaping_vars = HashSet::new();
       mark_escaping_vars_cfg(&proc.cfg, &mut escaping_vars, &program.ast.expressions);

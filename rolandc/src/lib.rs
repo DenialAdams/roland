@@ -16,7 +16,7 @@
 mod backend;
 mod compile_consts;
 mod constant_folding;
-mod constant_propagation;
+mod propagation;
 mod dead_code_elimination;
 mod defer;
 mod disjoint_set;
@@ -402,7 +402,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       ctx.program.ast.statements.clear();
    }
 
-   constant_propagation::propagate_constants(&mut ctx.program, &ctx.interner, config.target);
+   propagation::propagate(&mut ctx.program, &ctx.interner, config.target);
 
    // It would be nice to run this before deleting unreachable procedures,
    // but doing so would currently delete procedures that we take pointers to
