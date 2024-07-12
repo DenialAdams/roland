@@ -417,16 +417,8 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    let regalloc_result = {
       let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
       for (id, body) in ctx.program.procedure_bodies.iter_mut() {
-         let live_intervals = backend::liveness::compute_live_intervals(body, &ctx.program.ast.expressions);
-         backend::liveness::kill_assignments_to_dead_variables(
-            body,
-            &live_intervals,
-            &ctx.program.ast.expressions,
-            &ctx.program.non_stack_var_info,
-         );
-         program_liveness.insert(id, live_intervals);
+         program_liveness.insert(id, backend::liveness::compute_live_intervals(body, &ctx.program.ast.expressions));
       }
-
       backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config, &program_liveness)
    };
 
