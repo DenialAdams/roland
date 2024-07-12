@@ -42,6 +42,7 @@ use std::borrow::Cow;
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 
+use backend::linearize;
 use error_handling::error_handling_macros::rolandc_error;
 use error_handling::ErrorManager;
 use expression_hoisting::HoistingMode;
@@ -409,6 +410,12 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    pre_backend_lowering::kill_zst_assignments(&mut ctx.program, config.target);
 
    dead_code_elimination::remove_unused_locals(&mut ctx.program);
+
+   if config.target == Target::Qbe {
+      for body in ctx.program.procedure_bodies.values_mut() {
+         linearize::simplify_cfg(&mut body.cfg, &ctx.program.ast.expressions);
+      }     
+   }
 
    if config.target != Target::Qbe {
       backend::wasm::sort_globals(&mut ctx.program, config.target);

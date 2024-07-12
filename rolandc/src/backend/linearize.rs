@@ -64,7 +64,7 @@ struct Ctx {
    continue_target: usize,
 }
 
-fn simplify_cfg(cfg: &mut Cfg, ast: &ExpressionPool) {
+pub fn simplify_cfg(cfg: &mut Cfg, ast: &ExpressionPool) {
    // TODO: can we do this without the outer loop? can't find any theoretical references
    let mut did_something = true;
    while did_something {
