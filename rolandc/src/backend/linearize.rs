@@ -65,63 +65,54 @@ struct Ctx {
 }
 
 pub fn simplify_cfg(cfg: &mut Cfg, ast: &ExpressionPool) {
-   // TODO: can we do this without the outer loop? can't find any theoretical references
-   let mut did_something = true;
-   while did_something {
-      did_something = false;
+   for node in post_order(cfg) {
+      if cfg.bbs[node].instructions.len() != 1 {
+         continue;
+      }
 
-      for node in 0..cfg.bbs.len() {
-         if cfg.bbs[node].instructions.len() != 1 {
+      let dest = if let Some(CfgInstruction::Jump(dest)) = cfg.bbs[node].instructions.last() {
+         *dest
+      } else {
+         continue;
+      };
+
+      if cfg.start == node {
+         cfg.start = dest;
+      }
+
+      let preds = std::mem::take(&mut cfg.bbs[node].predecessors);
+      for pred in preds {
+         if pred == node {
+            cfg.bbs[node].predecessors.insert(pred);
             continue;
          }
-
-         let dest = if let Some(CfgInstruction::Jump(dest)) = cfg.bbs[node].instructions.last() {
-            *dest
-         } else {
-            continue;
-         };
-
-         if cfg.start == node {
-            cfg.start = dest;
-         }
-
-         let preds = std::mem::take(&mut cfg.bbs[node].predecessors);
-         for pred in preds {
-            if pred == node {
-               cfg.bbs[node].predecessors.insert(pred);
-               continue;
-            }
-            let last_in_pred = cfg.bbs[pred].instructions.pop().unwrap();
-            match last_in_pred {
-               CfgInstruction::ConditionalJump(cond_expr, mut x, mut y) => {
-                  if x == node {
-                     did_something |= x != dest;
-                     x = dest;
-                  } else {
-                     debug_assert!(y == node);
-                     did_something |= y != dest;
-                     y = dest;
-                  }
-                  if x == y {
-                     if expression_could_have_side_effects(cond_expr, ast) {
-                        cfg.bbs[pred].instructions.push(CfgInstruction::Expression(cond_expr));
-                     }
-                     cfg.bbs[pred].instructions.push(CfgInstruction::Jump(dest));
-                  } else {
-                     cfg.bbs[pred]
-                        .instructions
-                        .push(CfgInstruction::ConditionalJump(cond_expr, x, y));
-                  }
+         let last_in_pred = cfg.bbs[pred].instructions.pop().unwrap();
+         match last_in_pred {
+            CfgInstruction::ConditionalJump(cond_expr, mut x, mut y) => {
+               if x == node {
+                  x = dest;
+               } else {
+                  debug_assert!(y == node);
+                  y = dest;
                }
-               CfgInstruction::Jump(x) => {
-                  did_something |= x != dest;
+               if x == y {
+                  if expression_could_have_side_effects(cond_expr, ast) {
+                     cfg.bbs[pred].instructions.push(CfgInstruction::Expression(cond_expr));
+                  }
                   cfg.bbs[pred].instructions.push(CfgInstruction::Jump(dest));
+               } else {
+                  cfg.bbs[pred]
+                     .instructions
+                     .push(CfgInstruction::ConditionalJump(cond_expr, x, y));
                }
-               _ => unreachable!(),
             }
-            cfg.bbs[dest].predecessors.insert(pred);
-            cfg.bbs[dest].predecessors.remove(&node);
+            CfgInstruction::Jump(_) => {
+               cfg.bbs[pred].instructions.push(CfgInstruction::Jump(dest));
+            }
+            _ => unreachable!(),
          }
+         cfg.bbs[dest].predecessors.insert(pred);
+         cfg.bbs[dest].predecessors.remove(&node);
       }
    }
 }
