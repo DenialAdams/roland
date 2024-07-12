@@ -49,12 +49,12 @@ impl BasicBlock {
    }
 }
 
-pub const CFG_START_NODE: usize = 0;
 pub const CFG_END_NODE: usize = 1;
 
 #[derive(Clone)]
 pub struct Cfg {
    pub bbs: Vec<BasicBlock>,
+   pub start: usize,
 }
 
 struct Ctx {
@@ -64,30 +64,34 @@ struct Ctx {
    continue_target: usize,
 }
 
-fn simplify_cfg(cfg: &mut [BasicBlock], ast: &ExpressionPool) {
+fn simplify_cfg(cfg: &mut Cfg, ast: &ExpressionPool) {
    // TODO: can we do this without the outer loop? can't find any theoretical references
    let mut did_something = true;
    while did_something {
       did_something = false;
 
-      for node in 0..cfg.len() {
-         if cfg[node].instructions.len() != 1 || cfg[node].predecessors.is_empty() {
+      for node in 0..cfg.bbs.len() {
+         if cfg.bbs[node].instructions.len() != 1 {
             continue;
          }
 
-         let dest = if let Some(CfgInstruction::Jump(dest)) = cfg[node].instructions.last() {
+         let dest = if let Some(CfgInstruction::Jump(dest)) = cfg.bbs[node].instructions.last() {
             *dest
          } else {
             continue;
          };
 
-         let preds = std::mem::take(&mut cfg[node].predecessors);
+         if cfg.start == node {
+            cfg.start = dest;
+         }
+
+         let preds = std::mem::take(&mut cfg.bbs[node].predecessors);
          for pred in preds {
             if pred == node {
-               cfg[node].predecessors.insert(pred);
+               cfg.bbs[node].predecessors.insert(pred);
                continue;
             }
-            let last_in_pred = cfg[pred].instructions.pop().unwrap();
+            let last_in_pred = cfg.bbs[pred].instructions.pop().unwrap();
             match last_in_pred {
                CfgInstruction::ConditionalJump(cond_expr, mut x, mut y) => {
                   if x == node {
@@ -100,23 +104,23 @@ fn simplify_cfg(cfg: &mut [BasicBlock], ast: &ExpressionPool) {
                   }
                   if x == y {
                      if expression_could_have_side_effects(cond_expr, ast) {
-                        cfg[pred].instructions.push(CfgInstruction::Expression(cond_expr));
+                        cfg.bbs[pred].instructions.push(CfgInstruction::Expression(cond_expr));
                      }
-                     cfg[pred].instructions.push(CfgInstruction::Jump(dest));
+                     cfg.bbs[pred].instructions.push(CfgInstruction::Jump(dest));
                   } else {
-                     cfg[pred]
+                     cfg.bbs[pred]
                         .instructions
                         .push(CfgInstruction::ConditionalJump(cond_expr, x, y));
                   }
                }
                CfgInstruction::Jump(x) => {
                   did_something |= x != dest;
-                  cfg[pred].instructions.push(CfgInstruction::Jump(dest));
+                  cfg.bbs[pred].instructions.push(CfgInstruction::Jump(dest));
                }
                _ => unreachable!(),
             }
-            cfg[dest].predecessors.insert(pred);
-            cfg[dest].predecessors.remove(&node);
+            cfg.bbs[dest].predecessors.insert(pred);
+            cfg.bbs[dest].predecessors.remove(&node);
          }
       }
    }
@@ -158,7 +162,7 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool, tar
          instructions: vec![],
          predecessors: HashSet::new(),
       });
-      ctx.current_block = CFG_START_NODE;
+      ctx.current_block = 0;
 
       if !linearize_block(&mut ctx, &body.block, &mut program.ast, target) {
          let location = program.procedures[id].location;
@@ -172,15 +176,15 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool, tar
             .push(CfgInstruction::Return(return_expr));
       }
 
+      body.cfg.bbs = std::mem::take(&mut ctx.bbs);
+
       if target == Target::Qbe {
          // We don't simplify the CFG for WASM targets, since
          // simplification can result in the structured control flow
          // statements going out of sync with their corresponding
          // jumps.
-         simplify_cfg(&mut ctx.bbs, &program.ast.expressions);
+         simplify_cfg(&mut body.cfg, &program.ast.expressions);
       }
-
-      body.cfg.bbs = std::mem::take(&mut ctx.bbs);
    }
 
    if dump_cfg {
@@ -189,9 +193,7 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool, tar
 }
 
 fn bb_id_to_label(bb_id: usize) -> String {
-   if bb_id == CFG_START_NODE {
-      return String::from("start");
-   } else if bb_id == CFG_END_NODE {
+   if bb_id == CFG_END_NODE {
       return String::from("end");
    }
    let tformed = (bb_id + 65) as u8 as char;
@@ -205,7 +207,7 @@ fn bb_id_to_label(bb_id: usize) -> String {
 pub fn post_order(cfg: &Cfg) -> Vec<usize> {
    let mut visited = HashSet::with_capacity(cfg.bbs.len());
    let mut post_order = Vec::with_capacity(cfg.bbs.len());
-   post_order_inner(&cfg.bbs, CFG_START_NODE, &mut visited, &mut post_order);
+   post_order_inner(&cfg.bbs, cfg.start, &mut visited, &mut post_order);
    post_order
 }
 

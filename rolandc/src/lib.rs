@@ -386,6 +386,15 @@ pub fn compile<'a, FR: FileResolver<'a>>(
          config.target,
       );
 
+      if config.dump_debugging_info {
+         pp::pp(
+            &ctx.program,
+            &ctx.interner,
+            &mut std::fs::File::create("pp.rol").unwrap(),
+         )
+         .unwrap();
+      }
+
       // Clean up
       for old_body in ctx.program.procedure_bodies.values_mut().map(|x| &mut x.block) {
          old_body.statements.clear();
@@ -393,25 +402,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       ctx.program.ast.statements.clear();
    }
 
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp_before.rol").unwrap(),
-      )
-      .unwrap();
-   }
-
    constant_propagation::propagate_constants(&mut ctx.program, &ctx.interner, config.target);
-
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp_after.rol").unwrap(),
-      )
-      .unwrap();
-   }
 
    // It would be nice to run this before deleting unreachable procedures,
    // but doing so would currently delete procedures that we take pointers to

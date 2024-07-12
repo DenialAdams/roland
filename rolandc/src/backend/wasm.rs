@@ -7,7 +7,7 @@ use wasm_encoder::{
    NameMap, NameSection, RefType, TableSection, TableType, TypeSection, ValType,
 };
 
-use super::linearize::{post_order, Cfg, CfgInstruction, CFG_START_NODE};
+use super::linearize::{post_order, Cfg, CfgInstruction};
 use super::regalloc::{RegallocResult, VarSlot};
 use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::interner::{Interner, StrId};
@@ -508,7 +508,7 @@ pub fn emit_wasm(
       }
 
       generation_context.live_bbs = post_order(cfg).into_iter().collect();
-      emit_bb(cfg, CFG_START_NODE, &mut generation_context);
+      emit_bb(cfg, cfg.start, &mut generation_context);
 
       generation_context.active_fcn.instruction(&Instruction::End);
 

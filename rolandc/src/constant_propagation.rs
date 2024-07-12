@@ -4,7 +4,7 @@ use std::iter;
 use indexmap::{IndexMap, IndexSet};
 use slotmap::SlotMap;
 
-use crate::backend::linearize::{post_order, Cfg, CfgInstruction, CFG_START_NODE};
+use crate::backend::linearize::{post_order, Cfg, CfgInstruction};
 use crate::backend::liveness::ProgramIndex;
 use crate::constant_folding::{self, is_non_aggregate_const, FoldingContext};
 use crate::expression_hoisting::is_reinterpretable_transmute;
@@ -397,7 +397,7 @@ fn reaching_definitions(
    // if the var is used and then assigned in a loop we don't propagate
    // the value backwards
    for proc_var in procedure_vars.keys().copied() {
-      state[CFG_START_NODE]
+      state[cfg.start]
          .gen
          .def
          .entry(proc_var)
