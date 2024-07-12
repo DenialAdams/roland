@@ -422,8 +422,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config, &program_liveness)
    };
 
-   backend::regalloc::kill_self_assignments(&mut ctx.program, &regalloc_result.var_to_slot);
-
    if config.target == Target::Qbe {
       Ok(backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, regalloc_result))
    } else {
