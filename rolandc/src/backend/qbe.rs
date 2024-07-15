@@ -240,11 +240,11 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
          return;
       }
 
-      let index = emitted.insert_full(et.clone()).0;
-
       if sizeof_type_mem(et, udt, Target::Qbe) == 0 {
          return;
       }
+
+      let index = emitted.insert_full(et.clone()).0;
 
       match et {
          ExpressionType::Struct(sid, _) => {
