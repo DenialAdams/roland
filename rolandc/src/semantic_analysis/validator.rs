@@ -546,6 +546,13 @@ pub fn type_and_check_validity(
    }
    validation_context.owned.cur_procedure = None;
 
+   validation_context.owned.procedures_to_specialize.retain_mut(|x| {
+      for et in x.1.iter_mut() {
+         lower_unknowns_in_type(et, &validation_context.owned.type_variables);
+      }
+      x.1.iter().all(ExpressionType::is_concrete)
+   });
+
    std::mem::take(&mut validation_context.owned.procedures_to_specialize)
 }
 
@@ -1571,24 +1578,19 @@ fn get_type(
                .source_to_definition
                .insert(proc.definition.name.location, proc.location);
 
-            let default_type_arguments: Box<[ExpressionTypeNode]>;
-            let type_arguments = if type_arguments.len() == 0 && !proc.type_parameters.is_empty() {
+            if type_arguments.len() == 0 && !proc.type_parameters.is_empty() {
                validation_context.owned.unknown_literals.insert(expr_index);
-               default_type_arguments = (0..proc.type_parameters.len())
-                  .map(|_| ExpressionTypeNode {
-                     e_type: ExpressionType::Unknown(
-                        validation_context
-                           .owned
-                           .type_variables
-                           .new_type_variable(TypeConstraint::None),
-                     ),
-                     location: expr_location,
-                  })
-                  .collect();
-               &default_type_arguments
-            } else {
-               &*type_arguments
-            };
+               *type_arguments = ((0..proc.type_parameters.len()).map(|_| ExpressionTypeNode {
+                  e_type: ExpressionType::Unknown(
+                     validation_context
+                        .owned
+                        .type_variables
+                        .new_type_variable(TypeConstraint::None),
+                  ),
+                  location: expr_location,
+               }))
+               .collect();
+            }
 
             let check_result = check_procedure_item(
                *id,
@@ -2266,7 +2268,7 @@ fn check_procedure_call<'a, I>(
 
          try_merge_types(
             actual_type,
-            expected.to_mut(), // this kills the cow nocheckin we can fix
+            &mut expected,
             &mut validation_context.owned.type_variables,
          );
 

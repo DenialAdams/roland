@@ -1,0 +1,26 @@
+import "std:dynarray.rol";
+
+proc main() {
+   let x: DynArray<u64> = da_init();
+   da_append(&x, 250);
+   da_append(&x, 100);
+   println(uint_to_string(da_get(&x, 0)));
+   println(uint_to_string(da_get(&x, 1)));
+   da_append(&x, 111);
+   da_append(&x, 111);
+   // trigger realloc
+   da_append(&x, 111);
+   for i in 0..x.length {
+      println(uint_to_string(da_get(&x, i)));
+   }
+}
+
+__END__
+run:
+250
+100
+250
+100
+111
+111
+111

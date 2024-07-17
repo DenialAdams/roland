@@ -20,7 +20,6 @@ pub fn monomorphize(
    specialized_procedures: &mut IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId>,
    specializations_to_create: Vec<(ProcedureId, Box<[ExpressionType]>)>,
 ) {
-   // Specialize procedures
    for new_spec in specializations_to_create {
       if specialized_procedures.contains_key(&new_spec) {
          continue;
@@ -47,17 +46,31 @@ pub fn monomorphize(
 
       specialized_procedures.insert(new_spec, new_proc_id);
    }
+}
 
-   // Update all procedure calls to refer to specialized procedures
-   for expr in program.ast.expressions.values_mut() {
-      if let Some(ExpressionType::ProcedureItem(id, generic_args)) = expr.exp_type.as_mut() {
+pub fn update_expressions_to_point_to_monomorphized_procedures(
+   program: &mut Program,
+   specialized_procedures: &IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId>,
+) {
+   fn lower_type(et: &mut ExpressionType, specialized_procedures: &IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId>,) {
+      if let ExpressionType::ProcedureItem(id, generic_args) = et {
          if generic_args.is_empty() {
-            continue;
+            return;
          }
 
          if let Some(new_id) = specialized_procedures.get(&(*id, generic_args.clone())).copied() {
             *id = new_id;
          }
+      }
+   }
+   for body in program.procedure_bodies.values_mut() {
+      for var_type in body.locals.values_mut() {
+         lower_type(var_type, specialized_procedures);
+      }
+   }
+   for expr in program.ast.expressions.values_mut() {
+      if let Some(et) = expr.exp_type.as_mut() {
+         lower_type(et, specialized_procedures);
       }
       if let Expression::BoundFcnLiteral(id, generic_args) = &mut expr.expression {
          if generic_args.is_empty() {

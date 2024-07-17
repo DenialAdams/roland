@@ -48,6 +48,7 @@ use error_handling::ErrorManager;
 use expression_hoisting::HoistingMode;
 use indexmap::{IndexMap, IndexSet};
 use interner::Interner;
+use monomorphization::update_expressions_to_point_to_monomorphized_procedures;
 pub use parse::Program;
 use parse::{
    statement_always_or_never_returns, Expression, ExpressionNode, ImportNode, ProcImplSource, ProcedureId, Statement,
@@ -282,6 +283,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    if !ctx.err_manager.errors.is_empty() {
       return Err(CompilationError::Semantic);
    }
+   update_expressions_to_point_to_monomorphized_procedures(&mut ctx.program, &specializations);
    ctx.program
       .procedures
       .retain(|_, x| x.definition.type_parameters.is_empty() || x.impl_source != ProcImplSource::Native);
@@ -291,6 +293,15 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    // Throw out all untyped expressions, on the basis that untyped expressions should no
    // longer be referenced now that we deleted all template procedures
    ctx.program.ast.expressions.retain(|_, x| x.exp_type.is_some());
+
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp.rol").unwrap(),
+      )
+      .unwrap();
+   }
 
    monomorphization::monomorphize_types(&mut ctx.program, config.target);
 
@@ -386,15 +397,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
          config.dump_debugging_info,
          config.target,
       );
-
-      if config.dump_debugging_info {
-         pp::pp(
-            &ctx.program,
-            &ctx.interner,
-            &mut std::fs::File::create("pp.rol").unwrap(),
-         )
-         .unwrap();
-      }
 
       // Clean up
       for old_body in ctx.program.procedure_bodies.values_mut().map(|x| &mut x.block) {

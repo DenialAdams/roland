@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use slotmap::SecondaryMap;
 
 use super::type_variables::{TypeConstraint, TypeVariable, TypeVariableManager};
@@ -120,13 +122,14 @@ fn inference_is_possible(
 
 pub fn try_merge_types(
    e_type: &ExpressionType,
-   current_type: &mut ExpressionType,
+   current_type: &mut Cow<ExpressionType>,
    type_variables: &mut TypeVariableManager,
 ) {
    if !inference_is_possible(current_type, e_type, type_variables) {
       return;
    }
 
+   let current_type = current_type.to_mut();
    meet(current_type, e_type, type_variables);
    *current_type = e_type.clone();
 }
@@ -273,6 +276,11 @@ pub fn lower_type_variables(
          lower_unknowns_in_type(exp_type, &ctx.type_variables);
          if exp_type.is_concrete() {
             ctx.unknown_literals.swap_remove(&i);
+         }
+      }
+      if let Expression::BoundFcnLiteral(_, type_arguments) = &mut e.expression {
+         for type_arg in type_arguments.iter_mut() {
+            lower_unknowns_in_type(&mut type_arg.e_type, &ctx.type_variables);
          }
       }
    }

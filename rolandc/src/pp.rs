@@ -299,7 +299,6 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
       Expression::UnitLiteral => {
          write!(pp_ctx.output, "unit()")?;
       }
-      Expression::UnresolvedVariable(_) => unreachable!(),
       Expression::Variable(v) => {
          pp_var(*v, pp_ctx)?;
       }
@@ -377,8 +376,11 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          write!(pp_ctx.output, "::{}", pp_ctx.interner.lookup(*variant))?;
       }
       Expression::BoundFcnLiteral(id, generic_args) => {
-         let proc_name = pp_ctx.procedures[*id].definition.name.str;
-         write!(pp_ctx.output, "{}", pp_ctx.interner.lookup(proc_name))?;
+         if let Some(proc_name) = pp_ctx.procedures.get(*id).map(|x| x.definition.name.str) {
+            write!(pp_ctx.output, "{}", pp_ctx.interner.lookup(proc_name))?;
+         } else {
+            write!(pp_ctx.output, "XXX")?;
+         }
          if !generic_args.is_empty() {
             write!(pp_ctx.output, "$<")?;
             for (i, generic_arg) in generic_args.iter().enumerate() {
@@ -398,9 +400,10 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          write!(pp_ctx.output, " else ")?;
          pp_expr(*c, pp_ctx)?;
       }
-      Expression::UnresolvedProcLiteral(_, _) => unimplemented!(),
-      Expression::UnresolvedStructLiteral(_, _, _) => unimplemented!(),
-      Expression::UnresolvedEnumLiteral(_, _) => unimplemented!(),
+      Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _, _)
+      | Expression::UnresolvedEnumLiteral(_, _) => unimplemented!(),
    }
 
    Ok(())
