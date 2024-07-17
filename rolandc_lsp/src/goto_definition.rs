@@ -52,7 +52,7 @@ pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationCon
       if let ExpressionType::Unresolved {
          name: str,
          generic_args: _,
-      } = parsed_type.e_type.get_type_or_type_being_pointed_to()
+      } = parsed_type.e_type.get_type_or_type_being_pointed_to_recursively()
       {
          // These nodes should never be resolved
          return match ctx.program.user_defined_type_name_table.get(str) {

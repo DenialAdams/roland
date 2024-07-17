@@ -191,7 +191,11 @@ fn set_inferred_type(
             set_inferred_type(target_elem_type, *expr, validation_context, expressions);
          }
 
-         meet(expressions[expr_index].exp_type.as_ref().unwrap(), e_type, &mut validation_context.type_variables);
+         meet(
+            expressions[expr_index].exp_type.as_ref().unwrap(),
+            e_type,
+            &mut validation_context.type_variables,
+         );
 
          if e_type.is_concrete() {
             validation_context.unknown_literals.swap_remove(&expr_index);

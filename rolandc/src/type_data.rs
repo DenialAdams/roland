@@ -163,6 +163,14 @@ impl ExpressionType {
    }
 
    #[must_use]
+   pub fn get_type_or_type_being_pointed_to_recursively(&self) -> &ExpressionType {
+      match self {
+         ExpressionType::Pointer(b) => b.get_type_or_type_being_pointed_to_recursively(),
+         _ => self,
+      }
+   }
+
+   #[must_use]
    pub fn is_concrete(&self) -> bool {
       match self {
          ExpressionType::Unknown(_) => false,
