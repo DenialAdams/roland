@@ -16,7 +16,6 @@
 mod backend;
 mod compile_consts;
 mod constant_folding;
-mod propagation;
 mod dead_code_elimination;
 mod defer;
 mod disjoint_set;
@@ -32,6 +31,7 @@ mod named_argument_lowering;
 pub mod parse;
 mod pp;
 mod pre_backend_lowering;
+mod propagation;
 mod semantic_analysis;
 mod size_info;
 pub mod source_info;
@@ -414,7 +414,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    if config.target == Target::Qbe {
       for body in ctx.program.procedure_bodies.values_mut() {
          linearize::simplify_cfg(&mut body.cfg, &ctx.program.ast.expressions);
-      }     
+      }
    }
 
    if config.target != Target::Qbe {
@@ -424,7 +424,10 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    let regalloc_result = {
       let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
       for (id, body) in ctx.program.procedure_bodies.iter_mut() {
-         program_liveness.insert(id, backend::liveness::compute_live_intervals(body, &ctx.program.ast.expressions));
+         program_liveness.insert(
+            id,
+            backend::liveness::compute_live_intervals(body, &ctx.program.ast.expressions),
+         );
       }
       backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config, &program_liveness)
    };

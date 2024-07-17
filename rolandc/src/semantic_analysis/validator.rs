@@ -648,13 +648,8 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
          type_expression(err_manager, *end, validation_context);
 
          for expr_id in [*start, *end] {
-            if let Some(x) = validation_context.ast.expressions[expr_id]
-               .exp_type
-               .as_ref()
-               .unwrap()
-               .get_type_variable_of_unknown_type()
-            {
-               let tvd = validation_context.owned.type_variables.get_data_mut(x);
+            if let ExpressionType::Unknown(x) = validation_context.ast.expressions[expr_id].exp_type.as_ref().unwrap() {
+               let tvd = validation_context.owned.type_variables.get_data_mut(*x);
                let _ = tvd.add_constraint(TypeConstraint::Int); // we'll handle the type mismatch below
             }
          }
@@ -1514,8 +1509,8 @@ fn get_type(
          }
 
          if *un_op == UnOp::Negate {
-            if let Some(x) = e.exp_type.as_ref().unwrap().get_type_variable_of_unknown_type() {
-               let tvd = validation_context.owned.type_variables.get_data_mut(x);
+            if let ExpressionType::Unknown(x) = e.exp_type.as_ref().unwrap() {
+               let tvd = validation_context.owned.type_variables.get_data_mut(*x);
                if tvd.constraint == TypeConstraint::Int {
                   // could be a float, or totally unknown
                   tvd.add_constraint(TypeConstraint::SignedInt).unwrap();

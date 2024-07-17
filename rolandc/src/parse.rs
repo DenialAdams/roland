@@ -786,7 +786,10 @@ fn parse_procedure(
       },
       ProcedureBody {
          locals: IndexMap::new(),
-         cfg: Cfg { bbs: Vec::new(), start: 0 },
+         cfg: Cfg {
+            bbs: Vec::new(),
+            start: 0,
+         },
          block,
       },
    ))

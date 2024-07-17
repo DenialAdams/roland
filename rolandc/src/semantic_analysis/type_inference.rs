@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use slotmap::SecondaryMap;
 
 use super::type_variables::{TypeConstraint, TypeVariable, TypeVariableManager};
@@ -23,17 +21,43 @@ fn unknowns_are_compatible(x: TypeVariable, y: TypeVariable, type_variables: &Ty
    }
 }
 
+fn meet(current_type: &ExpressionType, incoming_type: &ExpressionType, type_variables: &mut TypeVariableManager) {
+   match (current_type, incoming_type) {
+      (ExpressionType::Array(current_base, _), ExpressionType::Array(incoming_base, _))
+      | (ExpressionType::Pointer(current_base), ExpressionType::Pointer(incoming_base)) => {
+         meet(current_base, incoming_base, type_variables);
+      }
+      (ExpressionType::ProcedureItem(_, _), ExpressionType::ProcedureItem(_, _)) => todo!(),
+      (ExpressionType::Unknown(current_tv), ExpressionType::Unknown(incoming_tv)) => {
+         debug_assert!(unknowns_are_compatible(*current_tv, *incoming_tv, type_variables));
+         type_variables.union(*current_tv, *incoming_tv);
+      }
+      (ExpressionType::Unknown(current_tv), _) => {
+         debug_assert!(type_variables
+            .get_data(*current_tv)
+            .known_type
+            .as_ref()
+            .map_or(true, |x| x == incoming_type));
+         type_variables
+            .get_data_mut(*current_tv)
+            .known_type
+            .get_or_insert_with(|| incoming_type.clone());
+      }
+      _ => unreachable!(),
+   }
+}
+
 fn inference_is_possible(
    current_type: &ExpressionType,
    potential_type: &ExpressionType,
    type_variables: &TypeVariableManager,
 ) -> bool {
-   match current_type {
-      ExpressionType::Array(src_e, _) => match potential_type {
-         ExpressionType::Array(target_e, _) => inference_is_possible(src_e, target_e, type_variables),
-         _ => false,
-      },
-      ExpressionType::Unknown(x) => {
+   match (current_type, potential_type) {
+      (ExpressionType::Array(current_base, _), ExpressionType::Array(potential_base, _))
+      | (ExpressionType::Pointer(current_base), ExpressionType::Pointer(potential_base)) => {
+         inference_is_possible(current_base, potential_base, type_variables)
+      }
+      (ExpressionType::Unknown(x), _) => {
          let data = type_variables.get_data(*x);
 
          if data.known_type.is_some() {
@@ -51,10 +75,25 @@ fn inference_is_possible(
             TypeConstraint::Int => matches!(potential_type, ExpressionType::Int(_)),
          }
       }
-      ExpressionType::Pointer(src_e) => match potential_type {
-         ExpressionType::Pointer(target_e) => inference_is_possible(src_e, target_e, type_variables),
-         _ => false,
-      },
+      (
+         ExpressionType::ProcedureItem(proc_id, generic_args),
+         ExpressionType::ProcedureItem(potential_proc_id, potential_generic_args),
+      ) => {
+         if proc_id != potential_proc_id
+            || generic_args.len() == 0
+            || generic_args.len() != potential_generic_args.len()
+         {
+            return false;
+         }
+
+         // TODO: what if inference is possible for all (x, y) pairs BUT is not possible when combined
+         // i.e. unknown1 meet u8 is OK but then unknown1 meet bool is not, this would say it is OK
+
+         generic_args
+            .iter()
+            .zip(potential_generic_args)
+            .all(|(x, y)| inference_is_possible(x, y, type_variables))
+      }
       _ => false,
    }
 }
@@ -82,42 +121,22 @@ fn set_inferred_type(
    let the_expr = std::mem::replace(&mut expressions[expr_index].expression, Expression::UnitLiteral);
    match &the_expr {
       Expression::IntLiteral { .. } | Expression::FloatLiteral(_) => {
-         let my_tv = match expressions[expr_index].exp_type.as_ref().unwrap() {
-            ExpressionType::Unknown(x) => *x,
-            _ => unreachable!(),
-         };
-         if let ExpressionType::Unknown(e_tv) = e_type {
-            debug_assert!(unknowns_are_compatible(
-               my_tv,
-               *e_tv,
-               &validation_context.type_variables
-            ));
-            validation_context.type_variables.union(my_tv, *e_tv);
-         } else {
-            debug_assert!(validation_context
-               .type_variables
-               .get_data(my_tv)
-               .known_type
-               .as_ref()
-               .map_or(true, |x| x == e_type));
-            validation_context
-               .type_variables
-               .get_data_mut(my_tv)
-               .known_type
-               .get_or_insert_with(|| e_type.clone());
+         meet(
+            expressions[expr_index].exp_type.as_ref().unwrap(),
+            e_type,
+            &mut validation_context.type_variables,
+         );
+         if e_type.is_concrete() {
             validation_context.unknown_literals.swap_remove(&expr_index);
          }
-         *expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
          set_inferred_type(e_type, *lhs, validation_context, expressions);
          set_inferred_type(e_type, *rhs, validation_context, expressions);
-         *expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
       }
       Expression::IfX(_, b, c) => {
          try_set_inferred_type(e_type, *b, validation_context, expressions);
          try_set_inferred_type(e_type, *c, validation_context, expressions);
-         *expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
       }
       Expression::UnaryOperator(unop, e) => {
          match unop {
@@ -138,7 +157,6 @@ fn set_inferred_type(
                set_inferred_type(&reversed, *e, validation_context, expressions);
             }
          }
-         *expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
       }
       Expression::Variable(_) => {
          // Variable could have any of the following types:
@@ -148,48 +166,21 @@ fn set_inferred_type(
          // (and recursive variants: an array of arrays of pointers to an unknown type...)
          // We must take care to preserve the existing type structure.
 
-         let (my_tv, incoming_definition) = get_type_variable_of_unknown_type_and_associated_e_type(
+         meet(
             expressions[expr_index].exp_type.as_ref().unwrap(),
             e_type,
-         )
-         .unwrap();
+            &mut validation_context.type_variables,
+         );
 
-         if let Some(e_tv) = e_type.get_type_variable_of_unknown_type() {
-            debug_assert!(unknowns_are_compatible(my_tv, e_tv, &validation_context.type_variables));
-            validation_context.type_variables.union(my_tv, e_tv);
-         } else {
-            let my_tv = validation_context.type_variables.find(my_tv);
-
-            // Update existing variables immediately, so that error messages have good types
-            // (this should _not_ affect correctness.)
-            // (Is this a performance problem? It's obviously awkward, but straightforward)
-            // (The alternative would be to update the type lazily)
-            for var_in_scope in validation_context.variable_types.values_mut() {
-               let Some(inner_tv) = var_in_scope.var_type.get_type_variable_of_unknown_type() else {
-                  continue;
-               };
-
-               let representative = validation_context.type_variables.find(inner_tv);
-
-               if representative == my_tv {
-                  *var_in_scope.var_type.get_unknown_portion_of_type().unwrap() = incoming_definition.clone();
+         // Update existing variables immediately, so that error messages have good types
+         // (this should _not_ affect correctness.)
+         for var_in_scope in validation_context.variable_types.values_mut() {
+            map_unknowns(&mut var_in_scope.var_type, &mut |inner_tv, et| {
+               if let Some(known_type) = &validation_context.type_variables.get_data(inner_tv).known_type {
+                  *et = known_type.clone();
                }
-            }
-
-            debug_assert!(validation_context
-               .type_variables
-               .get_data(my_tv)
-               .known_type
-               .as_ref()
-               .map_or(true, |x| x == incoming_definition));
-            validation_context
-               .type_variables
-               .get_data_mut(my_tv)
-               .known_type
-               .get_or_insert_with(|| incoming_definition.clone());
+            });
          }
-
-         *expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
       }
       Expression::ArrayLiteral(exprs) => {
          let ExpressionType::Array(target_elem_type, _) = e_type else {
@@ -200,30 +191,10 @@ fn set_inferred_type(
             set_inferred_type(target_elem_type, *expr, validation_context, expressions);
          }
 
-         // It's important that we don't override the length here; that can't be inferred
-         match &mut expressions[expr_index].exp_type {
-            Some(ExpressionType::Array(a_type, _)) => {
-               if target_elem_type.get_type_variable_of_unknown_type().is_none() {
-                  let (my_tv, incoming_definition) =
-                     get_type_variable_of_unknown_type_and_associated_e_type(a_type, target_elem_type).unwrap();
+         meet(expressions[expr_index].exp_type.as_ref().unwrap(), e_type, &mut validation_context.type_variables);
 
-                  debug_assert!(validation_context
-                     .type_variables
-                     .get_data(my_tv)
-                     .known_type
-                     .as_ref()
-                     .map_or(true, |x| x == incoming_definition));
-                  validation_context
-                     .type_variables
-                     .get_data_mut(my_tv)
-                     .known_type
-                     .get_or_insert_with(|| incoming_definition.clone());
-                  validation_context.unknown_literals.swap_remove(&expr_index);
-               }
-
-               **a_type = target_elem_type.deref().clone();
-            }
-            _ => unreachable!(),
+         if e_type.is_concrete() {
+            validation_context.unknown_literals.swap_remove(&expr_index);
          }
       }
       Expression::ArrayIndex { array, index: _index } => {
@@ -232,7 +203,6 @@ fn set_inferred_type(
          };
          let array_type = ExpressionType::Array(Box::new(e_type.clone()), *real_array_len);
          try_set_inferred_type(&array_type, *array, validation_context, expressions);
-         *expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
       }
       Expression::StringLiteral(_)
       | Expression::EnumLiteral(_, _)
@@ -249,22 +219,7 @@ fn set_inferred_type(
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
    }
    expressions[expr_index].expression = the_expr;
-}
-
-fn get_type_variable_of_unknown_type_and_associated_e_type<'b>(
-   unknown_type: &ExpressionType,
-   type_coming_in: &'b ExpressionType,
-) -> Option<(TypeVariable, &'b ExpressionType)> {
-   // Strip down the provided type to get its associated type variable
-   match (unknown_type, type_coming_in) {
-      (ExpressionType::Unknown(x), y) => Some((*x, y)),
-      (ExpressionType::Array(unknown_type_inner, _), ExpressionType::Array(type_coming_in_inner, _))
-      | (ExpressionType::Pointer(unknown_type_inner), ExpressionType::Pointer(type_coming_in_inner)) => {
-         get_type_variable_of_unknown_type_and_associated_e_type(unknown_type_inner, type_coming_in_inner)
-      }
-      // other types can't contain unknown values, at least right now
-      _ => None,
-   }
+   *expressions[expr_index].exp_type.as_mut().unwrap() = e_type.clone();
 }
 
 pub fn lower_type_variables(
@@ -274,16 +229,13 @@ pub fn lower_type_variables(
    err_manager: &mut ErrorManager,
 ) {
    for (i, e) in expressions.iter_mut() {
-      if let Some(tv) = e
-         .exp_type
-         .as_ref()
-         .and_then(ExpressionType::get_type_variable_of_unknown_type)
-      {
-         let the_type = ctx.type_variables.get_data(tv);
-         if let Some(t) = the_type.known_type.as_ref() {
-            *e.exp_type.as_mut().unwrap().get_unknown_portion_of_type().unwrap() = t.clone();
-            ctx.unknown_literals.swap_remove(&i);
-         }
+      if let Some(exp_type) = e.exp_type.as_mut() {
+         map_unknowns(exp_type, &mut |tv, et| {
+            if let Some(t) = ctx.type_variables.get_data(tv).known_type.as_ref() {
+               *et = t.clone();
+               ctx.unknown_literals.swap_remove(&i);
+            }
+         });
       }
    }
 
@@ -306,15 +258,26 @@ pub fn lower_type_variables(
 
    for body in procedure_bodies.values_mut() {
       for lt in body.locals.values_mut() {
-         let Some(tv) = lt.get_type_variable_of_unknown_type() else {
-            continue;
-         };
-
-         if let Some(t) = ctx.type_variables.get_data(tv).known_type.as_ref() {
-            *lt.get_unknown_portion_of_type().unwrap() = t.clone();
-         } else {
-            debug_assert!(!err_manager.errors.is_empty());
-         };
+         map_unknowns(lt, &mut |tv, et| {
+            if let Some(t) = ctx.type_variables.get_data(tv).known_type.as_ref() {
+               *et = t.clone();
+            } else {
+               debug_assert!(!err_manager.errors.is_empty());
+            }
+         });
       }
+   }
+}
+
+pub fn map_unknowns(e: &mut ExpressionType, f: &mut impl FnMut(TypeVariable, &mut ExpressionType)) {
+   match e {
+      ExpressionType::Unknown(tv) => f(*tv, e),
+      ExpressionType::Pointer(base) | ExpressionType::Array(base, _) => map_unknowns(base, f),
+      ExpressionType::ProcedureItem(_, type_arguments) => {
+         for t_arg in type_arguments.iter_mut() {
+            map_unknowns(t_arg, f);
+         }
+      }
+      _ => (),
    }
 }

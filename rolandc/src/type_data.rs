@@ -163,22 +163,14 @@ impl ExpressionType {
    }
 
    #[must_use]
-   pub fn get_type_variable_of_unknown_type(&self) -> Option<TypeVariable> {
+   pub fn is_concrete(&self) -> bool {
       match self {
-         ExpressionType::Unknown(x) => Some(*x),
-         ExpressionType::Pointer(v) | ExpressionType::Array(v, _) => v.get_type_variable_of_unknown_type(),
+         ExpressionType::Unknown(_) => false,
+         ExpressionType::Pointer(v) | ExpressionType::Array(v, _) => v.is_concrete(),
+         ExpressionType::ProcedureItem(_, type_args) => type_args.iter().all(ExpressionType::is_concrete),
+         // important todo what if we take a procedure pointer to procedure that is still unknown
          // other types can't contain unknown values, at least right now
-         _ => None,
-      }
-   }
-
-   #[must_use]
-   pub fn get_unknown_portion_of_type(&mut self) -> Option<&mut ExpressionType> {
-      match self {
-         x @ ExpressionType::Unknown(_) => Some(x),
-         ExpressionType::Pointer(x) => x.get_unknown_portion_of_type(),
-         ExpressionType::Array(v, _) => v.get_unknown_portion_of_type(),
-         _ => None,
+         _ => true,
       }
    }
 

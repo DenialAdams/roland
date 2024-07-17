@@ -4,7 +4,9 @@ use arrayvec::ArrayVec;
 
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
-use crate::parse::{AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ExpressionPool, Statement, StatementId};
+use crate::parse::{
+   AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ExpressionPool, Statement, StatementId,
+};
 use crate::type_data::ExpressionType;
 use crate::{Program, Target};
 
@@ -297,8 +299,8 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool, target: T
 
          if target != Target::Qbe {
             ctx.bbs[ctx.current_block]
-            .instructions
-            .push(CfgInstruction::Loop(ctx.continue_target, ctx.break_target));
+               .instructions
+               .push(CfgInstruction::Loop(ctx.continue_target, ctx.break_target));
          }
 
          ctx.bbs[ctx.current_block]
