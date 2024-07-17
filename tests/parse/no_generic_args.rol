@@ -6,5 +6,5 @@ proc gen<T>() {
 
 }__END__
 compile:
-Mismatched arity for procedure 'gen'. Expected 1 type arguments but got 0
-↳ line 2, column 12 [tests/parse/no_generic_args.rol]
+We weren't able to determine the types of 1 literals
+↳ literal @ line 2, column 12 [tests/parse/no_generic_args.rol]
