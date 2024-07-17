@@ -27,7 +27,29 @@ fn meet(current_type: &ExpressionType, incoming_type: &ExpressionType, type_vari
       | (ExpressionType::Pointer(current_base), ExpressionType::Pointer(incoming_base)) => {
          meet(current_base, incoming_base, type_variables);
       }
-      (ExpressionType::ProcedureItem(_, _), ExpressionType::ProcedureItem(_, _)) => todo!(),
+      (
+         ExpressionType::ProcedureItem(_, current_type_arguments),
+         ExpressionType::ProcedureItem(_, incoming_type_arguments),
+      ) => {
+         for (x, y) in current_type_arguments.iter().zip(incoming_type_arguments) {
+            meet(x, y, type_variables);
+         }
+      }
+      (
+         ExpressionType::ProcedurePointer {
+            parameters: current_parameters,
+            ret_type: current_ret_type,
+         },
+         ExpressionType::ProcedurePointer {
+            parameters: incoming_parameters,
+            ret_type: incoming_ret_type,
+         },
+      ) => {
+         for (x, y) in current_parameters.iter().zip(incoming_parameters) {
+            meet(x, y, type_variables);
+         }
+         meet(current_type, incoming_ret_type, type_variables);
+      }
       (ExpressionType::Unknown(current_tv), ExpressionType::Unknown(incoming_tv)) => {
          debug_assert!(unknowns_are_compatible(*current_tv, *incoming_tv, type_variables));
          type_variables.union(*current_tv, *incoming_tv);
@@ -191,6 +213,7 @@ fn set_inferred_type(
             set_inferred_type(target_elem_type, *expr, validation_context, expressions);
          }
 
+         // I can not come up with a scenario where this meet matters, but not doing it seems wrong.
          meet(
             expressions[expr_index].exp_type.as_ref().unwrap(),
             e_type,
