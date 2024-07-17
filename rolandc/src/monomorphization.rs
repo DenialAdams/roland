@@ -52,7 +52,10 @@ pub fn update_expressions_to_point_to_monomorphized_procedures(
    program: &mut Program,
    specialized_procedures: &IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId>,
 ) {
-   fn lower_type(et: &mut ExpressionType, specialized_procedures: &IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId>,) {
+   fn lower_type(
+      et: &mut ExpressionType,
+      specialized_procedures: &IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId>,
+   ) {
       if let ExpressionType::ProcedureItem(id, generic_args) = et {
          if generic_args.is_empty() {
             return;

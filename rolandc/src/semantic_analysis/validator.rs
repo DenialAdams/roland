@@ -2266,11 +2266,7 @@ fn check_procedure_call<'a, I>(
          let actual_expr = &validation_context.ast.expressions[actual.expr];
          let actual_type = actual_expr.exp_type.as_ref().unwrap();
 
-         try_merge_types(
-            actual_type,
-            &mut expected,
-            &mut validation_context.owned.type_variables,
-         );
+         try_merge_types(actual_type, &mut expected, &mut validation_context.owned.type_variables);
 
          if *actual_type != *expected && !actual_type.is_or_contains_or_points_to_error() {
             let actual_type_str = actual_type.as_roland_type_info(
