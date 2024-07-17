@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use indexmap::{IndexMap, IndexSet};
 use slotmap::SlotMap;
 
-use super::type_inference::try_set_inferred_type;
+use super::type_inference::{try_merge_types, try_set_inferred_type};
 use super::type_variables::{TypeConstraint, TypeVariableManager};
 use super::{GlobalInfo, OwnedValidationContext, ValidationContext, VariableDetails, VariableScopeKind};
 use crate::error_handling::error_handling_macros::{
@@ -1570,6 +1570,26 @@ fn get_type(
             validation_context
                .source_to_definition
                .insert(proc.definition.name.location, proc.location);
+
+            let default_type_arguments: Box<[ExpressionTypeNode]>;
+            let type_arguments = if type_arguments.len() == 0 && !proc.type_parameters.is_empty() {
+               validation_context.owned.unknown_literals.insert(expr_index);
+               default_type_arguments = (0..proc.type_parameters.len())
+                  .map(|_| ExpressionTypeNode {
+                     e_type: ExpressionType::Unknown(
+                        validation_context
+                           .owned
+                           .type_variables
+                           .new_type_variable(TypeConstraint::None),
+                     ),
+                     location: expr_location,
+                  })
+                  .collect();
+               &default_type_arguments
+            } else {
+               &*type_arguments
+            };
+
             let check_result = check_procedure_item(
                *id,
                proc.definition.name.str,
@@ -1582,7 +1602,7 @@ fn get_type(
                err_manager,
             );
 
-            if check_result.1 && !type_arguments.is_empty() {
+            if check_result.1 && !type_arguments.is_empty() && check_result.0.is_concrete() {
                validation_context.owned.procedures_to_specialize.push((
                   *id,
                   type_arguments
@@ -2241,6 +2261,12 @@ fn check_procedure_call<'a, I>(
 
          let actual_expr = &validation_context.ast.expressions[actual.expr];
          let actual_type = actual_expr.exp_type.as_ref().unwrap();
+
+         try_merge_types(
+            actual_type,
+            &expected,
+            &mut validation_context.owned.type_variables,
+         );
 
          if *actual_type != *expected && !actual_type.is_or_contains_or_points_to_error() {
             let actual_type_str = actual_type.as_roland_type_info(

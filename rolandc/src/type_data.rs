@@ -175,7 +175,9 @@ impl ExpressionType {
       match self {
          ExpressionType::Unknown(_) => false,
          ExpressionType::Pointer(v) | ExpressionType::Array(v, _) => v.is_concrete(),
-         ExpressionType::ProcedureItem(_, type_args) => type_args.iter().all(ExpressionType::is_concrete),
+         ExpressionType::ProcedureItem(_, type_args)
+         | ExpressionType::Struct(_, type_args)
+         | ExpressionType::Union(_, type_args) => type_args.iter().all(ExpressionType::is_concrete),
          ExpressionType::ProcedurePointer { parameters, ret_type } => {
             parameters.iter().all(ExpressionType::is_concrete) && ret_type.is_concrete()
          }
@@ -284,18 +286,42 @@ impl ExpressionType {
          ExpressionType::Unit => Cow::Borrowed("unit"),
          ExpressionType::Never => Cow::Borrowed("!"),
          ExpressionType::CompileError => Cow::Borrowed("ERROR"),
-         ExpressionType::Struct(x, _) => {
+         ExpressionType::Struct(x, type_args) => {
             let name = interner.lookup(udt.struct_info.get(*x).unwrap().name);
             if name == "String" {
                Cow::Borrowed("String")
-            } else {
+            } else if type_args.is_empty() {
                Cow::Owned(format!("Struct {}", name))
+            } else {
+               let g_args: String = type_args
+                  .iter()
+                  .map(|x| x.as_roland_type_info_inner(interner, udt, procedures, type_variable_info))
+                  .collect::<Vec<_>>()
+                  .join(", ");
+
+               Cow::Owned(format!("Struct {}<{}>", name, g_args,))
             }
          }
-         ExpressionType::Union(x, _) => Cow::Owned(format!(
-            "Union {}",
-            interner.lookup(udt.union_info.get(*x).unwrap().name)
-         )),
+         ExpressionType::Union(x, type_args) => {
+            if type_args.is_empty() {
+               Cow::Owned(format!(
+                  "Union {}",
+                  interner.lookup(udt.union_info.get(*x).unwrap().name)
+               ))
+            } else {
+               let g_args: String = type_args
+                  .iter()
+                  .map(|x| x.as_roland_type_info_inner(interner, udt, procedures, type_variable_info))
+                  .collect::<Vec<_>>()
+                  .join(", ");
+
+               Cow::Owned(format!(
+                  "Union {}<{}>",
+                  interner.lookup(udt.union_info.get(*x).unwrap().name),
+                  g_args,
+               ))
+            }
+         }
          ExpressionType::Enum(x) => {
             Cow::Owned(format!("Enum {}", interner.lookup(udt.enum_info.get(*x).unwrap().name)))
          }

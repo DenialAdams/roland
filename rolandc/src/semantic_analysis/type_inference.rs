@@ -30,7 +30,9 @@ fn meet(current_type: &ExpressionType, incoming_type: &ExpressionType, type_vari
       (
          ExpressionType::ProcedureItem(_, current_type_arguments),
          ExpressionType::ProcedureItem(_, incoming_type_arguments),
-      ) => {
+      )
+      | (ExpressionType::Struct(_, current_type_arguments), ExpressionType::Struct(_, incoming_type_arguments))
+      | (ExpressionType::Union(_, current_type_arguments), ExpressionType::Union(_, incoming_type_arguments)) => {
          for (x, y) in current_type_arguments.iter().zip(incoming_type_arguments) {
             meet(x, y, type_variables);
          }
@@ -48,7 +50,7 @@ fn meet(current_type: &ExpressionType, incoming_type: &ExpressionType, type_vari
          for (x, y) in current_parameters.iter().zip(incoming_parameters) {
             meet(x, y, type_variables);
          }
-         meet(current_type, incoming_ret_type, type_variables);
+         meet(current_ret_type, incoming_ret_type, type_variables);
       }
       (ExpressionType::Unknown(current_tv), ExpressionType::Unknown(incoming_tv)) => {
          debug_assert!(unknowns_are_compatible(*current_tv, *incoming_tv, type_variables));
@@ -98,6 +100,40 @@ fn inference_is_possible(
          }
       }
       (
+         ExpressionType::Struct(base_id, current_type_arguments),
+         ExpressionType::Struct(potential_base_id, potential_type_arguments),
+      ) => {
+         if base_id != potential_base_id
+            || current_type_arguments.len() == 0
+            || current_type_arguments.len() != potential_type_arguments.len()
+         {
+            return false;
+         }
+         // TODO: what if inference is possible for all (x, y) pairs BUT is not possible when combined
+         // i.e. unknown1 meet u8 is OK but then unknown1 meet bool is not, this would say it is OK
+         current_type_arguments
+            .iter()
+            .zip(potential_type_arguments.iter())
+            .all(|(x, y)| inference_is_possible(x, y, type_variables))
+      }
+      (
+         ExpressionType::Union(base_id, current_type_arguments),
+         ExpressionType::Union(potential_base_id, potential_type_arguments),
+      ) => {
+         if base_id != potential_base_id
+            || current_type_arguments.len() == 0
+            || current_type_arguments.len() != potential_type_arguments.len()
+         {
+            return false;
+         }
+         // TODO: what if inference is possible for all (x, y) pairs BUT is not possible when combined
+         // i.e. unknown1 meet u8 is OK but then unknown1 meet bool is not, this would say it is OK
+         current_type_arguments
+            .iter()
+            .zip(potential_type_arguments.iter())
+            .all(|(x, y)| inference_is_possible(x, y, type_variables))
+      }
+      (
          ExpressionType::ProcedureItem(proc_id, generic_args),
          ExpressionType::ProcedureItem(potential_proc_id, potential_generic_args),
       ) => {
@@ -118,6 +154,18 @@ fn inference_is_possible(
       }
       _ => false,
    }
+}
+
+pub fn try_merge_types(
+   e_type: &ExpressionType,
+   current_type: &ExpressionType,
+   type_variables: &mut TypeVariableManager
+) {
+   if !inference_is_possible(current_type, e_type, type_variables) {
+      return;
+   }
+
+   meet(current_type, e_type, type_variables);
 }
 
 pub fn try_set_inferred_type(
@@ -231,11 +279,13 @@ fn set_inferred_type(
          let array_type = ExpressionType::Array(Box::new(e_type.clone()), *real_array_len);
          try_set_inferred_type(&array_type, *array, validation_context, expressions);
       }
+      Expression::ProcedureCall { .. } => {
+         meet(expressions[expr_index].exp_type.as_ref().unwrap(), e_type, &mut validation_context.type_variables);
+      },
       Expression::StringLiteral(_)
       | Expression::EnumLiteral(_, _)
       | Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::ProcedureCall { .. }
       | Expression::StructLiteral(_, _)
       | Expression::FieldAccess(_, _)
       | Expression::UnitLiteral
@@ -260,9 +310,11 @@ pub fn lower_type_variables(
          map_unknowns(exp_type, &mut |tv, et| {
             if let Some(t) = ctx.type_variables.get_data(tv).known_type.as_ref() {
                *et = t.clone();
-               ctx.unknown_literals.swap_remove(&i);
             }
          });
+         if exp_type.is_concrete() {
+            ctx.unknown_literals.swap_remove(&i);
+         }
       }
    }
 
@@ -300,7 +352,9 @@ pub fn map_unknowns(e: &mut ExpressionType, f: &mut impl FnMut(TypeVariable, &mu
    match e {
       ExpressionType::Unknown(tv) => f(*tv, e),
       ExpressionType::Pointer(base) | ExpressionType::Array(base, _) => map_unknowns(base, f),
-      ExpressionType::ProcedureItem(_, type_arguments) => {
+      ExpressionType::ProcedureItem(_, type_arguments)
+      | ExpressionType::Struct(_, type_arguments)
+      | ExpressionType::Union(_, type_arguments) => {
          for t_arg in type_arguments.iter_mut() {
             map_unknowns(t_arg, f);
          }
