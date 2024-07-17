@@ -208,11 +208,7 @@ fn set_inferred_type(
          // Update existing variables immediately, so that error messages have good types
          // (this should _not_ affect correctness.)
          for var_in_scope in validation_context.variable_types.values_mut() {
-            map_unknowns(&mut var_in_scope.var_type, &mut |inner_tv, et| {
-               if let Some(known_type) = &validation_context.type_variables.get_data(inner_tv).known_type {
-                  *et = known_type.clone();
-               }
-            });
+            lower_unknowns_in_type(&mut var_in_scope.var_type, &validation_context.type_variables);
          }
       }
       Expression::ArrayLiteral(exprs) => {
@@ -274,16 +270,7 @@ pub fn lower_type_variables(
 ) {
    for (i, e) in expressions.iter_mut() {
       if let Some(exp_type) = e.exp_type.as_mut() {
-         let mut did_something = true;
-         while did_something {
-            did_something = false;
-            map_unknowns(exp_type, &mut |tv, et| {
-               if let Some(t) = ctx.type_variables.get_data(tv).known_type.as_ref() {
-                  *et = t.clone();
-                  did_something = true;
-               }
-            });
-         }
+         lower_unknowns_in_type(exp_type, &ctx.type_variables);
          if exp_type.is_concrete() {
             ctx.unknown_literals.swap_remove(&i);
          }
@@ -309,38 +296,34 @@ pub fn lower_type_variables(
 
    for body in procedure_bodies.values_mut() {
       for lt in body.locals.values_mut() {
-         let mut did_something = true;
-         while did_something {
-            did_something = false;
-            map_unknowns(lt, &mut |tv, et| {
-               if let Some(t) = ctx.type_variables.get_data(tv).known_type.as_ref() {
-                  *et = t.clone();
-                  did_something = true;
-               } else {
-                  debug_assert!(!err_manager.errors.is_empty());
-               }
-            });
-         }
+         lower_unknowns_in_type(lt, &ctx.type_variables);
       }
    }
 }
 
-pub fn map_unknowns(e: &mut ExpressionType, f: &mut impl FnMut(TypeVariable, &mut ExpressionType)) {
+pub fn lower_unknowns_in_type(e: &mut ExpressionType, type_variables: &TypeVariableManager) {
    match e {
-      ExpressionType::Unknown(tv) => f(*tv, e),
-      ExpressionType::Pointer(base) | ExpressionType::Array(base, _) => map_unknowns(base, f),
+      ExpressionType::Unknown(tv) => {
+         if let Some(new_type) = &type_variables.get_data(*tv).known_type {
+            *e = new_type.clone();
+            if !new_type.is_concrete() {
+               lower_unknowns_in_type(e, type_variables);
+            }
+         }
+      }
+      ExpressionType::Pointer(base) | ExpressionType::Array(base, _) => lower_unknowns_in_type(base, type_variables),
       ExpressionType::ProcedureItem(_, type_arguments)
       | ExpressionType::Struct(_, type_arguments)
       | ExpressionType::Union(_, type_arguments) => {
          for t_arg in type_arguments.iter_mut() {
-            map_unknowns(t_arg, f);
+            lower_unknowns_in_type(t_arg, type_variables);
          }
       }
       ExpressionType::ProcedurePointer { parameters, ret_type } => {
          for p in parameters {
-            map_unknowns(p, f);
+            lower_unknowns_in_type(p, type_variables);
          }
-         map_unknowns(ret_type, f);
+         lower_unknowns_in_type(ret_type, type_variables);
       }
       _ => (),
    }

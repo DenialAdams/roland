@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use indexmap::{IndexMap, IndexSet};
 use slotmap::SlotMap;
 
-use super::type_inference::{map_unknowns, try_merge_types, try_set_inferred_type};
+use super::type_inference::{lower_unknowns_in_type, try_merge_types, try_set_inferred_type};
 use super::type_variables::{TypeConstraint, TypeVariableManager};
 use super::{GlobalInfo, OwnedValidationContext, ValidationContext, VariableDetails, VariableScopeKind};
 use crate::error_handling::error_handling_macros::{
@@ -1815,11 +1815,7 @@ fn get_type(
             }
          };
          // argument inference might have inferred the result type
-         map_unknowns(&mut resulting_type, &mut |tv, et| {
-            if let Some(t) = validation_context.owned.type_variables.get_data(tv).known_type.as_ref() {
-               *et = t.clone();
-            }
-         });
+         lower_unknowns_in_type(&mut resulting_type, &validation_context.owned.type_variables);
          validation_context.ast.expressions[*proc_expr].exp_type = Some(the_type);
          resulting_type
       }
