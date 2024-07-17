@@ -1,0 +1,16 @@
+proc main() {
+   let x = []; // x is of base unknown1: completely unknown
+   let y = 10; // y is unknown2: unknown int
+   let z = &y; // z is Pointer to unknown 2
+   x[idx()] = z; // x is of base Pointer to unknown 2
+   let a_known: u8 = 11;
+   y = a_known; // all types are now known
+   // when lowering unknown1, we want to lower it to base u8,
+   // not unknown2 (which doesn't help us, can cause crashes, etc) 
+}
+
+proc idx() -> usize {
+    return 0;
+}
+__END__
+compile:

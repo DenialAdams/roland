@@ -274,11 +274,16 @@ pub fn lower_type_variables(
 ) {
    for (i, e) in expressions.iter_mut() {
       if let Some(exp_type) = e.exp_type.as_mut() {
-         map_unknowns(exp_type, &mut |tv, et| {
-            if let Some(t) = ctx.type_variables.get_data(tv).known_type.as_ref() {
-               *et = t.clone();
-            }
-         });
+         let mut did_something = true;
+         while did_something {
+            did_something = false;
+            map_unknowns(exp_type, &mut |tv, et| {
+               if let Some(t) = ctx.type_variables.get_data(tv).known_type.as_ref() {
+                  *et = t.clone();
+                  did_something = true;
+               }
+            });
+         }
          if exp_type.is_concrete() {
             ctx.unknown_literals.swap_remove(&i);
          }
@@ -304,13 +309,18 @@ pub fn lower_type_variables(
 
    for body in procedure_bodies.values_mut() {
       for lt in body.locals.values_mut() {
-         map_unknowns(lt, &mut |tv, et| {
-            if let Some(t) = ctx.type_variables.get_data(tv).known_type.as_ref() {
-               *et = t.clone();
-            } else {
-               debug_assert!(!err_manager.errors.is_empty());
-            }
-         });
+         let mut did_something = true;
+         while did_something {
+            did_something = false;
+            map_unknowns(lt, &mut |tv, et| {
+               if let Some(t) = ctx.type_variables.get_data(tv).known_type.as_ref() {
+                  *et = t.clone();
+                  did_something = true;
+               } else {
+                  debug_assert!(!err_manager.errors.is_empty());
+               }
+            });
+         }
       }
    }
 }
