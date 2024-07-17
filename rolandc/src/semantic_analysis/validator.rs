@@ -1767,8 +1767,8 @@ fn get_type(
             type_expression(err_manager, arg.expr, validation_context);
          }
 
-         let the_type = validation_context.ast.expressions[*proc_expr].exp_type.take().unwrap();
-         let mut resulting_type = match &the_type {
+         let mut the_type = validation_context.ast.expressions[*proc_expr].exp_type.take().unwrap();
+         let mut resulting_type = match &mut the_type {
             ExpressionType::ProcedureItem(proc_id, generic_args) => {
                let proc = &validation_context.procedures[*proc_id];
                check_procedure_call(
@@ -1789,7 +1789,7 @@ fn get_type(
             ExpressionType::ProcedurePointer { parameters, ret_type } => {
                check_procedure_call(
                   args,
-                  &[],
+                  &mut [],
                   parameters.len(),
                   parameters.iter(),
                   &HashMap::new(),
@@ -1798,7 +1798,7 @@ fn get_type(
                   validation_context,
                   err_manager,
                );
-               ret_type.deref().clone()
+               ret_type.deref().deref().clone()
             }
             ExpressionType::CompileError => ExpressionType::CompileError,
             bad_type => {
@@ -2208,7 +2208,7 @@ fn get_type(
 
 fn check_procedure_call<'a, I>(
    args: &[ArgumentNode],
-   generic_args: &[ExpressionType],
+   generic_args: &mut [ExpressionType],
    num_parameters: usize,
    parameters: I,
    named_parameters: &HashMap<StrId, ExpressionType>,
@@ -2267,6 +2267,11 @@ fn check_procedure_call<'a, I>(
          let actual_type = actual_expr.exp_type.as_ref().unwrap();
 
          try_merge_types(actual_type, &mut expected, &mut validation_context.owned.type_variables);
+
+         for g_arg in generic_args.iter_mut() {
+            // Inferring one argument might have inferred others. Do this now for good error messages.
+            lower_unknowns_in_type(g_arg, &validation_context.owned.type_variables);
+         }
 
          if *actual_type != *expected && !actual_type.is_or_contains_or_points_to_error() {
             let actual_type_str = actual_type.as_roland_type_info(

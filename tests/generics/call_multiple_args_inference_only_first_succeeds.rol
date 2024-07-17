@@ -1,0 +1,13 @@
+proc main() {
+   // inference of first argument will succeed, setting T = String
+   // then we will error on the second arg, but should get a decent error
+   foo("foo", false);
+}
+
+proc foo<T>(x: T, y: T) {
+
+}
+__END__
+compile:
+Argument at position 1 is of type bool when we expected String
+↳ line 4, column 15 [tests/generics/call_multiple_args_inference_only_first_succeeds.rol]

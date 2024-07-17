@@ -92,8 +92,8 @@ fn inference_is_possible(
          {
             return false;
          }
-         // TODO: what if inference is possible for all (x, y) pairs BUT is not possible when combined
-         // i.e. unknown1 meet u8 is OK but then unknown1 meet bool is not, this would say it is OK
+         // It may be that after inferring one type parameter, inference is no longer possible as a whole
+         // I claim this is OK as long as we are doing inference one step at a time
          current_type_arguments
             .iter()
             .zip(potential_type_arguments.iter())
@@ -109,8 +109,8 @@ fn inference_is_possible(
          {
             return false;
          }
-         // TODO: what if inference is possible for all (x, y) pairs BUT is not possible when combined
-         // i.e. unknown1 meet u8 is OK but then unknown1 meet bool is not, this would say it is OK
+         // It may be that after inferring one type parameter, inference is no longer possible as a whole
+         // I claim this is OK as long as we are doing inference one step at a time
          current_type_arguments
             .iter()
             .zip(potential_type_arguments.iter())
