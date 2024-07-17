@@ -282,6 +282,12 @@ pub fn map_unknowns(e: &mut ExpressionType, f: &mut impl FnMut(TypeVariable, &mu
             map_unknowns(t_arg, f);
          }
       }
+      ExpressionType::ProcedurePointer { parameters, ret_type } => {
+         for p in parameters {
+            map_unknowns(p, f);
+         }
+         map_unknowns(ret_type, f);
+      }
       _ => (),
    }
 }

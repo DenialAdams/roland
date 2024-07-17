@@ -176,7 +176,7 @@ impl ExpressionType {
          ExpressionType::Unknown(_) => false,
          ExpressionType::Pointer(v) | ExpressionType::Array(v, _) => v.is_concrete(),
          ExpressionType::ProcedureItem(_, type_args) => type_args.iter().all(ExpressionType::is_concrete),
-         // important todo what if we take a procedure pointer to procedure that is still unknown
+         ExpressionType::ProcedurePointer { parameters, ret_type } => parameters.iter().all(ExpressionType::is_concrete) && ret_type.is_concrete(),
          // other types can't contain unknown values, at least right now
          _ => true,
       }
