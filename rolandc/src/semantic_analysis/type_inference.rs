@@ -27,30 +27,11 @@ fn meet(current_type: &ExpressionType, incoming_type: &ExpressionType, type_vari
       | (ExpressionType::Pointer(current_base), ExpressionType::Pointer(incoming_base)) => {
          meet(current_base, incoming_base, type_variables);
       }
-      (
-         ExpressionType::ProcedureItem(_, current_type_arguments),
-         ExpressionType::ProcedureItem(_, incoming_type_arguments),
-      )
-      | (ExpressionType::Struct(_, current_type_arguments), ExpressionType::Struct(_, incoming_type_arguments))
+      (ExpressionType::Struct(_, current_type_arguments), ExpressionType::Struct(_, incoming_type_arguments))
       | (ExpressionType::Union(_, current_type_arguments), ExpressionType::Union(_, incoming_type_arguments)) => {
          for (x, y) in current_type_arguments.iter().zip(incoming_type_arguments) {
             meet(x, y, type_variables);
          }
-      }
-      (
-         ExpressionType::ProcedurePointer {
-            parameters: current_parameters,
-            ret_type: current_ret_type,
-         },
-         ExpressionType::ProcedurePointer {
-            parameters: incoming_parameters,
-            ret_type: incoming_ret_type,
-         },
-      ) => {
-         for (x, y) in current_parameters.iter().zip(incoming_parameters) {
-            meet(x, y, type_variables);
-         }
-         meet(current_ret_type, incoming_ret_type, type_variables);
       }
       (ExpressionType::Unknown(current_tv), ExpressionType::Unknown(incoming_tv)) => {
          debug_assert!(unknowns_are_compatible(*current_tv, *incoming_tv, type_variables));
@@ -133,39 +114,21 @@ fn inference_is_possible(
             .zip(potential_type_arguments.iter())
             .all(|(x, y)| inference_is_possible(x, y, type_variables))
       }
-      (
-         ExpressionType::ProcedureItem(proc_id, generic_args),
-         ExpressionType::ProcedureItem(potential_proc_id, potential_generic_args),
-      ) => {
-         if proc_id != potential_proc_id
-            || generic_args.len() == 0
-            || generic_args.len() != potential_generic_args.len()
-         {
-            return false;
-         }
-
-         // TODO: what if inference is possible for all (x, y) pairs BUT is not possible when combined
-         // i.e. unknown1 meet u8 is OK but then unknown1 meet bool is not, this would say it is OK
-
-         generic_args
-            .iter()
-            .zip(potential_generic_args)
-            .all(|(x, y)| inference_is_possible(x, y, type_variables))
-      }
       _ => false,
    }
 }
 
 pub fn try_merge_types(
    e_type: &ExpressionType,
-   current_type: &ExpressionType,
-   type_variables: &mut TypeVariableManager
+   current_type: &mut ExpressionType,
+   type_variables: &mut TypeVariableManager,
 ) {
    if !inference_is_possible(current_type, e_type, type_variables) {
       return;
    }
 
    meet(current_type, e_type, type_variables);
+   *current_type = e_type.clone();
 }
 
 pub fn try_set_inferred_type(
@@ -280,8 +243,12 @@ fn set_inferred_type(
          try_set_inferred_type(&array_type, *array, validation_context, expressions);
       }
       Expression::ProcedureCall { .. } => {
-         meet(expressions[expr_index].exp_type.as_ref().unwrap(), e_type, &mut validation_context.type_variables);
-      },
+         meet(
+            expressions[expr_index].exp_type.as_ref().unwrap(),
+            e_type,
+            &mut validation_context.type_variables,
+         );
+      }
       Expression::StringLiteral(_)
       | Expression::EnumLiteral(_, _)
       | Expression::UnresolvedVariable(_)

@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use indexmap::{IndexMap, IndexSet};
 use slotmap::SlotMap;
 
-use super::type_inference::{try_merge_types, try_set_inferred_type};
+use super::type_inference::{map_unknowns, try_merge_types, try_set_inferred_type};
 use super::type_variables::{TypeConstraint, TypeVariableManager};
 use super::{GlobalInfo, OwnedValidationContext, ValidationContext, VariableDetails, VariableScopeKind};
 use crate::error_handling::error_handling_macros::{
@@ -1602,7 +1602,7 @@ fn get_type(
                err_manager,
             );
 
-            if check_result.1 && !type_arguments.is_empty() && check_result.0.is_concrete() {
+            if check_result.1 && !type_arguments.is_empty() {
                validation_context.owned.procedures_to_specialize.push((
                   *id,
                   type_arguments
@@ -1766,7 +1766,7 @@ fn get_type(
          }
 
          let the_type = validation_context.ast.expressions[*proc_expr].exp_type.take().unwrap();
-         let resulting_type = match &the_type {
+         let mut resulting_type = match &the_type {
             ExpressionType::ProcedureItem(proc_id, generic_args) => {
                let proc = &validation_context.procedures[*proc_id];
                check_procedure_call(
@@ -1814,6 +1814,12 @@ fn get_type(
                ExpressionType::CompileError
             }
          };
+         // argument inference might have inferred the result type
+         map_unknowns(&mut resulting_type, &mut |tv, et| {
+            if let Some(t) = validation_context.owned.type_variables.get_data(tv).known_type.as_ref() {
+               *et = t.clone();
+            }
+         });
          validation_context.ast.expressions[*proc_expr].exp_type = Some(the_type);
          resulting_type
       }
@@ -2250,7 +2256,7 @@ fn check_procedure_call<'a, I>(
             break;
          }
 
-         let expected = map_generic_to_concrete_cow(expected_raw, generic_args, generic_parameters);
+         let mut expected = map_generic_to_concrete_cow(expected_raw, generic_args, generic_parameters);
 
          try_set_inferred_type(
             &expected,
@@ -2264,7 +2270,7 @@ fn check_procedure_call<'a, I>(
 
          try_merge_types(
             actual_type,
-            &expected,
+            expected.to_mut(), // this kills the cow nocheckin we can fix
             &mut validation_context.owned.type_variables,
          );
 
