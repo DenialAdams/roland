@@ -6,7 +6,7 @@ proc main() {
 
 proc foo<T>(x: T, y: T) {
 
-}   
+}
 __END__
 compile:
 Argument at position 1 is of type bool when we expected String
