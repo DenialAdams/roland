@@ -162,9 +162,6 @@ fn set_inferred_type(
             e_type,
             &mut validation_context.type_variables,
          );
-         if e_type.is_concrete() {
-            validation_context.unknown_literals.swap_remove(&expr_index);
-         }
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
          set_inferred_type(e_type, *lhs, validation_context, expressions);
@@ -229,10 +226,6 @@ fn set_inferred_type(
             e_type,
             &mut validation_context.type_variables,
          );
-
-         if e_type.is_concrete() {
-            validation_context.unknown_literals.swap_remove(&expr_index);
-         }
       }
       Expression::ArrayIndex { array, index: _index } => {
          let ExpressionType::Array(_, real_array_len) = expressions[*array].exp_type.as_ref().unwrap() else {
