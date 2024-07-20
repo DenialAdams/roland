@@ -1,0 +1,12 @@
+proc main() {
+   foo(&get_something);
+}
+
+proc get_something(x: bool) -> u64 {
+   return 10;
+}
+
+proc foo<A, B>(f: proc(A) -> B) {
+}
+__END__
+run:
