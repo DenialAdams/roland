@@ -6,6 +6,7 @@ pub struct TypeVariable(usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TypeConstraint {
+   Enum,
    Int,
    SignedInt,
    Float,

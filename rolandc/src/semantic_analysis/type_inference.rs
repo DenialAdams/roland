@@ -17,6 +17,28 @@ fn constraints_are_compatible(x: TypeConstraint, y: TypeConstraint) -> bool {
    }
 }
 
+fn constraint_compatible_with_concrete(constraint: TypeConstraint, concrete: &ExpressionType) -> bool {
+   match constraint {
+      TypeConstraint::None => true,
+      TypeConstraint::Float => matches!(concrete, ExpressionType::Float(_)),
+      TypeConstraint::SignedInt => matches!(concrete, ExpressionType::Int(IntType { signed: true, .. })),
+      TypeConstraint::Int => matches!(concrete, ExpressionType::Int(_)),
+      TypeConstraint::Enum => matches!(concrete, ExpressionType::Enum(_)),
+   }
+}
+
+pub fn constraint_matches_type_or_try_constrain(
+   constraint: TypeConstraint,
+   the_type: &ExpressionType,
+   type_variables: &mut TypeVariableManager,
+) -> bool {
+   if let ExpressionType::Unknown(u) = the_type {
+      type_variables.get_data_mut(*u).add_constraint(constraint).is_ok()
+   } else {
+      constraint_compatible_with_concrete(constraint, the_type)
+   }
+}
+
 fn meet(
    mut current_type: &mut ExpressionType,
    incoming_type: &ExpressionType,
@@ -89,12 +111,7 @@ fn meet(
          if data.known_type.is_some() {
             return;
          }
-         if !match data.constraint {
-            TypeConstraint::None => true,
-            TypeConstraint::Float => matches!(incoming_type, ExpressionType::Float(_)),
-            TypeConstraint::SignedInt => matches!(incoming_type, ExpressionType::Int(IntType { signed: true, .. })),
-            TypeConstraint::Int => matches!(incoming_type, ExpressionType::Int(_)),
-         } {
+         if !constraint_compatible_with_concrete(data.constraint, incoming_type) {
             return;
          }
          data.known_type = Some(incoming_type.clone());

@@ -260,6 +260,7 @@ impl ExpressionType {
                   TypeConstraint::Int => Cow::Borrowed("?? Int"),
                   TypeConstraint::SignedInt => Cow::Borrowed("?? Signed Int"),
                   TypeConstraint::Float => Cow::Borrowed("?? Float"),
+                  TypeConstraint::Enum => Cow::Borrowed("?? Enum"),
                   TypeConstraint::None => Cow::Borrowed("??"),
                }
             } else {

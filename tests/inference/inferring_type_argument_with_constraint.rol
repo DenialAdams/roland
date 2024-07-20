@@ -1,0 +1,11 @@
+proc main() {
+   let x = 12.0;
+   foo(x);
+   let y: f64 = x + 1.0;
+}
+
+proc foo<T>(x: T) -> T where T: Float {
+   return x + x;
+}
+__END__
+run:

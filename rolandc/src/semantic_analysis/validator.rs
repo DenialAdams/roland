@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use indexmap::{IndexMap, IndexSet};
 use slotmap::SlotMap;
 
-use super::type_inference::{lower_unknowns_in_type, try_merge_types, try_set_inferred_type};
+use super::type_inference::{constraint_matches_type_or_try_constrain, lower_unknowns_in_type, try_merge_types, try_set_inferred_type};
 use super::type_variables::{TypeConstraint, TypeVariableManager};
 use super::{GlobalInfo, OwnedValidationContext, ValidationContext, VariableDetails, VariableScopeKind};
 use crate::error_handling::error_handling_macros::{
@@ -1602,6 +1602,7 @@ fn get_type(
                validation_context.user_defined_types,
                validation_context.procedures,
                err_manager,
+               &mut validation_context.owned.type_variables,
             );
 
             if check_result.1 && !type_arguments.is_empty() {
@@ -2268,7 +2269,11 @@ fn check_procedure_call<'a, I>(
 
          if !expected.is_concrete() {
             // is_concrete check to avoid cloning expected when not necessary
-            try_merge_types(actual_type, expected.to_mut(), &mut validation_context.owned.type_variables);
+            try_merge_types(
+               actual_type,
+               expected.to_mut(),
+               &mut validation_context.owned.type_variables,
+            );
          }
 
          for g_arg in generic_args.iter_mut() {
@@ -2362,6 +2367,7 @@ fn check_procedure_item(
    udt: &UserDefinedTypeInfo,
    procedures: &SlotMap<ProcedureId, ProcedureNode>,
    err_manager: &mut ErrorManager,
+   type_variable_info: &mut TypeVariableManager,
 ) -> (ExpressionType, bool) {
    if callee_type_params.len() != type_arguments.len() {
       rolandc_error!(
@@ -2386,12 +2392,13 @@ fn check_procedure_item(
          }
          _ => {
             for constraint in constraints {
-               let constraint_met = match interner.lookup(*constraint) {
-                  "Enum" => matches!(g_arg.e_type, ExpressionType::Enum(_)),
-                  "Float" => matches!(g_arg.e_type, ExpressionType::Float(_)),
+               //try_merge_types(e_type, current_type, type_variables)
+               let tc = match interner.lookup(*constraint) {
+                  "Enum" => TypeConstraint::Enum,
+                  "Float" => TypeConstraint::Float,
                   _ => unreachable!(),
                };
-               if !constraint_met {
+               if !constraint_matches_type_or_try_constrain(tc, &g_arg.e_type, type_variable_info) {
                   rolandc_error!(
                      err_manager,
                      g_arg.location,
