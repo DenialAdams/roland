@@ -2266,7 +2266,10 @@ fn check_procedure_call<'a, I>(
          let actual_expr = &validation_context.ast.expressions[actual.expr];
          let actual_type = actual_expr.exp_type.as_ref().unwrap();
 
-         try_merge_types(actual_type, &mut expected, &mut validation_context.owned.type_variables);
+         if !expected.is_concrete() {
+            // is_concrete check to avoid cloning expected when not necessary
+            try_merge_types(actual_type, expected.to_mut(), &mut validation_context.owned.type_variables);
+         }
 
          for g_arg in generic_args.iter_mut() {
             // Inferring one argument might have inferred others. Do this now for good error messages.
