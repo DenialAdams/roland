@@ -7,7 +7,9 @@ use std::sync::OnceLock;
 use indexmap::{IndexMap, IndexSet};
 use slotmap::SlotMap;
 
-use super::type_inference::{constraint_matches_type_or_try_constrain, lower_unknowns_in_type, try_merge_types, try_set_inferred_type};
+use super::type_inference::{
+   constraint_matches_type_or_try_constrain, lower_unknowns_in_type, try_merge_types, try_set_inferred_type,
+};
 use super::type_variables::{TypeConstraint, TypeVariableManager};
 use super::{GlobalInfo, OwnedValidationContext, ValidationContext, VariableDetails, VariableScopeKind};
 use crate::error_handling::error_handling_macros::{

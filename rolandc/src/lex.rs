@@ -991,10 +991,11 @@ fn parse_int(s: &str, radix: u32, err_manager: &mut ErrorManager, source_info: S
 pub struct Lexer {
    tokens: Vec<SourceToken>,
    eof_location: SourceInfo,
+   cur_position: usize,
 }
 
 impl Lexer {
-   pub fn from_tokens(mut tokens: Vec<SourceToken>, file: SourcePath) -> Lexer {
+   pub fn from_tokens(tokens: Vec<SourceToken>, file: SourcePath) -> Lexer {
       let eof_location = tokens.last().map_or(
          SourceInfo {
             begin: SourcePosition { line: 0, col: 0 },
@@ -1007,30 +1008,33 @@ impl Lexer {
             file: x.source_info.file,
          },
       );
-      tokens.reverse();
-      Lexer { tokens, eof_location }
+      Lexer { tokens, eof_location, cur_position: 0 }
    }
 
    pub fn peek_source(&self) -> SourceInfo {
-      self.tokens.last().map_or(self.eof_location, |x| x.source_info)
+      self.tokens.get(self.cur_position).map_or(self.eof_location, |x| x.source_info)
    }
 
    pub fn peek_token(&self) -> Token {
-      self.tokens.last().map_or(Token::Eof, |x| x.token)
+      self.tokens.get(self.cur_position).map_or(Token::Eof, |x| x.token)
    }
 
    pub fn double_peek_token(&self) -> Token {
-      if self.tokens.len() <= 1 {
-         return Token::Eof;
-      }
-
-      self.tokens.get(self.tokens.len() - 2).map_or(Token::Eof, |x| x.token)
+      self
+         .tokens
+         .get(self.cur_position + 1)
+         .map_or(Token::Eof, |x| x.token)
    }
 
    pub fn next(&mut self) -> SourceToken {
-      self.tokens.pop().unwrap_or(SourceToken {
-         token: Token::Eof,
-         source_info: self.eof_location,
-      })
+      if self.cur_position >= self.tokens.len() {
+         SourceToken {
+            token: Token::Eof,
+            source_info: self.eof_location,
+         }
+      } else {
+         self.cur_position += 1;
+         self.tokens[self.cur_position - 1]
+      }
    }
 }
