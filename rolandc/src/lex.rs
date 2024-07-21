@@ -217,9 +217,7 @@ impl CharCountingBuffer {
 
    fn clear(&mut self) -> usize {
       self.buf.clear();
-      let len_before_reset = self.length_in_chars;
-      self.length_in_chars = 0;
-      len_before_reset
+      std::mem::replace(&mut self.length_in_chars, 0)
    }
 }
 
