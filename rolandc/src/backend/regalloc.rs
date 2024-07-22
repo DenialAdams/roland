@@ -147,9 +147,7 @@ pub fn assign_variables_to_registers_and_mem(
       }
    }
 
-   if config.target != Target::Wasi {
-      // We force global variables to live in memory for WASM4, because globals
-      // are not synchronized by the netplay engine.
+   if config.target == Target::Qbe {
       // For QBE, there is simply no concept of global registers.
       return result;
    }
