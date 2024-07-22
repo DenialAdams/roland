@@ -798,7 +798,6 @@ pub fn lex_for_tokens(
                   )?);
                   cur_position.col += str_buf.clear();
                   is_float = false;
-                  str_buf.clear();
                   mode = LexMode::Normal;
 
                   let _ = chars.next().unwrap();
@@ -827,7 +826,6 @@ pub fn lex_for_tokens(
                   )?);
                   cur_position.col += str_buf.clear();
                   is_float = false;
-                  str_buf.clear();
                   mode = LexMode::Normal;
                }
             } else {
@@ -843,7 +841,6 @@ pub fn lex_for_tokens(
                )?);
                cur_position.col += str_buf.clear();
                is_float = false;
-               str_buf.clear();
                mode = LexMode::Normal;
             }
          }
@@ -866,7 +863,6 @@ pub fn lex_for_tokens(
                )?);
                cur_position.col += str_buf.clear();
                is_float = false;
-               str_buf.clear();
                mode = LexMode::Normal;
             }
          }
