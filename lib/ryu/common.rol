@@ -59,7 +59,7 @@ proc _ryu_log10Pow5(e: i32) -> u32 {
 proc _ryu_copy_special_str(result: &u8, sign: bool, exponent: bool, mantissa: bool) -> usize {
   if (mantissa) {
     let text = "NaN";
-    _ryu_memcpy(result, text.pointer, text.length);
+    memcpy(result, text.pointer, text.length);
     return text.length;
   }
   if (sign) {
@@ -67,20 +67,14 @@ proc _ryu_copy_special_str(result: &u8, sign: bool, exponent: bool, mantissa: bo
   }
   if (exponent) {
     let text = "Infinity";
-    _ryu_memcpy(_ryu_offset_ptr_forward(result, sign as usize), text.pointer, text.length);
+    memcpy(_ryu_offset_ptr_forward(result, sign as usize), text.pointer, text.length);
     return sign as usize + text.length;
   }
   let text = "0E0";
-  _ryu_memcpy(_ryu_offset_ptr_forward(result, sign as usize), text.pointer, text.length);
+  memcpy(_ryu_offset_ptr_forward(result, sign as usize), text.pointer, text.length);
   return sign as usize + text.length;
 }
 
 proc _ryu_offset_ptr_forward(ptr: &u8, offset: usize) -> &u8 {
   return (ptr transmute usize + offset) transmute &u8;
-}
-
-proc _ryu_memcpy(dest: &u8, src: &u8, length: usize) {
-  for i in 0..length {
-    (((dest transmute usize) + i) transmute &u8)~ = (((src transmute usize) + i) transmute &u8)~;
-  }
 }

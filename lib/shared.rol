@@ -160,3 +160,9 @@ proc isnan_f32(x: f32) -> bool {
    return !isinf_f32(x) & 
       (x transmute u32 & 0b0_11111111_00000000000000000000000 == 0b0_11111111_00000000000000000000000);
 }
+
+proc memcpy<T>(dest: &T, src: &T, length: usize) {
+  for i in 0..length {
+    (((dest transmute usize) + i * sizeof$<T>()) transmute &T)~ = (((src transmute usize) + i * sizeof$<T>()) transmute &T)~;
+  }
+}

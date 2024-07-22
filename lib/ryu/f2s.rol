@@ -187,19 +187,19 @@ proc _ryu_f2s_to_chars(v: _ryu_floating_decimal_32, sign: bool, result: &u8) -> 
       output = output / 10000;
       let c0: u32 = (c % 100) << 1;
       let c1: u32 = (c / 100) << 1;
-      _ryu_memcpy(_ryu_offset_ptr_forward(result, index + (olength as usize) - (i as usize) - 1), &_RYU_DIGIT_TABLE[c0 as usize], 2);
-      _ryu_memcpy(_ryu_offset_ptr_forward(result, index + (olength as usize) - (i as usize) - 3), &_RYU_DIGIT_TABLE[c1 as usize], 2);
+      memcpy(_ryu_offset_ptr_forward(result, index + (olength as usize) - (i as usize) - 1), &_RYU_DIGIT_TABLE[c0 as usize], 2);
+      memcpy(_ryu_offset_ptr_forward(result, index + (olength as usize) - (i as usize) - 3), &_RYU_DIGIT_TABLE[c1 as usize], 2);
       i = i + 4;
    }
    if (output >= 100) {
       let c: u32 = (output % 100) << 1;
       output = output / 100;
-      _ryu_memcpy(_ryu_offset_ptr_forward(result, index + (olength as usize) - (i as usize) - 1), &_RYU_DIGIT_TABLE[c as usize], 2);
+      memcpy(_ryu_offset_ptr_forward(result, index + (olength as usize) - (i as usize) - 1), &_RYU_DIGIT_TABLE[c as usize], 2);
       i = i + 2;
    }
    if output >= 10 {
       let c: u32 = output << 1;
-      // We can't use _ryu_memcpy here: the decimal dot goes between these two digits.
+      // We can't use memcpy here: the decimal dot goes between these two digits.
       _ryu_offset_ptr_forward(result, index + olength as usize - i as usize)~ = _RYU_DIGIT_TABLE[c as usize + 1];
       _ryu_offset_ptr_forward(result, index)~ = _RYU_DIGIT_TABLE[c as usize];
    } else {
@@ -225,7 +225,7 @@ proc _ryu_f2s_to_chars(v: _ryu_floating_decimal_32, sign: bool, result: &u8) -> 
    }
 
    if (exp >= 10) {
-      _ryu_memcpy(_ryu_offset_ptr_forward(result, index), &_RYU_DIGIT_TABLE[(2 * exp) as usize], 2);
+      memcpy(_ryu_offset_ptr_forward(result, index), &_RYU_DIGIT_TABLE[(2 * exp) as usize], 2);
       index = index + 2;
    } else {
       _ryu_offset_ptr_forward(result, index)~ = "0".pointer~ + exp as u8;
