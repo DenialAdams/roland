@@ -42,3 +42,7 @@ proc da_init<T>() -> DynArray<T> {
         capacity: 0,
     };
 }
+
+proc da_free<T>(x: &DynArray<T>) {
+    free(x~.buf transmute &u8);
+}

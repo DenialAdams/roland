@@ -2,6 +2,7 @@ import "std:dynarray.rol";
 
 proc main() {
    let x = da_init();
+   defer da_free(&x);
    da_append(&x, 250);
    da_append(&x, 100);
    println(uint_to_string(da_get(&x, 0)));
