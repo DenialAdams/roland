@@ -1,6 +1,7 @@
 proc main() {
    let x = &malloc;
-   let y = x(sizeof$<u8>());
+   // TODO: must fix this test - malloc is no longer external
+   let y = x(sizeof$<u8>(), 1).buf;
    y~ = 10;
    println(uint_to_string(y~ as u64));
    free(y);

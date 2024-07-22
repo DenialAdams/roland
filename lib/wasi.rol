@@ -1,4 +1,5 @@
 import "wasm_shared.rol";
+import "malloc.rol";
 import "ryu/f2s.rol";
 import "ryu/d2s.rol";
 
@@ -84,12 +85,12 @@ proc count_digits(value: u64) -> u8 {
 }
 
 proc f32_to_string(f: f32) -> String {
-   let result: &u8 = malloc(16);
+   let result: &u8 = malloc(16, 1).buf;
    return ryu_f2s_buffered(f, result);
 }
 
 proc f64_to_string(f: f64) -> String {
-   let result: &u8 = malloc(25);
+   let result: &u8 = malloc(25, 1).buf;
    return ryu_d2s_buffered(f, result);
 }
 
@@ -122,7 +123,7 @@ proc _wasi_int_to_string_inner(value: u64, buf: &u8) -> String {
 }
 
 proc uint_to_string(value: u64) -> String {
-   let buf = malloc(20);
+   let buf = malloc(20, 1).buf;
    return _wasi_int_to_string_inner(value, buf);
 }
 
@@ -130,7 +131,7 @@ proc int_to_string(value: i64) -> String {
    if value == I64_MIN {
       return "-9223372036854775808";
    } else if value < 0 {
-      let buf = malloc(20);
+      let buf = malloc(20, 1).buf;
       buf~ = "-".pointer~;
       let adjusted_buf = buf transmute usize;
       adjusted_buf = adjusted_buf + 1;
@@ -144,83 +145,23 @@ proc int_to_string(value: i64) -> String {
    }
 }
 
-
-// MARK: allocator
-
 const _WASM_PAGE_SIZE: usize = 65535;
 
-// This struct field ordering is very important!
-struct _free_list_node {
-   size: usize,
-   next: &_free_list_node,
-}
+// First page is reserved for stack, statics
+static _BRK: usize = _WASM_PAGE_SIZE + 1;
 
-static free_list_head: &_free_list_node = 0 transmute &_free_list_node; 
-
-proc malloc(bytes: usize) -> &u8 {
-   if bytes == 0 {
-      return 0 transmute &u8;
+proc brk(new_break: usize) -> usize {
+   if new_break <= _BRK {
+      return _BRK;
    }
 
-   // ALLOCATED: [size, XXXX]
-   // FREE: [size, ptr, ____]
-
-   bytes = bytes + sizeof$<usize>();
-   if bytes < sizeof$<_free_list_node>() {
-      bytes = sizeof$<_free_list_node>();
+   let needed_pages = new_break / _WASM_PAGE_SIZE + (new_break % _WASM_PAGE_SIZE != 0) as usize;
+   if needed_pages > 65535 {
+      return _BRK;
    }
 
-   let prev_ptr: &&_free_list_node = &free_list_head;
-   let cur_node = &free_list_head;
-   while (cur_node~ transmute usize != 0) {
-      if cur_node~~.size >= bytes {
-         let saved = (cur_node~ transmute usize + sizeof$<usize>()) transmute &u8;
-         
-         // Remove this node from the list
-         prev_ptr~ = cur_node~~.next;
+   wasm_memory_grow(needed_pages - wasm_memory_size());
+   _BRK = new_break;
 
-         return saved;
-      } else {
-         prev_ptr = cur_node;
-         cur_node = &cur_node~~.next;
-      }
-   }
-
-   // No suitable node. Allocate a new one.
-   let cur_pages = wasm_memory_size();
-   let num_new_pages = (bytes / _WASM_PAGE_SIZE) + (bytes % _WASM_PAGE_SIZE != 0) as usize;
-   if cur_pages + num_new_pages > 65535 {
-      // Can't alloc!
-      return 0 transmute &u8;
-   }
-   let current_page_start = wasm_memory_grow(num_new_pages) * _WASM_PAGE_SIZE;
-   (current_page_start transmute &usize)~ = bytes;
-   // insert free node for remainder of page size
-   {
-      let rem = _WASM_PAGE_SIZE - (bytes % _WASM_PAGE_SIZE);
-      if rem < sizeof$<_free_list_node>() {
-         (current_page_start transmute &usize)~ = _WASM_PAGE_SIZE * num_new_pages;
-      } else {
-         ((current_page_start + bytes) transmute &_free_list_node)~ = _free_list_node {
-            size: rem,
-            next: 0 transmute &_free_list_node,
-         };
-         free((current_page_start + bytes + sizeof$<usize>()) transmute &u8);
-      }
-   }
-   return (current_page_start + sizeof$<usize>()) transmute &u8;
-}
-
-proc free(ptr: &u8) {
-   if ptr transmute usize == 0 {
-      return;
-   }
-
-   let cur_node = &free_list_head;
-   while cur_node~ transmute usize != 0 {
-      cur_node = &cur_node~~.next;
-   }
-
-   cur_node~ = (ptr transmute usize - sizeof$<usize>()) transmute &_free_list_node;
-   cur_node~~.next = 0 transmute &_free_list_node; 
+   return _BRK;
 }

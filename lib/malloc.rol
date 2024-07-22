@@ -1,0 +1,84 @@
+
+// This struct field ordering is very important!
+struct _free_list_node {
+   size: usize,
+   next: &_free_list_node,
+}
+
+static free_list_head: &_free_list_node = 0 transmute &_free_list_node;
+
+struct MemoryBlock {
+   buf: &u8,
+   size: usize,
+}
+
+proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
+   if bytes == 0 {
+      return MemoryBlock {
+         buf: 0 transmute &u8,
+         size: 0,
+      };
+   }
+
+   // ALLOCATED: [size, <padding>, XXXX]
+   // FREE: [_free_list_node, ____]
+
+   bytes = bytes + sizeof$<usize>();
+
+   let prev_ptr: &&_free_list_node = &free_list_head;
+   let cur_node = &free_list_head;
+   while (cur_node~ transmute usize != 0) {
+      // TODO: this will never introduce padding when it could!
+      // and this is very bad because alloc w/ padding -> free -> alloc again
+      // can not re-use the same slot
+      if cur_node~~.size >= bytes and (cur_node~ transmute usize + sizeof$<usize>()) % alignment == 0 {
+         let saved = MemoryBlock {
+            buf: (cur_node~ transmute usize + sizeof$<usize>()) transmute &u8,
+            size: cur_node~~.size - sizeof$<usize>(),
+         };
+
+         // Remove this node from the list
+         prev_ptr~ = cur_node~~.next;
+
+         return saved;
+      }
+      prev_ptr = cur_node;
+      cur_node = &cur_node~~.next;
+   }
+
+   // No suitable node. Allocate a new one.
+   let cur_address = brk(0);
+   // Adjust allocation request for alignment
+   let padding = cur_address % alignment;
+   bytes = bytes + padding;
+   // Ensure that we are allocating enough space such that when we free it we can record metadata
+   if bytes < sizeof$<_free_list_node>() {
+      bytes = sizeof$<_free_list_node>();
+   }
+   let new_address = brk((cur_address + bytes) as usize);
+   if new_address < cur_address + bytes {
+      return MemoryBlock {
+         buf: 0 transmute &u8,
+         size: 0,
+      };
+   }
+   (cur_address transmute &usize)~ = bytes;
+   return MemoryBlock {
+      buf: (cur_address as usize + sizeof$<usize>() + padding) transmute &u8,
+      size: bytes - sizeof$<usize>() - padding,
+   };
+}
+
+proc free(ptr: &u8) {
+   if ptr transmute usize == 0 {
+      return;
+   }
+
+   let cur_node = &free_list_head;
+   while cur_node~ transmute usize != 0 {
+      cur_node = &cur_node~~.next;
+   }
+
+   cur_node~ = (ptr transmute usize - sizeof$<usize>()) transmute &_free_list_node;
+   cur_node~~.next = 0 transmute &_free_list_node;
+}

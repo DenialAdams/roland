@@ -1,6 +1,6 @@
 proc main() {
-   let x = malloc(10);
-   let y = malloc(10);
+   let x = malloc(10, 1).buf;
+   let y = malloc(10, 1).buf;
    x~ = 123;
    y~ = 213;
    println_bool(x~ == 123);

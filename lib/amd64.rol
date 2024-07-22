@@ -1,4 +1,5 @@
 import "shared.rol";
+import "malloc.rol";
 import "ryu/f2s.rol";
 import "ryu/d2s.rol";
 
@@ -10,8 +11,8 @@ proc exit_group(status: i32) -> ! {
    unreachable();
 }
 
-proc brk(address: u64) -> u64 {
-   return syscall1(12, address);
+proc brk(address: usize) -> usize {
+   return syscall1(12, address as u64) as usize;
 }
 
 proc write(fd: i32, buf: &u8, nbyte: usize) -> isize {
@@ -58,12 +59,12 @@ proc count_digits(value: u64) -> u8 {
 }
 
 proc f32_to_string(f: f32) -> String {
-   let result: &u8 = malloc(16);
+   let result: &u8 = malloc(16, 1).buf;
    return ryu_f2s_buffered(f, result);
 }
 
 proc f64_to_string(f: f64) -> String {
-   let result: &u8 = malloc(25);
+   let result: &u8 = malloc(25, 1).buf;
    return ryu_d2s_buffered(f, result);
 }
 
@@ -96,7 +97,7 @@ proc _wasi_int_to_string_inner(value: u64, buf: &u8) -> String {
 }
 
 proc uint_to_string(value: u64) -> String {
-   let buf = malloc(20);
+   let buf = malloc(20, 1).buf;
    return _wasi_int_to_string_inner(value, buf);
 }
 
@@ -104,7 +105,7 @@ proc int_to_string(value: i64) -> String {
    if value == I64_MIN {
       return "-9223372036854775808";
    } else if value < 0 {
-      let buf = malloc(20);
+      let buf = malloc(20, 1).buf;
       buf~ = "-".pointer~;
       let adjusted_buf = buf transmute usize;
       adjusted_buf = adjusted_buf + 1;
@@ -186,67 +187,4 @@ proc shl_u16(x: u16, y: u16) -> u16 {
 
 proc shl_i16(x: i16, y: i16) -> i16 {
    return (x as i32 << (y & 0b1111) as i32) as i16;
-}
-
-// MARK: allocator
-
-// This struct field ordering is very important!
-struct _free_list_node {
-   size: usize,
-   next: &_free_list_node,
-}
-
-static free_list_head: &_free_list_node = 0 transmute &_free_list_node;
-
-proc malloc(bytes: usize) -> &u8 {
-   if bytes == 0 {
-      return 0 transmute &u8;
-   }
-
-   // ALLOCATED: [size, XXXX]
-   // FREE: [size, ptr, ____]
-
-   bytes = bytes + sizeof$<usize>();
-   if bytes < sizeof$<_free_list_node>() {
-      bytes = sizeof$<_free_list_node>();
-   }
-
-   let prev_ptr: &&_free_list_node = &free_list_head;
-   let cur_node = &free_list_head;
-   while (cur_node~ transmute usize != 0) {
-      if cur_node~~.size >= bytes {
-         let saved = (cur_node~ transmute usize + sizeof$<usize>()) transmute &u8;
-
-         // Remove this node from the list
-         prev_ptr~ = cur_node~~.next;
-
-         return saved;
-      } else {
-         prev_ptr = cur_node;
-         cur_node = &cur_node~~.next;
-      }
-   }
-
-   // No suitable node. Allocate a new one.
-   let cur_address = brk(0);
-   let new_address = brk(cur_address + bytes as u64);
-   if new_address < cur_address + bytes as u64 {
-      return 0 transmute &u8;
-   }
-   (cur_address transmute &usize)~ = bytes;
-   return (cur_address as usize + sizeof$<usize>()) transmute &u8;
-}
-
-proc free(ptr: &u8) {
-   if ptr transmute usize == 0 {
-      return;
-   }
-
-   let cur_node = &free_list_head;
-   while cur_node~ transmute usize != 0 {
-      cur_node = &cur_node~~.next;
-   }
-
-   cur_node~ = (ptr transmute usize - sizeof$<usize>()) transmute &_free_list_node;
-   cur_node~~.next = 0 transmute &_free_list_node;
 }

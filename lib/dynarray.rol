@@ -14,10 +14,11 @@ proc _da_next_capacity(cap: usize) -> usize {
 proc da_append<T>(x: &DynArray<T>, item: T) {
     if x~.length == x~.capacity {
         let old_ptr = x~.buf;
-        x~.capacity = _da_next_capacity(x~.capacity);
-        // TODO: we need alignment parameter to malloc. oops lol
-        x~.buf = malloc(sizeof$<T>() * x~.capacity) transmute &unit transmute &T; 
-        assert(x~.buf transmute usize != 0);
+        let desired_capacity = _da_next_capacity(x~.capacity);
+        let new_block = malloc(sizeof$<T>() * desired_capacity, alignof$<T>());
+        assert(new_block.size >= desired_capacity * sizeof$<T>()); 
+        x~.capacity = new_block.size / sizeof$<T>();
+        x~.buf = new_block.buf transmute &unit transmute &T; 
         memcpy(x~.buf, old_ptr, x~.length * sizeof$<T>());
         free(old_ptr transmute &u8);
     }
