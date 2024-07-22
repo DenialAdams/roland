@@ -175,7 +175,11 @@ fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool) -> StatementId {
          *e = deep_clone_expr(*e, &mut ast.expressions);
          deep_clone_block(body, ast);
       }
-      Statement::For { .. } => unreachable!(),
+      Statement::For { range_start, range_end, body, ..  } => {
+         *range_start = deep_clone_expr(*range_start, &mut ast.expressions);
+         *range_end = deep_clone_expr(*range_end, &mut ast.expressions);
+         deep_clone_block(body, ast);
+      },
    }
    ast.statements.insert(cloned)
 }
