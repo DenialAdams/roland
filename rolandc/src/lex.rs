@@ -1004,11 +1004,18 @@ impl Lexer {
             file: x.source_info.file,
          },
       );
-      Lexer { tokens, eof_location, cur_position: 0 }
+      Lexer {
+         tokens,
+         eof_location,
+         cur_position: 0,
+      }
    }
 
    pub fn peek_source(&self) -> SourceInfo {
-      self.tokens.get(self.cur_position).map_or(self.eof_location, |x| x.source_info)
+      self
+         .tokens
+         .get(self.cur_position)
+         .map_or(self.eof_location, |x| x.source_info)
    }
 
    pub fn peek_token(&self) -> Token {
@@ -1016,10 +1023,7 @@ impl Lexer {
    }
 
    pub fn double_peek_token(&self) -> Token {
-      self
-         .tokens
-         .get(self.cur_position + 1)
-         .map_or(Token::Eof, |x| x.token)
+      self.tokens.get(self.cur_position + 1).map_or(Token::Eof, |x| x.token)
    }
 
    pub fn next(&mut self) -> SourceToken {

@@ -7,9 +7,7 @@ use std::sync::OnceLock;
 use indexmap::{IndexMap, IndexSet};
 use slotmap::SlotMap;
 
-use super::type_inference::{
-   constraint_matches_type_or_try_constrain, lower_unknowns_in_type, try_merge_types,
-};
+use super::type_inference::{constraint_matches_type_or_try_constrain, lower_unknowns_in_type, try_merge_types};
 use super::type_variables::{TypeConstraint, TypeVariableManager};
 use super::{GlobalInfo, OwnedValidationContext, ValidationContext, VariableDetails, VariableScopeKind};
 use crate::error_handling::error_handling_macros::{
@@ -569,18 +567,8 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
       Statement::Assignment(lhs, rhs) => {
          type_expression(err_manager, *lhs, validation_context);
          type_expression(err_manager, *rhs, validation_context);
-         
-         try_merge_types(
-            &validation_context.ast.expressions[*lhs].exp_type.clone().unwrap(),
-            validation_context.ast.expressions[*rhs].exp_type.as_mut().unwrap(),
-            &mut validation_context.owned.type_variables,
-         );
 
-         try_merge_types(
-            &validation_context.ast.expressions[*rhs].exp_type.clone().unwrap(),
-            validation_context.ast.expressions[*lhs].exp_type.as_mut().unwrap(),
-            &mut validation_context.owned.type_variables,
-         );
+         try_merge_types_of_two_distinct_expressions(*lhs, *rhs, validation_context);
 
          let len = &validation_context.ast.expressions[*lhs];
          let en = &validation_context.ast.expressions[*rhs];
@@ -661,16 +649,7 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             }
          }
 
-         try_merge_types(
-            &validation_context.ast.expressions[*start].exp_type.clone().unwrap(),
-            validation_context.ast.expressions[*end].exp_type.as_mut().unwrap(),
-            &mut validation_context.owned.type_variables,
-         );
-         try_merge_types(
-            &validation_context.ast.expressions[*end].exp_type.clone().unwrap(),
-            validation_context.ast.expressions[*start].exp_type.as_mut().unwrap(),
-            &mut validation_context.owned.type_variables,
-         );
+         try_merge_types_of_two_distinct_expressions(*start, *end, validation_context);
 
          let start_expr = &validation_context.ast.expressions[*start];
          let end_expr = &validation_context.ast.expressions[*end];
@@ -1359,16 +1338,7 @@ fn get_type(
             BinOp::BitwiseLeftShift | BinOp::BitwiseRightShift | BinOp::Remainder => &[TypeValidator::AnyInt],
          };
 
-         try_merge_types(
-            &validation_context.ast.expressions[*lhs].exp_type.clone().unwrap(),
-            validation_context.ast.expressions[*rhs].exp_type.as_mut().unwrap(),
-            &mut validation_context.owned.type_variables,
-         );
-         try_merge_types(
-            &validation_context.ast.expressions[*rhs].exp_type.clone().unwrap(),
-            validation_context.ast.expressions[*lhs].exp_type.as_mut().unwrap(),
-            &mut validation_context.owned.type_variables,
-         );
+         try_merge_types_of_two_distinct_expressions(*lhs, *rhs, validation_context);
 
          let lhs_expr = &validation_context.ast.expressions[*lhs];
          let rhs_expr = &validation_context.ast.expressions[*rhs];
@@ -1908,24 +1878,7 @@ fn get_type(
          let mut any_error = false;
 
          for i in 1..elems.len() {
-            let borrowed_type = validation_context.ast.expressions[elems[i - 1]]
-               .exp_type
-               .take()
-               .unwrap();
-            try_merge_types(
-               &borrowed_type,
-               validation_context.ast.expressions[elems[i]].exp_type.as_mut().unwrap(),
-               &mut validation_context.owned.type_variables,
-            );
-            validation_context.ast.expressions[elems[i - 1]].exp_type = Some(borrowed_type);
-
-            let borrowed_type = validation_context.ast.expressions[elems[i]].exp_type.take().unwrap();
-            try_merge_types(
-               &borrowed_type,
-               validation_context.ast.expressions[elems[i - 1]].exp_type.as_mut().unwrap(),
-               &mut validation_context.owned.type_variables,
-            );
-            validation_context.ast.expressions[elems[i]].exp_type = Some(borrowed_type);
+            try_merge_types_of_two_distinct_expressions(elems[i - 1], elems[i], validation_context);
 
             let last_elem_expr = &validation_context.ast.expressions[elems[i - 1]];
             let this_elem_expr = &validation_context.ast.expressions[elems[i]];
@@ -2127,16 +2080,7 @@ fn get_type(
          type_expression(err_manager, *b, validation_context);
          type_expression(err_manager, *c, validation_context);
 
-         try_merge_types(
-            &validation_context.ast.expressions[*b].exp_type.clone().unwrap(),
-            validation_context.ast.expressions[*c].exp_type.as_mut().unwrap(),
-            &mut validation_context.owned.type_variables,
-         );
-         try_merge_types(
-            &validation_context.ast.expressions[*c].exp_type.clone().unwrap(),
-            validation_context.ast.expressions[*b].exp_type.as_mut().unwrap(),
-            &mut validation_context.owned.type_variables,
-         );
+         try_merge_types_of_two_distinct_expressions(*b, *c, validation_context);
 
          let en = &validation_context.ast.expressions[*a];
          let if_exp_type = en.exp_type.as_ref().unwrap();
@@ -2242,7 +2186,10 @@ fn check_procedure_call<'a, I>(
 
          try_merge_types(
             &expected,
-            validation_context.ast.expressions[actual.expr].exp_type.as_mut().unwrap(),
+            validation_context.ast.expressions[actual.expr]
+               .exp_type
+               .as_mut()
+               .unwrap(),
             &mut validation_context.owned.type_variables,
          );
 
@@ -2368,7 +2315,6 @@ fn check_procedure_item(
          }
          _ => {
             for constraint in constraints {
-               //try_merge_types(e_type, current_type, type_variables)
                let tc = match interner.lookup(*constraint) {
                   "Enum" => TypeConstraint::Enum,
                   "Float" => TypeConstraint::Float,
@@ -2570,7 +2516,10 @@ pub fn check_globals(
    {
       try_merge_types(
          &p_global.expr_type.e_type,
-         validation_context.ast.expressions[p_global.initializer.unwrap()].exp_type.as_mut().unwrap(),
+         validation_context.ast.expressions[p_global.initializer.unwrap()]
+            .exp_type
+            .as_mut()
+            .unwrap(),
          &mut validation_context.owned.type_variables,
       );
 
@@ -2585,5 +2534,21 @@ pub fn check_globals(
          &validation_context.owned.type_variables,
          err_manager,
       );
+   }
+}
+
+fn try_merge_types_of_two_distinct_expressions(
+   a: ExpressionId,
+   b: ExpressionId,
+   validation_context: &mut ValidationContext,
+) {
+   for pair in [(a, b), (b, a)] {
+      let borrowed_type = validation_context.ast.expressions[pair.0].exp_type.take().unwrap();
+      try_merge_types(
+         &borrowed_type,
+         validation_context.ast.expressions[pair.1].exp_type.as_mut().unwrap(),
+         &mut validation_context.owned.type_variables,
+      );
+      validation_context.ast.expressions[pair.0].exp_type = Some(borrowed_type);
    }
 }
