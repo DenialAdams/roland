@@ -115,7 +115,6 @@ fn meet(
             return;
          }
          data.known_type = Some(incoming_type.clone());
-         *current_type = incoming_type.clone();
       }
       _ => (),
    }
