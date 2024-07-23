@@ -525,6 +525,7 @@ pub fn emit_wasm(
             minimum: generation_context.procedure_to_table_index.len() as u64,
             maximum: Some(generation_context.procedure_to_table_index.len() as u64),
             table64: false,
+            shared: false,
          };
 
          table.table(table_type);
