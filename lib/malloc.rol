@@ -82,3 +82,17 @@ proc free(ptr: &u8) {
    cur_node~ = (ptr transmute usize - sizeof$<usize>()) transmute &_free_list_node;
    cur_node~~.next = 0 transmute &_free_list_node;
 }
+
+struct TypedMallocResult<T> {
+   buf: &T,
+   length: usize,
+}
+
+proc typed_malloc<T>(n: usize, alignment: usize) -> TypedMallocResult<T> {
+   // TODO: make alignment an optional parameter, with default value alignof$<T>();
+   let new_block = malloc(sizeof$<T>() * n, alignment);
+   return TypedMallocResult$<T> {
+      buf: new_block.buf transmute &unit transmute &T,
+      length: new_block.size / sizeof$<T>(),
+   };
+}
