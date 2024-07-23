@@ -8,7 +8,7 @@ use indexmap::{IndexMap, IndexSet};
 use slotmap::SlotMap;
 
 use super::type_inference::{
-   constraint_matches_type_or_try_constrain, lower_unknowns_in_type, try_merge_types, try_set_inferred_type,
+   constraint_matches_type_or_try_constrain, lower_unknowns_in_type, try_merge_types,
 };
 use super::type_variables::{TypeConstraint, TypeVariableManager};
 use super::{GlobalInfo, OwnedValidationContext, ValidationContext, VariableDetails, VariableScopeKind};
@@ -569,19 +569,17 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
       Statement::Assignment(lhs, rhs) => {
          type_expression(err_manager, *lhs, validation_context);
          type_expression(err_manager, *rhs, validation_context);
-
-         try_set_inferred_type(
+         
+         try_merge_types(
             &validation_context.ast.expressions[*lhs].exp_type.clone().unwrap(),
-            *rhs,
-            validation_context.owned,
-            &mut validation_context.ast.expressions,
+            validation_context.ast.expressions[*rhs].exp_type.as_mut().unwrap(),
+            &mut validation_context.owned.type_variables,
          );
 
-         try_set_inferred_type(
+         try_merge_types(
             &validation_context.ast.expressions[*rhs].exp_type.clone().unwrap(),
-            *lhs,
-            validation_context.owned,
-            &mut validation_context.ast.expressions,
+            validation_context.ast.expressions[*lhs].exp_type.as_mut().unwrap(),
+            &mut validation_context.owned.type_variables,
          );
 
          let len = &validation_context.ast.expressions[*lhs];
@@ -663,17 +661,15 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             }
          }
 
-         try_set_inferred_type(
+         try_merge_types(
             &validation_context.ast.expressions[*start].exp_type.clone().unwrap(),
-            *end,
-            validation_context.owned,
-            &mut validation_context.ast.expressions,
+            validation_context.ast.expressions[*end].exp_type.as_mut().unwrap(),
+            &mut validation_context.owned.type_variables,
          );
-         try_set_inferred_type(
+         try_merge_types(
             &validation_context.ast.expressions[*end].exp_type.clone().unwrap(),
-            *start,
-            validation_context.owned,
-            &mut validation_context.ast.expressions,
+            validation_context.ast.expressions[*start].exp_type.as_mut().unwrap(),
+            &mut validation_context.owned.type_variables,
          );
 
          let start_expr = &validation_context.ast.expressions[*start];
@@ -796,12 +792,10 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             .ret_type
             .e_type;
 
-         // Type Inference
-         try_set_inferred_type(
+         try_merge_types(
             cur_procedure_ret,
-            *en,
-            validation_context.owned,
-            &mut validation_context.ast.expressions,
+            validation_context.ast.expressions[*en].exp_type.as_mut().unwrap(),
+            &mut validation_context.owned.type_variables,
          );
 
          let en = &validation_context.ast.expressions[*en];
@@ -858,11 +852,10 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             ) {
                dt_is_unresolved = true;
             } else if let DeclarationValue::Expr(enid) = opt_enid {
-               try_set_inferred_type(
+               try_merge_types(
                   &v.e_type,
-                  *enid,
-                  validation_context.owned,
-                  &mut validation_context.ast.expressions,
+                  validation_context.ast.expressions[*enid].exp_type.as_mut().unwrap(),
+                  &mut validation_context.owned.type_variables,
                );
             }
          };
@@ -1154,25 +1147,22 @@ fn get_type(
 
          if from_type_is_unknown_int {
             if *cast_type == CastType::Transmute && target_type.is_pointer() {
-               try_set_inferred_type(
+               try_merge_types(
                   &USIZE_TYPE,
-                  *expr_id,
-                  validation_context.owned,
-                  &mut validation_context.ast.expressions,
+                  validation_context.ast.expressions[*expr_id].exp_type.as_mut().unwrap(),
+                  &mut validation_context.owned.type_variables,
                );
             } else if *cast_type == CastType::Transmute && matches!(*target_type, F64_TYPE) {
-               try_set_inferred_type(
+               try_merge_types(
                   &U64_TYPE,
-                  *expr_id,
-                  validation_context.owned,
-                  &mut validation_context.ast.expressions,
+                  validation_context.ast.expressions[*expr_id].exp_type.as_mut().unwrap(),
+                  &mut validation_context.owned.type_variables,
                );
             } else if *cast_type == CastType::Transmute && matches!(*target_type, F32_TYPE) {
-               try_set_inferred_type(
+               try_merge_types(
                   &U32_TYPE,
-                  *expr_id,
-                  validation_context.owned,
-                  &mut validation_context.ast.expressions,
+                  validation_context.ast.expressions[*expr_id].exp_type.as_mut().unwrap(),
+                  &mut validation_context.owned.type_variables,
                );
             } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Enum(_)) {
                let enum_base_type = match target_type {
@@ -1186,11 +1176,10 @@ fn get_type(
                   }
                   _ => unreachable!(),
                };
-               try_set_inferred_type(
+               try_merge_types(
                   enum_base_type,
-                  *expr_id,
-                  validation_context.owned,
-                  &mut validation_context.ast.expressions,
+                  validation_context.ast.expressions[*expr_id].exp_type.as_mut().unwrap(),
+                  &mut validation_context.owned.type_variables,
                );
             }
          };
@@ -1370,17 +1359,15 @@ fn get_type(
             BinOp::BitwiseLeftShift | BinOp::BitwiseRightShift | BinOp::Remainder => &[TypeValidator::AnyInt],
          };
 
-         try_set_inferred_type(
+         try_merge_types(
             &validation_context.ast.expressions[*lhs].exp_type.clone().unwrap(),
-            *rhs,
-            validation_context.owned,
-            &mut validation_context.ast.expressions,
+            validation_context.ast.expressions[*rhs].exp_type.as_mut().unwrap(),
+            &mut validation_context.owned.type_variables,
          );
-         try_set_inferred_type(
+         try_merge_types(
             &validation_context.ast.expressions[*rhs].exp_type.clone().unwrap(),
-            *lhs,
-            validation_context.owned,
-            &mut validation_context.ast.expressions,
+            validation_context.ast.expressions[*lhs].exp_type.as_mut().unwrap(),
+            &mut validation_context.owned.type_variables,
          );
 
          let lhs_expr = &validation_context.ast.expressions[*lhs];
@@ -1689,11 +1676,10 @@ fn get_type(
                   }
 
                   if let Some(field_val) = field.1 {
-                     try_set_inferred_type(
+                     try_merge_types(
                         &defined_type,
-                        field_val,
-                        validation_context.owned,
-                        &mut validation_context.ast.expressions,
+                        validation_context.ast.expressions[field_val].exp_type.as_mut().unwrap(),
+                        &mut validation_context.owned.type_variables,
                      );
 
                      let field_expr = &validation_context.ast.expressions[field_val];
@@ -1926,20 +1912,18 @@ fn get_type(
                .exp_type
                .take()
                .unwrap();
-            try_set_inferred_type(
+            try_merge_types(
                &borrowed_type,
-               elems[i],
-               validation_context.owned,
-               &mut validation_context.ast.expressions,
+               validation_context.ast.expressions[elems[i]].exp_type.as_mut().unwrap(),
+               &mut validation_context.owned.type_variables,
             );
             validation_context.ast.expressions[elems[i - 1]].exp_type = Some(borrowed_type);
 
             let borrowed_type = validation_context.ast.expressions[elems[i]].exp_type.take().unwrap();
-            try_set_inferred_type(
+            try_merge_types(
                &borrowed_type,
-               elems[i - 1],
-               validation_context.owned,
-               &mut validation_context.ast.expressions,
+               validation_context.ast.expressions[elems[i - 1]].exp_type.as_mut().unwrap(),
+               &mut validation_context.owned.type_variables,
             );
             validation_context.ast.expressions[elems[i]].exp_type = Some(borrowed_type);
 
@@ -2024,11 +2008,10 @@ fn get_type(
          type_expression(err_manager, *array, validation_context);
          type_expression(err_manager, *index, validation_context);
 
-         try_set_inferred_type(
+         try_merge_types(
             &USIZE_TYPE,
-            *index,
-            validation_context.owned,
-            &mut validation_context.ast.expressions,
+            validation_context.ast.expressions[*index].exp_type.as_mut().unwrap(),
+            &mut validation_context.owned.type_variables,
          );
 
          let array_expression = &validation_context.ast.expressions[*array];
@@ -2144,17 +2127,15 @@ fn get_type(
          type_expression(err_manager, *b, validation_context);
          type_expression(err_manager, *c, validation_context);
 
-         try_set_inferred_type(
+         try_merge_types(
             &validation_context.ast.expressions[*b].exp_type.clone().unwrap(),
-            *c,
-            validation_context.owned,
-            &mut validation_context.ast.expressions,
+            validation_context.ast.expressions[*c].exp_type.as_mut().unwrap(),
+            &mut validation_context.owned.type_variables,
          );
-         try_set_inferred_type(
+         try_merge_types(
             &validation_context.ast.expressions[*c].exp_type.clone().unwrap(),
-            *b,
-            validation_context.owned,
-            &mut validation_context.ast.expressions,
+            validation_context.ast.expressions[*b].exp_type.as_mut().unwrap(),
+            &mut validation_context.owned.type_variables,
          );
 
          let en = &validation_context.ast.expressions[*a];
@@ -2259,11 +2240,10 @@ fn check_procedure_call<'a, I>(
 
          let mut expected = map_generic_to_concrete_cow(expected_raw, generic_args, generic_parameters);
 
-         try_set_inferred_type(
+         try_merge_types(
             &expected,
-            actual.expr,
-            validation_context.owned,
-            &mut validation_context.ast.expressions,
+            validation_context.ast.expressions[actual.expr].exp_type.as_mut().unwrap(),
+            &mut validation_context.owned.type_variables,
          );
 
          let actual_expr = &validation_context.ast.expressions[actual.expr];
@@ -2276,11 +2256,6 @@ fn check_procedure_call<'a, I>(
                expected.to_mut(),
                &mut validation_context.owned.type_variables,
             );
-         }
-
-         for g_arg in generic_args.iter_mut() {
-            // Inferring one argument might have inferred others. Do this now for good error messages.
-            lower_unknowns_in_type(g_arg, &validation_context.owned.type_variables);
          }
 
          if *actual_type != *expected && !actual_type.is_or_contains_or_points_to_error() {
@@ -2322,11 +2297,10 @@ fn check_procedure_call<'a, I>(
 
          let expected = map_generic_to_concrete_cow(expected_raw.as_ref().unwrap(), generic_args, generic_parameters);
 
-         try_set_inferred_type(
+         try_merge_types(
             &expected,
-            arg.expr,
-            validation_context.owned,
-            &mut validation_context.ast.expressions,
+            validation_context.ast.expressions[arg.expr].exp_type.as_mut().unwrap(),
+            &mut validation_context.owned.type_variables,
          );
 
          let arg_expr = &validation_context.ast.expressions[arg.expr];
@@ -2594,11 +2568,10 @@ pub fn check_globals(
       .values()
       .filter(|x| x.initializer.is_some())
    {
-      try_set_inferred_type(
+      try_merge_types(
          &p_global.expr_type.e_type,
-         p_global.initializer.unwrap(),
-         validation_context.owned,
-         &mut validation_context.ast.expressions,
+         validation_context.ast.expressions[p_global.initializer.unwrap()].exp_type.as_mut().unwrap(),
+         &mut validation_context.owned.type_variables,
       );
 
       let p_static_expr = &validation_context.ast.expressions[p_global.initializer.unwrap()];

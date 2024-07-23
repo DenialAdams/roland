@@ -4,7 +4,7 @@ use super::type_variables::{TypeConstraint, TypeVariableManager};
 use super::OwnedValidationContext;
 use crate::error_handling::error_handling_macros::rolandc_error_w_details;
 use crate::error_handling::ErrorManager;
-use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, ProcedureId};
+use crate::parse::{Expression, ExpressionPool, ProcedureBody, ProcedureId};
 use crate::type_data::{ExpressionType, IntType};
 
 fn constraints_are_compatible(x: TypeConstraint, y: TypeConstraint) -> bool {
@@ -121,32 +121,16 @@ fn meet(
    }
 }
 
+// TODO: shouldn't need to clone at many callsites
 pub fn try_merge_types(
    e_type: &ExpressionType,
    current_type: &mut ExpressionType,
    type_variables: &mut TypeVariableManager,
 ) {
    meet(current_type, e_type, type_variables);
-}
-
-pub fn try_set_inferred_type(
-   e_type: &ExpressionType,
-   expr_index: ExpressionId,
-   validation_context: &mut OwnedValidationContext,
-   expressions: &mut ExpressionPool,
-) {
-   meet(
-      expressions[expr_index].exp_type.as_mut().unwrap(),
-      e_type,
-      &mut validation_context.type_variables,
-   );
-   if matches!(&expressions[expr_index].expression, Expression::Variable(_)) {
-      // Update existing variables immediately, so that error messages have good types
-      // (this should _not_ affect correctness.)
-      for var_in_scope in validation_context.variable_types.values_mut() {
-         lower_unknowns_in_type(&mut var_in_scope.var_type, &validation_context.type_variables);
-      }
-   }
+   // This seems questionable.
+   // It would be better if type equality simply knew how to look up unknown types?
+   lower_unknowns_in_type(current_type, type_variables);
 }
 
 pub fn lower_type_variables(
