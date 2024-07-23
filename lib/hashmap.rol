@@ -58,7 +58,7 @@ proc hm_lookup<K, V>(m: &HashMap<K, V>, k: &K) -> &V {
         if slot~.state == _hm_Cell_State::Absent {
             return 0 transmute &V;
         }
-        if m.eq(&slot~.key, k){
+        if slot~.state == _hm_Cell_State::Present and m.eq(&slot~.key, k){
             return &slot~.val;
         }
         if slot_index == m.capacity - 1 {
