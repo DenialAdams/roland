@@ -1,13 +1,20 @@
 struct HashMap<K, V> {
     hash: proc(&K) -> usize,
-    eq: proc(&V, &V) -> bool,
+    eq: proc(&K, &K) -> bool,
     len: usize,
     capacity: usize,
-    cells: &_hm_Cell<V>,
+    cells: &_hm_Cell<K, V>,
 }
 
-struct _hm_Cell<V> {
-    present: bool,
+enum _hm_Cell_State {
+    Present,
+    Deleted,
+    Absent,
+}
+
+struct _hm_Cell<K, V> {
+    state: _hm_Cell_State,
+    key: K,
     val: V,
 }
 
@@ -22,29 +29,44 @@ proc hash_bytes<K>(key: &K) -> usize {
 }
 
 proc eq_bytes<V>(a: &V, b: &V) -> bool {
-    let bytes_a = a transmute &V;
-    let bytes_b = b transmute &V;
     for i in 0..sizeof$<V>() {
-        if _hm_offset_ptr_items(bytes_a, i)~ != _hm_offset_ptr_items(bytes_b, i)~ {
+        if _hm_offset_ptr_items(a, i)~ != _hm_offset_ptr_items(b, i)~ {
             return false;
         }
     }
     return true;
 }
 
-proc hm_init<K, V>(hash: proc(&K) -> usize, eq: proc(&V, &V) -> bool) -> HashMap<K, V> {
+proc hm_init<K, V>(hash: proc(&K) -> usize, eq: proc(&K, &K) -> bool) -> HashMap<K, V> {
     return HashMap$<K, V> {
         hash: hash,
         eq: eq,
         len: 0,
         capacity: 0,
-        cells: 0 transmute &_hm_Cell<V>,
+        cells: 0 transmute &_hm_Cell<K, V>,
     };
 }
 
-proc hm_lookup<K, V>(m: &HashMap<K, V>, k: K) -> &V {
+proc hm_lookup<K, V>(m: &HashMap<K, V>, k: &K) -> &V {
+    if m.capacity == 0 {
+        return 0 transmute &V;
+    }
     let hash = m.hash(k);
-    let slot = hash % m.capacity;
+    let slot_index = hash % m.capacity;
+    loop {
+        let slot = _hm_offset_ptr_items(m.cells, slot_index);
+        if slot~.state == _hm_Cell_State::Absent {
+            return 0 transmute &V;
+        }
+        if m.eq(&slot~.key, k){
+            return &slot~.val;
+        }
+        if slot_index == m.capacity - 1 {
+            slot_index = slot_index + 1;
+        } else {
+            slot_index = 0;
+        }
+    }
 }
 
 proc _hm_offset_ptr_items<T>(ptr: &T, items: usize) -> &T {
