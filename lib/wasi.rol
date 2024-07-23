@@ -147,21 +147,21 @@ proc int_to_string(value: i64) -> String {
 
 const _WASM_PAGE_SIZE: usize = 65535;
 
-// First page is reserved for stack, statics
-static _BRK: usize = _WASM_PAGE_SIZE + 1;
-
 proc brk(new_break: usize) -> usize {
-   if new_break <= _BRK {
-      return _BRK;
+   // First page is reserved for stack, statics
+   static BRK: usize = _WASM_PAGE_SIZE + 1;
+
+   if new_break <= BRK {
+      return BRK;
    }
 
    let needed_pages = new_break / _WASM_PAGE_SIZE + (new_break % _WASM_PAGE_SIZE != 0) as usize;
    if needed_pages > 65535 {
-      return _BRK;
+      return BRK;
    }
 
    wasm_memory_grow(needed_pages - wasm_memory_size());
-   _BRK = new_break;
+   BRK = new_break;
 
-   return _BRK;
+   return BRK;
 }
