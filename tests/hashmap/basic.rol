@@ -1,0 +1,8 @@
+import "std:hashmap.rol";
+
+proc main() {
+    let x = hm_init$<u64, u64>(&hash_bytes, &eq_bytes);
+}
+
+__END__
+run:
