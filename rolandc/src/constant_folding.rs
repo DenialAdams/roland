@@ -98,7 +98,6 @@ pub fn fold_statement(
       Statement::IfElse(if_expr, if_block, else_statement) => {
          try_fold_and_replace_expr(*if_expr, &mut Some(err_manager), folding_context, interner);
 
-         // We could also prune dead branches here
          let if_expr_d = &folding_context.ast.expressions[*if_expr];
          if let Some(Literal::Bool(false)) = extract_literal(if_expr_d, folding_context.target) {
             rolandc_warn!(err_manager, if_expr_d.location, "This condition will always be false");
