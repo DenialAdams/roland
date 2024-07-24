@@ -5,6 +5,8 @@ proc main() {
     assert(hm_lookup(&x, &123) == 0 transmute &u64);
     hm_insert(&x, 123, 456);
     assert(hm_lookup(&x, &123)~ == 456);
+    hm_remove(&x, &123);
+    assert(hm_lookup(&x, &123) == 0 transmute &u64);
 }
 
 __END__

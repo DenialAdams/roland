@@ -1,11 +1,11 @@
 struct HashMap<K, V> {
-    hash: proc(&K) -> usize,
-    eq: proc(&K, &K) -> bool,
-    len: usize,
+    length: usize,
+    _hash: proc(&K) -> usize,
+    _eq: proc(&K, &K) -> bool,
     // load - len == # deleted items that have't been cleared
-    load: usize,
-    capacity: usize,
-    cells: &_hm_Cell<K, V>,
+    _load: usize,
+    _capacity: usize,
+    _cells: &_hm_Cell<K, V>,
 }
 
 enum _hm_Cell_State {
@@ -41,65 +41,112 @@ proc eq_bytes<V>(a: &V, b: &V) -> bool {
 
 proc hm_init<K, V>(hash: proc(&K) -> usize, eq: proc(&K, &K) -> bool) -> HashMap<K, V> {
     return HashMap$<K, V> {
-        hash: hash,
-        eq: eq,
-        len: 0,
-        load: 0,
-        capacity: 0,
-        cells: 0 transmute &_hm_Cell<K, V>,
+        length: 0,
+        _hash: hash,
+        _eq: eq,
+        _load: 0,
+        _capacity: 0,
+        _cells: 0 transmute &_hm_Cell<K, V>,
     };
 }
 
 proc hm_insert<K, V>(m: &HashMap<K, V>, k: K, v: V) {
-    if m~.load * 2 >= m~.capacity {
+    if m~._load * 2 >= m~._capacity {
         // Rehash
         // holy smokes i can't write a nested type LOL TODO
-        let desired_capacity = ifx m~.capacity == 0 16 else m~.capacity * 2;
+        let desired_capacity = ifx m~._capacity == 0 16 else m~._capacity * 2;
         let malloc_result = typed_malloc$<_hm_Cell<K, V>,>(desired_capacity, alignof$<_hm_Cell<K, V>,>());
         assert(malloc_result.length >= desired_capacity);
         for i in 0..malloc_result.length {
             _hm_offset_ptr_items(malloc_result.buf, i)~.state = _hm_Cell_State::Absent;
         }
-        for i in 0..m~.capacity {
-            if _hm_offset_ptr_items(m~.cells, i)~.state != _hm_Cell_State::Present {
+        for i in 0..m~._capacity {
+            if _hm_offset_ptr_items(m~._cells, i)~.state != _hm_Cell_State::Present {
                 continue;
             }
-            // nocheckin probing
-            let slot_index = m~.hash(&_hm_offset_ptr_items(malloc_result.buf, i)~.key) % malloc_result.length;
-            _hm_offset_ptr_items(malloc_result.buf, slot_index)~ = _hm_Cell$<K, V> {
-                state: _hm_Cell_State::Present,
-                key: _hm_offset_ptr_items(m~.cells, slot_index)~.key,
-                val: _hm_offset_ptr_items(m~.cells, slot_index)~.val,
-            };
+            let slot_index = m~._hash(&_hm_offset_ptr_items(malloc_result.buf, i)~.key) % malloc_result.length;
+            loop {
+                let slot = _hm_offset_ptr_items(m~._cells, slot_index);
+                if slot~.state == _hm_Cell_State::Absent {
+                    slot~ = _hm_Cell$<K, V> {
+                        state: _hm_Cell_State::Present,
+                        key: _hm_offset_ptr_items(m~._cells, slot_index)~.key,
+                        val: _hm_offset_ptr_items(m~._cells, slot_index)~.val,
+                    };
+                    break;
+                }
+                if slot_index == m~._capacity - 1 {
+                    slot_index = slot_index + 1;
+                } else {
+                    slot_index = 0;
+                }
+            }
         }
-        m~.capacity = malloc_result.length;
-        m~.cells = malloc_result.buf;
-        m~.load = m~.len;
+        m~._capacity = malloc_result.length;
+        m~._cells = malloc_result.buf;
+        m~._load = m~.length;
     }
-    // nocheckin probing
-    // TODO: something wack about &k causing problems here on amd64
-    let slot_index = m~.hash(&k) % m~.capacity;
-    _hm_offset_ptr_items(m~.cells, slot_index)~ = _hm_Cell$<K, V> {
+    let slot_index = m~._hash(&k) % m~._capacity;
+    loop {
+        let slot = _hm_offset_ptr_items(m~._cells, slot_index);
+        if slot~.state == _hm_Cell_State::Absent {
+            m~.length = m~.length + 1;
+            m~._load = m~._load + 1;
+        }
+        if slot~.state == _hm_Cell_State::Absent or (slot~.state == _hm_Cell_State::Present and m~._eq(&slot~.key, &k)) {
+            slot~ = _hm_Cell$<K, V> {
+                state: _hm_Cell_State::Present,
+                key: _hm_offset_ptr_items(m~._cells, slot_index)~.key,
+                val: _hm_offset_ptr_items(m~._cells, slot_index)~.val,
+            };
+            break;
+        }
+        if slot_index == m~._capacity - 1 {
+            slot_index = slot_index + 1;
+        } else {
+            slot_index = 0;
+        }
+    }
+    _hm_offset_ptr_items(m~._cells, slot_index)~ = _hm_Cell$<K, V> {
         state: _hm_Cell_State::Present,
         key: k,
         val: v,
     };
 }
 
+proc hm_remove<K, V>(m: &HashMap<K, V>, k: &K) {
+    let slot_index = m~._hash(k) % m~._capacity;
+    loop {
+        let slot = _hm_offset_ptr_items(m~._cells, slot_index);
+        if slot~.state == _hm_Cell_State::Absent {
+            return;
+        }
+        if slot~.state == _hm_Cell_State::Present and m~._eq(&slot~.key, k){
+            slot~.state = _hm_Cell_State::Deleted;
+            m~.length = m~.length - 1;
+        }
+        if slot_index == m~._capacity - 1 {
+            slot_index = slot_index + 1;
+        } else {
+            slot_index = 0;
+        }
+    }
+}
+
 proc hm_lookup<K, V>(m: &HashMap<K, V>, k: &K) -> &V {
-    if m~.capacity == 0 {
+    if m~._capacity == 0 {
         return 0 transmute &V;
     }
-    let slot_index = m~.hash(k) % m~.capacity;
+    let slot_index = m~._hash(k) % m~._capacity;
     loop {
-        let slot = _hm_offset_ptr_items(m~.cells, slot_index);
+        let slot = _hm_offset_ptr_items(m~._cells, slot_index);
         if slot~.state == _hm_Cell_State::Absent {
             return 0 transmute &V;
         }
-        if slot~.state == _hm_Cell_State::Present and m~.eq(&slot~.key, k){
+        if slot~.state == _hm_Cell_State::Present and m~._eq(&slot~.key, k){
             return &slot~.val;
         }
-        if slot_index == m~.capacity - 1 {
+        if slot_index == m~._capacity - 1 {
             slot_index = slot_index + 1;
         } else {
             slot_index = 0;
