@@ -85,11 +85,11 @@ pub fn fold_statement(
    folding_context: &mut FoldingContext,
    interner: &Interner,
 ) {
-   let the_statement = std::mem::replace(
+   let mut the_statement = std::mem::replace(
       &mut folding_context.ast.statements[statement].statement,
       Statement::Break,
    );
-   match &the_statement {
+   match &mut the_statement {
       Statement::Assignment(lhs_expr, rhs_expr) => {
          try_fold_and_replace_expr(*lhs_expr, &mut Some(err_manager), folding_context, interner);
          try_fold_and_replace_expr(*rhs_expr, &mut Some(err_manager), folding_context, interner);
@@ -97,15 +97,27 @@ pub fn fold_statement(
       Statement::Break | Statement::Continue => (),
       Statement::IfElse(if_expr, if_block, else_statement) => {
          try_fold_and_replace_expr(*if_expr, &mut Some(err_manager), folding_context, interner);
-         fold_block(if_block, err_manager, folding_context, interner);
-         fold_statement(*else_statement, err_manager, folding_context, interner);
 
          // We could also prune dead branches here
          let if_expr_d = &folding_context.ast.expressions[*if_expr];
          if let Some(Literal::Bool(false)) = extract_literal(if_expr_d, folding_context.target) {
             rolandc_warn!(err_manager, if_expr_d.location, "This condition will always be false");
+            fold_statement(*else_statement, err_manager, folding_context, interner);
+            folding_context.ast.statements[statement].location = folding_context.ast.statements[*else_statement].location;
+            let else_stmt = std::mem::replace(&mut folding_context.ast.statements[*else_statement].statement, Statement::Break);
+            the_statement = else_stmt;
          } else if let Some(Literal::Bool(true)) = extract_literal(if_expr_d, folding_context.target) {
             rolandc_warn!(err_manager, if_expr_d.location, "This condition will always be true");
+            fold_block(if_block, err_manager, folding_context, interner);
+            folding_context.ast.statements[statement].location = if_block.location;
+            let if_blk = std::mem::replace(if_block, BlockNode {
+               statements: Vec::new(),
+               location: folding_context.ast.statements[statement].location,
+            });
+            the_statement = Statement::Block(if_blk);
+         } else {
+            fold_block(if_block, err_manager, folding_context, interner);
+            fold_statement(*else_statement, err_manager, folding_context, interner);
          }
       }
       Statement::Loop(block) | Statement::Block(block) => {

@@ -396,7 +396,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
          .copied()
          .enumerate()
       {
-         let cfs = match stack_params.get(&i) {
+         let reg_and_suffix = match stack_params.get(&i) {
             Some((e_type, _)) if e_type.is_aggregate() => {
                continue;
             }
@@ -406,7 +406,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
             None => None,
          };
          writeln!(ctx.buf, "   %v{} =l alloc{} {}", i, alignment, sz,).unwrap();
-         if let Some((reg_idx, suffix)) = cfs {
+         if let Some((reg_idx, suffix)) = reg_and_suffix {
             writeln!(ctx.buf, "   store{} %r{}, %v{}", suffix, reg_idx, i).unwrap();
          }
       }
