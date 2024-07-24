@@ -480,31 +480,21 @@ pub fn emit_wasm(
       // Copy parameters to stack memory so we can take pointers
       let mut values_index = 0;
       for param in &procedure.definition.parameters {
-         if matches!(
-            generation_context.var_to_slot.get(&param.var_id),
-            Some(VarSlot::Register(_))
-         ) {
-            values_index += 1;
-         } else {
-            match sizeof_type_values(
-               &param.p_type.e_type,
-               generation_context.user_defined_types,
-               generation_context.target,
-            )
-            .cmp(&1)
-            {
-               std::cmp::Ordering::Less => (),
-               std::cmp::Ordering::Equal => {
-                  get_stack_address_of_local(param.var_id, &mut generation_context);
-                  generation_context
-                     .active_fcn
-                     .instruction(&Instruction::LocalGet(values_index));
-                  store_mem(&param.p_type.e_type, &mut generation_context);
-                  values_index += 1;
-               }
-               std::cmp::Ordering::Greater => unreachable!(),
-            }
+         if sizeof_type_values(
+            &param.p_type.e_type,
+            generation_context.user_defined_types,
+            generation_context.target,
+         ) == 0 {
+            continue;
          }
+         if let Some(VarSlot::Stack(_)) = generation_context.var_to_slot.get(&param.var_id) {
+            get_stack_address_of_local(param.var_id, &mut generation_context);
+            generation_context
+               .active_fcn
+               .instruction(&Instruction::LocalGet(values_index));
+            store_mem(&param.p_type.e_type, &mut generation_context);
+         }
+         values_index += 1;
       }
 
       generation_context.live_bbs = post_order(cfg).into_iter().collect();
