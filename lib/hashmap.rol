@@ -22,12 +22,20 @@ struct _hm_Cell<K, V> {
 
 proc hash_bytes<K>(key: &K) -> usize {
     let byte_view = key transmute &u8;
-    // TODO: fnv
-    let sum = 0;
-    for i in 0..sizeof$<K>() {
-        sum = sum + _hm_offset_ptr_items(byte_view, i)~ as usize;
+    let hash: usize;
+    let prime: usize;
+    if sizeof$<usize>() == 4 {
+        hash = 0x811c9dc5;
+        prime = 0x01000193;
+    } else {
+        hash = 0xcbf29ce484222325;
+        prime = 0x00000100000001b3;
     }
-    return sum;
+    for i in 0..sizeof$<K>() {
+        hash = hash ^ _hm_offset_ptr_items(byte_view, i)~ as usize;
+        hash = hash * prime;
+    }
+    return hash;
 }
 
 proc eq_bytes<V>(a: &V, b: &V) -> bool {
