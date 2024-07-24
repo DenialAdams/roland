@@ -2,6 +2,9 @@ import "std:hashmap.rol";
 
 proc main() {
     let x = hm_init$<u64, u64>(&hash_bytes, &eq_bytes);
+    assert(hm_lookup(&x, &123) == 0 transmute &u64);
+    hm_insert(&x, 123, 456);
+    assert(hm_lookup(&x, &123)~ == 456);
 }
 
 __END__

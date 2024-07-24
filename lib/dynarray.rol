@@ -4,17 +4,10 @@ struct DynArray<T> {
    capacity: usize,
 }
 
-proc _da_next_capacity(cap: usize) -> usize {
-    if cap == 0 {
-        return 4;
-    }
-    return cap * 2;
-}
-
 proc da_append<T>(x: &DynArray<T>, item: T) {
     if x~.length == x~.capacity {
         let old_ptr = x~.buf;
-        let desired_capacity = _da_next_capacity(x~.capacity);
+        let desired_capacity = ifx x~.capacity == 0 4 else x~.capacity * 2;
         let new_block = typed_malloc(desired_capacity, alignof$<T>());
         assert(new_block.length >= desired_capacity);
         x~.capacity = new_block.length;
@@ -26,8 +19,8 @@ proc da_append<T>(x: &DynArray<T>, item: T) {
     x~.length = x~.length + 1;
 }
 
-proc da_get<T>(x: &DynArray<T>, index: usize) -> T{
-    return (((x~.buf transmute usize) + sizeof$<T>() * index) transmute &T)~;
+proc da_get<T>(x: &DynArray<T>, index: usize) -> &T {
+    return ((x~.buf transmute usize) + sizeof$<T>() * index) transmute &T;
 }
 
 proc da_init<T>() -> DynArray<T> {

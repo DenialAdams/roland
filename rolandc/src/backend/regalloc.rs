@@ -61,28 +61,26 @@ pub fn assign_variables_to_registers_and_mem(
 
       mark_escaping_vars_cfg(&body.cfg, &mut escaping_vars, &program.ast.expressions);
 
-      if config.target != Target::Qbe {
-         // For WASM, all parameters start in registers
-         for param in program.procedures[proc_id].definition.parameters.iter() {
-            let var = param.var_id;
-            let typ = &param.p_type.e_type;
+      // All parameters start in registers
+      for param in program.procedures[proc_id].definition.parameters.iter() {
+         let var = param.var_id;
+         let typ = &param.p_type.e_type;
 
-            if sizeof_type_mem(typ, &program.user_defined_types, config.target) == 0 {
-               continue;
-            }
-
-            let reg = total_registers;
-            total_registers += 1;
-
-            if typ.is_aggregate() || escaping_vars.contains_key(&var) {
-               // variable must live on the stack.
-               // however, this var is a parameter, so we still need to offset
-               // the register count
-               continue;
-            }
-
-            result.var_to_slot.insert(var, VarSlot::Register(reg));
+         if sizeof_type_mem(typ, &program.user_defined_types, config.target) == 0 {
+            continue;
          }
+
+         let reg = total_registers;
+         total_registers += 1;
+
+         if typ.is_aggregate() || escaping_vars.contains_key(&var) {
+            // variable must live on the stack.
+            // however, this var is a parameter, so we still need to offset
+            // the register count
+            continue;
+         }
+
+         result.var_to_slot.insert(var, VarSlot::Register(reg));
       }
 
       let live_intervals = &program_liveness[proc_id];

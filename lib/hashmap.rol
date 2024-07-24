@@ -2,6 +2,8 @@ struct HashMap<K, V> {
     hash: proc(&K) -> usize,
     eq: proc(&K, &K) -> bool,
     len: usize,
+    // load - len == # deleted items that have't been cleared
+    load: usize,
     capacity: usize,
     cells: &_hm_Cell<K, V>,
 }
@@ -30,7 +32,7 @@ proc hash_bytes<K>(key: &K) -> usize {
 
 proc eq_bytes<V>(a: &V, b: &V) -> bool {
     for i in 0..sizeof$<V>() {
-        if _hm_offset_ptr_items(a, i)~ != _hm_offset_ptr_items(b, i)~ {
+        if _hm_offset_ptr_items(a transmute &u8, i)~ != _hm_offset_ptr_items(b transmute &u8, i)~ {
             return false;
         }
     }
@@ -42,26 +44,62 @@ proc hm_init<K, V>(hash: proc(&K) -> usize, eq: proc(&K, &K) -> bool) -> HashMap
         hash: hash,
         eq: eq,
         len: 0,
+        load: 0,
         capacity: 0,
         cells: 0 transmute &_hm_Cell<K, V>,
     };
 }
 
+proc hm_insert<K, V>(m: &HashMap<K, V>, k: K, v: V) {
+    if m~.load * 2 >= m~.capacity {
+        // Rehash
+        // holy smokes i can't write a nested type LOL TODO
+        let desired_capacity = ifx m~.capacity == 0 16 else m~.capacity * 2;
+        let malloc_result = typed_malloc$<_hm_Cell<K, V>,>(desired_capacity, alignof$<_hm_Cell<K, V>,>());
+        assert(malloc_result.length >= desired_capacity);
+        for i in 0..malloc_result.length {
+            _hm_offset_ptr_items(malloc_result.buf, i)~.state = _hm_Cell_State::Absent;
+        }
+        for i in 0..m~.capacity {
+            if _hm_offset_ptr_items(m~.cells, i)~.state != _hm_Cell_State::Present {
+                continue;
+            }
+            // nocheckin probing
+            let slot_index = m~.hash(&_hm_offset_ptr_items(malloc_result.buf, i)~.key) % malloc_result.length;
+            _hm_offset_ptr_items(malloc_result.buf, slot_index)~ = _hm_Cell$<K, V> {
+                state: _hm_Cell_State::Present,
+                key: _hm_offset_ptr_items(m~.cells, slot_index)~.key,
+                val: _hm_offset_ptr_items(m~.cells, slot_index)~.val,
+            };
+        }
+        m~.capacity = malloc_result.length;
+        m~.cells = malloc_result.buf;
+        m~.load = m~.len;
+    }
+    // nocheckin probing
+    // TODO: something wack about &k causing problems here on amd64
+    let slot_index = m~.hash(&k) % m~.capacity;
+    _hm_offset_ptr_items(m~.cells, slot_index)~ = _hm_Cell$<K, V> {
+        state: _hm_Cell_State::Present,
+        key: k,
+        val: v,
+    };
+}
+
 proc hm_lookup<K, V>(m: &HashMap<K, V>, k: &K) -> &V {
-    if m.capacity == 0 {
+    if m~.capacity == 0 {
         return 0 transmute &V;
     }
-    let hash = m.hash(k);
-    let slot_index = hash % m.capacity;
+    let slot_index = m~.hash(k) % m~.capacity;
     loop {
-        let slot = _hm_offset_ptr_items(m.cells, slot_index);
+        let slot = _hm_offset_ptr_items(m~.cells, slot_index);
         if slot~.state == _hm_Cell_State::Absent {
             return 0 transmute &V;
         }
-        if slot~.state == _hm_Cell_State::Present and m.eq(&slot~.key, k){
+        if slot~.state == _hm_Cell_State::Present and m~.eq(&slot~.key, k){
             return &slot~.val;
         }
-        if slot_index == m.capacity - 1 {
+        if slot_index == m~.capacity - 1 {
             slot_index = slot_index + 1;
         } else {
             slot_index = 0;

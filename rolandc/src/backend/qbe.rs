@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::io::Write;
 
 use indexmap::{IndexMap, IndexSet};
@@ -363,16 +363,21 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
          mangle(proc_id, &ctx.procedures[proc_id], ctx.interner)
       )
       .unwrap();
-      let mut stack_params = HashSet::new();
-      for (p_i, param) in procedure.definition.parameters.iter().enumerate() {
+      let mut stack_params = HashMap::new();
+      let mut p_i = 0;
+      for param in procedure.definition.parameters.iter() {
          if let Some(p_type) = roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, &ctx.aggregate_defs) {
             match ctx.var_to_slot.get(&param.var_id) {
                Some(VarSlot::Register(reg)) => {
                   write!(ctx.buf, "{} %r{}, ", p_type, reg).unwrap();
                }
                Some(VarSlot::Stack(v)) => {
-                  write!(ctx.buf, "{} %v{}, ", p_type, v).unwrap();
-                  stack_params.insert(*v as usize);
+                  if param.p_type.e_type.is_aggregate() {
+                     write!(ctx.buf, "{} %v{}, ", p_type, v).unwrap();
+                  } else {
+                     write!(ctx.buf, "{} %r{}, ", p_type, p_i).unwrap();
+                  }
+                  stack_params.insert(*v as usize, (&param.p_type.e_type, p_i));
                }
                None => {
                   // This parameter was not assigned a slot - this variable MUST be unused
@@ -380,6 +385,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
                   write!(ctx.buf, "{} %p{}, ", p_type, p_i).unwrap();
                }
             }
+            p_i += 1;
          }
       }
       writeln!(ctx.buf, ") {{").unwrap();
@@ -390,10 +396,19 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
          .copied()
          .enumerate()
       {
-         if stack_params.contains(&i) {
-            continue;
-         }
+         let cfs = match stack_params.get(&i) {
+            Some((e_type, _)) if e_type.is_aggregate() => {
+               continue;
+            }
+            Some((e_type, param_index)) => {
+               Some((param_index, roland_type_to_extended_type(e_type)))
+            }
+            None => None,
+         };
          writeln!(ctx.buf, "   %v{} =l alloc{} {}", i, alignment, sz,).unwrap();
+         if let Some((reg_idx, suffix)) = cfs {
+            writeln!(ctx.buf, "   store{} %r{}, %v{}", suffix, reg_idx, i).unwrap();
+         }
       }
       for bb_id in post_order(cfg).iter().rev().copied().filter(|x| *x != CFG_END_NODE) {
          emit_bb(cfg, bb_id, &mut ctx);

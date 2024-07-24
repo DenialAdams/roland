@@ -5,14 +5,14 @@ proc main() {
    defer da_free(&x);
    da_append(&x, 250);
    da_append(&x, 100);
-   println(uint_to_string(da_get(&x, 0)));
-   println(uint_to_string(da_get(&x, 1)));
+   println(uint_to_string(da_get(&x, 0)~));
+   println(uint_to_string(da_get(&x, 1)~));
    da_append(&x, 111);
    da_append(&x, 111);
    // trigger realloc
    da_append(&x, 111);
    for i in 0..x.length {
-      println(uint_to_string(da_get(&x, i)));
+      println(uint_to_string(da_get(&x, i)~));
    }
 }
 
