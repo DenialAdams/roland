@@ -1,8 +1,13 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::backend::linearize::{post_order, Cfg};
 
-pub fn compute_dominators(cfg: &Cfg) -> Vec<usize> {
+#[derive(Debug)]
+pub struct DominatorTree {
+    pub children: HashMap<usize, HashSet<usize>>,
+}
+
+pub fn compute_dominators(cfg: &Cfg) -> DominatorTree {
     let rpo: Vec<usize> = post_order(cfg).into_iter().rev().collect();
     let cfg_index_to_rpo_index: HashMap<usize, usize> = rpo.iter().enumerate().map(|(i, x)| (*x, i)).collect();
     let mut dominators = vec![None; rpo.len()];
@@ -27,7 +32,13 @@ pub fn compute_dominators(cfg: &Cfg) -> Vec<usize> {
             }
         }
     }
-    dominators.into_iter().map(|x| x.unwrap()).collect()
+    let mut dt = DominatorTree {
+        children: HashMap::with_capacity(dominators.len()),
+    };
+    for elem in dominators.iter() {
+        dt.children.entry(dominators[elem.unwrap()].unwrap()).or_default().insert(elem.unwrap());
+    }
+    dt
 }
 
 fn intersect(a: usize, b: usize, doms: &[Option<usize>]) -> usize {

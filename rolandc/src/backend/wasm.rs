@@ -9,7 +9,7 @@ use wasm_encoder::{
 
 use super::linearize::{post_order, Cfg, CfgInstruction};
 use super::regalloc::{RegallocResult, VarSlot};
-use crate::dominators::compute_dominators;
+use crate::dominators::{compute_dominators, DominatorTree};
 use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -508,7 +508,8 @@ pub fn emit_wasm(
          }
       }
 
-      let dominators = compute_dominators(cfg);
+      let dominator_tree = compute_dominators(cfg);
+      do_tree(0, &dominator_tree);
       generation_context.live_bbs = post_order(cfg).into_iter().collect();
       emit_bb(cfg, cfg.start, &mut generation_context);
 
@@ -656,6 +657,10 @@ fn compare_alignment(alignment_1: u32, sizeof_1: u32, alignment_2: u32, sizeof_2
    alignment_2
       .cmp(&alignment_1)
       .then(required_padding_1.cmp(&required_padding_2))
+}
+
+fn do_tree(rpo_index: usize, dominator_tree: &DominatorTree) {
+
 }
 
 fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
