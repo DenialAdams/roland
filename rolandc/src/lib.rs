@@ -19,6 +19,7 @@ mod constant_folding;
 mod dead_code_elimination;
 mod defer;
 mod disjoint_set;
+mod dominators;
 pub mod error_handling;
 mod expression_hoisting;
 mod imports;

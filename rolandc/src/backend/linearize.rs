@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use arrayvec::ArrayVec;
 
@@ -28,6 +28,7 @@ pub enum CfgInstruction {
 #[derive(Clone)]
 pub struct BasicBlock {
    pub instructions: Vec<CfgInstruction>,
+   // TODO: let's make this a bitset?
    pub predecessors: HashSet<usize>,
 }
 
@@ -129,10 +130,12 @@ fn dump_program_cfg(interner: &Interner, program: &Program) {
          interner.lookup(program.procedures[proc].definition.name.str)
       )
       .unwrap();
-      for node in post_order(&body.cfg) {
+      let rpo: Vec<usize> = post_order(&body.cfg).into_iter().rev().collect();
+      let cfg_index_to_rpo_index: HashMap<usize, usize> = rpo.iter().enumerate().map(|(i, x)| (*x, i)).collect();
+      for (rpo_index, node) in rpo.iter().copied().enumerate() {
          let successors = body.cfg.bbs[node].successors();
          for succ in successors.iter() {
-            writeln!(f, "\"{}\" -> \"{}\"", bb_id_to_label(node), bb_id_to_label(*succ)).unwrap();
+            writeln!(f, "\"{}\" -> \"{}\"", bb_id_to_label(rpo_index), bb_id_to_label(cfg_index_to_rpo_index[succ])).unwrap();
          }
       }
       writeln!(f, "}}").unwrap();
@@ -186,9 +189,6 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool, tar
 }
 
 fn bb_id_to_label(bb_id: usize) -> String {
-   if bb_id == CFG_END_NODE {
-      return String::from("end");
-   }
    let tformed = (bb_id + 65) as u8 as char;
    if tformed == '\\' {
       String::from("\\\\")

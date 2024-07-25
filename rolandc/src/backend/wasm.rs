@@ -9,6 +9,7 @@ use wasm_encoder::{
 
 use super::linearize::{post_order, Cfg, CfgInstruction};
 use super::regalloc::{RegallocResult, VarSlot};
+use crate::dominators::compute_dominators;
 use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -507,6 +508,7 @@ pub fn emit_wasm(
          }
       }
 
+      let dominators = compute_dominators(cfg);
       generation_context.live_bbs = post_order(cfg).into_iter().collect();
       emit_bb(cfg, cfg.start, &mut generation_context);
 
