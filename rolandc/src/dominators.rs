@@ -18,17 +18,20 @@ pub fn compute_dominators(cfg: &Cfg, rpo: &[usize]) -> DominatorTree {
    while changed {
       changed = false;
       for b in 1..rpo.len() {
-         let mut preds: Vec<usize> = cfg.bbs[rpo[b]]
+         let preds: Vec<usize> = cfg.bbs[rpo[b]]
             .predecessors
             .iter()
             .copied()
             .filter_map(|x| cfg_index_to_rpo_index.get(&x))
             .copied()
             .collect();
-         preds.sort_unstable();
-         let new_idom = preds.iter().copied().fold(preds.first().copied().unwrap(), |acc, p| {
-            intersect(acc, p, &dominators)
-         });
+         let mut new_idom = preds.iter().copied().find(|x| dominators[*x].is_some()).unwrap();
+         let first_p = new_idom;
+         for p in preds.iter().copied().filter(|x| *x != first_p) {
+            if dominators[p].is_some() {
+               new_idom = intersect(p, new_idom, &dominators);
+            }
+         }
          if dominators[b] != Some(new_idom) {
             dominators[b] = Some(new_idom);
             changed = true;
@@ -38,13 +41,8 @@ pub fn compute_dominators(cfg: &Cfg, rpo: &[usize]) -> DominatorTree {
    let mut dt = DominatorTree {
       children: HashMap::with_capacity(dominators.len()),
    };
-   dbg!(&dominators);
-   for elem in dominators.iter().map(|x| x.unwrap()) {
-      if elem == 0 {
-         // The start node must be dominated by itself only
-         continue;
-      }
-      dt.children.entry(dominators[elem].unwrap()).or_default().insert(elem);
+   for (i, elem) in dominators.into_iter().map(|x| x.unwrap()).enumerate().skip(1) {
+      dt.children.entry(elem).or_default().insert(i);
    }
    for children_list in dt.children.values_mut() {
       children_list.sort_unstable();

@@ -703,8 +703,6 @@ fn do_tree(
       generation_context.frames.push(ContainingSyntax::LoopHeadedBy(rpo_index));
    }
 
-   dbg!(dominator_tree);
-   dbg!(rpo_index, &merge_node_children);
    node_within(
       &merge_node_children,
       rpo_index,
@@ -828,9 +826,6 @@ fn do_branch(
 ) {
    if target_rpo_index < source_rpo_index || is_merge_node(target_rpo_index, rpo, cfg) {
       // continue or exit
-      //dbg!(source_rpo_index);
-      //dbg!(target_rpo_index);
-      //dbg!(&generation_context.frames);
       let index = generation_context.frames.iter().copied().rev().position(|x| match x {
         ContainingSyntax::IfThenElse => false,
         ContainingSyntax::LoopHeadedBy(l) | ContainingSyntax::BlockFollowedBy(l) => l == target_rpo_index,
