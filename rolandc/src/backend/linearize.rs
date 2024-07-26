@@ -17,11 +17,7 @@ pub enum CfgInstruction {
    Expression(ExpressionId),
    ConditionalJump(ExpressionId, usize, usize),
    Jump(usize),
-   Break,
-   Continue,
    Return(ExpressionId),
-   IfElse(ExpressionId, usize, usize, usize), // Condition, Then, Else, Merge
-   Loop(usize, usize),                        // Continue, Break
    Nop,
 }
 
@@ -254,14 +250,6 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool, target: T
             instructions: vec![],
             predecessors: HashSet::new(),
          });
-         if target != Target::Qbe {
-            ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::IfElse(
-               *condition,
-               then_dest,
-               else_dest,
-               afterwards_dest,
-            ));
-         }
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::ConditionalJump(*condition, then_dest, else_dest));
@@ -303,12 +291,6 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool, target: T
             predecessors: HashSet::new(),
          });
 
-         if target != Target::Qbe {
-            ctx.bbs[ctx.current_block]
-               .instructions
-               .push(CfgInstruction::Loop(ctx.continue_target, ctx.break_target));
-         }
-
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(ctx.continue_target));
@@ -316,7 +298,6 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool, target: T
          ctx.current_block = ctx.continue_target;
 
          if !linearize_block(ctx, bn, ast, target) {
-            ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Continue);
             ctx.bbs[ctx.current_block]
                .instructions
                .push(CfgInstruction::Jump(ctx.continue_target));
@@ -330,9 +311,6 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool, target: T
          false
       }
       Statement::Break => {
-         if target != Target::Qbe {
-            ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Break);
-         }
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(ctx.break_target));
@@ -340,9 +318,6 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool, target: T
          true
       }
       Statement::Continue => {
-         if target != Target::Qbe {
-            ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Continue);
-         }
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(ctx.continue_target));

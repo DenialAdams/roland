@@ -807,11 +807,7 @@ fn node_within(
                generation_context.active_fcn.instruction(&Instruction::Return);
             }
          }
-         CfgInstruction::Nop
-         | CfgInstruction::Break
-         | CfgInstruction::Continue
-         | CfgInstruction::IfElse(_, _, _, _)
-         | CfgInstruction::Loop(_, _) => (),
+         CfgInstruction::Nop => (),
       }
    }
 }

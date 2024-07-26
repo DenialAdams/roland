@@ -227,8 +227,7 @@ fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashMap<VariableId, Esc
             }
             CfgInstruction::Expression(e)
             | CfgInstruction::ConditionalJump(e, _, _)
-            | CfgInstruction::Return(e)
-            | CfgInstruction::IfElse(e, _, _, _) => {
+            | CfgInstruction::Return(e) => {
                mark_escaping_vars_expr(*e, escaping_vars, ast);
             }
             _ => (),

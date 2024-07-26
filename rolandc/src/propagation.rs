@@ -163,17 +163,13 @@ fn propagate_vals(
       }
       CfgInstruction::Expression(expr)
       | CfgInstruction::Return(expr)
-      | CfgInstruction::IfElse(expr, _, _, _)
       | CfgInstruction::ConditionalJump(expr, _, _) => {
          if propagate_val_expr(*expr, &mut ast.expressions, reaching_values, false) {
             fold_expr_id(*expr, ast, procedures, user_defined_types, interner, target);
          }
       }
-      CfgInstruction::Break
-      | CfgInstruction::Continue
-      | CfgInstruction::Nop
-      | CfgInstruction::Jump(_)
-      | CfgInstruction::Loop(_, _) => (),
+      CfgInstruction::Nop
+      | CfgInstruction::Jump(_) => (),
    }
 }
 
@@ -506,8 +502,7 @@ fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, as
             }
             CfgInstruction::Expression(e)
             | CfgInstruction::ConditionalJump(e, _, _)
-            | CfgInstruction::Return(e)
-            | CfgInstruction::IfElse(e, _, _, _) => {
+            | CfgInstruction::Return(e) => {
                mark_escaping_vars_expr(*e, escaping_vars, ast);
             }
             _ => (),
