@@ -414,10 +414,8 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    dead_code_elimination::remove_unused_locals(&mut ctx.program);
 
-   if config.target == Target::Qbe {
-      for body in ctx.program.procedure_bodies.values_mut() {
-         linearize::simplify_cfg(&mut body.cfg, &ctx.program.ast.expressions);
-      }
+   for body in ctx.program.procedure_bodies.values_mut() {
+      linearize::simplify_cfg(&mut body.cfg, &ctx.program.ast.expressions);
    }
 
    if config.target != Target::Qbe {

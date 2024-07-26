@@ -176,13 +176,7 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool, tar
 
       body.cfg.bbs = std::mem::take(&mut ctx.bbs);
 
-      if target == Target::Qbe {
-         // We don't simplify the CFG for WASM targets, since
-         // simplification can result in the structured control flow
-         // statements going out of sync with their corresponding
-         // jumps.
-         simplify_cfg(&mut body.cfg, &program.ast.expressions);
-      }
+      simplify_cfg(&mut body.cfg, &program.ast.expressions);
    }
 
    if dump_cfg {
