@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
 use wasm_encoder::{
@@ -7,7 +7,7 @@ use wasm_encoder::{
    NameMap, NameSection, RefType, TableSection, TableType, TypeSection, ValType,
 };
 
-use super::linearize::{post_order, Cfg, CfgInstruction};
+use super::linearize::{post_order, Cfg, CfgInstruction, CFG_END_NODE};
 use super::regalloc::{RegallocResult, VarSlot};
 use crate::dominators::{compute_dominators, DominatorTree};
 use crate::expression_hoisting::is_reinterpretable_transmute;
@@ -24,6 +24,13 @@ use crate::{CompilationConfig, Target};
 // globals
 const SP: u32 = 0;
 
+#[derive(Clone, Copy, Debug)]
+enum ContainingSyntax {
+   IfThenElse,
+   LoopHeadedBy(usize),
+   BlockFollowedBy(usize),
+}
+
 struct GenerationContext<'a> {
    active_fcn: wasm_encoder::Function,
    type_manager: TypeManager<'a>,
@@ -37,10 +44,9 @@ struct GenerationContext<'a> {
    proc_name_table: &'a HashMap<StrId, ProcedureId>,
    procedure_to_table_index: IndexSet<ProcedureId>,
    procedure_indices: IndexSet<ProcedureId>,
-   stack_of_loop_jump_offsets: Vec<u32>,
+   frames: Vec<ContainingSyntax>,
    var_to_slot: IndexMap<VariableId, VarSlot>,
    target: Target,
-   live_bbs: HashSet<usize>,
 }
 
 impl GenerationContext<'_> {
@@ -222,11 +228,10 @@ pub fn emit_wasm(
       ast: &program.ast,
       procedure_to_table_index: IndexSet::new(),
       procedure_indices: IndexSet::new(),
-      stack_of_loop_jump_offsets: Vec::new(),
+      frames: Vec::new(),
       var_to_slot: regalloc_result.var_to_slot,
       proc_name_table: &program.procedure_name_table,
       target: config.target,
-      live_bbs: HashSet::new(),
    };
 
    let mut import_section = ImportSection::new();
@@ -511,9 +516,7 @@ pub fn emit_wasm(
       let rpo: Vec<usize> = post_order(cfg).into_iter().rev().collect();
       let dominator_tree = compute_dominators(cfg, &rpo);
       do_tree(0, &dominator_tree, &rpo, cfg, &mut generation_context);
-      generation_context.live_bbs = post_order(cfg).into_iter().collect();
-      emit_bb(cfg, cfg.start, &mut generation_context);
-
+      generation_context.active_fcn.instruction(&Instruction::Unreachable);
       generation_context.active_fcn.instruction(&Instruction::End);
 
       code_section.function(&generation_context.active_fcn);
@@ -660,6 +663,16 @@ fn compare_alignment(alignment_1: u32, sizeof_1: u32, alignment_2: u32, sizeof_2
       .then(required_padding_1.cmp(&required_padding_2))
 }
 
+fn is_merge_node(rpo_index: usize, rpo: &[usize], cfg: &Cfg) -> bool {
+   cfg.bbs[rpo[rpo_index]]
+      .predecessors
+      .iter()
+      .filter_map(|x| rpo.iter().position(|y| *y == *x))
+      .filter(|pred_rpo_index| *pred_rpo_index < rpo_index)
+      .count()
+      > 1
+}
+
 fn do_tree(
    rpo_index: usize,
    dominator_tree: &DominatorTree,
@@ -667,86 +680,93 @@ fn do_tree(
    cfg: &Cfg,
    generation_context: &mut GenerationContext,
 ) {
-   let dominated_nodes = &dominator_tree.children[&rpo_index];
+   let empty_children = IndexSet::new();
+   let merge_node_children: Vec<usize> = dominator_tree
+      .children
+      .get(&rpo_index)
+      .unwrap_or(&empty_children)
+      .iter()
+      .copied()
+      .filter(|child| is_merge_node(*child, rpo, cfg))
+      .collect();
    let is_loop_header = cfg.bbs[rpo[rpo_index]].predecessors.iter().copied().any(|pred| {
       let Some(pred_rpo_index) = rpo.iter().position(|x| *x == pred) else {
          return false;
       };
-      pred_rpo_index > rpo_index
+      pred_rpo_index >= rpo_index
    });
 
    if is_loop_header {
       generation_context
          .active_fcn
          .instruction(&Instruction::Loop(BlockType::Empty));
+      generation_context.frames.push(ContainingSyntax::LoopHeadedBy(rpo_index));
    }
 
-   node_within(dominated_nodes, rpo_index, dominator_tree, rpo, cfg, generation_context);
+   dbg!(dominator_tree);
+   dbg!(rpo_index, &merge_node_children);
+   node_within(
+      &merge_node_children,
+      rpo_index,
+      dominator_tree,
+      rpo,
+      cfg,
+      generation_context,
+   );
 
    if is_loop_header {
       generation_context.active_fcn.instruction(&Instruction::End);
+      generation_context.frames.pop();
    }
 }
 
 fn node_within(
-   merge_node_children: &IndexSet<usize>,
+   merge_node_children: &[usize],
    rpo_index: usize,
    dominator_tree: &DominatorTree,
    rpo: &[usize],
    cfg: &Cfg,
    generation_context: &mut GenerationContext,
 ) {
-}
-
-fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
-   if !generation_context.live_bbs.contains(&bb) {
-      generation_context.active_fcn.instruction(&Instruction::Unreachable);
+   if let Some(merge_node_child) = merge_node_children.first().copied() {
+      generation_context
+         .active_fcn
+         .instruction(&Instruction::Block(BlockType::Empty));
+      generation_context.frames.push(ContainingSyntax::BlockFollowedBy(merge_node_child));
+      node_within(
+         &merge_node_children[1..],
+         rpo_index,
+         dominator_tree,
+         rpo,
+         cfg,
+         generation_context,
+      );
+      generation_context.frames.pop();
+      generation_context.active_fcn.instruction(&Instruction::End);
+      do_tree(merge_node_child, dominator_tree, rpo, cfg, generation_context);
       return;
    }
-   for instr in cfg.bbs[bb].instructions.iter() {
+
+   for instr in cfg.bbs[rpo[rpo_index]].instructions.iter() {
       match instr {
-         CfgInstruction::IfElse(condition, then, otherwise, merge) => {
+         CfgInstruction::ConditionalJump(condition, then, otherwise) => {
             do_emit_and_load_lval(*condition, generation_context);
-            if let Some(jo) = generation_context.stack_of_loop_jump_offsets.last_mut() {
-               *jo += 1;
-            }
+            generation_context.frames.push(ContainingSyntax::IfThenElse);
             generation_context
                .active_fcn
                .instruction(&Instruction::If(BlockType::Empty));
-            // then
-            emit_bb(cfg, *then, generation_context);
+            do_branch(rpo_index, rpo.iter().copied().position(|x| x == *then).unwrap(), dominator_tree, rpo, cfg, generation_context);
             // else
             generation_context.active_fcn.instruction(&Instruction::Else);
-            emit_bb(cfg, *otherwise, generation_context);
+            do_branch(rpo_index, rpo.iter().copied().position(|x| x == *otherwise).unwrap(), dominator_tree, rpo, cfg, generation_context);
             // finish if
+            generation_context.frames.pop();
             generation_context.active_fcn.instruction(&Instruction::End);
-
-            if let Some(jo) = generation_context.stack_of_loop_jump_offsets.last_mut() {
-               *jo -= 1;
-            }
-
-            emit_bb(cfg, *merge, generation_context);
-
-            return;
          }
-         CfgInstruction::Loop(entry, break_target) => {
-            generation_context.stack_of_loop_jump_offsets.push(0);
-            generation_context
-               .active_fcn
-               .instruction(&Instruction::Block(BlockType::Empty));
-            generation_context
-               .active_fcn
-               .instruction(&Instruction::Loop(BlockType::Empty));
-
-            emit_bb(cfg, *entry, generation_context);
-
-            generation_context.active_fcn.instruction(&Instruction::End); // end loop
-            generation_context.active_fcn.instruction(&Instruction::End); // end block
-            generation_context.stack_of_loop_jump_offsets.pop();
-
-            emit_bb(cfg, *break_target, generation_context);
-
-            return;
+         CfgInstruction::Jump(x) if *x == CFG_END_NODE => (),
+         CfgInstruction::Jump(target) => {
+            let target_rpo_index = rpo.iter().copied().position(|x| x == *target).unwrap();
+            do_branch(rpo_index, target_rpo_index, dominator_tree, rpo, cfg, generation_context);
          }
          CfgInstruction::Assignment(len, en) => {
             do_emit(*len, generation_context);
@@ -763,16 +783,6 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
             } else {
                store_mem(val_type, generation_context);
             }
-         }
-         CfgInstruction::Break => {
-            generation_context.active_fcn.instruction(&Instruction::Br(
-               1 + generation_context.stack_of_loop_jump_offsets.last().unwrap(),
-            ));
-         }
-         CfgInstruction::Continue => {
-            generation_context.active_fcn.instruction(&Instruction::Br(
-               *generation_context.stack_of_loop_jump_offsets.last().unwrap(),
-            ));
          }
          CfgInstruction::Expression(en) => {
             do_emit_and_load_lval(*en, generation_context);
@@ -799,8 +809,35 @@ fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {
                generation_context.active_fcn.instruction(&Instruction::Return);
             }
          }
-         CfgInstruction::ConditionalJump(_, _, _) | CfgInstruction::Jump(_) | CfgInstruction::Nop => (),
+         CfgInstruction::Nop
+         | CfgInstruction::Break
+         | CfgInstruction::Continue
+         | CfgInstruction::IfElse(_, _, _, _)
+         | CfgInstruction::Loop(_, _) => (),
       }
+   }
+}
+
+fn do_branch(
+   source_rpo_index: usize,
+   target_rpo_index: usize,
+   dominator_tree: &DominatorTree,
+   rpo: &[usize],
+   cfg: &Cfg,
+   generation_context: &mut GenerationContext,
+) {
+   if target_rpo_index < source_rpo_index || is_merge_node(target_rpo_index, rpo, cfg) {
+      // continue or exit
+      //dbg!(source_rpo_index);
+      //dbg!(target_rpo_index);
+      //dbg!(&generation_context.frames);
+      let index = generation_context.frames.iter().copied().rev().position(|x| match x {
+        ContainingSyntax::IfThenElse => false,
+        ContainingSyntax::LoopHeadedBy(l) | ContainingSyntax::BlockFollowedBy(l) => l == target_rpo_index,
+      }).unwrap();
+      generation_context.active_fcn.instruction(&Instruction::Br(index as u32));
+   } else {
+      do_tree(target_rpo_index, dominator_tree, rpo, cfg, generation_context);
    }
 }
 
