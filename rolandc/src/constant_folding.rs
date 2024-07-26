@@ -102,17 +102,24 @@ pub fn fold_statement(
          if let Some(Literal::Bool(false)) = extract_literal(if_expr_d, folding_context.target) {
             rolandc_warn!(err_manager, if_expr_d.location, "This condition will always be false");
             fold_statement(*else_statement, err_manager, folding_context, interner);
-            folding_context.ast.statements[statement].location = folding_context.ast.statements[*else_statement].location;
-            let else_stmt = std::mem::replace(&mut folding_context.ast.statements[*else_statement].statement, Statement::Break);
+            folding_context.ast.statements[statement].location =
+               folding_context.ast.statements[*else_statement].location;
+            let else_stmt = std::mem::replace(
+               &mut folding_context.ast.statements[*else_statement].statement,
+               Statement::Break,
+            );
             the_statement = else_stmt;
          } else if let Some(Literal::Bool(true)) = extract_literal(if_expr_d, folding_context.target) {
             rolandc_warn!(err_manager, if_expr_d.location, "This condition will always be true");
             fold_block(if_block, err_manager, folding_context, interner);
             folding_context.ast.statements[statement].location = if_block.location;
-            let if_blk = std::mem::replace(if_block, BlockNode {
-               statements: Vec::new(),
-               location: folding_context.ast.statements[statement].location,
-            });
+            let if_blk = std::mem::replace(
+               if_block,
+               BlockNode {
+                  statements: Vec::new(),
+                  location: folding_context.ast.statements[statement].location,
+               },
+            );
             the_statement = Statement::Block(if_blk);
          } else {
             fold_block(if_block, err_manager, folding_context, interner);

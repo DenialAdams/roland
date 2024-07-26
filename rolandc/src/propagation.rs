@@ -161,15 +161,12 @@ fn propagate_vals(
             fold_expr_id(*rhs, ast, procedures, user_defined_types, interner, target);
          }
       }
-      CfgInstruction::Expression(expr)
-      | CfgInstruction::Return(expr)
-      | CfgInstruction::ConditionalJump(expr, _, _) => {
+      CfgInstruction::Expression(expr) | CfgInstruction::Return(expr) | CfgInstruction::ConditionalJump(expr, _, _) => {
          if propagate_val_expr(*expr, &mut ast.expressions, reaching_values, false) {
             fold_expr_id(*expr, ast, procedures, user_defined_types, interner, target);
          }
       }
-      CfgInstruction::Nop
-      | CfgInstruction::Jump(_) => (),
+      CfgInstruction::Nop | CfgInstruction::Jump(_) => (),
    }
 }
 
@@ -256,18 +253,17 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: Target) {
 
          // If we are conditionally jumping, try to prune it now that we have propagated constants.
          // This may prune reaching definitions, making our optimization more precise.
-         let (jump_target, dead_target) =
-            if let Some(CfgInstruction::ConditionalJump(cond, then_target, else_target)) =
-               proc.cfg.bbs[*bb_index].instructions.last()
-            {
-               match program.ast.expressions[*cond].expression {
-                  Expression::BoolLiteral(true) => (*then_target, *else_target),
-                  Expression::BoolLiteral(false) => (*else_target, *then_target),
-                  _ => continue,
-               }
-            } else {
-               continue;
-            };
+         let (jump_target, dead_target) = if let Some(CfgInstruction::ConditionalJump(cond, then_target, else_target)) =
+            proc.cfg.bbs[*bb_index].instructions.last()
+         {
+            match program.ast.expressions[*cond].expression {
+               Expression::BoolLiteral(true) => (*then_target, *else_target),
+               Expression::BoolLiteral(false) => (*else_target, *then_target),
+               _ => continue,
+            }
+         } else {
+            continue;
+         };
          *proc.cfg.bbs[*bb_index].instructions.last_mut().unwrap() = CfgInstruction::Jump(jump_target);
          proc.cfg.bbs[dead_target].predecessors.remove(bb_index);
          reachable_bbs.clear();
@@ -498,9 +494,7 @@ fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, as
                mark_escaping_vars_expr(*lhs, escaping_vars, ast);
                mark_escaping_vars_expr(*rhs, escaping_vars, ast);
             }
-            CfgInstruction::Expression(e)
-            | CfgInstruction::ConditionalJump(e, _, _)
-            | CfgInstruction::Return(e) => {
+            CfgInstruction::Expression(e) | CfgInstruction::ConditionalJump(e, _, _) | CfgInstruction::Return(e) => {
                mark_escaping_vars_expr(*e, escaping_vars, ast);
             }
             _ => (),

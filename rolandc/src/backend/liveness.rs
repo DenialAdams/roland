@@ -72,8 +72,7 @@ fn liveness(
             | CfgInstruction::ConditionalJump(expr, _, _) => {
                gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, procedure_vars);
             }
-            CfgInstruction::Nop
-            | CfgInstruction::Jump(_) => (),
+            CfgInstruction::Nop | CfgInstruction::Jump(_) => (),
          }
       }
    }

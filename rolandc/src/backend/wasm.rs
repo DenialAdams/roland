@@ -492,7 +492,8 @@ pub fn emit_wasm(
             &param.p_type.e_type,
             generation_context.user_defined_types,
             generation_context.target,
-         ) == 0 {
+         ) == 0
+         {
             continue;
          }
          if let Some(VarSlot::Stack(_)) = generation_context.var_to_slot.get(&param.var_id) {
@@ -507,7 +508,9 @@ pub fn emit_wasm(
 
       let rpo: Vec<usize> = post_order(cfg).into_iter().rev().collect();
       generation_context.cfg_index_to_rpo_index.clear();
-      generation_context.cfg_index_to_rpo_index.extend(rpo.iter().enumerate().map(|(i, x)| (*x, i)));
+      generation_context
+         .cfg_index_to_rpo_index
+         .extend(rpo.iter().enumerate().map(|(i, x)| (*x, i)));
       let dominator_tree = compute_dominators(cfg, &rpo, &generation_context.cfg_index_to_rpo_index);
       do_tree(0, &dominator_tree, &rpo, cfg, &mut generation_context);
       generation_context.active_fcn.instruction(&Instruction::Unreachable);
@@ -694,7 +697,9 @@ fn do_tree(
       generation_context
          .active_fcn
          .instruction(&Instruction::Loop(BlockType::Empty));
-      generation_context.frames.push(ContainingSyntax::LoopHeadedBy(rpo_index));
+      generation_context
+         .frames
+         .push(ContainingSyntax::LoopHeadedBy(rpo_index));
    }
 
    node_within(
@@ -724,7 +729,9 @@ fn node_within(
       generation_context
          .active_fcn
          .instruction(&Instruction::Block(BlockType::Empty));
-      generation_context.frames.push(ContainingSyntax::BlockFollowedBy(merge_node_child));
+      generation_context
+         .frames
+         .push(ContainingSyntax::BlockFollowedBy(merge_node_child));
       node_within(
          &merge_node_children[1..],
          rpo_index,
@@ -747,17 +754,38 @@ fn node_within(
             generation_context
                .active_fcn
                .instruction(&Instruction::If(BlockType::Empty));
-            do_branch(rpo_index, generation_context.cfg_index_to_rpo_index[then], dominator_tree, rpo, cfg, generation_context);
+            do_branch(
+               rpo_index,
+               generation_context.cfg_index_to_rpo_index[then],
+               dominator_tree,
+               rpo,
+               cfg,
+               generation_context,
+            );
             // else
             generation_context.active_fcn.instruction(&Instruction::Else);
-            do_branch(rpo_index, generation_context.cfg_index_to_rpo_index[otherwise], dominator_tree, rpo, cfg, generation_context);
+            do_branch(
+               rpo_index,
+               generation_context.cfg_index_to_rpo_index[otherwise],
+               dominator_tree,
+               rpo,
+               cfg,
+               generation_context,
+            );
             // finish if
             generation_context.frames.pop();
             generation_context.active_fcn.instruction(&Instruction::End);
          }
          CfgInstruction::Jump(x) if *x == CFG_END_NODE => (),
          CfgInstruction::Jump(target) => {
-            do_branch(rpo_index, generation_context.cfg_index_to_rpo_index[target], dominator_tree, rpo, cfg, generation_context);
+            do_branch(
+               rpo_index,
+               generation_context.cfg_index_to_rpo_index[target],
+               dominator_tree,
+               rpo,
+               cfg,
+               generation_context,
+            );
          }
          CfgInstruction::Assignment(len, en) => {
             do_emit(*len, generation_context);
@@ -813,13 +841,23 @@ fn do_branch(
    cfg: &Cfg,
    generation_context: &mut GenerationContext,
 ) {
-   if target_rpo_index < source_rpo_index || is_merge_node(target_rpo_index, rpo, cfg, &generation_context.cfg_index_to_rpo_index) {
+   if target_rpo_index < source_rpo_index
+      || is_merge_node(target_rpo_index, rpo, cfg, &generation_context.cfg_index_to_rpo_index)
+   {
       // continue or exit
-      let index = generation_context.frames.iter().copied().rev().position(|x| match x {
-        ContainingSyntax::IfThenElse => false,
-        ContainingSyntax::LoopHeadedBy(l) | ContainingSyntax::BlockFollowedBy(l) => l == target_rpo_index,
-      }).unwrap();
-      generation_context.active_fcn.instruction(&Instruction::Br(index as u32));
+      let index = generation_context
+         .frames
+         .iter()
+         .copied()
+         .rev()
+         .position(|x| match x {
+            ContainingSyntax::IfThenElse => false,
+            ContainingSyntax::LoopHeadedBy(l) | ContainingSyntax::BlockFollowedBy(l) => l == target_rpo_index,
+         })
+         .unwrap();
+      generation_context
+         .active_fcn
+         .instruction(&Instruction::Br(index as u32));
    } else {
       do_tree(target_rpo_index, dominator_tree, rpo, cfg, generation_context);
    }

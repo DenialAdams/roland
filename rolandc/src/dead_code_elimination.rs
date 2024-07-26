@@ -192,8 +192,7 @@ pub fn remove_unused_locals(program: &mut Program) {
                | CfgInstruction::ConditionalJump(expr, _, _) => {
                   mark_used_vars_in_expr(*expr, &mut used_vars, &program.ast.expressions, false);
                }
-               CfgInstruction::Nop
-               | CfgInstruction::Jump(_) => (),
+               CfgInstruction::Nop | CfgInstruction::Jump(_) => (),
             }
          }
       }

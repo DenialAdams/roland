@@ -400,9 +400,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
             Some((e_type, _)) if e_type.is_aggregate() => {
                continue;
             }
-            Some((e_type, param_index)) => {
-               Some((param_index, roland_type_to_extended_type(e_type)))
-            }
+            Some((e_type, param_index)) => Some((param_index, roland_type_to_extended_type(e_type))),
             None => None,
          };
          writeln!(ctx.buf, "   %v{} =l alloc{} {}", i, alignment, sz,).unwrap();
