@@ -1333,6 +1333,7 @@ fn get_type(
                TypeValidator::Bool,
                TypeValidator::AnyEnum,
                TypeValidator::AnyFloat,
+               TypeValidator::AnyPointer,
             ],
             BinOp::BitwiseAnd | BinOp::BitwiseOr | BinOp::BitwiseXor => &[TypeValidator::AnyInt, TypeValidator::Bool],
             BinOp::BitwiseLeftShift | BinOp::BitwiseRightShift | BinOp::Remainder => &[TypeValidator::AnyInt],

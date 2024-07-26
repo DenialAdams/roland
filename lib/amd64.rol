@@ -59,12 +59,12 @@ proc count_digits(value: u64) -> u8 {
 }
 
 proc f32_to_string(f: f32) -> String {
-   let result: &u8 = malloc(16, 1).buf;
+   let result: &u8 = typed_malloc(16, 1).buf;
    return ryu_f2s_buffered(f, result);
 }
 
 proc f64_to_string(f: f64) -> String {
-   let result: &u8 = malloc(25, 1).buf;
+   let result: &u8 = typed_malloc(25, 1).buf;
    return ryu_d2s_buffered(f, result);
 }
 
@@ -97,7 +97,7 @@ proc _wasi_int_to_string_inner(value: u64, buf: &u8) -> String {
 }
 
 proc uint_to_string(value: u64) -> String {
-   let buf = malloc(20, 1).buf;
+   let buf = typed_malloc(20, 1).buf;
    return _wasi_int_to_string_inner(value, buf);
 }
 
@@ -105,7 +105,7 @@ proc int_to_string(value: i64) -> String {
    if value == I64_MIN {
       return "-9223372036854775808";
    } else if value < 0 {
-      let buf = malloc(20, 1).buf;
+      let buf = typed_malloc(20, 1).buf;
       buf~ = "-".pointer~;
       let adjusted_buf = buf transmute usize;
       adjusted_buf = adjusted_buf + 1;
