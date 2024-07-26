@@ -508,8 +508,9 @@ pub fn emit_wasm(
          }
       }
 
-      let dominator_tree = compute_dominators(cfg);
-      do_tree(0, &dominator_tree);
+      let rpo: Vec<usize> = post_order(cfg).into_iter().rev().collect();
+      let dominator_tree = compute_dominators(cfg, &rpo);
+      do_tree(0, &dominator_tree, &rpo, cfg, &mut generation_context);
       generation_context.live_bbs = post_order(cfg).into_iter().collect();
       emit_bb(cfg, cfg.start, &mut generation_context);
 
@@ -659,8 +660,42 @@ fn compare_alignment(alignment_1: u32, sizeof_1: u32, alignment_2: u32, sizeof_2
       .then(required_padding_1.cmp(&required_padding_2))
 }
 
-fn do_tree(rpo_index: usize, dominator_tree: &DominatorTree) {
+fn do_tree(
+   rpo_index: usize,
+   dominator_tree: &DominatorTree,
+   rpo: &[usize],
+   cfg: &Cfg,
+   generation_context: &mut GenerationContext,
+) {
+   let dominated_nodes = &dominator_tree.children[&rpo_index];
+   let is_loop_header = cfg.bbs[rpo[rpo_index]].predecessors.iter().copied().any(|pred| {
+      let Some(pred_rpo_index) = rpo.iter().position(|x| *x == pred) else {
+         return false;
+      };
+      pred_rpo_index > rpo_index
+   });
 
+   if is_loop_header {
+      generation_context
+         .active_fcn
+         .instruction(&Instruction::Loop(BlockType::Empty));
+   }
+
+   node_within(dominated_nodes, rpo_index, dominator_tree, rpo, cfg, generation_context);
+
+   if is_loop_header {
+      generation_context.active_fcn.instruction(&Instruction::End);
+   }
+}
+
+fn node_within(
+   merge_node_children: &IndexSet<usize>,
+   rpo_index: usize,
+   dominator_tree: &DominatorTree,
+   rpo: &[usize],
+   cfg: &Cfg,
+   generation_context: &mut GenerationContext,
+) {
 }
 
 fn emit_bb(cfg: &Cfg, bb: usize, generation_context: &mut GenerationContext) {

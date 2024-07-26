@@ -135,7 +135,13 @@ fn dump_program_cfg(interner: &Interner, program: &Program) {
       for (rpo_index, node) in rpo.iter().copied().enumerate() {
          let successors = body.cfg.bbs[node].successors();
          for succ in successors.iter() {
-            writeln!(f, "\"{}\" -> \"{}\"", bb_id_to_label(rpo_index), bb_id_to_label(cfg_index_to_rpo_index[succ])).unwrap();
+            writeln!(
+               f,
+               "\"{}\" -> \"{}\"",
+               bb_id_to_label(rpo_index),
+               bb_id_to_label(cfg_index_to_rpo_index[succ])
+            )
+            .unwrap();
          }
       }
       writeln!(f, "}}").unwrap();
