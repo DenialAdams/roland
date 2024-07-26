@@ -9,8 +9,7 @@ pub struct DominatorTree {
    pub children: HashMap<usize, IndexSet<usize>>,
 }
 
-pub fn compute_dominators(cfg: &Cfg, rpo: &[usize]) -> DominatorTree {
-   let cfg_index_to_rpo_index: HashMap<usize, usize> = rpo.iter().enumerate().map(|(i, x)| (*x, i)).collect();
+pub fn compute_dominators(cfg: &Cfg, rpo: &[usize], cfg_index_to_rpo_index: &HashMap<usize, usize>) -> DominatorTree {
    let mut dominators = vec![None; rpo.len()];
    debug_assert!(cfg_index_to_rpo_index[&cfg.start] == 0);
    dominators[0] = Some(0);

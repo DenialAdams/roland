@@ -47,6 +47,7 @@ struct GenerationContext<'a> {
    frames: Vec<ContainingSyntax>,
    var_to_slot: IndexMap<VariableId, VarSlot>,
    target: Target,
+   cfg_index_to_rpo_index: HashMap<usize, usize>,
 }
 
 impl GenerationContext<'_> {
@@ -232,6 +233,7 @@ pub fn emit_wasm(
       var_to_slot: regalloc_result.var_to_slot,
       proc_name_table: &program.procedure_name_table,
       target: config.target,
+      cfg_index_to_rpo_index: HashMap::new(),
    };
 
    let mut import_section = ImportSection::new();
@@ -504,7 +506,9 @@ pub fn emit_wasm(
       }
 
       let rpo: Vec<usize> = post_order(cfg).into_iter().rev().collect();
-      let dominator_tree = compute_dominators(cfg, &rpo);
+      generation_context.cfg_index_to_rpo_index.clear();
+      generation_context.cfg_index_to_rpo_index.extend(rpo.iter().enumerate().map(|(i, x)| (*x, i)));
+      let dominator_tree = compute_dominators(cfg, &rpo, &generation_context.cfg_index_to_rpo_index);
       do_tree(0, &dominator_tree, &rpo, cfg, &mut generation_context);
       generation_context.active_fcn.instruction(&Instruction::Unreachable);
       generation_context.active_fcn.instruction(&Instruction::End);
@@ -653,11 +657,11 @@ fn compare_alignment(alignment_1: u32, sizeof_1: u32, alignment_2: u32, sizeof_2
       .then(required_padding_1.cmp(&required_padding_2))
 }
 
-fn is_merge_node(rpo_index: usize, rpo: &[usize], cfg: &Cfg) -> bool {
+fn is_merge_node(rpo_index: usize, rpo: &[usize], cfg: &Cfg, cfg_index_to_rpo_index: &HashMap<usize, usize>) -> bool {
    cfg.bbs[rpo[rpo_index]]
       .predecessors
       .iter()
-      .filter_map(|x| rpo.iter().position(|y| *y == *x))
+      .filter_map(|x| cfg_index_to_rpo_index.get(x).copied())
       .filter(|pred_rpo_index| *pred_rpo_index < rpo_index)
       .count()
       > 1
@@ -677,10 +681,10 @@ fn do_tree(
       .unwrap_or(&empty_children)
       .iter()
       .copied()
-      .filter(|child| is_merge_node(*child, rpo, cfg))
+      .filter(|child| is_merge_node(*child, rpo, cfg, &generation_context.cfg_index_to_rpo_index))
       .collect();
-   let is_loop_header = cfg.bbs[rpo[rpo_index]].predecessors.iter().copied().any(|pred| {
-      let Some(pred_rpo_index) = rpo.iter().position(|x| *x == pred) else {
+   let is_loop_header = cfg.bbs[rpo[rpo_index]].predecessors.iter().any(|pred| {
+      let Some(pred_rpo_index) = generation_context.cfg_index_to_rpo_index.get(pred).copied() else {
          return false;
       };
       pred_rpo_index >= rpo_index
@@ -743,18 +747,17 @@ fn node_within(
             generation_context
                .active_fcn
                .instruction(&Instruction::If(BlockType::Empty));
-            do_branch(rpo_index, rpo.iter().copied().position(|x| x == *then).unwrap(), dominator_tree, rpo, cfg, generation_context);
+            do_branch(rpo_index, generation_context.cfg_index_to_rpo_index[then], dominator_tree, rpo, cfg, generation_context);
             // else
             generation_context.active_fcn.instruction(&Instruction::Else);
-            do_branch(rpo_index, rpo.iter().copied().position(|x| x == *otherwise).unwrap(), dominator_tree, rpo, cfg, generation_context);
+            do_branch(rpo_index, generation_context.cfg_index_to_rpo_index[otherwise], dominator_tree, rpo, cfg, generation_context);
             // finish if
             generation_context.frames.pop();
             generation_context.active_fcn.instruction(&Instruction::End);
          }
          CfgInstruction::Jump(x) if *x == CFG_END_NODE => (),
          CfgInstruction::Jump(target) => {
-            let target_rpo_index = rpo.iter().copied().position(|x| x == *target).unwrap();
-            do_branch(rpo_index, target_rpo_index, dominator_tree, rpo, cfg, generation_context);
+            do_branch(rpo_index, generation_context.cfg_index_to_rpo_index[target], dominator_tree, rpo, cfg, generation_context);
          }
          CfgInstruction::Assignment(len, en) => {
             do_emit(*len, generation_context);
@@ -810,7 +813,7 @@ fn do_branch(
    cfg: &Cfg,
    generation_context: &mut GenerationContext,
 ) {
-   if target_rpo_index < source_rpo_index || is_merge_node(target_rpo_index, rpo, cfg) {
+   if target_rpo_index < source_rpo_index || is_merge_node(target_rpo_index, rpo, cfg, &generation_context.cfg_index_to_rpo_index) {
       // continue or exit
       let index = generation_context.frames.iter().copied().rev().position(|x| match x {
         ContainingSyntax::IfThenElse => false,
