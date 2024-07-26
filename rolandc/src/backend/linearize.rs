@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use arrayvec::ArrayVec;
 
@@ -17,17 +17,14 @@ pub enum CfgInstruction {
    Expression(ExpressionId),
    ConditionalJump(ExpressionId, usize, usize),
    Jump(usize),
-   Break,
-   Continue,
    Return(ExpressionId),
-   IfElse(ExpressionId, usize, usize, usize), // Condition, Then, Else, Merge
-   Loop(usize, usize),                        // Continue, Break
    Nop,
 }
 
 #[derive(Clone)]
 pub struct BasicBlock {
    pub instructions: Vec<CfgInstruction>,
+   // TODO: let's make this a bitset?
    pub predecessors: HashSet<usize>,
 }
 
@@ -129,10 +126,18 @@ fn dump_program_cfg(interner: &Interner, program: &Program) {
          interner.lookup(program.procedures[proc].definition.name.str)
       )
       .unwrap();
-      for node in post_order(&body.cfg) {
+      let rpo: Vec<usize> = post_order(&body.cfg).into_iter().rev().collect();
+      let cfg_index_to_rpo_index: HashMap<usize, usize> = rpo.iter().enumerate().map(|(i, x)| (*x, i)).collect();
+      for (rpo_index, node) in rpo.iter().copied().enumerate() {
          let successors = body.cfg.bbs[node].successors();
          for succ in successors.iter() {
-            writeln!(f, "\"{}\" -> \"{}\"", bb_id_to_label(node), bb_id_to_label(*succ)).unwrap();
+            writeln!(
+               f,
+               "\"{}\" -> \"{}\"",
+               bb_id_to_label(rpo_index),
+               bb_id_to_label(cfg_index_to_rpo_index[succ])
+            )
+            .unwrap();
          }
       }
       writeln!(f, "}}").unwrap();
@@ -171,13 +176,7 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool, tar
 
       body.cfg.bbs = std::mem::take(&mut ctx.bbs);
 
-      if target == Target::Qbe {
-         // We don't simplify the CFG for WASM targets, since
-         // simplification can result in the structured control flow
-         // statements going out of sync with their corresponding
-         // jumps.
-         simplify_cfg(&mut body.cfg, &program.ast.expressions);
-      }
+      simplify_cfg(&mut body.cfg, &program.ast.expressions);
    }
 
    if dump_cfg {
@@ -186,9 +185,6 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool, tar
 }
 
 fn bb_id_to_label(bb_id: usize) -> String {
-   if bb_id == CFG_END_NODE {
-      return String::from("end");
-   }
    let tformed = (bb_id + 65) as u8 as char;
    if tformed == '\\' {
       String::from("\\\\")
@@ -248,14 +244,6 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool, target: T
             instructions: vec![],
             predecessors: HashSet::new(),
          });
-         if target != Target::Qbe {
-            ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::IfElse(
-               *condition,
-               then_dest,
-               else_dest,
-               afterwards_dest,
-            ));
-         }
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::ConditionalJump(*condition, then_dest, else_dest));
@@ -297,12 +285,6 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool, target: T
             predecessors: HashSet::new(),
          });
 
-         if target != Target::Qbe {
-            ctx.bbs[ctx.current_block]
-               .instructions
-               .push(CfgInstruction::Loop(ctx.continue_target, ctx.break_target));
-         }
-
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(ctx.continue_target));
@@ -310,7 +292,6 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool, target: T
          ctx.current_block = ctx.continue_target;
 
          if !linearize_block(ctx, bn, ast, target) {
-            ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Continue);
             ctx.bbs[ctx.current_block]
                .instructions
                .push(CfgInstruction::Jump(ctx.continue_target));
@@ -324,9 +305,6 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool, target: T
          false
       }
       Statement::Break => {
-         if target != Target::Qbe {
-            ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Break);
-         }
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(ctx.break_target));
@@ -334,9 +312,6 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool, target: T
          true
       }
       Statement::Continue => {
-         if target != Target::Qbe {
-            ctx.bbs[ctx.current_block].instructions.push(CfgInstruction::Continue);
-         }
          ctx.bbs[ctx.current_block]
             .instructions
             .push(CfgInstruction::Jump(ctx.continue_target));

@@ -69,15 +69,11 @@ fn liveness(
             }
             CfgInstruction::Expression(expr)
             | CfgInstruction::Return(expr)
-            | CfgInstruction::IfElse(expr, _, _, _)
             | CfgInstruction::ConditionalJump(expr, _, _) => {
                gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, procedure_vars);
             }
-            CfgInstruction::Break
-            | CfgInstruction::Continue
-            | CfgInstruction::Nop
-            | CfgInstruction::Jump(_)
-            | CfgInstruction::Loop(_, _) => (),
+            CfgInstruction::Nop
+            | CfgInstruction::Jump(_) => (),
          }
       }
    }
@@ -141,7 +137,6 @@ fn liveness(
             }
             CfgInstruction::Expression(expr)
             | CfgInstruction::Return(expr)
-            | CfgInstruction::IfElse(expr, _, _, _)
             | CfgInstruction::ConditionalJump(expr, _, _) => {
                update_live_variables_for_expr(*expr, &mut current_live_variables, ast, procedure_vars);
                None

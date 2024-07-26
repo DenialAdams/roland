@@ -239,10 +239,6 @@ fn pp_cfg<W: Write>(cfg: &Cfg, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Err
                pp_expr(*e, pp_ctx)?;
                writeln!(pp_ctx.output)?;
             }
-            CfgInstruction::Break
-            | CfgInstruction::Continue
-            | CfgInstruction::IfElse(_, _, _, _)
-            | CfgInstruction::Loop(_, _) => writeln!(pp_ctx.output)?,
             CfgInstruction::Nop => writeln!(pp_ctx.output, "nop")?,
          }
       }

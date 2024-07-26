@@ -19,6 +19,7 @@ mod constant_folding;
 mod dead_code_elimination;
 mod defer;
 mod disjoint_set;
+mod dominators;
 pub mod error_handling;
 mod expression_hoisting;
 mod imports;
@@ -413,10 +414,8 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    dead_code_elimination::remove_unused_locals(&mut ctx.program);
 
-   if config.target == Target::Qbe {
-      for body in ctx.program.procedure_bodies.values_mut() {
-         linearize::simplify_cfg(&mut body.cfg, &ctx.program.ast.expressions);
-      }
+   for body in ctx.program.procedure_bodies.values_mut() {
+      linearize::simplify_cfg(&mut body.cfg, &ctx.program.ast.expressions);
    }
 
    if config.target != Target::Qbe {

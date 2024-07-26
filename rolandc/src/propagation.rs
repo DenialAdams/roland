@@ -163,17 +163,13 @@ fn propagate_vals(
       }
       CfgInstruction::Expression(expr)
       | CfgInstruction::Return(expr)
-      | CfgInstruction::IfElse(expr, _, _, _)
       | CfgInstruction::ConditionalJump(expr, _, _) => {
          if propagate_val_expr(*expr, &mut ast.expressions, reaching_values, false) {
             fold_expr_id(*expr, ast, procedures, user_defined_types, interner, target);
          }
       }
-      CfgInstruction::Break
-      | CfgInstruction::Continue
-      | CfgInstruction::Nop
-      | CfgInstruction::Jump(_)
-      | CfgInstruction::Loop(_, _) => (),
+      CfgInstruction::Nop
+      | CfgInstruction::Jump(_) => (),
    }
 }
 
@@ -260,38 +256,36 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: Target) {
 
          // If we are conditionally jumping, try to prune it now that we have propagated constants.
          // This may prune reaching definitions, making our optimization more precise.
-         if target == Target::Qbe {
-            let (jump_target, dead_target) =
-               if let Some(CfgInstruction::ConditionalJump(cond, then_target, else_target)) =
-                  proc.cfg.bbs[*bb_index].instructions.last()
-               {
-                  match program.ast.expressions[*cond].expression {
-                     Expression::BoolLiteral(true) => (*then_target, *else_target),
-                     Expression::BoolLiteral(false) => (*else_target, *then_target),
-                     _ => continue,
-                  }
-               } else {
-                  continue;
-               };
-            *proc.cfg.bbs[*bb_index].instructions.last_mut().unwrap() = CfgInstruction::Jump(jump_target);
-            proc.cfg.bbs[dead_target].predecessors.remove(bb_index);
-            reachable_bbs.clear();
-            reachable_bbs.extend(post_order(&proc.cfg).iter().copied());
+         let (jump_target, dead_target) =
+            if let Some(CfgInstruction::ConditionalJump(cond, then_target, else_target)) =
+               proc.cfg.bbs[*bb_index].instructions.last()
+            {
+               match program.ast.expressions[*cond].expression {
+                  Expression::BoolLiteral(true) => (*then_target, *else_target),
+                  Expression::BoolLiteral(false) => (*else_target, *then_target),
+                  _ => continue,
+               }
+            } else {
+               continue;
+            };
+         *proc.cfg.bbs[*bb_index].instructions.last_mut().unwrap() = CfgInstruction::Jump(jump_target);
+         proc.cfg.bbs[dead_target].predecessors.remove(bb_index);
+         reachable_bbs.clear();
+         reachable_bbs.extend(post_order(&proc.cfg).iter().copied());
 
-            // Update reaching definitions
-            for defs_at_given_location in all_reaching_defs.values_mut() {
-               for defs in defs_at_given_location.def.values_mut() {
-                  defs.retain(|x| match x {
-                     Definition::DefinedAt(loc) => reachable_bbs.contains(&rpo[loc.0]),
-                     Definition::NoDefinitionInProc => true,
-                  });
-               }
-               for partial_defs in defs_at_given_location.partials.values_mut() {
-                  partial_defs.retain(|x| match x {
-                     Definition::DefinedAt(loc) => reachable_bbs.contains(&rpo[loc.0]),
-                     Definition::NoDefinitionInProc => true,
-                  });
-               }
+         // Update reaching definitions
+         for defs_at_given_location in all_reaching_defs.values_mut() {
+            for defs in defs_at_given_location.def.values_mut() {
+               defs.retain(|x| match x {
+                  Definition::DefinedAt(loc) => reachable_bbs.contains(&rpo[loc.0]),
+                  Definition::NoDefinitionInProc => true,
+               });
+            }
+            for partial_defs in defs_at_given_location.partials.values_mut() {
+               partial_defs.retain(|x| match x {
+                  Definition::DefinedAt(loc) => reachable_bbs.contains(&rpo[loc.0]),
+                  Definition::NoDefinitionInProc => true,
+               });
             }
          }
       }
@@ -506,8 +500,7 @@ fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, as
             }
             CfgInstruction::Expression(e)
             | CfgInstruction::ConditionalJump(e, _, _)
-            | CfgInstruction::Return(e)
-            | CfgInstruction::IfElse(e, _, _, _) => {
+            | CfgInstruction::Return(e) => {
                mark_escaping_vars_expr(*e, escaping_vars, ast);
             }
             _ => (),

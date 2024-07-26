@@ -519,11 +519,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
    writeln!(ctx.buf, "@b{}", bb).unwrap();
    for instr in cfg.bbs[bb].instructions.iter() {
       match instr {
-         CfgInstruction::IfElse(_, _, _, _)
-         | CfgInstruction::Break
-         | CfgInstruction::Continue
-         | CfgInstruction::Loop(_, _)
-         | CfgInstruction::Nop => (),
+         CfgInstruction::Nop => (),
          CfgInstruction::Assignment(lid, en) => {
             let lhs_mem = compute_offset(*lid, ctx);
             let rhs_mem = compute_offset(*en, ctx);

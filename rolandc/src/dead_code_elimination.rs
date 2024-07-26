@@ -189,15 +189,11 @@ pub fn remove_unused_locals(program: &mut Program) {
                }
                CfgInstruction::Expression(expr)
                | CfgInstruction::Return(expr)
-               | CfgInstruction::IfElse(expr, _, _, _)
                | CfgInstruction::ConditionalJump(expr, _, _) => {
                   mark_used_vars_in_expr(*expr, &mut used_vars, &program.ast.expressions, false);
                }
-               CfgInstruction::Break
-               | CfgInstruction::Continue
-               | CfgInstruction::Nop
-               | CfgInstruction::Jump(_)
-               | CfgInstruction::Loop(_, _) => (),
+               CfgInstruction::Nop
+               | CfgInstruction::Jump(_) => (),
             }
          }
       }
