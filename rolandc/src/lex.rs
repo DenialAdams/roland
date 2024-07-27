@@ -1026,6 +1026,10 @@ impl Lexer {
       self.tokens.get(self.cur_position + 1).map_or(Token::Eof, |x| x.token)
    }
 
+   pub fn peek_mut(&mut self) -> Option<&mut SourceToken> {
+      self.tokens.get_mut(self.cur_position)
+   }
+
    pub fn next(&mut self) -> SourceToken {
       if self.cur_position >= self.tokens.len() {
          SourceToken {

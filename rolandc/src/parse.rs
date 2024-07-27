@@ -1311,29 +1311,43 @@ fn parse_generic_arguments(
 
    let mut generic_arguments = vec![];
 
-   while l.peek_token() != Token::GreaterThan && l.peek_token() != Token::Eof {
+   while !matches!(l.peek_token(), Token::GreaterThan | Token::ShiftRight | Token:: Eof) {
       generic_arguments.push(parse_type(l, parse_context)?);
-      if l.peek_token() == Token::GreaterThan {
+      if matches!(l.peek_token(), Token::GreaterThan | Token::ShiftRight) {
          break;
       }
       expect(l, parse_context, Token::Comma)?;
    }
 
-   let close_token = expect(l, parse_context, Token::GreaterThan)?;
+   let close_position = if let Some(SourceToken { token: tok @ Token::ShiftRight, source_info }) = l.peek_mut() {
+      // Turn the upcoming ">>" into ">", including adjusting the position
+      // Preeeety hacky, but should be correct because whitespace would have terminated the tokens
+
+      let mut cur_source = *source_info;
+      // update next token
+      *tok = Token::GreaterThan;
+      source_info.begin.col += 1;
+
+      // adjust the location of this "token"
+      cur_source.end.col -= 1;
+      cur_source
+   } else {
+      expect(l, parse_context, Token::GreaterThan)?.source_info
+   };
 
    Ok((
       generic_arguments,
-      merge_locations(start_token.source_info, close_token.source_info),
+      merge_locations(start_token.source_info, close_position),
    ))
 }
 
 fn parse_generic_parameters(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Vec<StrNode>, ()> {
    expect(l, parse_context, Token::LessThan)?;
 
-   let mut generic_arguments = vec![];
+   let mut generic_parameters = vec![];
 
    while l.peek_token() != Token::GreaterThan && l.peek_token() != Token::Eof {
-      generic_arguments.push(parse_identifier(l, parse_context)?);
+      generic_parameters.push(parse_identifier(l, parse_context)?);
       if l.peek_token() == Token::GreaterThan {
          break;
       }
@@ -1342,7 +1356,7 @@ fn parse_generic_parameters(l: &mut Lexer, parse_context: &mut ParseContext) -> 
 
    expect(l, parse_context, Token::GreaterThan)?;
 
-   Ok(generic_arguments)
+   Ok(generic_parameters)
 }
 
 fn parse_arguments(
