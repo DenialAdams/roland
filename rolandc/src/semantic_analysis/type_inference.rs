@@ -103,7 +103,6 @@ fn meet(
    }
 }
 
-// TODO: shouldn't need to clone at many callsites
 pub fn try_merge_types(
    e_type: &ExpressionType,
    current_type: &mut ExpressionType,
