@@ -39,7 +39,7 @@ impl TypeVariableData {
 }
 
 pub struct TypeVariableManager {
-   pub type_variable_data: Vec<TypeVariableData>,
+   type_variable_data: Vec<TypeVariableData>,
    disjoint_set: DisjointSet,
 }
 
