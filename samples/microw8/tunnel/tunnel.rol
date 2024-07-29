@@ -13,7 +13,7 @@ proc upd() {
       FRAMEBUFFER~[i transmute usize] = c;
 
       i = i + 1;
-      if (i >= 320*240) {
+      if i >= 320*240 {
          break;
       }
    }
