@@ -76,10 +76,8 @@ impl TypeVariableManager {
          (None, None) => None,
          (None, r @ Some(_)) => r,
          (l @ Some(_), None) => l,
-         (l @ Some(_), r @ Some(_)) => {
-            debug_assert!(l == r);
-            l
-         }
+         (l @ Some(_), r @ Some(_)) if l == r => l,
+         _ => return Err(()),
       };
       self.disjoint_set.union(x.0, y.0);
       let new_data = self.get_data_mut(x);

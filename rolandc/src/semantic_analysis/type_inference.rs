@@ -85,14 +85,9 @@ fn meet(
          meet(current_ret_type, incoming_ret_type, type_variables);
       }
       (ExpressionType::Unknown(current_tv), ExpressionType::Unknown(incoming_tv)) => {
-         let current_data = type_variables.get_data(*current_tv);
-         if current_data.known_type.is_some() {
-            return;
+         if type_variables.union(*current_tv, *incoming_tv).is_ok() {
+            *current_tv = *incoming_tv;
          }
-         if type_variables.union(*current_tv, *incoming_tv).is_err() {
-            return;
-         }
-         *current_tv = *incoming_tv;
       }
       (ExpressionType::Unknown(current_tv), incoming_type) => {
          let data = type_variables.get_data_mut(*current_tv);
