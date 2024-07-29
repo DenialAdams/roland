@@ -13,17 +13,15 @@ pub enum TypeConstraint {
    None,
 }
 
-fn union_constraints(a: TypeConstraint, b: TypeConstraint) -> TypeConstraint {
+fn union_constraints(a: TypeConstraint, b: TypeConstraint) -> Result<TypeConstraint, ()> {
    match (a, b) {
-      (TypeConstraint::None, _) => b,
-      (_, TypeConstraint::None) => a,
+      (TypeConstraint::None, _) => Ok(b),
+      (_, TypeConstraint::None) => Ok(a),
       (TypeConstraint::Int, TypeConstraint::SignedInt) | (TypeConstraint::SignedInt, TypeConstraint::Int) => {
-         TypeConstraint::SignedInt
+         Ok(TypeConstraint::SignedInt)
       }
-      _ => {
-         debug_assert!(a == b);
-         a
-      }
+      _ if a == b => Ok(a),
+      _ => Err(()),
    }
 }
 
@@ -35,18 +33,8 @@ pub struct TypeVariableData {
 
 impl TypeVariableData {
    pub fn add_constraint(&mut self, constraint: TypeConstraint) -> Result<(), ()> {
-      match (self.constraint, constraint) {
-         (x, y) if x == y => Ok(()),
-         (TypeConstraint::None, any_constraint) => {
-            self.constraint = any_constraint;
-            Ok(())
-         }
-         (TypeConstraint::Int, refined_constraint @ TypeConstraint::SignedInt) => {
-            self.constraint = refined_constraint;
-            Ok(())
-         }
-         _ => Err(()),
-      }
+      self.constraint = union_constraints(self.constraint, constraint)?;
+      Ok(())
    }
 }
 
@@ -79,8 +67,8 @@ impl TypeVariableManager {
       TypeVariable(self.disjoint_set.find(x.0))
    }
 
-   pub fn union(&mut self, x: TypeVariable, y: TypeVariable) {
-      let new_constraint = union_constraints(self.get_data(x).constraint, self.get_data(y).constraint);
+   pub fn union(&mut self, x: TypeVariable, y: TypeVariable) -> Result<(), ()> {
+      let new_constraint = union_constraints(self.get_data(x).constraint, self.get_data(y).constraint)?;
       let known_type = match (
          self.get_data_mut(x).known_type.take(),
          self.get_data_mut(y).known_type.take(),
@@ -97,6 +85,7 @@ impl TypeVariableManager {
       let new_data = self.get_data_mut(x);
       new_data.constraint = new_constraint;
       new_data.known_type = known_type;
+      Ok(())
    }
 
    pub fn get_data(&self, x: TypeVariable) -> &TypeVariableData {

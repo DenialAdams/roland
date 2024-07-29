@@ -7,16 +7,6 @@ use crate::error_handling::ErrorManager;
 use crate::parse::{Expression, ExpressionPool, ProcedureBody, ProcedureId};
 use crate::type_data::{ExpressionType, IntType};
 
-fn constraints_are_compatible(x: TypeConstraint, y: TypeConstraint) -> bool {
-   match (x, y) {
-      (TypeConstraint::None, _)
-      | (_, TypeConstraint::None)
-      | (TypeConstraint::Int, TypeConstraint::SignedInt)
-      | (TypeConstraint::SignedInt, TypeConstraint::Int) => true,
-      _ => x == y,
-   }
-}
-
 fn constraint_compatible_with_concrete(constraint: TypeConstraint, concrete: &ExpressionType) -> bool {
    match constraint {
       TypeConstraint::None => true,
@@ -99,11 +89,9 @@ fn meet(
          if current_data.known_type.is_some() {
             return;
          }
-         let incoming_data = type_variables.get_data(*incoming_tv);
-         if !constraints_are_compatible(current_data.constraint, incoming_data.constraint) {
+         if type_variables.union(*current_tv, *incoming_tv).is_err() {
             return;
          }
-         type_variables.union(*current_tv, *incoming_tv);
          *current_tv = *incoming_tv;
       }
       (ExpressionType::Unknown(current_tv), incoming_type) => {
