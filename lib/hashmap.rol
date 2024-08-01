@@ -1,4 +1,3 @@
-// TODO: we currently leak memory
 struct HashMap<K, V> {
     length: usize,
     _hash: proc(&K) -> usize,
@@ -72,14 +71,14 @@ proc hm_insert<K, V>(m: &HashMap<K, V>, k: K, v: V) {
             if _hm_offset_ptr_items(m~._cells, i)~.state != _hm_Cell_State::Present {
                 continue;
             }
-            let slot_index = m~._hash(&_hm_offset_ptr_items(malloc_result.buf, i)~.key) % malloc_result.length;
+            let slot_index = m~._hash(&_hm_offset_ptr_items(m~._cells, i)~.key) % malloc_result.length;
             loop {
-                let slot = _hm_offset_ptr_items(m~._cells, slot_index);
+                let slot = _hm_offset_ptr_items(malloc_result.buf, slot_index);
                 if slot~.state == _hm_Cell_State::Absent {
                     slot~ = _hm_Cell$<K, V> {
                         state: _hm_Cell_State::Present,
-                        key: _hm_offset_ptr_items(m~._cells, slot_index)~.key,
-                        val: _hm_offset_ptr_items(m~._cells, slot_index)~.val,
+                        key: _hm_offset_ptr_items(malloc_result.buf, slot_index)~.key,
+                        val: _hm_offset_ptr_items(malloc_result.buf, slot_index)~.val,
                     };
                     break;
                 }
@@ -90,6 +89,7 @@ proc hm_insert<K, V>(m: &HashMap<K, V>, k: K, v: V) {
                 }
             }
         }
+        free(m~._cells transmute &u8);
         m~._capacity = malloc_result.length;
         m~._cells = malloc_result.buf;
         m~._load = m~.length;
@@ -160,6 +160,10 @@ proc hm_lookup<K, V>(m: &HashMap<K, V>, k: &K) -> &V {
             slot_index = 0;
         }
     }
+}
+
+proc hm_free<K, V>(m: &HashMap<K, V>) {
+    free(m~._cells transmute &u8);
 }
 
 proc _hm_offset_ptr_items<T>(ptr: &T, items: usize) -> &T {
