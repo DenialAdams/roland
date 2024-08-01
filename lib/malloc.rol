@@ -81,7 +81,7 @@ proc free(ptr: &u8) {
       cur_node = &cur_node~~.next;
    }
 
-   while ptr~ != 0xFF {
+   while ((ptr transmute usize - 1) transmute &u8)~ != 0xFF {
       ptr = (ptr transmute usize - 1) transmute &u8;
    }
 
