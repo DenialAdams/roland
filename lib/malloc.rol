@@ -12,6 +12,8 @@ struct MemoryBlock {
    size: usize,
 }
 
+const PREFIX_SIZE: usize = sizeof$<usize>() + 1;
+
 proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
    if bytes == 0 {
       return MemoryBlock {
@@ -20,21 +22,20 @@ proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
       };
    }
 
-   // ALLOCATED: [size, <padding>, XXXX]
-   // FREE: [_free_list_node, ____]
+   // ALLOCATED: [size, 0xFF, <padding>, XXXX]
+   // FREE: [_free_list_node, 0xFF, ____]
 
-   bytes = bytes + sizeof$<usize>();
+   bytes = bytes + PREFIX_SIZE;
 
    let prev_ptr: &&_free_list_node = &free_list_head;
    let cur_node = &free_list_head;
-   while (cur_node~ transmute usize != 0) {
-      // TODO: this will never introduce padding when it could!
-      // and this is very bad because alloc w/ padding -> free -> alloc again
-      // can not re-use the same slot
-      if cur_node~~.size >= bytes and (cur_node~ transmute usize + sizeof$<usize>()) % alignment == 0 {
+   while cur_node~ transmute usize != 0 {
+      let buf_start = (cur_node~ transmute usize + PREFIX_SIZE);
+      let padding = buf_start % alignment;
+      if (cur_node~~.size + padding) >= bytes {
          let saved = MemoryBlock {
-            buf: (cur_node~ transmute usize + sizeof$<usize>()) transmute &u8,
-            size: cur_node~~.size - sizeof$<usize>(),
+            buf: (cur_node~ transmute usize + PREFIX_SIZE + padding) transmute &u8,
+            size: cur_node~~.size - PREFIX_SIZE - padding,
          };
 
          // Remove this node from the list
@@ -63,9 +64,10 @@ proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
       };
    }
    (cur_address transmute &usize)~ = bytes;
+   ((cur_address transmute usize + 1) transmute &u8)~ = 0xFF;
    return MemoryBlock {
-      buf: (cur_address as usize + sizeof$<usize>() + padding) transmute &u8,
-      size: bytes - sizeof$<usize>() - padding,
+      buf: (cur_address as usize + PREFIX_SIZE + padding) transmute &u8,
+      size: bytes - PREFIX_SIZE - padding,
    };
 }
 
@@ -79,7 +81,11 @@ proc free(ptr: &u8) {
       cur_node = &cur_node~~.next;
    }
 
-   cur_node~ = (ptr transmute usize - sizeof$<usize>()) transmute &_free_list_node;
+   while ptr~ != 0xFF {
+      ptr = (ptr transmute usize - 1) transmute &u8;
+   }
+
+   cur_node~ = (ptr transmute usize - PREFIX_SIZE) transmute &_free_list_node;
    cur_node~~.next = 0 transmute &_free_list_node;
 }
 

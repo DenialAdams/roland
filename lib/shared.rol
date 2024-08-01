@@ -166,3 +166,9 @@ proc memcpy<T>(dest: &T, src: &T, length: usize) {
     (((dest transmute usize) + i * sizeof$<T>()) transmute &T)~ = (((src transmute usize) + i * sizeof$<T>()) transmute &T)~;
   }
 }
+
+proc memset<T>(dest: &T, fill: T, length: usize) {
+   for i in 0..length {
+    (((dest transmute usize) + i * sizeof$<T>()) transmute &T)~ = fill;
+  }
+}

@@ -1,3 +1,4 @@
+// TODO: we currently leak memory
 struct HashMap<K, V> {
     length: usize,
     _hash: proc(&K) -> usize,
