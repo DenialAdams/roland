@@ -64,7 +64,7 @@ proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
       };
    }
    (cur_address transmute &usize)~ = bytes;
-   ((cur_address transmute usize + 1) transmute &u8)~ = 0xFF;
+   ((cur_address transmute usize + sizeof$<usize>()) transmute &u8)~ = 0xFF;
    return MemoryBlock {
       buf: (cur_address as usize + PREFIX_SIZE + padding) transmute &u8,
       size: bytes - PREFIX_SIZE - padding,
