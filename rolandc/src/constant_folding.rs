@@ -640,6 +640,7 @@ fn fold_expr_inner(
             ) == 0
             && matches!(expr_type, ExpressionType::Pointer(_))
          {
+            debug_assert!(!expression_could_have_side_effects(*expr, &folding_context.ast.expressions));
             return Some(Expression::IntLiteral {
                val: 0,
                synthetic: true,

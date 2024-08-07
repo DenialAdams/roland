@@ -2,8 +2,10 @@ proc main() {
    let my_zst = unit();
    let x = &my_zst;
    let y = x~;
+   let z = &println("side effect");
    println("ok");
 }
 __END__
 run:
+side effect
 ok
