@@ -33,7 +33,7 @@ proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
       let buf_start = (cur_node~ transmute usize + PREFIX_SIZE);
       let padding = buf_start % alignment;
       if (cur_node~~.size + padding) >= bytes {
-         // We assumed that fresh memory is zeroed, and so won't conflict with our marker byte.
+         // We assume that fresh memory is zeroed, and so won't conflict with our marker byte.
          // But we can assume no such thing for re-used memory. Zero them.
          memset((cur_node~ transmute usize + PREFIX_SIZE) transmute &u8, 0, padding);
          let saved = MemoryBlock {
