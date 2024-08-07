@@ -11,6 +11,7 @@ use crate::parse::{
    ProcedureNode, Program, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::StorageKind;
+use crate::size_info::sizeof_type_mem;
 use crate::source_info::SourceInfo;
 use crate::type_data::{
    ExpressionType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
@@ -631,6 +632,18 @@ fn fold_expr_inner(
 
                return Some(Expression::IntLiteral { val, synthetic: true });
             }
+         } else if *op == UnOp::AddressOf
+            && sizeof_type_mem(
+               folding_context.ast.expressions[*expr].exp_type.as_ref().unwrap(),
+               folding_context.user_defined_types,
+               folding_context.target,
+            ) == 0
+            && matches!(expr_type, ExpressionType::Pointer(_))
+         {
+            return Some(Expression::IntLiteral {
+               val: 0,
+               synthetic: true,
+            });
          }
 
          try_fold_and_replace_expr(*expr, err_manager, folding_context, interner);
