@@ -97,10 +97,9 @@ pub fn assign_variables_to_registers_and_mem(
                   &program.user_defined_types,
                   config.target,
                );
-               // (may still not be a register if size is 0!)
-               if matches!(param_sk, VarSlotKind::Register(_)) {
-                  free_slots.entry(param_sk).or_default().push(VarSlot::Register(reg));
-               }
+               debug_assert!(matches!(param_sk, VarSlotKind::Register(_)));
+               free_slots.entry(param_sk).or_default().push(VarSlot::Register(reg));
+
             }
             continue;
          }
