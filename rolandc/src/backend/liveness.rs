@@ -15,24 +15,28 @@ struct LivenessState {
 }
 
 #[must_use]
-pub fn compute_live_intervals(body: &ProcedureBody, ast: &ExpressionPool) -> IndexMap<VariableId, LiveInterval> {
+pub fn compute_interference_graph(
+   body: &ProcedureBody,
+   ast: &ExpressionPool,
+) -> IndexMap<VariableId, IndexSet<VariableId>> {
    let proc_liveness = liveness(&body.locals, &body.cfg, ast);
 
-   let mut live_intervals: IndexMap<VariableId, LiveInterval> = IndexMap::with_capacity(body.locals.len());
-   for (pi, live_vars) in proc_liveness.iter() {
+   let mut interference_graph: IndexMap<VariableId, IndexSet<VariableId>> = IndexMap::with_capacity(body.locals.len());
+   for live_vars in proc_liveness.values() {
       for local_index in live_vars.iter_ones() {
          let var = body.locals.get_index(local_index).map(|x| *x.0).unwrap();
-         if let Some(existing_range) = live_intervals.get_mut(&var) {
-            existing_range.begin = std::cmp::min(existing_range.begin, *pi);
-            existing_range.end = std::cmp::max(existing_range.end, *pi);
-         } else {
-            live_intervals.insert(var, LiveInterval { begin: *pi, end: *pi });
+         let inf = interference_graph.entry(var).or_default();
+         for local_index in live_vars.iter_ones() {
+            let other_var = body.locals.get_index(local_index).map(|x| *x.0).unwrap();
+            if var == other_var {
+               continue;
+            }
+            inf.insert(other_var);
          }
       }
    }
-   live_intervals.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
 
-   live_intervals
+   interference_graph
 }
 
 #[must_use]
@@ -272,9 +276,3 @@ fn gen_for_expr(
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub struct ProgramIndex(pub usize, pub usize); // (RPO basic block position, instruction inside of block)
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
-pub struct LiveInterval {
-   pub begin: ProgramIndex,
-   pub end: ProgramIndex,
-}
