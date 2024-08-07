@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use slotmap::SecondaryMap;
 use wasm_encoder::ValType;
 
 use super::linearize::{post_order, Cfg, CfgInstruction};
-use super::liveness::LiveInterval;
 use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::parse::{
    CastType, Expression, ExpressionId, ExpressionPool, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId,
@@ -14,7 +13,7 @@ use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
 use crate::{CompilationConfig, Program, Target};
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum VarSlot {
    Stack(u32),
    Register(u32),
@@ -35,7 +34,7 @@ pub struct RegallocResult {
 pub fn assign_variables_to_registers_and_mem(
    program: &Program,
    config: &CompilationConfig,
-   program_liveness: &SecondaryMap<ProcedureId, IndexMap<VariableId, LiveInterval>>,
+   interference: &SecondaryMap<ProcedureId, IndexMap<VariableId, IndexSet<VariableId>>>,
 ) -> RegallocResult {
    let mut escaping_vars = HashMap::new();
 
@@ -45,12 +44,10 @@ pub fn assign_variables_to_registers_and_mem(
       procedure_stack_slots: SecondaryMap::with_capacity(program.procedures.len()),
    };
 
-   let mut active: Vec<VariableId> = Vec::new();
-   let mut free_slots: IndexMap<VarSlotKind, Vec<VarSlot>> = IndexMap::new();
+   let mut shareable_slots: IndexMap<VarSlotKind, IndexSet<VarSlot>> = IndexMap::new();
 
    for (proc_id, body) in program.procedure_bodies.iter() {
-      active.clear();
-      free_slots.clear();
+      shareable_slots.clear();
 
       result.procedure_registers.insert(proc_id, Vec::new());
       let non_param_registers = result.procedure_registers.get_mut(proc_id).unwrap();
@@ -73,107 +70,100 @@ pub fn assign_variables_to_registers_and_mem(
          let reg = total_registers;
          total_registers += 1;
 
-         let sk = type_to_slot_kind(
-            body.locals.get(&var).unwrap(),
-            escaping_vars.contains_key(&var),
-            &program.user_defined_types,
-            config.target,
-         );
-
-         if matches!(sk, VarSlotKind::Stack(_)) {
-            // variable must live on the stack.
-            // however, this var is a parameter, so we still need to offset
-            // the register count
-            if typ.is_aggregate() {
-               free_slots
-                  .entry(VarSlotKind::Register(
-                     if config.target.lowered_ptr_width() == IntWidth::Eight {
-                        ValType::I64
-                     } else {
-                        ValType::I32
-                     },
-                  ))
-                  .or_default()
-                  .push(VarSlot::Register(reg));
-            } else if escaping_vars.contains_key(&var) {
-               // Pretend the var is not escaping
-               let param_sk = type_to_slot_kind(
-                  body.locals.get(&var).unwrap(),
-                  false,
-                  &program.user_defined_types,
-                  config.target,
-               );
-               debug_assert!(matches!(param_sk, VarSlotKind::Register(_)));
-               free_slots.entry(param_sk).or_default().push(VarSlot::Register(reg));
-            }
-            continue;
-         }
-
-         active.push(var);
-         result.var_to_slot.insert(var, VarSlot::Register(reg));
-      }
-
-      let live_intervals = &program_liveness[proc_id];
-      for (var, range) in live_intervals.iter() {
-         if result.var_to_slot.contains_key(var) {
-            // We have already assigned this var, which means it must be a non-stack parameter
-            continue;
-         }
-
-         // when extract_if is stable:
-         // for expired_var in active.extract_if(|v| live_intervals.get(v).unwrap().end < range.begin)
-         // and can remove following retain
-         // note that live_intervals may not contain an active var, since an unused parameter is active
-         // but has no lifetime
-         for expired_var in active
-            .iter()
-            .filter(|v| live_intervals.get(*v).map_or(true, |i| i.end < range.begin))
-         {
-            let escaping_kind = escaping_vars.get(expired_var).copied();
-            if escaping_kind == Some(EscapingKind::MustLiveOnStackAlone) {
-               continue;
-            }
-            let sk = type_to_slot_kind(
-               body.locals.get(expired_var).unwrap(),
-               escaping_kind.is_some(),
+         // variable must live on the stack.
+         // however, this var is a parameter, so we still need to offset
+         // the register count
+         if typ.is_aggregate() {
+            shareable_slots
+               .entry(VarSlotKind::Register(
+                  if config.target.lowered_ptr_width() == IntWidth::Eight {
+                     ValType::I64
+                  } else {
+                     ValType::I32
+                  },
+               ))
+               .or_default()
+               .insert(VarSlot::Register(reg));
+         } else if escaping_vars.contains_key(&var) {
+            // Pretend the var is not escaping
+            let param_sk = type_to_slot_kind(
+               body.locals.get(&var).unwrap(),
+               false,
                &program.user_defined_types,
                config.target,
             );
-            free_slots
-               .entry(sk)
+            debug_assert!(matches!(param_sk, VarSlotKind::Register(_)));
+            shareable_slots
+               .entry(param_sk)
                .or_default()
-               .push(result.var_to_slot.get(expired_var).copied().unwrap());
-         }
-         active.retain(|v| live_intervals.get(v).map_or(false, |i| i.end >= range.begin));
+               .insert(VarSlot::Register(reg));
+         } else {
+            let sk = type_to_slot_kind(
+               body.locals.get(&var).unwrap(),
+               escaping_vars.contains_key(&var),
+               &program.user_defined_types,
+               config.target,
+            );
+            debug_assert!(matches!(sk, VarSlotKind::Register(_)));
 
+            shareable_slots.entry(sk).or_default().insert(VarSlot::Register(reg));
+            result.var_to_slot.insert(var, VarSlot::Register(reg));
+         }
+      }
+
+      for (var, interfering_vars) in interference[proc_id].iter() {
+         if result.var_to_slot.contains_key(var) {
+            // pre-colored; this is a non-stack parameter
+            continue;
+         }
+
+         let escaping_kind = escaping_vars.get(var).copied();
          let sk = type_to_slot_kind(
             body.locals.get(var).unwrap(),
-            escaping_vars.contains_key(var),
+            escaping_kind.is_some(),
             &program.user_defined_types,
             config.target,
          );
 
-         let slot = if let Some(slot) = free_slots.entry(sk).or_default().pop() {
-            slot
+         let slot = if escaping_kind == Some(EscapingKind::MustLiveOnStackAlone) {
+            let slot = total_stack_slots;
+            total_stack_slots += 1;
+            let VarSlotKind::Stack(tuple) = sk else {
+               unreachable!();
+            };
+            all_stack_slots.push(tuple);
+            VarSlot::Stack(slot)
          } else {
-            match sk {
-               VarSlotKind::Register(rt) => {
-                  non_param_registers.push(rt);
-                  let reg = total_registers;
-                  total_registers += 1;
-                  VarSlot::Register(reg)
-               }
-               VarSlotKind::Stack(sz) => {
-                  all_stack_slots.push(sz);
-                  let ss = total_stack_slots;
-                  total_stack_slots += 1;
-                  VarSlot::Stack(ss)
+            let mut possible_colors = shareable_slots.entry(sk).or_default().clone();
+            for interfering_var in interfering_vars.iter() {
+               if let Some(interfering_var_color) = result.var_to_slot.get(interfering_var) {
+                  possible_colors.swap_remove(interfering_var_color);
                }
             }
-         };
 
+            // otherwise, check existing colors, subtract interfering var colors, and pick one
+            if let Some(color) = possible_colors.first() {
+               *color
+            } else {
+               let new_slot = match sk {
+                  VarSlotKind::Stack(tuple) => {
+                     let stack_slot = total_stack_slots;
+                     total_stack_slots += 1;
+                     all_stack_slots.push(tuple);
+                     VarSlot::Stack(stack_slot)
+                  }
+                  VarSlotKind::Register(vt) => {
+                     let register = total_registers;
+                     total_registers += 1;
+                     non_param_registers.push(vt);
+                     VarSlot::Register(register)
+                  }
+               };
+               shareable_slots.entry(sk).or_default().insert(new_slot);
+               new_slot
+            }
+         };
          result.var_to_slot.insert(*var, slot);
-         active.push(*var);
       }
    }
 
