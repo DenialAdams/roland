@@ -32,10 +32,7 @@ pub struct RegallocResult {
    pub procedure_stack_slots: SecondaryMap<ProcedureId, Vec<(u32, u32)>>,
 }
 
-pub fn assign_variables_to_registers_and_mem(
-   program: &Program,
-   config: &CompilationConfig,
-) -> RegallocResult {
+pub fn assign_variables_to_registers_and_mem(program: &Program, config: &CompilationConfig) -> RegallocResult {
    let mut escaping_vars = HashMap::new();
 
    let mut result = RegallocResult {
@@ -84,11 +81,16 @@ pub fn assign_variables_to_registers_and_mem(
             // however, this var is a parameter, so we still need to offset
             // the register count
             if typ.is_aggregate() {
-               free_slots.entry(VarSlotKind::Register(if config.target.lowered_ptr_width() == IntWidth::Eight {
-                  ValType::I64
-               } else {
-                  ValType::I32
-               })).or_default().push(VarSlot::Register(reg));
+               free_slots
+                  .entry(VarSlotKind::Register(
+                     if config.target.lowered_ptr_width() == IntWidth::Eight {
+                        ValType::I64
+                     } else {
+                        ValType::I32
+                     },
+                  ))
+                  .or_default()
+                  .push(VarSlot::Register(reg));
             } else if escaping_vars.contains_key(&var) {
                // Pretend the var is not escaping
                let param_sk = type_to_slot_kind(
@@ -99,7 +101,6 @@ pub fn assign_variables_to_registers_and_mem(
                );
                debug_assert!(matches!(param_sk, VarSlotKind::Register(_)));
                free_slots.entry(param_sk).or_default().push(VarSlot::Register(reg));
-
             }
             continue;
          }

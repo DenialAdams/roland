@@ -1311,7 +1311,7 @@ fn parse_generic_arguments(
 
    let mut generic_arguments = vec![];
 
-   while !matches!(l.peek_token(), Token::GreaterThan | Token::ShiftRight | Token:: Eof) {
+   while !matches!(l.peek_token(), Token::GreaterThan | Token::ShiftRight | Token::Eof) {
       generic_arguments.push(parse_type(l, parse_context)?);
       if matches!(l.peek_token(), Token::GreaterThan | Token::ShiftRight) {
          break;
@@ -1319,7 +1319,11 @@ fn parse_generic_arguments(
       expect(l, parse_context, Token::Comma)?;
    }
 
-   let close_position = if let Some(SourceToken { token: tok @ Token::ShiftRight, source_info }) = l.peek_mut() {
+   let close_position = if let Some(SourceToken {
+      token: tok @ Token::ShiftRight,
+      source_info,
+   }) = l.peek_mut()
+   {
       // Turn the upcoming ">>" into ">", including adjusting the position
       // Preeeety hacky, but should be correct because whitespace would have terminated the tokens
 

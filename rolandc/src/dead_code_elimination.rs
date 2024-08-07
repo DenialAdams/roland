@@ -216,7 +216,13 @@ pub fn remove_unused_locals(program: &mut Program) {
          });
       }
       // extend used vars with parameters only after we killed assignments to unused ones
-      used_vars.extend(program.procedures[proc_id].definition.parameters.iter().map(|x| x.var_id));
+      used_vars.extend(
+         program.procedures[proc_id]
+            .definition
+            .parameters
+            .iter()
+            .map(|x| x.var_id),
+      );
       proc_body.locals.retain(|var, _| used_vars.contains(var));
    }
 }
