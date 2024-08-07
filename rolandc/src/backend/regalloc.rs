@@ -52,7 +52,7 @@ pub fn assign_variables_to_registers_and_mem(
       free_slots.clear();
 
       result.procedure_registers.insert(proc_id, Vec::new());
-      let all_registers = result.procedure_registers.get_mut(proc_id).unwrap();
+      let non_param_registers = result.procedure_registers.get_mut(proc_id).unwrap();
       result.procedure_stack_slots.insert(proc_id, Vec::new());
       let all_stack_slots = result.procedure_stack_slots.get_mut(proc_id).unwrap();
       let mut total_registers = 0;
@@ -72,29 +72,58 @@ pub fn assign_variables_to_registers_and_mem(
          let reg = total_registers;
          total_registers += 1;
 
-         if typ.is_aggregate() || escaping_vars.contains_key(&var) {
+         let sk = type_to_slot_kind(
+            body.locals.get(&var).unwrap(),
+            escaping_vars.contains_key(&var),
+            &program.user_defined_types,
+            config.target,
+         );
+
+         if matches!(sk, VarSlotKind::Stack(_)) {
             // variable must live on the stack.
             // however, this var is a parameter, so we still need to offset
             // the register count
+            if typ.is_aggregate() {
+               free_slots.entry(VarSlotKind::Register(if config.target.lowered_ptr_width() == IntWidth::Eight {
+                  ValType::I64
+               } else {
+                  ValType::I32
+               })).or_default().push(VarSlot::Register(reg));
+            } else if escaping_vars.contains_key(&var) {
+               // Pretend the var is not escaping
+               let param_sk = type_to_slot_kind(
+                  body.locals.get(&var).unwrap(),
+                  false,
+                  &program.user_defined_types,
+                  config.target,
+               );
+               // (may still not be a register if size is 0!)
+               if matches!(param_sk, VarSlotKind::Register(_)) {
+                  free_slots.entry(param_sk).or_default().push(VarSlot::Register(reg));
+               }
+            }
             continue;
          }
 
+         active.push(var);
          result.var_to_slot.insert(var, VarSlot::Register(reg));
       }
 
       let live_intervals = compute_live_intervals(body, &program.ast.expressions);
       for (var, range) in live_intervals.iter() {
          if result.var_to_slot.contains_key(var) {
-            // We have already assigned this var, which means it must be a parameter
+            // We have already assigned this var, which means it must be a non-stack parameter
             continue;
          }
 
          // when extract_if is stable:
          // for expired_var in active.extract_if(|v| live_intervals.get(v).unwrap().end < range.begin)
          // and can remove following retain
+         // note that live_intervals may not contain an active var, since an unused parameter is active
+         // but has no lifetime
          for expired_var in active
             .iter()
-            .filter(|v| live_intervals.get(*v).unwrap().end < range.begin)
+            .filter(|v| live_intervals.get(*v).map_or(true, |i| i.end < range.begin))
          {
             let escaping_kind = escaping_vars.get(expired_var).copied();
             if escaping_kind == Some(EscapingKind::MustLiveOnStackAlone) {
@@ -111,7 +140,7 @@ pub fn assign_variables_to_registers_and_mem(
                .or_default()
                .push(result.var_to_slot.get(expired_var).copied().unwrap());
          }
-         active.retain(|v| live_intervals.get(v).unwrap().end >= range.begin);
+         active.retain(|v| live_intervals.get(v).map_or(false, |i| i.end >= range.begin));
 
          let sk = type_to_slot_kind(
             body.locals.get(var).unwrap(),
@@ -125,7 +154,7 @@ pub fn assign_variables_to_registers_and_mem(
          } else {
             match sk {
                VarSlotKind::Register(rt) => {
-                  all_registers.push(rt);
+                  non_param_registers.push(rt);
                   let reg = total_registers;
                   total_registers += 1;
                   VarSlot::Register(reg)
@@ -186,6 +215,7 @@ fn type_to_slot_kind(
    } else {
       VarSlotKind::Register(match et {
          ExpressionType::Int(x) => match x.width {
+            IntWidth::Pointer => unreachable!(),
             IntWidth::Eight => ValType::I64,
             _ => ValType::I32,
          },

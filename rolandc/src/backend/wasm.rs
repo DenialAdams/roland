@@ -485,7 +485,7 @@ pub fn emit_wasm(
 
       adjust_stack_function_entry(&mut generation_context);
 
-      // Copy parameters to stack memory so we can take pointers
+      // Copy stack parameters to memory
       let mut values_index = 0;
       for param in &procedure.definition.parameters {
          if sizeof_type_values(
@@ -496,8 +496,7 @@ pub fn emit_wasm(
          {
             continue;
          }
-         if let Some(VarSlot::Stack(_)) = generation_context.var_to_slot.get(&param.var_id) {
-            get_stack_address_of_local(param.var_id, &mut generation_context);
+         if get_stack_address_of_local(param.var_id, &mut generation_context) {
             generation_context
                .active_fcn
                .instruction(&Instruction::LocalGet(values_index));
@@ -1757,9 +1756,9 @@ fn complement_val(t_type: &ExpressionType, wasm_type: ValType, generation_contex
 }
 
 /// Places the address of given local on the stack
-fn get_stack_address_of_local(id: VariableId, generation_context: &mut GenerationContext) {
+fn get_stack_address_of_local(id: VariableId, generation_context: &mut GenerationContext) -> bool {
    let Some(VarSlot::Stack(s)) = generation_context.var_to_slot.get(&id) else {
-      return;
+      return false;
    };
    let offset = aligned_address(generation_context.sum_sizeof_locals_mem, 8)
       - generation_context
@@ -1769,6 +1768,7 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
          .unwrap();
    generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
    generation_context.emit_const_sub_i32(offset);
+   true
 }
 
 fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
