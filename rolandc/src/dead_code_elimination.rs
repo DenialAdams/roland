@@ -173,7 +173,7 @@ fn mark_reachable_expr(expr: ExpressionId, ast: &AstPool, ctx: &mut DceCtx) {
 // MARK: Unused Variables
 pub fn remove_unused_locals(program: &mut Program) {
    let mut used_vars: HashSet<VariableId> = HashSet::new();
-   for proc_body in program.procedure_bodies.values_mut() {
+   for (proc_id, proc_body) in program.procedure_bodies.iter_mut() {
       used_vars.clear();
       used_vars.reserve(proc_body.locals.len());
 
@@ -215,6 +215,8 @@ pub fn remove_unused_locals(program: &mut Program) {
             true
          });
       }
+      // extend used vars with parmaters only after we killed assignments to unused ones
+      used_vars.extend(program.procedures[proc_id].definition.parameters.iter().map(|x| x.var_id));
       proc_body.locals.retain(|var, _| used_vars.contains(var));
    }
 }
