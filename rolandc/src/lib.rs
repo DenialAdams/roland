@@ -442,11 +442,6 @@ fn lex_and_parse(
    interner: &mut Interner,
    program: &mut Program,
 ) -> Result<Vec<ImportNode>, CompilationError> {
-   let Ok(tokens) = lex::lex(s, source_path, err_manager, interner) else {
-      return Err(CompilationError::Lex);
-   };
-   match parse::astify(tokens, err_manager, interner, program) {
-      Err(()) => Err(CompilationError::Parse),
-      Ok(imports) => Ok(imports),
-   }
+   let tokens = lex::lex(s, source_path, err_manager, interner).map_err(|()| CompilationError::Lex)?;
+   parse::astify(tokens, err_manager, interner, program).map_err(|()| CompilationError::Parse)
 }
