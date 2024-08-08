@@ -294,15 +294,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    // longer be referenced now that we deleted all template procedures
    ctx.program.ast.expressions.retain(|_, x| x.exp_type.is_some());
 
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp.rol").unwrap(),
-      )
-      .unwrap();
-   }
-
    monomorphization::monomorphize_types(&mut ctx.program, config.target);
 
    loop_lowering::lower_fors_and_whiles(&mut ctx.program);
@@ -421,7 +412,16 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       backend::wasm::sort_globals(&mut ctx.program, config.target);
    }
 
-   let regalloc_result = backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config);
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp.rol").unwrap(),
+      )
+      .unwrap();
+   }
+
+   let regalloc_result = backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config, &ctx.interner);
 
    if config.target == Target::Qbe {
       Ok(backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, regalloc_result))

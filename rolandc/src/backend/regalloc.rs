@@ -7,12 +7,13 @@ use wasm_encoder::ValType;
 use super::linearize::{post_order, Cfg, CfgInstruction};
 use super::liveness::compute_interference_graph;
 use crate::expression_hoisting::is_reinterpretable_transmute;
+use crate::interner::Interner;
 use crate::parse::{
    CastType, Expression, ExpressionId, ExpressionPool, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
-use crate::{CompilationConfig, Program, Target};
+use crate::{interner, CompilationConfig, Program, Target};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum VarSlot {
@@ -32,7 +33,7 @@ pub struct RegallocResult {
    pub procedure_stack_slots: SecondaryMap<ProcedureId, Vec<(u32, u32)>>,
 }
 
-pub fn assign_variables_to_registers_and_mem(program: &Program, config: &CompilationConfig) -> RegallocResult {
+pub fn assign_variables_to_registers_and_mem(program: &Program, config: &CompilationConfig, interner: &Interner) -> RegallocResult {
    let mut escaping_vars = HashMap::new();
 
    let mut result = RegallocResult {
@@ -110,6 +111,33 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
       }
 
       let interference_graph = compute_interference_graph(body, &program.ast.expressions);
+      if interner.lookup(program.procedures[proc_id].definition.name.str).starts_with("_ryu_d2s_to_chars") {
+         fn dump_interference_graph(interference_graph: &IndexMap<VariableId, IndexSet<VariableId>>) {
+            use std::io::Write;
+            let mut f = std::fs::File::create("interference.dot").unwrap();
+            writeln!(
+               f,
+               "strict graph interference {{",
+            )
+            .unwrap();
+            for (var, interfering_vars) in interference_graph.iter() {
+               if !(var.0 == 231 || var.0 == 235 || var.0 == 232 || var.0 == 233 || var.0 == 234) {
+                  continue
+               }
+               for iv in interfering_vars {
+                  writeln!(
+                     f,
+                     "\"v{}\" -- \"v{}\"",
+                     var.0,
+                     iv.0,
+                  )
+                  .unwrap();
+               }
+            }
+            writeln!(f, "}}").unwrap();
+         }
+         dump_interference_graph(&interference_graph);
+      }
       for (var, interfering_vars) in interference_graph.iter() {
          if result.var_to_slot.contains_key(var) {
             // pre-colored; this is a non-stack parameter
@@ -138,6 +166,10 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
                if let Some(interfering_var_color) = result.var_to_slot.get(interfering_var) {
                   possible_colors.swap_remove(interfering_var_color);
                }
+            }
+
+            if interner.lookup(program.procedures[proc_id].definition.name.str).starts_with("_ryu_d2s_to_chars") && (var.0 == 231 || var.0 == 235 || var.0 == 232 || var.0 == 233 || var.0 == 234) {
+               possible_colors.clear();
             }
 
             // otherwise, check existing colors, subtract interfering var colors, and pick one

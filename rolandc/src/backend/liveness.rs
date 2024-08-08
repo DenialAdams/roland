@@ -26,11 +26,11 @@ pub fn compute_interference_graph(
       for local_index in live_vars.iter_ones() {
          let var = body.locals.get_index(local_index).map(|x| *x.0).unwrap();
          let inf = interference_graph.entry(var).or_default();
-         for local_index in live_vars.iter_ones() {
-            let other_var = body.locals.get_index(local_index).map(|x| *x.0).unwrap();
-            if var == other_var {
+         for other_local_index in live_vars.iter_ones() {
+            if local_index == other_local_index {
                continue;
             }
+            let other_var = body.locals.get_index(other_local_index).map(|x| *x.0).unwrap();
             inf.insert(other_var);
          }
       }
