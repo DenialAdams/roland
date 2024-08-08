@@ -113,6 +113,7 @@ pub fn assign_variables_to_registers_and_mem(program: &Program, config: &Compila
       for (var, interfering_vars) in interference_graph.iter() {
          if result.var_to_slot.contains_key(var) {
             // pre-colored; this is a non-stack parameter
+            continue;
          }
 
          let escaping_kind = escaping_vars.get(var).copied();
