@@ -58,7 +58,6 @@ fn liveness(
       for instruction in bb.instructions.iter().rev() {
          match instruction {
             CfgInstruction::Assignment(lhs, rhs) => {
-               gen_for_expr(*rhs, &mut s.gen, &mut s.kill, ast, procedure_vars);
                gen_for_expr(*lhs, &mut s.gen, &mut s.kill, ast, procedure_vars);
                if let Expression::Variable(v) = ast[*lhs].expression {
                   if let Some(di) = procedure_vars.get_index_of(&v) {
@@ -66,6 +65,7 @@ fn liveness(
                      s.kill.set(di, true);
                   }
                }
+               gen_for_expr(*rhs, &mut s.gen, &mut s.kill, ast, procedure_vars);
             }
             CfgInstruction::Expression(expr)
             | CfgInstruction::Return(expr)
@@ -124,30 +124,24 @@ fn liveness(
       all_liveness.reserve(bb.instructions.len());
       for (i, instruction) in bb.instructions.iter().enumerate().rev() {
          let pi = ProgramIndex(rpo_index, i);
-         let var_to_kill = match instruction {
+         match instruction {
             CfgInstruction::Assignment(lhs, rhs) => {
-               update_live_variables_for_expr(*rhs, &mut current_live_variables, ast, procedure_vars);
                update_live_variables_for_expr(*lhs, &mut current_live_variables, ast, procedure_vars);
                if let Expression::Variable(v) = ast[*lhs].expression {
-                  Some(v)
-               } else {
-                  None
+                  if let Some(di) = procedure_vars.get_index_of(&v) {
+                     current_live_variables.set(di, false);
+                  }
                }
+               update_live_variables_for_expr(*rhs, &mut current_live_variables, ast, procedure_vars);
             }
             CfgInstruction::Expression(expr)
             | CfgInstruction::Return(expr)
             | CfgInstruction::ConditionalJump(expr, _, _) => {
                update_live_variables_for_expr(*expr, &mut current_live_variables, ast, procedure_vars);
-               None
             }
-            _ => None,
-         };
-         all_liveness.insert(pi, current_live_variables.clone().into_boxed_bitslice());
-         if let Some(v) = var_to_kill {
-            if let Some(di) = procedure_vars.get_index_of(&v) {
-               current_live_variables.set(di, false);
-            }
+            _ => (),
          }
+         all_liveness.insert(pi, current_live_variables.clone().into_boxed_bitslice());
       }
    }
 
