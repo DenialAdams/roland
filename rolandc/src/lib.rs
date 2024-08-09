@@ -295,15 +295,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    // longer be referenced now that we deleted all template procedures
    ctx.program.ast.expressions.retain(|_, x| x.exp_type.is_some());
 
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp.rol").unwrap(),
-      )
-      .unwrap();
-   }
-
    monomorphization::monomorphize_types(&mut ctx.program, config.target);
 
    loop_lowering::lower_fors_and_whiles(&mut ctx.program);
@@ -432,13 +423,19 @@ pub fn compile<'a, FR: FileResolver<'a>>(
             &ctx.program.ast.expressions,
             &ctx.program.non_stack_var_info,
          );
-         program_liveness.insert(
-            id,
-            live_intervals,
-         );
+         program_liveness.insert(id, live_intervals);
       }
       backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config, &program_liveness)
    };
+
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp.rol").unwrap(),
+      )
+      .unwrap();
+   }
 
    backend::regalloc::kill_self_assignments(&mut ctx.program, &regalloc_result.var_to_slot);
 

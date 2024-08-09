@@ -640,7 +640,10 @@ fn fold_expr_inner(
             ) == 0
             && matches!(expr_type, ExpressionType::Pointer(_))
          {
-            debug_assert!(!expression_could_have_side_effects(*expr, &folding_context.ast.expressions));
+            debug_assert!(!expression_could_have_side_effects(
+               *expr,
+               &folding_context.ast.expressions
+            ));
             return Some(Expression::IntLiteral {
                val: 0,
                synthetic: true,
@@ -735,6 +738,16 @@ fn fold_expr_inner(
 
          if make_int_type_concrete(expr_type, folding_context.target)
             == make_int_type_concrete(operand.exp_type.as_ref().unwrap(), folding_context.target)
+         {
+            return Some(operand.expression.clone());
+         }
+
+         if *cast_type == CastType::Transmute
+            && matches!(expr_type, ExpressionType::Pointer(_) | ExpressionType::Int(_))
+            && matches!(
+               operand.exp_type.as_ref().unwrap(),
+               ExpressionType::Pointer(_) | ExpressionType::Int(_)
+            )
          {
             return Some(operand.expression.clone());
          }
@@ -975,65 +988,13 @@ impl Literal {
             synthetic: true,
          },
 
-         // Transmute to pointer
-         (Literal::Int32(i), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
-            val: u64::from(i as u32),
-            synthetic: true,
-         },
-         (Literal::Uint32(i), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
-            val: u64::from(i),
-            synthetic: true,
-         },
+         // Transmute float to pointer
          (Literal::Float32(f), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
             val: u64::from(f.to_bits()),
             synthetic: true,
          },
-         (Literal::Int64(i), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
-            val: i as u64,
-            synthetic: true,
-         },
-         (Literal::Uint64(i), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
-            val: i,
-            synthetic: true,
-         },
          (Literal::Float64(f), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
             val: f.to_bits(),
-            synthetic: true,
-         },
-
-         // Transmute signed -> unsigned
-         (Literal::Int64(i), &ExpressionType::Int(it)) if !it.signed => Expression::IntLiteral {
-            val: i as u64,
-            synthetic: true,
-         },
-         (Literal::Int32(i), &ExpressionType::Int(it)) if !it.signed => Expression::IntLiteral {
-            val: u64::from(i as u32),
-            synthetic: true,
-         },
-         (Literal::Int16(i), &ExpressionType::Int(it)) if !it.signed => Expression::IntLiteral {
-            val: u64::from(i as u16),
-            synthetic: true,
-         },
-         (Literal::Int8(i), &ExpressionType::Int(it)) if !it.signed => Expression::IntLiteral {
-            val: u64::from(i as u8),
-            synthetic: true,
-         },
-
-         // Transmute unsigned -> signed
-         (Literal::Uint64(i), &ExpressionType::Int(it)) if it.signed => Expression::IntLiteral {
-            val: i,
-            synthetic: true,
-         },
-         (Literal::Uint32(i), &ExpressionType::Int(it)) if it.signed => Expression::IntLiteral {
-            val: u64::from(i),
-            synthetic: true,
-         },
-         (Literal::Uint16(i), &ExpressionType::Int(it)) if it.signed => Expression::IntLiteral {
-            val: u64::from(i),
-            synthetic: true,
-         },
-         (Literal::Uint8(i), &ExpressionType::Int(it)) if it.signed => Expression::IntLiteral {
-            val: u64::from(i),
             synthetic: true,
          },
 
