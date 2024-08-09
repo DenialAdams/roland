@@ -57,6 +57,7 @@ use parse::{
 };
 use semantic_analysis::type_variables::TypeVariableManager;
 use semantic_analysis::{definite_assignment, OwnedValidationContext, StorageKind};
+use slotmap::SecondaryMap;
 use source_info::SourcePath;
 use type_data::{ExpressionType, IntWidth};
 
@@ -421,7 +422,16 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       backend::wasm::sort_globals(&mut ctx.program, config.target);
    }
 
-   let regalloc_result = backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config);
+   let regalloc_result = {
+      let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
+      for (id, body) in ctx.program.procedure_bodies.iter_mut() {
+         program_liveness.insert(
+            id,
+            backend::liveness::compute_live_intervals(body, &ctx.program.ast.expressions),
+         );
+      }
+      backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config, &program_liveness)
+   };
 
    if config.target == Target::Qbe {
       Ok(backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, regalloc_result))
