@@ -3,7 +3,9 @@ use indexmap::{IndexMap, IndexSet};
 
 use super::linearize::{Cfg, CfgInstruction};
 use crate::backend::linearize::post_order;
+use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, VariableId};
+use crate::semantic_analysis::GlobalInfo;
 use crate::type_data::ExpressionType;
 
 #[derive(Clone)]
@@ -12,6 +14,32 @@ struct LivenessState {
    live_out: BitBox,
    gen: BitBox,
    kill: BitBox,
+}
+
+pub fn kill_assignments_to_dead_variables(
+   body: &mut ProcedureBody,
+   live_intervals: &IndexMap<VariableId, LiveInterval>,
+   ast: &ExpressionPool,
+   statics: &IndexMap<VariableId, GlobalInfo>,
+) {
+   for bb in body.cfg.bbs.iter_mut() {
+      for instr in bb.instructions.iter_mut() {
+         let CfgInstruction::Assignment(lhs, rhs) = *instr else {
+            continue;
+         };
+         let Expression::Variable(l_var) = ast[lhs].expression else {
+            continue;
+         };
+         if live_intervals.contains_key(&l_var) || statics.contains_key(&l_var) {
+            continue;
+         }
+         *instr = if expression_could_have_side_effects(rhs, ast) {
+            CfgInstruction::Expression(rhs)
+         } else {
+            CfgInstruction::Nop
+         };
+      }
+   }
 }
 
 #[must_use]
