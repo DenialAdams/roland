@@ -145,7 +145,12 @@ fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool) -> StatementId {
          deep_clone_block(bn, ast);
       }
       Statement::Continue | Statement::Break => (),
-      Statement::IfElse(cond, then, else_s) => {
+      Statement::IfElse {
+         cond,
+         then,
+         otherwise: else_s,
+         constant: _,
+      } => {
          *cond = deep_clone_expr(*cond, &mut ast.expressions);
          deep_clone_block(then, ast);
          *else_s = deep_clone_stmt(*else_s, ast);

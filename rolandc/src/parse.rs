@@ -294,7 +294,12 @@ pub enum Statement {
    Continue,
    Break,
    Expression(ExpressionId),
-   IfElse(ExpressionId, BlockNode, StatementId),
+   IfElse {
+      cond: ExpressionId,
+      then: BlockNode,
+      otherwise: StatementId,
+      constant: bool,
+   },
    Return(ExpressionId),
 
    // The following statements exist only transiently
@@ -322,7 +327,11 @@ pub enum Statement {
 pub fn statement_always_or_never_returns(stmt: StatementId, ast: &AstPool) -> bool {
    match &ast.statements[stmt].statement {
       Statement::Return(_) => true,
-      Statement::IfElse(_, then_block, else_if) => {
+      Statement::IfElse {
+         then: then_block,
+         otherwise: else_if,
+         ..
+      } => {
          then_block
             .statements
             .last()
@@ -342,9 +351,12 @@ pub fn statement_always_or_never_returns(stmt: StatementId, ast: &AstPool) -> bo
 fn statement_breaks(stmt: StatementId, ast: &AstPool) -> bool {
    match &ast.statements[stmt].statement {
       Statement::Break => true,
-      Statement::IfElse(_, then_block, else_if) => {
-         then_block.statements.iter().copied().any(|s| statement_breaks(s, ast)) || statement_breaks(*else_if, ast)
-      }
+      Statement::IfElse {
+         cond: _,
+         then: then_block,
+         otherwise: else_if,
+         constant: _,
+      } => then_block.statements.iter().copied().any(|s| statement_breaks(s, ast)) || statement_breaks(*else_if, ast),
       Statement::Block(bn) => bn.statements.iter().copied().any(|s| statement_breaks(s, ast)),
       // If we ever support breaking out of multiple layers of loops, this needs to be updated
       _ => false,
@@ -1214,7 +1226,7 @@ fn parse_blocky_statement(
          });
          Ok(Some(id))
       }
-      Token::KeywordIf => {
+      Token::KeywordIf | Token::KeywordWhen => {
          let s = parse_if_else_statement(l, parse_context, ast)?;
          Ok(Some(s))
       }
@@ -1231,7 +1243,7 @@ fn parse_if_else_statement(
    let e = parse_expression(l, parse_context, true, &mut ast.expressions)?;
    let if_block = parse_block(l, parse_context, ast)?;
    let else_statement = match (l.peek_token(), l.double_peek_token()) {
-      (Token::KeywordElse, Token::KeywordIf) => {
+      (Token::KeywordElse, x) if x == if_token.token => {
          let _ = l.next();
          parse_if_else_statement(l, parse_context, ast)?
       }
@@ -1253,7 +1265,12 @@ fn parse_if_else_statement(
    };
    let combined_location = merge_locations(if_token.source_info, ast.statements[else_statement].location);
    Ok(ast.statements.insert(StatementNode {
-      statement: Statement::IfElse(e, if_block, else_statement),
+      statement: Statement::IfElse {
+         cond: e,
+         then: if_block,
+         otherwise: else_statement,
+         constant: if_token.token == Token::KeywordWhen,
+      },
       location: combined_location,
    }))
 }

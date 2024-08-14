@@ -254,7 +254,7 @@
             {
                "comment": "control flow keywords",
                "name": "keyword.control.roland",
-               "match": "\\b(break|continue|else|for|while|if|loop|return)\\b"
+               "match": "\\b(break|continue|else|for|while|if|when|loop|return)\\b"
             },
             {
                "comment": "storage keywords",

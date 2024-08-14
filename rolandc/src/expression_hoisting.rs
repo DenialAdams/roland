@@ -177,7 +177,12 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
             };
             let if_stmt = {
                ast.statements.insert(StatementNode {
-                  statement: Statement::IfElse(a, then_block, else_stmt),
+                  statement: Statement::IfElse {
+                     cond: a,
+                     then: then_block,
+                     otherwise: else_stmt,
+                     constant: false,
+                  },
                   location,
                })
             };
@@ -315,7 +320,13 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
    for if_stmt in new_ifs {
       let else_s = {
          let mut the_statement = std::mem::replace(&mut ast.statements[if_stmt].statement, Statement::Break);
-         let Statement::IfElse(_, then_b, else_s) = &mut the_statement else {
+         let Statement::IfElse {
+            cond: _,
+            then: then_b,
+            otherwise: else_s,
+            constant: _,
+         } = &mut the_statement
+         else {
             unreachable!()
          };
          let else_s = *else_s;
@@ -359,7 +370,12 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
          vv_block(block, vv_context, ast);
       }
       Statement::Break | Statement::Continue => (),
-      Statement::IfElse(if_expr, if_block, else_statement) => {
+      Statement::IfElse {
+         cond: if_expr,
+         then: if_block,
+         otherwise: else_statement,
+         constant: _,
+      } => {
          vv_expr(
             *if_expr,
             vv_context,

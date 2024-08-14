@@ -98,10 +98,7 @@ struct TypedMallocResult<T> {
 }
 
 proc typed_malloc<T>(n: usize, alignment: usize) -> TypedMallocResult<T> {
-   // TODO: Fix "this condition will always be false" occuring in templated functions and remove blah
-   // also, if we actually pass a ZST type, we will still get the warning
-   let blah = false;
-   if sizeof$<T>() == 0 or blah {
+   when sizeof$<T>() == 0 {
       return TypedMallocResult$<T> {
          buf: 0 transmute &T,
          length: 0,

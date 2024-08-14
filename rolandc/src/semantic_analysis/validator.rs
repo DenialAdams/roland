@@ -9,13 +9,14 @@ use slotmap::SlotMap;
 use super::type_inference::{constraint_matches_type_or_try_constrain, lower_unknowns_in_type, try_merge_types};
 use super::type_variables::{TypeConstraint, TypeVariableManager};
 use super::{GlobalInfo, OwnedValidationContext, ValidationContext, VariableDetails, VariableScopeKind};
+use crate::constant_folding::{self, FoldingContext};
 use crate::error_handling::error_handling_macros::{
    rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn,
 };
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   statement_always_or_never_returns, ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression,
+   statement_always_or_never_returns, ArgumentNode, AstPool, BinOp, BlockNode, CastType, DeclarationValue, Expression,
    ExpressionId, ExpressionNode, ExpressionTypeNode, ProcImplSource, ProcedureId, ProcedureNode, Program, Statement,
    StatementId, StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
 };
@@ -733,7 +734,12 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
       Statement::Expression(en) => {
          type_expression(err_manager, *en, validation_context);
       }
-      Statement::IfElse(en, block_1, block_2) => {
+      Statement::IfElse {
+         cond: en,
+         then: block_1,
+         otherwise: block_2,
+         constant,
+      } => {
          type_block(err_manager, block_1, validation_context);
          type_statement(err_manager, *block_2, validation_context);
          type_expression(err_manager, *en, validation_context);
@@ -744,7 +750,8 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
             rolandc_error!(
                err_manager,
                en.location,
-               "Type of if condition must be a bool; got {}",
+               "Type of {} condition must be a bool; got {}",
+               if *constant { "when " } else { "if " },
                en.exp_type.as_ref().unwrap().as_roland_type_info(
                   validation_context.interner,
                   validation_context.user_defined_types,
@@ -2542,4 +2549,26 @@ fn try_merge_types_of_two_distinct_expressions(
       );
       validation_context.ast.expressions[pair.0].exp_type = Some(borrowed_type);
    }
+}
+
+fn fold_expr_id(
+   expr_id: ExpressionId,
+   err_manager: &mut ErrorManager,
+   ast: &mut AstPool,
+   procedures: &SlotMap<ProcedureId, ProcedureNode>,
+   user_defined_types: &UserDefinedTypeInfo,
+   const_replacements: &HashMap<VariableId, ExpressionId>,
+   interner: &Interner,
+   target: Target,
+   current_proc_name: StrId,
+) {
+   let mut fc = FoldingContext {
+      ast,
+      procedures,
+      user_defined_types,
+      const_replacements,
+      current_proc_name: Some(current_proc_name),
+      target,
+   };
+   constant_folding::try_fold_and_replace_expr(expr_id, &mut Some(err_manager), &mut fc, interner);
 }

@@ -24,7 +24,7 @@ proc hash_bytes<K>(key: &K) -> usize {
     let byte_view = key transmute &u8;
     let hash: usize;
     let prime: usize;
-    if sizeof$<usize>() == 4 {
+    when sizeof$<usize>() == 4 {
         hash = 0x811c9dc5;
         prime = 0x01000193;
     } else {

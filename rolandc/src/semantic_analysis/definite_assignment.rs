@@ -112,7 +112,12 @@ fn ensure_all_variables_assigned_in_stmt(
             err_manager,
          );
       }
-      Statement::IfElse(cond, then, otherwise) => {
+      Statement::IfElse {
+         cond,
+         then,
+         otherwise,
+         constant: _,
+      } => {
          ensure_expression_does_not_use_unassigned_variable(*cond, assigned_vars, procedure_vars, pool, err_manager);
 
          let skip_else = match &pool.statements[*otherwise].statement {

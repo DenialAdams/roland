@@ -228,7 +228,12 @@ fn linearize_block(ctx: &mut Ctx, block: &BlockNode, ast: &mut AstPool, target: 
 fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool, target: Target) -> bool {
    let borrowed_stmt = std::mem::replace(&mut ast.statements[stmt].statement, Statement::Break);
    let sealed = match &borrowed_stmt {
-      Statement::IfElse(condition, consequent, alternative) => {
+      Statement::IfElse {
+         cond: condition,
+         then: consequent,
+         otherwise: alternative,
+         constant: _,
+      } => {
          let then_dest = ctx.bbs.len();
          let else_dest = then_dest + 1;
          let afterwards_dest = then_dest + 2;

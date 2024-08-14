@@ -132,7 +132,12 @@ fn lower_block(block: &mut BlockNode, ctx: &mut LowerForContext, ast: &mut AstPo
                });
 
                ast.statements.insert(StatementNode {
-                  statement: Statement::IfElse(break_condition, consequant, empty_else),
+                  statement: Statement::IfElse {
+                     cond: break_condition,
+                     then: consequant,
+                     otherwise: empty_else,
+                     constant: false,
+                  },
                   location: for_location,
                })
             };
@@ -216,7 +221,12 @@ fn lower_block(block: &mut BlockNode, ctx: &mut LowerForContext, ast: &mut AstPo
                });
 
                ast.statements.insert(StatementNode {
-                  statement: Statement::IfElse(negated_break_condition, consequant, empty_else),
+                  statement: Statement::IfElse {
+                     cond: negated_break_condition,
+                     then: consequant,
+                     otherwise: empty_else,
+                     constant: false,
+                  },
                   location: for_location,
                })
             };
@@ -243,7 +253,12 @@ fn lower_block(block: &mut BlockNode, ctx: &mut LowerForContext, ast: &mut AstPo
 fn lower_statement(statement: StatementId, ctx: &mut LowerForContext, ast: &mut AstPool) {
    let mut the_statement = std::mem::replace(&mut ast.statements[statement].statement, Statement::Break);
    match &mut the_statement {
-      Statement::IfElse(_, if_block, else_statement) => {
+      Statement::IfElse {
+         cond: _,
+         then: if_block,
+         otherwise: else_statement,
+         constant: _,
+      } => {
          lower_block(if_block, ctx, ast);
          lower_statement(*else_statement, ctx, ast);
       }

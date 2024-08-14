@@ -94,7 +94,12 @@ fn mark_reachable_stmt(stmt: StatementId, ast: &AstPool, ctx: &mut DceCtx) {
       Statement::Expression(expr) | Statement::Return(expr) => {
          mark_reachable_expr(*expr, ast, ctx);
       }
-      Statement::IfElse(cond, then, else_s) => {
+      Statement::IfElse {
+         cond,
+         then,
+         otherwise: else_s,
+         constant: _,
+      } => {
          mark_reachable_expr(*cond, ast, ctx);
          mark_reachable_block(then, ast, ctx);
          mark_reachable_stmt(*else_s, ast, ctx);

@@ -155,8 +155,17 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
          pp_expr(*expr, pp_ctx)?;
          writeln!(pp_ctx.output, ";")?;
       }
-      Statement::IfElse(cond, then, else_e) => {
-         write!(pp_ctx.output, "if ")?;
+      Statement::IfElse {
+         cond,
+         then,
+         otherwise: else_e,
+         constant,
+      } => {
+         if *constant {
+            write!(pp_ctx.output, "if ")?;
+         } else {
+            write!(pp_ctx.output, "when ")?;
+         }
          pp_expr(*cond, pp_ctx)?;
          pp_block(then, pp_ctx)?;
          let display_else = if let Statement::Block(bn) = &pp_ctx.ast.statements[*else_e].statement {

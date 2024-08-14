@@ -96,13 +96,20 @@ pub fn fold_statement(
          try_fold_and_replace_expr(*rhs_expr, &mut Some(err_manager), folding_context, interner);
       }
       Statement::Break | Statement::Continue => (),
-      Statement::IfElse(if_expr, if_block, else_statement) => {
+      Statement::IfElse {
+         cond: if_expr,
+         then: if_block,
+         otherwise: else_statement,
+         constant: false,
+      } => {
          try_fold_and_replace_expr(*if_expr, &mut Some(err_manager), folding_context, interner);
+
+         fold_block(if_block, err_manager, folding_context, interner);
+         fold_statement(*else_statement, err_manager, folding_context, interner);
 
          let if_expr_d = &folding_context.ast.expressions[*if_expr];
          if let Some(Literal::Bool(false)) = extract_literal(if_expr_d, folding_context.target) {
             rolandc_warn!(err_manager, if_expr_d.location, "This condition will always be false");
-            fold_statement(*else_statement, err_manager, folding_context, interner);
             folding_context.ast.statements[statement].location =
                folding_context.ast.statements[*else_statement].location;
             let else_stmt = std::mem::replace(
@@ -112,6 +119,36 @@ pub fn fold_statement(
             the_statement = else_stmt;
          } else if let Some(Literal::Bool(true)) = extract_literal(if_expr_d, folding_context.target) {
             rolandc_warn!(err_manager, if_expr_d.location, "This condition will always be true");
+            folding_context.ast.statements[statement].location = if_block.location;
+            let if_blk = std::mem::replace(
+               if_block,
+               BlockNode {
+                  statements: Vec::new(),
+                  location: folding_context.ast.statements[statement].location,
+               },
+            );
+            the_statement = Statement::Block(if_blk);
+         }
+      }
+      Statement::IfElse {
+         cond: if_expr,
+         then: if_block,
+         otherwise: else_statement,
+         constant: true,
+      } => {
+         try_fold_and_replace_expr(*if_expr, &mut Some(err_manager), folding_context, interner);
+
+         let if_expr_d = &folding_context.ast.expressions[*if_expr];
+         if let Some(Literal::Bool(false)) = extract_literal(if_expr_d, folding_context.target) {
+            fold_statement(*else_statement, err_manager, folding_context, interner);
+            folding_context.ast.statements[statement].location =
+               folding_context.ast.statements[*else_statement].location;
+            let else_stmt = std::mem::replace(
+               &mut folding_context.ast.statements[*else_statement].statement,
+               Statement::Break,
+            );
+            the_statement = else_stmt;
+         } else if let Some(Literal::Bool(true)) = extract_literal(if_expr_d, folding_context.target) {
             fold_block(if_block, err_manager, folding_context, interner);
             folding_context.ast.statements[statement].location = if_block.location;
             let if_blk = std::mem::replace(

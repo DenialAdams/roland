@@ -41,7 +41,12 @@ fn lower_stmt(s: StatementId, ast: &mut AstPool, locals: &IndexMap<VariableId, E
             false
          }
       }
-      Statement::IfElse(_, b_then, s_else) => {
+      Statement::IfElse {
+         cond: _,
+         then: b_then,
+         otherwise: s_else,
+         constant: _,
+      } => {
          lower_block(b_then, ast, locals);
          lower_stmt(*s_else, ast, locals);
          true

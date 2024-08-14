@@ -163,7 +163,12 @@ fn defer_statement(
       Statement::Block(block) => {
          defer_block(block, defer_ctx, ast, vm);
       }
-      Statement::IfElse(_, if_block, else_statement) => {
+      Statement::IfElse {
+         cond: _,
+         then: if_block,
+         otherwise: else_statement,
+         constant: _,
+      } => {
          defer_block(if_block, defer_ctx, ast, vm);
          defer_statement(*else_statement, defer_ctx, ast, current_statement, vm);
       }
@@ -235,7 +240,12 @@ fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool, vm: &mut VarMigrator) -
       Statement::Expression(expr) | Statement::Return(expr) => {
          *expr = deep_clone_expr(*expr, &mut ast.expressions, vm);
       }
-      Statement::IfElse(cond, then, else_s) => {
+      Statement::IfElse {
+         cond,
+         then,
+         otherwise: else_s,
+         constant: _,
+      } => {
          *cond = deep_clone_expr(*cond, &mut ast.expressions, vm);
          deep_clone_block(then, ast, vm);
          *else_s = deep_clone_stmt(*else_s, ast, vm);
