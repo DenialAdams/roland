@@ -554,7 +554,12 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
       &mut validation_context.ast.statements[statement].statement,
       Statement::Break,
    );
-   match &mut the_statement {
+   type_statement_inner(err_manager, &mut the_statement, stmt_loc, validation_context);
+   validation_context.ast.statements[statement].statement = the_statement;
+}
+
+fn type_statement_inner(err_manager: &mut ErrorManager, statement: &mut Statement, stmt_loc: SourceInfo, validation_context: &mut ValidationContext) {
+   match statement {
       Statement::Assignment(lhs, rhs) => {
          type_expression(err_manager, *lhs, validation_context);
          type_expression(err_manager, *rhs, validation_context);
@@ -894,7 +899,6 @@ fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, valida
          }
       }
    }
-   validation_context.ast.statements[statement].statement = the_statement;
 }
 
 #[must_use]
