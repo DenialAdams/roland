@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::ops::{BitAnd, BitOr, BitXor};
 
+use indexmap::IndexSet;
 use slotmap::SlotMap;
 
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_warn};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, BinOp, BlockNode, CastType, EnumId, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcedureId,
-   ProcedureNode, Program, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
+   AstPool, BinOp, BlockNode, CastType, EnumId, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcedureId, ProcedureNode, Program, Statement, StatementId, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId
 };
 use crate::semantic_analysis::StorageKind;
 use crate::size_info::sizeof_type_mem;
@@ -26,6 +26,7 @@ pub struct FoldingContext<'a> {
    pub const_replacements: &'a HashMap<VariableId, ExpressionId>,
    pub current_proc_name: Option<StrId>,
    pub target: Target,
+   pub templated_types: &'a HashMap<UserDefinedTypeId, IndexSet<StrId>>,
 }
 
 pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, interner: &Interner, target: Target) {
@@ -46,6 +47,7 @@ pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, int
       const_replacements: &const_replacements,
       current_proc_name: None,
       target,
+      templated_types: &HashMap::new(),
    };
 
    for p_static in program.non_stack_var_info.values().filter(|x| x.initializer.is_some()) {
@@ -100,7 +102,7 @@ pub fn fold_statement(
          cond: if_expr,
          then: if_block,
          otherwise: else_statement,
-         constant: false,
+         constant: _,
       } => {
          try_fold_and_replace_expr(*if_expr, &mut Some(err_manager), folding_context, interner);
 
@@ -128,40 +130,6 @@ pub fn fold_statement(
                },
             );
             the_statement = Statement::Block(if_blk);
-         }
-      }
-      Statement::IfElse {
-         cond: if_expr,
-         then: if_block,
-         otherwise: else_statement,
-         constant: true,
-      } => {
-         try_fold_and_replace_expr(*if_expr, &mut Some(err_manager), folding_context, interner);
-
-         let if_expr_d = &folding_context.ast.expressions[*if_expr];
-         if let Some(Literal::Bool(false)) = extract_literal(if_expr_d, folding_context.target) {
-            fold_statement(*else_statement, err_manager, folding_context, interner);
-            folding_context.ast.statements[statement].location =
-               folding_context.ast.statements[*else_statement].location;
-            let else_stmt = std::mem::replace(
-               &mut folding_context.ast.statements[*else_statement].statement,
-               Statement::Break,
-            );
-            the_statement = else_stmt;
-         } else if let Some(Literal::Bool(true)) = extract_literal(if_expr_d, folding_context.target) {
-            fold_block(if_block, err_manager, folding_context, interner);
-            folding_context.ast.statements[statement].location = if_block.location;
-            let if_blk = std::mem::replace(
-               if_block,
-               BlockNode {
-                  statements: Vec::new(),
-                  location: folding_context.ast.statements[statement].location,
-               },
-            );
-            the_statement = Statement::Block(if_blk);
-         } else {
-            fold_block(if_block, err_manager, folding_context, interner);
-            fold_statement(*else_statement, err_manager, folding_context, interner);
          }
       }
       Statement::Loop(block) | Statement::Block(block) => {
@@ -229,6 +197,12 @@ fn fold_expr_inner(
 ) -> Option<Expression> {
    let expr_to_fold_location = expr.location;
    let expr_type = expr.exp_type.as_ref().unwrap();
+   if !expr_type.is_concrete() || expr_type.is_or_contains_or_points_to_error() {
+      // The constant folder is called (lightly) during semantic analysis before unknown types
+      // have been lowered and we have terminated compilation on errors. Bail out conservatively
+      // so that the core constant folding logic can assume everything is well typed.
+      return None;
+   }
    match &expr.expression {
       Expression::ArrayIndex { array, index } => {
          try_fold_and_replace_expr(*array, err_manager, folding_context, interner);
@@ -861,7 +835,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
       "unit" => Some(Expression::UnitLiteral),
       "proc_name" => fc.current_proc_name.map(Expression::StringLiteral),
       "sizeof" => {
-         let type_size = crate::size_info::sizeof_type_mem(&generic_args[0], fc.user_defined_types, fc.target);
+         let type_size = crate::size_info::template_type_aware_mem_size(&generic_args[0], fc.user_defined_types, fc.target, fc.templated_types);
 
          Some(Expression::IntLiteral {
             val: u64::from(type_size),
@@ -869,7 +843,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
          })
       }
       "alignof" => {
-         let type_alignment = crate::size_info::mem_alignment(&generic_args[0], fc.user_defined_types, fc.target);
+         let type_alignment = crate::size_info::template_type_aware_mem_alignment(&generic_args[0], fc.user_defined_types, fc.target, fc.templated_types);
 
          Some(Expression::IntLiteral {
             val: u64::from(type_alignment),

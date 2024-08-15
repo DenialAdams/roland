@@ -16,7 +16,7 @@ use crate::error_handling::error_handling_macros::{
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   statement_always_or_never_returns, ArgumentNode, AstPool, BinOp, BlockNode, CastType, DeclarationValue, Expression,
+   statement_always_or_never_returns, ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression,
    ExpressionId, ExpressionNode, ExpressionTypeNode, ProcImplSource, ProcedureId, ProcedureNode, Program, Statement,
    StatementId, StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
 };
@@ -548,17 +548,22 @@ pub fn type_and_check_validity(
 }
 
 fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, validation_context: &mut ValidationContext) {
-   let stmt_loc = validation_context.ast.statements[statement].location;
-
+   let mut stmt_loc = validation_context.ast.statements[statement].location;
    let mut the_statement = std::mem::replace(
       &mut validation_context.ast.statements[statement].statement,
       Statement::Break,
    );
-   type_statement_inner(err_manager, &mut the_statement, stmt_loc, validation_context);
+   type_statement_inner(err_manager, &mut the_statement, &mut stmt_loc, validation_context);
    validation_context.ast.statements[statement].statement = the_statement;
+   validation_context.ast.statements[statement].location = stmt_loc;
 }
 
-fn type_statement_inner(err_manager: &mut ErrorManager, statement: &mut Statement, stmt_loc: SourceInfo, validation_context: &mut ValidationContext) {
+fn type_statement_inner(
+   err_manager: &mut ErrorManager,
+   statement: &mut Statement,
+   stmt_loc: &mut SourceInfo,
+   validation_context: &mut ValidationContext,
+) {
    match statement {
       Statement::Assignment(lhs, rhs) => {
          type_expression(err_manager, *lhs, validation_context);
@@ -619,12 +624,12 @@ fn type_statement_inner(err_manager: &mut ErrorManager, statement: &mut Statemen
       }
       Statement::Continue => {
          if validation_context.owned.loop_depth == 0 {
-            rolandc_error!(err_manager, stmt_loc, "Continue statement can only be used in a loop");
+            rolandc_error!(err_manager, *stmt_loc, "Continue statement can only be used in a loop");
          }
       }
       Statement::Break => {
          if validation_context.owned.loop_depth == 0 {
-            rolandc_error!(err_manager, stmt_loc, "Break statement can only be used in a loop");
+            rolandc_error!(err_manager, *stmt_loc, "Break statement can only be used in a loop");
          }
       }
       Statement::For {
@@ -684,7 +689,7 @@ fn type_statement_inner(err_manager: &mut ErrorManager, statement: &mut Statemen
          };
 
          if *inclusive {
-            rolandc_error!(err_manager, stmt_loc, "Inclusive ranges are not currently supported.");
+            rolandc_error!(err_manager, *stmt_loc, "Inclusive ranges are not currently supported.");
          }
 
          let vars_before = validation_context.owned.variable_types.len();
@@ -740,23 +745,95 @@ fn type_statement_inner(err_manager: &mut ErrorManager, statement: &mut Statemen
          type_expression(err_manager, *en, validation_context);
       }
       Statement::IfElse {
+         cond,
+         then,
+         otherwise,
+         constant: true,
+      } => {
+         type_expression(err_manager, *cond, validation_context);
+         let en = &mut validation_context.ast.expressions[*cond];
+         let if_exp_type = en.exp_type.as_mut().unwrap();
+         try_merge_types(
+            &ExpressionType::Bool,
+            if_exp_type,
+            &mut validation_context.owned.type_variables,
+         );
+         if if_exp_type.is_or_contains_or_points_to_error() {
+            return;
+         }
+         if *if_exp_type != ExpressionType::Bool {
+            rolandc_error!(
+               err_manager,
+               en.location,
+               "Type of when condition must be a bool; got {}",
+               en.exp_type.as_ref().unwrap().as_roland_type_info(
+                  validation_context.interner,
+                  validation_context.user_defined_types,
+                  validation_context.procedures,
+                  &validation_context.owned.type_variables
+               )
+            );
+            return;
+         }
+         fold_expr_id(
+            *cond,
+            err_manager,
+            validation_context,
+         );
+         let en = &mut validation_context.ast.expressions[*cond];
+         match en.expression {
+            Expression::BoolLiteral(true) => {
+               type_block(err_manager, then, validation_context);
+               *stmt_loc = then.location;
+               let if_blk = std::mem::replace(
+                  then,
+                  BlockNode {
+                     statements: Vec::new(),
+                     location: *stmt_loc,
+                  },
+               );
+               *statement = Statement::Block(if_blk);
+            }
+            Expression::BoolLiteral(false) => {
+               type_statement(err_manager, *otherwise, validation_context);
+               *stmt_loc = validation_context.ast.statements[*otherwise].location;
+               let else_stmt = std::mem::replace(
+                  &mut validation_context.ast.statements[*otherwise].statement,
+                  Statement::Break,
+               );
+               *statement = else_stmt;
+            }
+            _ => {
+               rolandc_error!(
+                  err_manager,
+                  en.location,
+                  "Value of when condition can't be constant folded",
+               );
+            }
+         }
+      }
+      Statement::IfElse {
          cond: en,
          then: block_1,
          otherwise: block_2,
-         constant,
+         constant: false,
       } => {
          type_block(err_manager, block_1, validation_context);
          type_statement(err_manager, *block_2, validation_context);
          type_expression(err_manager, *en, validation_context);
 
-         let en = &validation_context.ast.expressions[*en];
-         let if_exp_type = en.exp_type.as_ref().unwrap();
-         if if_exp_type != &ExpressionType::Bool && !if_exp_type.is_or_contains_or_points_to_error() {
+         let en = &mut validation_context.ast.expressions[*en];
+         let if_exp_type = en.exp_type.as_mut().unwrap();
+         try_merge_types(
+            &ExpressionType::Bool,
+            if_exp_type,
+            &mut validation_context.owned.type_variables,
+         );
+         if *if_exp_type != ExpressionType::Bool && !if_exp_type.is_or_contains_or_points_to_error() {
             rolandc_error!(
                err_manager,
                en.location,
-               "Type of {} condition must be a bool; got {}",
-               if *constant { "when " } else { "if " },
+               "Type of if condition must be a bool; got {}",
                en.exp_type.as_ref().unwrap().as_roland_type_info(
                   validation_context.interner,
                   validation_context.user_defined_types,
@@ -882,11 +959,11 @@ fn type_statement_inner(err_manager: &mut ErrorManager, statement: &mut Statemen
                   expr_type: ExpressionTypeNode {
                      // This location is _not_ right, but it's not used anywhere that matters right now.
                      // and getting the right location isn't easy. TODO
-                     location: stmt_loc,
+                     location: *stmt_loc,
                      e_type: result_type,
                   },
                   initializer: opt_en,
-                  location: stmt_loc,
+                  location: *stmt_loc,
                   kind: *storage_kind,
                   name: id.str,
                },
@@ -2558,21 +2635,17 @@ fn try_merge_types_of_two_distinct_expressions(
 fn fold_expr_id(
    expr_id: ExpressionId,
    err_manager: &mut ErrorManager,
-   ast: &mut AstPool,
-   procedures: &SlotMap<ProcedureId, ProcedureNode>,
-   user_defined_types: &UserDefinedTypeInfo,
-   const_replacements: &HashMap<VariableId, ExpressionId>,
-   interner: &Interner,
-   target: Target,
-   current_proc_name: StrId,
+   validation_context: &mut ValidationContext,
 ) {
+   let current_proc_name = validation_context.owned.cur_procedure.map(|x| validation_context.procedures[x].definition.name.str);
    let mut fc = FoldingContext {
-      ast,
-      procedures,
-      user_defined_types,
-      const_replacements,
-      current_proc_name: Some(current_proc_name),
-      target,
+      ast: validation_context.ast,
+      procedures: validation_context.procedures,
+      user_defined_types: validation_context.user_defined_types,
+      const_replacements: &HashMap::new(),
+      current_proc_name,
+      target: validation_context.owned.target,
+      templated_types: validation_context.templated_types,
    };
-   constant_folding::try_fold_and_replace_expr(expr_id, &mut Some(err_manager), &mut fc, interner);
+   constant_folding::try_fold_and_replace_expr(expr_id, &mut Some(err_manager), &mut fc, validation_context.interner);
 }

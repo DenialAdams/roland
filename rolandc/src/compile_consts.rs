@@ -41,6 +41,7 @@ fn fold_expr_id(
       const_replacements,
       current_proc_name: None,
       target,
+      templated_types: &HashMap::new(),
    };
    constant_folding::try_fold_and_replace_expr(expr_id, &mut Some(err_manager), &mut fc, interner);
 }
