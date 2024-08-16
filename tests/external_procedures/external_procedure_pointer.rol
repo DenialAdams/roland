@@ -1,11 +1,13 @@
 proc main() {
-   let x = &malloc;
-   // TODO: must fix this test - malloc is no longer external
-   let y = x(sizeof$<u8>(), 1).buf;
-   y~ = 10;
-   println(uint_to_string(y~ as u64));
-   free(y);
+   when sizeof$<usize>() == 4 {
+      let x = &fd_write;
+      x(0, 0 transmute &ciovec, 0, 0 transmute &usize);
+   } else {
+      let x = &syscall1;
+      x(12, 0);
+   }
+   println("ok");
 }
 __END__
 run:
-10
+ok
