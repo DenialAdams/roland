@@ -840,7 +840,7 @@ fn do_branch(
    cfg: &Cfg,
    generation_context: &mut GenerationContext,
 ) {
-   if target_rpo_index < source_rpo_index
+   if target_rpo_index <= source_rpo_index
       || is_merge_node(target_rpo_index, rpo, cfg, &generation_context.cfg_index_to_rpo_index)
    {
       // continue or exit
