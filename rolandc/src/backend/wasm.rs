@@ -410,11 +410,11 @@ pub fn emit_wasm(
             generation_context.active_fcn.instruction(&Instruction::LocalGet(0));
             generation_context.active_fcn.instruction(&Instruction::MemoryGrow(0));
          }
-         "sqrt" => {
+         "sqrt_f64" => {
             generation_context.active_fcn.instruction(&Instruction::LocalGet(0));
             generation_context.active_fcn.instruction(&Instruction::F64Sqrt);
          }
-         "sqrt_32" => {
+         "sqrt_f32" => {
             generation_context.active_fcn.instruction(&Instruction::LocalGet(0));
             generation_context.active_fcn.instruction(&Instruction::F32Sqrt);
          }

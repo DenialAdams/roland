@@ -1,10 +1,17 @@
 builtin proc num_variants<T>() -> u64 where T: Enum;
 
-builtin proc sqrt(x: f64) -> f64;
-builtin proc sqrt_32(x: f32) -> f32;
-// The following *almost* works now:
-//builtin proc sqrt$T(x: T) -> T where T: Float;
-// but we need to somehow split this into two bodies during compile
+proc sqrt<T>(x: T) -> T {
+   when type_eq$<T, f32>() {
+      return sqrt_f32(x);
+   } else when type_eq$<T, f64>() {
+      return sqrt_f64(x);
+   } else {
+      assert(false);
+      //compile_error("sqrt takes a floating point number");
+   }
+}
+builtin proc sqrt_f32(x: f32) -> f32;
+builtin proc sqrt_f64(x: f64) -> f64;
 
 builtin proc unreachable() -> !;
 
@@ -12,6 +19,8 @@ builtin proc sizeof<T>() -> usize;
 builtin proc alignof<T>() -> usize;
 
 builtin proc proc_name() -> String;
+
+builtin proc type_eq<X, Y>() -> bool;
 
 struct String {
    pointer: &u8,

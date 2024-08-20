@@ -1,0 +1,26 @@
+proc main() {
+   when sizeof$<adsad>() == 1 {
+      println("test");
+   }
+   when sizeof() == 2 {
+      println("test");
+   }
+   when num_variants() == 1 {
+      println("test");
+   }
+   when type_eq$<f32>() {
+      println("test");
+   }
+}
+__END__
+compile:
+Undeclared type `adsad`
+↳ line 2, column 17 [tests/constant_folding/when_type_argument_issue.rol]
+Value of when condition can't be constant folded
+↳ line 2, column 9 [tests/constant_folding/when_type_argument_issue.rol]
+Value of when condition can't be constant folded
+↳ line 5, column 9 [tests/constant_folding/when_type_argument_issue.rol]
+Value of when condition can't be constant folded
+↳ line 8, column 9 [tests/constant_folding/when_type_argument_issue.rol]
+Mismatched arity for procedure 'type_eq'. Expected 2 type arguments but got 1
+↳ line 11, column 9 [tests/constant_folding/when_type_argument_issue.rol]

@@ -189,6 +189,27 @@ fn fold_expr(
    new_expr
 }
 
+fn type_is_ok_for_folding(x: &ExpressionType) -> bool {
+   match x {
+      ExpressionType::GenericParam(_) |
+      ExpressionType::Unresolved { .. } |
+      ExpressionType::CompileError |
+      ExpressionType::Unknown(_) => false,
+      ExpressionType::Int(_) |
+      ExpressionType::Float(_) |
+      ExpressionType::Bool |
+      ExpressionType::Unit |
+      ExpressionType::Enum(_) |
+      ExpressionType::Never => true,
+      ExpressionType::ProcedureItem(_, type_args) |
+      ExpressionType::Struct(_, type_args) |
+      ExpressionType::Union(_, type_args) => type_args.iter().all(type_is_ok_for_folding),
+      ExpressionType::Array(inner, _) |
+      ExpressionType::Pointer(inner) => type_is_ok_for_folding(inner),
+      ExpressionType::ProcedurePointer { parameters, ret_type } => parameters.iter().all(type_is_ok_for_folding) && type_is_ok_for_folding(ret_type),
+   }
+}
+
 fn fold_expr_inner(
    expr: &ExpressionNode,
    err_manager: &mut Option<&mut ErrorManager>,
@@ -197,7 +218,7 @@ fn fold_expr_inner(
 ) -> Option<Expression> {
    let expr_to_fold_location = expr.location;
    let expr_type = expr.exp_type.as_ref().unwrap();
-   if !expr_type.is_concrete() || expr_type.is_or_contains_or_points_to_error() {
+   if !type_is_ok_for_folding(expr_type) {
       // The constant folder is called (lightly) during semantic analysis before unknown types
       // have been lowered and we have terminated compilation on errors. Bail out conservatively
       // so that the core constant folding logic can assume everything is well typed.
@@ -826,16 +847,26 @@ fn fold_expr_inner(
 }
 
 pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &FoldingContext) -> Option<Expression> {
-   let (proc_name, generic_args) = match &fc.ast.expressions[proc_expr].exp_type.as_ref().unwrap() {
-      ExpressionType::ProcedureItem(x, type_arguments) => (fc.procedures[*x].definition.name.str, type_arguments),
+   let (proc_definition, type_args) = match &fc.ast.expressions[proc_expr].exp_type.as_ref().unwrap() {
+      ExpressionType::ProcedureItem(x, type_args) => (&fc.procedures[*x].definition, type_args),
       _ => return None,
    };
 
-   match interner.lookup(proc_name) {
+   if proc_definition.type_parameters.len() != type_args.len() {
+      // I think this is actually unreachable at the moment, but conceptually I like this check a lot.
+      // I can easily see frontend behavior changing such to make this hittable.
+      return None;
+   }
+
+   if !type_args.iter().all(type_is_ok_for_folding) {
+      return None;
+   }
+
+   match interner.lookup(proc_definition.name.str) {
       "unit" => Some(Expression::UnitLiteral),
       "proc_name" => fc.current_proc_name.map(Expression::StringLiteral),
       "sizeof" => {
-         let type_size = crate::size_info::template_type_aware_mem_size(&generic_args[0], fc.user_defined_types, fc.target, fc.templated_types);
+         let type_size = crate::size_info::template_type_aware_mem_size(&type_args[0], fc.user_defined_types, fc.target, fc.templated_types);
 
          Some(Expression::IntLiteral {
             val: u64::from(type_size),
@@ -843,7 +874,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
          })
       }
       "alignof" => {
-         let type_alignment = crate::size_info::template_type_aware_mem_alignment(&generic_args[0], fc.user_defined_types, fc.target, fc.templated_types);
+         let type_alignment = crate::size_info::template_type_aware_mem_alignment(&type_args[0], fc.user_defined_types, fc.target, fc.templated_types);
 
          Some(Expression::IntLiteral {
             val: u64::from(type_alignment),
@@ -851,7 +882,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
          })
       }
       "num_variants" => {
-         let num_variants = match &generic_args[0] {
+         let num_variants = match &type_args[0] {
             ExpressionType::Enum(enum_id) => fc.user_defined_types.enum_info.get(*enum_id).unwrap().variants.len(),
             _ => return None,
          };
@@ -860,6 +891,9 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
             val: num_variants as u64,
             synthetic: true,
          })
+      }
+      "type_eq" => {
+         Some(Expression::BoolLiteral(type_args[0] == type_args[1]))
       }
       _ => None,
    }
