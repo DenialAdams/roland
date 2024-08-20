@@ -852,11 +852,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
       _ => return None,
    };
 
-   if proc_definition.type_parameters.len() != type_args.len() {
-      // I think this is actually unreachable at the moment, but conceptually I like this check a lot.
-      // I can easily see frontend behavior changing such to make this hittable.
-      return None;
-   }
+   debug_assert!(proc_definition.type_parameters.len() == type_args.len());
 
    if !type_args.iter().all(type_is_ok_for_folding) {
       return None;

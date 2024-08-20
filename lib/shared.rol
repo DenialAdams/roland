@@ -1,13 +1,10 @@
 builtin proc num_variants<T>() -> u64 where T: Enum;
 
-proc sqrt<T>(x: T) -> T {
+proc sqrt<T>(x: T) -> T where T: Float {
    when type_eq$<T, f32>() {
       return sqrt_f32(x);
-   } else when type_eq$<T, f64>() {
-      return sqrt_f64(x);
    } else {
-      assert(false);
-      //compile_error("sqrt takes a floating point number");
+      return sqrt_f64(x);
    }
 }
 builtin proc sqrt_f32(x: f32) -> f32;
