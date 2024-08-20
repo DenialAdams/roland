@@ -853,7 +853,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
       "num_variants" => {
          let num_variants = match &generic_args[0] {
             ExpressionType::Enum(enum_id) => fc.user_defined_types.enum_info.get(*enum_id).unwrap().variants.len(),
-            _ => unreachable!(),
+            _ => return None,
          };
 
          Some(Expression::IntLiteral {

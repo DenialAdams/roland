@@ -1,0 +1,9 @@
+proc main() {
+   when num_variants() == 1 {
+      println("test");
+   }
+}
+__END__
+compile:
+Value of when condition can't be constant folded␊
+↳ line 2, column 9 [tests/constant_folding/when_num_variants_error.rol]␊
