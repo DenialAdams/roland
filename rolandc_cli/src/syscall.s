@@ -1,5 +1,15 @@
 .text
 
+.global sqrt_f32
+sqrt_f32:
+	sqrtss %xmm0, %xmm0
+	ret
+
+.global sqrt_f64
+sqrt_f64:
+	sqrtsd %xmm0, %xmm0
+	ret
+
 .global syscall0
 syscall0:
 	movq %rdi, %rax
