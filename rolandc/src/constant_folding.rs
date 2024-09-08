@@ -8,7 +8,8 @@ use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_warn};
 use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, BinOp, BlockNode, CastType, EnumId, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcedureId, ProcedureNode, Program, Statement, StatementId, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId
+   AstPool, BinOp, BlockNode, CastType, EnumId, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcedureId,
+   ProcedureNode, Program, Statement, StatementId, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::StorageKind;
 use crate::size_info::sizeof_type_mem;
@@ -191,22 +192,23 @@ fn fold_expr(
 
 fn type_is_ok_for_folding(x: &ExpressionType) -> bool {
    match x {
-      ExpressionType::GenericParam(_) |
-      ExpressionType::Unresolved { .. } |
-      ExpressionType::CompileError |
-      ExpressionType::Unknown(_) => false,
-      ExpressionType::Int(_) |
-      ExpressionType::Float(_) |
-      ExpressionType::Bool |
-      ExpressionType::Unit |
-      ExpressionType::Enum(_) |
-      ExpressionType::Never => true,
-      ExpressionType::ProcedureItem(_, type_args) |
-      ExpressionType::Struct(_, type_args) |
-      ExpressionType::Union(_, type_args) => type_args.iter().all(type_is_ok_for_folding),
-      ExpressionType::Array(inner, _) |
-      ExpressionType::Pointer(inner) => type_is_ok_for_folding(inner),
-      ExpressionType::ProcedurePointer { parameters, ret_type } => parameters.iter().all(type_is_ok_for_folding) && type_is_ok_for_folding(ret_type),
+      ExpressionType::GenericParam(_)
+      | ExpressionType::Unresolved { .. }
+      | ExpressionType::CompileError
+      | ExpressionType::Unknown(_) => false,
+      ExpressionType::Int(_)
+      | ExpressionType::Float(_)
+      | ExpressionType::Bool
+      | ExpressionType::Unit
+      | ExpressionType::Enum(_)
+      | ExpressionType::Never => true,
+      ExpressionType::ProcedureItem(_, type_args)
+      | ExpressionType::Struct(_, type_args)
+      | ExpressionType::Union(_, type_args) => type_args.iter().all(type_is_ok_for_folding),
+      ExpressionType::Array(inner, _) | ExpressionType::Pointer(inner) => type_is_ok_for_folding(inner),
+      ExpressionType::ProcedurePointer { parameters, ret_type } => {
+         parameters.iter().all(type_is_ok_for_folding) && type_is_ok_for_folding(ret_type)
+      }
    }
 }
 
@@ -862,7 +864,12 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
       "unit" => Some(Expression::UnitLiteral),
       "proc_name" => fc.current_proc_name.map(Expression::StringLiteral),
       "sizeof" => {
-         let type_size = crate::size_info::template_type_aware_mem_size(&type_args[0], fc.user_defined_types, fc.target, fc.templated_types);
+         let type_size = crate::size_info::template_type_aware_mem_size(
+            &type_args[0],
+            fc.user_defined_types,
+            fc.target,
+            fc.templated_types,
+         );
 
          Some(Expression::IntLiteral {
             val: u64::from(type_size),
@@ -870,7 +877,12 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
          })
       }
       "alignof" => {
-         let type_alignment = crate::size_info::template_type_aware_mem_alignment(&type_args[0], fc.user_defined_types, fc.target, fc.templated_types);
+         let type_alignment = crate::size_info::template_type_aware_mem_alignment(
+            &type_args[0],
+            fc.user_defined_types,
+            fc.target,
+            fc.templated_types,
+         );
 
          Some(Expression::IntLiteral {
             val: u64::from(type_alignment),
@@ -888,9 +900,7 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
             synthetic: true,
          })
       }
-      "type_eq" => {
-         Some(Expression::BoolLiteral(type_args[0] == type_args[1]))
-      }
+      "type_eq" => Some(Expression::BoolLiteral(type_args[0] == type_args[1])),
       _ => None,
    }
 }

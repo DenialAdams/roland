@@ -775,11 +775,7 @@ fn type_statement_inner(
             );
             return;
          }
-         fold_expr_id(
-            *cond,
-            err_manager,
-            validation_context,
-         );
+         fold_expr_id(*cond, err_manager, validation_context);
          let en = &mut validation_context.ast.expressions[*cond];
          match en.expression {
             Expression::BoolLiteral(true) => {
@@ -2632,12 +2628,11 @@ fn try_merge_types_of_two_distinct_expressions(
    }
 }
 
-fn fold_expr_id(
-   expr_id: ExpressionId,
-   err_manager: &mut ErrorManager,
-   validation_context: &mut ValidationContext,
-) {
-   let current_proc_name = validation_context.owned.cur_procedure.map(|x| validation_context.procedures[x].definition.name.str);
+fn fold_expr_id(expr_id: ExpressionId, err_manager: &mut ErrorManager, validation_context: &mut ValidationContext) {
+   let current_proc_name = validation_context
+      .owned
+      .cur_procedure
+      .map(|x| validation_context.procedures[x].definition.name.str);
    let mut fc = FoldingContext {
       ast: validation_context.ast,
       procedures: validation_context.procedures,
