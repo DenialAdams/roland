@@ -342,7 +342,10 @@ pub fn statement_always_or_never_returns(stmt: StatementId, ast: &AstPool) -> bo
          .statements
          .last()
          .map_or(false, |l| statement_always_or_never_returns(*l, ast)),
-      Statement::Expression(ex) => ast.expressions[*ex].exp_type.as_ref().map_or(false, |x| *x == ExpressionType::Never),
+      Statement::Expression(ex) => ast.expressions[*ex]
+         .exp_type
+         .as_ref()
+         .map_or(false, |x| *x == ExpressionType::Never),
       Statement::Loop(bn) => !bn.statements.iter().copied().any(|s| statement_breaks(s, ast)),
       _ => false,
    }
