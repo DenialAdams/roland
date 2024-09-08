@@ -22,6 +22,7 @@ enum TestFailureReason {
    MismatchedExecutionOutput(String, String),
    MismatchedCompilationErrorOutput(String, TestDetails),
    ExecutionTimeout,
+   FailedToOpenTest,
 }
 
 struct Opts {
@@ -147,6 +148,9 @@ fn main() -> Result<(), &'static str> {
       writeln!(out_handle, "FAILED").unwrap();
       color_reset(&mut out_handle).unwrap();
       match reason {
+         TestFailureReason::FailedToOpenTest => {
+            writeln!(out_handle, "Test file could not be opened (does it exist?)").unwrap();
+         }
          TestFailureReason::TestingNothing(actual, ref mut file) => {
             if !opts.overwrite_error_files {
                writeln!(out_handle, "There was no test specified for this input.").unwrap();
@@ -258,7 +262,7 @@ fn test_result(
    amd64: bool,
    preserve_artifacts: bool,
 ) -> Result<(), TestFailureReason> {
-   let td = extract_test_data(t_file_path, amd64);
+   let td = extract_test_data(t_file_path, amd64).map_err(|_| TestFailureReason::FailedToOpenTest)?;
 
    let stderr_text = String::from_utf8_lossy(&tc_output.stderr);
 
@@ -389,8 +393,8 @@ struct ExpectedTestResult {
    run_output: Option<String>,
 }
 
-fn extract_test_data(entry: &Path, amd64: bool) -> TestDetails {
-   let mut opened = OpenOptions::new().read(true).write(true).open(entry).unwrap();
+fn extract_test_data(entry: &Path, amd64: bool) -> Result<TestDetails, ()> {
+   let mut opened = OpenOptions::new().read(true).write(true).open(entry).map_err(|_| ())?;
 
    let mut s = String::new();
    opened.read_to_string(&mut s).unwrap();
@@ -407,13 +411,13 @@ fn extract_test_data(entry: &Path, amd64: bool) -> TestDetails {
       result_name.set_extension("result");
       if !result_name.exists() {
          // Alright, this file just has no test specified
-         return TestDetails {
+         return Ok(TestDetails {
             file: opened,
             result: ExpectedTestResult {
                compile_output: None,
                run_output: None,
             },
-         };
+         });
       }
       opened = OpenOptions::new().read(true).write(true).open(result_name).unwrap();
       s.clear();
@@ -423,10 +427,10 @@ fn extract_test_data(entry: &Path, amd64: bool) -> TestDetails {
       parse_test_content(&s, amd64)
    };
 
-   TestDetails {
+   Ok(TestDetails {
       file: opened,
       result: test_output,
-   }
+   })
 }
 
 fn parse_test_content(mut content: &str, amd64: bool) -> ExpectedTestResult {
