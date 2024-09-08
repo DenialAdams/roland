@@ -471,7 +471,7 @@ fn vv_expr(
       Expression::Cast {
          cast_type: CastType::Transmute,
          expr,
-         target_type,
+         ..
       } => {
          vv_expr(
             *expr,
@@ -479,7 +479,7 @@ fn vv_expr(
             expressions,
             current_stmt,
             ParentCtx::Expr,
-            !is_reinterpretable_transmute(expressions[*expr].exp_type.as_ref().unwrap(), target_type),
+            expressions[*expr].expression.is_lvalue(expressions, ctx.global_info),
          );
       }
       Expression::StructLiteral(_, field_exprs) => {
