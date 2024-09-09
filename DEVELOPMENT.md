@@ -10,6 +10,14 @@ All commands that follow in this document are intended to be run in the root dir
 
 ¹*It is possible to get away without having `just` installed - you can look in the `justfile` to see what commands `just` would be running, and run them yourself.*
 
+## Obtaining QBE
+
+TODO
+
+## Obtaining wasmtime
+
+`wasmtime` may be available from your distro's package manager. Failing that, check out [the wasmtime documentation](https://docs.wasmtime.dev/cli-install.html).
+
 # Running Tests
 `just test_amd64`
 
