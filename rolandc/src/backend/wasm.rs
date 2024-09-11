@@ -10,7 +10,6 @@ use wasm_encoder::{
 use super::linearize::{post_order, Cfg, CfgInstruction, CFG_END_NODE};
 use super::regalloc::{RegallocResult, VarSlot};
 use crate::dominators::{compute_dominators, DominatorTree};
-use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureDefinition, ProcedureId, Program, UnOp,
@@ -1370,51 +1369,41 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          let e = &generation_context.ast.expressions[*e_id];
          let target_type = expr_node.exp_type.as_ref().unwrap();
 
-         if e
-            .expression
-            .is_lvalue_disregard_consts(&generation_context.ast.expressions)
-            && register_for_var(*e_id, generation_context).is_none()
-         {
-            do_emit(*e_id, generation_context);
-            load_mem(target_type, generation_context);
-         } else {
-            debug_assert!(is_reinterpretable_transmute(e.exp_type.as_ref().unwrap(), target_type));
-            do_emit_and_load_lval(*e_id, generation_context);
+         do_emit_and_load_lval(*e_id, generation_context);
 
-            if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Float(_))
-               && matches!(target_type, ExpressionType::Int(_))
-            {
-               // float -> int
-               match target_type {
-                  ExpressionType::Int(x) if x.width.as_num_bytes(generation_context.target) == 4 => {
-                     generation_context
-                        .active_fcn
-                        .instruction(&Instruction::I32ReinterpretF32);
-                  }
-                  ExpressionType::Int(x) if x.width.as_num_bytes(generation_context.target) == 8 => {
-                     generation_context
-                        .active_fcn
-                        .instruction(&Instruction::I64ReinterpretF64);
-                  }
-                  _ => unreachable!(),
+         if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Float(_))
+            && matches!(target_type, ExpressionType::Int(_))
+         {
+            // float -> int
+            match target_type {
+               ExpressionType::Int(x) if x.width.as_num_bytes(generation_context.target) == 4 => {
+                  generation_context
+                     .active_fcn
+                     .instruction(&Instruction::I32ReinterpretF32);
                }
-            } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Int(_))
-               && matches!(target_type, ExpressionType::Float(_))
-            {
-               // int -> float
-               match *target_type {
-                  F32_TYPE => {
-                     generation_context
-                        .active_fcn
-                        .instruction(&Instruction::F32ReinterpretI32);
-                  }
-                  F64_TYPE => {
-                     generation_context
-                        .active_fcn
-                        .instruction(&Instruction::F64ReinterpretI64);
-                  }
-                  _ => unreachable!(),
+               ExpressionType::Int(x) if x.width.as_num_bytes(generation_context.target) == 8 => {
+                  generation_context
+                     .active_fcn
+                     .instruction(&Instruction::I64ReinterpretF64);
                }
+               _ => unreachable!(),
+            }
+         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Int(_))
+            && matches!(target_type, ExpressionType::Float(_))
+         {
+            // int -> float
+            match *target_type {
+               F32_TYPE => {
+                  generation_context
+                     .active_fcn
+                     .instruction(&Instruction::F32ReinterpretI32);
+               }
+               F64_TYPE => {
+                  generation_context
+                     .active_fcn
+                     .instruction(&Instruction::F64ReinterpretI64);
+               }
+               _ => unreachable!(),
             }
          }
       }

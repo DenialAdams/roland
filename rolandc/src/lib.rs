@@ -26,6 +26,7 @@ pub mod interner;
 mod lex;
 mod logical_op_lowering;
 mod loop_lowering;
+mod lower_transmutes_requiring_load;
 mod monomorphization;
 mod named_argument_lowering;
 pub mod parse;
@@ -294,6 +295,8 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    ctx.program.ast.expressions.retain(|_, x| x.exp_type.is_some());
 
    monomorphization::monomorphize_types(&mut ctx.program, config.target);
+
+   lower_transmutes_requiring_load::lower(&mut ctx.program.ast.expressions);
 
    loop_lowering::lower_fors_and_whiles(&mut ctx.program);
 

@@ -1028,18 +1028,14 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          target_type,
          expr,
       } => {
-         if let Some(load_target) = rhs_mem {
-            emit_load(&mut ctx.buf, &load_target, ren.exp_type.as_ref().unwrap());
+         let val = expr_to_val(*expr, ctx);
+         let source_type = ctx.ast.expressions[*expr].exp_type.as_ref().unwrap();
+         if (matches!(source_type, ExpressionType::Float(_)) && matches!(target_type, ExpressionType::Int(_)))
+            || (matches!(source_type, ExpressionType::Int(_)) && matches!(target_type, ExpressionType::Float(_)))
+         {
+            writeln!(ctx.buf, "cast {}", val).unwrap();
          } else {
-            let val = expr_to_val(*expr, ctx);
-            let source_type = ctx.ast.expressions[*expr].exp_type.as_ref().unwrap();
-            if (matches!(source_type, ExpressionType::Float(_)) && matches!(target_type, ExpressionType::Int(_)))
-               || (matches!(source_type, ExpressionType::Int(_)) && matches!(target_type, ExpressionType::Float(_)))
-            {
-               writeln!(ctx.buf, "cast {}", val).unwrap();
-            } else {
-               writeln!(ctx.buf, "copy {}", val).unwrap();
-            }
+            writeln!(ctx.buf, "copy {}", val).unwrap();
          }
       }
       _ => unreachable!(),

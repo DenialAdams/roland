@@ -13,27 +13,6 @@ use crate::size_info::sizeof_type_mem;
 use crate::type_data::{ExpressionType, U8_TYPE, USIZE_TYPE};
 use crate::Target;
 
-pub fn is_reinterpretable_transmute(source_type: &ExpressionType, target_type: &ExpressionType) -> bool {
-   source_type == target_type
-      || matches!(
-         (source_type, &target_type),
-         (
-            ExpressionType::Int(_)
-               | ExpressionType::Float(_)
-               | ExpressionType::Pointer(_)
-               | ExpressionType::Bool
-               | ExpressionType::Enum(_)
-               | ExpressionType::ProcedurePointer { .. },
-            ExpressionType::Int(_)
-               | ExpressionType::Float(_)
-               | ExpressionType::Pointer(_)
-               | ExpressionType::Bool
-               | ExpressionType::Enum(_)
-               | ExpressionType::ProcedurePointer { .. }
-         )
-      )
-}
-
 #[derive(Copy, Clone, PartialEq)]
 enum HoistReason {
    Must,
@@ -585,22 +564,6 @@ fn vv_expr(
          | Expression::FieldAccess(_, expr)
          | Expression::ArrayIndex { array: expr, .. } => {
             if !expressions[*expr].expression.is_lvalue(expressions, ctx.global_info) {
-               ctx.mark_expr_for_hoisting(*expr, current_stmt, HoistReason::Must);
-            }
-         }
-         Expression::Cast {
-            cast_type: CastType::Transmute,
-            expr,
-            ..
-         } => {
-            let e = &expressions[*expr];
-
-            if !e.expression.is_lvalue(expressions, ctx.global_info)
-               && !is_reinterpretable_transmute(
-                  e.exp_type.as_ref().unwrap(),
-                  expressions[expr_index].exp_type.as_ref().unwrap(),
-               )
-            {
                ctx.mark_expr_for_hoisting(*expr, current_stmt, HoistReason::Must);
             }
          }

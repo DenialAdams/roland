@@ -7,11 +7,9 @@ use slotmap::SlotMap;
 use crate::backend::linearize::{post_order, Cfg, CfgInstruction};
 use crate::backend::liveness::ProgramIndex;
 use crate::constant_folding::{self, is_non_aggregate_const, FoldingContext};
-use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::interner::Interner;
 use crate::parse::{
-   AstPool, CastType, Expression, ExpressionId, ExpressionPool, ProcedureId, ProcedureNode, UnOp, UserDefinedTypeInfo,
-   VariableId,
+   AstPool, Expression, ExpressionId, ExpressionPool, ProcedureId, ProcedureNode, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::type_data::ExpressionType;
 use crate::{Program, Target};
@@ -98,18 +96,6 @@ fn propagate_vals(
          }
          Expression::UnaryOperator(UnOp::Dereference, child) => {
             propagated_const |= propagate_val_expr(*child, ast, reaching_values, false);
-         }
-         Expression::Cast {
-            cast_type: CastType::Transmute,
-            target_type,
-            expr: child,
-         } => {
-            propagated_const |= propagate_val_expr(
-               *child,
-               ast,
-               reaching_values,
-               !is_reinterpretable_transmute(ast[*child].exp_type.as_ref().unwrap(), target_type),
-            );
          }
          Expression::UnaryOperator(_, child) | Expression::Cast { expr: child, .. } => {
             propagated_const |= propagate_val_expr(*child, ast, reaching_values, is_lhs_context);

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use indexmap::IndexMap;
 use slotmap::SecondaryMap;
@@ -6,10 +6,7 @@ use wasm_encoder::ValType;
 
 use super::linearize::{post_order, Cfg, CfgInstruction};
 use super::liveness::LiveInterval;
-use crate::expression_hoisting::is_reinterpretable_transmute;
-use crate::parse::{
-   CastType, Expression, ExpressionId, ExpressionPool, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId,
-};
+use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId};
 use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
 use crate::{CompilationConfig, Program, Target};
@@ -37,7 +34,7 @@ pub fn assign_variables_to_registers_and_mem(
    config: &CompilationConfig,
    program_liveness: &SecondaryMap<ProcedureId, IndexMap<VariableId, LiveInterval>>,
 ) -> RegallocResult {
-   let mut escaping_vars = HashMap::new();
+   let mut escaping_vars = HashSet::new();
 
    let mut result = RegallocResult {
       var_to_slot: IndexMap::new(),
@@ -75,7 +72,7 @@ pub fn assign_variables_to_registers_and_mem(
 
          let sk = type_to_slot_kind(
             body.locals.get(&var).unwrap(),
-            escaping_vars.contains_key(&var),
+            escaping_vars.contains(&var),
             &program.user_defined_types,
             config.target,
          );
@@ -95,7 +92,7 @@ pub fn assign_variables_to_registers_and_mem(
                   ))
                   .or_default()
                   .push(VarSlot::Register(reg));
-            } else if escaping_vars.contains_key(&var) {
+            } else if escaping_vars.contains(&var) {
                // Pretend the var is not escaping
                let param_sk = type_to_slot_kind(
                   body.locals.get(&var).unwrap(),
@@ -129,13 +126,12 @@ pub fn assign_variables_to_registers_and_mem(
             .iter()
             .filter(|v| live_intervals.get(*v).is_none_or(|i| i.end < range.begin))
          {
-            let escaping_kind = escaping_vars.get(expired_var).copied();
-            if escaping_kind == Some(EscapingKind::MustLiveOnStackAlone) {
+            if escaping_vars.contains(expired_var) {
                continue;
             }
             let sk = type_to_slot_kind(
                body.locals.get(expired_var).unwrap(),
-               escaping_kind.is_some(),
+               false,
                &program.user_defined_types,
                config.target,
             );
@@ -148,7 +144,7 @@ pub fn assign_variables_to_registers_and_mem(
 
          let sk = type_to_slot_kind(
             body.locals.get(var).unwrap(),
-            escaping_vars.contains_key(var),
+            escaping_vars.contains(var),
             &program.user_defined_types,
             config.target,
          );
@@ -186,7 +182,7 @@ pub fn assign_variables_to_registers_and_mem(
    for global in program.non_stack_var_info.iter() {
       debug_assert!(!result.var_to_slot.contains_key(global.0));
 
-      if escaping_vars.contains_key(global.0) {
+      if escaping_vars.contains(global.0) {
          continue;
       }
 
@@ -266,13 +262,7 @@ pub fn kill_self_assignments(program: &mut Program, var_to_slot: &IndexMap<Varia
 
 // MARK: Escape Analysis
 
-#[derive(PartialEq, Clone, Copy)]
-enum EscapingKind {
-   MustLiveOnStackAlone,
-   MustLiveOnStack,
-}
-
-fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashMap<VariableId, EscapingKind>, ast: &ExpressionPool) {
+fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, ast: &ExpressionPool) {
    for bb in post_order(cfg) {
       for instr in cfg.bbs[bb].instructions.iter() {
          match instr {
@@ -289,11 +279,7 @@ fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashMap<VariableId, Esc
    }
 }
 
-fn mark_escaping_vars_expr(
-   in_expr: ExpressionId,
-   escaping_vars: &mut HashMap<VariableId, EscapingKind>,
-   ast: &ExpressionPool,
-) {
+fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<VariableId>, ast: &ExpressionPool) {
    match &ast[in_expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
          mark_escaping_vars_expr(*proc_expr, escaping_vars, ast);
@@ -318,26 +304,14 @@ fn mark_escaping_vars_expr(
       Expression::FieldAccess(_, base_expr) => {
          mark_escaping_vars_expr(*base_expr, escaping_vars, ast);
       }
-      Expression::Cast { expr, cast_type, .. } => {
+      Expression::Cast { expr, .. } => {
          mark_escaping_vars_expr(*expr, escaping_vars, ast);
-
-         if *cast_type == CastType::Transmute
-            && !is_reinterpretable_transmute(
-               ast[*expr].exp_type.as_ref().unwrap(),
-               ast[in_expr].exp_type.as_ref().unwrap(),
-            )
-         {
-            if let Expression::Variable(v) = ast[*expr].expression {
-               // Crucial here that we don't accidentally downgrade MustLiveOnStackAlone
-               escaping_vars.entry(v).or_insert(EscapingKind::MustLiveOnStack);
-            }
-         }
       }
       Expression::UnaryOperator(op, expr) => {
          mark_escaping_vars_expr(*expr, escaping_vars, ast);
          if *op == UnOp::AddressOf {
             if let Expression::Variable(v) = ast[*expr].expression {
-               escaping_vars.insert(v, EscapingKind::MustLiveOnStackAlone);
+               escaping_vars.insert(v);
             }
          }
       }
