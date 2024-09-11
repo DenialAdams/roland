@@ -10,7 +10,6 @@ use wasm_encoder::{
 use super::linearize::{post_order, Cfg, CfgInstruction, CFG_END_NODE};
 use super::regalloc::{RegallocResult, VarSlot};
 use crate::dominators::{compute_dominators, DominatorTree};
-use crate::expression_hoisting::is_reinterpretable_transmute;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureDefinition, ProcedureId, Program, UnOp,
@@ -1378,7 +1377,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             do_emit(*e_id, generation_context);
             load_mem(target_type, generation_context);
          } else {
-            debug_assert!(is_reinterpretable_transmute(e.exp_type.as_ref().unwrap(), target_type));
             do_emit_and_load_lval(*e_id, generation_context);
 
             if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Float(_))
