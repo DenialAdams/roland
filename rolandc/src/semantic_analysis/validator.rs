@@ -490,7 +490,6 @@ pub fn type_and_check_validity(
          validation_context.owned.variable_types.insert(
             parameter.name,
             VariableDetails {
-               var_type: parameter.p_type.e_type.clone(),
                used: false,
                declaration_location: parameter.location,
                kind: VariableScopeKind::Parameter,
@@ -693,7 +692,7 @@ fn type_statement_inner(
          }
 
          let vars_before = validation_context.owned.variable_types.len();
-         *var_id = declare_variable(err_manager, var, result_type.clone(), validation_context);
+         *var_id = declare_variable(err_manager, var, validation_context);
          validation_context
             .owned
             .cur_procedure_locals
@@ -946,7 +945,7 @@ fn type_statement_inner(
             ExpressionType::CompileError
          };
 
-         *var_id = declare_variable(err_manager, id, result_type.clone(), validation_context);
+         *var_id = declare_variable(err_manager, id, validation_context);
 
          if let Some(storage_kind) = storage {
             validation_context.global_info.insert(
@@ -978,7 +977,6 @@ fn type_statement_inner(
 fn declare_variable(
    err_manager: &mut ErrorManager,
    id: &StrNode,
-   var_type: ExpressionType,
    validation_context: &mut ValidationContext,
 ) -> VariableId {
    let next_var = validation_context.next_var();
@@ -993,7 +991,6 @@ fn declare_variable(
    validation_context.owned.variable_types.insert(
       id.str,
       VariableDetails {
-         var_type,
          declaration_location: id.location,
          used: false,
          kind: VariableScopeKind::Local,
@@ -1075,9 +1072,7 @@ fn type_expression(
             validation_context
                .source_to_definition
                .insert(expr_location, var_info.declaration_location);
-            validation_context.ast.expressions[expr_index].exp_type = Some(var_info.var_type.clone());
             validation_context.ast.expressions[expr_index].expression = Expression::Variable(var_info.var_id);
-            return;
          }
          None => {
             if let Some(proc_id) = validation_context.proc_name_table.get(&id.str).copied() {
@@ -2205,7 +2200,14 @@ fn get_type(
             ExpressionType::CompileError
          }
       }
-      Expression::Variable(_) | Expression::StructLiteral(_, _) | Expression::EnumLiteral(_, _) => unreachable!(),
+      Expression::Variable(var_id) => validation_context
+         .owned
+         .cur_procedure_locals
+         .get(var_id)
+         .or_else(|| validation_context.global_info.get(var_id).map(|x| &x.expr_type.e_type))
+         .cloned()
+         .unwrap(),
+      Expression::StructLiteral(_, _) | Expression::EnumLiteral(_, _) => unreachable!(),
    }
 }
 
@@ -2566,7 +2568,6 @@ pub fn check_globals(
       validation_context.owned.variable_types.insert(
          gi.1.name,
          VariableDetails {
-            var_type: gi.1.expr_type.e_type.clone(),
             declaration_location: gi.1.location,
             kind: VariableScopeKind::Global,
             used: false,

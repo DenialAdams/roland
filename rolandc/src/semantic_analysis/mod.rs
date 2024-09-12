@@ -66,7 +66,6 @@ pub enum VariableScopeKind {
 }
 
 pub struct VariableDetails {
-   pub var_type: ExpressionType,
    pub var_id: VariableId,
    pub declaration_location: SourceInfo,
    pub kind: VariableScopeKind,
