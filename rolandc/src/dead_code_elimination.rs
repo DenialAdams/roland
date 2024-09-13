@@ -42,10 +42,6 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
       }
    }
 
-   for static_expr in program.non_stack_var_info.values().filter_map(|x| x.initializer) {
-      mark_reachable_expr(static_expr, &program.ast, &mut ctx);
-   }
-
    while let Some(reachable_item) = ctx.worklist.pop() {
       match reachable_item {
          WorkItem::Procedure(reachable_proc) => {
