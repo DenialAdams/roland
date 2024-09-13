@@ -653,7 +653,7 @@ pub fn astify(
    err_manager: &mut ErrorManager,
    interner: &Interner,
    program: &mut Program,
-) -> Result<Vec<ImportNode>, ()> {
+) -> Vec<ImportNode> {
    let mut parse_context = ParseContext {
       err_manager,
       interner,
@@ -694,7 +694,7 @@ pub fn astify(
       }
    }
 
-   Ok(top.imports)
+   top.imports
 }
 
 fn extract_identifier(t: Token) -> StrId {

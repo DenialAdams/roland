@@ -10,7 +10,6 @@
 #![allow(clippy::missing_panics_doc)] // Nothing is documented
 #![allow(clippy::module_name_repetitions)] // I don't really care that much
 #![allow(clippy::new_without_default)] // I don't want dead code
-#![allow(clippy::result_unit_err)] // This is based on a notion of public that doesn't really apply for me
 #![allow(clippy::needless_bitwise_bool)] // Sometimes I just don't want branches, man
 
 mod backend;
@@ -100,7 +99,6 @@ impl Display for Target {
 
 pub enum CompilationError {
    Lex,
-   Parse,
    Semantic,
    Io,
 }
@@ -459,5 +457,5 @@ fn lex_and_parse(
    program: &mut Program,
 ) -> Result<Vec<ImportNode>, CompilationError> {
    let tokens = lex::lex(s, source_path, err_manager, interner).map_err(|()| CompilationError::Lex)?;
-   parse::astify(tokens, err_manager, interner, program).map_err(|()| CompilationError::Parse)
+   Ok(parse::astify(tokens, err_manager, interner, program))
 }
