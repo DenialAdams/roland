@@ -162,9 +162,9 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
          constant,
       } => {
          if *constant {
-            write!(pp_ctx.output, "if ")?;
-         } else {
             write!(pp_ctx.output, "when ")?;
+         } else {
+            write!(pp_ctx.output, "if ")?;
          }
          pp_expr(*cond, pp_ctx)?;
          pp_block(then, pp_ctx)?;
