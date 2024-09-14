@@ -63,6 +63,7 @@ pub fn update_expressions_to_point_to_monomorphized_procedures(
 
          if let Some(new_id) = specialized_procedures.get(&(*id, generic_args.clone())).copied() {
             *id = new_id;
+            *generic_args = Box::new([]);
          }
       }
    }
