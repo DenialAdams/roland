@@ -20,6 +20,7 @@ mod defer;
 mod disjoint_set;
 mod dominators;
 pub mod error_handling;
+mod explicit_lval_to_rval;
 mod expression_hoisting;
 mod imports;
 pub mod interner;
@@ -373,6 +374,26 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    // (introduces usize types, so run this before those are lowered)
    expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::AggregateLiteralLowering);
 
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp_before.rol").unwrap(),
+      )
+      .unwrap();
+   }
+
+   explicit_lval_to_rval::make_lval_to_rval_explicit(&mut ctx.program);
+
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp_after.rol").unwrap(),
+      )
+      .unwrap();
+   }
+
    pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target);
 
    if config.target == Target::Qbe {
@@ -425,15 +446,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       }
       backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config, &program_liveness)
    };
-
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp.rol").unwrap(),
-      )
-      .unwrap();
-   }
 
    backend::regalloc::kill_self_assignments(&mut ctx.program, &regalloc_result.var_to_slot);
 
