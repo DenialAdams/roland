@@ -54,13 +54,8 @@ fn do_expr(e: ExpressionId, ast: &mut ExpressionPool, is_lhs_context: bool) {
             do_expr(arg.expr, ast, false);
          }
       }
-      Expression::ArrayLiteral(vals) => {
-         for val in vals.iter() {
-            do_expr(*val, ast, false);
-         }
-      }
       Expression::ArrayIndex { array, index } => {
-         do_expr(*array, ast, the_expr.is_lvalue_disregard_consts(ast));
+         do_expr(*array, ast, true);
          do_expr(*index, ast, false);
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
@@ -70,13 +65,8 @@ fn do_expr(e: ExpressionId, ast: &mut ExpressionPool, is_lhs_context: bool) {
       Expression::UnaryOperator(unop, ex) => {
          deref_with_rval_child = *unop == UnOp::Dereference && !ast[*ex].expression.is_lvalue_disregard_consts(ast);
          do_expr(*ex, ast, *unop == UnOp::AddressOf || *unop == UnOp::Dereference);
-      },
-      Expression::StructLiteral(_, vals) => {
-         for val in vals.values().flatten() {
-            do_expr(*val, ast, false);
-         }
       }
-      Expression::FieldAccess(_, base) => do_expr(*base, ast, the_expr.is_lvalue_disregard_consts(ast)),
+      Expression::FieldAccess(_, base) => do_expr(*base, ast, true),
       Expression::Cast { cast_type, expr, .. } => {
          // nocheckin what to do about transmute?
          do_expr(*expr, ast, false);
@@ -94,29 +84,31 @@ fn do_expr(e: ExpressionId, ast: &mut ExpressionPool, is_lhs_context: bool) {
       | Expression::IntLiteral { .. }
       | Expression::FloatLiteral(_)
       | Expression::UnitLiteral => (),
-      Expression::UnresolvedVariable(_)
+      Expression::StructLiteral(_, _)
+      | Expression::ArrayLiteral(_)
+      | Expression::UnresolvedVariable(_)
       | Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedEnumLiteral(_, _)
       | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
    }
-   if !is_lhs_context && the_expr.is_lvalue_disregard_consts(ast) {
-      let new_child = ast.insert(ExpressionNode {
-         expression: the_expr,
-         exp_type: Some(ExpressionType::Pointer(Box::new(ast[e].exp_type.clone().unwrap()))),
-         location: expr_location,
-      });
-      the_expr = Expression::UnaryOperator(UnOp::Dereference, new_child);
+   if let Expression::UnaryOperator(UnOp::AddressOf, child_id) = the_expr {
+      ast[e].location = ast[child_id].location;
+      the_expr = std::mem::replace(&mut ast[child_id].expression, Expression::UnitLiteral);
    } else if deref_with_rval_child {
       let Expression::UnaryOperator(UnOp::Dereference, child_id) = the_expr else {
          unreachable!();
       };
       ast[e].location = ast[child_id].location;
       the_expr = std::mem::replace(&mut ast[child_id].expression, Expression::UnitLiteral);
-   } else if the_expr.is_lvalue_disregard_consts(ast) {
+   } else if is_lhs_context {
       ast[e].exp_type = Some(ExpressionType::Pointer(Box::new(ast[e].exp_type.take().unwrap())));
-   } else if let Expression::UnaryOperator(UnOp::AddressOf, child_id) = the_expr {
-      ast[e].location = ast[child_id].location;
-      the_expr = std::mem::replace(&mut ast[child_id].expression, Expression::UnitLiteral);
+   } else if the_expr.is_lvalue_disregard_consts(ast) {
+      let new_child = ast.insert(ExpressionNode {
+         expression: the_expr,
+         exp_type: Some(ExpressionType::Pointer(Box::new(ast[e].exp_type.clone().unwrap()))),
+         location: expr_location,
+      });
+      the_expr = Expression::UnaryOperator(UnOp::Dereference, new_child);
    }
    ast[e].expression = the_expr;
 }
