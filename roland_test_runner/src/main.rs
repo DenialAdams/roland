@@ -240,7 +240,7 @@ fn main() -> Result<(), &'static str> {
          }
       };
       if print_stderr && !failure.compilation_stderr.is_empty() {
-         writeln!(out_handle, "Captured stderr:\n{}", failure.compilation_stderr).unwrap();
+         writeln!(out_handle, "Captured stderr during compilation:\n{}", failure.compilation_stderr).unwrap();
       }
       writeln!(out_handle, "--------------------").unwrap();
    }
