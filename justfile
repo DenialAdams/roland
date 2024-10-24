@@ -18,6 +18,7 @@ samples:
 bump-deps:
    cargo update
    cd roland-vscode && npm update
+   cd roland_site && npm update
 scratch *args:
    cargo run {{release_flag}} --bin rolandc_cli -- scratch.rol {{args}}
    wasm2wat --no-check scratch.wasm > scratch.wat
