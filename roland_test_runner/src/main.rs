@@ -16,11 +16,11 @@ use similar_asserts::SimpleDiff;
 use wait_timeout::ChildExt;
 
 enum TestFailureReason {
-   TestingNothing(String, File),
-   ExpectedCompilationSuccess(String),
+   TestingNothing(File),
+   ExpectedCompilationSuccess,
    FailedToRunExecutable,
    MismatchedExecutionOutput(String, String),
-   MismatchedCompilationErrorOutput(String, TestDetails),
+   MismatchedCompilationErrorOutput(TestDetails),
    ExecutionTimeout,
    FailedToOpenTest,
 }
@@ -84,6 +84,12 @@ fn recursive_push_test_files(p: &Path, buf: &mut Vec<PathBuf>) {
    }
 }
 
+struct TestFailure<'a> {
+   name: &'a str,
+   reason: TestFailureReason,
+   compilation_stderr: String,
+}
+
 fn main() -> Result<(), &'static str> {
    let opts = parse_args().unwrap();
 
@@ -96,7 +102,7 @@ fn main() -> Result<(), &'static str> {
    };
 
    let successes = AtomicU64::new(0);
-   let failures = Mutex::new(Vec::new());
+   let failures: Mutex<Vec<TestFailure>> = Mutex::new(Vec::new());
    let output_lock = Mutex::new(());
 
    entries.par_iter().for_each(|entry| {
@@ -128,53 +134,54 @@ fn main() -> Result<(), &'static str> {
             writeln!(out_handle, "ok").unwrap();
             color_reset(&mut out_handle).unwrap();
          }
-         Err(reason) => {
-            failures
-               .lock()
-               .unwrap()
-               .push((entry.file_name().unwrap().to_str().unwrap(), reason));
+         Err(failure) => {
+            failures.lock().unwrap().push(failure);
          }
       }
    });
 
    let mut failures = failures.into_inner().unwrap();
 
-   for (name, ref mut reason) in failures.iter_mut() {
+   for failure in failures.iter_mut() {
       let mut out_handle = std::io::stderr().lock();
       color_reset(&mut out_handle).unwrap();
       writeln!(out_handle, "--------------------").unwrap();
-      write!(out_handle, "{}: ", name).unwrap();
+      write!(out_handle, "{}: ", failure.name).unwrap();
       bold_red(&mut out_handle).unwrap();
       writeln!(out_handle, "FAILED").unwrap();
       color_reset(&mut out_handle).unwrap();
-      match reason {
+      let print_stderr = match &mut failure.reason {
          TestFailureReason::FailedToOpenTest => {
             writeln!(out_handle, "Test file could not be opened (does it exist?)").unwrap();
+            true
          }
-         TestFailureReason::TestingNothing(actual, ref mut file) => {
+         TestFailureReason::TestingNothing(ref mut file) => {
             if !opts.overwrite_error_files {
                writeln!(out_handle, "There was no test specified for this input.").unwrap();
             }
 
             writeln!(out_handle, "\ncompilation output:").unwrap();
             writeln!(out_handle, "```").unwrap();
-            writeln!(out_handle, "{}", actual).unwrap();
+            writeln!(out_handle, "{}", failure.compilation_stderr).unwrap();
             writeln!(out_handle, "```").unwrap();
 
             if opts.overwrite_error_files {
                file.write_all(b"__END__\n").unwrap();
                file.write_all(b"compile:\n").unwrap();
-               file.write_all(actual.as_bytes()).unwrap();
+               file.write_all(failure.compilation_stderr.as_bytes()).unwrap();
                let current_position = file.stream_position().unwrap();
                file.set_len(current_position).unwrap();
                writeln!(out_handle, "Created test compilation error output.").unwrap();
             }
+
+            false
          }
-         TestFailureReason::ExpectedCompilationSuccess(err_out) => {
+         TestFailureReason::ExpectedCompilationSuccess => {
             writeln!(out_handle, "Compilation was supposed to succeed, but it failed:").unwrap();
             writeln!(out_handle, "```").unwrap();
-            writeln!(out_handle, "{}", err_out).unwrap();
+            writeln!(out_handle, "{}", failure.compilation_stderr).unwrap();
             writeln!(out_handle, "```").unwrap();
+            false
          }
          TestFailureReason::FailedToRunExecutable => {
             writeln!(
@@ -182,9 +189,11 @@ fn main() -> Result<(), &'static str> {
                "Compilation seemingly succeeded, but the executable failed to run. Is wasmtime installed?"
             )
             .unwrap();
+            true
          }
          TestFailureReason::ExecutionTimeout => {
             writeln!(out_handle, "Compiled OK, but the executable failed to terminate.").unwrap();
+            true
          }
          TestFailureReason::MismatchedExecutionOutput(expected, actual) => {
             writeln!(
@@ -193,12 +202,16 @@ fn main() -> Result<(), &'static str> {
             )
             .unwrap();
             print_diff(&mut out_handle, expected, actual);
+            true
          }
-         TestFailureReason::MismatchedCompilationErrorOutput(actual, ref mut test_details) => {
+         TestFailureReason::MismatchedCompilationErrorOutput(ref mut test_details) => {
             if opts.overwrite_error_files {
                // file should have been sunk to the correct point
                test_details.file.write_all(b"compile:\n").unwrap();
-               test_details.file.write_all(actual.as_bytes()).unwrap();
+               test_details
+                  .file
+                  .write_all(failure.compilation_stderr.as_bytes())
+                  .unwrap();
                if let Some(r) = test_details.result.run_output.as_ref() {
                   test_details.file.write_all(b"\nrun:\n").unwrap();
                   test_details.file.write_all(r.as_bytes()).unwrap();
@@ -208,7 +221,7 @@ fn main() -> Result<(), &'static str> {
                print_diff(
                   &mut out_handle,
                   test_details.result.compile_output.as_ref().map_or("", |x| x.as_str()),
-                  actual,
+                  &failure.compilation_stderr,
                );
                writeln!(out_handle, "Updated test compilation error output.").unwrap();
             } else {
@@ -220,10 +233,14 @@ fn main() -> Result<(), &'static str> {
                print_diff(
                   &mut out_handle,
                   test_details.result.compile_output.as_ref().map_or("", |x| x.as_str()),
-                  actual,
+                  &failure.compilation_stderr,
                );
             }
+            false
          }
+      };
+      if print_stderr && !failure.compilation_stderr.is_empty() {
+         writeln!(out_handle, "Captured stderr:\n{}", failure.compilation_stderr).unwrap();
       }
       writeln!(out_handle, "--------------------").unwrap();
    }
@@ -256,18 +273,28 @@ fn print_diff<W: Write>(t: &mut W, expected: &str, actual: &str) {
    writeln!(t, "{}", SimpleDiff::from_str(expected, actual, "expected", "actual")).unwrap();
 }
 
-fn test_result(
+fn test_result<'a>(
    tc_output: &Output,
-   t_file_path: &Path,
+   t_file_path: &'a Path,
    amd64: bool,
    preserve_artifacts: bool,
-) -> Result<(), TestFailureReason> {
-   let td = extract_test_data(t_file_path, amd64).map_err(|_| TestFailureReason::FailedToOpenTest)?;
-
+) -> Result<(), TestFailure<'a>> {
    let stderr_text = String::from_utf8_lossy(&tc_output.stderr);
 
+   let Ok(td) = extract_test_data(t_file_path, amd64) else {
+      return Err(TestFailure {
+         name: t_file_path.file_name().unwrap().to_str().unwrap(),
+         reason: TestFailureReason::FailedToOpenTest,
+         compilation_stderr: stderr_text.into_owned(),
+      });
+   };
+
    if td.result.compile_output.is_none() && td.result.run_output.is_none() {
-      return Err(TestFailureReason::TestingNothing(stderr_text.into_owned(), td.file));
+      return Err(TestFailure {
+         name: t_file_path.file_name().unwrap().to_str().unwrap(),
+         reason: TestFailureReason::TestingNothing(td.file),
+         compilation_stderr: stderr_text.into_owned(),
+      });
    }
 
    if tc_output.status.success() {
@@ -277,10 +304,11 @@ fn test_result(
          .as_ref()
          .map_or(false, |x| x.as_str() != stderr_text)
       {
-         return Err(TestFailureReason::MismatchedCompilationErrorOutput(
-            stderr_text.into_owned(),
-            td,
-         ));
+         return Err(TestFailure {
+            name: t_file_path.file_name().unwrap().to_str().unwrap(),
+            reason: TestFailureReason::MismatchedCompilationErrorOutput(td),
+            compilation_stderr: stderr_text.into_owned(),
+         });
       }
 
       let ero = td.result.run_output.unwrap_or_else(String::new);
@@ -313,7 +341,11 @@ fn test_result(
             let handle = match prog_command.spawn() {
                Ok(v) => v,
                Err(_) => {
-                  return Err(TestFailureReason::FailedToRunExecutable);
+                  return Err(TestFailure {
+                     name: t_file_path.file_name().unwrap().to_str().unwrap(),
+                     reason: TestFailureReason::FailedToRunExecutable,
+                     compilation_stderr: stderr_text.into_owned(),
+                  });
                }
             };
             (handle, prog_output_stream)
@@ -322,7 +354,11 @@ fn test_result(
             Some(_status) => (),
             None => {
                handle.kill().unwrap();
-               return Err(TestFailureReason::ExecutionTimeout);
+               return Err(TestFailure {
+                  name: t_file_path.file_name().unwrap().to_str().unwrap(),
+                  reason: TestFailureReason::ExecutionTimeout,
+                  compilation_stderr: stderr_text.into_owned(),
+               });
             }
          };
          let mut prog_output: Vec<u8> = Vec::new();
@@ -331,7 +367,11 @@ fn test_result(
       };
 
       if prog_output != ero {
-         return Err(TestFailureReason::MismatchedExecutionOutput(ero, prog_output));
+         return Err(TestFailure {
+            name: t_file_path.file_name().unwrap().to_str().unwrap(),
+            reason: TestFailureReason::MismatchedExecutionOutput(ero, prog_output),
+            compilation_stderr: stderr_text.into_owned(),
+         });
       }
 
       if preserve_artifacts && !amd64 {
@@ -367,17 +407,22 @@ fn test_result(
          std::fs::remove_file(&prog_path).unwrap();
       }
    } else if td.result.run_output.is_some() {
-      return Err(TestFailureReason::ExpectedCompilationSuccess(stderr_text.into_owned()));
+      return Err(TestFailure {
+         name: t_file_path.file_name().unwrap().to_str().unwrap(),
+         reason: TestFailureReason::ExpectedCompilationSuccess,
+         compilation_stderr: stderr_text.into_owned(),
+      });
    } else if td
       .result
       .compile_output
       .as_ref()
       .map_or(false, |x| x.as_str() != stderr_text)
    {
-      return Err(TestFailureReason::MismatchedCompilationErrorOutput(
-         stderr_text.into_owned(),
-         td,
-      ));
+      return Err(TestFailure {
+         name: t_file_path.file_name().unwrap().to_str().unwrap(),
+         reason: TestFailureReason::MismatchedCompilationErrorOutput(td),
+         compilation_stderr: stderr_text.into_owned(),
+      });
    }
 
    Ok(())
