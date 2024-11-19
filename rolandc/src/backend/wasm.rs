@@ -137,7 +137,7 @@ struct TypeManager<'a> {
    type_section: TypeSection,
 }
 
-impl<'u> TypeManager<'u> {
+impl TypeManager<'_> {
    fn new(udt: &UserDefinedTypeInfo, target: Target) -> TypeManager {
       TypeManager {
          udt,

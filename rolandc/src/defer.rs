@@ -194,7 +194,7 @@ struct VarMigrator<'a> {
    local_types: &'a mut IndexMap<VariableId, ExpressionType>,
 }
 
-impl<'a> VarMigrator<'a> {
+impl VarMigrator<'_> {
    fn new_var(&mut self, old_var: VariableId) -> VariableId {
       if let Some(existing_local_type) = self.local_types.get(&old_var) {
          let new_var = std::mem::replace(self.next_var, self.next_var.next());

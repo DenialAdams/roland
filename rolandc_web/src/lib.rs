@@ -3,17 +3,17 @@
 #![allow(clippy::missing_panics_doc)] // We don't have any documentation
 #![allow(clippy::missing_errors_doc)] // We don't have any documentation
 
+use std::sync::Mutex;
+
 use rolandc::{CompilationContext, FileResolver};
 use wasm_bindgen::prelude::*;
 
-static mut COMPILATION_CTX: Option<CompilationContext> = None;
+static COMPILATION_CTX: Mutex<Option<CompilationContext>> = Mutex::new(None);
 
 #[wasm_bindgen(start)]
 pub fn start() {
    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-   unsafe {
-      COMPILATION_CTX = Some(CompilationContext::new());
-   }
+   *COMPILATION_CTX.lock().unwrap() = Some(CompilationContext::new());
 }
 
 struct PlaygroundFileResolver;
@@ -26,7 +26,8 @@ impl<'a> FileResolver<'a> for PlaygroundFileResolver {
 
 #[wasm_bindgen]
 pub fn compile_wasm4(source_code: &str) -> Result<Vec<u8>, String> {
-   let ctx = unsafe { COMPILATION_CTX.as_mut().unwrap() };
+   let mut lock = COMPILATION_CTX.lock().unwrap();
+   let ctx = lock.as_mut().unwrap();
 
    let mut err_out = Vec::new();
 
@@ -69,7 +70,8 @@ impl CompilationOutput {
 #[wasm_bindgen]
 #[must_use]
 pub fn compile_and_update_all(source_code: &str) -> Option<CompilationOutput> {
-   let ctx = unsafe { COMPILATION_CTX.as_mut().unwrap() };
+   let mut lock = COMPILATION_CTX.lock().unwrap();
+   let ctx = lock.as_mut().unwrap();
    let window = web_sys::window().unwrap();
    let document = window.document().unwrap();
    let output_frame = document.get_element_by_id("out_frame").unwrap();
