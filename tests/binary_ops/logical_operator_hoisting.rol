@@ -26,6 +26,11 @@ proc b() -> S {
     };
 }
 __END__
+compile:
+Local variable `y` is unused
+↳ line 7, column 9 [tests/binary_ops/logical_operator_hoisting.rol]
+Local variable `z` is unused
+↳ line 8, column 9 [tests/binary_ops/logical_operator_hoisting.rol]
 run:
 a
 c

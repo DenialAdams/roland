@@ -10,5 +10,8 @@ proc main() {
    println("ok");
 }
 __END__
+compile:
+Local variable `z` is unused
+↳ line 9, column 8 [tests/structs/constant_struct_literal_virtual_var_bug.rol]
 run:
 ok

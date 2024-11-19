@@ -10,6 +10,11 @@ proc main() {
    foo(println("first"), S { f: println("second") });
 }
 __END__
+compile:
+Parameter `first` is unused
+↳ line 5, column 10 [tests/side_effects_call_with_agg_literal.rol]
+Parameter `a` is unused
+↳ line 5, column 23 [tests/side_effects_call_with_agg_literal.rol]
 run:
 first
 second

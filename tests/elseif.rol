@@ -8,5 +8,10 @@ proc main() {
    }
 }
 __END__
+compile:
+This condition will always be true
+↳ line 4, column 14 [tests/elseif.rol]
+This condition will always be false
+↳ line 2, column 7 [tests/elseif.rol]
 run:
 good!

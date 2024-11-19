@@ -6,4 +6,9 @@ proc main() {
    let foo: u16 = x[0]; // t1 == u16
 }
 __END__
+compile:
+Local variable `blarg` is unused
+↳ line 5, column 8 [tests/inference/array_type_inference_2.rol]
+Local variable `foo` is unused
+↳ line 6, column 8 [tests/inference/array_type_inference_2.rol]
 run:

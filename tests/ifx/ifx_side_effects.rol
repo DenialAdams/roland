@@ -39,6 +39,17 @@ proc e() -> bool {
    return false;
 }
 __END__
+compile:
+The result of this expression is not consumed
+↳ line 7, column 4 [tests/ifx/ifx_side_effects.rol]
+The result of this expression is not consumed
+↳ line 8, column 4 [tests/ifx/ifx_side_effects.rol]
+This condition will always be true
+↳ line 10, column 8 [tests/ifx/ifx_side_effects.rol]
+The result of this expression is not consumed
+↳ line 10, column 4 [tests/ifx/ifx_side_effects.rol]
+The result of this expression is not consumed
+↳ line 13, column 4 [tests/ifx/ifx_side_effects.rol]
 run:
 a
 b

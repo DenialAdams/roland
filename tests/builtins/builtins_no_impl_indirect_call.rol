@@ -5,4 +5,9 @@ proc main() {
    a();
 }
 __END__
+compile:
+The result of this expression is not consumed
+↳ line 4, column 4 [tests/builtins/builtins_no_impl_indirect_call.rol]
+The result of this expression is not consumed
+↳ line 5, column 4 [tests/builtins/builtins_no_impl_indirect_call.rol]
 run:

@@ -16,6 +16,9 @@ proc main() {
    println_bool(Y[1].baz == 22);
 }
 __END__
+compile:
+Local variable `z` is unused
+↳ line 10, column 8 [tests/variables/statics/static_struct_literal_padding.rol]
 run:
 true
 true

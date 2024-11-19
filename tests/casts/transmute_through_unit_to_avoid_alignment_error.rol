@@ -5,5 +5,10 @@ proc main() {
    println("OK");
 }
 __END__
+compile:
+Local variable `a` is unused
+↳ line 2, column 8 [tests/casts/transmute_through_unit_to_avoid_alignment_error.rol]
+Local variable `c` is unused
+↳ line 4, column 8 [tests/casts/transmute_through_unit_to_avoid_alignment_error.rol]
 run:
 OK

@@ -7,4 +7,7 @@ proc main() {
     let x: Foo = ___;
 }
 __END__
+compile:
+Local variable `x` is unused
+↳ line 7, column 9 [tests/enums/enum_no_variants_with_base.rol]
 run:

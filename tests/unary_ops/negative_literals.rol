@@ -3,5 +3,8 @@ proc main() {
    println("ok");
 }
 __END__
+compile:
+Local variable `x` is unused
+↳ line 2, column 8 [tests/unary_ops/negative_literals.rol]
 run:
 ok

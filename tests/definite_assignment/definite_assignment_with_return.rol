@@ -16,4 +16,15 @@ proc main() {
     }
 }
 __END__
+compile:
+This condition will always be true
+↳ line 10, column 19 [tests/definite_assignment/definite_assignment_with_return.rol]
+This condition will always be true
+↳ line 8, column 19 [tests/definite_assignment/definite_assignment_with_return.rol]
+This condition will always be true
+↳ line 6, column 19 [tests/definite_assignment/definite_assignment_with_return.rol]
+This condition will always be true
+↳ line 4, column 12 [tests/definite_assignment/definite_assignment_with_return.rol]
+The result of this expression is not consumed
+↳ line 15, column 9 [tests/definite_assignment/definite_assignment_with_return.rol]
 run:

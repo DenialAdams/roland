@@ -9,5 +9,8 @@ proc main() {
 proc foo(x: u8) {
 }
 __END__
+compile:
+Parameter `x` is unused
+↳ line 9, column 10 [tests/never/never_assignment_compatibility.rol]
 run:
 OK

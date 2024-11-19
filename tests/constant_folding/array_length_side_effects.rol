@@ -28,6 +28,9 @@ proc disarmMissiles() -> u8 {
    return 10;
 }
 __END__
+compile:
+Parameter `x` is unused
+↳ line 21, column 10 [tests/constant_folding/array_length_side_effects.rol]
 run:
 disarmed
 true

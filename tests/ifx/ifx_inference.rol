@@ -7,4 +7,13 @@ proc main () {
    let val_nested_swap = ifx true ifx true 11 else 10 else x;
 }
 __END__
+compile:
+Local variable `val` is unused
+↳ line 3, column 8 [tests/ifx/ifx_inference.rol]
+Local variable `other_val` is unused
+↳ line 4, column 8 [tests/ifx/ifx_inference.rol]
+Local variable `val_nested` is unused
+↳ line 6, column 8 [tests/ifx/ifx_inference.rol]
+Local variable `val_nested_swap` is unused
+↳ line 7, column 8 [tests/ifx/ifx_inference.rol]
 run:

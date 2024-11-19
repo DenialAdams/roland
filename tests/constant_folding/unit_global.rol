@@ -4,4 +4,7 @@ proc main() {
    G;
 }
 __END__
+compile:
+The result of this expression is not consumed
+↳ line 4, column 4 [tests/constant_folding/unit_global.rol]
 run:

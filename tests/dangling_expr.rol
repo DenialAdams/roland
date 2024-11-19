@@ -8,5 +8,8 @@ proc a() -> u8 {
    return 10;
 }
 __END__
+compile:
+The result of this expression is not consumed
+↳ line 6, column 4 [tests/dangling_expr.rol]
 run:
 hello

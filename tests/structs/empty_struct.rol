@@ -6,5 +6,8 @@ proc main() {
    println_bool(true);
 }
 __END__
+compile:
+Local variable `empty_thing` is unused
+↳ line 5, column 8 [tests/structs/empty_struct.rol]
 run:
 true

@@ -6,4 +6,9 @@ proc main() {
    let c: u64 = a;
 }
 __END__
+compile:
+Local variable `b` is unused
+↳ line 5, column 8 [tests/unary_ops/addressof_unknown_size.rol]
+Local variable `c` is unused
+↳ line 6, column 8 [tests/unary_ops/addressof_unknown_size.rol]
 run:

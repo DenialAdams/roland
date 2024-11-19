@@ -8,5 +8,8 @@ proc foo(x: Empty, y: u32) -> String {
    return uint_to_string(y as u64);
 }
 __END__
+compile:
+Parameter `x` is unused
+↳ line 7, column 10 [tests/zst_aggregate_parameter.rol]
 run:
 10

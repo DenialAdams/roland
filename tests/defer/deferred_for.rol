@@ -19,6 +19,9 @@ proc main() {
     c();
 }
 __END__
+compile:
+Local variable `x` is unused
+↳ line 16, column 15 [tests/defer/deferred_for.rol]
 run:
 c
 a

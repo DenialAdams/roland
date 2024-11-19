@@ -12,4 +12,11 @@ proc main() {
     x;
 }
 __END__
+compile:
+This condition will always be true
+↳ line 6, column 12 [tests/definite_assignment/conditional_assign_definitely_assigned.rol]
+This condition will always be true
+↳ line 3, column 8 [tests/definite_assignment/conditional_assign_definitely_assigned.rol]
+The result of this expression is not consumed
+↳ line 12, column 5 [tests/definite_assignment/conditional_assign_definitely_assigned.rol]
 run:

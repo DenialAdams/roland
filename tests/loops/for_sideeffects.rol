@@ -13,6 +13,9 @@ proc main() {
    }
 }
 __END__
+compile:
+Local variable `i` is unused
+↳ line 11, column 8 [tests/loops/for_sideeffects.rol]
 run:
 Start expr
 End expr

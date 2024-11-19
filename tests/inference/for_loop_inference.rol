@@ -5,5 +5,8 @@ proc main() {
    println("OK");
 }
 __END__
+compile:
+Local variable `x` is unused
+↳ line 3, column 10 [tests/inference/for_loop_inference.rol]
 run:
 OK

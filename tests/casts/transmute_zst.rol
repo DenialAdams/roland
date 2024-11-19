@@ -4,4 +4,7 @@ proc main() {
 	let x: Bar = unit() transmute Bar;
 }
 __END__
+compile:
+Local variable `x` is unused
+↳ line 4, column 6 [tests/casts/transmute_zst.rol]
 run:

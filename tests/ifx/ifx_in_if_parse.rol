@@ -17,4 +17,7 @@ proc main() {
    }
 }
 __END__
+compile:
+The result of this expression is not consumed
+↳ line 7, column 4 [tests/ifx/ifx_in_if_parse.rol]
 run:

@@ -4,4 +4,7 @@ proc main() {
    let z: u8 = y + 1;
 }
 __END__
+compile:
+Local variable `z` is unused
+↳ line 4, column 8 [tests/inference/array_type_inference_3.rol]
 run:

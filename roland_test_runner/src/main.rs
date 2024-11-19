@@ -61,6 +61,10 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
    Ok(opts)
 }
 
+fn bold_yellow<W: Write>(w: &mut W) -> std::io::Result<()> {
+   write!(w, "\x1b[1;33m")
+}
+
 fn bold_green<W: Write>(w: &mut W) -> std::io::Result<()> {
    write!(w, "\x1b[1;32m")
 }
@@ -90,6 +94,19 @@ struct TestFailure<'a> {
    compilation_stderr: String,
 }
 
+struct TestSuccess<'a> {
+   name: &'a str,
+   compilation_stderr: String,
+}
+
+fn report_success(out_handle: &mut std::io::StdoutLock<'_>, name: &str) {
+   color_reset(out_handle).unwrap();
+   write!(out_handle, "{}: ", name).unwrap();
+   bold_green(out_handle).unwrap();
+   writeln!(out_handle, "ok").unwrap();
+   color_reset(out_handle).unwrap();
+}
+
 fn main() -> Result<(), &'static str> {
    let opts = parse_args().unwrap();
 
@@ -101,7 +118,8 @@ fn main() -> Result<(), &'static str> {
       vec![opts.test_path]
    };
 
-   let successes = AtomicU64::new(0);
+   let num_successes = AtomicU64::new(0);
+   let successes_with_dribble: Mutex<Vec<TestSuccess>> = Mutex::new(Vec::new());
    let failures: Mutex<Vec<TestFailure>> = Mutex::new(Vec::new());
    let output_lock = Mutex::new(());
 
@@ -125,14 +143,16 @@ fn main() -> Result<(), &'static str> {
       // prevents stdout and stderr from mixing
       let _ol = output_lock.lock();
       match test_ok {
-         Ok(()) => {
-            successes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+         Ok(captured_stderr_minus_expected) if captured_stderr_minus_expected.is_empty() => {
+            num_successes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let mut out_handle = std::io::stdout().lock();
-            color_reset(&mut out_handle).unwrap();
-            write!(out_handle, "{}: ", entry.file_name().unwrap().to_str().unwrap()).unwrap();
-            bold_green(&mut out_handle).unwrap();
-            writeln!(out_handle, "ok").unwrap();
-            color_reset(&mut out_handle).unwrap();
+            report_success(&mut out_handle, entry.file_name().unwrap().to_str().unwrap());
+         }
+         Ok(captured_stderr_minus_expected) => {
+            successes_with_dribble.lock().unwrap().push(TestSuccess {
+               name: entry.file_name().unwrap().to_str().unwrap(),
+               compilation_stderr: captured_stderr_minus_expected,
+            });
          }
          Err(failure) => {
             failures.lock().unwrap().push(failure);
@@ -140,8 +160,19 @@ fn main() -> Result<(), &'static str> {
       }
    });
 
-   let mut failures = failures.into_inner().unwrap();
+   let successes_with_dribble = successes_with_dribble.into_inner().unwrap();
+   for success_with_dribble in successes_with_dribble.iter() {
+      let mut out_handle = std::io::stdout().lock();
+      report_success(&mut out_handle, success_with_dribble.name);
+      writeln!(
+         out_handle,
+         "Captured stderr during compilation (excluding expected):\n{}",
+         success_with_dribble.compilation_stderr,
+      )
+      .unwrap();
+   }
 
+   let mut failures = failures.into_inner().unwrap();
    for failure in failures.iter_mut() {
       let mut out_handle = std::io::stderr().lock();
       color_reset(&mut out_handle).unwrap();
@@ -250,7 +281,8 @@ fn main() -> Result<(), &'static str> {
       writeln!(out_handle, "--------------------").unwrap();
    }
 
-   let num_successes = successes.load(Ordering::Relaxed);
+   let num_successes = num_successes.load(Ordering::Relaxed);
+   let num_successes_with_dribble = successes_with_dribble.len();
    let num_failures = failures.len();
 
    let mut out_handle = std::io::stdout().lock();
@@ -262,6 +294,16 @@ fn main() -> Result<(), &'static str> {
       write!(out_handle, "success, ").unwrap();
    } else {
       write!(out_handle, "successes, ").unwrap();
+   }
+   if num_successes_with_dribble > 0 {
+      bold_yellow(&mut out_handle).unwrap();
+      write!(out_handle, "{} ", num_successes_with_dribble).unwrap();
+      color_reset(&mut out_handle).unwrap();
+      if num_successes_with_dribble == 1 {
+         write!(out_handle, "success with unexpected output, ").unwrap();
+      } else {
+         write!(out_handle, "successes with unexpected output, ").unwrap();
+      }
    }
    bold_red(&mut out_handle).unwrap();
    write!(out_handle, "{} ", num_failures).unwrap();
@@ -283,7 +325,7 @@ fn test_result<'a>(
    t_file_path: &'a Path,
    amd64: bool,
    preserve_artifacts: bool,
-) -> Result<(), TestFailure<'a>> {
+) -> Result<String, TestFailure<'a>> {
    let stderr_text = String::from_utf8_lossy(&tc_output.stderr);
 
    let Ok(td) = extract_test_data(t_file_path, amd64) else {
@@ -430,7 +472,7 @@ fn test_result<'a>(
       });
    }
 
-   Ok(())
+   Ok(stderr_text.strip_prefix(td.result.compile_output.as_deref().unwrap_or("")).unwrap_or("").to_string())
 }
 
 struct TestDetails {

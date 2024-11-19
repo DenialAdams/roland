@@ -4,5 +4,8 @@ proc main() {
    println("ok");
 }
 __END__
+compile:
+Local variable `y` is unused
+↳ line 3, column 8 [tests/pointers/pointer_assign_infer.rol]
 run:
 ok

@@ -51,5 +51,14 @@ proc f() -> bool {
     }
 }
 __END__
+compile:
+This condition will always be true
+↳ line 30, column 8 [tests/return/various_allowed_returns.rol]
+This condition will always be false
+↳ line 47, column 15 [tests/return/various_allowed_returns.rol]
+This condition will always be false
+↳ line 41, column 15 [tests/return/various_allowed_returns.rol]
+This condition will always be false
+↳ line 39, column 8 [tests/return/various_allowed_returns.rol]
 run:
 ok

@@ -12,5 +12,14 @@ proc main() {
    println("ok");
 }
 __END__
+compile:
+Local variable `y` is unused
+↳ line 4, column 11 [tests/casts/pointer_size_extend_truncate.rol]
+Local variable `z` is unused
+↳ line 5, column 11 [tests/casts/pointer_size_extend_truncate.rol]
+Local variable `y` is unused
+↳ line 9, column 11 [tests/casts/pointer_size_extend_truncate.rol]
+Local variable `z` is unused
+↳ line 10, column 11 [tests/casts/pointer_size_extend_truncate.rol]
 run:
 ok

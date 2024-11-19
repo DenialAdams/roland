@@ -5,5 +5,10 @@ proc main() {
    println("Compiled succesfully");
 }
 __END__
+compile:
+Local variable `y` is unused
+↳ line 3, column 8 [tests/inference/numeric_inference.rol]
+Local variable `z` is unused
+↳ line 4, column 8 [tests/inference/numeric_inference.rol]
 run:
 Compiled succesfully

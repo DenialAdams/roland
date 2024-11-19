@@ -12,4 +12,9 @@ proc main() {
     assert(A.bar == 0);
 }
 __END__
+compile:
+The result of this expression is not consumed
+↳ line 10, column 5 [tests/structs/struct_uninitialized_fields.rol]
+The result of this expression is not consumed
+↳ line 11, column 5 [tests/structs/struct_uninitialized_fields.rol]
 run:

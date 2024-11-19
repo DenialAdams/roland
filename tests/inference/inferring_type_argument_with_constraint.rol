@@ -8,4 +8,7 @@ proc foo<T>(x: T) -> T where T: Float {
    return x + x;
 }
 __END__
+compile:
+Local variable `y` is unused
+↳ line 4, column 8 [tests/inference/inferring_type_argument_with_constraint.rol]
 run:

@@ -27,6 +27,9 @@ proc main() {
    };
 }
 __END__
+compile:
+The result of this expression is not consumed
+↳ line 23, column 4 [tests/structs/top_to_bottom_argument_evaluation_struct.rol]
 run:
 z
 x

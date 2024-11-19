@@ -17,5 +17,10 @@ proc main() {
    println("OK");
 }
 __END__
+compile:
+The result of this expression is not consumed
+↳ line 14, column 4 [tests/inference/inference_bug.rol]
+The result of this expression is not consumed
+↳ line 16, column 4 [tests/inference/inference_bug.rol]
 run:
 OK

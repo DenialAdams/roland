@@ -9,5 +9,8 @@ proc foo(x: unit) {
 
 }
 __END__
+compile:
+Parameter `x` is unused
+↳ line 8, column 10 [tests/procedures/unit_assignment_param.rol]
 run:
 hello

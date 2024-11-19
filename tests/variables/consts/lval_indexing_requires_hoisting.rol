@@ -5,4 +5,7 @@ proc main() {
    let y = ARR[x];
 }
 __END__
+compile:
+Local variable `y` is unused
+↳ line 5, column 8 [tests/variables/consts/lval_indexing_requires_hoisting.rol]
 run:

@@ -9,5 +9,8 @@ proc a() -> unit {
    println("never reached");
 }
 __END__
+compile:
+Local variable `x` is unused
+↳ line 7, column 8 [tests/return/void_return.rol]
 run:
 finished

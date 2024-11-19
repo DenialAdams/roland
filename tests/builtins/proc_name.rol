@@ -8,6 +8,9 @@ proc foo<T>(x: T) {
     println(proc_name());
 }
 __END__
+compile:
+Parameter `x` is unused
+↳ line 6, column 13 [tests/builtins/proc_name.rol]
 run:
 main
 foo
