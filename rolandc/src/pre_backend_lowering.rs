@@ -3,7 +3,10 @@ use slotmap::SlotMap;
 use crate::backend::linearize::CfgInstruction;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
-use crate::parse::{ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, Program, UnOp};
+use crate::parse::{
+   ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, UnOp,
+   UserDefinedTypeInfo,
+};
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::sizeof_type_mem;
 use crate::source_info::SourceInfo;
@@ -44,14 +47,10 @@ fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInf
    }
 }
 
-fn lower_single_expression(
-   expression_node: &mut ExpressionNode,
-   enum_info: &SlotMap<EnumId, EnumInfo>,
-   target: Target,
-) {
-   match &mut expression_node.expression {
+fn lower_single_expression(e: ExpressionId, udt: &UserDefinedTypeInfo, target: Target, ast: &mut ExpressionPool) {
+   match &mut ast[e].expression {
       Expression::EnumLiteral(a, b) => {
-         let ei = enum_info.get(*a).unwrap();
+         let ei = udt.enum_info.get(*a).unwrap();
          let replacement_expr = match ei.base_type {
             ExpressionType::Unit => Expression::UnitLiteral,
             ExpressionType::Int(_) => {
@@ -63,29 +62,112 @@ fn lower_single_expression(
             }
             _ => unreachable!(),
          };
-         expression_node.expression = replacement_expr;
+         ast[e].expression = replacement_expr;
+      }
+      Expression::FieldAccess(f, base) => {
+         let f = *f;
+         let base = *base;
+         let mem_offset = match ast[base].exp_type.as_ref().unwrap().get_type_or_type_being_pointed_to() {
+            ExpressionType::Struct(s, _) => udt
+               .struct_info
+               .get(*s)
+               .unwrap()
+               .size
+               .as_ref()
+               .unwrap()
+               .field_offsets_mem
+               .get(&f)
+               .copied()
+               .unwrap(),
+            ExpressionType::Union(_, _) => 0,
+            _ => unreachable!(),
+         };
+         let offset_node = ast.insert(ExpressionNode {
+            exp_type: Some(ExpressionType::Int(IntType {
+               signed: false,
+               width: target.lowered_ptr_width(),
+            })),
+            expression: Expression::IntLiteral {
+               val: u64::from(mem_offset),
+               synthetic: true,
+            },
+            location: ast[e].location,
+         });
+         ast[e].expression = Expression::BinaryOperator {
+            operator: BinOp::Add,
+            lhs: base,
+            rhs: offset_node,
+         };
+      }
+      Expression::ArrayIndex { array, index } => {
+         let array = *array;
+         let index = *index;
+         let sizeof_inner = match ast[array]
+            .exp_type
+            .as_ref()
+            .unwrap()
+            .get_type_or_type_being_pointed_to()
+         {
+            ExpressionType::Array(x, _) => sizeof_type_mem(x, udt, target),
+            _ => unreachable!(),
+         };
+         let sizeof_literal_node = ast.insert(ExpressionNode {
+            exp_type: Some(ExpressionType::Int(IntType {
+               signed: false,
+               width: target.lowered_ptr_width(),
+            })),
+            expression: Expression::IntLiteral {
+               val: u64::from(sizeof_inner),
+               synthetic: true,
+            },
+            location: ast[e].location,
+         });
+         let mul_node = ast.insert(ExpressionNode {
+            exp_type: Some(ExpressionType::Int(IntType {
+               signed: false,
+               width: target.lowered_ptr_width(),
+            })),
+            expression: Expression::BinaryOperator {
+               operator: BinOp::Multiply,
+               lhs: sizeof_literal_node,
+               rhs: index,
+            },
+            location: ast[e].location,
+         });
+         ast[e].expression = Expression::BinaryOperator {
+            operator: BinOp::Add,
+            lhs: array,
+            rhs: mul_node,
+         };
       }
       Expression::Cast {
          cast_type: _,
          target_type,
          expr: _,
       } => {
-         lower_type(target_type, enum_info, target);
+         lower_type(target_type, &udt.enum_info, target);
       }
       Expression::BoundFcnLiteral(_, generic_args) => {
          for g_arg in generic_args.iter_mut() {
-            lower_type(&mut g_arg.e_type, enum_info, target);
+            lower_type(&mut g_arg.e_type, &udt.enum_info, target);
          }
       }
       _ => (),
    }
-
-   lower_type(expression_node.exp_type.as_mut().unwrap(), enum_info, target);
 }
 
 pub fn lower_enums_and_pointers(program: &mut Program, target: Target) {
+   let expression_ids: Vec<ExpressionId> = program.ast.expressions.keys().collect();
+   for e in expression_ids {
+      lower_single_expression(e, &program.user_defined_types, target, &mut program.ast.expressions);
+   }
+
    for e in program.ast.expressions.values_mut() {
-      lower_single_expression(e, &program.user_defined_types.enum_info, target);
+      lower_type(
+         e.exp_type.as_mut().unwrap(),
+         &program.user_defined_types.enum_info,
+         target,
+      );
    }
 
    for struct_info in program.user_defined_types.struct_info.values_mut() {
@@ -350,8 +432,8 @@ pub fn kill_zst_assignments(program: &mut Program, target: Target) {
             .drain(..)
             .flat_map(|x| match x {
                CfgInstruction::Assignment(lhs, rhs) => {
-                  let lhs_t = program.ast.expressions[lhs].exp_type.as_ref().unwrap();
-                  if sizeof_type_mem(lhs_t, &program.user_defined_types, target) == 0 {
+                  let rhs_t = program.ast.expressions[rhs].exp_type.as_ref().unwrap();
+                  if sizeof_type_mem(rhs_t, &program.user_defined_types, target) == 0 {
                      let lhs_se = expression_could_have_side_effects(lhs, &program.ast.expressions);
                      let rhs_se = expression_could_have_side_effects(rhs, &program.ast.expressions);
                      [

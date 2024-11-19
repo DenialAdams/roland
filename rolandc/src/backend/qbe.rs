@@ -465,48 +465,6 @@ function $_start() {
 
 fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<String> {
    match ctx.ast.expressions[expr].expression {
-      Expression::FieldAccess(field, base) => {
-         let base_mem = compute_offset(base, ctx).unwrap();
-         match ctx.ast.expressions[base].exp_type.as_ref().unwrap() {
-            ExpressionType::Struct(sid, _) => {
-               let offset = ctx
-                  .udt
-                  .struct_info
-                  .get(*sid)
-                  .unwrap()
-                  .size
-                  .as_ref()
-                  .unwrap()
-                  .field_offsets_mem
-                  .get(&field)
-                  .unwrap();
-               if *offset == 0 {
-                  return Some(base_mem);
-               }
-               let at = ctx.address_temp;
-               ctx.address_temp += 1;
-               writeln!(ctx.buf, "   %a{} =l add {}, {}", at, base_mem, offset).unwrap();
-               Some(format!("%a{}", at))
-            }
-            ExpressionType::Union(_, _) => Some(base_mem),
-            _ => unreachable!(),
-         }
-      }
-      Expression::ArrayIndex { array, index } => {
-         let base_mem = compute_offset(array, ctx).unwrap();
-         let sizeof_inner = match &ctx.ast.expressions[array].exp_type {
-            Some(ExpressionType::Array(x, _)) => sizeof_type_mem(x, ctx.udt, Target::Qbe),
-            _ => unreachable!(),
-         };
-
-         let index_val = expr_to_val(index, ctx);
-
-         writeln!(ctx.buf, "   %t =l mul {}, {}", sizeof_inner, index_val).unwrap();
-         let at = ctx.address_temp;
-         ctx.address_temp += 1;
-         writeln!(ctx.buf, "   %a{} =l add {}, %t", at, base_mem).unwrap();
-         Some(format!("%a{}", at))
-      }
       Expression::Variable(v) => {
          if ctx.global_info.contains_key(&v) {
             Some(format!("$.v{}", v.0))
@@ -518,7 +476,6 @@ fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<Str
          }
       }
       Expression::UnaryOperator(UnOp::Dereference, e) => Some(expr_to_val(e, ctx)),
-      Expression::UnaryOperator(UnOp::AddressOf, e) => compute_offset(e, ctx),
       Expression::Cast {
          cast_type: CastType::Transmute,
          expr,
@@ -914,9 +871,6 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
             UnOp::Dereference => emit_load(&mut ctx.buf, &inner_val, ren.exp_type.as_ref().unwrap()),
             UnOp::AddressOf | UnOp::TakeProcedurePointer => unreachable!(),
          }
-      }
-      Expression::FieldAccess(_, _) | Expression::ArrayIndex { .. } => {
-         emit_load(&mut ctx.buf, &rhs_mem.unwrap(), ren.exp_type.as_ref().unwrap());
       }
       Expression::Cast {
          cast_type: CastType::As,

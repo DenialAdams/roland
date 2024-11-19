@@ -420,7 +420,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       ctx.program.ast.statements.clear();
    }
 
-   propagation::propagate(&mut ctx.program, &ctx.interner, config.target);
+   //propagation::propagate(&mut ctx.program, &ctx.interner, config.target);
 
    // It would be nice to run this before deleting unreachable procedures,
    // but doing so would currently delete procedures that we take pointers to
@@ -465,6 +465,15 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    }
 
    backend::regalloc::kill_self_assignments(&mut ctx.program, &regalloc_result.var_to_slot);
+
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp.rol").unwrap(),
+      )
+      .unwrap();
+   }
 
    if config.target == Target::Qbe {
       Ok(backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, regalloc_result))
