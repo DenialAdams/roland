@@ -76,6 +76,16 @@ fn do_expr(e: ExpressionId, ast: &mut ExpressionPool, is_lhs_context: bool) {
          do_expr(*b, ast, false);
          do_expr(*c, ast, false);
       }
+      Expression::ArrayLiteral(exprs) => {
+         for expr in exprs.iter().copied() {
+            do_expr(expr, ast, false);
+         }
+      }
+      Expression::StructLiteral(_, exprs) => {
+         for expr in exprs.values().flatten().copied() {
+            do_expr(expr, ast, false);
+         }
+      }
       Expression::Variable(_)
       | Expression::EnumLiteral(_, _)
       | Expression::BoundFcnLiteral(_, _)
@@ -84,9 +94,7 @@ fn do_expr(e: ExpressionId, ast: &mut ExpressionPool, is_lhs_context: bool) {
       | Expression::IntLiteral { .. }
       | Expression::FloatLiteral(_)
       | Expression::UnitLiteral => (),
-      Expression::StructLiteral(_, _)
-      | Expression::ArrayLiteral(_)
-      | Expression::UnresolvedVariable(_)
+      Expression::UnresolvedVariable(_)
       | Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedEnumLiteral(_, _)
       | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),

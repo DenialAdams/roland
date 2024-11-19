@@ -246,7 +246,11 @@ pub fn kill_self_assignments(program: &mut Program, var_to_slot: &IndexMap<Varia
             let Expression::Variable(l_var) = program.ast.expressions[lhs].expression else {
                continue;
             };
-            let Expression::Variable(r_var) = program.ast.expressions[rhs].expression else {
+            let Expression::UnaryOperator(UnOp::Dereference, deref_child) = program.ast.expressions[rhs].expression
+            else {
+               continue;
+            };
+            let Expression::Variable(r_var) = program.ast.expressions[deref_child].expression else {
                continue;
             };
             let lhs_slot = var_to_slot.get(&l_var);
@@ -267,7 +271,9 @@ fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, as
       for instr in cfg.bbs[bb].instructions.iter() {
          match instr {
             CfgInstruction::Assignment(lhs, rhs) => {
-               mark_escaping_vars_expr(*lhs, escaping_vars, ast);
+               if !matches!(ast[*lhs].expression, Expression::Variable(_)) {
+                  mark_escaping_vars_expr(*lhs, escaping_vars, ast);
+               }
                mark_escaping_vars_expr(*rhs, escaping_vars, ast);
             }
             CfgInstruction::Expression(e) | CfgInstruction::ConditionalJump(e, _, _) | CfgInstruction::Return(e) => {
@@ -288,10 +294,6 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
             mark_escaping_vars_expr(val, escaping_vars, ast);
          }
       }
-      Expression::ArrayIndex { array, index } => {
-         mark_escaping_vars_expr(*array, escaping_vars, ast);
-         mark_escaping_vars_expr(*index, escaping_vars, ast);
-      }
       Expression::BinaryOperator { lhs, rhs, .. } => {
          mark_escaping_vars_expr(*lhs, escaping_vars, ast);
          mark_escaping_vars_expr(*rhs, escaping_vars, ast);
@@ -301,29 +303,28 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
          mark_escaping_vars_expr(*b, escaping_vars, ast);
          mark_escaping_vars_expr(*c, escaping_vars, ast);
       }
-      Expression::FieldAccess(_, base_expr) => {
-         mark_escaping_vars_expr(*base_expr, escaping_vars, ast);
-      }
       Expression::Cast { expr, .. } => {
          mark_escaping_vars_expr(*expr, escaping_vars, ast);
       }
       Expression::UnaryOperator(op, expr) => {
-         mark_escaping_vars_expr(*expr, escaping_vars, ast);
-         if *op == UnOp::AddressOf {
-            if let Expression::Variable(v) = ast[*expr].expression {
-               escaping_vars.insert(v);
-            }
+         let skip = *op == UnOp::Dereference && matches!(ast[*expr].expression, Expression::Variable(_));
+         if !skip {
+            mark_escaping_vars_expr(*expr, escaping_vars, ast);
          }
       }
-      Expression::Variable(_)
-      | Expression::EnumLiteral(_, _)
+      Expression::Variable(v) => {
+         escaping_vars.insert(*v);
+      }
+      Expression::EnumLiteral(_, _)
       | Expression::BoundFcnLiteral(_, _)
       | Expression::BoolLiteral(_)
       | Expression::StringLiteral(_)
       | Expression::UnitLiteral
       | Expression::IntLiteral { .. }
       | Expression::FloatLiteral(_) => (),
-      Expression::ArrayLiteral(_)
+      Expression::ArrayIndex { .. }
+      | Expression::FieldAccess(_, _)
+      | Expression::ArrayLiteral(_)
       | Expression::StructLiteral(_, _)
       | Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)
