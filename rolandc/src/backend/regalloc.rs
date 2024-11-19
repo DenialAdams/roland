@@ -144,7 +144,7 @@ pub fn assign_variables_to_registers_and_mem(
                .or_default()
                .push(result.var_to_slot.get(expired_var).copied().unwrap());
          }
-         active.retain(|v| live_intervals.get(v).map_or(false, |i| i.end >= range.begin));
+         active.retain(|v| live_intervals.get(v).is_some_and(|i| i.end >= range.begin));
 
          let sk = type_to_slot_kind(
             body.locals.get(var).unwrap(),

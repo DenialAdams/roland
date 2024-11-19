@@ -304,7 +304,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
          .statements
          .last()
          .copied()
-         .map_or(false, |x| statement_always_or_never_returns(x, &ctx.program.ast))
+         .is_some_and(|x| statement_always_or_never_returns(x, &ctx.program.ast))
       {
          // There is an implicit final return - make it explicit
          let unit_lit = ctx.program.ast.expressions.insert(ExpressionNode {

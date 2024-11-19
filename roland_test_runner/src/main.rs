@@ -240,7 +240,12 @@ fn main() -> Result<(), &'static str> {
          }
       };
       if print_stderr && !failure.compilation_stderr.is_empty() {
-         writeln!(out_handle, "Captured stderr during compilation:\n{}", failure.compilation_stderr).unwrap();
+         writeln!(
+            out_handle,
+            "Captured stderr during compilation:\n{}",
+            failure.compilation_stderr
+         )
+         .unwrap();
       }
       writeln!(out_handle, "--------------------").unwrap();
    }
@@ -302,7 +307,7 @@ fn test_result<'a>(
          .result
          .compile_output
          .as_ref()
-         .map_or(false, |x| x.as_str() != stderr_text)
+         .is_some_and(|x| x.as_str() != stderr_text)
       {
          return Err(TestFailure {
             name: t_file_path.file_name().unwrap().to_str().unwrap(),
@@ -416,7 +421,7 @@ fn test_result<'a>(
       .result
       .compile_output
       .as_ref()
-      .map_or(false, |x| x.as_str() != stderr_text)
+      .is_some_and(|x| x.as_str() != stderr_text)
    {
       return Err(TestFailure {
          name: t_file_path.file_name().unwrap().to_str().unwrap(),

@@ -327,7 +327,7 @@ where
                      return false;
                   }
                   bt
-               } else if type_params.map_or(false, |tp| tp.contains(*x)) {
+               } else if type_params.is_some_and(|tp| tp.contains(*x)) {
                   if !generic_args.is_empty() {
                      rolandc_error!(
                         err_manager,

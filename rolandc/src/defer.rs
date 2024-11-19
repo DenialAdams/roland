@@ -115,7 +115,7 @@ fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, ast: &mut As
       .statements
       .last()
       .copied()
-      .map_or(false, |x| statement_always_or_never_returns(x, ast))
+      .is_some_and(|x| statement_always_or_never_returns(x, ast))
    {
       // Falling out of the scope
       let deferred_stmts = &defer_ctx.deferred_stmts[deferred_stmts_before..];
