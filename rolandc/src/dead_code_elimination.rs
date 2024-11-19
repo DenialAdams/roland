@@ -245,18 +245,6 @@ fn mark_used_vars_in_expr(
       Expression::FieldAccess(_, base) => {
          mark_used_vars_in_expr(*base, used_vars, ast, is_write);
       }
-      Expression::ArrayIndex { array, index } => {
-         if expression_could_have_side_effects(*index, ast) {
-            // conservatively, we consider any side effects in an index expression
-            // disqualifying, since the subsequent transformation doesn't preserve
-            // LHS side effects.
-            // this should only be hittable in WASM, where we don't go into TAC
-            mark_used_vars_in_expr(*array, used_vars, ast, false);
-         } else {
-            mark_used_vars_in_expr(*array, used_vars, ast, is_write);
-         }
-         mark_used_vars_in_expr(*index, used_vars, ast, false);
-      }
       Expression::BinaryOperator { lhs, rhs, .. } => {
          mark_used_vars_in_expr(*lhs, used_vars, ast, false);
          mark_used_vars_in_expr(*rhs, used_vars, ast, false);
@@ -281,7 +269,9 @@ fn mark_used_vars_in_expr(
       | Expression::UnitLiteral
       | Expression::IntLiteral { .. }
       | Expression::FloatLiteral(_) => (),
-      Expression::ArrayLiteral(_)
+      Expression::ArrayIndex { .. }
+      | Expression::FieldAccess(_, _)
+      | Expression::ArrayLiteral(_)
       | Expression::StructLiteral(_, _)
       | Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)
