@@ -1,4 +1,5 @@
 builtin proc num_variants<T>() -> u64 where T: Enum;
+builtin proc num_fields<T>() -> u64;
 
 proc sqrt<T>(x: T) -> T where T: Float {
    when type_eq$<T, f32>() {

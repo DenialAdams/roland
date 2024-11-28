@@ -1,0 +1,14 @@
+struct Foo {
+    x: f32,
+    y: f32,
+}
+
+proc main() {
+    println(uint_to_string(num_fields$<Foo>()));
+    // not sure what the best behavior is here...
+    println(uint_to_string(num_fields$<u8>()));
+}
+__END__
+run:
+2
+0

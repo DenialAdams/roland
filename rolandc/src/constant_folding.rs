@@ -900,6 +900,22 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
             synthetic: true,
          })
       }
+      "num_fields" => {
+         let num_fields = match &type_args[0] {
+            ExpressionType::Struct(s_id, _) => {
+               fc.user_defined_types.struct_info[*s_id].field_types.len()
+            }
+            ExpressionType::Union(u_id, _) => {
+               fc.user_defined_types.union_info[*u_id].field_types.len()
+            }
+            _ => 0
+         };
+
+         Some(Expression::IntLiteral {
+            val: num_fields as u64,
+            synthetic: true,
+         })
+      }
       "type_eq" => Some(Expression::BoolLiteral(type_args[0] == type_args[1])),
       _ => None,
    }
