@@ -3,22 +3,6 @@ import "malloc.rol";
 import "ryu/f2s.rol";
 import "ryu/d2s.rol";
 
-extern proc syscall1(code: u64, a1: u64) -> u64;
-extern proc syscall3(code: u64, a1: u64, a2: u64, a3: u64) -> u64;
-
-proc exit_group(status: i32) -> ! {
-   syscall1(231, status as u64);
-   unreachable();
-}
-
-proc brk(address: usize) -> usize {
-   return syscall1(12, address as u64) as usize;
-}
-
-proc write(fd: i32, buf: &u8, nbyte: usize) -> isize {
-   return syscall3(1, fd as u64, buf transmute u64, nbyte transmute u64) as isize;
-}
-
 proc print(s: String) {
 
    let written: usize = 0;
@@ -125,6 +109,8 @@ const USIZE_MAX: usize = U64_MAX transmute usize;
 const ISIZE_MIN: isize = I64_MIN transmute isize;
 const ISIZE_MAX: isize = I64_MAX transmute isize;
 
+// MARK: small int arithmetic
+
 proc add_u8(x: u8, y: u8) -> u8 {
    return (x as u32 + y as u32) as u8;
 }
@@ -187,4 +173,62 @@ proc shl_u16(x: u16, y: u16) -> u16 {
 
 proc shl_i16(x: i16, y: i16) -> i16 {
    return (x as i32 << (y & 0b1111) as i32) as i16;
+}
+
+// MARK: System Calls
+
+extern proc syscall1(code: u64, a1: u64) -> u64;
+extern proc syscall3(code: u64, a1: u64, a2: u64, a3: u64) -> u64;
+extern proc syscall4(code: u64, a1: u64, a2: u64, a3: u64, a4: u64) -> u64;
+
+proc exit_group(status: i32) -> ! {
+   syscall1(231, status as u64);
+   unreachable();
+}
+
+proc brk(address: usize) -> usize {
+   return syscall1(12, address as u64) as usize;
+}
+
+const RESOLVE_NO_XDEV: u64 = 0x01;
+const RESOLVE_NO_MAGICLINKS: u64 = 0x02;
+const RESOLVE_NO_SYMLINKS: u64 = 0x04;
+const RESOLVE_BENATH: u64 = 0x08;
+const RESOLVE_IN_ROOT: u64 = 0x10;
+const RESOLVE_CACHED: u64 = 0x20;
+
+const O_RDONLY: u64 = 0o0;
+const O_WRONLY: u64 = 0o1;
+const O_RDWR: u64 = 0o2;
+const O_CREAT: u64 = 0o100;
+const O_EXCL: u64 = 0o200;
+const O_NOCTTY: u64 = 0o400;
+const O_TRUNC: u64 = 0o1000;
+const O_APPEND: u64 = 0o2000;
+const O_NONBLOCK: u64 = 0o4000;
+const O_SYNC: u64 = 0o4010000;
+const O_ASYNC: u64 = 0o20000;
+const O_DIRECTORY: u64 = 0o200000;
+const O_NOFOLLOW: u64 = 0o400000;
+const O_CLOEXEC: u64 = 0o2000000;
+const O_DIRECT: u64 = 0o40000;
+const O_NOATIME: u64 = 0o1000000;
+const O_PATH: u64 = 0o10000000;
+const O_DSYNC: u64 = 0o10000;
+const O_TMPFILE: u64 = (0o20000000 | O_DIRECTORY);
+// no O_LARGEFILE b/c i don't see us doing 32 bit linux support.
+// no O_FSYNC, use O_SYNC. no O_NDELAY, use O_NONBLOCK.
+
+struct open_how {
+   flags: u64,
+   mode: u64,
+   resolve: u64,
+}
+
+proc openat2(dirfd: i32, path_name: &u8, open_how: &open_how) -> i32 {
+   return syscall4(437, dirfd as u64, path_name transmute u64, open_how transmute u64, sizeof$<open_how>() as u64) as i32;
+}
+
+proc write(fd: i32, buf: &u8, nbyte: usize) -> isize {
+   return syscall3(1, fd as u64, buf transmute u64, nbyte transmute u64) as isize;
 }
