@@ -44,6 +44,7 @@ rolandc_samply *args:
    samply record -r 10000 {{justfile_directory()}}/target/dhat/rolandc_cli {{args}}
 prepare-release kind="patch":
    cd roland-vscode && npm version {{kind}}
+   cd roland_site && npm version {{kind}}
 test-all:
    cargo build {{release_flag}} --bin rolandc_cli
    cargo run --release --bin roland_test_runner -- --cli {{justfile_directory()}}/target/{{release_text}}/rolandc_cli tests/ --amd64
