@@ -902,13 +902,9 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
       }
       "num_fields" => {
          let num_fields = match &type_args[0] {
-            ExpressionType::Struct(s_id, _) => {
-               fc.user_defined_types.struct_info[*s_id].field_types.len()
-            }
-            ExpressionType::Union(u_id, _) => {
-               fc.user_defined_types.union_info[*u_id].field_types.len()
-            }
-            _ => 0
+            ExpressionType::Struct(s_id, _) => fc.user_defined_types.struct_info[*s_id].field_types.len(),
+            ExpressionType::Union(u_id, _) => fc.user_defined_types.union_info[*u_id].field_types.len(),
+            _ => 0,
          };
 
          Some(Expression::IntLiteral {

@@ -176,7 +176,7 @@ pub fn remove_unused_locals(program: &mut Program) {
    let mut used_vars: HashSet<VariableId> = HashSet::new();
    for (proc_id, proc_body) in program.procedure_bodies.iter_mut() {
       used_vars.clear();
-      used_vars.reserve(proc_body.locals.len());
+      used_vars.reserve(proc_body.locals.len() + program.procedures[proc_id].definition.parameters.len());
 
       let post_order = post_order(&proc_body.cfg);
 

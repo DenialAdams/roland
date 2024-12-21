@@ -472,7 +472,10 @@ fn test_result<'a>(
       });
    }
 
-   Ok(stderr_text.strip_prefix(td.result.compile_output.as_deref().unwrap_or("")).unwrap_or("").to_string())
+   Ok(stderr_text
+      .strip_prefix(td.result.compile_output.as_deref().unwrap_or(""))
+      .unwrap_or("")
+      .to_string())
 }
 
 struct TestDetails {
