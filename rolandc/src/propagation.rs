@@ -196,7 +196,7 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: Target) {
                   if escaping_vars.contains(var) {
                      continue;
                   }
-                  if !reaching_partial_defs.get(var).map_or(true, HashSet::is_empty) {
+                  if !reaching_partial_defs.get(var).is_none_or(HashSet::is_empty) {
                      continue;
                   }
                   let Some(the_reaching_val) = var_rd

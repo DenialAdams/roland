@@ -127,7 +127,7 @@ pub fn assign_variables_to_registers_and_mem(
          // but has no lifetime
          for expired_var in active
             .iter()
-            .filter(|v| live_intervals.get(*v).map_or(true, |i| i.end < range.begin))
+            .filter(|v| live_intervals.get(*v).is_none_or(|i| i.end < range.begin))
          {
             let escaping_kind = escaping_vars.get(expired_var).copied();
             if escaping_kind == Some(EscapingKind::MustLiveOnStackAlone) {
