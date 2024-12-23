@@ -30,11 +30,11 @@ pub fn constraint_matches_type_or_try_constrain(
 }
 
 fn meet(
-   mut current_type: &mut ExpressionType,
+   current_type: &mut ExpressionType,
    incoming_type: &ExpressionType,
    type_variables: &mut TypeVariableManager,
 ) {
-   match (&mut current_type, incoming_type) {
+   match (current_type, incoming_type) {
       (ExpressionType::Array(current_base, current_len), ExpressionType::Array(incoming_base, incoming_len)) => {
          if current_len != incoming_len {
             return;
