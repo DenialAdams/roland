@@ -82,22 +82,26 @@ fn lower_single_expression(e: ExpressionId, udt: &UserDefinedTypeInfo, target: T
             ExpressionType::Union(_, _) => 0,
             _ => unreachable!(),
          };
-         let offset_node = ast.insert(ExpressionNode {
-            exp_type: Some(ExpressionType::Int(IntType {
-               signed: false,
-               width: target.lowered_ptr_width(),
-            })),
-            expression: Expression::IntLiteral {
-               val: u64::from(mem_offset),
-               synthetic: true,
-            },
-            location: ast[e].location,
-         });
-         ast[e].expression = Expression::BinaryOperator {
-            operator: BinOp::Add,
-            lhs: base,
-            rhs: offset_node,
-         };
+         if mem_offset == 0 {
+            ast[e].expression = ast[base].expression.clone();
+         } else {
+            let offset_node = ast.insert(ExpressionNode {
+               exp_type: Some(ExpressionType::Int(IntType {
+                  signed: false,
+                  width: target.lowered_ptr_width(),
+               })),
+               expression: Expression::IntLiteral {
+                  val: u64::from(mem_offset),
+                  synthetic: true,
+               },
+               location: ast[e].location,
+            });
+            ast[e].expression = Expression::BinaryOperator {
+               operator: BinOp::Add,
+               lhs: base,
+               rhs: offset_node,
+            };
+         }
       }
       Expression::ArrayIndex { array, index } => {
          let array = *array;
