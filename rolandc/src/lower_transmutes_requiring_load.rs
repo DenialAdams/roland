@@ -60,7 +60,7 @@ pub fn lower(expressions: &mut ExpressionPool) {
          let new_transmute = expressions.insert(ExpressionNode {
             expression: Expression::Cast {
                cast_type: CastType::Transmute,
-               target_type: transmute_type.clone(),
+               target_type: ExpressionType::Pointer(Box::new(transmute_type.clone())),
                expr: ref_node,
             },
             location: transmute_location,
