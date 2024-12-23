@@ -67,8 +67,7 @@ fn do_expr(e: ExpressionId, ast: &mut ExpressionPool, is_lhs_context: bool) {
          do_expr(*ex, ast, *unop == UnOp::AddressOf || *unop == UnOp::Dereference);
       }
       Expression::FieldAccess(_, base) => do_expr(*base, ast, true),
-      Expression::Cast { cast_type, expr, .. } => {
-         // nocheckin what to do about transmute?
+      Expression::Cast { expr, .. } => {
          do_expr(*expr, ast, false);
       }
       Expression::IfX(a, b, c) => {
