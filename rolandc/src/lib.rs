@@ -345,7 +345,23 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    // affect side-effect order
    named_argument_lowering::lower_named_args(&mut ctx.program);
 
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp_a.rol").unwrap(),
+      )
+      .unwrap();
+   }
    constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner, config.target);
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp_b.rol").unwrap(),
+      )
+      .unwrap();
+   }
    ctx.program
       .non_stack_var_info
       .retain(|_, v| v.kind != StorageKind::Const);
@@ -465,15 +481,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    }
 
    backend::regalloc::kill_self_assignments(&mut ctx.program, &regalloc_result.var_to_slot);
-
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp.rol").unwrap(),
-      )
-      .unwrap();
-   }
 
    if config.target == Target::Qbe {
       Ok(backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, regalloc_result))
