@@ -98,6 +98,13 @@ fn do_expr(e: ExpressionId, ast: &mut ExpressionPool, is_lhs_context: bool) {
       | Expression::UnresolvedEnumLiteral(_, _)
       | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
    }
+   // !!! TODO !!! this code is mishandling the following IR:
+   // x = &y~
+   // the & and ~ cancel out semantically pre-explicit-rval-conversion
+   // x = y
+   // then we should apply explicit rval conversion
+   // x~
+   // but this is not what happens.
    if let Expression::UnaryOperator(UnOp::AddressOf, child_id) = the_expr {
       ast[e].location = ast[child_id].location;
       the_expr = std::mem::replace(&mut ast[child_id].expression, Expression::UnitLiteral);
