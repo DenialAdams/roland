@@ -496,7 +496,6 @@ pub fn emit_wasm(
          .cfg_index_to_rpo_index
          .extend(rpo.iter().enumerate().map(|(i, x)| (*x, i)));
       let dominator_tree = compute_dominators(cfg, &rpo, &generation_context.cfg_index_to_rpo_index);
-      dbg!(interner.lookup(procedure.definition.name.str));
       do_tree(0, &dominator_tree, &rpo, cfg, &mut generation_context);
       generation_context.active_fcn.instruction(&Instruction::Unreachable);
       generation_context.active_fcn.instruction(&Instruction::End);
@@ -1063,7 +1062,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
 
          do_emit(*rhs, generation_context);
 
-         dbg!(operator);
          let (wasm_type, signed) = match generation_context.ast.expressions[*lhs].exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => match x.width {
                IntWidth::Eight => (ValType::I64, x.signed),
@@ -1074,7 +1072,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                FloatWidth::Four => (ValType::F32, false),
             },
             ExpressionType::Bool => (ValType::I32, false),
-            x => { dbg!(x); unreachable!() },
             _ => unreachable!(),
          };
 
