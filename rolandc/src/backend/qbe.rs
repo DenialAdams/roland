@@ -831,9 +831,6 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
          let rhs_val = expr_to_val(*rhs, ctx);
          writeln!(ctx.buf, "{} {}, {}", opcode, lhs_val, rhs_val).unwrap();
       }
-      Expression::UnaryOperator(UnOp::AddressOf, _) => {
-         writeln!(ctx.buf, "copy {}", rhs_mem.unwrap()).unwrap();
-      }
       Expression::UnaryOperator(UnOp::TakeProcedurePointer, inner_id) => {
          let ExpressionType::ProcedureItem(proc_id, _bound_type_params) =
             ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap()
