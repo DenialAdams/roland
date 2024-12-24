@@ -2,6 +2,7 @@ import "wasm_shared.rol";
 import "malloc.rol";
 import "ryu/f2s.rol";
 import "ryu/d2s.rol";
+import "number_to_string.rol";
 
 builtin proc wasm_memory_size() -> usize;
 builtin proc wasm_memory_grow(pages: usize) -> usize;
@@ -69,80 +70,6 @@ proc println(s: String) {
 
 proc println_bool(value: bool) {
    println(bool_to_string(value));
-}
-
-proc count_digits(value: u64) -> u8 {
-   let digit_count: u8 = 0;
-
-   loop {
-      if value <= 9 {
-         return digit_count + 1;
-      }
-
-      digit_count = digit_count + 1;
-      value = value / 10;
-   }
-}
-
-proc f32_to_string(f: f32) -> String {
-   let result: &u8 = typed_malloc(16, 1).buf;
-   return ryu_f2s_buffered(f, result);
-}
-
-proc f64_to_string(f: f64) -> String {
-   let result: &u8 = typed_malloc(25, 1).buf;
-   return ryu_d2s_buffered(f, result);
-}
-
-proc _wasi_int_to_string_inner(value: u64, buf: &u8) -> String {
-   let digit_count = count_digits(value);
-   let digit_count_for_loop = digit_count as usize - 1;
-
-   let next_digit: u8 = 0;
-   let i: usize = 0;
-
-   loop {
-      if value <= 9 {
-         next_digit = value as u8;
-         let ptr = ((buf transmute usize) + digit_count_for_loop - i) transmute &u8;
-         ptr~ = next_digit + 48;
-         i = i + 1;
-         break;
-      }
-      next_digit = (value % 10) as u8;
-      value = value / 10;
-      let ptr = ((buf transmute usize) + digit_count_for_loop - i) transmute &u8;
-      ptr~ = next_digit + 48;
-      i = i + 1;
-   }
-
-   return String {
-      length: i,
-      pointer: buf,
-   };
-}
-
-proc uint_to_string(value: u64) -> String {
-   let buf = typed_malloc(20, 1).buf;
-   return _wasi_int_to_string_inner(value, buf);
-}
-
-proc int_to_string(value: i64) -> String {
-   if value == I64_MIN {
-      return "-9223372036854775808";
-   } else if value < 0 {
-      let buf = typed_malloc(20, 1).buf;
-      buf~ = "-".pointer~;
-      let adjusted_buf = buf transmute usize;
-      adjusted_buf = adjusted_buf + 1;
-      let ustring = _wasi_int_to_string_inner(-value as u64, adjusted_buf transmute &u8);
-      return String {
-         length: ustring.length + 1,
-         pointer: buf,
-      };
-   } else {
-      return uint_to_string(value as u64);
-   }
 }
 
 const _WASM_PAGE_SIZE: usize = 65535;
