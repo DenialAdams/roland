@@ -673,11 +673,8 @@ fn fold_expr_inner(
                folding_context.target,
             ) == 0
             && matches!(expr_type, ExpressionType::Pointer(_))
+            && !expression_could_have_side_effects(*expr, &folding_context.ast.expressions)
          {
-            debug_assert!(!expression_could_have_side_effects(
-               *expr,
-               &folding_context.ast.expressions
-            ));
             return Some(Expression::IntLiteral {
                val: 0,
                synthetic: true,

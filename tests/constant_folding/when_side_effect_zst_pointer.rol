@@ -1,0 +1,13 @@
+proc foo() -> unit {
+   println("wololo");
+}
+
+proc main() {
+   // this shouldn't constant fold but was
+   when &foo() == 0 transmute &unit {
+   }
+}
+__END__
+compile:
+Value of when condition can't be constant folded
+↳ line 7, column 9 [tests/constant_folding/when_side_effect_zst_pointer.rol]
