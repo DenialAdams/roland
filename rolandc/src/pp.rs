@@ -308,6 +308,7 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          pp_var(*v, pp_ctx)?;
       }
       Expression::BinaryOperator { lhs, rhs, operator } => {
+         write!(pp_ctx.output, "(")?;
          pp_expr(*lhs, pp_ctx)?;
          let op_str = match operator {
             crate::parse::BinOp::Add => "+",
@@ -331,6 +332,7 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          };
          write!(pp_ctx.output, " {} ", op_str)?;
          pp_expr(*rhs, pp_ctx)?;
+         write!(pp_ctx.output, ")")?;
       }
       Expression::UnaryOperator(operator, operand) => {
          let (prefix, suffix) = match operator {
