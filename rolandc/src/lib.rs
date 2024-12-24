@@ -44,6 +44,7 @@ use std::fmt::Display;
 use std::path::{Path, PathBuf};
 
 use backend::linearize;
+use backend::liveness::compute_live_intervals;
 use error_handling::error_handling_macros::rolandc_error;
 use error_handling::ErrorManager;
 use expression_hoisting::HoistingMode;
@@ -414,17 +415,21 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       backend::wasm::sort_globals(&mut ctx.program, config.target);
    }
 
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp_before.rol").unwrap(),
+      )
+      .unwrap();
+   }
+
    let regalloc_result = {
       let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
       for (id, body) in ctx.program.procedure_bodies.iter_mut() {
-         let live_intervals = backend::liveness::compute_live_intervals(body, &ctx.program.ast.expressions);
-         backend::liveness::kill_assignments_to_dead_variables(
-            body,
-            &live_intervals,
-            &ctx.program.ast.expressions,
-            &ctx.program.non_stack_var_info,
-         );
-         program_liveness.insert(id, live_intervals);
+         let liveness = backend::liveness::liveness(&body.locals, &body.cfg, &ctx.program.ast.expressions);
+         backend::liveness::kill_dead_assignments(body, &liveness, &ctx.program.ast.expressions);
+         program_liveness.insert(id, compute_live_intervals(body, &liveness));
       }
       backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config, &program_liveness)
    };
@@ -433,7 +438,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       pp::pp(
          &ctx.program,
          &ctx.interner,
-         &mut std::fs::File::create("pp.rol").unwrap(),
+         &mut std::fs::File::create("pp_after.rol").unwrap(),
       )
       .unwrap();
    }

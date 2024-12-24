@@ -5,7 +5,6 @@ use super::linearize::{Cfg, CfgInstruction};
 use crate::backend::linearize::post_order;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, VariableId};
-use crate::semantic_analysis::GlobalInfo;
 use crate::type_data::ExpressionType;
 
 #[derive(Clone)]
@@ -16,21 +15,33 @@ struct LivenessState {
    kill: BitBox,
 }
 
-pub fn kill_assignments_to_dead_variables(
+pub fn kill_dead_assignments(
    body: &mut ProcedureBody,
-   live_intervals: &IndexMap<VariableId, LiveInterval>,
+   liveness_results: &IndexMap<ProgramIndex, BitBox>,
    ast: &ExpressionPool,
-   statics: &IndexMap<VariableId, GlobalInfo>,
 ) {
-   for bb in body.cfg.bbs.iter_mut() {
-      for instr in bb.instructions.iter_mut() {
+   // note that this is not strictly an optimization!
+   // this is needed for correctness, because
+   //   1) register allocation assumes that no overlapping ranges = good to merge
+   //   2) a dead write is not considered to be part of that range
+   //   3) if executed, that dead write could affect the merged variable
+   for (rpo_pos, bb_index) in post_order(&body.cfg).iter().copied().rev().enumerate() {
+      for (bb_pos, instr) in body.cfg.bbs[bb_index].instructions.iter_mut().enumerate() {
          let CfgInstruction::Assignment(lhs, rhs) = *instr else {
             continue;
          };
          let Expression::Variable(l_var) = ast[lhs].expression else {
             continue;
          };
-         if live_intervals.contains_key(&l_var) || statics.contains_key(&l_var) {
+         let Some(local_index) = body.locals.get_index_of(&l_var) else {
+            // variable not modeled by the analysis - i.e. static
+            continue;
+         };
+         // check to see if the variable is live on the following statement
+         // (the variable will necessarily not be live on the statement that assigns it) 
+         // (there is always a next instruction in the block, because a block must be terminated with a jump)
+         let next_pos = ProgramIndex(rpo_pos, bb_pos + 1);
+         if liveness_results[&next_pos][local_index] {
             continue;
          }
          *instr = if expression_could_have_side_effects(rhs, ast) {
@@ -43,9 +54,10 @@ pub fn kill_assignments_to_dead_variables(
 }
 
 #[must_use]
-pub fn compute_live_intervals(body: &ProcedureBody, ast: &ExpressionPool) -> IndexMap<VariableId, LiveInterval> {
-   let proc_liveness = liveness(&body.locals, &body.cfg, ast);
-
+pub fn compute_live_intervals(
+   body: &ProcedureBody,
+   proc_liveness: &IndexMap<ProgramIndex, BitBox>,
+) -> IndexMap<VariableId, LiveInterval> {
    let mut live_intervals: IndexMap<VariableId, LiveInterval> = IndexMap::with_capacity(body.locals.len());
    for (pi, live_vars) in proc_liveness.iter() {
       for local_index in live_vars.iter_ones() {
@@ -64,7 +76,7 @@ pub fn compute_live_intervals(body: &ProcedureBody, ast: &ExpressionPool) -> Ind
 }
 
 #[must_use]
-fn liveness(
+pub fn liveness(
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
    cfg: &Cfg,
    ast: &ExpressionPool,
@@ -151,7 +163,6 @@ fn liveness(
       current_live_variables.extend_from_bitslice(&s.live_out);
       all_liveness.reserve(bb.instructions.len());
       for (i, instruction) in bb.instructions.iter().enumerate().rev() {
-         let pi = ProgramIndex(rpo_index, i);
          match instruction {
             CfgInstruction::Assignment(lhs, rhs) => {
                update_live_variables_for_expr(*lhs, &mut current_live_variables, ast, procedure_vars);
@@ -169,7 +180,10 @@ fn liveness(
             }
             _ => (),
          }
-         all_liveness.insert(pi, current_live_variables.clone().into_boxed_bitslice());
+         all_liveness.insert(
+            ProgramIndex(rpo_index, i),
+            current_live_variables.clone().into_boxed_bitslice(),
+         );
       }
    }
 
@@ -295,7 +309,7 @@ fn gen_for_expr(
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub struct ProgramIndex(pub usize, pub usize); // (RPO basic block position, instruction inside of block)
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LiveInterval {
    pub begin: ProgramIndex,
    pub end: ProgramIndex,

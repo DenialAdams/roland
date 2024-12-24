@@ -1,0 +1,13 @@
+proc main() {
+   let y = get_y();
+   let x = y;
+   y = 222;
+   println(uint_to_string(x));
+}
+
+proc get_y() -> u64 {
+   return 111;
+}
+__END__
+run:
+111
