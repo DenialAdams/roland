@@ -1072,6 +1072,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                FloatWidth::Four => (ValType::F32, false),
             },
             ExpressionType::Bool => (ValType::I32, false),
+            x => {dbg!(operator, x); unreachable!()},
             _ => unreachable!(),
          };
 
@@ -1282,10 +1283,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                };
                emit_procedure_pointer_index(*proc_id, generation_context);
             }
-            UnOp::AddressOf => {
-               // coaxes the lvalue to an rvalue without a load
-               do_emit(*e_index, generation_context);
-            }
             UnOp::Dereference => {
                do_emit(*e_index, generation_context);
 
@@ -1335,6 +1332,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                   _ => unreachable!(),
                }
             }
+            UnOp::AddressOf => unreachable!(),
          }
       }
       Expression::Cast {

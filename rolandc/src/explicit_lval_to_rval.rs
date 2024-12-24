@@ -5,6 +5,27 @@ use crate::type_data::ExpressionType;
 use crate::Program;
 
 pub fn make_lval_to_rval_explicit(program: &mut Program) {
+   // first: find &~ expressions and reduce them. these are meaningless (prior to this transform) but confuse the transform
+   // it feels hackish to special case this, but my brain kept getting twisted, so screw it.
+   {
+      let mut exprs_to_kill = vec![];
+      for (expr_id, expr) in program.ast.expressions.iter() {
+         if let Expression::UnaryOperator(UnOp::Dereference, child) = expr.expression {
+            if let Expression::UnaryOperator(UnOp::AddressOf, _) = program.ast.expressions[child].expression {
+               exprs_to_kill.push(expr_id);
+            }
+         }
+      }
+      for expr_id in exprs_to_kill {
+         let Expression::UnaryOperator(UnOp::Dereference, child) = program.ast.expressions[expr_id].expression else {
+            unreachable!()
+         };
+         let Expression::UnaryOperator(UnOp::AddressOf, grand_child) = program.ast.expressions[child].expression else {
+            unreachable!()
+         };
+         program.ast.expressions[expr_id].expression = program.ast.expressions[grand_child].expression.clone();
+      }
+   }
    for body in program.procedure_bodies.iter() {
       do_block(&body.1.block, &mut program.ast);
    }
@@ -98,17 +119,25 @@ fn do_expr(e: ExpressionId, ast: &mut ExpressionPool, is_lhs_context: bool) {
       | Expression::UnresolvedEnumLiteral(_, _)
       | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
    }
-   // !!! TODO !!! this code is mishandling the following IR:
-   // x = &y~
-   // the & and ~ cancel out semantically pre-explicit-rval-conversion
-   // x = y
-   // then we should apply explicit rval conversion
-   // x~
-   // but this is not what happens.
+   /*if let Expression::UnaryOperator(UnOp::AddressOf, child_id) = the_expr {
+      ast[e].location = ast[child_id].location;
+      the_expr = std::mem::replace(&mut ast[child_id].expression, Expression::UnitLiteral);
+   } else if !is_lhs_context && the_expr.is_lvalue_disregard_consts(ast) {
+      let new_child = ast.insert(ExpressionNode {
+         expression: the_expr,
+         exp_type: Some(ExpressionType::Pointer(Box::new(ast[e].exp_type.clone().unwrap()))),
+         location: expr_location,
+      });
+      the_expr = Expression::UnaryOperator(UnOp::Dereference, new_child);
+   } else if the_expr.is_lvalue_disregard_consts(ast) {
+      // is_lhs_context
+      ast[e].exp_type = Some(ExpressionType::Pointer(Box::new(ast[e].exp_type.take().unwrap())));
+   }*/
    if let Expression::UnaryOperator(UnOp::AddressOf, child_id) = the_expr {
       ast[e].location = ast[child_id].location;
       the_expr = std::mem::replace(&mut ast[child_id].expression, Expression::UnitLiteral);
    } else if deref_with_rval_child {
+      // make_address()~ = 10 => make_address() = 10
       let Expression::UnaryOperator(UnOp::Dereference, child_id) = the_expr else {
          unreachable!();
       };
