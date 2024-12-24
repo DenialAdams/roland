@@ -168,6 +168,8 @@ pub enum UnOp {
    Complement,
    AddressOf,
    Dereference,
+   // Syntactically &, distinguished after type checking
+   TakeProcedurePointer,
 }
 
 #[derive(Clone, Debug)]

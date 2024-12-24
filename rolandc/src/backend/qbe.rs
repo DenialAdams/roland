@@ -11,7 +11,7 @@ use crate::backend::linearize::post_order;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   ArgumentNode, AstPool, CastType, Expression, ExpressionId, ProcImplSource, ProcedureId, ProcedureNode, UnOp,
+   ArgumentNode, AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureId, ProcedureNode, UnOp,
    UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
@@ -721,10 +721,10 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
       Expression::BinaryOperator { operator, lhs, rhs } => {
          let typ = ctx.ast.expressions[*lhs].exp_type.as_ref().unwrap();
          let opcode = match operator {
-            crate::parse::BinOp::Add => "add",
-            crate::parse::BinOp::Subtract => "sub",
-            crate::parse::BinOp::Multiply => "mul",
-            crate::parse::BinOp::Divide => match typ {
+            BinOp::Add => "add",
+            BinOp::Subtract => "sub",
+            BinOp::Multiply => "mul",
+            BinOp::Divide => match typ {
                &F32_TYPE | &F64_TYPE | ExpressionType::Int(IntType { signed: true, width: _ }) => "div",
                ExpressionType::Int(IntType {
                   signed: false,
@@ -732,7 +732,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                }) => "udiv",
                _ => unreachable!(),
             },
-            crate::parse::BinOp::Remainder => match typ {
+            BinOp::Remainder => match typ {
                ExpressionType::Int(IntType {
                   signed: false,
                   width: _,
@@ -740,7 +740,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                ExpressionType::Int(IntType { signed: true, width: _ }) => "rem",
                _ => unreachable!(),
             },
-            crate::parse::BinOp::Equality => match typ {
+            BinOp::Equality => match typ {
                &F32_TYPE => "ceqs",
                &F64_TYPE => "ceqd",
                ExpressionType::Int(IntType {
@@ -754,7 +754,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                | ExpressionType::Bool => "ceqw",
                _ => unreachable!(),
             },
-            crate::parse::BinOp::NotEquality => match typ {
+            BinOp::NotEquality => match typ {
                &F32_TYPE => "cnes",
                &F64_TYPE => "cned",
                ExpressionType::Int(IntType {
@@ -768,7 +768,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                | ExpressionType::Bool => "cnew",
                _ => unreachable!(),
             },
-            crate::parse::BinOp::GreaterThan => match typ {
+            BinOp::GreaterThan => match typ {
                &F32_TYPE => "cgts",
                &F64_TYPE => "cgtd",
                ExpressionType::Int(IntType {
@@ -790,7 +790,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                }) => "csgtw",
                _ => unreachable!(),
             },
-            crate::parse::BinOp::LessThan => match typ {
+            BinOp::LessThan => match typ {
                &F32_TYPE => "clts",
                &F64_TYPE => "cltd",
                ExpressionType::Int(IntType {
@@ -812,7 +812,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                }) => "csltw",
                _ => unreachable!(),
             },
-            crate::parse::BinOp::GreaterThanOrEqualTo => match typ {
+            BinOp::GreaterThanOrEqualTo => match typ {
                &F32_TYPE => "cges",
                &F64_TYPE => "cged",
                ExpressionType::Int(IntType {
@@ -834,7 +834,7 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                }) => "csgew",
                _ => unreachable!(),
             },
-            crate::parse::BinOp::LessThanOrEqualTo => match typ {
+            BinOp::LessThanOrEqualTo => match typ {
                &F32_TYPE => "cles",
                &F64_TYPE => "cled",
                ExpressionType::Int(IntType {
@@ -856,11 +856,11 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                }) => "cslew",
                _ => unreachable!(),
             },
-            crate::parse::BinOp::BitwiseAnd => "and",
-            crate::parse::BinOp::BitwiseOr => "or",
-            crate::parse::BinOp::BitwiseXor => "xor",
-            crate::parse::BinOp::BitwiseLeftShift => "shl",
-            crate::parse::BinOp::BitwiseRightShift => match typ {
+            BinOp::BitwiseAnd => "and",
+            BinOp::BitwiseOr => "or",
+            BinOp::BitwiseXor => "xor",
+            BinOp::BitwiseLeftShift => "shl",
+            BinOp::BitwiseRightShift => match typ {
                ExpressionType::Int(IntType { signed: true, width: _ }) => "sar",
                ExpressionType::Int(IntType {
                   signed: false,
@@ -868,30 +868,33 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                }) => "shr",
                _ => unreachable!(),
             },
-            crate::parse::BinOp::LogicalAnd | crate::parse::BinOp::LogicalOr => unreachable!(),
+            BinOp::LogicalAnd | BinOp::LogicalOr => unreachable!(),
          };
          let lhs_val = expr_to_val(*lhs, ctx);
          let rhs_val = expr_to_val(*rhs, ctx);
          writeln!(ctx.buf, "{} {}, {}", opcode, lhs_val, rhs_val).unwrap();
       }
-      Expression::UnaryOperator(UnOp::AddressOf, inner_id) => {
-         let e = &ctx.ast.expressions[*inner_id];
-         if let ExpressionType::ProcedureItem(proc_id, _bound_type_params) = e.exp_type.as_ref().unwrap() {
-            writeln!(
-               ctx.buf,
-               "copy ${}",
-               mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner)
-            )
-            .unwrap();
-         } else {
-            writeln!(ctx.buf, "copy {}", rhs_mem.unwrap()).unwrap();
-         }
+      Expression::UnaryOperator(UnOp::AddressOf, _) => {
+         writeln!(ctx.buf, "copy {}", rhs_mem.unwrap()).unwrap();
+      }
+      Expression::UnaryOperator(UnOp::TakeProcedurePointer, inner_id) => {
+         let ExpressionType::ProcedureItem(proc_id, _bound_type_params) =
+            ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap()
+         else {
+            unreachable!();
+         };
+         writeln!(
+            ctx.buf,
+            "copy ${}",
+            mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner)
+         )
+         .unwrap();
       }
       Expression::UnaryOperator(operator, inner_id) => {
          let inner_val = expr_to_val(*inner_id, ctx);
          match operator {
-            crate::parse::UnOp::Negate => writeln!(ctx.buf, "neg {}", inner_val).unwrap(),
-            crate::parse::UnOp::Complement => {
+            UnOp::Negate => writeln!(ctx.buf, "neg {}", inner_val).unwrap(),
+            UnOp::Complement => {
                if *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() == ExpressionType::Bool {
                   writeln!(ctx.buf, "ceqw {}, 0", inner_val).unwrap();
                } else {
@@ -908,8 +911,8 @@ fn write_expr(expr: ExpressionId, rhs_mem: Option<String>, ctx: &mut GenerationC
                   writeln!(ctx.buf, "xor {}, {}", inner_val, magic_const).unwrap();
                }
             }
-            crate::parse::UnOp::AddressOf => unreachable!(),
-            crate::parse::UnOp::Dereference => emit_load(&mut ctx.buf, &inner_val, ren.exp_type.as_ref().unwrap()),
+            UnOp::Dereference => emit_load(&mut ctx.buf, &inner_val, ren.exp_type.as_ref().unwrap()),
+            UnOp::AddressOf | UnOp::TakeProcedurePointer => unreachable!(),
          }
       }
       Expression::FieldAccess(_, _) | Expression::ArrayIndex { .. } => {

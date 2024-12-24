@@ -672,7 +672,6 @@ fn fold_expr_inner(
                folding_context.user_defined_types,
                folding_context.target,
             ) == 0
-            && matches!(expr_type, ExpressionType::Pointer(_))
             && !expression_could_have_side_effects(*expr, &folding_context.ast.expressions)
          {
             return Some(Expression::IntLiteral {
@@ -705,7 +704,7 @@ fn fold_expr_inner(
                // int and bool
                UnOp::Complement => Some(literal.complement()),
                // nothing to do
-               UnOp::AddressOf | UnOp::Dereference => None,
+               UnOp::AddressOf | UnOp::Dereference | UnOp::TakeProcedurePointer => None,
             }
          } else if matches!(expr.expression, Expression::BoundFcnLiteral(_, _)) {
             Some(expr.expression.clone())

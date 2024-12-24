@@ -1503,6 +1503,8 @@ fn get_type(
          if *un_op == UnOp::AddressOf {
             if let ExpressionType::ProcedureItem(proc_id, bound_type_params) = e.exp_type.as_ref().unwrap() {
                // special case
+               *un_op = UnOp::TakeProcedurePointer;
+
                let proc = &validation_context.procedures[*proc_id];
 
                if proc.impl_source == ProcImplSource::Builtin {
@@ -1577,6 +1579,9 @@ fn get_type(
                let new_type = ExpressionType::Pointer(Box::new(e.exp_type.clone().unwrap()));
                (&[TypeValidator::Any], new_type)
             }
+            // There is no syntactic construct for this -
+            // already handled as a special case for & above
+            UnOp::TakeProcedurePointer => unreachable!(),
          };
 
          if e.exp_type.as_ref().unwrap().is_or_contains_or_points_to_error() {

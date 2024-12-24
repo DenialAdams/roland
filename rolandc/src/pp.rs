@@ -5,8 +5,8 @@ use slotmap::SlotMap;
 use crate::backend::linearize::{post_order, Cfg, CfgInstruction};
 use crate::interner::Interner;
 use crate::parse::{
-   AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, ProcedureId, ProcedureNode,
-   Statement, StatementId, UserDefinedTypeInfo, VariableId,
+   AstPool, BinOp, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, ProcedureId, ProcedureNode,
+   Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::StorageKind;
 use crate::type_data::ExpressionType;
@@ -311,24 +311,24 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          write!(pp_ctx.output, "(")?;
          pp_expr(*lhs, pp_ctx)?;
          let op_str = match operator {
-            crate::parse::BinOp::Add => "+",
-            crate::parse::BinOp::Subtract => "-",
-            crate::parse::BinOp::Multiply => "*",
-            crate::parse::BinOp::Divide => "/",
-            crate::parse::BinOp::Remainder => "%",
-            crate::parse::BinOp::Equality => "==",
-            crate::parse::BinOp::NotEquality => "!=",
-            crate::parse::BinOp::GreaterThan => ">",
-            crate::parse::BinOp::LessThan => "<",
-            crate::parse::BinOp::GreaterThanOrEqualTo => ">=",
-            crate::parse::BinOp::LessThanOrEqualTo => "<=",
-            crate::parse::BinOp::BitwiseAnd => "&",
-            crate::parse::BinOp::BitwiseOr => "|",
-            crate::parse::BinOp::BitwiseXor => "^",
-            crate::parse::BinOp::BitwiseLeftShift => "<<",
-            crate::parse::BinOp::BitwiseRightShift => ">>",
-            crate::parse::BinOp::LogicalAnd => "and",
-            crate::parse::BinOp::LogicalOr => "or",
+            BinOp::Add => "+",
+            BinOp::Subtract => "-",
+            BinOp::Multiply => "*",
+            BinOp::Divide => "/",
+            BinOp::Remainder => "%",
+            BinOp::Equality => "==",
+            BinOp::NotEquality => "!=",
+            BinOp::GreaterThan => ">",
+            BinOp::LessThan => "<",
+            BinOp::GreaterThanOrEqualTo => ">=",
+            BinOp::LessThanOrEqualTo => "<=",
+            BinOp::BitwiseAnd => "&",
+            BinOp::BitwiseOr => "|",
+            BinOp::BitwiseXor => "^",
+            BinOp::BitwiseLeftShift => "<<",
+            BinOp::BitwiseRightShift => ">>",
+            BinOp::LogicalAnd => "and",
+            BinOp::LogicalOr => "or",
          };
          write!(pp_ctx.output, " {} ", op_str)?;
          pp_expr(*rhs, pp_ctx)?;
@@ -336,10 +336,10 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
       }
       Expression::UnaryOperator(operator, operand) => {
          let (prefix, suffix) = match operator {
-            crate::parse::UnOp::Negate => ("-", ""),
-            crate::parse::UnOp::Complement => ("!", ""),
-            crate::parse::UnOp::AddressOf => ("&", ""),
-            crate::parse::UnOp::Dereference => ("", "~"),
+            UnOp::Negate => ("-", ""),
+            UnOp::Complement => ("!", ""),
+            UnOp::AddressOf | UnOp::TakeProcedurePointer => ("&", ""),
+            UnOp::Dereference => ("", "~"),
          };
          write!(pp_ctx.output, "{}", prefix)?;
          pp_expr(*operand, pp_ctx)?;

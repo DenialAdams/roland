@@ -1312,15 +1312,15 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          let e = &generation_context.ast.expressions[*e_index];
 
          match un_op {
+            UnOp::TakeProcedurePointer => {
+               let ExpressionType::ProcedureItem(proc_id, _bound_type_params) = e.exp_type.as_ref().unwrap() else {
+                  unreachable!();
+               };
+               emit_procedure_pointer_index(*proc_id, generation_context);
+            }
             UnOp::AddressOf => {
-               if let ExpressionType::ProcedureItem(proc_id, _bound_type_params) = e.exp_type.as_ref().unwrap() {
-                  emit_procedure_pointer_index(*proc_id, generation_context);
-                  return;
-               }
-
+               // coaxes the lvalue to an rvalue without a load
                do_emit(*e_index, generation_context);
-
-               // This operator coaxes the lvalue to an rvalue without a load
             }
             UnOp::Dereference => {
                do_emit_and_load_lval(*e_index, generation_context);
