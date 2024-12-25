@@ -30,7 +30,6 @@ struct GenerationContext<'a> {
    interner: &'a Interner,
    udt: &'a UserDefinedTypeInfo,
    string_literals: &'a IndexSet<StrId>,
-   address_temp: u64,
    global_info: &'a IndexMap<VariableId, GlobalInfo>,
    aggregate_defs: IndexSet<ExpressionType>,
 }
@@ -303,7 +302,6 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
       interner,
       udt: &program.user_defined_types,
       string_literals: &program.literals,
-      address_temp: 0,
       global_info: &program.non_stack_var_info,
       aggregate_defs: IndexSet::new(),
    };
