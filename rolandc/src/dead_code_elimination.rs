@@ -242,9 +242,6 @@ fn mark_used_vars_in_expr(
             mark_used_vars_in_expr(val, used_vars, ast, false);
          }
       }
-      Expression::FieldAccess(_, base) => {
-         mark_used_vars_in_expr(*base, used_vars, ast, is_write);
-      }
       Expression::BinaryOperator { lhs, rhs, .. } => {
          mark_used_vars_in_expr(*lhs, used_vars, ast, false);
          mark_used_vars_in_expr(*rhs, used_vars, ast, false);
