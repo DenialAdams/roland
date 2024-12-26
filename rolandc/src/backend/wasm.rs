@@ -82,9 +82,7 @@ fn type_to_wasm_type_basic(t: &ExpressionType) -> ValType {
          FloatWidth::Four => ValType::F32,
       },
       ExpressionType::ProcedurePointer { .. } | ExpressionType::Bool => ValType::I32,
-      x => {
-         unreachable!("{:?}", x);
-      }
+      _ => unreachable!(),
    }
 }
 
@@ -1757,6 +1755,18 @@ fn store_mem(val_type: &ExpressionType, generation_context: &mut GenerationConte
       ) != 0
    );
 
+   // say that we have y = x~
+   // and x is NOT an aggregate type
+   // but x~ IS
+   // loading x~ produces a val
+   // so far OK.
+   // but then we try to store into y
+   // y is an aggregate. no register
+   // RHS type is an aggregate
+   // so it does a memcpy.
+   // but memcpy is wrong. the thing we loaded is not an address. we just want to do a normal store.
+   // our type based query is failing us.
+   // need to think what to do
    if val_type.is_aggregate() {
       let size = sizeof_type_mem(
          val_type,
