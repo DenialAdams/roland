@@ -307,8 +307,9 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
          mark_escaping_vars_expr(*expr, escaping_vars, ast);
       }
       Expression::UnaryOperator(op, expr) => {
-         let skip = *op == UnOp::Dereference && matches!(ast[*expr].expression, Expression::Variable(_));
-         if !skip {
+         let is_variable_load = *op == UnOp::Dereference && matches!(ast[*expr].expression, Expression::Variable(_));
+         let operation_changes_type = ast[*expr].exp_type == ast[in_expr].exp_type;
+         if !is_variable_load || operation_changes_type {
             mark_escaping_vars_expr(*expr, escaping_vars, ast);
          }
       }
