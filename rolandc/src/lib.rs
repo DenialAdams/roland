@@ -436,15 +436,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       backend::wasm::sort_globals(&mut ctx.program, config.target);
    }
 
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp_a.rol").unwrap(),
-      )
-      .unwrap();
-   }
-
    let regalloc_result = {
       let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
       for (id, body) in ctx.program.procedure_bodies.iter_mut() {
@@ -452,19 +443,18 @@ pub fn compile<'a, FR: FileResolver<'a>>(
          backend::liveness::kill_dead_assignments(body, &liveness, &ctx.program.ast.expressions);
          program_liveness.insert(id, compute_live_intervals(body, &liveness));
       }
+      if config.dump_debugging_info {
+         pp::pp(
+            &ctx.program,
+            &ctx.interner,
+            &mut std::fs::File::create("pp.rol").unwrap(),
+         )
+         .unwrap();
+      }
       backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config, &program_liveness)
    };
 
    backend::regalloc::kill_self_assignments(&mut ctx.program, &regalloc_result.var_to_slot);
-
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp_b.rol").unwrap(),
-      )
-      .unwrap();
-   }
 
    if config.target == Target::Qbe {
       Ok(backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, regalloc_result))

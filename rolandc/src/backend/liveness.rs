@@ -209,6 +209,10 @@ fn update_live_variables_for_expr(
             update_live_variables_for_expr(val, current_live_variables, ast, procedure_vars);
          }
       }
+      Expression::ArrayIndex { array, index } => {
+         update_live_variables_for_expr(*array, current_live_variables, ast, procedure_vars);
+         update_live_variables_for_expr(*index, current_live_variables, ast, procedure_vars);
+      }
       Expression::BinaryOperator { lhs, rhs, .. } => {
          update_live_variables_for_expr(*lhs, current_live_variables, ast, procedure_vars);
          update_live_variables_for_expr(*rhs, current_live_variables, ast, procedure_vars);
@@ -223,7 +227,7 @@ fn update_live_variables_for_expr(
             update_live_variables_for_expr(*expr, current_live_variables, ast, procedure_vars);
          }
       }
-      Expression::Cast { expr, .. } | Expression::UnaryOperator(_, expr) => {
+      Expression::FieldAccess(_, expr) | Expression::Cast { expr, .. } | Expression::UnaryOperator(_, expr) => {
          update_live_variables_for_expr(*expr, current_live_variables, ast, procedure_vars);
       }
       Expression::Variable(var) => {
@@ -238,9 +242,7 @@ fn update_live_variables_for_expr(
       | Expression::UnitLiteral
       | Expression::IntLiteral { .. }
       | Expression::FloatLiteral(_) => (),
-      Expression::ArrayIndex { .. }
-      | Expression::FieldAccess(_, _)
-      | Expression::UnresolvedVariable(_)
+      Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)
       | Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),

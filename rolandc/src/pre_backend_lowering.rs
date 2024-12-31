@@ -10,7 +10,7 @@ use crate::parse::{
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::sizeof_type_mem;
 use crate::source_info::SourceInfo;
-use crate::type_data::{ExpressionType, IntType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I8_TYPE, U16_TYPE, U8_TYPE};
+use crate::type_data::{ExpressionType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I8_TYPE, U16_TYPE, U8_TYPE};
 use crate::Target;
 
 fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInfo>, target: Target) {
@@ -21,12 +21,13 @@ fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInf
       ExpressionType::Array(inner_type, _) => {
          lower_type(inner_type, enum_info, target);
       }
-      ExpressionType::Pointer(_) => {
+      // TODO: re-enable this. in order to do so, need to first lower field access and array indexing before the backend
+      /*ExpressionType::Pointer(_) => {
          *the_type = ExpressionType::Int(IntType {
             width: target.lowered_ptr_width(),
             signed: false,
          });
-      }
+      }*/
       ExpressionType::Int(it) => {
          if it.width == IntWidth::Pointer {
             it.width = target.lowered_ptr_width();
@@ -63,86 +64,6 @@ fn lower_single_expression(e: ExpressionId, udt: &UserDefinedTypeInfo, target: T
             _ => unreachable!(),
          };
          ast[e].expression = replacement_expr;
-      }
-      Expression::FieldAccess(f, base) => {
-         let f = *f;
-         let base = *base;
-         let mem_offset = match ast[base].exp_type.as_ref().unwrap().get_type_or_type_being_pointed_to() {
-            ExpressionType::Struct(s, _) => udt
-               .struct_info
-               .get(*s)
-               .unwrap()
-               .size
-               .as_ref()
-               .unwrap()
-               .field_offsets_mem
-               .get(&f)
-               .copied()
-               .unwrap(),
-            ExpressionType::Union(_, _) => 0,
-            _ => unreachable!(),
-         };
-         if mem_offset == 0 {
-            ast[e].expression = ast[base].expression.clone();
-         } else {
-            let offset_node = ast.insert(ExpressionNode {
-               exp_type: Some(ExpressionType::Int(IntType {
-                  signed: false,
-                  width: target.lowered_ptr_width(),
-               })),
-               expression: Expression::IntLiteral {
-                  val: u64::from(mem_offset),
-                  synthetic: true,
-               },
-               location: ast[e].location,
-            });
-            ast[e].expression = Expression::BinaryOperator {
-               operator: BinOp::Add,
-               lhs: base,
-               rhs: offset_node,
-            };
-         }
-      }
-      Expression::ArrayIndex { array, index } => {
-         let array = *array;
-         let index = *index;
-         let sizeof_inner = match ast[array]
-            .exp_type
-            .as_ref()
-            .unwrap()
-            .get_type_or_type_being_pointed_to()
-         {
-            ExpressionType::Array(x, _) => sizeof_type_mem(x, udt, target),
-            _ => unreachable!(),
-         };
-         let sizeof_literal_node = ast.insert(ExpressionNode {
-            exp_type: Some(ExpressionType::Int(IntType {
-               signed: false,
-               width: target.lowered_ptr_width(),
-            })),
-            expression: Expression::IntLiteral {
-               val: u64::from(sizeof_inner),
-               synthetic: true,
-            },
-            location: ast[e].location,
-         });
-         let mul_node = ast.insert(ExpressionNode {
-            exp_type: Some(ExpressionType::Int(IntType {
-               signed: false,
-               width: target.lowered_ptr_width(),
-            })),
-            expression: Expression::BinaryOperator {
-               operator: BinOp::Multiply,
-               lhs: sizeof_literal_node,
-               rhs: index,
-            },
-            location: ast[e].location,
-         });
-         ast[e].expression = Expression::BinaryOperator {
-            operator: BinOp::Add,
-            lhs: array,
-            rhs: mul_node,
-         };
       }
       Expression::Cast {
          cast_type: _,
