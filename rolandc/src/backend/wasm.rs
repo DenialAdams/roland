@@ -1088,7 +1088,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                FloatWidth::Eight => (ValType::F64, false),
                FloatWidth::Four => (ValType::F32, false),
             },
-            ExpressionType::Bool => (ValType::I32, false),
+            ExpressionType::Bool | ExpressionType::Pointer(_) => (ValType::I32, false),
             _ => unreachable!(),
          };
 
