@@ -38,7 +38,7 @@ pub fn kill_dead_assignments(
             continue;
          };
          // check to see if the variable is live on the following statement
-         // (the variable will necessarily not be live on the statement that assigns it) 
+         // (the variable will necessarily not be live on the statement that assigns it)
          // (there is always a next instruction in the block, because a block must be terminated with a jump)
          let next_pos = ProgramIndex(rpo_pos, bb_pos + 1);
          if liveness_results[&next_pos][local_index] {
