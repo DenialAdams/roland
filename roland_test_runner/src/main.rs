@@ -110,12 +110,14 @@ fn report_success(out_handle: &mut std::io::StdoutLock<'_>, name: &str) {
 fn main() -> Result<(), &'static str> {
    let opts = parse_args().unwrap();
 
-   let entries: Vec<PathBuf> = if opts.test_path.is_dir() {
+   let (entries, prefix): (Vec<PathBuf>, PathBuf) = if opts.test_path.is_dir() {
       let mut entries = vec![];
       recursive_push_test_files(&opts.test_path, &mut entries);
-      entries
+      (entries, opts.test_path)
    } else {
-      vec![opts.test_path]
+      let mut prefix: PathBuf = opts.test_path.clone();
+      prefix.pop();
+      (vec![opts.test_path], prefix)
    };
 
    let num_successes = AtomicU64::new(0);
@@ -139,7 +141,8 @@ fn main() -> Result<(), &'static str> {
       } else {
          Command::new(&opts.tc_path).arg(entry.clone()).output().unwrap()
       };
-      let test_ok = test_result(&tc_output, entry, opts.amd64, opts.preserve_artifacts);
+      let name = entry.strip_prefix(&prefix).unwrap();
+      let test_ok = test_result(&tc_output, entry, name.to_str().unwrap(), opts.amd64, opts.preserve_artifacts);
       // prevents stdout and stderr from mixing
       let _ol = output_lock.lock();
       match test_ok {
@@ -323,6 +326,7 @@ fn print_diff<W: Write>(t: &mut W, expected: &str, actual: &str) {
 fn test_result<'a>(
    tc_output: &Output,
    t_file_path: &'a Path,
+   name: &'a str,
    amd64: bool,
    preserve_artifacts: bool,
 ) -> Result<String, TestFailure<'a>> {
@@ -330,7 +334,7 @@ fn test_result<'a>(
 
    let Ok(td) = extract_test_data(t_file_path, amd64) else {
       return Err(TestFailure {
-         name: t_file_path.file_name().unwrap().to_str().unwrap(),
+         name,
          reason: TestFailureReason::FailedToOpenTest,
          compilation_stderr: stderr_text.into_owned(),
       });
@@ -338,7 +342,7 @@ fn test_result<'a>(
 
    if td.result.compile_output.is_none() && td.result.run_output.is_none() {
       return Err(TestFailure {
-         name: t_file_path.file_name().unwrap().to_str().unwrap(),
+         name,
          reason: TestFailureReason::TestingNothing(td.file),
          compilation_stderr: stderr_text.into_owned(),
       });
@@ -352,7 +356,7 @@ fn test_result<'a>(
          .is_some_and(|x| x.as_str() != stderr_text)
       {
          return Err(TestFailure {
-            name: t_file_path.file_name().unwrap().to_str().unwrap(),
+            name,
             reason: TestFailureReason::MismatchedCompilationErrorOutput(td),
             compilation_stderr: stderr_text.into_owned(),
          });
@@ -389,7 +393,7 @@ fn test_result<'a>(
                Ok(v) => v,
                Err(_) => {
                   return Err(TestFailure {
-                     name: t_file_path.file_name().unwrap().to_str().unwrap(),
+                     name,
                      reason: TestFailureReason::FailedToRunExecutable,
                      compilation_stderr: stderr_text.into_owned(),
                   });
@@ -402,7 +406,7 @@ fn test_result<'a>(
             None => {
                handle.kill().unwrap();
                return Err(TestFailure {
-                  name: t_file_path.file_name().unwrap().to_str().unwrap(),
+                  name,
                   reason: TestFailureReason::ExecutionTimeout,
                   compilation_stderr: stderr_text.into_owned(),
                });
@@ -415,7 +419,7 @@ fn test_result<'a>(
 
       if prog_output != ero {
          return Err(TestFailure {
-            name: t_file_path.file_name().unwrap().to_str().unwrap(),
+            name,
             reason: TestFailureReason::MismatchedExecutionOutput(ero, prog_output),
             compilation_stderr: stderr_text.into_owned(),
          });
@@ -455,7 +459,7 @@ fn test_result<'a>(
       }
    } else if td.result.run_output.is_some() {
       return Err(TestFailure {
-         name: t_file_path.file_name().unwrap().to_str().unwrap(),
+         name,
          reason: TestFailureReason::ExpectedCompilationSuccess,
          compilation_stderr: stderr_text.into_owned(),
       });
@@ -466,7 +470,7 @@ fn test_result<'a>(
       .is_some_and(|x| x.as_str() != stderr_text)
    {
       return Err(TestFailure {
-         name: t_file_path.file_name().unwrap().to_str().unwrap(),
+         name,
          reason: TestFailureReason::MismatchedCompilationErrorOutput(td),
          compilation_stderr: stderr_text.into_owned(),
       });
