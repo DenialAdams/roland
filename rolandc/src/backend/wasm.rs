@@ -1659,7 +1659,12 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       }
       Expression::ArrayIndex { array, index } => {
          fn calculate_offset(array: ExpressionId, index_e: ExpressionId, generation_context: &mut GenerationContext) {
-            let sizeof_inner = match generation_context.ast.expressions[array].exp_type.as_ref().unwrap().get_type_or_type_being_pointed_to() {
+            let sizeof_inner = match generation_context.ast.expressions[array]
+               .exp_type
+               .as_ref()
+               .unwrap()
+               .get_type_or_type_being_pointed_to()
+            {
                ExpressionType::Array(x, _) => {
                   sizeof_type_mem(x, generation_context.user_defined_types, generation_context.target)
                }

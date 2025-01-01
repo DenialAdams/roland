@@ -137,12 +137,14 @@ fn do_expr(e: ExpressionId, ast: &mut ExpressionPool, is_lhs_context: bool) {
       ast[e].location = ast[child_id].location;
       the_expr = std::mem::replace(&mut ast[child_id].expression, Expression::UnitLiteral);
    } else if deref_with_rval_child {
-      // make_address()~ = 10 => make_address() = 10
-      let Expression::UnaryOperator(UnOp::Dereference, child_id) = the_expr else {
-         unreachable!();
-      };
-      ast[e].location = ast[child_id].location;
-      the_expr = std::mem::replace(&mut ast[child_id].expression, Expression::UnitLiteral);
+      if is_lhs_context {
+         // make_address()~ = 10 => make_address() = 10
+         let Expression::UnaryOperator(UnOp::Dereference, child_id) = the_expr else {
+            unreachable!();
+         };
+         ast[e].location = ast[child_id].location;
+         the_expr = std::mem::replace(&mut ast[child_id].expression, Expression::UnitLiteral);
+      }
    } else if is_lhs_context {
       ast[e].exp_type = Some(ExpressionType::Pointer(Box::new(ast[e].exp_type.take().unwrap())));
    } else if the_expr.is_lvalue_disregard_consts(ast) {
