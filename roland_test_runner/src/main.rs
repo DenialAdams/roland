@@ -127,7 +127,6 @@ fn main() -> Result<(), &'static str> {
    let num_successes = AtomicU64::new(0);
    let successes_with_dribble: Mutex<Vec<TestSuccess>> = Mutex::new(Vec::new());
    let failures: Mutex<Vec<TestFailure>> = Mutex::new(Vec::new());
-   let output_lock = Mutex::new(());
 
    entries.par_iter().for_each(|entry| {
       let tc_output = if opts.amd64 {
@@ -147,8 +146,6 @@ fn main() -> Result<(), &'static str> {
       };
       let test_ok = test_result(&tc_output, entry, opts.amd64, opts.preserve_artifacts);
       let name = entry.strip_prefix(&prefix).unwrap().to_str().unwrap();
-      // prevents stdout and stderr from mixing
-      let _ol = output_lock.lock();
       match test_ok {
          Ok(captured_stderr_minus_expected) if captured_stderr_minus_expected.is_empty() => {
             num_successes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
