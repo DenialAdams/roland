@@ -521,17 +521,21 @@ pub fn emit_wasm(
       let mut table = TableSection::new();
       let mut elem = ElementSection::new();
 
+      let table_type = TableType {
+         element_type: RefType::FUNCREF,
+         minimum: generation_context.procedure_to_table_index.len() as u64,
+         maximum: Some(generation_context.procedure_to_table_index.len() as u64),
+         table64: false,
+         shared: false,
+      };
+
+      // we always emit this table even if there are no procedures in it
+      // this is because the user can write code that calls an invalid procedure pointer
+      // (such as via transmute) and we still want such code to compile
+      // (even if it will invariably be a runtime error when executed)
+      table.table(table_type);
+
       if !generation_context.procedure_to_table_index.is_empty() {
-         let table_type = TableType {
-            element_type: RefType::FUNCREF,
-            minimum: generation_context.procedure_to_table_index.len() as u64,
-            maximum: Some(generation_context.procedure_to_table_index.len() as u64),
-            table64: false,
-            shared: false,
-         };
-
-         table.table(table_type);
-
          let elements = generation_context
             .procedure_to_table_index
             .iter()
