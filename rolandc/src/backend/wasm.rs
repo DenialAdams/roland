@@ -519,17 +519,17 @@ pub fn emit_wasm(
       let mut table = TableSection::new();
       let mut elem = ElementSection::new();
 
+      let table_type = TableType {
+         element_type: RefType::FUNCREF,
+         minimum: generation_context.procedure_to_table_index.len() as u64,
+         maximum: Some(generation_context.procedure_to_table_index.len() as u64),
+         table64: false,
+         shared: false,
+      };
+
+      table.table(table_type);
+
       if !generation_context.procedure_to_table_index.is_empty() {
-         let table_type = TableType {
-            element_type: RefType::FUNCREF,
-            minimum: generation_context.procedure_to_table_index.len() as u64,
-            maximum: Some(generation_context.procedure_to_table_index.len() as u64),
-            table64: false,
-            shared: false,
-         };
-
-         table.table(table_type);
-
          let elements = generation_context
             .procedure_to_table_index
             .iter()
@@ -1084,7 +1084,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                FloatWidth::Eight => (ValType::F64, false),
                FloatWidth::Four => (ValType::F32, false),
             },
-            ExpressionType::Bool => (ValType::I32, false),
+            ExpressionType::Bool | ExpressionType::Pointer(_) => (ValType::I32, false),
             _ => unreachable!(),
          };
 
