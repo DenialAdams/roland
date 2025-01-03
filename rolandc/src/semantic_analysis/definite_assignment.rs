@@ -120,41 +120,25 @@ fn ensure_all_variables_assigned_in_stmt(
       } => {
          ensure_expression_does_not_use_unassigned_variable(*cond, assigned_vars, procedure_vars, pool, err_manager);
 
-         let skip_else = match &pool.statements[*otherwise].statement {
-            Statement::Block(bn) => bn.statements.is_empty(),
-            _ => false,
-         };
+         let mut else_unassigned = assigned_vars.to_owned();
+         ensure_all_variables_assigned_in_block(
+            then,
+            assigned_vars,
+            assigned_vars_after_loop,
+            procedure_vars,
+            pool,
+            err_manager,
+         );
+         ensure_all_variables_assigned_in_stmt(
+            *otherwise,
+            &mut else_unassigned,
+            assigned_vars_after_loop,
+            procedure_vars,
+            pool,
+            err_manager,
+         );
 
-         if skip_else {
-            ensure_all_variables_assigned_in_block(
-               then,
-               assigned_vars,
-               assigned_vars_after_loop,
-               procedure_vars,
-               pool,
-               err_manager,
-            );
-         } else {
-            let mut else_unassigned = assigned_vars.to_owned();
-            ensure_all_variables_assigned_in_block(
-               then,
-               assigned_vars,
-               assigned_vars_after_loop,
-               procedure_vars,
-               pool,
-               err_manager,
-            );
-            ensure_all_variables_assigned_in_stmt(
-               *otherwise,
-               &mut else_unassigned,
-               assigned_vars_after_loop,
-               procedure_vars,
-               pool,
-               err_manager,
-            );
-
-            *assigned_vars &= else_unassigned;
-         }
+         *assigned_vars &= else_unassigned;
       }
       Statement::Loop(b) => {
          let mut assigned_after_new_loop = Some(bitbox![1; procedure_vars.len()]);
