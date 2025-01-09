@@ -1085,6 +1085,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                FloatWidth::Four => (ValType::F32, false),
             },
             ExpressionType::Bool | ExpressionType::Pointer(_) => (ValType::I32, false),
+            x => {
+               dbg!(x);
+               unreachable!()
+            }
             _ => unreachable!(),
          };
 
