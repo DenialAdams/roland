@@ -378,27 +378,19 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    // (introduces usize types, so run this before those are lowered)
    expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::AggregateLiteralLowering);
 
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp_before.rol").unwrap(),
-      )
-      .unwrap();
-   }
-
    explicit_lval_to_rval::make_lval_to_rval_explicit(&mut ctx.program);
 
+   pre_backend_lowering::lower_aggregate_access(&mut ctx.program, config.target);
+   pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target);
+
    if config.dump_debugging_info {
       pp::pp(
          &ctx.program,
          &ctx.interner,
-         &mut std::fs::File::create("pp_after.rol").unwrap(),
+         &mut std::fs::File::create("pp.rol").unwrap(),
       )
       .unwrap();
    }
-
-   pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target);
 
    if config.target == Target::Qbe {
       expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::ThreeAddressCode);
