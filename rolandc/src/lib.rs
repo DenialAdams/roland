@@ -420,7 +420,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       ctx.program.ast.statements.clear();
    }
 
-   //propagation::propagate(&mut ctx.program, &ctx.interner, config.target);
+   propagation::propagate(&mut ctx.program, &ctx.interner, config.target);
 
    // It would be nice to run this before deleting unreachable procedures,
    // but doing so would currently delete procedures that we take pointers to
@@ -442,14 +442,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
          let liveness = backend::liveness::liveness(&body.locals, &body.cfg, &ctx.program.ast.expressions);
          backend::liveness::kill_dead_assignments(body, &liveness, &ctx.program.ast.expressions);
          program_liveness.insert(id, compute_live_intervals(body, &liveness));
-      }
-      if config.dump_debugging_info {
-         pp::pp(
-            &ctx.program,
-            &ctx.interner,
-            &mut std::fs::File::create("pp.rol").unwrap(),
-         )
-         .unwrap();
       }
       backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config, &program_liveness)
    };
