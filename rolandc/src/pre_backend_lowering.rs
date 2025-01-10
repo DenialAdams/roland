@@ -18,16 +18,15 @@ fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInf
       ExpressionType::Enum(a) => {
          *the_type = enum_info.get(*a).unwrap().base_type.clone();
       }
-      ExpressionType::Array(inner_type, _) | ExpressionType::Pointer(inner_type) => {
+      ExpressionType::Array(inner_type, _) => {
          lower_type(inner_type, enum_info, target);
       }
-      // TODO: re-enable this. in order to do so, need to first lower field access and array indexing before the backend
-      /*ExpressionType::Pointer(_) => {
+      ExpressionType::Pointer(_) => {
          *the_type = ExpressionType::Int(IntType {
             width: target.lowered_ptr_width(),
             signed: false,
          });
-      }*/
+      }
       ExpressionType::Int(it) => {
          if it.width == IntWidth::Pointer {
             it.width = target.lowered_ptr_width();

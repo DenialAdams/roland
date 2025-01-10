@@ -223,7 +223,7 @@ fn type_to_slot_kind(
             FloatWidth::Eight => ValType::F64,
             FloatWidth::Four => ValType::F32,
          },
-         ExpressionType::Pointer(_) | ExpressionType::Bool => ValType::I32,
+         ExpressionType::Bool => ValType::I32,
          ExpressionType::ProcedurePointer { .. } => {
             if target.pointer_width() == 8 {
                ValType::I64
@@ -294,10 +294,6 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
             mark_escaping_vars_expr(val, escaping_vars, ast);
          }
       }
-      Expression::ArrayIndex { array, index } => {
-         mark_escaping_vars_expr(*array, escaping_vars, ast);
-         mark_escaping_vars_expr(*index, escaping_vars, ast);
-      }
       Expression::BinaryOperator { lhs, rhs, .. } => {
          mark_escaping_vars_expr(*lhs, escaping_vars, ast);
          mark_escaping_vars_expr(*rhs, escaping_vars, ast);
@@ -307,7 +303,7 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
          mark_escaping_vars_expr(*b, escaping_vars, ast);
          mark_escaping_vars_expr(*c, escaping_vars, ast);
       }
-      Expression::FieldAccess(_, expr) | Expression::Cast { expr, .. } => {
+      Expression::Cast { expr, .. } => {
          mark_escaping_vars_expr(*expr, escaping_vars, ast);
       }
       Expression::UnaryOperator(op, expr) => {
@@ -327,7 +323,9 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
       | Expression::UnitLiteral
       | Expression::IntLiteral { .. }
       | Expression::FloatLiteral(_) => (),
-      Expression::ArrayLiteral(_)
+      Expression::FieldAccess(_, _)
+      | Expression::ArrayIndex { .. }
+      | Expression::ArrayLiteral(_)
       | Expression::StructLiteral(_, _)
       | Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)

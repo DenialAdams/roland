@@ -49,29 +49,6 @@ struct GenerationContext<'a> {
    cfg_index_to_rpo_index: HashMap<usize, usize>,
 }
 
-impl GenerationContext<'_> {
-   fn emit_const_add_i32(&mut self, value: u32) {
-      if value > 0 {
-         self.active_fcn.instruction(&Instruction::I32Const(value as i32));
-         self.active_fcn.instruction(&Instruction::I32Add);
-      }
-   }
-
-   fn emit_const_sub_i32(&mut self, value: u32) {
-      if value > 0 {
-         self.active_fcn.instruction(&Instruction::I32Const(value as i32));
-         self.active_fcn.instruction(&Instruction::I32Sub);
-      }
-   }
-
-   fn emit_const_mul_i32(&mut self, value: u32) {
-      if value != 1 {
-         self.active_fcn.instruction(&Instruction::I32Const(value as i32));
-         self.active_fcn.instruction(&Instruction::I32Mul);
-      }
-   }
-}
-
 fn type_to_wasm_type(t: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target, buf: &mut Vec<ValType>) {
    if sizeof_type_mem(t, udt, target) == 0 {
       return;
@@ -95,7 +72,7 @@ fn type_to_wasm_type_basic(t: &ExpressionType) -> ValType {
          FloatWidth::Eight => ValType::F64,
          FloatWidth::Four => ValType::F32,
       },
-      ExpressionType::Pointer(_) | ExpressionType::ProcedurePointer { .. } | ExpressionType::Bool => ValType::I32,
+      ExpressionType::ProcedurePointer { .. } | ExpressionType::Bool => ValType::I32,
       _ => unreachable!(),
    }
 }
@@ -890,7 +867,6 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
       Expression::IntLiteral { val: x, .. } => {
          let width = match expr_node.exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => x.width,
-            ExpressionType::Pointer(_) => IntWidth::Four,
             _ => unreachable!(),
          };
          match width {
@@ -1088,7 +1064,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                FloatWidth::Eight => (ValType::F64, false),
                FloatWidth::Four => (ValType::F32, false),
             },
-            ExpressionType::Bool | ExpressionType::Pointer(_) => (ValType::I32, false),
+            ExpressionType::Bool => (ValType::I32, false),
             _ => unreachable!(),
          };
 
@@ -1634,63 +1610,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             _ => unreachable!(),
          };
       }
-      Expression::FieldAccess(field_name, lhs_id) => {
-         fn calculate_offset(lhs_type: &ExpressionType, field_name: StrId, generation_context: &mut GenerationContext) {
-            let mem_offset = match lhs_type.get_type_or_type_being_pointed_to() {
-               ExpressionType::Struct(s, _) => *generation_context
-                  .user_defined_types
-                  .struct_info
-                  .get(*s)
-                  .unwrap()
-                  .size
-                  .as_ref()
-                  .unwrap()
-                  .field_offsets_mem
-                  .get(&field_name)
-                  .unwrap(),
-               ExpressionType::Union(_, _) => 0,
-               _ => unreachable!(),
-            };
-
-            generation_context.emit_const_add_i32(mem_offset);
-         }
-
-         let lhs = &generation_context.ast.expressions[*lhs_id];
-
-         do_emit(*lhs_id, generation_context);
-         // TODO: for an expression like foo.bar.baz, we will emit 3 const adds, when they should be fused
-         calculate_offset(lhs.exp_type.as_ref().unwrap(), *field_name, generation_context);
-      }
-      Expression::ArrayIndex { array, index } => {
-         fn calculate_offset(array: ExpressionId, index_e: ExpressionId, generation_context: &mut GenerationContext) {
-            let sizeof_inner = match generation_context.ast.expressions[array]
-               .exp_type
-               .as_ref()
-               .unwrap()
-               .get_type_or_type_being_pointed_to()
-            {
-               ExpressionType::Array(x, _) => {
-                  sizeof_type_mem(x, generation_context.user_defined_types, generation_context.target)
-               }
-               _ => unreachable!(),
-            };
-
-            if let Expression::IntLiteral { val: x, .. } = generation_context.ast.expressions[index_e].expression {
-               // Safe assert due to inference and constant folding validating this
-               let val_32 = u32::try_from(x).unwrap();
-               let result = sizeof_inner.wrapping_mul(val_32);
-               generation_context.emit_const_add_i32(result);
-            } else {
-               do_emit(index_e, generation_context);
-               generation_context.emit_const_mul_i32(sizeof_inner);
-               generation_context.active_fcn.instruction(&Instruction::I32Add);
-            }
-         }
-
-         do_emit(*array, generation_context);
-         calculate_offset(*array, *index, generation_context);
-      }
-      Expression::EnumLiteral(_, _)
+      Expression::FieldAccess(_, _)
+      | Expression::ArrayIndex { .. }
+      | Expression::EnumLiteral(_, _)
       | Expression::StructLiteral(_, _)
       | Expression::ArrayLiteral(_)
       | Expression::UnresolvedVariable(_)
@@ -1743,7 +1665,10 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
          .copied()
          .unwrap();
    generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
-   generation_context.emit_const_sub_i32(offset);
+   if offset > 0 {
+      generation_context.active_fcn.instruction(&Instruction::I32Const(offset as i32));
+      generation_context.active_fcn.instruction(&Instruction::I32Sub);
+   }
    true
 }
 
