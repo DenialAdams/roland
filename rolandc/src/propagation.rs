@@ -72,59 +72,60 @@ fn propagate_vals(
       e: ExpressionId,
       ast: &mut ExpressionPool,
       reaching_values: &HashMap<VariableId, ReachingVal>,
-      is_lhs_context: bool,
    ) -> bool {
       let mut propagated_const = false;
       let mut the_expression = std::mem::replace(&mut ast[e].expression, Expression::UnitLiteral);
       match &the_expression {
-         Expression::Variable(v) => {
-            if !is_lhs_context {
+         Expression::UnaryOperator(UnOp::Dereference, child) => {
+            if let Expression::Variable(v) = &mut ast[*child].expression {
                match reaching_values.get(v) {
                   Some(ReachingVal::Const(c)) => {
                      the_expression = ast[*c].expression.clone();
                      propagated_const = true;
                   }
-                  Some(ReachingVal::Var(v)) => {
-                     the_expression = Expression::Variable(*v);
+                  Some(ReachingVal::Var(reaching_v)) => {
+                     *v = *reaching_v;
                   }
                   None => (),
                }
+            } else {
+               propagated_const |= propagate_val_expr(*child, ast, reaching_values);
             }
          }
-         Expression::UnaryOperator(UnOp::AddressOf, child) => {
-            propagated_const |= propagate_val_expr(*child, ast, reaching_values, true);
-         }
-         Expression::UnaryOperator(UnOp::Dereference, child) => {
-            propagated_const |= propagate_val_expr(*child, ast, reaching_values, false);
-         }
          Expression::UnaryOperator(_, child) | Expression::Cast { expr: child, .. } => {
-            propagated_const |= propagate_val_expr(*child, ast, reaching_values, is_lhs_context);
+            propagated_const |= propagate_val_expr(*child, ast, reaching_values);
+         }
+         Expression::ArrayIndex { array, index } => {
+            propagated_const |= propagate_val_expr(*array, ast, reaching_values);
+            propagated_const |= propagate_val_expr(*index, ast, reaching_values);
          }
          Expression::ProcedureCall { proc_expr, args } => {
-            propagated_const |= propagate_val_expr(*proc_expr, ast, reaching_values, is_lhs_context);
+            propagated_const |= propagate_val_expr(*proc_expr, ast, reaching_values);
             for arg in args.iter() {
-               propagated_const |= propagate_val_expr(arg.expr, ast, reaching_values, is_lhs_context);
+               propagated_const |= propagate_val_expr(arg.expr, ast, reaching_values);
             }
          }
          Expression::BinaryOperator { lhs, rhs, .. } => {
-            propagated_const |= propagate_val_expr(*lhs, ast, reaching_values, true);
-            propagated_const |= propagate_val_expr(*rhs, ast, reaching_values, false);
+            propagated_const |= propagate_val_expr(*lhs, ast, reaching_values);
+            propagated_const |= propagate_val_expr(*rhs, ast, reaching_values);
+         }
+         Expression::FieldAccess(_, base) => {
+            propagated_const |= propagate_val_expr(*base, ast, reaching_values);
          }
          Expression::IfX(a, b, c) => {
-            propagated_const |= propagate_val_expr(*a, ast, reaching_values, is_lhs_context);
-            propagated_const |= propagate_val_expr(*b, ast, reaching_values, is_lhs_context);
-            propagated_const |= propagate_val_expr(*c, ast, reaching_values, is_lhs_context);
+            propagated_const |= propagate_val_expr(*a, ast, reaching_values);
+            propagated_const |= propagate_val_expr(*b, ast, reaching_values);
+            propagated_const |= propagate_val_expr(*c, ast, reaching_values);
          }
-         Expression::BoolLiteral(_)
+         Expression::Variable(_)
+         | Expression::BoolLiteral(_)
          | Expression::StringLiteral(_)
          | Expression::IntLiteral { .. }
          | Expression::FloatLiteral(_)
          | Expression::UnitLiteral
          | Expression::EnumLiteral(_, _)
          | Expression::BoundFcnLiteral(_, _) => (),
-         Expression::FieldAccess(_, _)
-         | Expression::ArrayIndex { .. }
-         | Expression::ArrayLiteral(_)
+         Expression::ArrayLiteral(_)
          | Expression::StructLiteral(_, _)
          | Expression::UnresolvedVariable(_)
          | Expression::UnresolvedStructLiteral(_, _, _)
@@ -136,15 +137,15 @@ fn propagate_vals(
    }
    match instruction {
       CfgInstruction::Assignment(lhs, rhs) => {
-         if propagate_val_expr(*lhs, &mut ast.expressions, reaching_values, true) {
+         if propagate_val_expr(*lhs, &mut ast.expressions, reaching_values) {
             fold_expr_id(*lhs, ast, procedures, user_defined_types, interner, target);
          }
-         if propagate_val_expr(*rhs, &mut ast.expressions, reaching_values, false) {
+         if propagate_val_expr(*rhs, &mut ast.expressions, reaching_values) {
             fold_expr_id(*rhs, ast, procedures, user_defined_types, interner, target);
          }
       }
       CfgInstruction::Expression(expr) | CfgInstruction::Return(expr) | CfgInstruction::ConditionalJump(expr, _, _) => {
-         if propagate_val_expr(*expr, &mut ast.expressions, reaching_values, false) {
+         if propagate_val_expr(*expr, &mut ast.expressions, reaching_values) {
             fold_expr_id(*expr, ast, procedures, user_defined_types, interner, target);
          }
       }
@@ -503,6 +504,10 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
             mark_escaping_vars_expr(val, escaping_vars, ast);
          }
       }
+      Expression::ArrayIndex { array, index } => {
+         mark_escaping_vars_expr(*array, escaping_vars, ast);
+         mark_escaping_vars_expr(*index, escaping_vars, ast);
+      }
       Expression::BinaryOperator { lhs, rhs, .. } => {
          mark_escaping_vars_expr(*lhs, escaping_vars, ast);
          mark_escaping_vars_expr(*rhs, escaping_vars, ast);
@@ -512,28 +517,29 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
          mark_escaping_vars_expr(*b, escaping_vars, ast);
          mark_escaping_vars_expr(*c, escaping_vars, ast);
       }
+      Expression::FieldAccess(_, base_expr) => {
+         mark_escaping_vars_expr(*base_expr, escaping_vars, ast);
+      }
       Expression::Cast { expr, .. } => {
          mark_escaping_vars_expr(*expr, escaping_vars, ast);
       }
       Expression::UnaryOperator(op, expr) => {
-         mark_escaping_vars_expr(*expr, escaping_vars, ast);
-         if *op == UnOp::AddressOf {
-            if let Some(v) = partially_accessed_var(*expr, ast) {
-               escaping_vars.insert(v);
-            }
+         let is_variable_load = *op == UnOp::Dereference && matches!(ast[*expr].expression, Expression::Variable(_));
+         if !is_variable_load {
+            mark_escaping_vars_expr(*expr, escaping_vars, ast);
          }
       }
-      Expression::Variable(_)
-      | Expression::EnumLiteral(_, _)
+      Expression::Variable(v) => {
+         escaping_vars.insert(*v);
+      }
+      Expression::EnumLiteral(_, _)
       | Expression::BoundFcnLiteral(_, _)
       | Expression::BoolLiteral(_)
       | Expression::StringLiteral(_)
       | Expression::UnitLiteral
       | Expression::IntLiteral { .. }
       | Expression::FloatLiteral(_) => (),
-      Expression::ArrayIndex { .. }
-      | Expression::FieldAccess(_, _)
-      | Expression::StructLiteral(_, _)
+      Expression::StructLiteral(_, _)
       | Expression::ArrayLiteral(_)
       | Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)
