@@ -411,6 +411,7 @@ fn vv_expr(
    parent_ctx: ParentCtx,
    is_lhs_context: bool,
 ) {
+   let mut is_addr_var = false;
    match &expressions[expr_index].expression {
       Expression::ArrayIndex { array, index } => {
          vv_expr(*array, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
@@ -444,7 +445,13 @@ fn vv_expr(
       Expression::UnaryOperator(UnOp::Dereference, expr) => {
          vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
       }
-      Expression::FieldAccess(_, expr) | Expression::UnaryOperator(UnOp::AddressOf, expr) => {
+      Expression::UnaryOperator(UnOp::AddressOf, expr) => {
+         is_addr_var = matches!(expressions[*expr].expression, Expression::Variable(_));
+         if !is_addr_var || ctx.mode != HoistingMode::ThreeAddressCode {
+            vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, true);
+         }
+      }
+      Expression::FieldAccess(_, expr) => {
          vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, true);
       }
       Expression::Cast {
@@ -584,7 +591,7 @@ fn vv_expr(
          let is_rhs_var = parent_ctx == ParentCtx::AssignmentRhs
             && matches!(expressions[expr_index].expression, Expression::Variable(_));
          let is_literal = is_non_aggregate_const(&expressions[expr_index].expression);
-         if is_ifx || (!is_lhs_context && !is_effective_top_level && !is_literal && !is_rhs_var) {
+         if is_ifx || (!is_lhs_context && !is_effective_top_level && !is_literal && !is_rhs_var && !is_addr_var) {
             ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
          }
       }

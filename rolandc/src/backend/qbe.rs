@@ -662,6 +662,10 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> String 
       Expression::BoolLiteral(val) => {
          format!("{}", u8::from(*val))
       }
+      Expression::UnaryOperator(UnOp::AddressOf, child) => {
+         // (must be the address of a var)
+         expr_to_val(*child, ctx)
+      }
       Expression::Variable(v) => {
          if ctx.global_info.contains_key(v) {
             format!("$.v{}", v.0)
