@@ -1615,7 +1615,7 @@ fn get_type(
       Expression::BoundFcnLiteral(id, type_arguments) => {
          let proc = validation_context.procedures.get(*id).unwrap();
 
-         if type_arguments.len() == 0 && !proc.type_parameters.is_empty() {
+         if type_arguments.is_empty() && !proc.type_parameters.is_empty() {
             validation_context.owned.unknown_literals.insert(expr_index);
             *type_arguments = ((0..proc.type_parameters.len()).map(|_| ExpressionTypeNode {
                e_type: ExpressionType::Unknown(
