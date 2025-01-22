@@ -583,8 +583,14 @@ fn vv_expr(
             || parent_ctx == ParentCtx::ExprStmt;
          let is_rhs_var = parent_ctx == ParentCtx::AssignmentRhs
             && matches!(expressions[expr_index].expression, Expression::Variable(_));
+         let is_addr_var = if let Expression::UnaryOperator(UnOp::AddressOf, inner) = expressions[expr_index].expression
+         {
+            matches!(expressions[inner].expression, Expression::Variable(_))
+         } else {
+            false
+         };
          let is_literal = is_non_aggregate_const(&expressions[expr_index].expression);
-         if is_ifx || (!is_lhs_context && !is_effective_top_level && !is_literal && !is_rhs_var) {
+         if is_ifx || (!is_lhs_context && !is_effective_top_level && !is_literal && !is_rhs_var && !is_addr_var) {
             ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
          }
       }
