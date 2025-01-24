@@ -690,7 +690,6 @@ pub fn astify(
             | Token::Eof => break,
             _ => {
                let _ = lexer.next();
-               continue;
             }
          }
       }

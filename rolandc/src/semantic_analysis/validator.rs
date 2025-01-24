@@ -1076,6 +1076,9 @@ fn type_expression(
          }
          None => {
             if let Some(proc_id) = validation_context.proc_name_table.get(&id.str).copied() {
+               validation_context
+                  .source_to_definition
+                  .insert(id.location, validation_context.procedures[proc_id].location);
                validation_context.ast.expressions[expr_index].expression =
                   Expression::BoundFcnLiteral(proc_id, Box::new([]));
             }
@@ -1100,6 +1103,9 @@ fn type_expression(
          }
 
          if let Some(proc_id) = validation_context.proc_name_table.get(&name.str).copied() {
+            validation_context
+               .source_to_definition
+               .insert(name.location, validation_context.procedures[proc_id].location);
             validation_context.ast.expressions[expr_index].expression =
                Expression::BoundFcnLiteral(proc_id, std::mem::take(g_args));
          }
@@ -1606,54 +1612,49 @@ fn get_type(
             node_type
          }
       }
-      Expression::BoundFcnLiteral(id, type_arguments) => match validation_context.procedures.get(*id) {
-         Some(proc) => {
-            validation_context
-               .source_to_definition
-               .insert(proc.definition.name.location, proc.location);
+      Expression::BoundFcnLiteral(id, type_arguments) => {
+         let proc = validation_context.procedures.get(*id).unwrap();
 
-            if type_arguments.len() == 0 && !proc.type_parameters.is_empty() {
-               validation_context.owned.unknown_literals.insert(expr_index);
-               *type_arguments = ((0..proc.type_parameters.len()).map(|_| ExpressionTypeNode {
-                  e_type: ExpressionType::Unknown(
-                     validation_context
-                        .owned
-                        .type_variables
-                        .new_type_variable(TypeConstraint::None),
-                  ),
-                  location: expr_location,
-               }))
-               .collect();
-            }
-
-            let check_result = check_procedure_item(
-               *id,
-               proc.definition.name.str,
-               &proc.type_parameters,
-               expr_location,
-               type_arguments,
-               validation_context.interner,
-               validation_context.user_defined_types,
-               validation_context.procedures,
-               err_manager,
-               &mut validation_context.owned.type_variables,
-            );
-
-            if check_result.1 && !type_arguments.is_empty() {
-               validation_context.owned.procedures_to_specialize.push((
-                  *id,
-                  type_arguments
-                     .iter()
-                     .map(|x| x.e_type.clone())
-                     .collect::<Vec<_>>()
-                     .into_boxed_slice(),
-               ));
-            }
-
-            check_result.0
+         if type_arguments.is_empty() && !proc.type_parameters.is_empty() {
+            validation_context.owned.unknown_literals.insert(expr_index);
+            *type_arguments = ((0..proc.type_parameters.len()).map(|_| ExpressionTypeNode {
+               e_type: ExpressionType::Unknown(
+                  validation_context
+                     .owned
+                     .type_variables
+                     .new_type_variable(TypeConstraint::None),
+               ),
+               location: expr_location,
+            }))
+            .collect();
          }
-         None => unreachable!(),
-      },
+
+         let check_result = check_procedure_item(
+            *id,
+            proc.definition.name.str,
+            &proc.type_parameters,
+            expr_location,
+            type_arguments,
+            validation_context.interner,
+            validation_context.user_defined_types,
+            validation_context.procedures,
+            err_manager,
+            &mut validation_context.owned.type_variables,
+         );
+
+         if check_result.1 && !type_arguments.is_empty() {
+            validation_context.owned.procedures_to_specialize.push((
+               *id,
+               type_arguments
+                  .iter()
+                  .map(|x| x.e_type.clone())
+                  .collect::<Vec<_>>()
+                  .into_boxed_slice(),
+            ));
+         }
+
+         check_result.0
+      }
       Expression::UnresolvedProcLiteral(name, _) => {
          rolandc_error!(
             err_manager,

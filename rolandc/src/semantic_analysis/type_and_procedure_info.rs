@@ -62,7 +62,7 @@ fn recursive_struct_union_check(
                union_info,
             );
          }
-         _ => continue,
+         _ => (),
       }
    }
 

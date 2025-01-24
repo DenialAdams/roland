@@ -26,7 +26,8 @@ scratch *args:
 scratch_amd64 *args:
    cargo run {{release_flag}} --bin rolandc_cli -- scratch.rol {{args}} --target amd64 && ./scratch
 coverage:
-   RUSTFLAGS=-Cinstrument-coverage cargo build --bin rolandc_cli
+   cargo clean
+   RUSTFLAGS="-Cinstrument-coverage -Cstrip=none -Clink-dead-code -Cdebuginfo=2" cargo build --bin rolandc_cli
    cargo tarpaulin --skip-clean --implicit-test-threads --follow-exec --engine llvm --command build --bin roland_test_runner -o html -- {{justfile_directory()}}/tests/ --cli {{justfile_directory()}}/target/debug/rolandc_cli
    {{env_var_or_default("BROWSER", "firefox")}} "{{justfile_directory()}}/tarpaulin-report.html#rolandc/src"
 [no-cd]
