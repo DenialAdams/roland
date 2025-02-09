@@ -492,7 +492,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                      Target::Qbe,
                   );
                   writeln!(ctx.buf, "   blit {}, {}, {}", rhs_mem, lhs_mem, size).unwrap();
-               } else if ctx.ast.expressions[*lid].exp_type.as_ref().unwrap().is_aggregate() {
+               } else if ctx.ast.expressions[*lid].exp_type.as_ref().unwrap().get_type_or_type_being_pointed_to().is_aggregate() {
                   let Expression::ProcedureCall { proc_expr, args } = &ctx.ast.expressions[*en].expression else {
                      unreachable!()
                   };
@@ -500,7 +500,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                      ctx.buf,
                      "   %t ={} {}",
                      roland_type_to_abi_type(
-                        ctx.ast.expressions[*lid].exp_type.as_ref().unwrap(),
+                        ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
                         ctx.udt,
                         &ctx.aggregate_defs
                      )
@@ -509,7 +509,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   )
                   .unwrap();
                   let size = sizeof_type_mem(
-                     ctx.ast.expressions[*lid].exp_type.as_ref().unwrap(),
+                     ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
                      ctx.udt,
                      Target::Qbe,
                   );
@@ -949,7 +949,6 @@ fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner
    Cow::Owned(format!(".{}_{}", proc_id.data().as_ffi(), proc_name))
 }
 
-// TODO: rework this to write directly into bytestream or otherwise not allocate
 fn expr_to_val(expr_index: ExpressionId, ctx: &GenerationContext) -> String {
    let expr_node = &ctx.ast.expressions[expr_index];
    match &expr_node.expression {
@@ -976,12 +975,22 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &GenerationContext) -> String {
          // (must be the address of a var)
          expr_to_val(*child, ctx)
       }
+      Expression::UnaryOperator(UnOp::Dereference, inner) => {
+         // nocheckin restructure this code
+         if let Expression::Variable(v) = ctx.ast.expressions[*inner].expression {
+            if let VarSlot::Register(reg) = ctx.var_to_slot.get(&v).unwrap() {
+               return format!("%r{}", reg);
+         }
+         }
+         unreachable!()
+      }
       Expression::Variable(v) => {
          if ctx.global_info.contains_key(v) {
             format!("$.v{}", v.0)
          } else {
             match ctx.var_to_slot.get(v).unwrap() {
                VarSlot::Register(reg) => {
+                  // nocheckin this should not be reachable
                   format!("%r{}", reg)
                }
                VarSlot::Stack(v) => {

@@ -170,7 +170,7 @@ pub fn lower_aggregate_access(program: &mut Program, target: Target) {
                rhs: mul_node,
             };
          }
-         _ => continue,
+         _ => (),
       }
    }
 }
