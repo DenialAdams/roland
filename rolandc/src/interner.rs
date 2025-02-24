@@ -6,8 +6,7 @@ use std::num::NonZeroUsize;
 pub struct StrId(NonZeroUsize);
 
 // TODO: remove this, we only use it for a dumb reason
-// Obviously safe, but we can't use the safe constructor until const unwrap
-pub const DUMMY_STR_TOKEN: StrId = StrId(unsafe { NonZeroUsize::new_unchecked(1) });
+pub const DUMMY_STR_TOKEN: StrId = StrId(NonZeroUsize::new(1).unwrap());
 
 pub struct Interner {
    map: HashMap<&'static str, NonZeroUsize>,

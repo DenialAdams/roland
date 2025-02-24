@@ -17,7 +17,7 @@ pub fn ensure_variables_definitely_assigned(program: &Program, err_manager: &mut
    for (id, body) in program.procedure_bodies.iter() {
       assigned_vars.clear();
       assigned_vars.reserve(body.locals.len());
-      assigned_vars.extend(std::iter::repeat(false).take(body.locals.len()));
+      assigned_vars.extend(std::iter::repeat_n(false, body.locals.len()));
       for param in program.procedures[id].definition.parameters.iter() {
          assigned_vars.set(body.locals.get_index_of(&param.var_id).unwrap(), true);
       }

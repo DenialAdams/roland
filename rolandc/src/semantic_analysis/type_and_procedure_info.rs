@@ -243,7 +243,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          &program.templated_types,
       ) {
          continue;
-      };
+      }
 
       match enum_i.base_type {
          U64_TYPE => (),

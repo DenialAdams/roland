@@ -1610,7 +1610,7 @@ fn pratt(
                      identifier_str,
                   );
                   return Result::Err(());
-               };
+               }
                expect(l, parse_context, Token::Comma)?;
             };
             let combined_location = merge_locations(base_ident_location, close_brace.source_info);

@@ -169,7 +169,7 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
                write!(ctx.buf, "b {}, ", *x).unwrap();
             }
             IntWidth::Pointer => unreachable!(),
-         };
+         }
       }
       Expression::FloatLiteral(x) => {
          let width = match expr_node.exp_type.as_ref().unwrap() {
@@ -1092,7 +1092,7 @@ fn make_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &Generati
          write!(&mut s, "call {}(", val).unwrap();
       }
       _ => unreachable!(),
-   };
+   }
    for arg in args.iter() {
       if let Some(arg_type) = roland_type_to_abi_type(
          ctx.ast.expressions[arg.expr].exp_type.as_ref().unwrap(),

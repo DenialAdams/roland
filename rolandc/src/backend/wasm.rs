@@ -930,7 +930,7 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
                buf.extend((*x as u8).to_le_bytes());
             }
             IntWidth::Pointer => unreachable!(),
-         };
+         }
       }
       Expression::FloatLiteral(x) => {
          let width = match expr_node.exp_type.as_ref().unwrap() {
@@ -1003,7 +1003,7 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
 
 fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) {
    let size = sizeof_type_mem(expr_type, udt, target);
-   buf.extend(std::iter::repeat(0).take(size as usize));
+   buf.extend(std::iter::repeat_n(0, size as usize));
 }
 
 fn literal_as_wasm_const(expr_index: ExpressionId, generation_context: &mut GenerationContext) -> ConstExpr {
@@ -1646,7 +1646,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                });
             }
             _ => unreachable!(),
-         };
+         }
       }
       Expression::FieldAccess(field_name, lhs_id) => {
          fn calculate_offset(lhs_type: &ExpressionType, field_name: StrId, generation_context: &mut GenerationContext) {

@@ -176,7 +176,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
             return Err(CompilationError::Io);
          }
       }
-   };
+   }
 
    semantic_analysis::type_and_procedure_info::populate_type_and_procedure_info(
       &mut ctx.program,

@@ -290,7 +290,7 @@ fn gen_for_expr(
          if let Some(di) = procedure_vars.get_index_of(var) {
             gen.set(di, true);
             kill.set(di, false);
-         };
+         }
       }
       Expression::EnumLiteral(_, _)
       | Expression::BoundFcnLiteral(_, _)

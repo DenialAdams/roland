@@ -911,7 +911,7 @@ fn type_statement_inner(
                   &mut validation_context.owned.type_variables,
                );
             }
-         };
+         }
 
          let opt_en = match opt_enid {
             DeclarationValue::Expr(enid) => Some(*enid),
@@ -1236,7 +1236,7 @@ fn get_type(
                   &mut validation_context.owned.type_variables,
                );
             }
-         };
+         }
 
          let e = &validation_context.ast.expressions[*expr_id];
          let e_type = e.exp_type.as_ref().unwrap();
