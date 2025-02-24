@@ -1419,7 +1419,7 @@ impl Literal {
             synthetic: true,
          }),
          (Literal::Float64(i), Literal::Float64(j)) => Some(Expression::FloatLiteral(i + j)),
-         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i - j))),
+         (Literal::Float32(i), Literal::Float32(j)) => Some(Expression::FloatLiteral(f64::from(i + j))),
          _ => unreachable!(),
       }
    }
