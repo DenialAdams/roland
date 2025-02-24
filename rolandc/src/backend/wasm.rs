@@ -178,7 +178,7 @@ impl TypeManager<'_> {
       let idx = if let Some(idx) = self.registered_types.get_index_of(&self.function_val_types) {
          idx
       } else {
-         self.type_section.function(
+         self.type_section.ty().function(
             self.function_val_types.param_val_types.iter().copied(),
             self.function_val_types.ret_val_types.iter().copied(),
          );
@@ -541,7 +541,7 @@ pub fn emit_wasm(
             .iter()
             .map(|x| generation_context.procedure_indices.get_index_of(x).unwrap() as u32)
             .collect::<Vec<_>>();
-         elem.active(Some(0), &ConstExpr::i32_const(0), Elements::Functions(&elements));
+         elem.active(Some(0), &ConstExpr::i32_const(0), Elements::Functions(std::borrow::Cow::Owned(elements)));
       }
 
       (table, elem)
