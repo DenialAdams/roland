@@ -79,7 +79,7 @@ pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> R
       if let Some(b) = program.procedure_bodies.get(id) {
          writeln!(pp_ctx.output)?;
          for local in b.locals.iter() {
-            write!(pp_ctx.output, "   %v{}: ", local.0.0)?;
+            write!(pp_ctx.output, "   %v{}: ", local.0 .0)?;
             pp_type(local.1, &mut pp_ctx)?;
             writeln!(pp_ctx.output, ";")?;
          }

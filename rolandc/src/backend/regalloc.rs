@@ -2,7 +2,6 @@ use std::collections::HashSet;
 
 use indexmap::IndexMap;
 use slotmap::SecondaryMap;
-use wasm_encoder::ValType;
 
 use super::linearize::{post_order, Cfg, CfgInstruction};
 use super::liveness::LiveInterval;
@@ -18,14 +17,22 @@ pub enum VarSlot {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RegisterType {
+   I32,
+   I64,
+   F32,
+   F64,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum VarSlotKind {
    Stack((u32, u32)), // (size, alignment)
-   Register(ValType),
+   Register(RegisterType),
 }
 
 pub struct RegallocResult {
    pub var_to_slot: IndexMap<VariableId, VarSlot>,
-   pub procedure_registers: SecondaryMap<ProcedureId, Vec<ValType>>,
+   pub procedure_registers: SecondaryMap<ProcedureId, Vec<RegisterType>>,
    pub procedure_stack_slots: SecondaryMap<ProcedureId, Vec<(u32, u32)>>,
 }
 
@@ -85,9 +92,9 @@ pub fn assign_variables_to_registers_and_mem(
                free_slots
                   .entry(VarSlotKind::Register(
                      if config.target.lowered_ptr_width() == IntWidth::Eight {
-                        ValType::I64
+                        RegisterType::I64
                      } else {
-                        ValType::I32
+                        RegisterType::I32
                      },
                   ))
                   .or_default()
@@ -216,19 +223,19 @@ fn type_to_slot_kind(
       VarSlotKind::Register(match et {
          ExpressionType::Int(x) => match x.width {
             IntWidth::Pointer => unreachable!(),
-            IntWidth::Eight => ValType::I64,
-            _ => ValType::I32,
+            IntWidth::Eight => RegisterType::I64,
+            _ => RegisterType::I32,
          },
          ExpressionType::Float(x) => match x.width {
-            FloatWidth::Eight => ValType::F64,
-            FloatWidth::Four => ValType::F32,
+            FloatWidth::Eight => RegisterType::F64,
+            FloatWidth::Four => RegisterType::F32,
          },
-         ExpressionType::Bool => ValType::I32,
+         ExpressionType::Bool => RegisterType::I32,
          ExpressionType::ProcedurePointer { .. } => {
             if target.pointer_width() == 8 {
-               ValType::I64
+               RegisterType::I64
             } else {
-               ValType::I32
+               RegisterType::I32
             }
          }
          _ => unreachable!(),

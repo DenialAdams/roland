@@ -8,7 +8,7 @@ use wasm_encoder::{
 };
 
 use super::linearize::{post_order, Cfg, CfgInstruction, CFG_END_NODE};
-use super::regalloc::{RegallocResult, VarSlot};
+use super::regalloc::{RegallocResult, RegisterType, VarSlot};
 use crate::dominators::{compute_dominators, DominatorTree};
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -19,6 +19,17 @@ use crate::semantic_analysis::{GlobalInfo, StorageKind};
 use crate::size_info::{aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm};
 use crate::type_data::{ExpressionType, FloatType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE};
 use crate::{CompilationConfig, Target};
+
+impl From<RegisterType> for ValType {
+   fn from(val: RegisterType) -> Self {
+      match val {
+         RegisterType::F32 => ValType::F32,
+         RegisterType::F64 => ValType::F64,
+         RegisterType::I32 => ValType::I32,
+         RegisterType::I64 => ValType::I64,
+      }
+   }
+}
 
 // globals
 const SP: u32 = 0;
@@ -457,8 +468,14 @@ pub fn emit_wasm(
       let Some(cfg) = program.procedure_bodies.get(proc_id).map(|x| &x.cfg) else {
          continue;
       };
-      generation_context.active_fcn =
-         Function::new_with_locals_types(regalloc_result.procedure_registers.remove(proc_id).unwrap());
+      generation_context.active_fcn = Function::new_with_locals_types(
+         regalloc_result
+            .procedure_registers
+            .remove(proc_id)
+            .unwrap()
+            .into_iter()
+            .map(Into::into),
+      );
       generation_context.stack_offsets_mem.clear();
 
       generation_context.sum_sizeof_locals_mem = 0;
@@ -541,7 +558,11 @@ pub fn emit_wasm(
             .iter()
             .map(|x| generation_context.procedure_indices.get_index_of(x).unwrap() as u32)
             .collect::<Vec<_>>();
-         elem.active(Some(0), &ConstExpr::i32_const(0), Elements::Functions(std::borrow::Cow::Owned(elements)));
+         elem.active(
+            Some(0),
+            &ConstExpr::i32_const(0),
+            Elements::Functions(std::borrow::Cow::Owned(elements)),
+         );
       }
 
       (table, elem)

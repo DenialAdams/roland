@@ -4,11 +4,11 @@ use std::io::Write;
 
 use indexmap::{IndexMap, IndexSet};
 use slotmap::{Key, SlotMap};
-use wasm_encoder::ValType;
 
 use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE};
 use super::regalloc::{RegallocResult, VarSlot};
 use crate::backend::linearize::post_order;
+use crate::backend::regalloc::RegisterType;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
@@ -412,11 +412,10 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
       for (i, typ) in regalloc_result.procedure_registers[proc_id].iter().enumerate() {
          let i = i + procedure.definition.parameters.len();
          match typ {
-            ValType::I32 => writeln!(ctx.buf, "   %r{} =w copy 0", i).unwrap(),
-            ValType::I64 => writeln!(ctx.buf, "   %r{} =l copy 0", i).unwrap(),
-            ValType::F32 => writeln!(ctx.buf, "   %r{} =s copy 0", i).unwrap(),
-            ValType::F64 => writeln!(ctx.buf, "   %r{} =d copy 0", i).unwrap(),
-            _ => unreachable!(),
+            RegisterType::I32 => writeln!(ctx.buf, "   %r{} =w copy 0", i).unwrap(),
+            RegisterType::I64 => writeln!(ctx.buf, "   %r{} =l copy 0", i).unwrap(),
+            RegisterType::F32 => writeln!(ctx.buf, "   %r{} =s copy 0", i).unwrap(),
+            RegisterType::F64 => writeln!(ctx.buf, "   %r{} =d copy 0", i).unwrap(),
          }
       }
       for bb_id in post_order(cfg).iter().rev().copied().filter(|x| *x != CFG_END_NODE) {
