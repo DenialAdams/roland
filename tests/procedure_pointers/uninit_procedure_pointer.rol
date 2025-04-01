@@ -1,0 +1,7 @@
+proc main() {
+  let x: proc() -> unit = ___;
+  x();
+}
+
+__END__
+compile:
