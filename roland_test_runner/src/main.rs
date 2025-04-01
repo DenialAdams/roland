@@ -1,6 +1,7 @@
 #![allow(clippy::uninlined_format_args)] // I'm an old man and I like the way it was before
 #![allow(clippy::unwrap_or_default)] // I want to know exactly what is being called
 
+use std::borrow::Cow;
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -346,7 +347,7 @@ fn test_result(
       });
    }
 
-   if tc_output.status.success() {
+   let stderr_text = if tc_output.status.success() {
       if td
          .result
          .compile_output
@@ -359,63 +360,12 @@ fn test_result(
          });
       }
 
-      let Some(ero) = td.result.run_output else {
-         if !amd64 {
-            // VALIDATE WASM BINARY HERE todo
-         }
-         //return; todo
-      };
-
-      // Execute the program
       let mut prog_path = t_file_path.to_path_buf();
       if amd64 {
          prog_path.set_extension("out");
       } else {
          prog_path.set_extension("wasm");
       }
-
-      let prog_output = {
-         let (mut handle, mut prog_output_stream) = {
-            let mut prog_command = if amd64 {
-               Command::new(&prog_path)
-            } else {
-               let mut prog_command = Command::new("wasmtime");
-               prog_command.arg(prog_path.as_os_str());
-               prog_command
-            };
-            // It's desirable to combine stdout and stderr, so an output test can test either or both
-            let prog_output_stream = {
-               let (reader, writer) = pipe().unwrap();
-               let writer_clone = writer.try_clone().unwrap();
-               prog_command.stdout(writer);
-               prog_command.stderr(writer_clone);
-               reader
-            };
-            let handle = match prog_command.spawn() {
-               Ok(v) => v,
-               Err(_) => {
-                  return Err(TestFailureDetails {
-                     reason: TestFailureReason::FailedToRunExecutable,
-                     compilation_stderr: stderr_text.into_owned(),
-                  });
-               }
-            };
-            (handle, prog_output_stream)
-         };
-         match handle.wait_timeout(Duration::from_secs(1)).unwrap() {
-            Some(_status) => (),
-            None => {
-               handle.kill().unwrap();
-               return Err(TestFailureDetails {
-                  reason: TestFailureReason::ExecutionTimeout,
-                  compilation_stderr: stderr_text.into_owned(),
-               });
-            }
-         };
-         let mut prog_output: Vec<u8> = Vec::new();
-         prog_output_stream.read_to_end(&mut prog_output).unwrap();
-         String::from_utf8_lossy(&prog_output).into_owned()
-      };
 
       if preserve_artifacts && !amd64 {
          // Generate a .wat file for easy inspection
@@ -428,14 +378,27 @@ fn test_result(
          prog_command.status().unwrap();
       }
 
-      if prog_output != ero {
-         return Err(TestFailureDetails {
-            reason: TestFailureReason::MismatchedExecutionOutput(ero, prog_output),
-            compilation_stderr: stderr_text.into_owned(),
-         });
-      }
+      let stderr_text = if let Some(ero) = td.result.run_output {
+         let (prog_output, stderr_text) = execute_program(&mut prog_path, amd64, stderr_text)?;
+
+         if prog_output != ero {
+            return Err(TestFailureDetails {
+               reason: TestFailureReason::MismatchedExecutionOutput(ero, prog_output),
+               compilation_stderr: stderr_text.into_owned(),
+            });
+         }
+
+         stderr_text
+      } else {
+         if !amd64 {
+            // validate
+         }
+         stderr_text
+      };
 
       cleanup_artifacts(prog_path, amd64, preserve_artifacts);
+
+      stderr_text
    } else if td.result.run_output.is_some() {
       return Err(TestFailureDetails {
          reason: TestFailureReason::ExpectedCompilationSuccess,
@@ -451,12 +414,61 @@ fn test_result(
          reason: TestFailureReason::MismatchedCompilationErrorOutput(td),
          compilation_stderr: stderr_text.into_owned(),
       });
-   }
+   } else {
+      stderr_text
+   };
 
    Ok(stderr_text
       .strip_prefix(td.result.compile_output.as_deref().unwrap_or(""))
       .unwrap_or("")
       .to_string())
+}
+
+fn execute_program<'b>(
+   prog_path: &mut PathBuf,
+   amd64: bool,
+   stderr_text: Cow<'b, str>,
+) -> Result<(String, Cow<'b, str>), TestFailureDetails> {
+   let (mut handle, mut prog_output_stream) = {
+      let mut prog_command = if amd64 {
+         Command::new(&prog_path)
+      } else {
+         let mut prog_command = Command::new("wasmtime");
+         prog_command.arg(prog_path.as_os_str());
+         prog_command
+      };
+      // It's desirable to combine stdout and stderr, so an output test can test either or both
+      let prog_output_stream = {
+         let (reader, writer) = pipe().unwrap();
+         let writer_clone = writer.try_clone().unwrap();
+         prog_command.stdout(writer);
+         prog_command.stderr(writer_clone);
+         reader
+      };
+      let handle = match prog_command.spawn() {
+         Ok(v) => v,
+         Err(_) => {
+            return Err(TestFailureDetails {
+               reason: TestFailureReason::FailedToRunExecutable,
+               compilation_stderr: stderr_text.into_owned(),
+            });
+         }
+      };
+      (handle, prog_output_stream)
+   };
+   match handle.wait_timeout(Duration::from_secs(1)).unwrap() {
+      Some(_status) => (),
+      None => {
+         handle.kill().unwrap();
+         return Err(TestFailureDetails {
+            reason: TestFailureReason::ExecutionTimeout,
+            compilation_stderr: stderr_text.into_owned(),
+         });
+      }
+   };
+   let mut prog_output: Vec<u8> = Vec::new();
+   prog_output_stream.read_to_end(&mut prog_output).unwrap();
+   Ok((String::from_utf8_lossy(&prog_output).into_owned(), stderr_text))
 }
 
 fn cleanup_artifacts(mut prog_path: PathBuf, amd64: bool, preserve_artifacts: bool) {
