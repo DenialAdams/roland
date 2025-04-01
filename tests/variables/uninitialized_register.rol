@@ -1,0 +1,6 @@
+proc main() {
+   let x: u64 = ___;
+   println(uint_to_string(x));
+}
+__END__
+compile:

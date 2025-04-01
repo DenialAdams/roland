@@ -359,7 +359,12 @@ fn test_result(
          });
       }
 
-      let ero = td.result.run_output.unwrap_or_else(String::new);
+      let Some(ero) = td.result.run_output else {
+         if !amd64 {
+            // VALIDATE WASM BINARY HERE todo
+         }
+         //return; todo
+      };
 
       // Execute the program
       let mut prog_path = t_file_path.to_path_buf();
@@ -412,13 +417,6 @@ fn test_result(
          String::from_utf8_lossy(&prog_output).into_owned()
       };
 
-      if prog_output != ero {
-         return Err(TestFailureDetails {
-            reason: TestFailureReason::MismatchedExecutionOutput(ero, prog_output),
-            compilation_stderr: stderr_text.into_owned(),
-         });
-      }
-
       if preserve_artifacts && !amd64 {
          // Generate a .wat file for easy inspection
          let mut out_path = prog_path.clone();
@@ -428,6 +426,13 @@ fn test_result(
          prog_command.arg(out_path.as_os_str());
          prog_command.arg(prog_path.as_os_str());
          prog_command.status().unwrap();
+      }
+
+      if prog_output != ero {
+         return Err(TestFailureDetails {
+            reason: TestFailureReason::MismatchedExecutionOutput(ero, prog_output),
+            compilation_stderr: stderr_text.into_owned(),
+         });
       }
 
       cleanup_artifacts(prog_path, amd64, preserve_artifacts);
