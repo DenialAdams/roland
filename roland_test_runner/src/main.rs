@@ -24,6 +24,7 @@ enum TestFailureReason {
    MismatchedCompilationErrorOutput(TestDetails),
    ExecutionTimeout,
    FailedToOpenTest,
+   ValidationFailed(Vec<u8>),
 }
 
 struct Opts {
@@ -231,6 +232,13 @@ fn main() -> Result<(), &'static str> {
             writeln!(out_handle, "Compiled OK, but the executable failed to terminate.").unwrap();
             true
          }
+         TestFailureReason::ValidationFailed(validator_stderr) => {
+            writeln!(out_handle, "Compiled OK, but validation of hte program failed:").unwrap();
+            writeln!(out_handle, "```").unwrap();
+            out_handle.write_all(validator_stderr).unwrap();
+            writeln!(out_handle, "```").unwrap();
+            true
+         }
          TestFailureReason::MismatchedExecutionOutput(expected, actual) => {
             writeln!(
                out_handle,
@@ -391,7 +399,16 @@ fn test_result(
          stderr_text
       } else {
          if !amd64 {
-            // validate
+            // we shouldn't run the program, but should at least validate it
+            let mut prog_command = Command::new("wasm-validate");
+            prog_command.arg(prog_path.as_os_str());
+            let output = prog_command.output().unwrap();
+            if !output.status.success() {
+               return Err(TestFailureDetails {
+                  reason: TestFailureReason::ValidationFailed(output.stderr),
+                  compilation_stderr: stderr_text.into_owned(),
+               });
+            }
          }
          stderr_text
       };
