@@ -77,6 +77,12 @@ pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> R
       write!(pp_ctx.output, ") -> ")?;
       pp_type(&proc.definition.ret_type.e_type, &mut pp_ctx)?;
       if let Some(b) = program.procedure_bodies.get(id) {
+         writeln!(pp_ctx.output)?;
+         for local in b.locals.iter() {
+            write!(pp_ctx.output, "   %v{}: ", local.0.0)?;
+            pp_type(local.1, &mut pp_ctx)?;
+            writeln!(pp_ctx.output, ";")?;
+         }
          if b.cfg.bbs.is_empty() {
             pp_block(&b.block, &mut pp_ctx)?;
          } else {
