@@ -420,6 +420,7 @@ fn test_result(
       }
 
       if preserve_artifacts && !amd64 {
+         // Generate a .wat file for easy inspection
          let mut out_path = prog_path.clone();
          out_path.set_extension("wat");
          let mut prog_command = Command::new("wasm2wat");
@@ -429,28 +430,7 @@ fn test_result(
          prog_command.status().unwrap();
       }
 
-      std::fs::remove_file(&prog_path).unwrap();
-
-      if !amd64 && !preserve_artifacts {
-         prog_path.set_extension("wat");
-         // it might not exist.
-         let _ = std::fs::remove_file(&prog_path);
-      } else if !preserve_artifacts {
-         prog_path.set_extension("s");
-         std::fs::remove_file(&prog_path).unwrap();
-         prog_path.set_extension("ssa");
-         std::fs::remove_file(&prog_path).unwrap();
-      }
-
-      if amd64 {
-         prog_path.set_extension("o");
-         std::fs::remove_file(&prog_path).unwrap();
-         let syscall_path = format!("{}_syscall.s", prog_path.file_stem().unwrap().to_string_lossy());
-         prog_path.set_file_name(syscall_path);
-         std::fs::remove_file(&prog_path).unwrap();
-         prog_path.set_extension("o");
-         std::fs::remove_file(&prog_path).unwrap();
-      }
+      cleanup_artifacts(prog_path, amd64, preserve_artifacts);
    } else if td.result.run_output.is_some() {
       return Err(TestFailureDetails {
          reason: TestFailureReason::ExpectedCompilationSuccess,
@@ -472,6 +452,36 @@ fn test_result(
       .strip_prefix(td.result.compile_output.as_deref().unwrap_or(""))
       .unwrap_or("")
       .to_string())
+}
+
+fn cleanup_artifacts(mut prog_path: PathBuf, amd64: bool, preserve_artifacts: bool) {
+   // always delete the binary
+   std::fs::remove_file(&prog_path).unwrap();
+
+   if !preserve_artifacts {
+      let extensions = if amd64 {
+         ["s", "ssa"].as_slice()
+      } else {
+         ["wat"].as_slice()
+      };
+      for ext in extensions {
+         prog_path.set_extension(ext);
+         let _ = std::fs::remove_file(&prog_path);
+      }
+   }
+
+   // for amd64, delete the .o file. and delete the syscall junk, its always the same.
+   if amd64 {
+      prog_path.set_extension("o");
+      std::fs::remove_file(&prog_path).unwrap();
+      prog_path.set_file_name(format!(
+         "{}_syscall.s",
+         prog_path.file_stem().unwrap().to_string_lossy()
+      ));
+      std::fs::remove_file(&prog_path).unwrap();
+      prog_path.set_extension("o");
+      std::fs::remove_file(&prog_path).unwrap();
+   }
 }
 
 struct TestDetails {
@@ -534,13 +544,19 @@ fn parse_test_content(mut content: &str, amd64: bool) -> ExpectedTestResult {
       Generic,
    }
 
+   #[derive(PartialEq)]
+   enum Stage {
+      Compile,
+      Run,
+   }
+
    let anchors = [
-      (b"compile_amd64:\n".as_slice(), TargetSpec::Amd64, true),
-      (b"compile_wasi:\n".as_slice(), TargetSpec::Wasi, true),
-      (b"compile:\n".as_slice(), TargetSpec::Generic, true),
-      (b"run_amd64:\n".as_slice(), TargetSpec::Amd64, false),
-      (b"run_wasi:\n".as_slice(), TargetSpec::Wasi, false),
-      (b"run:\n".as_slice(), TargetSpec::Generic, false),
+      (b"compile_amd64:\n".as_slice(), TargetSpec::Amd64, Stage::Compile),
+      (b"compile_wasi:\n".as_slice(), TargetSpec::Wasi, Stage::Compile),
+      (b"compile:\n".as_slice(), TargetSpec::Generic, Stage::Compile),
+      (b"run_amd64:\n".as_slice(), TargetSpec::Amd64, Stage::Run),
+      (b"run_wasi:\n".as_slice(), TargetSpec::Wasi, Stage::Run),
+      (b"run:\n".as_slice(), TargetSpec::Generic, Stage::Run),
    ];
 
    let mut expected_compile_output: Option<Vec<u8>> = None;
@@ -571,7 +587,7 @@ fn parse_test_content(mut content: &str, amd64: bool) -> ExpectedTestResult {
                   mode = Mode::ExpectingAnchor;
                }
                _ => {
-                  if anchor.2 {
+                  if anchor.2 == Stage::Compile {
                      expected_compile_output = Some(Vec::new());
                      mode = Mode::ParsingAnchor(expected_compile_output.as_mut().unwrap());
                   } else {
