@@ -4,6 +4,7 @@ use std::io::Write;
 
 use indexmap::{IndexMap, IndexSet};
 use slotmap::{Key, SlotMap};
+use wasm_encoder::ValType;
 
 use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE};
 use super::regalloc::{RegallocResult, VarSlot};
@@ -367,7 +368,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
       let mut p_i = 0;
       for param in procedure.definition.parameters.iter() {
          if let Some(p_type) = roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, &ctx.aggregate_defs) {
-            match ctx.var_to_slot.get(&param.var_id) {
+            match ctx.var_to_slot.get(&param.var_id).copied() {
                Some(VarSlot::Register(reg)) => {
                   write!(ctx.buf, "{} %r{}, ", p_type, reg).unwrap();
                }
@@ -377,7 +378,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
                   } else {
                      write!(ctx.buf, "{} %r{}, ", p_type, p_i).unwrap();
                   }
-                  stack_params.insert(*v as usize, (&param.p_type.e_type, p_i));
+                  stack_params.insert(v as usize, (&param.p_type.e_type, p_i));
                }
                None => {
                   // This parameter was not assigned a slot - this variable MUST be unused
@@ -406,6 +407,16 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
          writeln!(ctx.buf, "   %v{} =l alloc{} {}", i, alignment, sz,).unwrap();
          if let Some((reg_idx, suffix)) = reg_and_suffix {
             writeln!(ctx.buf, "   store{} %r{}, %v{}", suffix, reg_idx, i).unwrap();
+         }
+      }
+      for (i, typ) in regalloc_result.procedure_registers[proc_id].iter().enumerate() {
+         let i = i + procedure.definition.parameters.len();
+         match typ {
+            ValType::I32 => writeln!(ctx.buf, "   %r{} =w copy 0", i).unwrap(),
+            ValType::I64 => writeln!(ctx.buf, "   %r{} =l copy 0", i).unwrap(),
+            ValType::F32 => writeln!(ctx.buf, "   %r{} =s copy 0", i).unwrap(),
+            ValType::F64 => writeln!(ctx.buf, "   %r{} =d copy 0", i).unwrap(),
+            _ => unreachable!(),
          }
       }
       for bb_id in post_order(cfg).iter().rev().copied().filter(|x| *x != CFG_END_NODE) {
