@@ -1086,9 +1086,9 @@ fn type_expression(
       },
       Expression::UnresolvedProcLiteral(name, g_args) => {
          let spec_params = validation_context
-               .owned
-               .cur_procedure
-               .map(|x| &validation_context.procedures[x].specialized_type_parameters);
+            .owned
+            .cur_procedure
+            .map(|x| &validation_context.procedures[x].specialized_type_parameters);
          for g_arg in g_args.iter_mut() {
             resolve_type::<()>(
                &mut g_arg.e_type,
@@ -1115,6 +1115,32 @@ fn type_expression(
             .owned
             .cur_procedure
             .map(|x| &validation_context.procedures[x].specialized_type_parameters);
+         if let ExpressionType::Unresolved { name, generic_args } = &mut base_type_node.e_type {
+            if generic_args.is_empty() {
+               if let Some(UserDefinedTypeId::Struct(s_id)) =
+                  validation_context.user_defined_type_name_table.get(name).copied()
+               {
+                  let expected_num_type_args = validation_context
+                     .templated_types
+                     .get(&UserDefinedTypeId::Struct(s_id))
+                     .unwrap_or(&IndexSet::new())
+                     .len();
+                  if expected_num_type_args > 0 {
+                     validation_context.owned.unknown_literals.insert(expr_index);
+                     *generic_args = (0..expected_num_type_args)
+                        .map(|_| {
+                           ExpressionType::Unknown(
+                              validation_context
+                                 .owned
+                                 .type_variables
+                                 .new_type_variable(TypeConstraint::None),
+                           )
+                        })
+                        .collect();
+                  }
+               }
+            }
+         }
          if !resolve_type::<()>(
             &mut base_type_node.e_type,
             validation_context.user_defined_type_name_table,
