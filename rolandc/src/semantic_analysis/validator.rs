@@ -1085,11 +1085,11 @@ fn type_expression(
          }
       },
       Expression::UnresolvedProcLiteral(name, g_args) => {
-         for g_arg in g_args.iter_mut() {
-            let spec_params = validation_context
+         let spec_params = validation_context
                .owned
                .cur_procedure
                .map(|x| &validation_context.procedures[x].specialized_type_parameters);
+         for g_arg in g_args.iter_mut() {
             resolve_type::<()>(
                &mut g_arg.e_type,
                validation_context.user_defined_type_name_table,
