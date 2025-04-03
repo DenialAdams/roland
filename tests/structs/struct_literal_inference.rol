@@ -1,0 +1,13 @@
+struct S<T> {
+    x: T,
+}
+
+proc main() {
+    let s = S {
+        x: true,
+    };
+    println_bool(s.x);
+}
+__END__
+run:
+true
