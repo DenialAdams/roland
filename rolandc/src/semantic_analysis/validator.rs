@@ -1727,7 +1727,7 @@ fn get_type(
                      );
                      continue;
                   };
-                  let defined_type = map_generic_to_concrete_cow(
+                  let mut defined_type = map_generic_to_concrete_cow(
                      &defined_type_node.e_type,
                      generic_args,
                      validation_context
@@ -1753,7 +1753,14 @@ fn get_type(
                         validation_context.ast.expressions[field_val].exp_type.as_mut().unwrap(),
                         &mut validation_context.owned.type_variables,
                      );
-
+                     if !defined_type.is_concrete() {
+                        // is_concrete check to avoid cloning when not necessary
+                        try_merge_types(
+                           validation_context.ast.expressions[field_val].exp_type.as_ref().unwrap(),
+                           defined_type.to_mut(),
+                           &mut validation_context.owned.type_variables,
+                        );
+                     }
                      let field_expr = &validation_context.ast.expressions[field_val];
 
                      if field_expr.exp_type.as_ref().unwrap() != defined_type.as_ref()
@@ -2306,7 +2313,7 @@ fn check_procedure_call<'a, I>(
          let actual_type = actual_expr.exp_type.as_ref().unwrap();
 
          if !expected.is_concrete() {
-            // is_concrete check to avoid cloning expected when not necessary
+            // is_concrete check to avoid cloning when not necessary
             try_merge_types(
                actual_type,
                expected.to_mut(),
