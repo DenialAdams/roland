@@ -1,0 +1,14 @@
+struct S<T> {
+    x: T,
+}
+
+proc main() {
+    let s = S {
+        x: 10,
+    };
+}
+__END__
+compile:
+We weren't able to determine the types of 2 literals
+↳ literal @ line 7, column 12 [tests/structs/struct_literal_inference_cant_determine.rol]
+↳ literal @ line 6, column 13 [tests/structs/struct_literal_inference_cant_determine.rol]
