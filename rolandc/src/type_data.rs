@@ -187,6 +187,25 @@ impl ExpressionType {
    }
 
    #[must_use]
+   pub fn is_concrete_shallow(&self) -> bool {
+      match self {
+         ExpressionType::Unknown(_) => false,
+         ExpressionType::Pointer(v) | ExpressionType::Array(v, _) => !matches!(**v, ExpressionType::Unknown(_)),
+         ExpressionType::ProcedureItem(_, type_args)
+         | ExpressionType::Struct(_, type_args)
+         | ExpressionType::Union(_, type_args) => type_args
+            .iter()
+            .all(|type_arg| !matches!(type_arg, ExpressionType::Unknown(_))),
+         ExpressionType::ProcedurePointer { parameters, ret_type } => {
+            parameters.iter().all(|p| !matches!(p, ExpressionType::Unknown(_)))
+               && !matches!(**ret_type, ExpressionType::Unknown(_))
+         }
+         // other types can't contain unknown values, at least right now
+         _ => true,
+      }
+   }
+
+   #[must_use]
    pub fn size_is_unknown(&self) -> bool {
       match self {
          ExpressionType::CompileError | ExpressionType::Unresolved { .. } => unreachable!(),

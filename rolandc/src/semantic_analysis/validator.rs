@@ -1126,7 +1126,6 @@ fn type_expression(
                      .unwrap_or(&IndexSet::new())
                      .len();
                   if expected_num_type_args > 0 {
-                     validation_context.owned.unknown_literals.insert(expr_index);
                      *generic_args = (0..expected_num_type_args)
                         .map(|_| {
                            ExpressionType::Unknown(
@@ -1165,7 +1164,6 @@ fn type_expression(
       &mut the_expr,
       expr_location,
       err_manager,
-      expr_index,
       validation_context,
    ));
    validation_context.ast.expressions[expr_index].expression = the_expr;
@@ -1175,14 +1173,12 @@ fn get_type(
    expr: &mut Expression,
    expr_location: SourceInfo,
    err_manager: &mut ErrorManager,
-   expr_index: ExpressionId,
    validation_context: &mut ValidationContext,
 ) -> ExpressionType {
    match expr {
       Expression::UnitLiteral => ExpressionType::Unit,
       Expression::BoolLiteral(_) => ExpressionType::Bool,
       Expression::IntLiteral { .. } => {
-         validation_context.owned.unknown_literals.insert(expr_index);
          let new_type_variable = validation_context
             .owned
             .type_variables
@@ -1190,7 +1186,6 @@ fn get_type(
          ExpressionType::Unknown(new_type_variable)
       }
       Expression::FloatLiteral(_) => {
-         validation_context.owned.unknown_literals.insert(expr_index);
          let new_type_variable = validation_context
             .owned
             .type_variables
@@ -1642,7 +1637,6 @@ fn get_type(
          let proc = validation_context.procedures.get(*id).unwrap();
 
          if type_arguments.is_empty() && !proc.type_parameters.is_empty() {
-            validation_context.owned.unknown_literals.insert(expr_index);
             *type_arguments = ((0..proc.type_parameters.len()).map(|_| ExpressionTypeNode {
                e_type: ExpressionType::Unknown(
                   validation_context
@@ -2052,7 +2046,6 @@ fn get_type(
                .owned
                .type_variables
                .new_type_variable(TypeConstraint::None);
-            validation_context.owned.unknown_literals.insert(expr_index);
             ExpressionType::Array(Box::new(ExpressionType::Unknown(new_type_variable)), 0)
          } else {
             // We specifically want to type the array with the last element, because we have accumulated type information while iterating the literal

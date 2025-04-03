@@ -48,7 +48,7 @@ use backend::liveness::compute_live_intervals;
 use error_handling::error_handling_macros::rolandc_error;
 use error_handling::ErrorManager;
 use expression_hoisting::HoistingMode;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use interner::Interner;
 use monomorphization::update_expressions_to_point_to_monomorphized_procedures;
 pub use parse::Program;
@@ -225,7 +225,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       variable_types: IndexMap::new(),
       cur_procedure: None,
       loop_depth: 0,
-      unknown_literals: IndexSet::new(),
       type_variables: TypeVariableManager::new(),
       cur_procedure_locals: IndexMap::new(),
       string_struct_id,

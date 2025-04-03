@@ -77,7 +77,6 @@ pub struct OwnedValidationContext {
    pub cur_procedure: Option<ProcedureId>,
    pub variable_types: IndexMap<StrId, VariableDetails>,
    pub loop_depth: u64,
-   pub unknown_literals: IndexSet<ExpressionId>,
    pub type_variables: TypeVariableManager,
    pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,
    pub string_struct_id: StructId,

@@ -4,7 +4,7 @@ use super::type_variables::{TypeConstraint, TypeVariableManager};
 use super::OwnedValidationContext;
 use crate::error_handling::error_handling_macros::rolandc_error_w_details;
 use crate::error_handling::ErrorManager;
-use crate::parse::{Expression, ExpressionPool, ProcedureBody, ProcedureId};
+use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, ProcedureId};
 use crate::type_data::{ExpressionType, IntType};
 
 fn constraint_compatible_with_concrete(constraint: TypeConstraint, concrete: &ExpressionType) -> bool {
@@ -116,11 +116,20 @@ pub fn lower_type_variables(
    expressions: &mut ExpressionPool,
    err_manager: &mut ErrorManager,
 ) {
+   let mut unknown_literals: Vec<ExpressionId> = Vec::new();
    for (i, e) in expressions.iter_mut() {
       if let Some(exp_type) = e.exp_type.as_mut() {
          lower_unknowns_in_type(exp_type, &ctx.type_variables);
-         if exp_type.is_concrete() {
-            ctx.unknown_literals.swap_remove(&i);
+         if matches!(
+            e.expression,
+            Expression::IntLiteral { .. }
+               | Expression::FloatLiteral(_)
+               | Expression::BoundFcnLiteral(_, _)
+               | Expression::StructLiteral(_, _)
+               | Expression::ArrayLiteral(_)
+         ) && !exp_type.is_concrete_shallow()
+         {
+            unknown_literals.push(i);
          }
       }
       if let Expression::BoundFcnLiteral(_, type_arguments) = &mut e.expression {
@@ -130,9 +139,8 @@ pub fn lower_type_variables(
       }
    }
 
-   if !ctx.unknown_literals.is_empty() {
-      let err_details: Vec<_> = ctx
-         .unknown_literals
+   if !unknown_literals.is_empty() {
+      let err_details: Vec<_> = unknown_literals
          .iter()
          .map(|x| {
             let loc = expressions[*x].location;
@@ -143,7 +151,7 @@ pub fn lower_type_variables(
          err_manager,
          &err_details,
          "We weren't able to determine the types of {} literals",
-         ctx.unknown_literals.len()
+         unknown_literals.len()
       );
    }
 
