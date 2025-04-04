@@ -29,7 +29,11 @@ pub fn constraint_matches_type_or_try_constrain(
    }
 }
 
-fn meet(current_type: &mut ExpressionType, incoming_type: &ExpressionType, type_variables: &mut TypeVariableManager) -> bool {
+fn meet(
+   current_type: &mut ExpressionType,
+   incoming_type: &ExpressionType,
+   type_variables: &mut TypeVariableManager,
+) -> bool {
    match (current_type, incoming_type) {
       (ExpressionType::Array(current_base, current_len), ExpressionType::Array(incoming_base, incoming_len)) => {
          if current_len != incoming_len {
@@ -47,7 +51,10 @@ fn meet(current_type: &mut ExpressionType, incoming_type: &ExpressionType, type_
          if current_base != incoming_base {
             return false;
          }
-         current_type_arguments.iter_mut().zip(incoming_type_arguments).all(|(x, y)| meet(x, y, type_variables))
+         current_type_arguments
+            .iter_mut()
+            .zip(incoming_type_arguments)
+            .all(|(x, y)| meet(x, y, type_variables))
       }
       (
          ExpressionType::Union(current_base, current_type_arguments),
@@ -56,7 +63,10 @@ fn meet(current_type: &mut ExpressionType, incoming_type: &ExpressionType, type_
          if current_base != incoming_base {
             return false;
          }
-         current_type_arguments.iter_mut().zip(incoming_type_arguments).all(|(x, y)| meet(x, y, type_variables))
+         current_type_arguments
+            .iter_mut()
+            .zip(incoming_type_arguments)
+            .all(|(x, y)| meet(x, y, type_variables))
       }
       (
          ExpressionType::ProcedurePointer {
@@ -71,8 +81,11 @@ fn meet(current_type: &mut ExpressionType, incoming_type: &ExpressionType, type_
          if current_parameters.len() != incoming_parameters.len() {
             return false;
          }
-         let all = current_parameters.iter_mut().zip(incoming_parameters).all(|(x, y)| meet(x, y, type_variables));
-         all & meet(current_ret_type, incoming_ret_type, type_variables)
+         current_parameters
+            .iter_mut()
+            .zip(incoming_parameters)
+            .chain(std::iter::once((current_ret_type.as_mut(), incoming_ret_type.as_ref())))
+            .all(|(x, y)| meet(x, y, type_variables))
       }
       (ExpressionType::Unknown(current_tv), ExpressionType::Unknown(incoming_tv)) => {
          if type_variables.union(*current_tv, *incoming_tv).is_ok() {

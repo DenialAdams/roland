@@ -642,49 +642,51 @@ fn type_statement_inner(
          type_expression(err_manager, *start, validation_context);
          type_expression(err_manager, *end, validation_context);
 
+         let mut constrained_to_int = true;
          for expr_id in [*start, *end] {
             if let ExpressionType::Unknown(x) = validation_context.ast.expressions[expr_id].exp_type.as_ref().unwrap() {
                let tvd = validation_context.owned.type_variables.get_data_mut(*x);
-               let _ = tvd.add_constraint(TypeConstraint::Int); // we'll handle the type mismatch below
+               constrained_to_int &= tvd.add_constraint(TypeConstraint::Int).is_ok();
             }
          }
 
-         try_merge_types_of_two_distinct_expressions(*start, *end, validation_context);
+         let merged = try_merge_types_of_two_distinct_expressions(*start, *end, validation_context);
 
          let start_expr = &validation_context.ast.expressions[*start];
          let end_expr = &validation_context.ast.expressions[*end];
 
-         let result_type = match (
-            start_expr.exp_type.as_ref().unwrap(),
-            end_expr.exp_type.as_ref().unwrap(),
-         ) {
-            (lhs, _) if lhs.is_or_contains_or_points_to_error() => ExpressionType::CompileError,
-            (_, rhs) if rhs.is_or_contains_or_points_to_error() => ExpressionType::CompileError,
-            (ExpressionType::Int(x), ExpressionType::Int(y)) if x == y => ExpressionType::Int(*x),
-            (ExpressionType::Unknown(x), ExpressionType::Unknown(y)) if x == y => ExpressionType::Unknown(*x),
-            _ => {
-               rolandc_error_w_details!(
-                  err_manager,
-                  &[
-                     (start_expr.location, "start of range"),
-                     (end_expr.location, "end of range")
-                  ],
-                  "Start and end of range must be integer types of the same kind; got types `{}` and `{}`",
-                  start_expr.exp_type.as_ref().unwrap().as_roland_type_info(
-                     validation_context.interner,
-                     validation_context.user_defined_types,
-                     validation_context.procedures,
-                     &validation_context.owned.type_variables
-                  ),
-                  end_expr.exp_type.as_ref().unwrap().as_roland_type_info(
-                     validation_context.interner,
-                     validation_context.user_defined_types,
-                     validation_context.procedures,
-                     &validation_context.owned.type_variables
-                  ),
-               );
-               ExpressionType::CompileError
-            }
+         let result_type = if merged && constrained_to_int {
+            start_expr.exp_type.clone().unwrap()
+         } else if start_expr
+            .exp_type
+            .as_ref()
+            .unwrap()
+            .is_or_contains_or_points_to_error()
+            || end_expr.exp_type.as_ref().unwrap().is_or_contains_or_points_to_error()
+         {
+            ExpressionType::CompileError
+         } else {
+            rolandc_error_w_details!(
+               err_manager,
+               &[
+                  (start_expr.location, "start of range"),
+                  (end_expr.location, "end of range")
+               ],
+               "Start and end of range must be integer types of the same kind; got types `{}` and `{}`",
+               start_expr.exp_type.as_ref().unwrap().as_roland_type_info(
+                  validation_context.interner,
+                  validation_context.user_defined_types,
+                  validation_context.procedures,
+                  &validation_context.owned.type_variables
+               ),
+               end_expr.exp_type.as_ref().unwrap().as_roland_type_info(
+                  validation_context.interner,
+                  validation_context.user_defined_types,
+                  validation_context.procedures,
+                  &validation_context.owned.type_variables
+               ),
+            );
+            ExpressionType::CompileError
          };
 
          if *inclusive {
@@ -1160,12 +1162,8 @@ fn type_expression(
       &mut validation_context.ast.expressions[expr_index].expression,
       Expression::UnitLiteral,
    );
-   validation_context.ast.expressions[expr_index].exp_type = Some(get_type(
-      &mut the_expr,
-      expr_location,
-      err_manager,
-      validation_context,
-   ));
+   validation_context.ast.expressions[expr_index].exp_type =
+      Some(get_type(&mut the_expr, expr_location, err_manager, validation_context));
    validation_context.ast.expressions[expr_index].expression = the_expr;
 }
 
@@ -1742,7 +1740,7 @@ fn get_type(
                   }
 
                   if let Some(field_val) = field.1 {
-                     let mut merged= try_merge_types(
+                     let mut merged = try_merge_types(
                         &defined_type,
                         validation_context.ast.expressions[field_val].exp_type.as_mut().unwrap(),
                         &mut validation_context.owned.type_variables,
