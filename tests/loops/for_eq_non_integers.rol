@@ -1,0 +1,12 @@
+proc main() {
+    let x: f64 = 1.0;
+    let y: f64 = 2.0;
+    for z in x..y {
+
+    }
+}
+__END__
+compile:
+Start and end of range must be integer types of the same kind; got types `f64` and `f64`
+↳ start of range @ line 4, column 14 [tests/loops/for_eq_non_integers.rol]
+↳ end of range @ line 4, column 17 [tests/loops/for_eq_non_integers.rol]

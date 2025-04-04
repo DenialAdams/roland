@@ -642,11 +642,11 @@ fn type_statement_inner(
          type_expression(err_manager, *start, validation_context);
          type_expression(err_manager, *end, validation_context);
 
-         let mut constrained_to_int = true;
+         let mut constrained_to_int = false;
          for expr_id in [*start, *end] {
             if let ExpressionType::Unknown(x) = validation_context.ast.expressions[expr_id].exp_type.as_ref().unwrap() {
                let tvd = validation_context.owned.type_variables.get_data_mut(*x);
-               constrained_to_int &= tvd.add_constraint(TypeConstraint::Int).is_ok();
+               constrained_to_int = tvd.add_constraint(TypeConstraint::Int).is_ok();
             }
          }
 
@@ -655,7 +655,9 @@ fn type_statement_inner(
          let start_expr = &validation_context.ast.expressions[*start];
          let end_expr = &validation_context.ast.expressions[*end];
 
-         let result_type = if merged && constrained_to_int {
+         let result_type = if merged
+            && (constrained_to_int || matches!(start_expr.exp_type.as_ref().unwrap(), ExpressionType::Int(_)))
+         {
             start_expr.exp_type.clone().unwrap()
          } else if start_expr
             .exp_type
