@@ -29,38 +29,34 @@ pub fn constraint_matches_type_or_try_constrain(
    }
 }
 
-fn meet(current_type: &mut ExpressionType, incoming_type: &ExpressionType, type_variables: &mut TypeVariableManager) {
+fn meet(current_type: &mut ExpressionType, incoming_type: &ExpressionType, type_variables: &mut TypeVariableManager) -> bool {
    match (current_type, incoming_type) {
       (ExpressionType::Array(current_base, current_len), ExpressionType::Array(incoming_base, incoming_len)) => {
          if current_len != incoming_len {
-            return;
+            return false;
          }
-         meet(current_base, incoming_base, type_variables);
+         meet(current_base, incoming_base, type_variables)
       }
       (ExpressionType::Pointer(current_base), ExpressionType::Pointer(incoming_base)) => {
-         meet(current_base, incoming_base, type_variables);
+         meet(current_base, incoming_base, type_variables)
       }
       (
          ExpressionType::Struct(current_base, current_type_arguments),
          ExpressionType::Struct(incoming_base, incoming_type_arguments),
       ) => {
          if current_base != incoming_base {
-            return;
+            return false;
          }
-         for (x, y) in current_type_arguments.iter_mut().zip(incoming_type_arguments) {
-            meet(x, y, type_variables);
-         }
+         current_type_arguments.iter_mut().zip(incoming_type_arguments).all(|(x, y)| meet(x, y, type_variables))
       }
       (
          ExpressionType::Union(current_base, current_type_arguments),
          ExpressionType::Union(incoming_base, incoming_type_arguments),
       ) => {
          if current_base != incoming_base {
-            return;
+            return false;
          }
-         for (x, y) in current_type_arguments.iter_mut().zip(incoming_type_arguments) {
-            meet(x, y, type_variables);
-         }
+         current_type_arguments.iter_mut().zip(incoming_type_arguments).all(|(x, y)| meet(x, y, type_variables))
       }
       (
          ExpressionType::ProcedurePointer {
@@ -73,29 +69,30 @@ fn meet(current_type: &mut ExpressionType, incoming_type: &ExpressionType, type_
          },
       ) => {
          if current_parameters.len() != incoming_parameters.len() {
-            return;
+            return false;
          }
-         for (x, y) in current_parameters.iter_mut().zip(incoming_parameters) {
-            meet(x, y, type_variables);
-         }
-         meet(current_ret_type, incoming_ret_type, type_variables);
+         let all = current_parameters.iter_mut().zip(incoming_parameters).all(|(x, y)| meet(x, y, type_variables));
+         all & meet(current_ret_type, incoming_ret_type, type_variables)
       }
       (ExpressionType::Unknown(current_tv), ExpressionType::Unknown(incoming_tv)) => {
          if type_variables.union(*current_tv, *incoming_tv).is_ok() {
             *current_tv = *incoming_tv;
+            return true;
          }
+         false
       }
       (ExpressionType::Unknown(current_tv), incoming_type) => {
          let data = type_variables.get_data_mut(*current_tv);
-         if data.known_type.is_some() {
-            return;
+         if let Some(kt) = data.known_type.as_ref() {
+            return kt == incoming_type;
          }
          if !constraint_compatible_with_concrete(data.constraint, incoming_type) {
-            return;
+            return false;
          }
          data.known_type = Some(incoming_type.clone());
+         true
       }
-      _ => (),
+      (current_type, incoming_type) => current_type == incoming_type,
    }
 }
 
@@ -103,11 +100,12 @@ pub fn try_merge_types(
    e_type: &ExpressionType,
    current_type: &mut ExpressionType,
    type_variables: &mut TypeVariableManager,
-) {
-   meet(current_type, e_type, type_variables);
+) -> bool {
+   let result = meet(current_type, e_type, type_variables);
    // This seems questionable.
    // It would be better if type equality simply knew how to look up unknown types?
    lower_unknowns_in_type(current_type, type_variables);
+   result
 }
 
 pub fn lower_type_variables(

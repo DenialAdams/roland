@@ -568,7 +568,7 @@ fn type_statement_inner(
          type_expression(err_manager, *lhs, validation_context);
          type_expression(err_manager, *rhs, validation_context);
 
-         try_merge_types_of_two_distinct_expressions(*lhs, *rhs, validation_context);
+         let merged = try_merge_types_of_two_distinct_expressions(*lhs, *rhs, validation_context);
 
          let len = &validation_context.ast.expressions[*lhs];
          let en = &validation_context.ast.expressions[*rhs];
@@ -578,7 +578,7 @@ fn type_statement_inner(
 
          if lhs_type.is_or_contains_or_points_to_error() || rhs_type.is_or_contains_or_points_to_error() {
             // avoid cascading errors
-         } else if lhs_type != rhs_type && !rhs_type.is_never() {
+         } else if !merged && !rhs_type.is_never() {
             rolandc_error_w_details!(
                err_manager,
                &[(len.location, "left hand side"), (en.location, "right hand side")],
@@ -752,7 +752,7 @@ fn type_statement_inner(
          type_expression(err_manager, *cond, validation_context);
          let en = &mut validation_context.ast.expressions[*cond];
          let if_exp_type = en.exp_type.as_mut().unwrap();
-         try_merge_types(
+         let is_bool = try_merge_types(
             &ExpressionType::Bool,
             if_exp_type,
             &mut validation_context.owned.type_variables,
@@ -760,7 +760,7 @@ fn type_statement_inner(
          if if_exp_type.is_or_contains_or_points_to_error() {
             return;
          }
-         if *if_exp_type != ExpressionType::Bool {
+         if !is_bool {
             rolandc_error!(
                err_manager,
                en.location,
@@ -819,12 +819,12 @@ fn type_statement_inner(
 
          let en = &mut validation_context.ast.expressions[*en];
          let if_exp_type = en.exp_type.as_mut().unwrap();
-         try_merge_types(
+         let is_bool = try_merge_types(
             &ExpressionType::Bool,
             if_exp_type,
             &mut validation_context.owned.type_variables,
          );
-         if *if_exp_type != ExpressionType::Bool && !if_exp_type.is_or_contains_or_points_to_error() {
+         if !is_bool && !if_exp_type.is_or_contains_or_points_to_error() {
             rolandc_error!(
                err_manager,
                en.location,
@@ -845,7 +845,7 @@ fn type_statement_inner(
             .ret_type
             .e_type;
 
-         try_merge_types(
+         let return_type_matches = try_merge_types(
             cur_procedure_ret,
             validation_context.ast.expressions[*en].exp_type.as_mut().unwrap(),
             &mut validation_context.owned.type_variables,
@@ -855,7 +855,7 @@ fn type_statement_inner(
 
          if !en.exp_type.as_ref().unwrap().is_or_contains_or_points_to_error()
             && !en.exp_type.as_ref().unwrap().is_never()
-            && *en.exp_type.as_ref().unwrap() != *cur_procedure_ret
+            && !return_type_matches
          {
             rolandc_error!(
                err_manager,
@@ -1435,7 +1435,7 @@ fn get_type(
             BinOp::BitwiseLeftShift | BinOp::BitwiseRightShift | BinOp::Remainder => &[TypeValidator::AnyInt],
          };
 
-         try_merge_types_of_two_distinct_expressions(*lhs, *rhs, validation_context);
+         let merged = try_merge_types_of_two_distinct_expressions(*lhs, *rhs, validation_context);
 
          let lhs_expr = &validation_context.ast.expressions[*lhs];
          let rhs_expr = &validation_context.ast.expressions[*rhs];
@@ -1476,7 +1476,7 @@ fn get_type(
                )
             );
             ExpressionType::CompileError
-         } else if lhs_type != rhs_type {
+         } else if !merged {
             rolandc_error_w_details!(
                err_manager,
                &[
@@ -1742,14 +1742,13 @@ fn get_type(
                   }
 
                   if let Some(field_val) = field.1 {
-                     try_merge_types(
+                     let mut merged= try_merge_types(
                         &defined_type,
                         validation_context.ast.expressions[field_val].exp_type.as_mut().unwrap(),
                         &mut validation_context.owned.type_variables,
                      );
-                     if !defined_type.is_concrete() {
-                        // is_concrete check to avoid cloning when not necessary
-                        try_merge_types(
+                     if !merged {
+                        merged = try_merge_types(
                            validation_context.ast.expressions[field_val].exp_type.as_ref().unwrap(),
                            defined_type.to_mut(),
                            &mut validation_context.owned.type_variables,
@@ -1757,7 +1756,7 @@ fn get_type(
                      }
                      let field_expr = &validation_context.ast.expressions[field_val];
 
-                     if field_expr.exp_type.as_ref().unwrap() != defined_type.as_ref()
+                     if !merged
                         && !field_expr
                            .exp_type
                            .as_ref()
@@ -1981,7 +1980,7 @@ fn get_type(
          let mut any_error = false;
 
          for i in 1..elems.len() {
-            try_merge_types_of_two_distinct_expressions(elems[i - 1], elems[i], validation_context);
+            let merged = try_merge_types_of_two_distinct_expressions(elems[i - 1], elems[i], validation_context);
 
             let last_elem_expr = &validation_context.ast.expressions[elems[i - 1]];
             let this_elem_expr = &validation_context.ast.expressions[elems[i]];
@@ -1998,7 +1997,7 @@ fn get_type(
                   .is_or_contains_or_points_to_error()
             {
                // avoid cascading errors
-            } else if last_elem_expr.exp_type.as_ref().unwrap() != this_elem_expr.exp_type.as_ref().unwrap() {
+            } else if !merged {
                rolandc_error_w_details!(
                   err_manager,
                   &[
@@ -2063,7 +2062,7 @@ fn get_type(
          type_expression(err_manager, *array, validation_context);
          type_expression(err_manager, *index, validation_context);
 
-         try_merge_types(
+         let merged = try_merge_types(
             &USIZE_TYPE,
             validation_context.ast.expressions[*index].exp_type.as_mut().unwrap(),
             &mut validation_context.owned.type_variables,
@@ -2079,7 +2078,7 @@ fn get_type(
             .is_or_contains_or_points_to_error()
          {
             // avoid cascading errors
-         } else if index_expression.exp_type.as_ref().unwrap() != &USIZE_TYPE {
+         } else if !merged {
             rolandc_error!(
                err_manager,
                index_expression.location,
@@ -2182,7 +2181,7 @@ fn get_type(
          type_expression(err_manager, *b, validation_context);
          type_expression(err_manager, *c, validation_context);
 
-         try_merge_types_of_two_distinct_expressions(*b, *c, validation_context);
+         let merged = try_merge_types_of_two_distinct_expressions(*b, *c, validation_context);
 
          let en = &validation_context.ast.expressions[*a];
          let if_exp_type = en.exp_type.as_ref().unwrap();
@@ -2206,7 +2205,7 @@ fn get_type(
          let else_type = else_expr.exp_type.as_ref().unwrap();
          if then_type.is_never() {
             else_type.clone()
-         } else if else_type.is_never() || then_type == else_type {
+         } else if else_type.is_never() || merged {
             then_type.clone()
          } else {
             rolandc_error_w_details!(
@@ -2293,7 +2292,7 @@ fn check_procedure_call<'a, I>(
 
          let mut expected = map_generic_to_concrete_cow(expected_raw, generic_args, generic_parameters);
 
-         try_merge_types(
+         let mut merged = try_merge_types(
             &expected,
             validation_context.ast.expressions[actual.expr]
                .exp_type
@@ -2305,16 +2304,15 @@ fn check_procedure_call<'a, I>(
          let actual_expr = &validation_context.ast.expressions[actual.expr];
          let actual_type = actual_expr.exp_type.as_ref().unwrap();
 
-         if !expected.is_concrete() {
-            // is_concrete check to avoid cloning when not necessary
-            try_merge_types(
+         if !merged {
+            merged = try_merge_types(
                actual_type,
                expected.to_mut(),
                &mut validation_context.owned.type_variables,
             );
          }
 
-         if *actual_type != *expected && !actual_type.is_or_contains_or_points_to_error() {
+         if !merged && !actual_type.is_or_contains_or_points_to_error() {
             let actual_type_str = actual_type.as_roland_type_info(
                validation_context.interner,
                validation_context.user_defined_types,
@@ -2353,7 +2351,7 @@ fn check_procedure_call<'a, I>(
 
          let expected = map_generic_to_concrete_cow(expected_raw.as_ref().unwrap(), generic_args, generic_parameters);
 
-         try_merge_types(
+         let merged = try_merge_types(
             &expected,
             validation_context.ast.expressions[arg.expr].exp_type.as_mut().unwrap(),
             &mut validation_context.owned.type_variables,
@@ -2362,7 +2360,7 @@ fn check_procedure_call<'a, I>(
          let arg_expr = &validation_context.ast.expressions[arg.expr];
 
          let actual_type = arg_expr.exp_type.as_ref().unwrap();
-         if *actual_type != *expected && !actual_type.is_or_contains_or_points_to_error() {
+         if !merged && !actual_type.is_or_contains_or_points_to_error() {
             let actual_type_str = actual_type.as_roland_type_info(
                validation_context.interner,
                validation_context.user_defined_types,
@@ -2649,16 +2647,18 @@ fn try_merge_types_of_two_distinct_expressions(
    a: ExpressionId,
    b: ExpressionId,
    validation_context: &mut ValidationContext,
-) {
+) -> bool {
+   let mut merged = false;
    for pair in [(a, b), (b, a)] {
       let borrowed_type = validation_context.ast.expressions[pair.0].exp_type.take().unwrap();
-      try_merge_types(
+      merged |= try_merge_types(
          &borrowed_type,
          validation_context.ast.expressions[pair.1].exp_type.as_mut().unwrap(),
          &mut validation_context.owned.type_variables,
       );
       validation_context.ast.expressions[pair.0].exp_type = Some(borrowed_type);
    }
+   merged
 }
 
 fn fold_expr_id(expr_id: ExpressionId, err_manager: &mut ErrorManager, validation_context: &mut ValidationContext) {
