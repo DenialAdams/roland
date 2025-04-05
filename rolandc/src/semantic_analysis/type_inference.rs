@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use slotmap::SecondaryMap;
 
 use super::type_variables::{TypeConstraint, TypeVariableManager};
@@ -170,6 +172,16 @@ pub fn lower_type_variables(
       for lt in body.locals.values_mut() {
          lower_unknowns_in_type(lt, &ctx.type_variables);
       }
+   }
+}
+
+pub fn lower_unknowns_in_type_cow<'a>(e: &'a ExpressionType, type_variables: &TypeVariableManager) -> Cow<'a, ExpressionType> {
+   if e.is_concrete() {
+      Cow::Borrowed(e)
+   } else {
+      let mut cloned = e.clone();
+      lower_unknowns_in_type(&mut cloned, type_variables);
+      Cow::Owned(cloned)
    }
 }
 
