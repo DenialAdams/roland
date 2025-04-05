@@ -1,0 +1,12 @@
+proc main() {
+    let x = [];
+    while x[gimme()] {
+        println("foo");
+    }
+}
+
+proc gimme() -> usize {
+    return 0;
+}
+__END__
+compile:

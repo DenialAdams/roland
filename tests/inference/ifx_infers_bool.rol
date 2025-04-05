@@ -1,0 +1,11 @@
+proc main() {
+    let x = [];
+    let z = ifx x[gimme()] "foo" else "bar";
+    println(z);
+}
+
+proc gimme() -> usize {
+    return 0;
+}
+__END__
+compile:

@@ -709,9 +709,14 @@ fn type_statement_inner(
       Statement::While(cond, bn) => {
          type_expression(err_manager, *cond, validation_context);
 
-         let cond_node = &validation_context.ast.expressions[*cond];
+         let cond_node = &mut validation_context.ast.expressions[*cond];
+         let is_bool = try_merge_types(
+            &ExpressionType::Bool,
+            cond_node.exp_type.as_mut().unwrap(),
+            &mut validation_context.owned.type_variables,
+         );
          let cond_type = cond_node.exp_type.as_ref().unwrap();
-         if cond_type != &ExpressionType::Bool && !cond_type.is_or_contains_or_points_to_error() {
+         if !is_bool && !cond_type.is_or_contains_or_points_to_error() {
             rolandc_error!(
                err_manager,
                cond_node.location,
@@ -2183,9 +2188,14 @@ fn get_type(
 
          let merged = try_merge_types_of_two_distinct_expressions(*b, *c, validation_context);
 
-         let en = &validation_context.ast.expressions[*a];
+         let en = &mut validation_context.ast.expressions[*a];
+         let is_bool = try_merge_types(
+            &ExpressionType::Bool,
+            en.exp_type.as_mut().unwrap(),
+            &mut validation_context.owned.type_variables,
+         );
          let if_exp_type = en.exp_type.as_ref().unwrap();
-         if if_exp_type != &ExpressionType::Bool && !if_exp_type.is_or_contains_or_points_to_error() {
+         if !is_bool && !if_exp_type.is_or_contains_or_points_to_error() {
             rolandc_error!(
                err_manager,
                en.location,
