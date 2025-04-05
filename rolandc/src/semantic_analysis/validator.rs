@@ -2067,36 +2067,38 @@ fn get_type(
          type_expression(err_manager, *array, validation_context);
          type_expression(err_manager, *index, validation_context);
 
-         let merged = try_merge_types(
-            &USIZE_TYPE,
-            validation_context.ast.expressions[*index].exp_type.as_mut().unwrap(),
-            &mut validation_context.owned.type_variables,
-         );
-
-         let array_expression = &validation_context.ast.expressions[*array];
-         let index_expression = &validation_context.ast.expressions[*index];
-
-         if index_expression
-            .exp_type
-            .as_ref()
-            .unwrap()
-            .is_or_contains_or_points_to_error()
+         // Typing the index
          {
-            // avoid cascading errors
-         } else if !merged {
-            rolandc_error!(
-               err_manager,
-               index_expression.location,
-               "Attempted to index an array with a value of type {}, which is not usize",
-               index_expression.exp_type.as_ref().unwrap().as_roland_type_info(
-                  validation_context.interner,
-                  validation_context.user_defined_types,
-                  validation_context.procedures,
-                  &validation_context.owned.type_variables
-               ),
+            let merged = try_merge_types(
+               &USIZE_TYPE,
+               validation_context.ast.expressions[*index].exp_type.as_mut().unwrap(),
+               &mut validation_context.owned.type_variables,
             );
+   
+            let index_expression = &validation_context.ast.expressions[*index];
+            if index_expression
+               .exp_type
+               .as_ref()
+               .unwrap()
+               .is_or_contains_or_points_to_error()
+            {
+               // avoid cascading errors
+            } else if !merged {
+               rolandc_error!(
+                  err_manager,
+                  index_expression.location,
+                  "Attempted to index an array with a value of type {}, which is not usize",
+                  index_expression.exp_type.as_ref().unwrap().as_roland_type_info(
+                     validation_context.interner,
+                     validation_context.user_defined_types,
+                     validation_context.procedures,
+                     &validation_context.owned.type_variables
+                  ),
+               );
+            }
          }
 
+         let array_expression = &validation_context.ast.expressions[*array];
          match &array_expression.exp_type {
             Some(x) if x.is_or_contains_or_points_to_error() => ExpressionType::CompileError,
             Some(ExpressionType::Array(b, _)) => b.deref().clone(),
