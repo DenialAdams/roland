@@ -1,0 +1,9 @@
+proc main() {
+    let x = [];
+    // CHARACTERIZATION: array lengths can't be inferred, so we must error
+    let z = x[0][0];
+}
+__END__
+compile:
+Attempted to index expression of type ??, which is not an array type
+↳ line 4, column 13 [tests/inference/inferring_unknown_is_array.rol]

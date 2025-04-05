@@ -1,0 +1,11 @@
+proc main() {
+    let x = [];
+    let z = x[0]~;
+    // the equivalent rust program does not compile!
+    // i am not sure if there is a good reason.
+    // this could easily be made to work in Roland, but I'll hold off for now.
+}
+__END__
+compile:
+Expected type [AnyPointer] for expression Dereference; instead got ??
+↳ line 3, column 13 [tests/inference/inferring_unknown_is_pointer.rol]
