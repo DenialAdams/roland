@@ -927,8 +927,11 @@ fn type_statement_inner(
             DeclarationValue::Uninit | DeclarationValue::None => None,
          };
 
-         let result_type = if dt_is_unresolved {
-            ExpressionType::CompileError
+         let result_type_node = if dt_is_unresolved {
+            ExpressionTypeNode {
+               e_type: ExpressionType::CompileError,
+               location: dt.as_ref().unwrap().location
+            }
          } else if let Some(dt_val) = dt {
             if let Some(en) = opt_en {
                check_type_declared_vs_actual(
@@ -942,16 +945,22 @@ fn type_statement_inner(
                );
             }
 
-            dt_val.e_type.clone()
+            dt_val.clone()
          } else if let Some(en) = opt_en {
-            validation_context.ast.expressions[en].exp_type.clone().unwrap()
+            ExpressionTypeNode {
+               e_type: validation_context.ast.expressions[en].exp_type.clone().unwrap(),
+               location: validation_context.ast.expressions[en].location,
+            }
          } else {
             rolandc_error!(
                err_manager,
                id.location,
                "Uninitialized variables must be declared with a type",
             );
-            ExpressionType::CompileError
+            ExpressionTypeNode {
+               e_type: ExpressionType::CompileError,
+               location: *stmt_loc
+            }
          };
 
          *var_id = declare_variable(err_manager, id, validation_context);
@@ -960,12 +969,7 @@ fn type_statement_inner(
             validation_context.global_info.insert(
                *var_id,
                GlobalInfo {
-                  expr_type: ExpressionTypeNode {
-                     // This location is _not_ right, but it's not used anywhere that matters right now.
-                     // and getting the right location isn't easy. TODO
-                     location: *stmt_loc,
-                     e_type: result_type,
-                  },
+                  expr_type: result_type_node,
                   initializer: opt_en,
                   location: *stmt_loc,
                   kind: *storage_kind,
@@ -976,7 +980,7 @@ fn type_statement_inner(
             validation_context
                .owned
                .cur_procedure_locals
-               .insert(*var_id, result_type);
+               .insert(*var_id, result_type_node.e_type);
          }
       }
    }
