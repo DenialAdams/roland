@@ -178,9 +178,10 @@ impl ExpressionType {
          ExpressionType::ProcedureItem(_, type_args)
          | ExpressionType::Struct(_, type_args)
          | ExpressionType::Union(_, type_args) => type_args.iter().all(ExpressionType::is_concrete),
-         ExpressionType::ProcedurePointer { parameters, ret_type } => {
-            parameters.iter().all(ExpressionType::is_concrete) && ret_type.is_concrete()
-         }
+         ExpressionType::ProcedurePointer { parameters, ret_type } => parameters
+            .iter()
+            .chain(std::iter::once(ret_type.as_ref()))
+            .all(ExpressionType::is_concrete),
          // other types can't contain unknown values, at least right now
          _ => true,
       }
@@ -196,10 +197,10 @@ impl ExpressionType {
          | ExpressionType::Union(_, type_args) => type_args
             .iter()
             .all(|type_arg| !matches!(type_arg, ExpressionType::Unknown(_))),
-         ExpressionType::ProcedurePointer { parameters, ret_type } => {
-            parameters.iter().all(|p| !matches!(p, ExpressionType::Unknown(_)))
-               && !matches!(**ret_type, ExpressionType::Unknown(_))
-         }
+         ExpressionType::ProcedurePointer { parameters, ret_type } => parameters
+            .iter()
+            .chain(std::iter::once(ret_type.as_ref()))
+            .all(|p| !matches!(p, ExpressionType::Unknown(_))),
          // other types can't contain unknown values, at least right now
          _ => true,
       }

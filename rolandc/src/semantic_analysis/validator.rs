@@ -2066,7 +2066,7 @@ fn get_type(
                validation_context.ast.expressions[*index].exp_type.as_mut().unwrap(),
                &mut validation_context.owned.type_variables,
             );
-   
+
             let index_expression = &validation_context.ast.expressions[*index];
             if index_expression
                .exp_type
@@ -2437,7 +2437,9 @@ fn check_procedure_item(
                      g_arg.location,
                      "For procedure `{}`, encountered type argument of type {} which does not meet the constraint `{}`",
                      interner.lookup(callee_proc_name),
-                     g_arg.e_type.as_roland_type_info(interner, udt, procedures, type_variable_info),
+                     g_arg
+                        .e_type
+                        .as_roland_type_info(interner, udt, procedures, type_variable_info),
                      interner.lookup(*constraint),
                   );
                   type_arguments_are_valid = false;

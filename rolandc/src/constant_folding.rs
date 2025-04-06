@@ -206,9 +206,10 @@ fn type_is_ok_for_folding(x: &ExpressionType) -> bool {
       | ExpressionType::Struct(_, type_args)
       | ExpressionType::Union(_, type_args) => type_args.iter().all(type_is_ok_for_folding),
       ExpressionType::Array(inner, _) | ExpressionType::Pointer(inner) => type_is_ok_for_folding(inner),
-      ExpressionType::ProcedurePointer { parameters, ret_type } => {
-         parameters.iter().chain(std::iter::once(ret_type.as_ref())).all(type_is_ok_for_folding)
-      }
+      ExpressionType::ProcedurePointer { parameters, ret_type } => parameters
+         .iter()
+         .chain(std::iter::once(ret_type.as_ref()))
+         .all(type_is_ok_for_folding),
    }
 }
 

@@ -175,7 +175,10 @@ pub fn lower_type_variables(
    }
 }
 
-pub fn lower_unknowns_in_type_cow<'a>(e: &'a ExpressionType, type_variables: &TypeVariableManager) -> Cow<'a, ExpressionType> {
+pub fn lower_unknowns_in_type_cow<'a>(
+   e: &'a ExpressionType,
+   type_variables: &TypeVariableManager,
+) -> Cow<'a, ExpressionType> {
    if e.is_concrete() {
       Cow::Borrowed(e)
    } else {
