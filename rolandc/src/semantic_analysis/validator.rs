@@ -2445,7 +2445,7 @@ fn check_procedure_item(
                      g_arg.location,
                      "For procedure `{}`, encountered type argument of type {} which does not meet the constraint `{}`",
                      interner.lookup(callee_proc_name),
-                     g_arg.e_type.as_roland_type_info_notv(interner, udt, procedures),
+                     g_arg.e_type.as_roland_type_info(interner, udt, procedures, type_variable_info),
                      interner.lookup(*constraint),
                   );
                   type_arguments_are_valid = false;
