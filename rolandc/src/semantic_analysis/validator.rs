@@ -1225,39 +1225,31 @@ fn get_type(
             }
          };
 
-         if from_type_is_unknown_int {
-            if *cast_type == CastType::Transmute && target_type.is_pointer() {
-               try_merge_types(
-                  &USIZE_TYPE,
-                  validation_context.ast.expressions[*expr_id].exp_type.as_mut().unwrap(),
-                  &mut validation_context.owned.type_variables,
-               );
-            } else if *cast_type == CastType::Transmute && matches!(*target_type, F64_TYPE) {
-               try_merge_types(
-                  &U64_TYPE,
-                  validation_context.ast.expressions[*expr_id].exp_type.as_mut().unwrap(),
-                  &mut validation_context.owned.type_variables,
-               );
-            } else if *cast_type == CastType::Transmute && matches!(*target_type, F32_TYPE) {
-               try_merge_types(
-                  &U32_TYPE,
-                  validation_context.ast.expressions[*expr_id].exp_type.as_mut().unwrap(),
-                  &mut validation_context.owned.type_variables,
-               );
-            } else if *cast_type == CastType::Transmute && matches!(target_type, ExpressionType::Enum(_)) {
-               let enum_base_type = match target_type {
-                  ExpressionType::Enum(x) => {
-                     &validation_context
-                        .user_defined_types
-                        .enum_info
-                        .get(*x)
-                        .unwrap()
-                        .base_type
+         if from_type_is_unknown_int && *cast_type == CastType::Transmute {
+            'b: {
+               let guessed_source_type = if target_type.is_pointer() {
+                  &USIZE_TYPE
+               } else if matches!(*target_type, F64_TYPE) {
+                  &U64_TYPE
+               } else if matches!(*target_type, F32_TYPE) {
+                  &U32_TYPE
+               } else if matches!(target_type, ExpressionType::Enum(_)) {
+                  match target_type {
+                     ExpressionType::Enum(x) => {
+                        &validation_context
+                           .user_defined_types
+                           .enum_info
+                           .get(*x)
+                           .unwrap()
+                           .base_type
+                     }
+                     _ => unreachable!(),
                   }
-                  _ => unreachable!(),
+               } else {
+                  break 'b;
                };
                try_merge_types(
-                  enum_base_type,
+                  guessed_source_type,
                   validation_context.ast.expressions[*expr_id].exp_type.as_mut().unwrap(),
                   &mut validation_context.owned.type_variables,
                );
