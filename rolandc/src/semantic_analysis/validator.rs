@@ -2684,7 +2684,7 @@ fn well_typed(et: &ExpressionType) -> bool {
       ExpressionType::ProcedurePointer { parameters, ret_type } => parameters
          .iter()
          .chain(std::iter::once(ret_type.as_ref()))
-         .all(ExpressionType::is_concrete),
+         .all(well_typed),
       ExpressionType::Never
       | ExpressionType::Int(_)
       | ExpressionType::Float(_)
