@@ -190,29 +190,6 @@ fn fold_expr(
    new_expr
 }
 
-fn type_is_ok_for_folding(x: &ExpressionType) -> bool {
-   match x {
-      ExpressionType::GenericParam(_)
-      | ExpressionType::Unresolved { .. }
-      | ExpressionType::CompileError
-      | ExpressionType::Unknown(_) => false,
-      ExpressionType::Int(_)
-      | ExpressionType::Float(_)
-      | ExpressionType::Bool
-      | ExpressionType::Unit
-      | ExpressionType::Enum(_)
-      | ExpressionType::Never => true,
-      ExpressionType::ProcedureItem(_, type_args)
-      | ExpressionType::Struct(_, type_args)
-      | ExpressionType::Union(_, type_args) => type_args.iter().all(type_is_ok_for_folding),
-      ExpressionType::Array(inner, _) | ExpressionType::Pointer(inner) => type_is_ok_for_folding(inner),
-      ExpressionType::ProcedurePointer { parameters, ret_type } => parameters
-         .iter()
-         .chain(std::iter::once(ret_type.as_ref()))
-         .all(type_is_ok_for_folding),
-   }
-}
-
 fn fold_expr_inner(
    expr: &ExpressionNode,
    err_manager: &mut Option<&mut ErrorManager>,
@@ -221,12 +198,6 @@ fn fold_expr_inner(
 ) -> Option<Expression> {
    let expr_to_fold_location = expr.location;
    let expr_type = expr.exp_type.as_ref().unwrap();
-   if !type_is_ok_for_folding(expr_type) {
-      // The constant folder is called (lightly) during semantic analysis before unknown types
-      // have been lowered and we have terminated compilation on errors. Bail out conservatively
-      // so that the core constant folding logic can assume everything is well typed.
-      return None;
-   }
    match &expr.expression {
       Expression::ArrayIndex { array, index } => {
          try_fold_and_replace_expr(*array, err_manager, folding_context, interner);
@@ -852,10 +823,6 @@ pub fn fold_builtin_call(proc_expr: ExpressionId, interner: &Interner, fc: &Fold
    };
 
    debug_assert!(proc_definition.type_parameters.len() == type_args.len());
-
-   if !type_args.iter().all(type_is_ok_for_folding) {
-      return None;
-   }
 
    match interner.lookup(proc_definition.name.str) {
       "unit" => Some(Expression::UnitLiteral),

@@ -17,8 +17,8 @@ use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    statement_always_or_never_returns, ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression,
-   ExpressionId, ExpressionNode, ExpressionTypeNode, ProcImplSource, ProcedureId, ProcedureNode, Program, Statement,
-   StatementId, StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
+   ExpressionId, ExpressionNode, ExpressionPool, ExpressionTypeNode, ProcImplSource, ProcedureId, ProcedureNode,
+   Program, Statement, StatementId, StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
 };
 use crate::size_info::{template_type_aware_mem_alignment, template_type_aware_mem_size};
 use crate::source_info::SourceInfo;
@@ -930,7 +930,7 @@ fn type_statement_inner(
          let result_type_node = if dt_is_unresolved {
             ExpressionTypeNode {
                e_type: ExpressionType::CompileError,
-               location: dt.as_ref().unwrap().location
+               location: dt.as_ref().unwrap().location,
             }
          } else if let Some(dt_val) = dt {
             if let Some(en) = opt_en {
@@ -959,7 +959,7 @@ fn type_statement_inner(
             );
             ExpressionTypeNode {
                e_type: ExpressionType::CompileError,
-               location: *stmt_loc
+               location: *stmt_loc,
             }
          };
 
@@ -2671,7 +2671,78 @@ fn try_merge_types_of_two_distinct_expressions(
    merged
 }
 
+fn well_typed(et: &ExpressionType) -> bool {
+   match et {
+      ExpressionType::Unknown(_)
+      | ExpressionType::CompileError
+      | ExpressionType::GenericParam(_)
+      | ExpressionType::Unresolved { .. } => false,
+      ExpressionType::Pointer(v) | ExpressionType::Array(v, _) => well_typed(v),
+      ExpressionType::ProcedureItem(_, type_args)
+      | ExpressionType::Struct(_, type_args)
+      | ExpressionType::Union(_, type_args) => type_args.iter().all(well_typed),
+      ExpressionType::ProcedurePointer { parameters, ret_type } => parameters
+         .iter()
+         .chain(std::iter::once(ret_type.as_ref()))
+         .all(ExpressionType::is_concrete),
+      ExpressionType::Never
+      | ExpressionType::Int(_)
+      | ExpressionType::Float(_)
+      | ExpressionType::Bool
+      | ExpressionType::Unit
+      | ExpressionType::Enum(_) => true,
+   }
+}
+
+fn tree_is_well_typed(expr_id: ExpressionId, expressions: &ExpressionPool) -> bool {
+   let children_ok = match &expressions[expr_id].expression {
+      Expression::ProcedureCall { proc_expr, args } => args
+         .iter()
+         .map(|x| x.expr)
+         .chain(std::iter::once(*proc_expr))
+         .all(|x| tree_is_well_typed(x, expressions)),
+      Expression::ArrayLiteral(expression_ids) => {
+         expression_ids.iter().all(|x| tree_is_well_typed(*x, expressions))
+      }
+      Expression::BinaryOperator { operator: _, lhs, rhs } | Expression::ArrayIndex { array: lhs, index: rhs } => {
+         tree_is_well_typed(*lhs, expressions) && tree_is_well_typed(*rhs, expressions)
+      }
+      Expression::UnaryOperator(_, expression_id) | Expression::FieldAccess(_, expression_id) => {
+         tree_is_well_typed(*expression_id, expressions)
+      }
+      Expression::StructLiteral(_, vals) => vals.values().flatten().all(|x| tree_is_well_typed(*x, expressions)),
+      Expression::Cast {
+         cast_type: _,
+         target_type,
+         expr,
+      } => well_typed(target_type) && tree_is_well_typed(*expr, expressions),
+      Expression::BoundFcnLiteral(_, expression_type_nodes) => {
+         expression_type_nodes.iter().map(|x| &x.e_type).all(well_typed)
+      }
+      Expression::IfX(a, b, c) => {
+         tree_is_well_typed(*a, expressions)
+            && tree_is_well_typed(*b, expressions)
+            && tree_is_well_typed(*c, expressions)
+      }
+      Expression::UnresolvedStructLiteral(_, _, _)
+      | Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedEnumLiteral(_, _)
+      | Expression::UnresolvedProcLiteral(_, _) => false,
+      Expression::Variable(_)
+      | Expression::EnumLiteral(_, _)
+      | Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_)
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_)
+      | Expression::UnitLiteral => true,
+   };
+   children_ok && well_typed(expressions[expr_id].exp_type.as_ref().unwrap())
+}
+
 fn fold_expr_id(expr_id: ExpressionId, err_manager: &mut ErrorManager, validation_context: &mut ValidationContext) {
+   if !tree_is_well_typed(expr_id, &validation_context.ast.expressions) {
+      return;
+   }
    let current_proc_name = validation_context
       .owned
       .cur_procedure
