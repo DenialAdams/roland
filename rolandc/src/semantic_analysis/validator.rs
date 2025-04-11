@@ -922,21 +922,16 @@ fn type_statement_inner(
             }
          }
 
-         let opt_en = match opt_enid {
-            DeclarationValue::Expr(enid) => Some(*enid),
-            DeclarationValue::Uninit | DeclarationValue::None => None,
-         };
-
          let result_type_node = if dt_is_unresolved {
             ExpressionTypeNode {
                e_type: ExpressionType::CompileError,
                location: dt.as_ref().unwrap().location,
             }
          } else if let Some(dt_val) = dt {
-            if let Some(en) = opt_en {
+            if let DeclarationValue::Expr(en) = opt_enid {
                check_type_declared_vs_actual(
                   dt_val,
-                  &validation_context.ast.expressions[en],
+                  &validation_context.ast.expressions[*en],
                   validation_context.interner,
                   validation_context.user_defined_types,
                   validation_context.procedures,
@@ -946,10 +941,10 @@ fn type_statement_inner(
             }
 
             dt_val.clone()
-         } else if let Some(en) = opt_en {
+         } else if let DeclarationValue::Expr(en) = opt_enid {
             ExpressionTypeNode {
-               e_type: validation_context.ast.expressions[en].exp_type.clone().unwrap(),
-               location: validation_context.ast.expressions[en].location,
+               e_type: validation_context.ast.expressions[*en].exp_type.clone().unwrap(),
+               location: validation_context.ast.expressions[*en].location,
             }
          } else {
             rolandc_error!(
@@ -970,7 +965,10 @@ fn type_statement_inner(
                *var_id,
                GlobalInfo {
                   expr_type: result_type_node,
-                  initializer: opt_en,
+                  initializer: match opt_enid {
+                     DeclarationValue::Expr(expression_id) => Some(*expression_id),
+                     DeclarationValue::Uninit | DeclarationValue::None => None,
+                  },
                   location: *stmt_loc,
                   kind: *storage_kind,
                   name: id.str,
@@ -2701,9 +2699,7 @@ fn tree_is_well_typed(expr_id: ExpressionId, expressions: &ExpressionPool) -> bo
          .map(|x| x.expr)
          .chain(std::iter::once(*proc_expr))
          .all(|x| tree_is_well_typed(x, expressions)),
-      Expression::ArrayLiteral(expression_ids) => {
-         expression_ids.iter().all(|x| tree_is_well_typed(*x, expressions))
-      }
+      Expression::ArrayLiteral(expression_ids) => expression_ids.iter().all(|x| tree_is_well_typed(*x, expressions)),
       Expression::BinaryOperator { operator: _, lhs, rhs } | Expression::ArrayIndex { array: lhs, index: rhs } => {
          tree_is_well_typed(*lhs, expressions) && tree_is_well_typed(*rhs, expressions)
       }
