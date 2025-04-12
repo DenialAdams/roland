@@ -1,0 +1,23 @@
+proc main() {
+    // LHS
+    {
+        let x = [];
+        let y: u64 = 10;
+        let z = x[get_index()] + y;
+        println(uint_to_string(z));
+    }
+
+    // RHS for good measure
+    {
+        let x = [];
+        let y: u64 = 10;
+        let z = x[get_index()] + y;
+        println(uint_to_string(z));
+    }
+}
+
+proc get_index() -> usize {
+    return 0;
+}
+__END__
+compile:
