@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use slotmap::SecondaryMap;
 
 use super::OwnedValidationContext;
@@ -31,8 +29,8 @@ pub fn constraint_matches_type_or_try_constrain(
    }
 }
 
-fn meet(
-   current_type: &mut ExpressionType,
+pub fn try_merge_types(
+   current_type: &ExpressionType,
    incoming_type: &ExpressionType,
    type_variables: &mut TypeVariableManager,
 ) -> bool {
@@ -41,10 +39,10 @@ fn meet(
          if current_len != incoming_len {
             return false;
          }
-         meet(current_base, incoming_base, type_variables)
+         try_merge_types(current_base, incoming_base, type_variables)
       }
       (ExpressionType::Pointer(current_base), ExpressionType::Pointer(incoming_base)) => {
-         meet(current_base, incoming_base, type_variables)
+         try_merge_types(current_base, incoming_base, type_variables)
       }
       (
          ExpressionType::Struct(current_base, current_type_arguments),
@@ -54,9 +52,9 @@ fn meet(
             return false;
          }
          current_type_arguments
-            .iter_mut()
+            .iter()
             .zip(incoming_type_arguments)
-            .all(|(x, y)| meet(x, y, type_variables))
+            .all(|(x, y)| try_merge_types(x, y, type_variables))
       }
       (
          ExpressionType::Union(current_base, current_type_arguments),
@@ -66,9 +64,9 @@ fn meet(
             return false;
          }
          current_type_arguments
-            .iter_mut()
+            .iter()
             .zip(incoming_type_arguments)
-            .all(|(x, y)| meet(x, y, type_variables))
+            .all(|(x, y)| try_merge_types(x, y, type_variables))
       }
       (
          ExpressionType::ProcedurePointer {
@@ -84,43 +82,27 @@ fn meet(
             return false;
          }
          current_parameters
-            .iter_mut()
+            .iter()
             .zip(incoming_parameters)
-            .chain(std::iter::once((current_ret_type.as_mut(), incoming_ret_type.as_ref())))
-            .all(|(x, y)| meet(x, y, type_variables))
+            .chain(std::iter::once((current_ret_type.as_ref(), incoming_ret_type.as_ref())))
+            .all(|(x, y)| try_merge_types(x, y, type_variables))
       }
       (ExpressionType::Unknown(current_tv), ExpressionType::Unknown(incoming_tv)) => {
-         if type_variables.union(*current_tv, *incoming_tv).is_ok() {
-            *current_tv = *incoming_tv;
-            return true;
-         }
-         false
+         type_variables.union(*current_tv, *incoming_tv).is_ok()
       }
-      (ExpressionType::Unknown(current_tv), incoming_type) => {
-         let data = type_variables.get_data_mut(*current_tv);
+      (ExpressionType::Unknown(tv), known_type) | (known_type, ExpressionType::Unknown(tv)) => {
+         let data = type_variables.get_data_mut(*tv);
          if let Some(kt) = data.known_type.as_ref() {
-            return kt == incoming_type;
+            return kt == known_type;
          }
-         if !constraint_compatible_with_concrete(data.constraint, incoming_type) {
+         if !constraint_compatible_with_concrete(data.constraint, known_type) {
             return false;
          }
-         data.known_type = Some(incoming_type.clone());
+         data.known_type = Some(known_type.clone());
          true
       }
       (current_type, incoming_type) => current_type == incoming_type,
    }
-}
-
-pub fn try_merge_types(
-   e_type: &ExpressionType,
-   current_type: &mut ExpressionType,
-   type_variables: &mut TypeVariableManager,
-) -> bool {
-   let result = meet(current_type, e_type, type_variables);
-   // This seems questionable.
-   // It would be better if type equality simply knew how to look up unknown types?
-   lower_unknowns_in_type(current_type, type_variables);
-   result
 }
 
 pub fn lower_type_variables(
@@ -172,19 +154,6 @@ pub fn lower_type_variables(
       for lt in body.locals.values_mut() {
          lower_unknowns_in_type(lt, &ctx.type_variables);
       }
-   }
-}
-
-pub fn lower_unknowns_in_type_cow<'a>(
-   e: &'a ExpressionType,
-   type_variables: &TypeVariableManager,
-) -> Cow<'a, ExpressionType> {
-   if e.is_concrete() {
-      Cow::Borrowed(e)
-   } else {
-      let mut cloned = e.clone();
-      lower_unknowns_in_type(&mut cloned, type_variables);
-      Cow::Owned(cloned)
    }
 }
 

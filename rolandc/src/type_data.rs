@@ -276,12 +276,17 @@ impl ExpressionType {
       match self {
          ExpressionType::Unknown(x) => {
             if let Some(tvi) = type_variable_info {
-               match tvi.get_data(*x).constraint {
-                  TypeConstraint::Int => Cow::Borrowed("?? Int"),
-                  TypeConstraint::SignedInt => Cow::Borrowed("?? Signed Int"),
-                  TypeConstraint::Float => Cow::Borrowed("?? Float"),
-                  TypeConstraint::Enum => Cow::Borrowed("?? Enum"),
-                  TypeConstraint::None => Cow::Borrowed("??"),
+               let data = tvi.get_data(*x);
+               if let Some(kt) = data.known_type.as_ref() {
+                  kt.as_roland_type_info_inner(interner, udt, procedures, type_variable_info)
+               } else {
+                  match tvi.get_data(*x).constraint {
+                     TypeConstraint::Int => Cow::Borrowed("?? Int"),
+                     TypeConstraint::SignedInt => Cow::Borrowed("?? Signed Int"),
+                     TypeConstraint::Float => Cow::Borrowed("?? Float"),
+                     TypeConstraint::Enum => Cow::Borrowed("?? Enum"),
+                     TypeConstraint::None => Cow::Borrowed("??"),
+                  }
                }
             } else {
                Cow::Borrowed("??")
