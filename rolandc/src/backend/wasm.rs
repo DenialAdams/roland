@@ -380,8 +380,8 @@ pub fn emit_wasm(
             match wt {
                ValType::I32 => ConstExpr::i32_const(0),
                ValType::I64 => ConstExpr::i64_const(0),
-               ValType::F32 => ConstExpr::f32_const(0.0),
-               ValType::F64 => ConstExpr::f64_const(0.0),
+               ValType::F32 => ConstExpr::f32_const(0.0.into()),
+               ValType::F64 => ConstExpr::f64_const(0.0.into()),
                _ => unreachable!(),
             }
          };
@@ -1053,8 +1053,8 @@ fn literal_as_wasm_const(expr_index: ExpressionId, generation_context: &mut Gene
             _ => unreachable!(),
          };
          match width {
-            FloatWidth::Eight => ConstExpr::f64_const(*x),
-            FloatWidth::Four => ConstExpr::f32_const(*x as f32),
+            FloatWidth::Eight => ConstExpr::f64_const((*x).into()),
+            FloatWidth::Four => ConstExpr::f32_const((*x as f32).into()),
          }
       }
       _ => unreachable!(),
@@ -1105,10 +1105,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       }
       Expression::FloatLiteral(x) => {
          match *expr_node.exp_type.as_ref().unwrap() {
-            F64_TYPE => generation_context.active_fcn.instruction(&Instruction::F64Const(*x)),
+            F64_TYPE => generation_context.active_fcn.instruction(&Instruction::F64Const((*x).into())),
             F32_TYPE => generation_context
                .active_fcn
-               .instruction(&Instruction::F32Const(*x as f32)),
+               .instruction(&Instruction::F32Const((*x as f32).into())),
             _ => unreachable!(),
          };
       }
