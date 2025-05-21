@@ -1,6 +1,6 @@
+use crate::Program;
 use crate::parse::{BinOp, Expression, ExpressionId, ExpressionNode};
 use crate::type_data::ExpressionType;
-use crate::Program;
 
 pub fn lower_logical_ops(program: &mut Program) {
    let mut logical_ops: Vec<ExpressionId> = vec![];

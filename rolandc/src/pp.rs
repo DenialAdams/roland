@@ -2,7 +2,8 @@ use std::io::Write;
 
 use slotmap::SlotMap;
 
-use crate::backend::linearize::{post_order, Cfg, CfgInstruction};
+use crate::Program;
+use crate::backend::linearize::{Cfg, CfgInstruction, post_order};
 use crate::interner::Interner;
 use crate::parse::{
    AstPool, BinOp, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, ProcedureId, ProcedureNode,
@@ -10,7 +11,6 @@ use crate::parse::{
 };
 use crate::semantic_analysis::StorageKind;
 use crate::type_data::ExpressionType;
-use crate::Program;
 
 struct PpCtx<'a, W: Write> {
    indentation_level: usize,
@@ -79,7 +79,7 @@ pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> R
       if let Some(b) = program.procedure_bodies.get(id) {
          writeln!(pp_ctx.output)?;
          for local in b.locals.iter() {
-            write!(pp_ctx.output, "   %v{}: ", local.0 .0)?;
+            write!(pp_ctx.output, "   %v{}: ", local.0.0)?;
             pp_type(local.1, &mut pp_ctx)?;
             writeln!(pp_ctx.output, ";")?;
          }

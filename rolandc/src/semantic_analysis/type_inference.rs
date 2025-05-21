@@ -2,10 +2,10 @@ use std::borrow::Cow;
 
 use slotmap::SecondaryMap;
 
-use super::type_variables::{TypeConstraint, TypeVariableManager};
 use super::OwnedValidationContext;
-use crate::error_handling::error_handling_macros::rolandc_error_w_details;
+use super::type_variables::{TypeConstraint, TypeVariableManager};
 use crate::error_handling::ErrorManager;
+use crate::error_handling::error_handling_macros::rolandc_error_w_details;
 use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, ProcedureId};
 use crate::type_data::{ExpressionType, IntType};
 

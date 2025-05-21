@@ -2,12 +2,12 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use include_dir::{include_dir, Dir};
+use include_dir::{Dir, include_dir};
 
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
 use crate::parse::ImportNode;
 use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
-use crate::{lex_and_parse, CompilationContext, CompilationError, FileResolver};
+use crate::{CompilationContext, CompilationError, FileResolver, lex_and_parse};
 
 static STDLIB_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../lib");
 

@@ -4,9 +4,9 @@ use std::iter;
 use indexmap::{IndexMap, IndexSet};
 use slotmap::SlotMap;
 
-use crate::backend::linearize::{post_order, Cfg, CfgInstruction};
+use crate::backend::linearize::{Cfg, CfgInstruction, post_order};
 use crate::backend::liveness::ProgramIndex;
-use crate::constant_folding::{self, is_non_aggregate_const, FoldingContext};
+use crate::constant_folding::{self, FoldingContext, is_non_aggregate_const};
 use crate::interner::Interner;
 use crate::parse::{
    AstPool, Expression, ExpressionId, ExpressionPool, ProcedureId, ProcedureNode, UnOp, UserDefinedTypeInfo, VariableId,
@@ -325,7 +325,7 @@ impl SingleDefAndPartials {
 struct ReachingDefsState {
    r_in: MultiDefsAndPartials,
    r_out: MultiDefsAndPartials,
-   gen: SingleDefAndPartials,
+   gen_: SingleDefAndPartials,
    // kill is implicit from gen
 }
 
@@ -340,7 +340,7 @@ fn reaching_definitions(
       ReachingDefsState {
          r_in: MultiDefsAndPartials::new(),
          r_out: MultiDefsAndPartials::new(),
-         gen: SingleDefAndPartials::new(),
+         gen_: SingleDefAndPartials::new(),
       };
       cfg.bbs.len()
    ];
@@ -353,20 +353,21 @@ fn reaching_definitions(
             if let Expression::Variable(v) = ast[*lhs].expression {
                if procedure_vars.contains_key(&v) {
                   state[*bb_index]
-                     .gen
+                     .gen_
                      .def
                      .entry(v)
                      .or_insert(Definition::DefinedAt(ProgramIndex(i, j)));
                }
-            } else if let Some(v) = partially_accessed_var(*lhs, ast) {
-               if procedure_vars.contains_key(&v) && !state[*bb_index].gen.def.contains_key(&v) {
-                  state[*bb_index]
-                     .gen
-                     .partials
-                     .entry(v)
-                     .or_default()
-                     .insert(Definition::DefinedAt(ProgramIndex(i, j)));
-               }
+            } else if let Some(v) = partially_accessed_var(*lhs, ast)
+               && procedure_vars.contains_key(&v)
+               && !state[*bb_index].gen_.def.contains_key(&v)
+            {
+               state[*bb_index]
+                  .gen_
+                  .partials
+                  .entry(v)
+                  .or_default()
+                  .insert(Definition::DefinedAt(ProgramIndex(i, j)));
             }
          }
       }
@@ -376,7 +377,7 @@ fn reaching_definitions(
    // the value backwards
    for proc_var in procedure_vars.keys().copied() {
       state[cfg.start]
-         .gen
+         .gen_
          .def
          .entry(proc_var)
          .or_insert(Definition::NoDefinitionInProc);
@@ -406,19 +407,19 @@ fn reaching_definitions(
          let old_r_out = std::mem::replace(
             &mut s.r_out,
             MultiDefsAndPartials {
-               def: s.gen.def.iter().map(|(k, v)| (*k, iter::once(*v).collect())).collect(),
-               partials: s.gen.partials.clone(),
+               def: s.gen_.def.iter().map(|(k, v)| (*k, iter::once(*v).collect())).collect(),
+               partials: s.gen_.partials.clone(),
             },
          );
 
          for (var, defs) in s.r_in.def.iter() {
-            if s.gen.def.contains_key(var) {
+            if s.gen_.def.contains_key(var) {
                continue;
             }
             s.r_out.def.entry(*var).or_default().extend(defs);
          }
          for (var, partial_defs) in s.r_in.partials.iter() {
-            if s.gen.def.contains_key(var) {
+            if s.gen_.def.contains_key(var) {
                continue;
             }
             s.r_out.partials.entry(*var).or_default().extend(partial_defs);
@@ -455,14 +456,14 @@ fn reaching_definitions(
                   reaching_defs.insert(Definition::DefinedAt(ProgramIndex(rpo_index, i)));
                   current_reaching_defs.partials.entry(v).or_default().clear();
                }
-            } else if let Some(v) = partially_accessed_var(*lhs, ast) {
-               if procedure_vars.contains_key(&v) {
-                  current_reaching_defs
-                     .partials
-                     .entry(v)
-                     .or_default()
-                     .insert(Definition::DefinedAt(ProgramIndex(rpo_index, i)));
-               }
+            } else if let Some(v) = partially_accessed_var(*lhs, ast)
+               && procedure_vars.contains_key(&v)
+            {
+               current_reaching_defs
+                  .partials
+                  .entry(v)
+                  .or_default()
+                  .insert(Definition::DefinedAt(ProgramIndex(rpo_index, i)));
             }
          }
       }
@@ -529,10 +530,10 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
       }
       Expression::UnaryOperator(op, expr) => {
          mark_escaping_vars_expr(*expr, escaping_vars, ast);
-         if *op == UnOp::AddressOf {
-            if let Some(v) = partially_accessed_var(*expr, ast) {
-               escaping_vars.insert(v);
-            }
+         if *op == UnOp::AddressOf
+            && let Some(v) = partially_accessed_var(*expr, ast)
+         {
+            escaping_vars.insert(v);
          }
       }
       Expression::Variable(_)

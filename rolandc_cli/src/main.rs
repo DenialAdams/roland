@@ -180,12 +180,12 @@ fn main() {
 
    std::fs::write(&output_path, out_bytes).unwrap();
 
-   if config.target == Target::Qbe {
-      if let Err(e) = compile_qbe(output_path, opts.output) {
-         use std::io::Write;
-         writeln!(err_stream_l, "Failed to compile produced IR to binary: {}", e).unwrap();
-         std::process::exit(1);
-      }
+   if config.target == Target::Qbe
+      && let Err(e) = compile_qbe(output_path, opts.output)
+   {
+      use std::io::Write;
+      writeln!(err_stream_l, "Failed to compile produced IR to binary: {}", e).unwrap();
+      std::process::exit(1);
    }
 }
 

@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::mem::discriminant;
 
 use indexmap::{IndexMap, IndexSet};
-use slotmap::{new_key_type, SecondaryMap, SlotMap};
+use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
 use super::lex::{SourceToken, Token};
 use crate::backend::linearize::Cfg;
-use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
-use crate::interner::{Interner, StrId, DUMMY_STR_TOKEN};
+use crate::error_handling::error_handling_macros::rolandc_error;
+use crate::interner::{DUMMY_STR_TOKEN, Interner, StrId};
 use crate::lex::Lexer;
 use crate::semantic_analysis::{EnumInfo, GlobalInfo, StorageKind, StructInfo, UnionInfo};
 use crate::source_info::SourceInfo;
@@ -627,11 +627,11 @@ fn parse_top_level_items(
          }
          x => {
             rolandc_error!(
-            parse_context.err_manager,
-            lexer.peek_source(),
-            "While parsing top level, encountered unexpected {}; was expecting a procedure, const, static, enum, or struct declaration",
-            x.for_parse_err()
-         );
+               parse_context.err_manager,
+               lexer.peek_source(),
+               "While parsing top level, encountered unexpected {}; was expecting a procedure, const, static, enum, or struct declaration",
+               x.for_parse_err()
+            );
             return Err(());
          }
       }

@@ -1,10 +1,10 @@
 use indexmap::IndexMap;
 
+use crate::Program;
 use crate::parse::{
    AstPool, BlockNode, DeclarationValue, Expression, ExpressionNode, Statement, StatementId, VariableId,
 };
 use crate::type_data::ExpressionType;
-use crate::Program;
 
 pub fn lower_variable_decls(program: &mut Program) {
    for proc_body in program.procedure_bodies.values_mut() {

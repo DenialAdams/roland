@@ -2,8 +2,8 @@ use std::num::IntErrorKind;
 
 use unicode_ident::{is_xid_continue, is_xid_start};
 
-use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
+use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::interner::{Interner, StrId};
 use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
 

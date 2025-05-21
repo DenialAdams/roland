@@ -3,10 +3,10 @@ use std::cmp::Ordering;
 
 use slotmap::SlotMap;
 
+use crate::Target;
 use crate::interner::{Interner, StrId};
 use crate::parse::{EnumId, ProcedureId, ProcedureNode, StructId, UnionId, UserDefinedTypeInfo};
 use crate::semantic_analysis::type_variables::{TypeConstraint, TypeVariable, TypeVariableManager};
-use crate::Target;
 
 pub const U8_TYPE: ExpressionType = ExpressionType::Int(IntType {
    signed: false,

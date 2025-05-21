@@ -1,5 +1,5 @@
-use crate::parse::Expression;
 use crate::Program;
+use crate::parse::Expression;
 
 pub fn lower_named_args(p: &mut Program) {
    for v in p.ast.expressions.values_mut() {

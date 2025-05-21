@@ -7,8 +7,8 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use os_pipe::pipe;
@@ -192,7 +192,7 @@ fn main() -> Result<(), &'static str> {
             writeln!(out_handle, "Test file could not be opened (does it exist?)").unwrap();
             true
          }
-         TestFailureReason::TestingNothing(ref mut file) => {
+         TestFailureReason::TestingNothing(file) => {
             if !opts.overwrite_error_files {
                writeln!(out_handle, "There was no test specified for this input.").unwrap();
             }
@@ -248,7 +248,7 @@ fn main() -> Result<(), &'static str> {
             print_diff(&mut out_handle, expected, actual);
             true
          }
-         TestFailureReason::MismatchedCompilationErrorOutput(ref mut test_details) => {
+         TestFailureReason::MismatchedCompilationErrorOutput(test_details) => {
             if opts.overwrite_error_files {
                // file should have been sunk to the correct point
                test_details.file.write_all(b"compile:\n").unwrap();

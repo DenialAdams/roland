@@ -1,5 +1,6 @@
 use slotmap::SlotMap;
 
+use crate::Target;
 use crate::backend::linearize::CfgInstruction;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
@@ -7,8 +8,7 @@ use crate::parse::{ArgumentNode, BinOp, EnumId, Expression, ExpressionId, Expres
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::sizeof_type_mem;
 use crate::source_info::SourceInfo;
-use crate::type_data::{ExpressionType, IntType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I8_TYPE, U16_TYPE, U8_TYPE};
-use crate::Target;
+use crate::type_data::{ExpressionType, F32_TYPE, F64_TYPE, I8_TYPE, I16_TYPE, IntType, IntWidth, U8_TYPE, U16_TYPE};
 
 fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInfo>, target: Target) {
    match the_type {

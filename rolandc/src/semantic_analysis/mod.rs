@@ -4,6 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 use slotmap::SlotMap;
 
 use self::type_variables::TypeVariableManager;
+use crate::Target;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    AstPool, ExpressionId, ExpressionTypeNode, ProcedureId, ProcedureNode, StructId, UserDefinedTypeId,
@@ -12,7 +13,6 @@ use crate::parse::{
 use crate::size_info::{StructSizeInfo, UnionSizeInfo};
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
-use crate::Target;
 
 pub mod definite_assignment;
 pub mod type_and_procedure_info;

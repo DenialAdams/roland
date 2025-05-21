@@ -5,7 +5,7 @@ use std::io::Write;
 use indexmap::{IndexMap, IndexSet};
 use slotmap::{Key, SlotMap};
 
-use super::linearize::{Cfg, CfgInstruction, CFG_END_NODE};
+use super::linearize::{CFG_END_NODE, Cfg, CfgInstruction};
 use super::regalloc::{RegallocResult, VarSlot};
 use crate::backend::linearize::post_order;
 use crate::backend::regalloc::RegisterType;
@@ -18,8 +18,8 @@ use crate::parse::{
 use crate::semantic_analysis::GlobalInfo;
 use crate::size_info::sizeof_type_mem;
 use crate::type_data::{
-   ExpressionType, FloatType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE,
-   U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE,
+   ExpressionType, F32_TYPE, F64_TYPE, FloatType, FloatWidth, I8_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, IntType, IntWidth,
+   U8_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
 };
 use crate::{Program, Target};
 
@@ -320,7 +320,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
    }
 
    for a_global in program.non_stack_var_info.iter() {
-      write!(ctx.buf, "data $.v{} = {{ ", a_global.0 .0).unwrap();
+      write!(ctx.buf, "data $.v{} = {{ ", a_global.0.0).unwrap();
       match a_global.1.initializer {
          Some(e) => {
             literal_as_data(e, &mut ctx);

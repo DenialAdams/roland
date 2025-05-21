@@ -2,16 +2,16 @@ use std::collections::{HashMap, HashSet};
 
 use slotmap::SlotMap;
 
+use crate::Target;
 use crate::constant_folding::{self, FoldingContext};
-use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::error_handling::ErrorManager;
+use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    AstPool, Expression, ExpressionId, ProcedureId, ProcedureNode, Program, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::StorageKind;
 use crate::source_info::SourceInfo;
-use crate::Target;
 
 struct CgContext<'a> {
    ast: &'a mut AstPool,

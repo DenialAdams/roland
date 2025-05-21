@@ -4,8 +4,9 @@ use std::ops::{BitAnd, BitOr, BitXor};
 use indexmap::IndexSet;
 use slotmap::SlotMap;
 
-use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_warn};
+use crate::Target;
 use crate::error_handling::ErrorManager;
+use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_warn};
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    AstPool, BinOp, BlockNode, CastType, EnumId, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcedureId,
@@ -15,10 +16,9 @@ use crate::semantic_analysis::StorageKind;
 use crate::size_info::sizeof_type_mem;
 use crate::source_info::SourceInfo;
 use crate::type_data::{
-   ExpressionType, F32_TYPE, F64_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, I8_TYPE, ISIZE_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
-   U8_TYPE, USIZE_TYPE,
+   ExpressionType, F32_TYPE, F64_TYPE, I8_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, ISIZE_TYPE, U8_TYPE, U16_TYPE, U32_TYPE,
+   U64_TYPE, USIZE_TYPE,
 };
-use crate::Target;
 
 pub struct FoldingContext<'a> {
    pub ast: &'a mut AstPool,
@@ -296,38 +296,36 @@ fn fold_expr_inner(
             _ => unreachable!(),
          };
 
-         if overflowing_literal {
-            if let Some(em) = err_manager {
-               let signed = match expr_type {
-                  ExpressionType::Int(x) => x.signed,
-                  _ => unreachable!(),
-               };
+         if overflowing_literal && let Some(em) = err_manager {
+            let signed = match expr_type {
+               ExpressionType::Int(x) => x.signed,
+               _ => unreachable!(),
+            };
 
-               if signed {
-                  rolandc_error!(
-                     em,
-                     expr_to_fold_location,
-                     "Literal of type {} has value `{}` which would immediately over/underflow",
-                     expr_type.as_roland_type_info_notv(
-                        interner,
-                        folding_context.user_defined_types,
-                        folding_context.procedures
-                     ),
-                     val as i64
-                  );
-               } else {
-                  rolandc_error!(
-                     em,
-                     expr_to_fold_location,
-                     "Literal of type {} has value `{}` which would immediately over/underflow",
-                     expr_type.as_roland_type_info_notv(
-                        interner,
-                        folding_context.user_defined_types,
-                        folding_context.procedures
-                     ),
-                     val
-                  );
-               }
+            if signed {
+               rolandc_error!(
+                  em,
+                  expr_to_fold_location,
+                  "Literal of type {} has value `{}` which would immediately over/underflow",
+                  expr_type.as_roland_type_info_notv(
+                     interner,
+                     folding_context.user_defined_types,
+                     folding_context.procedures
+                  ),
+                  val as i64
+               );
+            } else {
+               rolandc_error!(
+                  em,
+                  expr_to_fold_location,
+                  "Literal of type {} has value `{}` which would immediately over/underflow",
+                  expr_type.as_roland_type_info_notv(
+                     interner,
+                     folding_context.user_defined_types,
+                     folding_context.procedures
+                  ),
+                  val
+               );
             }
          }
 

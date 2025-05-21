@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 use indexmap::IndexSet;
 
+use crate::Target;
 use crate::interner::StrId;
 use crate::parse::{StructId, UnionId, UserDefinedTypeId, UserDefinedTypeInfo};
 use crate::semantic_analysis::validator::map_generic_to_concrete_cow;
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
-use crate::Target;
 
 #[derive(Clone)]
 pub struct StructSizeInfo {
@@ -23,11 +23,7 @@ pub struct UnionSizeInfo {
 
 pub fn aligned_address(v: u32, a: u32) -> u32 {
    let rem = v % a;
-   if rem == 0 {
-      v
-   } else {
-      v + (a - rem)
-   }
+   if rem == 0 { v } else { v + (a - rem) }
 }
 
 pub fn calculate_union_size_info(
@@ -253,11 +249,7 @@ pub fn sizeof_type_values(e: &ExpressionType, udt: &UserDefinedTypeInfo, target:
 /// The size of a type, in bytes, as it's stored in local memory (minimum size 4 bytes)
 pub fn sizeof_type_wasm(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) -> u32 {
    let size_mem = sizeof_type_mem(e, udt, target);
-   if size_mem == 0 {
-      0
-   } else {
-      std::cmp::max(4, size_mem)
-   }
+   if size_mem == 0 { 0 } else { std::cmp::max(4, size_mem) }
 }
 
 pub fn template_type_aware_mem_size(

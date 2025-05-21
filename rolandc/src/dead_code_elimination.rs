@@ -2,15 +2,15 @@ use std::collections::HashSet;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::backend::linearize::{post_order, CfgInstruction};
+use crate::backend::linearize::{CfgInstruction, post_order};
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureId, Statement, StatementId, VariableId,
 };
 use crate::propagation::partially_accessed_var;
-use crate::semantic_analysis::validator::get_special_procedures;
 use crate::semantic_analysis::GlobalInfo;
+use crate::semantic_analysis::validator::get_special_procedures;
 use crate::{Program, Target};
 
 // MARK: Unreachable Procedures
@@ -201,16 +201,16 @@ pub fn remove_unused_locals(program: &mut Program) {
       // Sweep
       for bb_index in post_order.iter().copied().rev() {
          proc_body.cfg.bbs[bb_index].instructions.retain_mut(|instr| {
-            if let CfgInstruction::Assignment(lhs, rhs) = instr {
-               if let Some(v) = partially_accessed_var(*lhs, &program.ast.expressions) {
-                  if !used_vars.contains(&v) && proc_body.locals.contains_key(&v) {
-                     debug_assert!(!expression_could_have_side_effects(*lhs, &program.ast.expressions));
-                     if expression_could_have_side_effects(*rhs, &program.ast.expressions) {
-                        *instr = CfgInstruction::Expression(*rhs);
-                     } else {
-                        return false;
-                     }
-                  }
+            if let CfgInstruction::Assignment(lhs, rhs) = instr
+               && let Some(v) = partially_accessed_var(*lhs, &program.ast.expressions)
+               && !used_vars.contains(&v)
+               && proc_body.locals.contains_key(&v)
+            {
+               debug_assert!(!expression_could_have_side_effects(*lhs, &program.ast.expressions));
+               if expression_could_have_side_effects(*rhs, &program.ast.expressions) {
+                  *instr = CfgInstruction::Expression(*rhs);
+               } else {
+                  return false;
                }
             }
             true

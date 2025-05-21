@@ -4,13 +4,13 @@ use bitvec::slice::BitSlice;
 use bitvec::vec::BitVec;
 use indexmap::IndexMap;
 
-use crate::error_handling::error_handling_macros::rolandc_error;
+use crate::Program;
 use crate::error_handling::ErrorManager;
+use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::parse::{
    AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, Statement, StatementId, VariableId,
 };
 use crate::type_data::ExpressionType;
-use crate::Program;
 
 pub fn ensure_variables_definitely_assigned(program: &Program, err_manager: &mut ErrorManager) {
    let mut assigned_vars: BitVec = BitVec::new();
@@ -89,14 +89,13 @@ fn ensure_all_variables_assigned_in_stmt(
             if let Some(index) = procedure_vars.get_index_of(&var_id) {
                assigned_vars.set(index, true);
             }
-         } else if let Expression::FieldAccess(_, inner_expr_id) = pool.expressions[*lhs].expression {
-            if let Expression::Variable(var_id) = pool.expressions[inner_expr_id].expression {
-               if let Some(ExpressionType::Union(_, _)) = procedure_vars.get(&var_id) {
-                  // Assigning one field of a union fully assigns the variable
-                  if let Some(index) = procedure_vars.get_index_of(&var_id) {
-                     assigned_vars.set(index, true);
-                  }
-               }
+         } else if let Expression::FieldAccess(_, inner_expr_id) = pool.expressions[*lhs].expression
+            && let Expression::Variable(var_id) = pool.expressions[inner_expr_id].expression
+            && let Some(ExpressionType::Union(_, _)) = procedure_vars.get(&var_id)
+         {
+            // Assigning one field of a union fully assigns the variable
+            if let Some(index) = procedure_vars.get_index_of(&var_id) {
+               assigned_vars.set(index, true);
             }
          }
 
@@ -181,16 +180,16 @@ fn ensure_expression_does_not_use_unassigned_variable(
    let en = &pool.expressions[expr_id];
    match &en.expression {
       Expression::Variable(var_id) => {
-         if let Some(index) = procedure_vars.get_index_of(var_id) {
-            if !assigned_vars[index] {
-               rolandc_error!(
-                  err_manager,
-                  en.location,
-                  "Variable may not have been assigned at this use"
-               );
-               // To avoid spamming with errors, pretend it has been assigned
-               assigned_vars.set(index, true);
-            }
+         if let Some(index) = procedure_vars.get_index_of(var_id)
+            && !assigned_vars[index]
+         {
+            rolandc_error!(
+               err_manager,
+               en.location,
+               "Variable may not have been assigned at this use"
+            );
+            // To avoid spamming with errors, pretend it has been assigned
+            assigned_vars.set(index, true);
          }
       }
       Expression::ProcedureCall { proc_expr, args } => {

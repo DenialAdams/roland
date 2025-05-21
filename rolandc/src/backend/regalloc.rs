@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 
-use super::linearize::{post_order, Cfg, CfgInstruction};
+use super::linearize::{Cfg, CfgInstruction, post_order};
 use super::liveness::LiveInterval;
 use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId};
 use crate::size_info::{mem_alignment, sizeof_type_mem};
@@ -316,10 +316,10 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
       }
       Expression::UnaryOperator(op, expr) => {
          mark_escaping_vars_expr(*expr, escaping_vars, ast);
-         if *op == UnOp::AddressOf {
-            if let Expression::Variable(v) = ast[*expr].expression {
-               escaping_vars.insert(v);
-            }
+         if *op == UnOp::AddressOf
+            && let Expression::Variable(v) = ast[*expr].expression
+         {
+            escaping_vars.insert(v);
          }
       }
       Expression::Variable(_)

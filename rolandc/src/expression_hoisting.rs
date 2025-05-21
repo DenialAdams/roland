@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use indexmap::{IndexMap, IndexSet};
 
+use crate::Target;
 use crate::constant_folding::{expression_could_have_side_effects, is_non_aggregate_const};
 use crate::interner::Interner;
 use crate::parse::{
@@ -11,7 +12,6 @@ use crate::parse::{
 use crate::semantic_analysis::GlobalInfo;
 use crate::size_info::sizeof_type_mem;
 use crate::type_data::{ExpressionType, U8_TYPE, USIZE_TYPE};
-use crate::Target;
 
 #[derive(Copy, Clone, PartialEq)]
 enum HoistReason {

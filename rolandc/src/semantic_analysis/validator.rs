@@ -9,21 +9,21 @@ use slotmap::SlotMap;
 use super::type_inference::{constraint_matches_type_or_try_constrain, lower_unknowns_in_type, try_merge_types};
 use super::type_variables::{TypeConstraint, TypeVariableManager};
 use super::{GlobalInfo, OwnedValidationContext, ValidationContext, VariableDetails, VariableScopeKind};
+use crate::Target;
 use crate::constant_folding::{self, FoldingContext};
+use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::{
    rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn,
 };
-use crate::error_handling::ErrorManager;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   statement_always_or_never_returns, ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression,
-   ExpressionId, ExpressionNode, ExpressionPool, ExpressionTypeNode, ProcImplSource, ProcedureId, ProcedureNode,
-   Program, Statement, StatementId, StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
+   ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression, ExpressionId, ExpressionNode,
+   ExpressionPool, ExpressionTypeNode, ProcImplSource, ProcedureId, ProcedureNode, Program, Statement, StatementId,
+   StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId, statement_always_or_never_returns,
 };
 use crate::size_info::{template_type_aware_mem_alignment, template_type_aware_mem_size};
 use crate::source_info::SourceInfo;
-use crate::type_data::{ExpressionType, IntType, F32_TYPE, F64_TYPE, I32_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE};
-use crate::Target;
+use crate::type_data::{ExpressionType, F32_TYPE, F64_TYPE, I32_TYPE, IntType, U32_TYPE, U64_TYPE, USIZE_TYPE};
 
 pub struct SpecialProcedure {
    pub name: StrId,
@@ -1126,29 +1126,27 @@ fn type_expression(
             .owned
             .cur_procedure
             .map(|x| &validation_context.procedures[x].specialized_type_parameters);
-         if let ExpressionType::Unresolved { name, generic_args } = &mut base_type_node.e_type {
-            if generic_args.is_empty() {
-               if let Some(UserDefinedTypeId::Struct(s_id)) =
-                  validation_context.user_defined_type_name_table.get(name).copied()
-               {
-                  let expected_num_type_args = validation_context
-                     .templated_types
-                     .get(&UserDefinedTypeId::Struct(s_id))
-                     .unwrap_or(&IndexSet::new())
-                     .len();
-                  if expected_num_type_args > 0 {
-                     *generic_args = (0..expected_num_type_args)
-                        .map(|_| {
-                           ExpressionType::Unknown(
-                              validation_context
-                                 .owned
-                                 .type_variables
-                                 .new_type_variable(TypeConstraint::None),
-                           )
-                        })
-                        .collect();
-                  }
-               }
+         if let ExpressionType::Unresolved { name, generic_args } = &mut base_type_node.e_type
+            && generic_args.is_empty()
+            && let Some(UserDefinedTypeId::Struct(s_id)) =
+               validation_context.user_defined_type_name_table.get(name).copied()
+         {
+            let expected_num_type_args = validation_context
+               .templated_types
+               .get(&UserDefinedTypeId::Struct(s_id))
+               .unwrap_or(&IndexSet::new())
+               .len();
+            if expected_num_type_args > 0 {
+               *generic_args = (0..expected_num_type_args)
+                  .map(|_| {
+                     ExpressionType::Unknown(
+                        validation_context
+                           .owned
+                           .type_variables
+                           .new_type_variable(TypeConstraint::None),
+                     )
+                  })
+                  .collect();
             }
          }
          if !resolve_type::<()>(
@@ -1385,8 +1383,18 @@ fn get_type(
                         err_manager,
                         e.location,
                         "Transmute encountered an operand of type {}, which can't be transmuted to type {} as the alignment requirements would not be met ({} vs {})",
-                        e_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedures, &validation_context.owned.type_variables),
-                        target_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedures, &validation_context.owned.type_variables),
+                        e_type.as_roland_type_info(
+                           validation_context.interner,
+                           validation_context.user_defined_types,
+                           validation_context.procedures,
+                           &validation_context.owned.type_variables
+                        ),
+                        target_type.as_roland_type_info(
+                           validation_context.interner,
+                           validation_context.user_defined_types,
+                           validation_context.procedures,
+                           &validation_context.owned.type_variables
+                        ),
                         alignment_source,
                         alignment_target,
                      );
@@ -1399,8 +1407,18 @@ fn get_type(
                      err_manager,
                      e.location,
                      "Transmute encountered an operand of type {} which can't be transmuted to type {} as the sizes do not match ({} vs {})",
-                     e_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedures, &validation_context.owned.type_variables),
-                     target_type.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedures, &validation_context.owned.type_variables),
+                     e_type.as_roland_type_info(
+                        validation_context.interner,
+                        validation_context.user_defined_types,
+                        validation_context.procedures,
+                        &validation_context.owned.type_variables
+                     ),
+                     target_type.as_roland_type_info(
+                        validation_context.interner,
+                        validation_context.user_defined_types,
+                        validation_context.procedures,
+                        &validation_context.owned.type_variables
+                     ),
                      size_source,
                      size_target,
                   );
@@ -1526,59 +1544,59 @@ fn get_type(
 
          let e = &validation_context.ast.expressions[*e];
 
-         if *un_op == UnOp::AddressOf {
-            if let ExpressionType::ProcedureItem(proc_id, bound_type_params) = e.exp_type.as_ref().unwrap() {
-               // special case
-               *un_op = UnOp::TakeProcedurePointer;
+         if *un_op == UnOp::AddressOf
+            && let ExpressionType::ProcedureItem(proc_id, bound_type_params) = e.exp_type.as_ref().unwrap()
+         {
+            // special case
+            *un_op = UnOp::TakeProcedurePointer;
 
-               let proc = &validation_context.procedures[*proc_id];
+            let proc = &validation_context.procedures[*proc_id];
 
-               if proc.impl_source == ProcImplSource::Builtin {
-                  rolandc_error!(
-                     err_manager,
-                     expr_location,
-                     "Procedure pointers can't be taken to compiler builtins"
-                  );
-                  return ExpressionType::CompileError;
-               }
-
-               if !proc.named_parameters.is_empty() {
-                  rolandc_error!(
-                     err_manager,
-                     expr_location,
-                     "Procedure pointers can't be taken to procedures with named arguments"
-                  );
-                  return ExpressionType::CompileError;
-               }
-
-               let mut parameters: Box<[ExpressionType]> = proc
-                  .definition
-                  .parameters
-                  .iter()
-                  .map(|x| x.p_type.e_type.clone())
-                  .collect();
-
-               for param in parameters.iter_mut() {
-                  map_generic_to_concrete(param, bound_type_params, &proc.type_parameters);
-               }
-
-               let mut ret_type = proc.definition.ret_type.e_type.clone();
-               map_generic_to_concrete(&mut ret_type, bound_type_params, &proc.type_parameters);
-
-               return ExpressionType::ProcedurePointer {
-                  parameters,
-                  ret_type: Box::new(ret_type),
-               };
+            if proc.impl_source == ProcImplSource::Builtin {
+               rolandc_error!(
+                  err_manager,
+                  expr_location,
+                  "Procedure pointers can't be taken to compiler builtins"
+               );
+               return ExpressionType::CompileError;
             }
+
+            if !proc.named_parameters.is_empty() {
+               rolandc_error!(
+                  err_manager,
+                  expr_location,
+                  "Procedure pointers can't be taken to procedures with named arguments"
+               );
+               return ExpressionType::CompileError;
+            }
+
+            let mut parameters: Box<[ExpressionType]> = proc
+               .definition
+               .parameters
+               .iter()
+               .map(|x| x.p_type.e_type.clone())
+               .collect();
+
+            for param in parameters.iter_mut() {
+               map_generic_to_concrete(param, bound_type_params, &proc.type_parameters);
+            }
+
+            let mut ret_type = proc.definition.ret_type.e_type.clone();
+            map_generic_to_concrete(&mut ret_type, bound_type_params, &proc.type_parameters);
+
+            return ExpressionType::ProcedurePointer {
+               parameters,
+               ret_type: Box::new(ret_type),
+            };
          }
 
-         if *un_op == UnOp::Negate {
-            if let ExpressionType::Unknown(x) = e.exp_type.as_ref().unwrap() {
-               let tvd = validation_context.owned.type_variables.get_data_mut(*x);
-               if tvd.constraint == TypeConstraint::Int {
-                  // could be a float, or totally unknown
-                  tvd.add_constraint(TypeConstraint::SignedInt).unwrap();
-               }
+         if *un_op == UnOp::Negate
+            && let ExpressionType::Unknown(x) = e.exp_type.as_ref().unwrap()
+         {
+            let tvd = validation_context.owned.type_variables.get_data_mut(*x);
+            if tvd.constraint == TypeConstraint::Int {
+               // could be a float, or totally unknown
+               tvd.add_constraint(TypeConstraint::SignedInt).unwrap();
             }
          }
 
@@ -2101,7 +2119,12 @@ fn get_type(
                   err_manager,
                   expr_location,
                   "Attempted to index expression of type {}, which is not an array type. Hint: Dereference this pointer with ~",
-                  x.as_roland_type_info(validation_context.interner, validation_context.user_defined_types, validation_context.procedures, &validation_context.owned.type_variables),
+                  x.as_roland_type_info(
+                     validation_context.interner,
+                     validation_context.user_defined_types,
+                     validation_context.procedures,
+                     &validation_context.owned.type_variables
+                  ),
                );
 
                ExpressionType::CompileError

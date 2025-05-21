@@ -11,7 +11,7 @@ use crate::type_data::ExpressionType;
 struct LivenessState {
    live_in: BitBox,
    live_out: BitBox,
-   gen: BitBox,
+   gen_: BitBox,
    kill: BitBox,
 }
 
@@ -86,7 +86,7 @@ pub fn liveness(
       LivenessState {
          live_in: bitbox![0; procedure_vars.len()],
          live_out: bitbox![0; procedure_vars.len()],
-         gen: bitbox![0; procedure_vars.len()],
+         gen_: bitbox![0; procedure_vars.len()],
          kill: bitbox![0; procedure_vars.len()],
       };
       cfg.bbs.len()
@@ -98,19 +98,19 @@ pub fn liveness(
       for instruction in bb.instructions.iter().rev() {
          match instruction {
             CfgInstruction::Assignment(lhs, rhs) => {
-               gen_for_expr(*lhs, &mut s.gen, &mut s.kill, ast, procedure_vars);
-               if let Expression::Variable(v) = ast[*lhs].expression {
-                  if let Some(di) = procedure_vars.get_index_of(&v) {
-                     s.gen.set(di, false);
-                     s.kill.set(di, true);
-                  }
+               gen_for_expr(*lhs, &mut s.gen_, &mut s.kill, ast, procedure_vars);
+               if let Expression::Variable(v) = ast[*lhs].expression
+                  && let Some(di) = procedure_vars.get_index_of(&v)
+               {
+                  s.gen_.set(di, false);
+                  s.kill.set(di, true);
                }
-               gen_for_expr(*rhs, &mut s.gen, &mut s.kill, ast, procedure_vars);
+               gen_for_expr(*rhs, &mut s.gen_, &mut s.kill, ast, procedure_vars);
             }
             CfgInstruction::Expression(expr)
             | CfgInstruction::Return(expr)
             | CfgInstruction::ConditionalJump(expr, _, _) => {
-               gen_for_expr(*expr, &mut s.gen, &mut s.kill, ast, procedure_vars);
+               gen_for_expr(*expr, &mut s.gen_, &mut s.kill, ast, procedure_vars);
             }
             CfgInstruction::Nop | CfgInstruction::Jump(_) => (),
          }
@@ -134,7 +134,7 @@ pub fn liveness(
       // Update live_in
       {
          let s = &mut state[node_id];
-         let old_live_in = std::mem::replace(&mut s.live_in, s.gen.clone());
+         let old_live_in = std::mem::replace(&mut s.live_in, s.gen_.clone());
 
          // s.live_in |= s.live_out & !s.kill;
          for ((lhs, rhs), mut dst) in s
@@ -166,10 +166,10 @@ pub fn liveness(
          match instruction {
             CfgInstruction::Assignment(lhs, rhs) => {
                update_live_variables_for_expr(*lhs, &mut current_live_variables, ast, procedure_vars);
-               if let Expression::Variable(v) = ast[*lhs].expression {
-                  if let Some(di) = procedure_vars.get_index_of(&v) {
-                     current_live_variables.set(di, false);
-                  }
+               if let Expression::Variable(v) = ast[*lhs].expression
+                  && let Some(di) = procedure_vars.get_index_of(&v)
+               {
+                  current_live_variables.set(di, false);
                }
                update_live_variables_for_expr(*rhs, &mut current_live_variables, ast, procedure_vars);
             }
@@ -251,44 +251,44 @@ fn update_live_variables_for_expr(
 
 fn gen_for_expr(
    expr: ExpressionId,
-   gen: &mut BitSlice,
+   gen_: &mut BitSlice,
    kill: &mut BitSlice,
    ast: &ExpressionPool,
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
 ) {
    match &ast[expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
-         gen_for_expr(*proc_expr, gen, kill, ast, procedure_vars);
+         gen_for_expr(*proc_expr, gen_, kill, ast, procedure_vars);
 
          for val in args.iter().map(|x| x.expr) {
-            gen_for_expr(val, gen, kill, ast, procedure_vars);
+            gen_for_expr(val, gen_, kill, ast, procedure_vars);
          }
       }
       Expression::ArrayLiteral(vals) => {
          for val in vals.iter().copied() {
-            gen_for_expr(val, gen, kill, ast, procedure_vars);
+            gen_for_expr(val, gen_, kill, ast, procedure_vars);
          }
       }
       Expression::ArrayIndex { array: a, index: b } | Expression::BinaryOperator { lhs: a, rhs: b, .. } => {
-         gen_for_expr(*a, gen, kill, ast, procedure_vars);
-         gen_for_expr(*b, gen, kill, ast, procedure_vars);
+         gen_for_expr(*a, gen_, kill, ast, procedure_vars);
+         gen_for_expr(*b, gen_, kill, ast, procedure_vars);
       }
       Expression::IfX(a, b, c) => {
-         gen_for_expr(*a, gen, kill, ast, procedure_vars);
-         gen_for_expr(*b, gen, kill, ast, procedure_vars);
-         gen_for_expr(*c, gen, kill, ast, procedure_vars);
+         gen_for_expr(*a, gen_, kill, ast, procedure_vars);
+         gen_for_expr(*b, gen_, kill, ast, procedure_vars);
+         gen_for_expr(*c, gen_, kill, ast, procedure_vars);
       }
       Expression::StructLiteral(_, exprs) => {
          for expr in exprs.values().flatten() {
-            gen_for_expr(*expr, gen, kill, ast, procedure_vars);
+            gen_for_expr(*expr, gen_, kill, ast, procedure_vars);
          }
       }
       Expression::FieldAccess(_, expr) | Expression::Cast { expr, .. } | Expression::UnaryOperator(_, expr) => {
-         gen_for_expr(*expr, gen, kill, ast, procedure_vars);
+         gen_for_expr(*expr, gen_, kill, ast, procedure_vars);
       }
       Expression::Variable(var) => {
          if let Some(di) = procedure_vars.get_index_of(var) {
-            gen.set(di, true);
+            gen_.set(di, true);
             kill.set(di, false);
          }
       }

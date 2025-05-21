@@ -68,6 +68,6 @@ impl Interner {
          &self.buf[start..]
       };
 
-      &*std::ptr::from_ref(interned)
+      unsafe { &*std::ptr::from_ref(interned) }
    }
 }

@@ -5,14 +5,14 @@ use slotmap::{SecondaryMap, SlotMap};
 
 use super::validator::str_to_builtin_type;
 use super::{EnumInfo, GlobalInfo, StorageKind, StructInfo, UnionInfo};
-use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::error_handling::ErrorManager;
+use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::interner::{Interner, StrId};
 use crate::parse::{EnumId, ExpressionTypeNode, ProcImplSource, StructId, UnionId, UserDefinedTypeId};
 use crate::semantic_analysis::validator::resolve_type;
 use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
 use crate::source_info::{SourceInfo, SourcePath};
-use crate::type_data::{ExpressionType, U16_TYPE, U32_TYPE, U64_TYPE, U8_TYPE};
+use crate::type_data::{ExpressionType, U8_TYPE, U16_TYPE, U32_TYPE, U64_TYPE};
 use crate::{CompilationConfig, Program};
 
 fn recursive_struct_union_check(
@@ -501,12 +501,13 @@ pub fn populate_type_and_procedure_info(
          }
       }
 
-      if !reported_named_error && first_named_param.is_some() {
-         if let Some(i) = first_named_param {
-            // It doesn't really matter how we sort these, as long as we do it consistently for arguments
-            // AND that there are no equal elements (in this case, we already check that parameters don't have the same name)
-            proc.definition.parameters[i..].sort_unstable_by_key(|x| x.name);
-         }
+      if !reported_named_error
+         && first_named_param.is_some()
+         && let Some(i) = first_named_param
+      {
+         // It doesn't really matter how we sort these, as long as we do it consistently for arguments
+         // AND that there are no equal elements (in this case, we already check that parameters don't have the same name)
+         proc.definition.parameters[i..].sort_unstable_by_key(|x| x.name);
       }
 
       dupe_check.clear();

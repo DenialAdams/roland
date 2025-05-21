@@ -7,9 +7,9 @@ use wasm_encoder::{
    NameMap, NameSection, RefType, TableSection, TableType, TypeSection, ValType,
 };
 
-use super::linearize::{post_order, Cfg, CfgInstruction, CFG_END_NODE};
+use super::linearize::{CFG_END_NODE, Cfg, CfgInstruction, post_order};
 use super::regalloc::{RegallocResult, RegisterType, VarSlot};
-use crate::dominators::{compute_dominators, DominatorTree};
+use crate::dominators::{DominatorTree, compute_dominators};
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureDefinition, ProcedureId, Program, UnOp,
@@ -17,7 +17,7 @@ use crate::parse::{
 };
 use crate::semantic_analysis::{GlobalInfo, StorageKind};
 use crate::size_info::{aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm};
-use crate::type_data::{ExpressionType, FloatType, FloatWidth, IntType, IntWidth, F32_TYPE, F64_TYPE};
+use crate::type_data::{ExpressionType, F32_TYPE, F64_TYPE, FloatType, FloatWidth, IntType, IntWidth};
 use crate::{CompilationConfig, Target};
 
 impl From<RegisterType> for ValType {
@@ -491,12 +491,12 @@ pub fn emit_wasm(
       for local in mem_info.iter() {
          // last element could have been a struct, and so we need to pad
          generation_context.sum_sizeof_locals_mem =
-            aligned_address(generation_context.sum_sizeof_locals_mem, local.1 .0);
+            aligned_address(generation_context.sum_sizeof_locals_mem, local.1.0);
          generation_context
             .stack_offsets_mem
             .insert(*local.0, generation_context.sum_sizeof_locals_mem);
 
-         generation_context.sum_sizeof_locals_mem += local.1 .1;
+         generation_context.sum_sizeof_locals_mem += local.1.1;
       }
 
       adjust_stack_function_entry(&mut generation_context);
@@ -1692,9 +1692,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
 
          let lhs = &generation_context.ast.expressions[*lhs_id];
 
-         debug_assert!(lhs
-            .expression
-            .is_lvalue_disregard_consts(&generation_context.ast.expressions));
+         debug_assert!(
+            lhs.expression
+               .is_lvalue_disregard_consts(&generation_context.ast.expressions)
+         );
 
          do_emit(*lhs_id, generation_context);
          // TODO: for an expression like foo.bar.baz, we will emit 3 const adds, when they should be fused
@@ -1721,9 +1722,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             }
          }
 
-         debug_assert!(generation_context.ast.expressions[*array]
-            .expression
-            .is_lvalue_disregard_consts(&generation_context.ast.expressions));
+         debug_assert!(
+            generation_context.ast.expressions[*array]
+               .expression
+               .is_lvalue_disregard_consts(&generation_context.ast.expressions)
+         );
 
          do_emit(*array, generation_context);
          calculate_offset(*array, *index, generation_context);

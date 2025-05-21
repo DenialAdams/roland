@@ -1,10 +1,10 @@
 use std::path::Path;
 
+use rolandc::CompilationContext;
 use rolandc::interner::Interner;
 use rolandc::parse::UserDefinedTypeId;
 use rolandc::source_info::{SourceInfo, SourcePosition};
 use rolandc::type_data::ExpressionType;
-use rolandc::CompilationContext;
 
 use crate::roland_source_path_to_canon_path;
 

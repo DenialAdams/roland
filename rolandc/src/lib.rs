@@ -45,19 +45,19 @@ use std::path::{Path, PathBuf};
 
 use backend::linearize;
 use backend::liveness::compute_live_intervals;
-use error_handling::error_handling_macros::rolandc_error;
 use error_handling::ErrorManager;
+use error_handling::error_handling_macros::rolandc_error;
 use expression_hoisting::HoistingMode;
 use indexmap::IndexMap;
 use interner::Interner;
 use monomorphization::update_expressions_to_point_to_monomorphized_procedures;
 pub use parse::Program;
 use parse::{
-   statement_always_or_never_returns, Expression, ExpressionNode, ImportNode, ProcImplSource, ProcedureId, Statement,
-   StatementNode, UserDefinedTypeId,
+   Expression, ExpressionNode, ImportNode, ProcImplSource, ProcedureId, Statement, StatementNode, UserDefinedTypeId,
+   statement_always_or_never_returns,
 };
 use semantic_analysis::type_variables::TypeVariableManager;
-use semantic_analysis::{definite_assignment, OwnedValidationContext, StorageKind};
+use semantic_analysis::{OwnedValidationContext, StorageKind, definite_assignment};
 use slotmap::SecondaryMap;
 use source_info::SourcePath;
 use type_data::{ExpressionType, IntWidth};

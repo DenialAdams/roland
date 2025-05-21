@@ -395,17 +395,17 @@ impl LanguageServer for Backend {
 
    async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
       let doc_uri = params.text_document.uri;
-      if let Ok(p) = doc_uri.to_file_path() {
-         if let Ok(canon_path) = std::fs::canonicalize(p) {
-            let mut lock = self.opened_files.write();
-            lock.insert(
-               canon_path,
-               (
-                  std::mem::take(&mut params.content_changes[0].text),
-                  params.text_document.version,
-               ),
-            );
-         }
+      if let Ok(p) = doc_uri.to_file_path()
+         && let Ok(canon_path) = std::fs::canonicalize(p)
+      {
+         let mut lock = self.opened_files.write();
+         lock.insert(
+            canon_path,
+            (
+               std::mem::take(&mut params.content_changes[0].text),
+               params.text_document.version,
+            ),
+         );
       }
       self
          .compile_and_publish_diagnostics(&doc_uri, params.text_document.version)
@@ -414,11 +414,11 @@ impl LanguageServer for Backend {
 
    async fn did_close(&self, params: DidCloseTextDocumentParams) {
       let doc_uri = params.text_document.uri;
-      if let Ok(p) = doc_uri.to_file_path() {
-         if let Ok(canon_path) = std::fs::canonicalize(p) {
-            let mut lock = self.opened_files.write();
-            lock.remove(&canon_path);
-         }
+      if let Ok(p) = doc_uri.to_file_path()
+         && let Ok(canon_path) = std::fs::canonicalize(p)
+      {
+         let mut lock = self.opened_files.write();
+         lock.remove(&canon_path);
       }
       self.client.publish_diagnostics(doc_uri, vec![], None).await;
    }
