@@ -8,7 +8,7 @@ For the native backend to work, you will need `qbe` installed. For running tests
 
 All commands that follow in this document are intended to be run in the root directory of this project. That is, the same directory containing this file.
 
-¹*It is possible to get away without having `just` installed - you can look in the `justfile` to see what commands `just` would be running, and run them yourself.*
+¹*It is possible to get away without having `just` installed - look in the `justfile` to see what commands `just` would be running, and run them yourself.*
 
 ## Obtaining QBE
 
