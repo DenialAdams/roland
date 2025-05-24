@@ -11,6 +11,7 @@ __END__
 compile:
 Parameter `x` is unused
 ↳ line 6, column 13 [tests/builtins/proc_name.rol]
+↳ instantiation @ line 3, column 5 [tests/builtins/proc_name.rol]
 run:
 main
 foo

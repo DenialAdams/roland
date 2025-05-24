@@ -68,7 +68,7 @@ fn roland_error_to_lsp_error(
    interner: &Interner,
    severity: DiagnosticSeverity,
 ) -> (Option<PathBuf>, Diagnostic) {
-   let (report_path, range, related_info) = match re.location {
+   let (report_path, range, mut related_info) = match re.location {
       ErrorLocation::Simple(x) => (
          roland_source_path_to_canon_path(&x.file, interner).map(|x| x.unwrap()),
          Range {
@@ -81,7 +81,7 @@ fn roland_error_to_lsp_error(
                character: x.end.col as u32,
             },
          },
-         None,
+         Vec::new(),
       ),
       ErrorLocation::WithDetails(x) => (
          roland_source_path_to_canon_path(&x[0].0.file, interner).map(|x| x.unwrap()),
@@ -95,11 +95,9 @@ fn roland_error_to_lsp_error(
                character: x[0].0.end.col as u32,
             },
          },
-         Some(
-            x.into_iter()
-               .flat_map(|x| rolandc_detail_to_diagnostic_detail(x, interner))
-               .collect(),
-         ),
+         x.into_iter()
+            .flat_map(|x| rolandc_detail_to_diagnostic_detail(x, interner))
+            .collect(),
       ),
       // Reporting this error with a bogus location is... well, it works, but can look strange.
       // The problem is that there is no good way to report an error that truly has no associated location.
@@ -110,9 +108,15 @@ fn roland_error_to_lsp_error(
             start: Position { line: 0, character: 0 },
             end: Position { line: 0, character: 0 },
          },
-         None,
+         Vec::new(),
       ),
    };
+
+   for came_from in re.came_from_stack {
+      if let Some(d) = rolandc_detail_to_diagnostic_detail((came_from, "instantiation".into()), interner) {
+         related_info.push(d);
+      }
+   }
 
    (
       report_path,
@@ -120,7 +124,7 @@ fn roland_error_to_lsp_error(
          range,
          severity: Some(severity),
          message: re.message,
-         related_information: related_info,
+         related_information: Some(related_info),
          ..Default::default()
       },
    )

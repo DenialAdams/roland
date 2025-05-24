@@ -6,6 +6,7 @@ use slotmap::SlotMap;
 use self::type_variables::TypeVariableManager;
 use crate::Target;
 use crate::interner::{Interner, StrId};
+use crate::monomorphization::SpecializationRequest;
 use crate::parse::{
    AstPool, ExpressionId, ExpressionTypeNode, ProcedureId, ProcedureNode, StructId, UserDefinedTypeId,
    UserDefinedTypeInfo, VariableId,
@@ -80,7 +81,7 @@ pub struct OwnedValidationContext {
    pub type_variables: TypeVariableManager,
    pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,
    pub string_struct_id: StructId,
-   pub procedures_to_specialize: Vec<(ProcedureId, Box<[ExpressionType]>)>,
+   pub procedures_to_specialize: Vec<SpecializationRequest>,
 }
 
 pub struct ValidationContext<'a, 'b> {

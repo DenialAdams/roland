@@ -10,41 +10,49 @@ use crate::parse::{
 use crate::semantic_analysis::validator::map_generic_to_concrete;
 use crate::semantic_analysis::{StructInfo, UnionInfo};
 use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
+use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 use crate::{Program, Target};
 
 pub const DEPTH_LIMIT: u64 = 100;
 
+pub struct SpecializationRequest {
+   pub proc_and_type_arguments: (ProcedureId, Box<[ExpressionType]>),
+   pub callsite: (Option<ProcedureId>, SourceInfo),
+}
+
 pub fn monomorphize(
    program: &mut Program,
    specialized_procedures: &mut IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId>,
-   specializations_to_create: Vec<(ProcedureId, Box<[ExpressionType]>)>,
+   specializations_to_create: Vec<SpecializationRequest>,
 ) {
    for new_spec in specializations_to_create {
-      if specialized_procedures.contains_key(&new_spec) {
+      if let Some(existing_spec) = specialized_procedures.get_mut(&new_spec.proc_and_type_arguments) {
+         program.procedures[*existing_spec].where_instantiated.push(new_spec.callsite);
          continue;
       }
 
-      let template_procedure = &program.procedures[new_spec.0];
+      let template_procedure = &program.procedures[new_spec.proc_and_type_arguments.0];
 
       // It would be great to do this check before we push it onto the worklist, since at the moment
       // that involves cloning a bunch of types
-      let Some(body) = program.procedure_bodies.get(new_spec.0) else {
+      let Some(body) = program.procedure_bodies.get(new_spec.proc_and_type_arguments.0) else {
          continue;
       };
 
-      let cloned_procedure = clone_procedure(
+      let mut cloned_procedure = clone_procedure(
          template_procedure,
          body,
-         &new_spec.1,
+         &new_spec.proc_and_type_arguments.1,
          &template_procedure.type_parameters,
          &mut program.ast,
       );
+      cloned_procedure.0.where_instantiated.push(new_spec.callsite);
 
       let new_proc_id = program.procedures.insert(cloned_procedure.0);
       program.procedure_bodies.insert(new_proc_id, cloned_procedure.1);
 
-      specialized_procedures.insert(new_spec, new_proc_id);
+      specialized_procedures.insert(new_spec.proc_and_type_arguments, new_proc_id);
    }
 }
 

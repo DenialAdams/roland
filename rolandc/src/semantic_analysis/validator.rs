@@ -16,6 +16,7 @@ use crate::error_handling::error_handling_macros::{
    rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn,
 };
 use crate::interner::{Interner, StrId};
+use crate::monomorphization::SpecializationRequest;
 use crate::parse::{
    ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression, ExpressionId, ExpressionNode,
    ExpressionPool, ExpressionTypeNode, ProcImplSource, ProcedureId, ProcedureNode, Program, Statement, StatementId,
@@ -465,7 +466,7 @@ pub fn type_and_check_validity(
    interner: &mut Interner,
    owned: &mut OwnedValidationContext,
    procedures_to_check: &[ProcedureId],
-) -> Vec<(ProcedureId, Box<[ExpressionType]>)> {
+) -> Vec<SpecializationRequest> {
    let mut validation_context = ValidationContext {
       owned,
       source_to_definition: &mut program.source_to_definition,
@@ -481,6 +482,9 @@ pub fn type_and_check_validity(
    };
 
    for id in procedures_to_check.iter().copied() {
+      let errs_before = err_manager.errors.len();
+      let warnings_before = err_manager.warnings.len();
+
       let proc = &program.procedures[id];
       let body = &mut program.procedure_bodies[id];
       validation_context.owned.cur_procedure = Some(id);
@@ -533,14 +537,24 @@ pub fn type_and_check_validity(
             );
          }
       }
+       
+      for err in err_manager.errors[errs_before..].iter_mut().chain(err_manager.warnings[warnings_before..].iter_mut()) {
+         let mut this_proc = proc;
+         while let Some(wa) = this_proc.where_instantiated.first().copied() {
+            err.came_from_stack.push(wa.1);
+            if let Some(callee_proc) = wa.0 {
+               this_proc = validation_context.procedures.get(callee_proc).unwrap();
+            }
+         }
+      }
    }
    validation_context.owned.cur_procedure = None;
 
    validation_context.owned.procedures_to_specialize.retain_mut(|x| {
-      for et in x.1.iter_mut() {
+      for et in x.proc_and_type_arguments.1.iter_mut() {
          lower_unknowns_in_type(et, &validation_context.owned.type_variables);
       }
-      x.1.iter().all(ExpressionType::is_concrete)
+      x.proc_and_type_arguments.1.iter().all(ExpressionType::is_concrete)
    });
 
    std::mem::take(&mut validation_context.owned.procedures_to_specialize)
@@ -1713,14 +1727,20 @@ fn get_type(
          );
 
          if check_result.1 && !type_arguments.is_empty() {
-            validation_context.owned.procedures_to_specialize.push((
-               *id,
-               type_arguments
-                  .iter()
-                  .map(|x| x.e_type.clone())
-                  .collect::<Vec<_>>()
-                  .into_boxed_slice(),
-            ));
+            validation_context
+               .owned
+               .procedures_to_specialize
+               .push(SpecializationRequest {
+                  proc_and_type_arguments: (
+                     *id,
+                     type_arguments
+                        .iter()
+                        .map(|x| x.e_type.clone())
+                        .collect::<Vec<_>>()
+                        .into_boxed_slice(),
+                  ),
+                  callsite: (validation_context.owned.cur_procedure, expr_location),
+               });
          }
 
          check_result.0

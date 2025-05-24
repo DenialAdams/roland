@@ -1105,7 +1105,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
       }
       Expression::FloatLiteral(x) => {
          match *expr_node.exp_type.as_ref().unwrap() {
-            F64_TYPE => generation_context.active_fcn.instruction(&Instruction::F64Const((*x).into())),
+            F64_TYPE => generation_context
+               .active_fcn
+               .instruction(&Instruction::F64Const((*x).into())),
             F32_TYPE => generation_context
                .active_fcn
                .instruction(&Instruction::F32Const((*x as f32).into())),

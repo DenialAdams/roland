@@ -25,30 +25,31 @@ pub(crate) mod error_handling_macros {
    pub(crate) use {rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn};
 }
 
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq, Clone)]
 pub enum ErrorLocation {
    Simple(SourceInfo),
    WithDetails(Vec<(SourceInfo, String)>),
    NoLocation,
 }
 
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq, Clone)]
 pub struct ErrorInfo {
    pub message: String,
    pub location: ErrorLocation,
+   pub came_from_stack: Vec<SourceInfo>,
 }
 
 pub struct ErrorManager {
-   pub errors: IndexSet<ErrorInfo>,
-   pub warnings: IndexSet<ErrorInfo>,
+   pub errors: Vec<ErrorInfo>,
+   pub warnings: Vec<ErrorInfo>,
 }
 
 impl ErrorManager {
    #[must_use]
    pub fn new() -> ErrorManager {
       ErrorManager {
-         errors: IndexSet::new(),
-         warnings: IndexSet::new(),
+         errors: Vec::new(),
+         warnings: Vec::new(),
       }
    }
 
@@ -58,39 +59,45 @@ impl ErrorManager {
    }
 
    pub fn write_out_errors<W: Write>(&self, err_stream: &mut W, interner: &Interner) {
-      write_out_error_buf(err_stream, interner, &self.errors);
+      let errs_unique: IndexSet<ErrorInfo> = self.errors.iter().cloned().collect();
+      write_out_error_buf(err_stream, interner, errs_unique.iter());
 
       if self.errors.is_empty() {
-         write_out_error_buf(err_stream, interner, &self.warnings);
+         let warns_unique: IndexSet<ErrorInfo> = self.warnings.iter().cloned().collect();
+         write_out_error_buf(err_stream, interner, warns_unique.iter());
       }
    }
 
    pub fn emit_error(&mut self, location: SourceInfo, message: String) {
-      self.errors.insert(ErrorInfo {
+      self.errors.push(ErrorInfo {
          message,
          location: ErrorLocation::Simple(location),
+         came_from_stack: Vec::new(),
       });
    }
 
    pub fn emit_warning(&mut self, location: SourceInfo, message: String) {
-      self.warnings.insert(ErrorInfo {
+      self.warnings.push(ErrorInfo {
          message,
          location: ErrorLocation::Simple(location),
+         came_from_stack: Vec::new(),
       });
    }
 
    pub fn emit_error_with_details<I: ToString>(&mut self, location: &[(SourceInfo, I)], message: String) {
       let location_vec = location.iter().map(|x| (x.0, x.1.to_string())).collect();
-      self.errors.insert(ErrorInfo {
+      self.errors.push(ErrorInfo {
          message,
          location: ErrorLocation::WithDetails(location_vec),
+         came_from_stack: Vec::new(),
       });
    }
 
    pub fn emit_error_no_location(&mut self, message: String) {
-      self.errors.insert(ErrorInfo {
+      self.errors.push(ErrorInfo {
          message,
          location: ErrorLocation::NoLocation,
+         came_from_stack: Vec::new(),
       });
    }
 }
@@ -112,6 +119,9 @@ pub fn write_out_error_buf<'a, W: Write, I: IntoIterator<Item = &'a ErrorInfo>>(
                emit_source_info_with_description(err_stream, loc.0, &loc.1, interner);
             }
          }
+      }
+      for source in error.came_from_stack.iter().copied() {
+         emit_source_info_with_description(err_stream, source, "instantiation", interner);
       }
    }
 }

@@ -14,4 +14,5 @@ Parameter `x` is unused
 ↳ line 5, column 20 [tests/inference/procedure_pointers.rol]
 Parameter `f` is unused
 ↳ line 9, column 16 [tests/inference/procedure_pointers.rol]
+↳ instantiation @ line 2, column 4 [tests/inference/procedure_pointers.rol]
 run:

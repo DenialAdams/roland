@@ -69,6 +69,7 @@ pub struct ProcedureNode {
    pub named_parameters: HashMap<StrId, ExpressionType>,
    pub type_parameters: IndexMap<StrId, IndexSet<StrId>>,
    pub specialized_type_parameters: HashMap<StrId, ExpressionType>,
+   pub where_instantiated: Vec<(Option<ProcedureId>, SourceInfo)>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -799,6 +800,7 @@ fn parse_procedure(
          named_parameters: HashMap::new(),
          type_parameters: IndexMap::new(),
          specialized_type_parameters: HashMap::new(),
+         where_instantiated: Vec::new(),
       },
       ProcedureBody {
          locals: IndexMap::new(),
@@ -826,6 +828,7 @@ fn parse_external_procedure(
       named_parameters: HashMap::new(),
       type_parameters: IndexMap::new(),
       specialized_type_parameters: HashMap::new(),
+      where_instantiated: Vec::new(),
    })
 }
 

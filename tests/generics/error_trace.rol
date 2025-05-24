@@ -1,0 +1,22 @@
+proc main() {
+    foo$<bool>();
+}
+
+proc other() {
+    // characterization: this callsite is currently not reflected in the errors
+    foo$<bool>();
+}
+
+proc foo<T>() {
+    bar$<T>();
+}
+
+proc bar<T>() {
+    apsdasd;
+}
+__END__
+compile:
+Encountered undefined symbol `apsdasd`
+↳ line 15, column 5 [tests/generics/error_trace.rol]
+↳ instantiation @ line 11, column 5 [tests/generics/error_trace.rol]
+↳ instantiation @ line 2, column 5 [tests/generics/error_trace.rol]
