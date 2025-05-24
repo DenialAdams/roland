@@ -12,9 +12,9 @@ use rolandc::error_handling::{ErrorInfo, ErrorLocation};
 use rolandc::interner::Interner;
 use rolandc::source_info::{SourceInfo, SourcePath, SourcePosition};
 use rolandc::*;
-use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::*;
-use tower_lsp::{Client, LanguageServer, LspService, Server};
+use tower_lsp_server::jsonrpc::Result;
+use tower_lsp_server::lsp_types::*;
+use tower_lsp_server::{Client, LanguageServer, LspService, Server, UriExt};
 
 mod goto_definition;
 
@@ -133,7 +133,7 @@ fn rolandc_detail_to_diagnostic_detail(
    let path = roland_source_path_to_canon_path(&y.0.file, interner).map(|x| x.unwrap());
    path.map(|sp| DiagnosticRelatedInformation {
       location: Location {
-         uri: Url::from_file_path(sp).unwrap(),
+         uri: Uri::from_file_path(sp).unwrap(),
          range: Range {
             start: Position {
                line: y.0.begin.line as u32,
@@ -150,13 +150,13 @@ fn rolandc_detail_to_diagnostic_detail(
 }
 
 impl Backend {
-   async fn compile_and_publish_diagnostics(&self, doc_uri: &Url, doc_version: i32) {
+   async fn compile_and_publish_diagnostics(&self, doc_uri: &Uri, doc_version: i32) {
       let (root_file_path, config) = {
          let mode = &*self.mode.read();
          let (root_file_path, target) = match mode {
             WorkspaceMode::LooseFiles => (doc_uri.to_file_path().unwrap(), Target::Wasi),
             WorkspaceMode::StdLib => (doc_uri.to_file_path().unwrap(), Target::Lib),
-            WorkspaceMode::EntryPointAndTarget(x, t) => (x.clone(), *t),
+            WorkspaceMode::EntryPointAndTarget(x, t) => (Cow::Owned(x.clone()), *t),
          };
          let config = rolandc::CompilationConfig {
             target,
@@ -177,7 +177,7 @@ impl Backend {
             };
             let _ = rolandc::compile_for_errors(
                &mut ctx_ref,
-               CompilationEntryPoint::PathResolving(root_file_path, resolver),
+               CompilationEntryPoint::PathResolving(root_file_path.to_path_buf(), resolver),
                &config,
             );
             (
@@ -227,19 +227,24 @@ impl Backend {
             .as_ref()
             .map_or(Some(doc_version), |x| opened_versions.get(x).copied());
          let url = pb
-            .map(|x| Url::from_file_path(x).unwrap())
+            .map(|x| Uri::from_file_path(x).unwrap())
             .unwrap_or_else(|| doc_uri.clone());
          self.client.publish_diagnostics(url, diagnostics, version).await;
       }
    }
 }
 
-#[tower_lsp::async_trait]
 impl LanguageServer for Backend {
    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
-      let workspace_root = params.root_uri;
-      let mode = if let Some(root_path) = workspace_root.and_then(|x| x.to_file_path().ok()) {
-         if root_path.join("cart.rol").exists() {
+      // TODO: this just takes the first root path
+      #[allow(clippy::never_loop)]
+      for root_path in params
+         .workspace_folders
+         .unwrap_or_default()
+         .into_iter()
+         .flat_map(|x| x.uri.to_file_path().map(|x| x.to_path_buf()))
+      {
+         let mode = if root_path.join("cart.rol").exists() {
             if root_path.join(".microw8").exists() {
                self
                   .client
@@ -272,11 +277,22 @@ impl LanguageServer for Backend {
             WorkspaceMode::StdLib
          } else {
             WorkspaceMode::LooseFiles
-         }
-      } else {
-         WorkspaceMode::LooseFiles
-      };
-      *self.mode.write() = mode;
+         };
+         *self.mode.write() = mode;
+         return Ok(InitializeResult {
+            capabilities: ServerCapabilities {
+               definition_provider: Some(OneOf::Right(DefinitionOptions {
+                  work_done_progress_options: WorkDoneProgressOptions {
+                     work_done_progress: None,
+                  },
+               })),
+               text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+               ..Default::default()
+            },
+            ..Default::default()
+         });
+      }
+      *self.mode.write() = WorkspaceMode::LooseFiles;
       Ok(InitializeResult {
          capabilities: ServerCapabilities {
             definition_provider: Some(OneOf::Right(DefinitionOptions {
@@ -306,7 +322,7 @@ impl LanguageServer for Backend {
    async fn goto_definition(&self, params: GotoDefinitionParams) -> Result<Option<GotoDefinitionResponse>> {
       let given_document = params.text_document_position_params.text_document;
       let given_location = params.text_document_position_params.position;
-      if let Ok(p) = given_document.uri.to_file_path() {
+      if let Some(p) = given_document.uri.to_file_path() {
          if let Ok(canon_path) = std::fs::canonicalize(p) {
             let ctx = self.ctx.lock();
             if let Some(si) = find_definition(
@@ -331,7 +347,7 @@ impl LanguageServer for Backend {
                return Ok(target_path.map(|x| {
                   GotoDefinitionResponse::Link(vec![LocationLink {
                      origin_selection_range: None,
-                     target_uri: Url::from_file_path(x.unwrap()).unwrap(),
+                     target_uri: Uri::from_file_path(x.unwrap()).unwrap(),
                      target_range: dest_range,
                      target_selection_range: dest_range,
                   }])
@@ -344,7 +360,7 @@ impl LanguageServer for Backend {
                .client
                .log_message(
                   MessageType::WARNING,
-                  format!("Can't canonicalize path: {}", given_document.uri),
+                  format!("Can't canonicalize path: {:?}", given_document.uri),
                )
                .await;
          }
@@ -354,7 +370,7 @@ impl LanguageServer for Backend {
             .log_message(
                MessageType::WARNING,
                format!(
-                  "Hopelessly bailing on document uri as we can't convert it to a local path: {}",
+                  "Hopelessly bailing on document uri as we can't convert it to a local path: {:?}",
                   given_document.uri
                ),
             )
@@ -366,14 +382,14 @@ impl LanguageServer for Backend {
 
    async fn did_open(&self, params: DidOpenTextDocumentParams) {
       let doc_uri = params.text_document.uri;
-      if let Ok(p) = doc_uri.to_file_path() {
+      if let Some(p) = doc_uri.to_file_path() {
          if let Ok(canon_path) = std::fs::canonicalize(p) {
             let mut lock = self.opened_files.write();
             lock.insert(canon_path, (params.text_document.text, params.text_document.version));
          } else {
             self
                .client
-               .log_message(MessageType::WARNING, format!("Can't canonicalize path: {}", doc_uri))
+               .log_message(MessageType::WARNING, format!("Can't canonicalize path: {:?}", doc_uri))
                .await;
          }
       } else {
@@ -382,7 +398,7 @@ impl LanguageServer for Backend {
             .log_message(
                MessageType::WARNING,
                format!(
-                  "Hopelessly bailing on document uri as we can't convert it to a local path: {}",
+                  "Hopelessly bailing on document uri as we can't convert it to a local path: {:?}",
                   doc_uri
                ),
             )
@@ -395,7 +411,7 @@ impl LanguageServer for Backend {
 
    async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
       let doc_uri = params.text_document.uri;
-      if let Ok(p) = doc_uri.to_file_path()
+      if let Some(p) = doc_uri.to_file_path()
          && let Ok(canon_path) = std::fs::canonicalize(p)
       {
          let mut lock = self.opened_files.write();
@@ -414,7 +430,7 @@ impl LanguageServer for Backend {
 
    async fn did_close(&self, params: DidCloseTextDocumentParams) {
       let doc_uri = params.text_document.uri;
-      if let Ok(p) = doc_uri.to_file_path()
+      if let Some(p) = doc_uri.to_file_path()
          && let Ok(canon_path) = std::fs::canonicalize(p)
       {
          let mut lock = self.opened_files.write();
