@@ -10,5 +10,6 @@
     "@rollup/plugin-terser": "^0.4.3",
     "minify": "^10.2.0",
     "rollup": "^3.24.1"
-  }
+  },
+  "version": "0.1.0"
 }
