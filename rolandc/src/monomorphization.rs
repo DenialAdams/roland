@@ -28,7 +28,9 @@ pub fn monomorphize(
 ) {
    for new_spec in specializations_to_create {
       if let Some(existing_spec) = specialized_procedures.get_mut(&new_spec.proc_and_type_arguments) {
-         program.procedures[*existing_spec].where_instantiated.push(new_spec.callsite);
+         program.procedures[*existing_spec]
+            .where_instantiated
+            .push(new_spec.callsite);
          continue;
       }
 

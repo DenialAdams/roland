@@ -537,8 +537,11 @@ pub fn type_and_check_validity(
             );
          }
       }
-       
-      for err in err_manager.errors[errs_before..].iter_mut().chain(err_manager.warnings[warnings_before..].iter_mut()) {
+
+      for err in err_manager.errors[errs_before..]
+         .iter_mut()
+         .chain(err_manager.warnings[warnings_before..].iter_mut())
+      {
          let mut this_proc = proc;
          while let Some(wa) = this_proc.where_instantiated.first().copied() {
             err.came_from_stack.push(wa.1);
@@ -1249,7 +1252,15 @@ fn get_type(
             }
          };
 
-         if from_type_is_unknown_int && *cast_type == CastType::Transmute {
+         let from_int_literal = matches!(
+            validation_context.ast.expressions[*expr_id].expression,
+            Expression::IntLiteral {
+               val: _,
+               synthetic: false
+            }
+         );
+
+         if from_int_literal && from_type_is_unknown_int && *cast_type == CastType::Transmute {
             'b: {
                let guessed_source_type = if target_type.is_pointer() {
                   &USIZE_TYPE
