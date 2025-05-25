@@ -25,6 +25,17 @@ struct String {
    length: usize,
 }
 
+proc string_equal(x: String, y: String) -> bool {
+   if x.length != y.length {
+      return false;
+   }
+   let all_eq: bool = true;
+   for i in 0..x.length {
+      all_eq = all_eq & ((((x.pointer transmute usize) + i) transmute &u8)~ == (((y.pointer transmute usize) + i) transmute &u8)~);
+   }
+   return all_eq;
+}
+
 const U8_MIN: u8 = 0;
 const U8_MAX: u8 = 255;
 const U16_MIN: u16 = 0;

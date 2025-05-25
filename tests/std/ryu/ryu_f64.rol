@@ -219,17 +219,6 @@ proc main() {
    ASSERT_D2S("8.796093022208E15", 8796093022208.0e+3);
 }
 
-proc string_equal(x: String, y: String) -> bool {
-   if x.length != y.length {
-      return false;
-   }
-   let all_eq: bool = true;
-   for i in 0..x.length {
-      all_eq = all_eq & ((((x.pointer transmute usize) + i) transmute &u8)~ == (((y.pointer transmute usize) + i) transmute &u8)~);
-   }
-   return all_eq;
-}
-
 proc ASSERT_D2S(x: String, y: f64) {
    let str = ryu_d2s_buffered(y, &BUF[0]);
    if string_equal(x, str) {
