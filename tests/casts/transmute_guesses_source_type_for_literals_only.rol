@@ -1,0 +1,11 @@
+proc main() {
+    let x = 123;
+    // we want this transmute to fail
+    let y = x transmute f64;
+    // that way we haven't made a weird assumption about x at tihs point
+    let z = -x;
+}
+__END__
+compile:
+Transmute encountered an operand whose size is not yet known
+↳ line 4, column 13 [tests/casts/transmute_guesses_source_type_for_literals_only.rol]
