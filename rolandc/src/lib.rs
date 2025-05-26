@@ -444,7 +444,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       pp::pp(
          &ctx.program,
          &ctx.interner,
-         &mut std::fs::File::create("pp_before.rol").unwrap(),
+         &mut std::fs::File::create("pp_after.rol").unwrap(),
       )
       .unwrap();
    }

@@ -732,7 +732,6 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                            },
                            BinOp::LogicalAnd | BinOp::LogicalOr => unreachable!(),
                         };
-                        dbg!(opcode);
                         let lhs_val = expr_to_val(*lhs, ctx);
                         let rhs_val = expr_to_val(*rhs, ctx);
                         format!("{} {}, {}", opcode, lhs_val, rhs_val)
@@ -992,12 +991,15 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &GenerationContext) -> String {
       Expression::UnaryOperator(UnOp::Dereference, inner) => {
          // nocheckin restructure this code
          if let Expression::Variable(v) = ctx.ast.expressions[*inner].expression {
-            dbg!(v);
-            if let VarSlot::Register(reg) = ctx.var_to_slot.get(&v).unwrap() {
-               return format!("%r{}", reg);
-            }
+            return match ctx.var_to_slot.get(&v).unwrap() {
+               VarSlot::Register(reg) => {
+                  format!("%r{}", reg)
+               }
+               VarSlot::Stack(v) => {
+                  format!("%v{}", v)
+               }
+            };
          }
-         dbg!(&ctx.ast.expressions[*inner].expression);
          unreachable!()
       }
       Expression::Variable(v) => {
