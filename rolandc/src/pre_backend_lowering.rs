@@ -350,8 +350,8 @@ pub fn kill_zst_assignments(program: &mut Program, target: Target) {
             .drain(..)
             .flat_map(|x| match x {
                CfgInstruction::Assignment(lhs, rhs) => {
-                  let lhs_t = program.ast.expressions[lhs].exp_type.as_ref().unwrap();
-                  if sizeof_type_mem(lhs_t, &program.user_defined_types, target) == 0 {
+                  let rhs_t = program.ast.expressions[rhs].exp_type.as_ref().unwrap();
+                  if sizeof_type_mem(rhs_t, &program.user_defined_types, target) == 0 {
                      let lhs_se = expression_could_have_side_effects(lhs, &program.ast.expressions);
                      let rhs_se = expression_could_have_side_effects(rhs, &program.ast.expressions);
                      [

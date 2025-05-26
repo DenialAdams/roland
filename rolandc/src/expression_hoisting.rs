@@ -6,7 +6,7 @@ use crate::Target;
 use crate::constant_folding::{expression_could_have_side_effects, is_non_aggregate_const};
 use crate::interner::Interner;
 use crate::parse::{
-   AstPool, BlockNode, CastType, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement,
+   AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement,
    StatementId, StatementNode, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
@@ -122,7 +122,20 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
          location,
       };
 
-      let old_expression = std::mem::replace(&mut ast.expressions[expr].expression, Expression::Variable(temp));
+      // wat nocheckin
+      let replacement_expr = if ctx.mode == HoistingMode::ThreeAddressCode {
+         // the IR has been lowered such that variables are not implicitly converted to rvals
+         let var_node = ast.expressions.insert(ExpressionNode {
+            expression: Expression::Variable(temp),
+            exp_type: Some(ExpressionType::Pointer(Box::new(ast.expressions[expr].exp_type.clone().unwrap()))),
+            location,
+         });
+         Expression::UnaryOperator(UnOp::Dereference, var_node)
+      } else {
+         Expression::Variable(temp)
+      };
+
+      let old_expression = std::mem::replace(&mut ast.expressions[expr].expression, replacement_expr);
       match old_expression {
          Expression::IfX(a, b, c) => {
             let then_block = {
@@ -334,7 +347,6 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
             &ast.expressions,
             current_statement,
             ParentCtx::AssignmentLhs,
-            true,
          );
          vv_expr(
             *rhs_expr,
@@ -342,7 +354,6 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
             &ast.expressions,
             current_statement,
             ParentCtx::AssignmentRhs,
-            false,
          );
       }
       Statement::Block(block) | Statement::Loop(block) => {
@@ -361,7 +372,6 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
             &ast.expressions,
             current_statement,
             ParentCtx::IfCondition,
-            false,
          );
          vv_block(if_block, vv_context, ast);
          vv_statement(*else_statement, vv_context, ast, current_statement);
@@ -373,7 +383,6 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
             &ast.expressions,
             current_statement,
             ParentCtx::ExprStmt,
-            false,
          );
       }
       Statement::Return(expr) => {
@@ -383,7 +392,6 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
             &ast.expressions,
             current_statement,
             ParentCtx::Return,
-            false,
          );
       }
       Statement::VariableDeclaration { .. } | Statement::For { .. } | Statement::While(_, _) | Statement::Defer(_) => {
@@ -409,69 +417,34 @@ fn vv_expr(
    expressions: &ExpressionPool,
    current_stmt: usize,
    parent_ctx: ParentCtx,
-   is_lhs_context: bool,
 ) {
    match &expressions[expr_index].expression {
       Expression::ArrayIndex { array, index } => {
-         vv_expr(*array, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
-         vv_expr(*index, ctx, expressions, current_stmt, ParentCtx::Expr, false);
+         vv_expr(*array, ctx, expressions, current_stmt, ParentCtx::Expr);
+         vv_expr(*index, ctx, expressions, current_stmt, ParentCtx::Expr);
       }
       Expression::ProcedureCall { args, proc_expr } => {
-         vv_expr(
-            *proc_expr,
-            ctx,
-            expressions,
-            current_stmt,
-            ParentCtx::Expr,
-            is_lhs_context,
-         );
+         vv_expr(*proc_expr, ctx, expressions, current_stmt, ParentCtx::Expr);
 
          for arg in args.iter() {
-            vv_expr(
-               arg.expr,
-               ctx,
-               expressions,
-               current_stmt,
-               ParentCtx::Expr,
-               is_lhs_context,
-            );
+            vv_expr(arg.expr, ctx, expressions, current_stmt, ParentCtx::Expr);
          }
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
-         vv_expr(*lhs, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
-         vv_expr(*rhs, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
-      }
-      Expression::UnaryOperator(UnOp::Dereference, expr) => {
-         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
-      }
-      Expression::FieldAccess(_, expr) | Expression::UnaryOperator(UnOp::AddressOf, expr) => {
-         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, true);
-      }
-      Expression::Cast {
-         cast_type: CastType::Transmute,
-         expr,
-         ..
-      } => {
-         vv_expr(
-            *expr,
-            ctx,
-            expressions,
-            current_stmt,
-            ParentCtx::Expr,
-            expressions[*expr].expression.is_lvalue(expressions, ctx.global_info),
-         );
+         vv_expr(*lhs, ctx, expressions, current_stmt, ParentCtx::Expr);
+         vv_expr(*rhs, ctx, expressions, current_stmt, ParentCtx::Expr);
       }
       Expression::StructLiteral(_, field_exprs) => {
          for expr in field_exprs.values().flatten().copied() {
-            vv_expr(expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
+            vv_expr(expr, ctx, expressions, current_stmt, ParentCtx::Expr);
          }
       }
-      Expression::UnaryOperator(_, expr) | Expression::Cast { expr, .. } => {
-         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
+      Expression::FieldAccess(_, expr) | Expression::UnaryOperator(_, expr) | Expression::Cast { expr, .. } => {
+         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr);
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter().copied() {
-            vv_expr(expr, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
+            vv_expr(expr, ctx, expressions, current_stmt, ParentCtx::Expr);
          }
       }
       Expression::IfX(a, b, c) => {
@@ -481,11 +454,11 @@ fn vv_expr(
          // So what we do is we descend into B/C to allow for marking "this statement needs to be hoisted"
          // but then we pretend it didn't happen. Then, during hoisting we descend into the consequent/else
          // blocks that we create to do the marking and hoisting. Simple.
-         vv_expr(*a, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
+         vv_expr(*a, ctx, expressions, current_stmt, ParentCtx::Expr);
          let before_len = ctx.exprs_to_hoist.len();
          let before_marked = ctx.pending_hoists.len();
-         vv_expr(*b, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
-         vv_expr(*c, ctx, expressions, current_stmt, ParentCtx::Expr, is_lhs_context);
+         vv_expr(*b, ctx, expressions, current_stmt, ParentCtx::Expr);
+         vv_expr(*c, ctx, expressions, current_stmt, ParentCtx::Expr);
          ctx.exprs_to_hoist.truncate(before_len);
          ctx.pending_hoists.truncate(before_marked);
       }
@@ -581,16 +554,15 @@ fn vv_expr(
                Target::Qbe,
             ) == 0)
             || parent_ctx == ParentCtx::ExprStmt;
-         let is_rhs_var = parent_ctx == ParentCtx::AssignmentRhs
-            && matches!(expressions[expr_index].expression, Expression::Variable(_));
-         let is_addr_var = if let Expression::UnaryOperator(UnOp::AddressOf, inner) = expressions[expr_index].expression
-         {
-            matches!(expressions[inner].expression, Expression::Variable(_))
-         } else {
-            false
-         };
+         let is_var = matches!(expressions[expr_index].expression, Expression::Variable(_));
+         let is_var_deref =
+            if let Expression::UnaryOperator(UnOp::Dereference, child) = expressions[expr_index].expression {
+               matches!(expressions[child].expression, Expression::Variable(_))
+            } else {
+               false
+            };
          let is_literal = is_non_aggregate_const(&expressions[expr_index].expression);
-         if is_ifx || (!is_lhs_context && !is_effective_top_level && !is_literal && !is_rhs_var && !is_addr_var) {
+         if is_ifx || (!is_effective_top_level && !is_literal && !is_var && !is_var_deref) {
             ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
          }
       }

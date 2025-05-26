@@ -31,7 +31,6 @@ struct GenerationContext<'a> {
    interner: &'a Interner,
    udt: &'a UserDefinedTypeInfo,
    string_literals: &'a IndexSet<StrId>,
-   address_temp: u64,
    global_info: &'a IndexMap<VariableId, GlobalInfo>,
    aggregate_defs: IndexSet<ExpressionType>,
 }
@@ -304,7 +303,6 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
       interner,
       udt: &program.user_defined_types,
       string_literals: &program.literals,
-      address_temp: 0,
       global_info: &program.non_stack_var_info,
       aggregate_defs: IndexSet::new(),
    };
@@ -475,48 +473,6 @@ function $_start() {
 
 fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<String> {
    match ctx.ast.expressions[expr].expression {
-      Expression::FieldAccess(field, base) => {
-         let base_mem = compute_offset(base, ctx).unwrap();
-         match ctx.ast.expressions[base].exp_type.as_ref().unwrap() {
-            ExpressionType::Struct(sid, _) => {
-               let offset = ctx
-                  .udt
-                  .struct_info
-                  .get(*sid)
-                  .unwrap()
-                  .size
-                  .as_ref()
-                  .unwrap()
-                  .field_offsets_mem
-                  .get(&field)
-                  .unwrap();
-               if *offset == 0 {
-                  return Some(base_mem);
-               }
-               let at = ctx.address_temp;
-               ctx.address_temp += 1;
-               writeln!(ctx.buf, "   %a{} =l add {}, {}", at, base_mem, offset).unwrap();
-               Some(format!("%a{}", at))
-            }
-            ExpressionType::Union(_, _) => Some(base_mem),
-            _ => unreachable!(),
-         }
-      }
-      Expression::ArrayIndex { array, index } => {
-         let base_mem = compute_offset(array, ctx).unwrap();
-         let sizeof_inner = match &ctx.ast.expressions[array].exp_type {
-            Some(ExpressionType::Array(x, _)) => sizeof_type_mem(x, ctx.udt, Target::Qbe),
-            _ => unreachable!(),
-         };
-
-         let index_val = expr_to_val(index, ctx);
-
-         writeln!(ctx.buf, "   %t =l mul {}, {}", sizeof_inner, index_val).unwrap();
-         let at = ctx.address_temp;
-         ctx.address_temp += 1;
-         writeln!(ctx.buf, "   %a{} =l add {}, %t", at, base_mem).unwrap();
-         Some(format!("%a{}", at))
-      }
       Expression::Variable(v) => {
          if ctx.global_info.contains_key(&v) {
             Some(format!("$.v{}", v.0))
@@ -776,6 +732,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                            },
                            BinOp::LogicalAnd | BinOp::LogicalOr => unreachable!(),
                         };
+                        dbg!(opcode);
                         let lhs_val = expr_to_val(*lhs, ctx);
                         let rhs_val = expr_to_val(*rhs, ctx);
                         format!("{} {}, {}", opcode, lhs_val, rhs_val)
@@ -817,10 +774,6 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                            UnOp::Dereference => make_load(&inner_val, rhs_expr_node.exp_type.as_ref().unwrap()),
                            UnOp::AddressOf | UnOp::TakeProcedurePointer => unreachable!(),
                         }
-                     }
-                     Expression::FieldAccess(_, _) | Expression::ArrayIndex { .. } => {
-                        let rhs_mem = compute_offset(*en, ctx);
-                        make_load(&rhs_mem.unwrap(), rhs_expr_node.exp_type.as_ref().unwrap())
                      }
                      Expression::Cast {
                         cast_type: CastType::As,
@@ -1032,7 +985,20 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &GenerationContext) -> String {
       }
       Expression::UnaryOperator(UnOp::AddressOf, child) => {
          // (must be the address of a var)
+         // nocheckin is this reachable? doubt
+         unreachable!();
          expr_to_val(*child, ctx)
+      }
+      Expression::UnaryOperator(UnOp::Dereference, inner) => {
+         // nocheckin restructure this code
+         if let Expression::Variable(v) = ctx.ast.expressions[*inner].expression {
+            dbg!(v);
+            if let VarSlot::Register(reg) = ctx.var_to_slot.get(&v).unwrap() {
+               return format!("%r{}", reg);
+            }
+         }
+         dbg!(&ctx.ast.expressions[*inner].expression);
+         unreachable!()
       }
       Expression::Variable(v) => {
          if ctx.global_info.contains_key(v) {
@@ -1040,6 +1006,7 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &GenerationContext) -> String {
          } else {
             match ctx.var_to_slot.get(v).unwrap() {
                VarSlot::Register(reg) => {
+                  // nocheckin this should not be reachable
                   format!("%r{}", reg)
                }
                VarSlot::Stack(v) => {
