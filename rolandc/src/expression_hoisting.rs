@@ -122,7 +122,6 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
          location,
       };
 
-      // wat nocheckin
       let replacement_expr = if ctx.mode == HoistingMode::ThreeAddressCode {
          // the IR has been lowered such that variables are not implicitly converted to rvals
          let var_node = ast.expressions.insert(ExpressionNode {
