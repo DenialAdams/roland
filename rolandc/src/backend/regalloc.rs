@@ -124,20 +124,15 @@ pub fn assign_variables_to_registers_and_mem(
             continue;
          }
 
-         // when extract_if is stable:
-         // for expired_var in active.extract_if(|v| live_intervals.get(v).unwrap().end < range.begin)
-         // and can remove following retain
          // note that live_intervals may not contain an active var, since an unused parameter is active
          // but has no lifetime
-         for expired_var in active
-            .iter()
-            .filter(|v| live_intervals.get(*v).is_none_or(|i| i.end < range.begin))
+         for expired_var in active.extract_if(0.., |v| live_intervals.get(v).is_none_or(|x| x.end < range.begin))
          {
-            if escaping_vars.contains(expired_var) {
+            if escaping_vars.contains(&expired_var) {
                continue;
             }
             let sk = type_to_slot_kind(
-               body.locals.get(expired_var).unwrap(),
+               body.locals.get(&expired_var).unwrap(),
                false,
                &program.user_defined_types,
                config.target,
@@ -145,9 +140,8 @@ pub fn assign_variables_to_registers_and_mem(
             free_slots
                .entry(sk)
                .or_default()
-               .push(result.var_to_slot.get(expired_var).copied().unwrap());
+               .push(result.var_to_slot.get(&expired_var).copied().unwrap());
          }
-         active.retain(|v| live_intervals.get(v).is_some_and(|i| i.end >= range.begin));
 
          let sk = type_to_slot_kind(
             body.locals.get(var).unwrap(),
