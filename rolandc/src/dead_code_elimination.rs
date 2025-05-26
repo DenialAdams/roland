@@ -8,7 +8,6 @@ use crate::interner::{Interner, StrId};
 use crate::parse::{
    AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureId, Statement, StatementId, VariableId,
 };
-use crate::propagation::partially_accessed_var;
 use crate::semantic_analysis::GlobalInfo;
 use crate::semantic_analysis::validator::get_special_procedures;
 use crate::{Program, Target};
@@ -199,10 +198,12 @@ pub fn remove_unused_locals(program: &mut Program) {
       }
 
       // Sweep
+      // TODO SOON: now that we have nerfed this, do we derive any benefit from this transformation over the
+      // equivalent dead store elimination that we do with liveness info?
       for bb_index in post_order.iter().copied().rev() {
          proc_body.cfg.bbs[bb_index].instructions.retain_mut(|instr| {
             if let CfgInstruction::Assignment(lhs, rhs) = instr
-               && let Some(v) = partially_accessed_var(*lhs, &program.ast.expressions)
+               && let Expression::Variable(v) = program.ast.expressions[*lhs].expression
                && !used_vars.contains(&v)
                && proc_body.locals.contains_key(&v)
             {

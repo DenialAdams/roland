@@ -20,12 +20,14 @@ mod defer;
 mod disjoint_set;
 mod dominators;
 pub mod error_handling;
+mod explicit_lval_to_rval;
 mod expression_hoisting;
 mod imports;
 pub mod interner;
 mod lex;
 mod logical_op_lowering;
 mod loop_lowering;
+mod lower_aggregate_access;
 mod lower_transmutes_requiring_load;
 mod monomorphization;
 mod named_argument_lowering;
@@ -376,10 +378,22 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    // (introduces usize types, so run this before those are lowered)
    expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::AggregateLiteralLowering);
 
+   explicit_lval_to_rval::make_lval_to_rval_explicit(&mut ctx.program);
+
+   lower_aggregate_access::lower_aggregate_access(&mut ctx.program, config.target);
    pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target);
 
    if config.target == Target::Qbe {
       expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::ThreeAddressCode);
+   }
+
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp_before.rol").unwrap(),
+      )
+      .unwrap();
    }
 
    // Convert nested, AST representation into CFG
@@ -414,15 +428,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       backend::wasm::sort_globals(&mut ctx.program, config.target);
    }
 
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp_before.rol").unwrap(),
-      )
-      .unwrap();
-   }
-
    let regalloc_result = {
       let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
       for (id, body) in ctx.program.procedure_bodies.iter_mut() {
@@ -433,16 +438,16 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config, &program_liveness)
    };
 
+   backend::regalloc::kill_self_assignments(&mut ctx.program, &regalloc_result.var_to_slot);
+
    if config.dump_debugging_info {
       pp::pp(
          &ctx.program,
          &ctx.interner,
-         &mut std::fs::File::create("pp_after.rol").unwrap(),
+         &mut std::fs::File::create("pp_before.rol").unwrap(),
       )
       .unwrap();
    }
-
-   backend::regalloc::kill_self_assignments(&mut ctx.program, &regalloc_result.var_to_slot);
 
    if config.target == Target::Qbe {
       Ok(backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, regalloc_result))
