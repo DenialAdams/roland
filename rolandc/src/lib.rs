@@ -412,7 +412,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       ctx.program.ast.statements.clear();
    }
 
-   propagation::propagate(&mut ctx.program, &ctx.interner, config.target);
+   //propagation::propagate(&mut ctx.program, &ctx.interner, config.target);
 
    // It would be nice to run this before deleting unreachable procedures,
    // but doing so would currently delete procedures that we take pointers to

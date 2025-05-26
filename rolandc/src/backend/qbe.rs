@@ -566,18 +566,13 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                         format!("copy ${}", mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner))
                      }
                      Expression::Variable(v) => {
-                        if let Some(VarSlot::Register(reg)) = ctx.var_to_slot.get(v) {
-                           format!("copy %r{}", reg)
+                        if ctx.global_info.contains_key(v) {
+                           format!("copy $.v{}", v.0)
                         } else {
-                           let rhs_mem = if ctx.global_info.contains_key(v) {
-                              format!("$.v{}", v.0)
-                           } else {
-                              match ctx.var_to_slot.get(v).unwrap() {
-                                 VarSlot::Register(_) => unreachable!(),
-                                 VarSlot::Stack(v) => format!("%v{}", v),
-                              }
-                           };
-                           make_load(&rhs_mem, rhs_expr_node.exp_type.as_ref().unwrap())
+                           match ctx.var_to_slot.get(v).unwrap() {
+                              VarSlot::Register(_) => unreachable!(),
+                              VarSlot::Stack(v) => format!("copy %v{}", v),
+                           }
                         }
                      }
                      Expression::BinaryOperator { operator, lhs, rhs } => {
@@ -736,10 +731,6 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                         let rhs_val = expr_to_val(*rhs, ctx);
                         format!("{} {}, {}", opcode, lhs_val, rhs_val)
                      }
-                     Expression::UnaryOperator(UnOp::AddressOf, inner) => {
-                        let rhs_mem = compute_offset(*inner, ctx);
-                        format!("copy {}", rhs_mem.unwrap())
-                     }
                      Expression::UnaryOperator(UnOp::TakeProcedurePointer, inner_id) => {
                         let ExpressionType::ProcedureItem(proc_id, _bound_type_params) =
                            ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap()
@@ -749,10 +740,13 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                         format!("copy ${}", mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner))
                      }
                      Expression::UnaryOperator(operator, inner_id) => {
-                        let inner_val = expr_to_val(*inner_id, ctx);
                         match operator {
-                           UnOp::Negate => format!("neg {}", inner_val),
+                           UnOp::Negate => {
+                              let inner_val = expr_to_val(*inner_id, ctx);
+                              format!("neg {}", inner_val)
+                           },
                            UnOp::Complement => {
+                              let inner_val = expr_to_val(*inner_id, ctx);
                               if *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() == ExpressionType::Bool {
                                  format!("ceqw {}, 0", inner_val)
                               } else {
@@ -770,7 +764,19 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                                  format!("xor {}, {}", inner_val, magic_const)
                               }
                            }
-                           UnOp::Dereference => make_load(&inner_val, rhs_expr_node.exp_type.as_ref().unwrap()),
+                           UnOp::Dereference => {
+                              if let Expression::Variable(v) = ctx.ast.expressions[*inner_id].expression {
+                                 if let Some(VarSlot::Register(reg)) = ctx.var_to_slot.get(&v) {
+                                    format!("copy %r{}", reg)
+                                 } else {
+                                    let inner_val = expr_to_val(*inner_id, ctx);
+                                    make_load(&inner_val, rhs_expr_node.exp_type.as_ref().unwrap())
+                                 }
+                              } else {
+                                 let inner_val = expr_to_val(*inner_id, ctx);
+                                 make_load(&inner_val, rhs_expr_node.exp_type.as_ref().unwrap())
+                              }
+                           },
                            UnOp::AddressOf | UnOp::TakeProcedurePointer => unreachable!(),
                         }
                      }
@@ -982,12 +988,6 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &GenerationContext) -> String {
       Expression::BoolLiteral(val) => {
          format!("{}", u8::from(*val))
       }
-      Expression::UnaryOperator(UnOp::AddressOf, child) => {
-         // (must be the address of a var)
-         // nocheckin is this reachable? doubt
-         unreachable!();
-         expr_to_val(*child, ctx)
-      }
       Expression::UnaryOperator(UnOp::Dereference, inner) => {
          // nocheckin restructure this code
          if let Expression::Variable(v) = ctx.ast.expressions[*inner].expression {
@@ -1023,7 +1023,7 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &GenerationContext) -> String {
       Expression::BoundFcnLiteral(proc_id, _) => {
          format!("${}", mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner))
       }
-      x => unreachable!("{:?}", x),
+      _ => unreachable!(),
    }
 }
 
