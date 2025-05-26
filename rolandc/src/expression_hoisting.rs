@@ -562,7 +562,7 @@ fn vv_expr(
                false
             };
          let is_literal = is_non_aggregate_const(&expressions[expr_index].expression);
-         if is_ifx || (!is_effective_top_level && !is_literal && !is_var && !is_var_deref) {
+         if is_ifx || (!is_effective_top_level && !is_literal && !is_var) {
             ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
          }
       }

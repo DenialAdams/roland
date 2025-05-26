@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use indexmap::IndexMap;
 use slotmap::SecondaryMap;
@@ -25,7 +25,7 @@ pub enum RegisterType {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum VarSlotKind {
+pub enum VarSlotKind {
    Stack((u32, u32)), // (size, alignment)
    Register(RegisterType),
 }
@@ -34,6 +34,29 @@ pub struct RegallocResult {
    pub var_to_slot: IndexMap<VariableId, VarSlot>,
    pub procedure_registers: SecondaryMap<ProcedureId, Vec<RegisterType>>,
    pub procedure_stack_slots: SecondaryMap<ProcedureId, Vec<(u32, u32)>>,
+}
+
+pub fn paint_variables_to_registers_and_mem(
+   program: &Program,
+   target: Target,
+) -> HashMap<VariableId, VarSlotKind> {
+   let mut escaping_vars = HashSet::new();
+   let mut result = HashMap::new();
+
+   for body in program.procedure_bodies.values() {
+      mark_escaping_vars_cfg(&body.cfg, &mut escaping_vars, &program.ast.expressions);
+
+      for var in body.locals.keys() {
+         result.insert(*var, type_to_slot_kind(
+            body.locals.get(var).unwrap(),
+            escaping_vars.contains(var),
+            &program.user_defined_types,
+            target,
+         ));
+      }
+   }
+
+   result
 }
 
 pub fn assign_variables_to_registers_and_mem(
