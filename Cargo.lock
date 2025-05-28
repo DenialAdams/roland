@@ -966,9 +966,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-encoder"
-version = "0.231.0"
+version = "0.232.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e62baf58bc14f219d1d12d082ea99860acb479b582e8f3d292d8a7c8f756091c"
+checksum = "a447e61e38d1226b57e4628edadff36d16760be24a343712ba236b5106c95156"
 dependencies = [
  "leb128fmt",
  "wasmparser",
@@ -976,9 +976,9 @@ dependencies = [
 
 [[package]]
 name = "wasmparser"
-version = "0.231.0"
+version = "0.232.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1ddaf0d6e069fcd98801b1bf030e3648897d9f09c45ac9ef566d068aca1b76f"
+checksum = "917739b33bb1eb0e9a49bcd2637a351931be4578d0cc4d37b908d7a797784fbb"
 dependencies = [
  "bitflags 2.9.1",
  "indexmap",
@@ -987,9 +987,9 @@ dependencies = [
 
 [[package]]
 name = "wasmprinter"
-version = "0.231.0"
+version = "0.232.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a7edd6cf24de82084a947de7ef493fc0b5a0448affb95a84313823d4f41b1d6"
+checksum = "3be346255070ba58f65b24826bc94643dca065e797db7abb83e90965d086eba3"
 dependencies = [
  "anyhow",
  "termcolor",
