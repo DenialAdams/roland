@@ -605,6 +605,9 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                         F32_TYPE => format!("copy s_{}", val),
                         _ => unreachable!(),
                      },
+                     Expression::BoundFcnLiteral(proc_id, _) => {
+                        format!("copy ${}", mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner))
+                     }
                      Expression::Variable(v) => {
                         if let Some(VarSlot::Register(reg)) = ctx.var_to_slot.get(v) {
                            format!("copy %r{}", reg)

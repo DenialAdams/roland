@@ -1,0 +1,23 @@
+proc foo(x: u64) -> bool {
+   return x > 10;
+}
+
+proc bar(x: u64) -> bool {
+   return x > 100;
+}
+
+proc val() -> bool {
+   return true;
+}
+
+proc main() {
+   let x: proc(u64) -> bool = &foo;
+   if val() {
+      x = &bar;
+   }
+   let result = x(11);
+   println_bool(result);
+}
+__END__
+run:
+false
