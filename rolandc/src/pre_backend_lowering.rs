@@ -352,11 +352,11 @@ pub fn kill_zst_assignments(program: &mut Program, target: Target) {
                CfgInstruction::Assignment(lhs, rhs) => {
                   let rhs_t = program.ast.expressions[rhs].exp_type.as_ref().unwrap();
                   if sizeof_type_mem(rhs_t, &program.user_defined_types, target) == 0 {
-                     let lhs_se = expression_could_have_side_effects(lhs, &program.ast.expressions);
-                     let rhs_se = expression_could_have_side_effects(rhs, &program.ast.expressions);
                      [
-                        Some(CfgInstruction::Expression(lhs)).filter(|_| lhs_se),
-                        Some(CfgInstruction::Expression(rhs)).filter(|_| rhs_se),
+                        Some(CfgInstruction::Expression(lhs))
+                           .filter(|_| expression_could_have_side_effects(lhs, &program.ast.expressions)),
+                        Some(CfgInstruction::Expression(rhs))
+                           .filter(|_| expression_could_have_side_effects(rhs, &program.ast.expressions)),
                      ]
                   } else {
                      [Some(x), None]

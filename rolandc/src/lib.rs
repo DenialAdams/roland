@@ -55,8 +55,7 @@ use interner::Interner;
 use monomorphization::update_expressions_to_point_to_monomorphized_procedures;
 pub use parse::Program;
 use parse::{
-   Expression, ExpressionNode, ImportNode, ProcImplSource, ProcedureId, Statement, StatementNode, UserDefinedTypeId,
-   statement_always_or_never_returns,
+   statement_always_or_never_returns, Expression, ExpressionNode, ImportNode, ProcImplSource, ProcedureId, Statement, StatementNode, UserDefinedTypeId, VariableId
 };
 use semantic_analysis::type_variables::TypeVariableManager;
 use semantic_analysis::{OwnedValidationContext, StorageKind, definite_assignment};
@@ -387,15 +386,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::ThreeAddressCode);
    }
 
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp_before.rol").unwrap(),
-      )
-      .unwrap();
-   }
-
    // Convert nested, AST representation into CFG
    {
       backend::linearize::linearize(
@@ -412,11 +402,29 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       ctx.program.ast.statements.clear();
    }
 
-   //propagation::propagate(&mut ctx.program, &ctx.interner, config.target);
+   propagation::propagate(&mut ctx.program, &ctx.interner, config.target);
+
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp_before.rol").unwrap(),
+      )
+      .unwrap();
+   }
 
    // It would be nice to run this before deleting unreachable procedures,
    // but doing so would currently delete procedures that we take pointers to
    pre_backend_lowering::kill_zst_assignments(&mut ctx.program, config.target);
+
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp_after.rol").unwrap(),
+      )
+      .unwrap();
+   }
 
    dead_code_elimination::remove_unused_locals(&mut ctx.program);
 
@@ -439,15 +447,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    };
 
    backend::regalloc::kill_self_assignments(&mut ctx.program, &regalloc_result.var_to_slot);
-
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp_after.rol").unwrap(),
-      )
-      .unwrap();
-   }
 
    if config.target == Target::Qbe {
       Ok(backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, regalloc_result))

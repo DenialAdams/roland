@@ -6,8 +6,8 @@ use crate::Target;
 use crate::constant_folding::{expression_could_have_side_effects, is_non_aggregate_const};
 use crate::interner::Interner;
 use crate::parse::{
-   AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement,
-   StatementId, StatementNode, UnOp, UserDefinedTypeInfo, VariableId,
+   AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement, StatementId,
+   StatementNode, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
 use crate::size_info::sizeof_type_mem;
@@ -126,7 +126,9 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
          // the IR has been lowered such that variables are not implicitly converted to rvals
          let var_node = ast.expressions.insert(ExpressionNode {
             expression: Expression::Variable(temp),
-            exp_type: Some(ExpressionType::Pointer(Box::new(ast.expressions[expr].exp_type.clone().unwrap()))),
+            exp_type: Some(ExpressionType::Pointer(Box::new(
+               ast.expressions[expr].exp_type.clone().unwrap(),
+            ))),
             location,
          });
          Expression::UnaryOperator(UnOp::Dereference, var_node)

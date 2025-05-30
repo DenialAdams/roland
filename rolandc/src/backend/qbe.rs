@@ -471,7 +471,7 @@ function $_start() {
    ctx.buf
 }
 
-fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<String> {
+fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext, is_lhs: bool) -> Option<String> {
    match ctx.ast.expressions[expr].expression {
       Expression::Variable(v) => {
          if ctx.global_info.contains_key(&v) {
@@ -483,7 +483,8 @@ fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext) -> Option<Str
             }
          }
       }
-      Expression::UnaryOperator(UnOp::Dereference, e) => Some(expr_to_val(e, ctx)),
+      Expression::UnaryOperator(UnOp::Dereference, e) if is_lhs => Some(expr_to_val(e, ctx)),
+      Expression::UnaryOperator(UnOp::Dereference, e) => compute_offset(e, ctx, true),
       _ => None,
    }
 }
@@ -494,15 +495,15 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
       match instr {
          CfgInstruction::Nop => (),
          CfgInstruction::Assignment(lid, en) => {
-            if let Some(lhs_mem) = compute_offset(*lid, ctx) {
-               if let Some(rhs_mem) = compute_offset(*en, ctx) {
+            if let Some(lhs_mem) = compute_offset(*lid, ctx, true) {
+               if let Some(rhs_mem) = compute_offset(*en, ctx, false) {
                   let size = sizeof_type_mem(
-                     ctx.ast.expressions[*lid].exp_type.as_ref().unwrap(),
+                     ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
                      ctx.udt,
                      Target::Qbe,
                   );
                   writeln!(ctx.buf, "   blit {}, {}, {}", rhs_mem, lhs_mem, size).unwrap();
-               } else if ctx.ast.expressions[*lid].exp_type.as_ref().unwrap().is_aggregate() {
+               } else if ctx.ast.expressions[*en].exp_type.as_ref().unwrap().is_aggregate() {
                   let Expression::ProcedureCall { proc_expr, args } = &ctx.ast.expressions[*en].expression else {
                      unreachable!()
                   };
@@ -510,7 +511,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                      ctx.buf,
                      "   %t ={} {}",
                      roland_type_to_abi_type(
-                        ctx.ast.expressions[*lid].exp_type.as_ref().unwrap(),
+                        ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
                         ctx.udt,
                         &ctx.aggregate_defs
                      )
@@ -519,27 +520,26 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   )
                   .unwrap();
                   let size = sizeof_type_mem(
-                     ctx.ast.expressions[*lid].exp_type.as_ref().unwrap(),
+                     ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
                      ctx.udt,
                      Target::Qbe,
                   );
                   writeln!(ctx.buf, "   blit %t, {}, {}", lhs_mem, size).unwrap();
                } else {
-                  let suffix = roland_type_to_extended_type(ctx.ast.expressions[*lid].exp_type.as_ref().unwrap());
+                  let suffix = roland_type_to_extended_type(ctx.ast.expressions[*en].exp_type.as_ref().unwrap());
                   let val = expr_to_val(*en, ctx);
                   writeln!(ctx.buf, "   store{} {}, {}", suffix, val, lhs_mem).unwrap();
                }
             } else {
-               let len = &ctx.ast.expressions[*lid];
-               let Expression::Variable(v) = len.expression else {
+               let Expression::Variable(v) = ctx.ast.expressions[*lid].expression else {
                   unreachable!()
                };
                let Some(VarSlot::Register(reg)) = ctx.var_to_slot.get(&v).copied() else {
                   unreachable!()
                };
 
+               let rhs_expr_node = &ctx.ast.expressions[*en];
                let rhs_expr = {
-                  let rhs_expr_node = &ctx.ast.expressions[*en];
                   match &rhs_expr_node.expression {
                      Expression::ProcedureCall { proc_expr, args } => make_call_expr(*proc_expr, args, ctx),
                      Expression::BoolLiteral(v) => {
@@ -739,47 +739,44 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                         };
                         format!("copy ${}", mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner))
                      }
-                     Expression::UnaryOperator(operator, inner_id) => {
-                        match operator {
-                           UnOp::Negate => {
-                              let inner_val = expr_to_val(*inner_id, ctx);
-                              format!("neg {}", inner_val)
-                           },
-                           UnOp::Complement => {
-                              let inner_val = expr_to_val(*inner_id, ctx);
-                              if *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() == ExpressionType::Bool {
-                                 format!("ceqw {}, 0", inner_val)
-                              } else {
-                                 let magic_const: u64 = match *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap()
-                                 {
-                                    crate::type_data::U8_TYPE => u64::from(u8::MAX),
-                                    crate::type_data::U16_TYPE => u64::from(u16::MAX),
-                                    crate::type_data::U32_TYPE
-                                    | crate::type_data::I8_TYPE
-                                    | crate::type_data::I16_TYPE
-                                    | crate::type_data::I32_TYPE => u64::from(u32::MAX),
-                                    crate::type_data::I64_TYPE | crate::type_data::U64_TYPE => u64::MAX,
-                                    _ => unreachable!(),
-                                 };
-                                 format!("xor {}, {}", inner_val, magic_const)
-                              }
+                     Expression::UnaryOperator(operator, inner_id) => match operator {
+                        UnOp::Negate => {
+                           let inner_val = expr_to_val(*inner_id, ctx);
+                           format!("neg {}", inner_val)
+                        }
+                        UnOp::Complement => {
+                           let inner_val = expr_to_val(*inner_id, ctx);
+                           if *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() == ExpressionType::Bool {
+                              format!("ceqw {}, 0", inner_val)
+                           } else {
+                              let magic_const: u64 = match *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() {
+                                 crate::type_data::U8_TYPE => u64::from(u8::MAX),
+                                 crate::type_data::U16_TYPE => u64::from(u16::MAX),
+                                 crate::type_data::U32_TYPE
+                                 | crate::type_data::I8_TYPE
+                                 | crate::type_data::I16_TYPE
+                                 | crate::type_data::I32_TYPE => u64::from(u32::MAX),
+                                 crate::type_data::I64_TYPE | crate::type_data::U64_TYPE => u64::MAX,
+                                 _ => unreachable!(),
+                              };
+                              format!("xor {}, {}", inner_val, magic_const)
                            }
-                           UnOp::Dereference => {
-                              if let Expression::Variable(v) = ctx.ast.expressions[*inner_id].expression {
-                                 if let Some(VarSlot::Register(reg)) = ctx.var_to_slot.get(&v) {
-                                    format!("copy %r{}", reg)
-                                 } else {
-                                    let inner_val = expr_to_val(*inner_id, ctx);
-                                    make_load(&inner_val, rhs_expr_node.exp_type.as_ref().unwrap())
-                                 }
+                        }
+                        UnOp::Dereference => {
+                           if let Expression::Variable(v) = ctx.ast.expressions[*inner_id].expression {
+                              if let Some(VarSlot::Register(reg)) = ctx.var_to_slot.get(&v) {
+                                 format!("copy %r{}", reg)
                               } else {
                                  let inner_val = expr_to_val(*inner_id, ctx);
                                  make_load(&inner_val, rhs_expr_node.exp_type.as_ref().unwrap())
                               }
-                           },
-                           UnOp::AddressOf | UnOp::TakeProcedurePointer => unreachable!(),
+                           } else {
+                              let inner_val = expr_to_val(*inner_id, ctx);
+                              make_load(&inner_val, rhs_expr_node.exp_type.as_ref().unwrap())
+                           }
                         }
-                     }
+                        UnOp::AddressOf | UnOp::TakeProcedurePointer => unreachable!(),
+                     },
                      Expression::Cast {
                         cast_type: CastType::As,
                         target_type,
@@ -914,7 +911,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   ctx.buf,
                   "   %r{} ={} {}",
                   reg,
-                  roland_type_to_base_type(len.exp_type.as_ref().unwrap()),
+                  roland_type_to_base_type(rhs_expr_node.exp_type.as_ref().unwrap()),
                   rhs_expr,
                )
                .unwrap();
