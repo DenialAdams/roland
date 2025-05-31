@@ -55,7 +55,7 @@ use interner::Interner;
 use monomorphization::update_expressions_to_point_to_monomorphized_procedures;
 pub use parse::Program;
 use parse::{
-   statement_always_or_never_returns, Expression, ExpressionNode, ImportNode, ProcImplSource, ProcedureId, Statement, StatementNode, UserDefinedTypeId, VariableId
+   statement_always_or_never_returns, Expression, ExpressionNode, ImportNode, ProcImplSource, ProcedureId, Statement, StatementNode, UserDefinedTypeId
 };
 use semantic_analysis::type_variables::TypeVariableManager;
 use semantic_analysis::{OwnedValidationContext, StorageKind, definite_assignment};
