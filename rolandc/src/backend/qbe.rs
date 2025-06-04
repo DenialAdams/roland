@@ -473,7 +473,7 @@ function $_start() {
 
 fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext, is_lhs: bool) -> Option<String> {
    match ctx.ast.expressions[expr].expression {
-      Expression::Variable(v) => {
+      Expression::Variable(v) if is_lhs => {
          if ctx.global_info.contains_key(&v) {
             Some(format!("$.v{}", v.0))
          } else {
