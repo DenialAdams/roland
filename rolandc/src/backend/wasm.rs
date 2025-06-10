@@ -148,7 +148,7 @@ struct TypeManager<'a> {
 }
 
 impl TypeManager<'_> {
-   fn new(udt: &UserDefinedTypeInfo, target: Target) -> TypeManager {
+   fn new(udt: &UserDefinedTypeInfo, target: Target) -> TypeManager<'_> {
       TypeManager {
          udt,
          target,
