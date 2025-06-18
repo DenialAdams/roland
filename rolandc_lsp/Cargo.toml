@@ -6,6 +6,6 @@ edition = "2024"
 
 [dependencies]
 parking_lot = { version = "0.12", features = ["nightly"] }
-tower-lsp-server = "0.21"
+tower-lsp-server = "0.22"
 tokio = { version = "1", features = ["io-std", "rt", "rt-multi-thread", "macros"] }
 rolandc = { path = "../rolandc" }
