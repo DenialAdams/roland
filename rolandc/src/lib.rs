@@ -55,7 +55,8 @@ use interner::Interner;
 use monomorphization::update_expressions_to_point_to_monomorphized_procedures;
 pub use parse::Program;
 use parse::{
-   statement_always_or_never_returns, Expression, ExpressionNode, ImportNode, ProcImplSource, ProcedureId, Statement, StatementNode, UserDefinedTypeId
+   Expression, ExpressionNode, ImportNode, ProcImplSource, ProcedureId, Statement, StatementNode, UserDefinedTypeId,
+   statement_always_or_never_returns,
 };
 use semantic_analysis::type_variables::TypeVariableManager;
 use semantic_analysis::{OwnedValidationContext, StorageKind, definite_assignment};
@@ -402,8 +403,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       ctx.program.ast.statements.clear();
    }
 
-   propagation::propagate(&mut ctx.program, &ctx.interner, config.target);
-
    if config.dump_debugging_info {
       pp::pp(
          &ctx.program,
@@ -413,9 +412,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       .unwrap();
    }
 
-   // It would be nice to run this before deleting unreachable procedures,
-   // but doing so would currently delete procedures that we take pointers to
-   pre_backend_lowering::kill_zst_assignments(&mut ctx.program, config.target);
+   propagation::propagate(&mut ctx.program, &ctx.interner, config.target);
 
    if config.dump_debugging_info {
       pp::pp(
@@ -425,6 +422,10 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       )
       .unwrap();
    }
+
+   // It would be nice to run this before deleting unreachable procedures,
+   // but doing so would currently delete procedures that we take pointers to
+   pre_backend_lowering::kill_zst_assignments(&mut ctx.program, config.target);
 
    dead_code_elimination::remove_unused_locals(&mut ctx.program);
 
