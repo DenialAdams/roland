@@ -55,6 +55,15 @@ pub fn lower_aggregate_access(program: &mut Program, target: Target) {
          Expression::ArrayIndex { array, index } => {
             let array = *array;
             let index = *index;
+
+            if matches!(
+               program.ast.expressions[index].expression,
+               Expression::IntLiteral { val: 0, .. }
+            ) {
+               program.ast.expressions[e].expression = program.ast.expressions[array].expression.clone();
+               continue;
+            }
+
             let sizeof_inner = match program.ast.expressions[array]
                .exp_type
                .as_ref()
@@ -64,33 +73,38 @@ pub fn lower_aggregate_access(program: &mut Program, target: Target) {
                ExpressionType::Array(x, _) => sizeof_type_mem(x, &program.user_defined_types, target),
                _ => unreachable!(),
             };
-            let sizeof_literal_node = program.ast.expressions.insert(ExpressionNode {
-               exp_type: Some(ExpressionType::Int(IntType {
-                  signed: false,
-                  width: IntWidth::Pointer,
-               })),
-               expression: Expression::IntLiteral {
-                  val: u64::from(sizeof_inner),
-                  synthetic: true,
-               },
-               location: program.ast.expressions[e].location,
-            });
-            let mul_node = program.ast.expressions.insert(ExpressionNode {
-               exp_type: Some(ExpressionType::Int(IntType {
-                  signed: false,
-                  width: target.lowered_ptr_width(),
-               })),
-               expression: Expression::BinaryOperator {
-                  operator: BinOp::Multiply,
-                  lhs: sizeof_literal_node,
-                  rhs: index,
-               },
-               location: program.ast.expressions[e].location,
-            });
+            let offset_node = if sizeof_inner == 1 {
+               index
+            } else {
+               let sizeof_literal_node = program.ast.expressions.insert(ExpressionNode {
+                  exp_type: Some(ExpressionType::Int(IntType {
+                     signed: false,
+                     width: IntWidth::Pointer,
+                  })),
+                  expression: Expression::IntLiteral {
+                     val: u64::from(sizeof_inner),
+                     synthetic: true,
+                  },
+                  location: program.ast.expressions[e].location,
+               });
+
+               program.ast.expressions.insert(ExpressionNode {
+                  exp_type: Some(ExpressionType::Int(IntType {
+                     signed: false,
+                     width: target.lowered_ptr_width(),
+                  })),
+                  expression: Expression::BinaryOperator {
+                     operator: BinOp::Multiply,
+                     lhs: sizeof_literal_node,
+                     rhs: index,
+                  },
+                  location: program.ast.expressions[e].location,
+               })
+            };
             program.ast.expressions[e].expression = Expression::BinaryOperator {
                operator: BinOp::Add,
                lhs: array,
-               rhs: mul_node,
+               rhs: offset_node,
             };
          }
          _ => (),
