@@ -49,8 +49,12 @@ fn find_reaching_val(x: Definition, body: &Cfg, rpo: &[usize], exprs: &Expressio
          let e = &exprs[rhs].expression;
          if is_non_aggregate_const(e) {
             Some(ReachingVal::Const(rhs))
-         } else if let Expression::Variable(v) = e {
-            Some(ReachingVal::Var(*v))
+         } else if let Expression::UnaryOperator(UnOp::Dereference, inner) = e {
+            if let Expression::Variable(v) = exprs[*inner].expression {
+               Some(ReachingVal::Var(v))
+            } else {
+               None
+            }
          } else {
             None
          }
@@ -385,7 +389,9 @@ fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, as
       for instr in cfg.bbs[bb].instructions.iter() {
          match instr {
             CfgInstruction::Assignment(lhs, rhs) => {
-               mark_escaping_vars_expr(*lhs, escaping_vars, ast);
+               if !matches!(ast[*lhs].expression, Expression::Variable(_)) {
+                  mark_escaping_vars_expr(*lhs, escaping_vars, ast);
+               }
                mark_escaping_vars_expr(*rhs, escaping_vars, ast);
             }
             CfgInstruction::Expression(e) | CfgInstruction::ConditionalJump(e, _, _) | CfgInstruction::Return(e) => {
