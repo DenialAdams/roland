@@ -562,7 +562,10 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                         _ => unreachable!(),
                      },
                      Expression::BoundFcnLiteral(proc_id, _) => {
-                        debug_assert!(matches!(rhs_expr_node.exp_type, Some(ExpressionType::ProcedurePointer { .. })));
+                        debug_assert!(matches!(
+                           rhs_expr_node.exp_type,
+                           Some(ExpressionType::ProcedurePointer { .. })
+                        ));
                         format!("copy ${}", mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner))
                      }
                      Expression::Variable(v) => {
