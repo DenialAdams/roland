@@ -129,13 +129,12 @@ pub fn hoist_non_temp_var_uses(program: &mut Program, target: Target) {
             match instr {
                CfgInstruction::Assignment(ex1, ex2) => {
                   // skip var = var~ assignments
-                  if let Expression::Variable(_) = program.ast.expressions[*ex1].expression {
-                     if let Expression::UnaryOperator(UnOp::Dereference, child) =
+                  if let Expression::Variable(_) = program.ast.expressions[*ex1].expression
+                     && let Expression::UnaryOperator(UnOp::Dereference, child) =
                         program.ast.expressions[*ex2].expression
-                     {
-                        if let Expression::Variable(_) = program.ast.expressions[child].expression {
-                           continue;
-                        }
+                  {
+                     if let Expression::Variable(_) = program.ast.expressions[child].expression {
+                        continue;
                      }
                   }
                   mark_loads_to_hoist(*ex1, &program.ast.expressions, &mut mark_expr_fcn);
