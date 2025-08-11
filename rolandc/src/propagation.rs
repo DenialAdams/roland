@@ -84,10 +84,14 @@ fn propagate_vals(
             if let Expression::Variable(v) = &mut ast[*child].expression {
                match reaching_values.get(v) {
                   Some(ReachingVal::Const(c)) => {
-                     the_expression = ast[*c].expression.clone();
-                     propagated_const = true;
+                     if ast[*c].exp_type == ast[e].exp_type {
+                        the_expression = ast[*c].expression.clone();
+                        propagated_const = true;
+                     }
                   }
                   Some(ReachingVal::Var(reaching_v)) => {
+                     // TODO: justify why we don't need a type check here, as for the const case
+                     // (i am not sure a justification exists, and this might be a bug)
                      *v = *reaching_v;
                   }
                   None => (),

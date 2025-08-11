@@ -5,7 +5,9 @@ use slotmap::SecondaryMap;
 
 use super::linearize::{Cfg, CfgInstruction, post_order};
 use super::liveness::LiveInterval;
-use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId};
+use crate::parse::{
+   Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId,
+};
 use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
 use crate::{CompilationConfig, Program, Target};
@@ -25,7 +27,7 @@ pub enum RegisterType {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum VarSlotKind {
+pub enum VarSlotKind {
    Stack((u32, u32)), // (size, alignment)
    Register(RegisterType),
 }
@@ -34,6 +36,149 @@ pub struct RegallocResult {
    pub var_to_slot: IndexMap<VariableId, VarSlot>,
    pub procedure_registers: SecondaryMap<ProcedureId, Vec<RegisterType>>,
    pub procedure_stack_slots: SecondaryMap<ProcedureId, Vec<(u32, u32)>>,
+}
+
+fn mark_loads_to_hoist<F: FnMut(ExpressionId, ExpressionType, VariableId)>(
+   root: ExpressionId,
+   ast: &ExpressionPool,
+   mark_expr_fcn: &mut F,
+) {
+   match &ast[root].expression {
+      Expression::ProcedureCall { proc_expr, args } => {
+         mark_loads_to_hoist(*proc_expr, ast, mark_expr_fcn);
+         for arg in args.iter() {
+            mark_loads_to_hoist(arg.expr, ast, mark_expr_fcn);
+         }
+      }
+      Expression::ArrayLiteral(children) => {
+         for child in children.iter().copied() {
+            mark_loads_to_hoist(child, ast, mark_expr_fcn);
+         }
+      }
+      Expression::ArrayIndex { array: lhs, index: rhs } | Expression::BinaryOperator { operator: _, lhs, rhs } => {
+         mark_loads_to_hoist(*lhs, ast, mark_expr_fcn);
+         mark_loads_to_hoist(*rhs, ast, mark_expr_fcn);
+      }
+      Expression::UnaryOperator(operator, child) => {
+         mark_loads_to_hoist(*child, ast, mark_expr_fcn);
+         if *operator == UnOp::Dereference
+            && let Expression::Variable(v) = ast[*child].expression
+         {
+            mark_expr_fcn(*child, ast[root].exp_type.clone().unwrap(), v);
+         }
+      }
+      Expression::FieldAccess(_, child)
+      | Expression::Cast {
+         cast_type: _,
+         target_type: _,
+         expr: child,
+      } => mark_loads_to_hoist(*child, ast, mark_expr_fcn),
+      Expression::IfX(a, b, c) => {
+         mark_loads_to_hoist(*a, ast, mark_expr_fcn);
+         mark_loads_to_hoist(*b, ast, mark_expr_fcn);
+         mark_loads_to_hoist(*c, ast, mark_expr_fcn);
+      }
+      Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_)
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_)
+      | Expression::UnitLiteral
+      | Expression::Variable(_)
+      | Expression::StructLiteral(_, _)
+      | Expression::EnumLiteral(_, _)
+      | Expression::BoundFcnLiteral(_, _) => (),
+      Expression::UnresolvedStructLiteral(_, _, _)
+      | Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedEnumLiteral(_, _)
+      | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+   }
+}
+
+pub fn hoist_non_temp_var_uses(program: &mut Program, target: Target) {
+   let mut escaping_vars = HashSet::new();
+
+   for body in program.procedure_bodies.values_mut() {
+      mark_escaping_vars_cfg(&body.cfg, &mut escaping_vars, &program.ast.expressions);
+
+      if target != Target::Qbe {
+         continue;
+      }
+
+      let mut exprs_to_hoist: Vec<(ExpressionId, usize, ExpressionType)> = vec![];
+
+      // For all var uses that are actually a load (now that we know the var is in mem),
+      // hoist the use. All newly created vars must not be in mem.
+      for bb in post_order(&body.cfg) {
+         let bb = &mut body.cfg.bbs[bb];
+         for (i, instr) in bb.instructions.iter().enumerate() {
+            let mut mark_expr_fcn = |e: ExpressionId, t: ExpressionType, v: VariableId| {
+               if body.locals.get(&v).is_some_and(|lt| {
+                  matches!(
+                     type_to_slot_kind(lt, escaping_vars.contains(&v), &program.user_defined_types, target),
+                     VarSlotKind::Register(_)
+                  )
+               }) {
+                  return;
+               }
+               if let VarSlotKind::Stack(_) = type_to_slot_kind(&t, false, &program.user_defined_types, target) {
+                  // no point in hoisting.
+                  return;
+               }
+               exprs_to_hoist.push((e, i, t));
+            };
+            match instr {
+               CfgInstruction::Assignment(ex1, ex2) => {
+                  // skip var = var~ assignments
+                  if let Expression::Variable(_) = program.ast.expressions[*ex1].expression {
+                     if let Expression::UnaryOperator(UnOp::Dereference, child) =
+                        program.ast.expressions[*ex2].expression
+                     {
+                        if let Expression::Variable(_) = program.ast.expressions[child].expression {
+                           continue;
+                        }
+                     }
+                  }
+                  mark_loads_to_hoist(*ex1, &program.ast.expressions, &mut mark_expr_fcn);
+                  mark_loads_to_hoist(*ex2, &program.ast.expressions, &mut mark_expr_fcn);
+               }
+               CfgInstruction::Expression(ex)
+               | CfgInstruction::Return(ex)
+               | CfgInstruction::ConditionalJump(ex, _, _) => {
+                  mark_loads_to_hoist(*ex, &program.ast.expressions, &mut mark_expr_fcn);
+               }
+               CfgInstruction::Jump(_) | CfgInstruction::Nop => (),
+            }
+         }
+
+         for (x, i, deref_t) in exprs_to_hoist.drain(..).rev() {
+            let old_v = match &mut program.ast.expressions[x].expression {
+               Expression::Variable(v) => std::mem::replace(v, program.next_variable),
+               _ => unreachable!(),
+            };
+
+            let new_lhs = program.ast.expressions.insert(ExpressionNode {
+               expression: Expression::Variable(program.next_variable),
+               exp_type: program.ast.expressions[x].exp_type.clone(),
+               location: program.ast.expressions[x].location,
+            });
+            let new_rhs_var = program.ast.expressions.insert(ExpressionNode {
+               expression: Expression::Variable(old_v),
+               exp_type: program.ast.expressions[x].exp_type.clone(),
+               location: program.ast.expressions[x].location,
+            });
+            let new_rhs = program.ast.expressions.insert(ExpressionNode {
+               expression: Expression::UnaryOperator(UnOp::Dereference, new_rhs_var),
+               exp_type: Some(deref_t.clone()),
+               location: program.ast.expressions[x].location,
+            });
+            bb.instructions.insert(i, CfgInstruction::Assignment(new_lhs, new_rhs));
+
+            body.locals.insert(program.next_variable, deref_t);
+
+            program.next_variable = program.next_variable.next();
+         }
+      }
+   }
 }
 
 pub fn assign_variables_to_registers_and_mem(

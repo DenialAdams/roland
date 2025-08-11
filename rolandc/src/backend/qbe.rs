@@ -989,31 +989,36 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &GenerationContext) -> String {
          format!("{}", u8::from(*val))
       }
       Expression::UnaryOperator(UnOp::Dereference, inner) => {
-         // nocheckin restructure this code
          if let Expression::Variable(v) = ctx.ast.expressions[*inner].expression {
-            return match ctx.var_to_slot.get(&v).unwrap() {
-               VarSlot::Register(reg) => {
+            match ctx.var_to_slot.get(&v) {
+               Some(VarSlot::Register(reg)) => {
                   format!("%r{}", reg)
                }
-               VarSlot::Stack(v) => {
+               // TODO: justify why producing an address is OK here
+               Some(VarSlot::Stack(v)) => {
                   format!("%v{}", v)
                }
-            };
+               None => {
+                  // global
+                  format!("$.v{}", v.0)
+               }
+            }
+         } else {
+            unreachable!()
          }
-         unreachable!()
       }
       Expression::Variable(v) => {
-         if ctx.global_info.contains_key(v) {
-            format!("$.v{}", v.0)
-         } else {
-            match ctx.var_to_slot.get(v).unwrap() {
-               VarSlot::Register(reg) => {
-                  // nocheckin this should not be reachable
-                  format!("%r{}", reg)
-               }
-               VarSlot::Stack(v) => {
-                  format!("%v{}", v)
-               }
+         match ctx.var_to_slot.get(v) {
+            Some(VarSlot::Register(reg)) => {
+               // TODO this should not be reachable?
+               format!("%r{}", reg)
+            }
+            Some(VarSlot::Stack(v)) => {
+               format!("%v{}", v)
+            }
+            None => {
+               // global
+               format!("$.v{}", v.0)
             }
          }
       }
