@@ -132,10 +132,9 @@ pub fn hoist_non_temp_var_uses(program: &mut Program, target: Target) {
                   if let Expression::Variable(_) = program.ast.expressions[*ex1].expression
                      && let Expression::UnaryOperator(UnOp::Dereference, child) =
                         program.ast.expressions[*ex2].expression
+                     && let Expression::Variable(_) = program.ast.expressions[child].expression
                   {
-                     if let Expression::Variable(_) = program.ast.expressions[child].expression {
-                        continue;
-                     }
+                     continue;
                   }
                   mark_loads_to_hoist(*ex1, &program.ast.expressions, &mut mark_expr_fcn);
                   mark_loads_to_hoist(*ex2, &program.ast.expressions, &mut mark_expr_fcn);
