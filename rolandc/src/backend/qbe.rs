@@ -960,9 +960,34 @@ fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner
    if proc.impl_source != ProcImplSource::Native || proc_name == "main" {
       // builtin procedures can't be monomorphized and thus don't need to be mangled
       // external procedures mustn't be mangled, for obvious reasons
+      // TODO: we should still quote external identifiers in case they have unicode
       return Cow::Borrowed(proc_name);
    }
-   Cow::Owned(format!(".{}_{}", proc_id.data().as_ffi(), proc_name))
+   let mut full_str = format!(".{}_{}", proc_id.data().as_ffi(), proc_name).into_bytes();
+
+   // The QBE max char length is 80 minutes the two quotes = 78
+   // ... and minus one more for reasons I don't understand, but is empirically necessary
+   full_str.truncate(77);
+   // we may have just truncated a unicode character. let's fix it up:
+   // (this is incredibly lazy. it truncates all non single-byte utf-8 characters)
+   // (TODO: a more sophisticated algorithm that removes trailing broken char only)
+   while (full_str.last().unwrap() & 0x80) != 0 {
+      full_str.pop();
+   }
+
+   // 77 above plus 2 quotes = 79
+   let mut final_string = String::with_capacity(79);
+   final_string.push('"');
+   if cfg!(debug_assertions) {
+      final_string.push_str(str::from_utf8(&full_str).unwrap());
+   } else {
+      // safety: above algorithm ensures that after truncating we remove any invalid unicode bytes
+      // we do it this way to avoid examining the whole string
+      unsafe { final_string.push_str(str::from_utf8_unchecked(&full_str)); }
+   }
+   final_string.push('"');
+
+   Cow::Owned(final_string)
 }
 
 // TODO: rework this to write directly into bytestream or otherwise not allocate
