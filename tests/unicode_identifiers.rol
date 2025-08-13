@@ -1,0 +1,28 @@
+struct 結構 {
+   場地: bool,
+}
+
+union 聯盟 {
+   場地: bool,
+}
+
+proc main() {
+   let 多變的 = true;
+   當地的(多變的);
+   let 結構多變的 = 結構 {
+      場地: true,
+   };
+   當地的(結構多變的.場地);
+   let 聯盟多變的: 聯盟 = ___;
+   聯盟多變的.場地 = true;
+   當地的(聯盟多變的.場地);
+}
+
+proc 當地的(範圍: bool) {
+   println_bool(範圍);
+}
+__END__
+run:
+true
+true
+true
