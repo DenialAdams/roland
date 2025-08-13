@@ -6,6 +6,9 @@ union 聯盟 {
    場地: bool,
 }
 
+static 多多多: bool = true;
+
+
 proc main() {
    let 多變的 = true;
    當地的(多變的);
@@ -16,6 +19,7 @@ proc main() {
    let 聯盟多變的: 聯盟 = ___;
    聯盟多變的.場地 = true;
    當地的(聯盟多變的.場地);
+   當地的(多多多);
 }
 
 proc 當地的(範圍: bool) {
@@ -23,6 +27,7 @@ proc 當地的(範圍: bool) {
 }
 __END__
 run:
+true
 true
 true
 true
