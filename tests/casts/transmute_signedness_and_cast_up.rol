@@ -1,0 +1,24 @@
+proc main() {
+    {
+        let x = U64_MAX;
+        println(int_to_string(x as i64));
+    }
+    {
+        let x = U32_MAX;
+        println(int_to_string(x transmute i32 as i64));
+    }
+    {
+        let x = U16_MAX;
+        println(int_to_string(x transmute i16 as i64));
+    }
+    {
+        let x = U8_MAX;
+        println(int_to_string(x transmute i8 as i64));
+    }
+}
+__END__
+run:
+-1
+-1
+-1
+-1
