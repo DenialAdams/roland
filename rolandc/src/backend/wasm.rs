@@ -17,7 +17,9 @@ use crate::parse::{
 };
 use crate::semantic_analysis::{GlobalInfo, StorageKind};
 use crate::size_info::{aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm};
-use crate::type_data::{ExpressionType, F32_TYPE, F64_TYPE, FloatType, FloatWidth, IntType, IntWidth};
+use crate::type_data::{
+   ExpressionType, F32_TYPE, F64_TYPE, FloatType, FloatWidth, I8_TYPE, I16_TYPE, IntType, IntWidth, U8_TYPE, U16_TYPE,
+};
 use crate::{CompilationConfig, Target};
 
 impl From<RegisterType> for ValType {
@@ -1045,6 +1047,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             .instruction(&Instruction::I32Const(i32::from(*x)));
       }
       Expression::IntLiteral { val: x, .. } => {
+         // nocheckin todo after fixing current bug can we make propagation more brave about propagating when types do not match? need to revisit git log to remember the issue
          let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
          match wasm_type {
             ValType::I64 => generation_context
@@ -1360,40 +1363,58 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
 
          do_emit(*e_id, generation_context);
 
-         if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Float(_))
-            && matches!(target_type, ExpressionType::Int(_))
-         {
-            // float -> int
-            match target_type {
-               ExpressionType::Int(x) if x.width.as_num_bytes(generation_context.target) == 4 => {
-                  generation_context
-                     .active_fcn
-                     .instruction(&Instruction::I32ReinterpretF32);
-               }
-               ExpressionType::Int(x) if x.width.as_num_bytes(generation_context.target) == 8 => {
-                  generation_context
-                     .active_fcn
-                     .instruction(&Instruction::I64ReinterpretF64);
-               }
-               _ => unreachable!(),
+         match (e.exp_type.as_ref().unwrap(), target_type) {
+            (&I16_TYPE, &U16_TYPE) => {
+               generation_context
+                  .active_fcn
+                  .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_1111_1111_1111_1111));
+               generation_context.active_fcn.instruction(&Instruction::I32And);
             }
-         } else if matches!(e.exp_type.as_ref().unwrap(), ExpressionType::Int(_))
-            && matches!(target_type, ExpressionType::Float(_))
-         {
-            // int -> float
-            match *target_type {
-               F32_TYPE => {
-                  generation_context
-                     .active_fcn
-                     .instruction(&Instruction::F32ReinterpretI32);
-               }
-               F64_TYPE => {
-                  generation_context
-                     .active_fcn
-                     .instruction(&Instruction::F64ReinterpretI64);
-               }
-               _ => unreachable!(),
+            (&I8_TYPE, &U8_TYPE) => {
+               generation_context
+                  .active_fcn
+                  .instruction(&Instruction::I32Const(0b0000_0000_0000_0000_0000_0000_1111_1111));
+               generation_context.active_fcn.instruction(&Instruction::I32And);
             }
+            (&U16_TYPE, &I16_TYPE) => {
+               generation_context.active_fcn.instruction(&Instruction::I32Extend16S);
+            }
+            (&U8_TYPE, &I8_TYPE) => {
+               generation_context.active_fcn.instruction(&Instruction::I32Extend8S);
+            }
+            (ExpressionType::Int(_), &F32_TYPE) => {
+               generation_context
+                  .active_fcn
+                  .instruction(&Instruction::F32ReinterpretI32);
+            }
+            (ExpressionType::Int(_), &F64_TYPE) => {
+               generation_context
+                  .active_fcn
+                  .instruction(&Instruction::F64ReinterpretI64);
+            }
+            (
+               ExpressionType::Float(_),
+               ExpressionType::Int(IntType {
+                  signed: _,
+                  width: IntWidth::Four,
+               }),
+            ) => {
+               generation_context
+                  .active_fcn
+                  .instruction(&Instruction::I32ReinterpretF32);
+            }
+            (
+               ExpressionType::Float(_),
+               ExpressionType::Int(IntType {
+                  signed: _,
+                  width: IntWidth::Eight,
+               }),
+            ) => {
+               generation_context
+                  .active_fcn
+                  .instruction(&Instruction::I64ReinterpretF64);
+            }
+            _ => (),
          }
       }
       Expression::Cast {

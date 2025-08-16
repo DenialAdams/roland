@@ -895,15 +895,24 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                         expr,
                      } => {
                         let val = expr_to_val(*expr, ctx);
-                        let source_type = ctx.ast.expressions[*expr].exp_type.as_ref().unwrap();
-                        if (matches!(source_type, ExpressionType::Float(_))
-                           && matches!(target_type, ExpressionType::Int(_)))
-                           || (matches!(source_type, ExpressionType::Int(_))
-                              && matches!(target_type, ExpressionType::Float(_)))
-                        {
-                           format!("cast {}", val)
-                        } else {
-                           format!("copy {}", val)
+                        match (ctx.ast.expressions[*expr].exp_type.as_ref().unwrap(), target_type) {
+                           (&I16_TYPE, &U16_TYPE) => {
+                              format!("and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111)
+                           }
+                           (&I8_TYPE, &U8_TYPE) => {
+                              format!("and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111)
+                           }
+                           (&U16_TYPE, &I16_TYPE) => {
+                              format!("extsh {}", val)
+                           }
+                           (&U8_TYPE, &I8_TYPE) => {
+                              format!("extsb {}", val)
+                           }
+                           (ExpressionType::Float(_), ExpressionType::Int(_))
+                           | (ExpressionType::Int(_), ExpressionType::Float(_)) => {
+                              format!("cast {}", val)
+                           }
+                           _ => format!("copy {}", val),
                         }
                      }
                      _ => unreachable!(),
@@ -983,7 +992,9 @@ fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner
    } else {
       // safety: above algorithm ensures that after truncating we remove any invalid unicode bytes
       // we do it this way to avoid examining the whole string
-      unsafe { final_string.push_str(str::from_utf8_unchecked(&full_str)); }
+      unsafe {
+         final_string.push_str(str::from_utf8_unchecked(&full_str));
+      }
    }
    final_string.push('"');
 
