@@ -84,7 +84,17 @@ fn propagate_vals(
             if let Expression::Variable(v) = &mut ast[*child].expression {
                match reaching_values.get(v) {
                   Some(ReachingVal::Const(c)) => {
-                     if ast[*c].exp_type == ast[e].exp_type {
+                     // only propagate consts when the type matches, or the type is bitwise identical (varies only in signed-ness)
+                     let types_agreeable = ast[*c].exp_type == ast[e].exp_type || 'f: {
+                        let Some(ExpressionType::Int(e_it)) = ast[e].exp_type.as_ref() else {
+                           break 'f false;
+                        };
+                        let Some(ExpressionType::Int(c_it)) = ast[*c].exp_type.as_ref() else {
+                           break 'f false;
+                        };
+                        e_it.width == c_it.width
+                     };
+                     if types_agreeable {
                         the_expression = ast[*c].expression.clone();
                         propagated_const = true;
                      }
