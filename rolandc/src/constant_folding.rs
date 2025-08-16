@@ -736,13 +736,22 @@ fn fold_expr_inner(
 
          let operand = &folding_context.ast.expressions[*expr];
 
+         // no-op
          if make_int_type_concrete(expr_type, folding_context.target)
             == make_int_type_concrete(operand.exp_type.as_ref().unwrap(), folding_context.target)
          {
             return Some(operand.expression.clone());
          }
 
-         if *cast_type == CastType::Transmute
+         // pure bitcasts (not quite a no-op, but we can fold the cast away as long as we preserve the type)
+         if sizeof_type_mem(expr_type, folding_context.user_defined_types, folding_context.target)
+            == sizeof_type_mem(
+               operand.exp_type.as_ref().unwrap(),
+               folding_context.user_defined_types,
+               folding_context.target,
+            )
+            // changing signedness of sub-word types is not a pure bitcast
+            && sizeof_type_mem(expr_type, folding_context.user_defined_types, folding_context.target) >= 4
             && matches!(expr_type, ExpressionType::Pointer(_) | ExpressionType::Int(_))
             && matches!(
                operand.exp_type.as_ref().unwrap(),

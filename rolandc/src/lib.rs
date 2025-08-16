@@ -430,22 +430,13 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config, &program_liveness)
    };
 
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp_before.rol").unwrap(),
-      )
-      .unwrap();
-   }
-
    backend::regalloc::kill_self_assignments(&mut ctx.program, &regalloc_result.var_to_slot);
 
    if config.dump_debugging_info {
       pp::pp(
          &ctx.program,
          &ctx.interner,
-         &mut std::fs::File::create("pp_after.rol").unwrap(),
+         &mut std::fs::File::create("pp.rol").unwrap(),
       )
       .unwrap();
    }
