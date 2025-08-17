@@ -85,14 +85,9 @@ fn propagate_vals(
                match reaching_values.get(v) {
                   Some(ReachingVal::Const(c)) => {
                      // only propagate consts when the type matches, or the type is bitwise identical (varies only in signed-ness)
-                     let types_agreeable = ast[*c].exp_type == ast[e].exp_type || 'f: {
-                        let Some(ExpressionType::Int(e_it)) = ast[e].exp_type.as_ref() else {
-                           break 'f false;
-                        };
-                        let Some(ExpressionType::Int(c_it)) = ast[*c].exp_type.as_ref() else {
-                           break 'f false;
-                        };
-                        e_it.width == c_it.width
+                     let types_agreeable = match (ast[*c].exp_type.as_ref().unwrap(), ast[e].exp_type.as_ref().unwrap()) {
+                        (ExpressionType::Int(c_it), ExpressionType::Int(e_it)) => c_it.width == e_it.width,
+                        (a, b) => a == b,
                      };
                      if types_agreeable {
                         the_expression = ast[*c].expression.clone();
@@ -100,8 +95,6 @@ fn propagate_vals(
                      }
                   }
                   Some(ReachingVal::Var(reaching_v)) => {
-                     // TODO: justify why we don't need a type check here, as for the const case
-                     // (i am not sure a justification exists, and this might be a bug)
                      *v = *reaching_v;
                   }
                   None => (),
