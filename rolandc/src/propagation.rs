@@ -85,7 +85,8 @@ fn propagate_vals(
                match reaching_values.get(v) {
                   Some(ReachingVal::Const(c)) => {
                      // only propagate consts when the type matches, or the type is bitwise identical (varies only in signed-ness)
-                     let types_agreeable = match (ast[*c].exp_type.as_ref().unwrap(), ast[e].exp_type.as_ref().unwrap()) {
+                     let types_agreeable = match (ast[*c].exp_type.as_ref().unwrap(), ast[e].exp_type.as_ref().unwrap())
+                     {
                         (ExpressionType::Int(c_it), ExpressionType::Int(e_it)) => c_it.width == e_it.width,
                         (a, b) => a == b,
                      };
