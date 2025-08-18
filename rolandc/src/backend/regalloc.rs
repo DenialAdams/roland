@@ -269,7 +269,7 @@ pub fn assign_variables_to_registers_and_mem(
 
          // note that live_intervals may not contain an active var, since an unused parameter is active
          // but has no lifetime
-         for expired_var in active.extract_if(0.., |v| live_intervals.get(v).is_none_or(|x| x.end < range.begin)) {
+         for expired_var in active.extract_if(.., |v| live_intervals.get(v).is_none_or(|x| x.end < range.begin)) {
             if escaping_vars.contains(&expired_var) {
                continue;
             }

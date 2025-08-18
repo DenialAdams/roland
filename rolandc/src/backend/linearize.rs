@@ -11,7 +11,7 @@ use crate::type_data::ExpressionType;
 use crate::{Program, Target};
 
 // TODO: This is pretty bulky. Ideally this would be size <= 8 for storage in the BB.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum CfgInstruction {
    Assignment(ExpressionId, ExpressionId),
    Expression(ExpressionId),
@@ -65,6 +65,7 @@ struct Ctx {
 
 pub fn simplify_cfg(cfg: &mut Cfg, ast: &ExpressionPool) {
    for node in post_order(cfg) {
+      cfg.bbs[node].instructions.retain(|x| *x != CfgInstruction::Nop);
       if cfg.bbs[node].instructions.len() != 1 {
          continue;
       }

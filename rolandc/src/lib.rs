@@ -409,12 +409,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    // but doing so would currently delete procedures that we take pointers to
    pre_backend_lowering::kill_zst_assignments(&mut ctx.program, config.target);
 
-   dead_code_elimination::remove_unused_locals(&mut ctx.program);
-
-   for body in ctx.program.procedure_bodies.values_mut() {
-      linearize::simplify_cfg(&mut body.cfg, &ctx.program.ast.expressions);
-   }
-
    if config.target != Target::Qbe {
       backend::wasm::sort_globals(&mut ctx.program, config.target);
    }
@@ -430,6 +424,12 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    };
 
    backend::regalloc::kill_self_assignments(&mut ctx.program, &regalloc_result.var_to_slot);
+
+   for body in ctx.program.procedure_bodies.values_mut() {
+      // it's unclear to me how often we should run this - definitely want to run it before the backend
+      // but conceivably could be run after any optimization pass that could change control flow or remove instructions
+      linearize::simplify_cfg(&mut body.cfg, &ctx.program.ast.expressions);
+   }
 
    if config.dump_debugging_info {
       pp::pp(

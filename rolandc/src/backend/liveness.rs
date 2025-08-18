@@ -43,6 +43,8 @@ pub fn liveness(
    cfg: &mut Cfg,
    ast: &ExpressionPool,
 ) -> IndexMap<ProgramIndex, BitBox> {
+   let mut all_liveness: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
+
    // Dataflow Analyis on the CFG
    let mut state = vec![
       LivenessState {
@@ -54,116 +56,122 @@ pub fn liveness(
       cfg.bbs.len()
    ];
 
-   // Setup
-   for (i, bb) in cfg.bbs.iter().enumerate() {
-      let s = &mut state[i];
-      for instruction in bb.instructions.iter().rev() {
-         match instruction {
-            CfgInstruction::Assignment(lhs, rhs) => {
-               gen_for_expr(*lhs, &mut s.gen_, &mut s.kill, ast, procedure_vars);
-               if let Expression::Variable(v) = ast[*lhs].expression
-                  && let Some(di) = procedure_vars.get_index_of(&v)
-               {
-                  s.gen_.set(di, false);
-                  s.kill.set(di, true);
-               }
-               gen_for_expr(*rhs, &mut s.gen_, &mut s.kill, ast, procedure_vars);
-            }
-            CfgInstruction::Expression(expr)
-            | CfgInstruction::Return(expr)
-            | CfgInstruction::ConditionalJump(expr, _, _) => {
-               gen_for_expr(*expr, &mut s.gen_, &mut s.kill, ast, procedure_vars);
-            }
-            CfgInstruction::Nop | CfgInstruction::Jump(_) => (),
-         }
-      }
-   }
-
    // we want to go backwards, which is post_order, but since we are popping we must reverse
    let mut worklist: IndexSet<usize> = post_order(cfg).into_iter().rev().collect();
-   while let Some(node_id) = worklist.pop() {
-      // Update live_out
-      {
-         let mut new_live_out = std::mem::replace(&mut state[node_id].live_out, bitbox![0; 0]);
-         new_live_out.fill(false);
-         for successor in cfg.bbs[node_id].successors() {
-            let successor_s = &state[successor];
-            new_live_out |= &successor_s.live_in;
-         }
-         state[node_id].live_out = new_live_out;
-      }
 
-      // Update live_in
-      {
-         let s = &mut state[node_id];
-         let old_live_in = std::mem::replace(&mut s.live_in, s.gen_.clone());
-
-         // s.live_in |= s.live_out & !s.kill;
-         for ((lhs, rhs), mut dst) in s
-            .live_out
-            .iter()
-            .by_vals()
-            .zip(s.kill.iter().by_vals())
-            .zip(s.live_in.iter_mut())
-         {
-            *dst |= lhs & !rhs;
-         }
-
-         if old_live_in != s.live_in {
-            worklist.extend(&cfg.bbs[node_id].predecessors);
-         }
-      }
-   }
-
-   // Construct the final results
-   let mut all_liveness: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
-   let mut current_live_variables = BitVec::new();
-   for (rpo_index, node_id) in post_order(cfg).iter().copied().rev().enumerate() {
-      let bb = &mut cfg.bbs[node_id];
-      let s = &state[node_id];
-      current_live_variables.clear();
-      current_live_variables.extend_from_bitslice(&s.live_out);
-      all_liveness.reserve(bb.instructions.len());
-      for (i, instruction) in bb.instructions.iter_mut().enumerate().rev() {
-         match instruction {
-            CfgInstruction::Assignment(lhs, rhs) => {
-               let lhs = *lhs;
-               let rhs = *rhs;
-               if let Expression::Variable(v) = ast[lhs].expression
-                  && let Some(di) = procedure_vars.get_index_of(&v)
-               {
-                  if !current_live_variables[di] {
-                     // never read. nuke the assignment. we do this as we are processing so that we avoid marking anything in the RHS as live if we don't have to
-                     // note that this is not strictly an optimization!
-                     // this is needed for correctness, because
-                     //   1) register allocation assumes that no overlapping ranges = good to merge
-                     //   2) a dead write is not considered to be part of that range
-                     //   3) if executed, that dead write could affect the merged variable
-                     if expression_could_have_side_effects(rhs, ast) {
-                        *instruction = CfgInstruction::Expression(rhs);
-                     } else {
-                        *instruction = CfgInstruction::Nop;
-                        // Continue so that we don't mark anything in the RHS as live
-                        continue;
-                     }
+   while !worklist.is_empty() {
+      // Setup
+      for i in worklist.iter() {
+         let bb = &cfg.bbs[*i];
+         let s = &mut state[*i];
+         s.gen_.fill(false);
+         s.kill.fill(false);
+         for instruction in bb.instructions.iter().rev() {
+            match instruction {
+               CfgInstruction::Assignment(lhs, rhs) => {
+                  gen_for_expr(*lhs, &mut s.gen_, &mut s.kill, ast, procedure_vars);
+                  if let Expression::Variable(v) = ast[*lhs].expression
+                     && let Some(di) = procedure_vars.get_index_of(&v)
+                  {
+                     s.gen_.set(di, false);
+                     s.kill.set(di, true);
                   }
-                  current_live_variables.set(di, false);
-               } else {
-                  update_live_variables_for_expr(lhs, &mut current_live_variables, ast, procedure_vars);
+                  gen_for_expr(*rhs, &mut s.gen_, &mut s.kill, ast, procedure_vars);
                }
-               update_live_variables_for_expr(rhs, &mut current_live_variables, ast, procedure_vars);
+               CfgInstruction::Expression(expr)
+               | CfgInstruction::Return(expr)
+               | CfgInstruction::ConditionalJump(expr, _, _) => {
+                  gen_for_expr(*expr, &mut s.gen_, &mut s.kill, ast, procedure_vars);
+               }
+               CfgInstruction::Nop | CfgInstruction::Jump(_) => (),
             }
-            CfgInstruction::Expression(expr)
-            | CfgInstruction::Return(expr)
-            | CfgInstruction::ConditionalJump(expr, _, _) => {
-               update_live_variables_for_expr(*expr, &mut current_live_variables, ast, procedure_vars);
-            }
-            _ => (),
          }
-         all_liveness.insert(
-            ProgramIndex(rpo_index, i),
-            current_live_variables.clone().into_boxed_bitslice(),
-         );
+      }
+
+      while let Some(node_id) = worklist.pop() {
+         // Update live_out
+         {
+            let mut new_live_out = std::mem::replace(&mut state[node_id].live_out, bitbox![0; 0]);
+            new_live_out.fill(false);
+            for successor in cfg.bbs[node_id].successors() {
+               let successor_s = &state[successor];
+               new_live_out |= &successor_s.live_in;
+            }
+            state[node_id].live_out = new_live_out;
+         }
+
+         // Update live_in
+         {
+            let s = &mut state[node_id];
+            let old_live_in = std::mem::replace(&mut s.live_in, s.gen_.clone());
+
+            // s.live_in |= s.live_out & !s.kill;
+            for ((lhs, rhs), mut dst) in s
+               .live_out
+               .iter()
+               .by_vals()
+               .zip(s.kill.iter().by_vals())
+               .zip(s.live_in.iter_mut())
+            {
+               *dst |= lhs & !rhs;
+            }
+
+            if old_live_in != s.live_in {
+               worklist.extend(&cfg.bbs[node_id].predecessors);
+            }
+         }
+      }
+
+      // Construct the final results
+      all_liveness.clear();
+      let mut current_live_variables = BitVec::new();
+      for (rpo_index, node_id) in post_order(cfg).iter().copied().rev().enumerate() {
+         let bb = &mut cfg.bbs[node_id];
+         let s = &state[node_id];
+         current_live_variables.clear();
+         current_live_variables.extend_from_bitslice(&s.live_out);
+         all_liveness.reserve(bb.instructions.len());
+         for (i, instruction) in bb.instructions.iter_mut().enumerate().rev() {
+            match instruction {
+               CfgInstruction::Assignment(lhs, rhs) => {
+                  let lhs = *lhs;
+                  let rhs = *rhs;
+                  if let Expression::Variable(v) = ast[lhs].expression
+                     && let Some(di) = procedure_vars.get_index_of(&v)
+                  {
+                     if !current_live_variables[di] {
+                        // never read. nuke the assignment. we do this as we are processing so that we avoid marking anything in the RHS as live if we don't have to
+                        // note that this is not strictly an optimization!
+                        // this is needed for correctness, because
+                        //   1) register allocation assumes that no overlapping ranges = good to merge
+                        //   2) a dead write is not considered to be part of that range
+                        //   3) if executed, that dead write could affect the merged variable
+                        if expression_could_have_side_effects(rhs, ast) {
+                           *instruction = CfgInstruction::Expression(rhs);
+                        } else {
+                           *instruction = CfgInstruction::Nop;
+                           // Since the RHS is now dead, the liveness results may be affected, so we push this node back onto the worklist
+                           worklist.insert(node_id);
+                        }
+                     }
+                     current_live_variables.set(di, false);
+                  } else {
+                     update_live_variables_for_expr(lhs, &mut current_live_variables, ast, procedure_vars);
+                  }
+                  update_live_variables_for_expr(rhs, &mut current_live_variables, ast, procedure_vars);
+               }
+               CfgInstruction::Expression(expr)
+               | CfgInstruction::Return(expr)
+               | CfgInstruction::ConditionalJump(expr, _, _) => {
+                  update_live_variables_for_expr(*expr, &mut current_live_variables, ast, procedure_vars);
+               }
+               _ => (),
+            }
+            all_liveness.insert(
+               ProgramIndex(rpo_index, i),
+               current_live_variables.clone().into_boxed_bitslice(),
+            );
+         }
       }
    }
 

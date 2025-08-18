@@ -2,11 +2,9 @@ use std::collections::HashSet;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::backend::linearize::{CfgInstruction, post_order};
-use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureId, Statement, StatementId, VariableId,
+   AstPool, BlockNode, Expression, ExpressionId, ProcedureId, Statement, StatementId, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
 use crate::semantic_analysis::validator::get_special_procedures;
@@ -164,127 +162,6 @@ fn mark_reachable_expr(expr: ExpressionId, ast: &AstPool, ctx: &mut DceCtx) {
       | Expression::UnitLiteral
       | Expression::EnumLiteral(_, _) => (),
       Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _, _)
-      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
-   }
-}
-
-// MARK: Unused Variables
-pub fn remove_unused_locals(program: &mut Program) {
-   let mut used_vars: HashSet<VariableId> = HashSet::new();
-   for (proc_id, proc_body) in program.procedure_bodies.iter_mut() {
-      used_vars.clear();
-      used_vars.reserve(proc_body.locals.len() + program.procedures[proc_id].definition.parameters.len());
-
-      let post_order = post_order(&proc_body.cfg);
-
-      // Mark
-      for bb_index in post_order.iter().copied().rev() {
-         for instruction in proc_body.cfg.bbs[bb_index].instructions.iter() {
-            match instruction {
-               CfgInstruction::Assignment(lhs, rhs) => {
-                  mark_used_vars_in_expr(*lhs, &mut used_vars, &program.ast.expressions, true);
-                  mark_used_vars_in_expr(*rhs, &mut used_vars, &program.ast.expressions, false);
-               }
-               CfgInstruction::Expression(expr)
-               | CfgInstruction::Return(expr)
-               | CfgInstruction::ConditionalJump(expr, _, _) => {
-                  mark_used_vars_in_expr(*expr, &mut used_vars, &program.ast.expressions, false);
-               }
-               CfgInstruction::Nop | CfgInstruction::Jump(_) => (),
-            }
-         }
-      }
-
-      // Sweep
-      // TODO SOON: now that we have nerfed this, do we derive any benefit from this transformation over the
-      // equivalent dead store elimination that we do with liveness info?
-      for bb_index in post_order.iter().copied().rev() {
-         proc_body.cfg.bbs[bb_index].instructions.retain_mut(|instr| {
-            if let CfgInstruction::Assignment(lhs, rhs) = instr
-               && let Expression::Variable(v) = program.ast.expressions[*lhs].expression
-               && !used_vars.contains(&v)
-               && proc_body.locals.contains_key(&v)
-            {
-               debug_assert!(!expression_could_have_side_effects(*lhs, &program.ast.expressions));
-               if expression_could_have_side_effects(*rhs, &program.ast.expressions) {
-                  *instr = CfgInstruction::Expression(*rhs);
-               } else {
-                  return false;
-               }
-            }
-            true
-         });
-      }
-      // extend used vars with parameters only after we killed assignments to unused ones
-      used_vars.extend(
-         program.procedures[proc_id]
-            .definition
-            .parameters
-            .iter()
-            .map(|x| x.var_id),
-      );
-      proc_body.locals.retain(|var, _| used_vars.contains(var));
-   }
-}
-
-fn mark_used_vars_in_expr(
-   in_expr: ExpressionId,
-   used_vars: &mut HashSet<VariableId>,
-   ast: &ExpressionPool,
-   is_write: bool,
-) {
-   match &ast[in_expr].expression {
-      Expression::ProcedureCall { proc_expr, args } => {
-         mark_used_vars_in_expr(*proc_expr, used_vars, ast, false);
-
-         for val in args.iter().map(|x| x.expr) {
-            mark_used_vars_in_expr(val, used_vars, ast, false);
-         }
-      }
-      Expression::FieldAccess(_, base) => {
-         mark_used_vars_in_expr(*base, used_vars, ast, is_write);
-      }
-      Expression::ArrayIndex { array, index } => {
-         if expression_could_have_side_effects(*index, ast) {
-            // conservatively, we consider any side effects in an index expression
-            // disqualifying, since the subsequent transformation doesn't preserve
-            // LHS side effects.
-            // this should only be hittable in WASM, where we don't go into TAC
-            mark_used_vars_in_expr(*array, used_vars, ast, false);
-         } else {
-            mark_used_vars_in_expr(*array, used_vars, ast, is_write);
-         }
-         mark_used_vars_in_expr(*index, used_vars, ast, false);
-      }
-      Expression::BinaryOperator { lhs, rhs, .. } => {
-         mark_used_vars_in_expr(*lhs, used_vars, ast, false);
-         mark_used_vars_in_expr(*rhs, used_vars, ast, false);
-      }
-      Expression::IfX(a, b, c) => {
-         mark_used_vars_in_expr(*a, used_vars, ast, false);
-         mark_used_vars_in_expr(*b, used_vars, ast, false);
-         mark_used_vars_in_expr(*c, used_vars, ast, false);
-      }
-      Expression::Cast { expr, .. } | Expression::UnaryOperator(_, expr) => {
-         mark_used_vars_in_expr(*expr, used_vars, ast, false);
-      }
-      Expression::Variable(v) => {
-         if !is_write {
-            used_vars.insert(*v);
-         }
-      }
-      Expression::EnumLiteral(_, _)
-      | Expression::BoundFcnLiteral(_, _)
-      | Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_)
-      | Expression::UnitLiteral
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_) => (),
-      Expression::ArrayLiteral(_)
-      | Expression::StructLiteral(_, _)
-      | Expression::UnresolvedVariable(_)
       | Expression::UnresolvedProcLiteral(_, _)
       | Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
