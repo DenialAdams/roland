@@ -47,6 +47,8 @@ fn do_expr(e: ExpressionId, ast: &mut ExpressionPool, is_lhs_context: bool) {
    let expr_location = ast[e].location;
    let mut the_expr = std::mem::replace(&mut ast[e].expression, Expression::UnitLiteral);
    let mut deref_with_rval_child = false;
+   // MUST save this before we mutate children (answer can change)
+   let expr_is_lhs = the_expr.is_lvalue_disregard_consts(ast);
    match &the_expr {
       Expression::ProcedureCall { proc_expr, args } => {
          do_expr(*proc_expr, ast, false);
@@ -113,7 +115,7 @@ fn do_expr(e: ExpressionId, ast: &mut ExpressionPool, is_lhs_context: bool) {
       }
    } else if is_lhs_context {
       ast[e].exp_type = Some(ExpressionType::Pointer(Box::new(ast[e].exp_type.take().unwrap())));
-   } else if the_expr.is_lvalue_disregard_consts(ast) {
+   } else if expr_is_lhs {
       let new_child = ast.insert(ExpressionNode {
          expression: the_expr,
          exp_type: Some(ExpressionType::Pointer(Box::new(ast[e].exp_type.clone().unwrap()))),
