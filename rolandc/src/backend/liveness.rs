@@ -15,44 +15,6 @@ struct LivenessState {
    kill: BitBox,
 }
 
-pub fn kill_dead_assignments(
-   body: &mut ProcedureBody,
-   liveness_results: &IndexMap<ProgramIndex, BitBox>,
-   ast: &ExpressionPool,
-) {
-   // note that this is not strictly an optimization!
-   // this is needed for correctness, because
-   //   1) register allocation assumes that no overlapping ranges = good to merge
-   //   2) a dead write is not considered to be part of that range
-   //   3) if executed, that dead write could affect the merged variable
-   for (rpo_pos, bb_index) in post_order(&body.cfg).iter().copied().rev().enumerate() {
-      for (bb_pos, instr) in body.cfg.bbs[bb_index].instructions.iter_mut().enumerate() {
-         let CfgInstruction::Assignment(lhs, rhs) = *instr else {
-            continue;
-         };
-         let Expression::Variable(l_var) = ast[lhs].expression else {
-            continue;
-         };
-         let Some(local_index) = body.locals.get_index_of(&l_var) else {
-            // variable not modeled by the analysis - i.e. static
-            continue;
-         };
-         // check to see if the variable is live on the following statement
-         // (the variable will necessarily not be live on the statement that assigns it)
-         // (there is always a next instruction in the block, because a block must be terminated with a jump)
-         let next_pos = ProgramIndex(rpo_pos, bb_pos + 1);
-         if liveness_results[&next_pos][local_index] {
-            continue;
-         }
-         *instr = if expression_could_have_side_effects(rhs, ast) {
-            CfgInstruction::Expression(rhs)
-         } else {
-            CfgInstruction::Nop
-         };
-      }
-   }
-}
-
 #[must_use]
 pub fn compute_live_intervals(
    body: &ProcedureBody,
@@ -78,7 +40,7 @@ pub fn compute_live_intervals(
 #[must_use]
 pub fn liveness(
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
-   cfg: &Cfg,
+   cfg: &mut Cfg,
    ast: &ExpressionPool,
 ) -> IndexMap<ProgramIndex, BitBox> {
    // Dataflow Analyis on the CFG
@@ -157,21 +119,39 @@ pub fn liveness(
    let mut all_liveness: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
    let mut current_live_variables = BitVec::new();
    for (rpo_index, node_id) in post_order(cfg).iter().copied().rev().enumerate() {
-      let bb = &cfg.bbs[node_id];
+      let bb = &mut cfg.bbs[node_id];
       let s = &state[node_id];
       current_live_variables.clear();
       current_live_variables.extend_from_bitslice(&s.live_out);
       all_liveness.reserve(bb.instructions.len());
-      for (i, instruction) in bb.instructions.iter().enumerate().rev() {
+      for (i, instruction) in bb.instructions.iter_mut().enumerate().rev() {
          match instruction {
             CfgInstruction::Assignment(lhs, rhs) => {
-               update_live_variables_for_expr(*lhs, &mut current_live_variables, ast, procedure_vars);
-               if let Expression::Variable(v) = ast[*lhs].expression
+               let lhs = *lhs;
+               let rhs = *rhs;
+               if let Expression::Variable(v) = ast[lhs].expression
                   && let Some(di) = procedure_vars.get_index_of(&v)
                {
+                  if !current_live_variables[di] {
+                     // never read. nuke the assignment. we do this as we are processing so that we avoid marking anything in the RHS as live if we don't have to
+                     // note that this is not strictly an optimization!
+                     // this is needed for correctness, because
+                     //   1) register allocation assumes that no overlapping ranges = good to merge
+                     //   2) a dead write is not considered to be part of that range
+                     //   3) if executed, that dead write could affect the merged variable
+                     if expression_could_have_side_effects(rhs, ast) {
+                        *instruction = CfgInstruction::Expression(rhs);
+                     } else {
+                        *instruction = CfgInstruction::Nop;
+                        // Continue so that we don't mark anything in the RHS as live
+                        continue;
+                     }
+                  }
                   current_live_variables.set(di, false);
+               } else {
+                  update_live_variables_for_expr(lhs, &mut current_live_variables, ast, procedure_vars);
                }
-               update_live_variables_for_expr(*rhs, &mut current_live_variables, ast, procedure_vars);
+               update_live_variables_for_expr(rhs, &mut current_live_variables, ast, procedure_vars);
             }
             CfgInstruction::Expression(expr)
             | CfgInstruction::Return(expr)
