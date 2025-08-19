@@ -195,23 +195,22 @@ fn bb_id_to_label(bb_id: usize) -> String {
 }
 
 pub fn post_order(cfg: &Cfg) -> Vec<usize> {
+   fn post_order_inner(cfg: &[BasicBlock], node: usize, visited: &mut HashSet<usize>, post_order: &mut Vec<usize>) {
+      if !visited.insert(node) {
+         return;
+      }
+
+      for succ in cfg[node].successors() {
+         post_order_inner(cfg, succ, visited, post_order);
+      }
+
+      post_order.push(node);
+   }
+
    let mut visited = HashSet::with_capacity(cfg.bbs.len());
    let mut post_order = Vec::with_capacity(cfg.bbs.len());
    post_order_inner(&cfg.bbs, cfg.start, &mut visited, &mut post_order);
    post_order
-}
-
-fn post_order_inner(cfg: &[BasicBlock], node: usize, visited: &mut HashSet<usize>, post_order: &mut Vec<usize>) {
-   let successors = cfg[node].successors();
-
-   visited.insert(node);
-   for succ in successors {
-      if !visited.contains(&succ) {
-         post_order_inner(cfg, succ, visited, post_order);
-      }
-   }
-
-   post_order.push(node);
 }
 
 #[must_use]
