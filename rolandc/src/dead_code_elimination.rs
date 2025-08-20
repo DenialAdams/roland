@@ -3,9 +3,7 @@ use std::collections::HashSet;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::interner::{Interner, StrId};
-use crate::parse::{
-   AstPool, BlockNode, Expression, ExpressionId, ProcedureId, Statement, StatementId, VariableId,
-};
+use crate::parse::{AstPool, BlockNode, Expression, ExpressionId, ProcedureId, Statement, StatementId, VariableId};
 use crate::semantic_analysis::GlobalInfo;
 use crate::semantic_analysis::validator::get_special_procedures;
 use crate::{Program, Target};
