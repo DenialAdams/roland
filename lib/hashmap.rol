@@ -20,6 +20,7 @@ struct _hm_Cell<K, V> {
     val: V,
 }
 
+// FNV-1a
 proc hash_bytes<K>(key: &K) -> usize {
     let byte_view = key transmute &u8;
     let hash: usize;
