@@ -1,0 +1,9 @@
+proc main() {
+    let x: u64 = 10;
+    let y = &x;
+    x = 999;
+    println(uint_to_string(y~));
+}
+__END__
+run:
+999
