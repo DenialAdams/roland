@@ -44,7 +44,6 @@ pub fn liveness(
    ast: &ExpressionPool,
 ) -> IndexMap<ProgramIndex, BitBox> {
    let mut address_taken = bitbox![0; procedure_vars.len()];
-   mark_escaping_vars_cfg(cfg, &mut address_taken, ast, procedure_vars);
 
    let mut all_liveness: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
 
@@ -63,6 +62,11 @@ pub fn liveness(
    let mut worklist: IndexSet<usize> = post_order(cfg).into_iter().rev().collect();
 
    while !worklist.is_empty() {
+      address_taken.fill(false);
+      // this looks at the whole program, so at first glace you may think to hoist this out of loop, as it's preventing us from being truly incremental
+      // but recomputing this after every instance of DCE does make an improvement in several examples.
+      mark_escaping_vars_cfg(cfg, &mut address_taken, ast, procedure_vars);
+
       // Setup
       for i in worklist.iter() {
          let bb = &cfg.bbs[*i];
