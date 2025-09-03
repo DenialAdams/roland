@@ -4,7 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 use super::linearize::{Cfg, CfgInstruction};
 use crate::backend::linearize::post_order;
 use crate::constant_folding::expression_could_have_side_effects;
-use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, VariableId};
+use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, UnOp, VariableId};
 use crate::type_data::ExpressionType;
 
 #[derive(Clone)]
@@ -43,6 +43,9 @@ pub fn liveness(
    cfg: &mut Cfg,
    ast: &ExpressionPool,
 ) -> IndexMap<ProgramIndex, BitBox> {
+   let mut address_taken = bitbox![0; procedure_vars.len()];
+   mark_escaping_vars_cfg(cfg, &mut address_taken, ast, procedure_vars);
+
    let mut all_liveness: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
 
    // Dataflow Analyis on the CFG
@@ -130,6 +133,7 @@ pub fn liveness(
          let s = &state[node_id];
          current_live_variables.clear();
          current_live_variables.extend_from_bitslice(&s.live_out);
+         current_live_variables |= &address_taken;
          all_liveness.reserve(bb.instructions.len());
          for (i, instruction) in bb.instructions.iter_mut().enumerate().rev() {
             match instruction {
@@ -138,6 +142,7 @@ pub fn liveness(
                   let rhs = *rhs;
                   if let Expression::Variable(v) = ast[lhs].expression
                      && let Some(di) = procedure_vars.get_index_of(&v)
+                     && !address_taken[di]
                   {
                      if !current_live_variables[di] {
                         // never read. nuke the assignment. we do this as we are processing so that we avoid marking anything in the RHS as live if we don't have to
@@ -301,4 +306,85 @@ pub struct ProgramIndex(pub usize, pub usize); // (RPO basic block position, ins
 pub struct LiveInterval {
    pub begin: ProgramIndex,
    pub end: ProgramIndex,
+}
+
+// MARK: Escape Analysis
+
+fn mark_escaping_vars_cfg(
+   cfg: &Cfg,
+   escaping_vars: &mut BitSlice,
+   ast: &ExpressionPool,
+   procedure_vars: &IndexMap<VariableId, ExpressionType>,
+) {
+   for bb in post_order(cfg) {
+      for instr in cfg.bbs[bb].instructions.iter() {
+         match instr {
+            CfgInstruction::Assignment(lhs, rhs) => {
+               if !matches!(ast[*lhs].expression, Expression::Variable(_)) {
+                  mark_escaping_vars_expr(*lhs, escaping_vars, ast, procedure_vars);
+               }
+               mark_escaping_vars_expr(*rhs, escaping_vars, ast, procedure_vars);
+            }
+            CfgInstruction::Expression(e) | CfgInstruction::ConditionalJump(e, _, _) | CfgInstruction::Return(e) => {
+               mark_escaping_vars_expr(*e, escaping_vars, ast, procedure_vars);
+            }
+            _ => (),
+         }
+      }
+   }
+}
+
+fn mark_escaping_vars_expr(
+   in_expr: ExpressionId,
+   escaping_vars: &mut BitSlice,
+   ast: &ExpressionPool,
+   procedure_vars: &IndexMap<VariableId, ExpressionType>,
+) {
+   match &ast[in_expr].expression {
+      Expression::ProcedureCall { proc_expr, args } => {
+         mark_escaping_vars_expr(*proc_expr, escaping_vars, ast, procedure_vars);
+
+         for val in args.iter().map(|x| x.expr) {
+            mark_escaping_vars_expr(val, escaping_vars, ast, procedure_vars);
+         }
+      }
+      Expression::BinaryOperator { lhs, rhs, .. } => {
+         mark_escaping_vars_expr(*lhs, escaping_vars, ast, procedure_vars);
+         mark_escaping_vars_expr(*rhs, escaping_vars, ast, procedure_vars);
+      }
+      Expression::IfX(a, b, c) => {
+         mark_escaping_vars_expr(*a, escaping_vars, ast, procedure_vars);
+         mark_escaping_vars_expr(*b, escaping_vars, ast, procedure_vars);
+         mark_escaping_vars_expr(*c, escaping_vars, ast, procedure_vars);
+      }
+      Expression::Cast { expr, .. } => {
+         mark_escaping_vars_expr(*expr, escaping_vars, ast, procedure_vars);
+      }
+      Expression::UnaryOperator(op, expr) => {
+         let is_variable_load = *op == UnOp::Dereference && matches!(ast[*expr].expression, Expression::Variable(_));
+         if !is_variable_load {
+            mark_escaping_vars_expr(*expr, escaping_vars, ast, procedure_vars);
+         }
+      }
+      Expression::Variable(v) => {
+         if let Some(di) = procedure_vars.get_index_of(v) {
+            escaping_vars.set(di, true);
+         }
+      }
+      Expression::EnumLiteral(_, _)
+      | Expression::BoundFcnLiteral(_, _)
+      | Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_)
+      | Expression::UnitLiteral
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_) => (),
+      Expression::ArrayIndex { .. }
+      | Expression::FieldAccess(_, _)
+      | Expression::ArrayLiteral(_)
+      | Expression::StructLiteral(_, _)
+      | Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _, _)
+      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+   }
 }
