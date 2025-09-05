@@ -13,6 +13,8 @@ struct LivenessState {
    live_out: BitBox,
    gen_: BitBox,
    kill: BitBox,
+   gen_address_taken: BitBox,
+   address_taken: BitBox,
 }
 
 #[must_use]
@@ -43,8 +45,6 @@ pub fn liveness(
    cfg: &mut Cfg,
    ast: &ExpressionPool,
 ) -> IndexMap<ProgramIndex, BitBox> {
-   let mut address_taken = bitbox![0; procedure_vars.len()];
-
    let mut all_liveness: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
 
    // Dataflow Analyis on the CFG
@@ -54,6 +54,8 @@ pub fn liveness(
          live_out: bitbox![0; procedure_vars.len()],
          gen_: bitbox![0; procedure_vars.len()],
          kill: bitbox![0; procedure_vars.len()],
+         gen_address_taken: bitbox![0; procedure_vars.len()],
+         address_taken: bitbox![0; procedure_vars.len()],
       };
       cfg.bbs.len()
    ];
@@ -62,39 +64,59 @@ pub fn liveness(
    let mut worklist: IndexSet<usize> = post_order(cfg).into_iter().rev().collect();
 
    while !worklist.is_empty() {
-      address_taken.fill(false);
-      // this looks at the whole program, so at first glace you may think to hoist this out of loop, as it's preventing us from being truly incremental
-      // but recomputing this after every instance of DCE does make an improvement in several examples.
-      mark_escaping_vars_cfg(cfg, &mut address_taken, ast, procedure_vars);
 
       // Setup
       for i in worklist.iter() {
          let bb = &cfg.bbs[*i];
          let s = &mut state[*i];
+         // TODO: aren't the following commented out statements necessary?
+         // what if there is a block pointing to itself and we DCE that block, shrinking the live_in. but it was already marked live and it cant be unmarked live
+         //s.live_in.fill(false);
+         //s.live_out.fill(false);
          s.gen_.fill(false);
          s.kill.fill(false);
+         s.gen_address_taken.fill(false);
+         //s.address_taken.fill(false);
          for instruction in bb.instructions.iter().rev() {
             match instruction {
                CfgInstruction::Assignment(lhs, rhs) => {
-                  gen_for_expr(*lhs, &mut s.gen_, &mut s.kill, ast, procedure_vars);
                   if let Expression::Variable(v) = ast[*lhs].expression
                      && let Some(di) = procedure_vars.get_index_of(&v)
                   {
                      s.gen_.set(di, false);
                      s.kill.set(di, true);
+                  } else {
+                     gen_for_expr(*lhs, &mut s.gen_, &mut s.kill, ast, procedure_vars);
+                     mark_address_taken_expr(*lhs, &mut s.gen_address_taken, ast, procedure_vars);
                   }
                   gen_for_expr(*rhs, &mut s.gen_, &mut s.kill, ast, procedure_vars);
+                  mark_address_taken_expr(*rhs, &mut s.gen_address_taken, ast, procedure_vars);
                }
                CfgInstruction::Expression(expr)
                | CfgInstruction::Return(expr)
                | CfgInstruction::ConditionalJump(expr, _, _) => {
                   gen_for_expr(*expr, &mut s.gen_, &mut s.kill, ast, procedure_vars);
+                  mark_address_taken_expr(*expr, &mut s.gen_address_taken, ast, procedure_vars);
                }
                CfgInstruction::Nop | CfgInstruction::Jump(_) => (),
             }
          }
       }
 
+      // get a forwards worklist, then compute address_taken for each block
+      let mut address_taken_worklist: IndexSet<usize> = worklist.iter().rev().copied().collect();
+      while let Some(block_idx) = address_taken_worklist.pop() {
+         let mut new = state[block_idx].gen_address_taken.clone();
+         for p in cfg.bbs[block_idx].predecessors.iter().copied() {
+            new |= &state[p].address_taken;
+         }
+         if new != state[block_idx].address_taken {
+            state[block_idx].address_taken = new;
+            address_taken_worklist.extend(cfg.bbs[block_idx].successors().iter().copied());
+         }
+      }
+
+      // back to the main attraction. iterative fixed point to build liveness for the CFG.
       while let Some(node_id) = worklist.pop() {
          // Update live_out
          {
@@ -129,7 +151,8 @@ pub fn liveness(
          }
       }
 
-      // Construct the final results
+      // Construct the final results (per-statement)
+      // We may perform dead code elimination, putting blocks back onto the worklist
       all_liveness.clear();
       let mut current_live_variables = BitVec::new();
       for (rpo_index, node_id) in post_order(cfg).iter().copied().rev().enumerate() {
@@ -137,7 +160,7 @@ pub fn liveness(
          let s = &state[node_id];
          current_live_variables.clear();
          current_live_variables.extend_from_bitslice(&s.live_out);
-         current_live_variables |= &address_taken;
+         current_live_variables |= &s.address_taken;
          all_liveness.reserve(bb.instructions.len());
          for (i, instruction) in bb.instructions.iter_mut().enumerate().rev() {
             match instruction {
@@ -146,7 +169,7 @@ pub fn liveness(
                   let rhs = *rhs;
                   if let Expression::Variable(v) = ast[lhs].expression
                      && let Some(di) = procedure_vars.get_index_of(&v)
-                     && !address_taken[di]
+                     && !s.address_taken[di]
                   {
                      if !current_live_variables[di] {
                         // never read. nuke the assignment. we do this as we are processing so that we avoid marking anything in the RHS as live if we don't have to
@@ -312,67 +335,41 @@ pub struct LiveInterval {
    pub end: ProgramIndex,
 }
 
-// MARK: Escape Analysis
-
-fn mark_escaping_vars_cfg(
-   cfg: &Cfg,
-   escaping_vars: &mut BitSlice,
-   ast: &ExpressionPool,
-   procedure_vars: &IndexMap<VariableId, ExpressionType>,
-) {
-   for bb in post_order(cfg) {
-      for instr in cfg.bbs[bb].instructions.iter() {
-         match instr {
-            CfgInstruction::Assignment(lhs, rhs) => {
-               if !matches!(ast[*lhs].expression, Expression::Variable(_)) {
-                  mark_escaping_vars_expr(*lhs, escaping_vars, ast, procedure_vars);
-               }
-               mark_escaping_vars_expr(*rhs, escaping_vars, ast, procedure_vars);
-            }
-            CfgInstruction::Expression(e) | CfgInstruction::ConditionalJump(e, _, _) | CfgInstruction::Return(e) => {
-               mark_escaping_vars_expr(*e, escaping_vars, ast, procedure_vars);
-            }
-            _ => (),
-         }
-      }
-   }
-}
-
-fn mark_escaping_vars_expr(
+fn mark_address_taken_expr(
    in_expr: ExpressionId,
-   escaping_vars: &mut BitSlice,
+   address_taken: &mut BitSlice,
    ast: &ExpressionPool,
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
 ) {
    match &ast[in_expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
-         mark_escaping_vars_expr(*proc_expr, escaping_vars, ast, procedure_vars);
+         mark_address_taken_expr(*proc_expr, address_taken, ast, procedure_vars);
 
          for val in args.iter().map(|x| x.expr) {
-            mark_escaping_vars_expr(val, escaping_vars, ast, procedure_vars);
+            mark_address_taken_expr(val, address_taken, ast, procedure_vars);
          }
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
-         mark_escaping_vars_expr(*lhs, escaping_vars, ast, procedure_vars);
-         mark_escaping_vars_expr(*rhs, escaping_vars, ast, procedure_vars);
+         mark_address_taken_expr(*lhs, address_taken, ast, procedure_vars);
+         mark_address_taken_expr(*rhs, address_taken, ast, procedure_vars);
       }
       Expression::IfX(a, b, c) => {
-         mark_escaping_vars_expr(*a, escaping_vars, ast, procedure_vars);
-         mark_escaping_vars_expr(*b, escaping_vars, ast, procedure_vars);
-         mark_escaping_vars_expr(*c, escaping_vars, ast, procedure_vars);
+         mark_address_taken_expr(*a, address_taken, ast, procedure_vars);
+         mark_address_taken_expr(*b, address_taken, ast, procedure_vars);
+         mark_address_taken_expr(*c, address_taken, ast, procedure_vars);
       }
       Expression::Cast { expr, .. } => {
-         mark_escaping_vars_expr(*expr, escaping_vars, ast, procedure_vars);
+         mark_address_taken_expr(*expr, address_taken, ast, procedure_vars);
       }
       Expression::UnaryOperator(op, expr) => {
          let is_variable_load = *op == UnOp::Dereference && matches!(ast[*expr].expression, Expression::Variable(_));
          if !is_variable_load {
-            mark_escaping_vars_expr(*expr, escaping_vars, ast, procedure_vars);
+            mark_address_taken_expr(*expr, address_taken, ast, procedure_vars);
          }
       }
       Expression::Variable(v) => {
          if let Some(di) = procedure_vars.get_index_of(v) {
-            escaping_vars.set(di, true);
+            address_taken.set(di, true);
          }
       }
       Expression::EnumLiteral(_, _)
