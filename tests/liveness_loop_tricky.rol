@@ -1,6 +1,6 @@
 proc main() {
     // this is a small benchmark program to show why we need to be careful with clearing stale information in liveness.
-    // see commit XXXXX
+    // see commit 8dcc997580dca0505c1e3837353211d6b0b3bc25
     let i: usize = 0;
     loop {
         let x: u8 = 10;
