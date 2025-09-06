@@ -15,6 +15,7 @@ struct LivenessState {
    kill: BitBox,
    gen_address_taken: BitBox,
    address_taken_out: BitBox,
+   address_taken_out_changed: bool,
 }
 
 #[must_use]
@@ -59,6 +60,7 @@ pub fn liveness(
          kill: bitbox![0; procedure_vars.len()],
          gen_address_taken: bitbox![0; procedure_vars.len()],
          address_taken_out: bitbox![0; procedure_vars.len()],
+         address_taken_out_changed: false,
       };
       cfg.bbs.len()
    ];
@@ -71,11 +73,14 @@ pub fn liveness(
       for i in worklist.iter() {
          let bb = &cfg.bbs[*i];
          let s = &mut state[*i];
-         // TODO: aren't the following commented out statements necessary?
-         // what if there is a block pointing to itself and we DCE that block, shrinking the live_in. but it was already marked live and it cant be unmarked live
-         //s.live_in.fill(false);
-         //s.live_out.fill(false);
-         //s.address_taken_out.fill(false);
+         // We need to reset s.address_taken_out (since we may have just eliminated the taking of an address)
+         // so that it's cleanly recomputed from gen. otherwise, a block with itself as a predecessor would
+         // never be able to lose a bit (so this only matters for loops.)
+         // because we are filling address_taken_out with false, we must conservatively mark it as changed,
+         // otherwise if went from N vars address taken => 0 vars adress taken we wouldn't know to re-propagate forward
+         // TODO: doesn't above reasoning also apply to live_out? should we be clearing that? i can't make an example.
+         s.address_taken_out_changed = s.address_taken_out.any();
+         s.address_taken_out.fill(false);
          s.gen_.fill(false);
          s.kill.fill(false);
          s.gen_address_taken.fill(false);
@@ -112,8 +117,10 @@ pub fn liveness(
          for p in cfg.bbs[block_idx].predecessors.iter().copied() {
             new |= &state[p].address_taken_out;
          }
-         if new != state[block_idx].address_taken_out {
+         state[block_idx].address_taken_out_changed |= new != state[block_idx].address_taken_out;
+         if state[block_idx].address_taken_out_changed {
             state[block_idx].address_taken_out = new;
+            state[block_idx].address_taken_out_changed = false;
             address_taken_worklist.extend(cfg.bbs[block_idx].successors().iter().copied());
          }
       }

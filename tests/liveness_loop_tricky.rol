@@ -1,0 +1,22 @@
+proc main() {
+    // this is a small benchmark program to show why we need to be careful with clearing stale information in liveness.
+    // see commit XXXXX
+    let i: usize = 0;
+    loop {
+        let x: u8 = 10;
+        let y: &u8 = &x; // dead, which means x address is never taken
+        i = i + 1;
+        println("effect");
+        if i > 2 {
+            break;
+        }
+    }
+}
+__END__
+compile:
+Local variable `y` is unused
+↳ line 7, column 13 [tests/liveness_loop_tricky.rol]
+run:
+effect
+effect
+effect
