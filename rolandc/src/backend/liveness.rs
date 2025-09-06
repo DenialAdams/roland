@@ -67,7 +67,6 @@ pub fn liveness(
    let mut worklist: IndexSet<usize> = post_order(cfg).into_iter().rev().collect();
 
    while !worklist.is_empty() {
-
       // Setup
       for i in worklist.iter() {
          let bb = &cfg.bbs[*i];
@@ -238,10 +237,7 @@ pub fn liveness(
                }
                _ => (),
             }
-            all_liveness.insert(
-               here,
-               current_live_variables.clone().into_boxed_bitslice(),
-            );
+            all_liveness.insert(here, current_live_variables.clone().into_boxed_bitslice());
          }
       }
    }

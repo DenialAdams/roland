@@ -1,13 +1,16 @@
 use std::io::Write;
 
+use bitvec::boxed::BitBox;
+use indexmap::IndexMap;
 use slotmap::SlotMap;
 
 use crate::Program;
-use crate::backend::linearize::{Cfg, CfgInstruction, post_order};
+use crate::backend::linearize::{CfgInstruction, post_order};
+use crate::backend::liveness::ProgramIndex;
 use crate::interner::Interner;
 use crate::parse::{
-   AstPool, BinOp, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, ProcedureId, ProcedureNode,
-   Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
+   AstPool, BinOp, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, ProcedureBody, ProcedureId,
+   ProcedureNode, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::StorageKind;
 use crate::type_data::ExpressionType;
@@ -19,6 +22,7 @@ struct PpCtx<'a, W: Write> {
    interner: &'a Interner,
    user_defined_types: &'a UserDefinedTypeInfo,
    output: &'a mut W,
+   current_proc_liveness: Option<&'a IndexMap<ProgramIndex, BitBox>>,
 }
 
 impl<W: Write> PpCtx<'_, W> {
@@ -38,62 +42,92 @@ pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> R
       output,
       procedures: &program.procedures,
       user_defined_types: &program.user_defined_types,
+      current_proc_liveness: None,
    };
 
    for (id, proc) in program.procedures.iter() {
-      let prefix = match proc.impl_source {
-         ProcImplSource::Builtin => "builtin ",
-         ProcImplSource::External => "extern ",
-         ProcImplSource::Native => "",
-      };
-      write!(
-         pp_ctx.output,
-         "{}proc {}",
-         prefix,
-         interner.lookup(proc.definition.name.str)
-      )?;
-      if !proc.definition.type_parameters.is_empty() {
-         write!(pp_ctx.output, "<")?;
-         for (i, g_param) in proc.definition.type_parameters.iter().enumerate() {
-            if i == proc.definition.type_parameters.len() - 1 {
-               write!(pp_ctx.output, "{}", pp_ctx.interner.lookup(g_param.str))?;
-            } else {
-               write!(pp_ctx.output, "{}, ", pp_ctx.interner.lookup(g_param.str))?;
-            }
-         }
-         write!(pp_ctx.output, ">")?;
-      }
-      write!(pp_ctx.output, "(")?;
-      for (i, parameter) in proc.definition.parameters.iter().enumerate() {
-         if parameter.named {
-            write!(pp_ctx.output, "named ")?;
-         }
-         write!(pp_ctx.output, "{}: ", interner.lookup(parameter.name))?;
-         pp_type(&parameter.p_type.e_type, &mut pp_ctx)?;
-         if i != proc.definition.parameters.len() - 1 {
-            write!(pp_ctx.output, ", ")?;
-         }
-      }
-      write!(pp_ctx.output, ") -> ")?;
-      pp_type(&proc.definition.ret_type.e_type, &mut pp_ctx)?;
-      if let Some(b) = program.procedure_bodies.get(id) {
-         writeln!(pp_ctx.output)?;
-         for local in b.locals.iter() {
-            write!(pp_ctx.output, "   %v{}: ", local.0.0)?;
-            pp_type(local.1, &mut pp_ctx)?;
-            writeln!(pp_ctx.output, ";")?;
-         }
-         if b.cfg.bbs.is_empty() {
-            pp_block(&b.block, &mut pp_ctx)?;
-         } else {
-            pp_cfg(&b.cfg, &mut pp_ctx)?;
-         }
-      } else {
-         writeln!(pp_ctx.output, ";")?;
-      }
+      pp_proc_internal(proc, program.procedure_bodies.get(id), &mut pp_ctx)?;
    }
 
    Ok(())
+}
+
+pub fn pp_proc<W: Write>(
+   ast: &AstPool,
+   procedures: &SlotMap<ProcedureId, ProcedureNode>,
+   procedure_body: Option<&ProcedureBody>,
+   user_defined_types: &UserDefinedTypeInfo,
+   proc_id: ProcedureId,
+   interner: &Interner,
+   output: &mut W,
+   liveness: &IndexMap<ProgramIndex, BitBox>,
+) -> Result<(), std::io::Error> {
+   let mut pp_ctx = PpCtx {
+      indentation_level: 0,
+      ast,
+      interner,
+      output,
+      procedures,
+      user_defined_types,
+      current_proc_liveness: Some(liveness),
+   };
+
+   pp_proc_internal(&pp_ctx.procedures[proc_id], procedure_body, &mut pp_ctx)?;
+
+   Ok(())
+}
+
+fn pp_proc_internal<W: Write>(proc: &ProcedureNode, proc_body: Option<&ProcedureBody>, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
+   let prefix = match proc.impl_source {
+      ProcImplSource::Builtin => "builtin ",
+      ProcImplSource::External => "extern ",
+      ProcImplSource::Native => "",
+   };
+   write!(
+      pp_ctx.output,
+      "{}proc {}",
+      prefix,
+      pp_ctx.interner.lookup(proc.definition.name.str)
+   )?;
+   if !proc.definition.type_parameters.is_empty() {
+      write!(pp_ctx.output, "<")?;
+      for (i, g_param) in proc.definition.type_parameters.iter().enumerate() {
+         if i == proc.definition.type_parameters.len() - 1 {
+            write!(pp_ctx.output, "{}", pp_ctx.interner.lookup(g_param.str))?;
+         } else {
+            write!(pp_ctx.output, "{}, ", pp_ctx.interner.lookup(g_param.str))?;
+         }
+      }
+      write!(pp_ctx.output, ">")?;
+   }
+   write!(pp_ctx.output, "(")?;
+   for (i, parameter) in proc.definition.parameters.iter().enumerate() {
+      if parameter.named {
+         write!(pp_ctx.output, "named ")?;
+      }
+      write!(pp_ctx.output, "{}: ", pp_ctx.interner.lookup(parameter.name))?;
+      pp_type(&parameter.p_type.e_type, pp_ctx)?;
+      if i != proc.definition.parameters.len() - 1 {
+         write!(pp_ctx.output, ", ")?;
+      }
+   }
+   write!(pp_ctx.output, ") -> ")?;
+   pp_type(&proc.definition.ret_type.e_type, pp_ctx)?;
+   if let Some(b) = proc_body {
+      writeln!(pp_ctx.output)?;
+      for local in b.locals.iter() {
+         write!(pp_ctx.output, "   %v{}: ", local.0.0)?;
+         pp_type(local.1, pp_ctx)?;
+         writeln!(pp_ctx.output, ";")?;
+      }
+      if b.cfg.bbs.is_empty() {
+         pp_block(&b.block, pp_ctx)
+      } else {
+         pp_cfg(b, pp_ctx)
+      }
+   } else {
+      writeln!(pp_ctx.output, ";")
+   }
 }
 
 fn pp_block<W: Write>(block: &BlockNode, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
@@ -222,40 +256,47 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
    Ok(())
 }
 
-fn pp_cfg<W: Write>(cfg: &Cfg, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
+fn pp_cfg<W: Write>(body: &ProcedureBody, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
    writeln!(pp_ctx.output, " {{")?;
-   for bb in post_order(cfg).iter().rev() {
+   for (i, bb) in post_order(&body.cfg).iter().rev().enumerate() {
       pp_ctx.indent()?;
       writeln!(pp_ctx.output, ".{}", *bb)?;
       pp_ctx.indentation_level += 1;
-      for instr in cfg.bbs[*bb].instructions.iter() {
+      for (j, instr) in body.cfg.bbs[*bb].instructions.iter().enumerate() {
          pp_ctx.indent()?;
          match instr {
             CfgInstruction::Assignment(lhs, rhs) => {
                pp_expr(*lhs, pp_ctx)?;
                write!(pp_ctx.output, " = ")?;
                pp_expr(*rhs, pp_ctx)?;
-               writeln!(pp_ctx.output, ";")?;
             }
             CfgInstruction::ConditionalJump(e, pass, fail) => {
                write!(pp_ctx.output, "jnz ")?;
                pp_expr(*e, pp_ctx)?;
-               writeln!(pp_ctx.output, " : {}, {}", pass, fail)?;
+               write!(pp_ctx.output, " : {}, {}", pass, fail)?;
             }
             CfgInstruction::Jump(dst) => {
-               writeln!(pp_ctx.output, "jmp {}", dst)?;
+               write!(pp_ctx.output, "jmp {}", dst)?;
             }
             CfgInstruction::Return(e) => {
                write!(pp_ctx.output, "ret ")?;
                pp_expr(*e, pp_ctx)?;
-               writeln!(pp_ctx.output)?;
             }
             CfgInstruction::Expression(e) => {
                pp_expr(*e, pp_ctx)?;
-               writeln!(pp_ctx.output)?;
             }
-            CfgInstruction::Nop => writeln!(pp_ctx.output, "nop")?,
+            CfgInstruction::Nop => write!(pp_ctx.output, "nop")?,
          }
+         if let Some(bits) = pp_ctx.current_proc_liveness.and_then(|x| x.get(&ProgramIndex(i, j))) {
+            write!(pp_ctx.output, " | live{{")?;
+            for bit in bits.iter_ones() {
+               let corresponding_var = *body.locals.get_index(bit).unwrap().0;
+               pp_var(corresponding_var, pp_ctx)?;
+               write!(pp_ctx.output, ", ")?;
+            }
+            write!(pp_ctx.output, "}}")?;
+         }
+         writeln!(pp_ctx.output)?;
       }
       pp_ctx.indentation_level -= 1;
    }
@@ -299,7 +340,7 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          write!(pp_ctx.output, "{}", val)?;
       }
       Expression::StringLiteral(val) => {
-         write!(pp_ctx.output, "\"{}\"", pp_ctx.interner.lookup(*val))?;
+         write!(pp_ctx.output, "\"{}\"", pp_ctx.interner.lookup(*val).escape_default())?;
       }
       Expression::IntLiteral { val, .. } => {
          write!(pp_ctx.output, "{}", val)?;

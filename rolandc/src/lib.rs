@@ -414,19 +414,29 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       backend::wasm::sort_globals(&mut ctx.program, config.target);
    }
 
+   let mut pp_with_liveness_file = if config.dump_debugging_info {
+      Some(std::fs::File::create("pp_liveness.rol").unwrap())
+   } else {
+      None
+   };
+
    let regalloc_result = {
       backend::regalloc::hoist_non_temp_var_uses(&mut ctx.program, config.target);
       let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
-         if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp.rol").unwrap(),
-      )
-      .unwrap();
-   }
       for (id, body) in ctx.program.procedure_bodies.iter_mut() {
          let liveness = backend::liveness::liveness(&body.locals, &mut body.cfg, &ctx.program.ast.expressions);
+         if let Some(pp_file) = pp_with_liveness_file.as_mut() {
+            pp::pp_proc(
+               &ctx.program.ast,
+               &ctx.program.procedures,
+               Some(body),
+               &ctx.program.user_defined_types,
+               id,
+               &ctx.interner,
+               pp_file,
+               &liveness,
+            ).unwrap();
+         }
          program_liveness.insert(id, compute_live_intervals(body, &liveness));
       }
       backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config, &program_liveness)
@@ -444,7 +454,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       pp::pp(
          &ctx.program,
          &ctx.interner,
-         &mut std::fs::File::create("pp_after.rol").unwrap(),
+         &mut std::fs::File::create("pp.rol").unwrap(),
       )
       .unwrap();
    }
