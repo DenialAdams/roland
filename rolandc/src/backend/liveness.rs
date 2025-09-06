@@ -14,7 +14,7 @@ struct LivenessState {
    gen_: BitBox,
    kill: BitBox,
    gen_address_taken: BitBox,
-   address_taken: BitBox,
+   address_taken_out: BitBox,
 }
 
 #[must_use]
@@ -46,6 +46,9 @@ pub fn liveness(
    ast: &ExpressionPool,
 ) -> IndexMap<ProgramIndex, BitBox> {
    let mut all_liveness: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
+   let mut all_address_taken: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
+   let mut current_live_variables = BitVec::new();
+   let mut current_address_taken = bitvec![0; procedure_vars.len()];
 
    // Dataflow Analyis on the CFG
    let mut state = vec![
@@ -55,7 +58,7 @@ pub fn liveness(
          gen_: bitbox![0; procedure_vars.len()],
          kill: bitbox![0; procedure_vars.len()],
          gen_address_taken: bitbox![0; procedure_vars.len()],
-         address_taken: bitbox![0; procedure_vars.len()],
+         address_taken_out: bitbox![0; procedure_vars.len()],
       };
       cfg.bbs.len()
    ];
@@ -73,10 +76,10 @@ pub fn liveness(
          // what if there is a block pointing to itself and we DCE that block, shrinking the live_in. but it was already marked live and it cant be unmarked live
          //s.live_in.fill(false);
          //s.live_out.fill(false);
+         //s.address_taken_out.fill(false);
          s.gen_.fill(false);
          s.kill.fill(false);
          s.gen_address_taken.fill(false);
-         //s.address_taken.fill(false);
          for instruction in bb.instructions.iter().rev() {
             match instruction {
                CfgInstruction::Assignment(lhs, rhs) => {
@@ -108,10 +111,10 @@ pub fn liveness(
       while let Some(block_idx) = address_taken_worklist.pop() {
          let mut new = state[block_idx].gen_address_taken.clone();
          for p in cfg.bbs[block_idx].predecessors.iter().copied() {
-            new |= &state[p].address_taken;
+            new |= &state[p].address_taken_out;
          }
-         if new != state[block_idx].address_taken {
-            state[block_idx].address_taken = new;
+         if new != state[block_idx].address_taken_out {
+            state[block_idx].address_taken_out = new;
             address_taken_worklist.extend(cfg.bbs[block_idx].successors().iter().copied());
          }
       }
@@ -154,22 +157,58 @@ pub fn liveness(
       // Construct the final results (per-statement)
       // We may perform dead code elimination, putting blocks back onto the worklist
       all_liveness.clear();
-      let mut current_live_variables = BitVec::new();
+      all_address_taken.clear();
       for (rpo_index, node_id) in post_order(cfg).iter().copied().rev().enumerate() {
-         let bb = &mut cfg.bbs[node_id];
          let s = &state[node_id];
+
          current_live_variables.clear();
          current_live_variables.extend_from_bitslice(&s.live_out);
-         current_live_variables |= &s.address_taken;
+
+         current_address_taken.fill(false);
+         for p in cfg.bbs[node_id].predecessors.iter().copied() {
+            current_address_taken |= &state[p].address_taken_out;
+         }
+
+         let bb = &mut cfg.bbs[node_id];
          all_liveness.reserve(bb.instructions.len());
+         all_address_taken.reserve(bb.instructions.len());
+
+         // Set address taken for all points in this block
+         for (i, instruction) in bb.instructions.iter().enumerate() {
+            match instruction {
+               CfgInstruction::Assignment(lhs, rhs) => {
+                  if let Expression::Variable(v) = ast[*lhs].expression
+                     && let Some(_) = procedure_vars.get_index_of(&v)
+                  {
+                     // nothing
+                  } else {
+                     mark_address_taken_expr(*lhs, &mut current_address_taken, ast, procedure_vars);
+                  }
+                  mark_address_taken_expr(*rhs, &mut current_address_taken, ast, procedure_vars);
+               }
+               CfgInstruction::Expression(expr)
+               | CfgInstruction::Return(expr)
+               | CfgInstruction::ConditionalJump(expr, _, _) => {
+                  mark_address_taken_expr(*expr, &mut current_address_taken, ast, procedure_vars);
+               }
+               _ => (),
+            }
+            all_address_taken.insert(
+               ProgramIndex(rpo_index, i),
+               current_address_taken.clone().into_boxed_bitslice(),
+            );
+         }
+
+         // Set liveness for all points in this block
          for (i, instruction) in bb.instructions.iter_mut().enumerate().rev() {
+            let here = ProgramIndex(rpo_index, i);
+            current_live_variables |= &all_address_taken[&here];
             match instruction {
                CfgInstruction::Assignment(lhs, rhs) => {
                   let lhs = *lhs;
                   let rhs = *rhs;
                   if let Expression::Variable(v) = ast[lhs].expression
                      && let Some(di) = procedure_vars.get_index_of(&v)
-                     && !s.address_taken[di]
                   {
                      if !current_live_variables[di] {
                         // never read. nuke the assignment. we do this as we are processing so that we avoid marking anything in the RHS as live if we don't have to
@@ -200,7 +239,7 @@ pub fn liveness(
                _ => (),
             }
             all_liveness.insert(
-               ProgramIndex(rpo_index, i),
+               here,
                current_live_variables.clone().into_boxed_bitslice(),
             );
          }
