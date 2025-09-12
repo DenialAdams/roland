@@ -435,7 +435,8 @@ pub fn compile<'a, FR: FileResolver<'a>>(
                &ctx.interner,
                pp_file,
                &liveness,
-            ).unwrap();
+            )
+            .unwrap();
          }
          program_liveness.insert(id, compute_live_intervals(body, &liveness));
       }

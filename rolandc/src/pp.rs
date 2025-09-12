@@ -77,7 +77,11 @@ pub fn pp_proc<W: Write>(
    Ok(())
 }
 
-fn pp_proc_internal<W: Write>(proc: &ProcedureNode, proc_body: Option<&ProcedureBody>, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
+fn pp_proc_internal<W: Write>(
+   proc: &ProcedureNode,
+   proc_body: Option<&ProcedureBody>,
+   pp_ctx: &mut PpCtx<W>,
+) -> Result<(), std::io::Error> {
    let prefix = match proc.impl_source {
       ProcImplSource::Builtin => "builtin ",
       ProcImplSource::External => "extern ",

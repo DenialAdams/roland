@@ -97,7 +97,9 @@ pub fn liveness(
                      mark_address_taken_expr(*lhs, &mut s.gen_address_taken, ast, procedure_vars);
                   }
                   gen_for_expr(*rhs, &mut s.gen_, &mut s.kill, ast, procedure_vars);
-                  mark_address_taken_expr(*rhs, &mut s.gen_address_taken, ast, procedure_vars);
+                  if let Some(di) = mark_address_taken_expr(*rhs, &mut s.gen_address_taken, ast, procedure_vars) {
+                     s.gen_address_taken.set(di, true);
+                  }
                }
                CfgInstruction::Expression(expr)
                | CfgInstruction::Return(expr)
@@ -190,7 +192,9 @@ pub fn liveness(
                   } else {
                      mark_address_taken_expr(*lhs, &mut current_address_taken, ast, procedure_vars);
                   }
-                  mark_address_taken_expr(*rhs, &mut current_address_taken, ast, procedure_vars);
+                  if let Some(di) = mark_address_taken_expr(*rhs, &mut current_address_taken, ast, procedure_vars) {
+                     current_address_taken.set(di, true);
+                  }
                }
                CfgInstruction::Expression(expr)
                | CfgInstruction::Return(expr)
@@ -382,45 +386,58 @@ fn mark_address_taken_expr(
    address_taken: &mut BitSlice,
    ast: &ExpressionPool,
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
-) {
+) -> Option<usize> {
    match &ast[in_expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
          mark_address_taken_expr(*proc_expr, address_taken, ast, procedure_vars);
 
          for val in args.iter().map(|x| x.expr) {
-            mark_address_taken_expr(val, address_taken, ast, procedure_vars);
+            if let Some(di) = mark_address_taken_expr(val, address_taken, ast, procedure_vars) {
+               // The caller could do anything with the address, so give up
+               address_taken.set(di, true);
+            }
          }
+
+         None
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
-         mark_address_taken_expr(*lhs, address_taken, ast, procedure_vars);
-         mark_address_taken_expr(*rhs, address_taken, ast, procedure_vars);
+         let a = mark_address_taken_expr(*lhs, address_taken, ast, procedure_vars);
+         let b = mark_address_taken_expr(*rhs, address_taken, ast, procedure_vars);
+
+         if let Some(di_a) = a && let Some(di_b) = b {
+            // give up
+            address_taken.set(di_a, true);
+            address_taken.set(di_b, true);
+            None
+         } else {
+            a.or(b)
+         }
       }
       Expression::IfX(a, b, c) => {
-         mark_address_taken_expr(*a, address_taken, ast, procedure_vars);
-         mark_address_taken_expr(*b, address_taken, ast, procedure_vars);
-         mark_address_taken_expr(*c, address_taken, ast, procedure_vars);
+         let ea = mark_address_taken_expr(*a, address_taken, ast, procedure_vars);
+         let eb = mark_address_taken_expr(*b, address_taken, ast, procedure_vars);
+         let ec = mark_address_taken_expr(*c, address_taken, ast, procedure_vars);
+
+         if usize::from(ea.is_some()) + usize::from(eb.is_some()) + usize::from(ec.is_some()) > 1 {
+            return None;
+         }
+
+         ea.or(eb).or(ec)
       }
       Expression::Cast { expr, .. } => {
-         mark_address_taken_expr(*expr, address_taken, ast, procedure_vars);
+         mark_address_taken_expr(*expr, address_taken, ast, procedure_vars)
       }
       Expression::UnaryOperator(op, expr) => {
-         let is_variable_load = *op == UnOp::Dereference && matches!(ast[*expr].expression, Expression::Variable(_));
-         if !is_variable_load {
-            mark_address_taken_expr(*expr, address_taken, ast, procedure_vars);
-         }
+         mark_address_taken_expr(*expr, address_taken, ast, procedure_vars).filter(|_| *op != UnOp::Dereference)
       }
-      Expression::Variable(v) => {
-         if let Some(di) = procedure_vars.get_index_of(v) {
-            address_taken.set(di, true);
-         }
-      }
+      Expression::Variable(v) => procedure_vars.get_index_of(v),
       Expression::EnumLiteral(_, _)
       | Expression::BoundFcnLiteral(_, _)
       | Expression::BoolLiteral(_)
       | Expression::StringLiteral(_)
       | Expression::UnitLiteral
       | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_) => (),
+      | Expression::FloatLiteral(_) => None,
       Expression::ArrayIndex { .. }
       | Expression::FieldAccess(_, _)
       | Expression::ArrayLiteral(_)
