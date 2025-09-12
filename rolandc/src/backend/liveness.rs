@@ -164,8 +164,6 @@ pub fn liveness(
 
       // Construct the final results (per-statement)
       // We may perform dead code elimination, putting blocks back onto the worklist
-      all_liveness.clear();
-      all_address_taken.clear();
       for (rpo_index, node_id) in post_order(cfg).iter().copied().rev().enumerate() {
          let s = &state[node_id];
 
