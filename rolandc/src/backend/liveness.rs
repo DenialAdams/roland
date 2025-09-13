@@ -13,9 +13,9 @@ struct LivenessState {
    live_out: BitBox,
    gen_: BitBox,
    kill: BitBox,
-   gen_address_taken: BitBox,
-   address_taken_out: BitBox,
-   address_taken_out_changed: bool,
+   gen_address_escaped: BitBox,
+   address_escaped_out: BitBox,
+   address_escaped_out_changed: bool,
 }
 
 #[must_use]
@@ -47,9 +47,9 @@ pub fn liveness(
    ast: &ExpressionPool,
 ) -> IndexMap<ProgramIndex, BitBox> {
    let mut all_liveness: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
-   let mut all_address_taken: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
+   let mut all_address_escaped: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
    let mut current_live_variables = BitVec::new();
-   let mut current_address_taken = bitvec![0; procedure_vars.len()];
+   let mut current_address_escaped = bitvec![0; procedure_vars.len()];
 
    // Dataflow Analyis on the CFG
    let mut state = vec![
@@ -58,9 +58,9 @@ pub fn liveness(
          live_out: bitbox![0; procedure_vars.len()],
          gen_: bitbox![0; procedure_vars.len()],
          kill: bitbox![0; procedure_vars.len()],
-         gen_address_taken: bitbox![0; procedure_vars.len()],
-         address_taken_out: bitbox![0; procedure_vars.len()],
-         address_taken_out_changed: false,
+         gen_address_escaped: bitbox![0; procedure_vars.len()],
+         address_escaped_out: bitbox![0; procedure_vars.len()],
+         address_escaped_out_changed: false,
       };
       cfg.bbs.len()
    ];
@@ -73,17 +73,17 @@ pub fn liveness(
       for i in worklist.iter() {
          let bb = &cfg.bbs[*i];
          let s = &mut state[*i];
-         // We need to reset s.address_taken_out (since we may have just eliminated the taking of an address)
+         // We need to reset s.address_escaped_out (since we may have just eliminated the escaping of an address)
          // so that it's cleanly recomputed from gen. otherwise, a block with itself as a predecessor would
          // never be able to lose a bit (so this only matters for loops.)
-         // because we are filling address_taken_out with false, we must conservatively mark it as changed,
+         // because we are filling address_escaped_out with false, we must conservatively mark it as changed,
          // otherwise if went from N vars address taken => 0 vars adress taken we wouldn't know to re-propagate forward
          // TODO: doesn't above reasoning also apply to live_out? should we be clearing that? i can't make an example.
-         s.address_taken_out_changed = s.address_taken_out.any();
-         s.address_taken_out.fill(false);
+         s.address_escaped_out_changed = s.address_escaped_out.any();
+         s.address_escaped_out.fill(false);
          s.gen_.fill(false);
          s.kill.fill(false);
-         s.gen_address_taken.fill(false);
+         s.gen_address_escaped.fill(false);
          for instruction in bb.instructions.iter().rev() {
             match instruction {
                CfgInstruction::Assignment(lhs, rhs) => {
@@ -94,36 +94,36 @@ pub fn liveness(
                      s.kill.set(di, true);
                   } else {
                      gen_for_expr(*lhs, &mut s.gen_, &mut s.kill, ast, procedure_vars);
-                     mark_address_taken_expr(*lhs, &mut s.gen_address_taken, ast, procedure_vars);
+                     mark_address_escaped_expr(*lhs, &mut s.gen_address_escaped, ast, procedure_vars);
                   }
                   gen_for_expr(*rhs, &mut s.gen_, &mut s.kill, ast, procedure_vars);
-                  if let Some(di) = mark_address_taken_expr(*rhs, &mut s.gen_address_taken, ast, procedure_vars) {
-                     s.gen_address_taken.set(di, true);
+                  if let Some(di) = mark_address_escaped_expr(*rhs, &mut s.gen_address_escaped, ast, procedure_vars) {
+                     s.gen_address_escaped.set(di, true);
                   }
                }
                CfgInstruction::Expression(expr)
                | CfgInstruction::Return(expr)
                | CfgInstruction::ConditionalJump(expr, _, _) => {
                   gen_for_expr(*expr, &mut s.gen_, &mut s.kill, ast, procedure_vars);
-                  mark_address_taken_expr(*expr, &mut s.gen_address_taken, ast, procedure_vars);
+                  mark_address_escaped_expr(*expr, &mut s.gen_address_escaped, ast, procedure_vars);
                }
                CfgInstruction::Nop | CfgInstruction::Jump(_) => (),
             }
          }
       }
 
-      // get a forwards worklist, then compute address_taken for each block
-      let mut address_taken_worklist: IndexSet<usize> = worklist.iter().rev().copied().collect();
-      while let Some(block_idx) = address_taken_worklist.pop() {
-         let mut new = state[block_idx].gen_address_taken.clone();
+      // get a forwards worklist, then compute address_escaped for each block
+      let mut address_escaped_worklist: IndexSet<usize> = worklist.iter().rev().copied().collect();
+      while let Some(block_idx) = address_escaped_worklist.pop() {
+         let mut new = state[block_idx].gen_address_escaped.clone();
          for p in cfg.bbs[block_idx].predecessors.iter().copied() {
-            new |= &state[p].address_taken_out;
+            new |= &state[p].address_escaped_out;
          }
-         state[block_idx].address_taken_out_changed |= new != state[block_idx].address_taken_out;
-         if state[block_idx].address_taken_out_changed {
-            state[block_idx].address_taken_out = new;
-            state[block_idx].address_taken_out_changed = false;
-            address_taken_worklist.extend(cfg.bbs[block_idx].successors().iter().copied());
+         state[block_idx].address_escaped_out_changed |= new != state[block_idx].address_escaped_out;
+         if state[block_idx].address_escaped_out_changed {
+            state[block_idx].address_escaped_out = new;
+            state[block_idx].address_escaped_out_changed = false;
+            address_escaped_worklist.extend(cfg.bbs[block_idx].successors().iter().copied());
          }
       }
 
@@ -170,14 +170,14 @@ pub fn liveness(
          current_live_variables.clear();
          current_live_variables.extend_from_bitslice(&s.live_out);
 
-         current_address_taken.fill(false);
+         current_address_escaped.fill(false);
          for p in cfg.bbs[node_id].predecessors.iter().copied() {
-            current_address_taken |= &state[p].address_taken_out;
+            current_address_escaped |= &state[p].address_escaped_out;
          }
 
          let bb = &mut cfg.bbs[node_id];
          all_liveness.reserve(bb.instructions.len());
-         all_address_taken.reserve(bb.instructions.len());
+         all_address_escaped.reserve(bb.instructions.len());
 
          // Set address taken for all points in this block
          for (i, instruction) in bb.instructions.iter().enumerate() {
@@ -188,29 +188,29 @@ pub fn liveness(
                   {
                      // nothing
                   } else {
-                     mark_address_taken_expr(*lhs, &mut current_address_taken, ast, procedure_vars);
+                     mark_address_escaped_expr(*lhs, &mut current_address_escaped, ast, procedure_vars);
                   }
-                  if let Some(di) = mark_address_taken_expr(*rhs, &mut current_address_taken, ast, procedure_vars) {
-                     current_address_taken.set(di, true);
+                  if let Some(di) = mark_address_escaped_expr(*rhs, &mut current_address_escaped, ast, procedure_vars) {
+                     current_address_escaped.set(di, true);
                   }
                }
                CfgInstruction::Expression(expr)
                | CfgInstruction::Return(expr)
                | CfgInstruction::ConditionalJump(expr, _, _) => {
-                  mark_address_taken_expr(*expr, &mut current_address_taken, ast, procedure_vars);
+                  mark_address_escaped_expr(*expr, &mut current_address_escaped, ast, procedure_vars);
                }
                _ => (),
             }
-            all_address_taken.insert(
+            all_address_escaped.insert(
                ProgramIndex(rpo_index, i),
-               current_address_taken.clone().into_boxed_bitslice(),
+               current_address_escaped.clone().into_boxed_bitslice(),
             );
          }
 
          // Set liveness for all points in this block
          for (i, instruction) in bb.instructions.iter_mut().enumerate().rev() {
             let here = ProgramIndex(rpo_index, i);
-            current_live_variables |= &all_address_taken[&here];
+            current_live_variables |= &all_address_escaped[&here];
             match instruction {
                CfgInstruction::Assignment(lhs, rhs) => {
                   let lhs = *lhs;
@@ -379,42 +379,42 @@ pub struct LiveInterval {
    pub end: ProgramIndex,
 }
 
-fn mark_address_taken_expr(
+fn mark_address_escaped_expr(
    in_expr: ExpressionId,
-   address_taken: &mut BitSlice,
+   address_escaped: &mut BitSlice,
    ast: &ExpressionPool,
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
 ) -> Option<usize> {
    match &ast[in_expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
-         mark_address_taken_expr(*proc_expr, address_taken, ast, procedure_vars);
+         mark_address_escaped_expr(*proc_expr, address_escaped, ast, procedure_vars);
 
          for val in args.iter().map(|x| x.expr) {
-            if let Some(di) = mark_address_taken_expr(val, address_taken, ast, procedure_vars) {
+            if let Some(di) = mark_address_escaped_expr(val, address_escaped, ast, procedure_vars) {
                // The caller could do anything with the address, so give up
-               address_taken.set(di, true);
+               address_escaped.set(di, true);
             }
          }
 
          None
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
-         let a = mark_address_taken_expr(*lhs, address_taken, ast, procedure_vars);
-         let b = mark_address_taken_expr(*rhs, address_taken, ast, procedure_vars);
+         let a = mark_address_escaped_expr(*lhs, address_escaped, ast, procedure_vars);
+         let b = mark_address_escaped_expr(*rhs, address_escaped, ast, procedure_vars);
 
          if let Some(di_a) = a && let Some(di_b) = b {
             // give up
-            address_taken.set(di_a, true);
-            address_taken.set(di_b, true);
+            address_escaped.set(di_a, true);
+            address_escaped.set(di_b, true);
             None
          } else {
             a.or(b)
          }
       }
       Expression::IfX(a, b, c) => {
-         let ea = mark_address_taken_expr(*a, address_taken, ast, procedure_vars);
-         let eb = mark_address_taken_expr(*b, address_taken, ast, procedure_vars);
-         let ec = mark_address_taken_expr(*c, address_taken, ast, procedure_vars);
+         let ea = mark_address_escaped_expr(*a, address_escaped, ast, procedure_vars);
+         let eb = mark_address_escaped_expr(*b, address_escaped, ast, procedure_vars);
+         let ec = mark_address_escaped_expr(*c, address_escaped, ast, procedure_vars);
 
          if usize::from(ea.is_some()) + usize::from(eb.is_some()) + usize::from(ec.is_some()) > 1 {
             return None;
@@ -423,10 +423,10 @@ fn mark_address_taken_expr(
          ea.or(eb).or(ec)
       }
       Expression::Cast { expr, .. } => {
-         mark_address_taken_expr(*expr, address_taken, ast, procedure_vars)
+         mark_address_escaped_expr(*expr, address_escaped, ast, procedure_vars)
       }
       Expression::UnaryOperator(op, expr) => {
-         mark_address_taken_expr(*expr, address_taken, ast, procedure_vars).filter(|_| *op != UnOp::Dereference)
+         mark_address_escaped_expr(*expr, address_escaped, ast, procedure_vars).filter(|_| *op != UnOp::Dereference)
       }
       Expression::Variable(v) => procedure_vars.get_index_of(v),
       Expression::EnumLiteral(_, _)
