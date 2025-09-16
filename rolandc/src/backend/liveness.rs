@@ -417,6 +417,15 @@ fn mark_address_escaped_expr(
          let ec = mark_address_escaped_expr(*c, address_escaped, ast, procedure_vars);
 
          if usize::from(ea.is_some()) + usize::from(eb.is_some()) + usize::from(ec.is_some()) > 1 {
+            if let Some(di) = ea {
+               mark_escaped(di);
+            }
+            if let Some(di) = eb {
+               mark_escaped(di);
+            }
+            if let Some(di) = ec {
+               mark_escaped(di);
+            }
             return None;
          }
 
