@@ -895,7 +895,6 @@ pub fn lex_for_tokens(
             },
             token: resulting_token,
          });
-         cur_position.col += str_buf.clear();
          Ok(tokens)
       }
       // Same for numbers
@@ -910,7 +909,6 @@ pub fn lex_for_tokens(
             },
             is_float,
          )?);
-         cur_position.col += str_buf.clear();
          Ok(tokens)
       }
       LexMode::StringLiteral | LexMode::StringLiteralEscape => {
