@@ -418,13 +418,13 @@ fn mark_address_escaped_expr(
 
          if usize::from(ea.is_some()) + usize::from(eb.is_some()) + usize::from(ec.is_some()) > 1 {
             if let Some(di) = ea {
-               mark_escaped(di);
+               address_escaped.set(di, true);
             }
             if let Some(di) = eb {
-               mark_escaped(di);
+               address_escaped.set(di, true);
             }
             if let Some(di) = ec {
-               mark_escaped(di);
+               address_escaped.set(di, true);
             }
             return None;
          }
