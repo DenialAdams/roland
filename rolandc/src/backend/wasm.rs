@@ -22,6 +22,12 @@ use crate::type_data::{
 };
 use crate::{CompilationConfig, Target};
 
+const NULL_MEM_ARG: MemArg = MemArg {
+   offset: 0,
+   align: 0,
+   memory_index: 0,
+};
+
 impl From<RegisterType> for ValType {
    fn from(val: RegisterType) -> Self {
       match val {
@@ -1748,16 +1754,16 @@ fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContex
       match type_to_wasm_type_basic(val_type) {
          ValType::I64 => generation_context
             .active_fcn
-            .instruction(&Instruction::I64Load(null_mem_arg())),
+            .instruction(&Instruction::I64Load(NULL_MEM_ARG)),
          ValType::I32 => generation_context
             .active_fcn
-            .instruction(&Instruction::I32Load(null_mem_arg())),
+            .instruction(&Instruction::I32Load(NULL_MEM_ARG)),
          ValType::F64 => generation_context
             .active_fcn
-            .instruction(&Instruction::F64Load(null_mem_arg())),
+            .instruction(&Instruction::F64Load(NULL_MEM_ARG)),
          ValType::F32 => generation_context
             .active_fcn
-            .instruction(&Instruction::F32Load(null_mem_arg())),
+            .instruction(&Instruction::F32Load(NULL_MEM_ARG)),
          _ => unreachable!(),
       };
    } else {
@@ -1765,21 +1771,21 @@ fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContex
          ExpressionType::Int(x) => match (x.width, x.signed) {
             (IntWidth::Two, true) => generation_context
                .active_fcn
-               .instruction(&Instruction::I32Load16S(null_mem_arg())),
+               .instruction(&Instruction::I32Load16S(NULL_MEM_ARG)),
             (IntWidth::Two, false) => generation_context
                .active_fcn
-               .instruction(&Instruction::I32Load16U(null_mem_arg())),
+               .instruction(&Instruction::I32Load16U(NULL_MEM_ARG)),
             (IntWidth::One, true) => generation_context
                .active_fcn
-               .instruction(&Instruction::I32Load8S(null_mem_arg())),
+               .instruction(&Instruction::I32Load8S(NULL_MEM_ARG)),
             (IntWidth::One, false) => generation_context
                .active_fcn
-               .instruction(&Instruction::I32Load8U(null_mem_arg())),
+               .instruction(&Instruction::I32Load8U(NULL_MEM_ARG)),
             _ => unreachable!(),
          },
          ExpressionType::Bool => generation_context
             .active_fcn
-            .instruction(&Instruction::I32Load8U(null_mem_arg())),
+            .instruction(&Instruction::I32Load8U(NULL_MEM_ARG)),
          _ => unreachable!(),
       };
    }
@@ -1821,16 +1827,16 @@ fn store_mem(val_type: &ExpressionType, generation_context: &mut GenerationConte
       match type_to_wasm_type_basic(val_type) {
          ValType::I64 => generation_context
             .active_fcn
-            .instruction(&Instruction::I64Store(null_mem_arg())),
+            .instruction(&Instruction::I64Store(NULL_MEM_ARG)),
          ValType::I32 => generation_context
             .active_fcn
-            .instruction(&Instruction::I32Store(null_mem_arg())),
+            .instruction(&Instruction::I32Store(NULL_MEM_ARG)),
          ValType::F64 => generation_context
             .active_fcn
-            .instruction(&Instruction::F64Store(null_mem_arg())),
+            .instruction(&Instruction::F64Store(NULL_MEM_ARG)),
          ValType::F32 => generation_context
             .active_fcn
-            .instruction(&Instruction::F32Store(null_mem_arg())),
+            .instruction(&Instruction::F32Store(NULL_MEM_ARG)),
          _ => unreachable!(),
       };
    } else {
@@ -1838,15 +1844,15 @@ fn store_mem(val_type: &ExpressionType, generation_context: &mut GenerationConte
          ExpressionType::Int(x) => match x.width {
             IntWidth::Two => generation_context
                .active_fcn
-               .instruction(&Instruction::I32Store16(null_mem_arg())),
+               .instruction(&Instruction::I32Store16(NULL_MEM_ARG)),
             IntWidth::One => generation_context
                .active_fcn
-               .instruction(&Instruction::I32Store8(null_mem_arg())),
+               .instruction(&Instruction::I32Store8(NULL_MEM_ARG)),
             _ => unreachable!(),
          },
          ExpressionType::Bool => generation_context
             .active_fcn
-            .instruction(&Instruction::I32Store8(null_mem_arg())),
+            .instruction(&Instruction::I32Store8(NULL_MEM_ARG)),
          _ => unreachable!(),
       };
    }
@@ -1880,14 +1886,6 @@ fn emit_procedure_pointer_index(proc_id: ProcedureId, generation_context: &mut G
    generation_context
       .active_fcn
       .instruction(&Instruction::I32Const(my_index as u32 as i32));
-}
-
-fn null_mem_arg() -> MemArg {
-   MemArg {
-      offset: 0,
-      align: 0,
-      memory_index: 0,
-   }
 }
 
 fn name_to_procedure_index(
