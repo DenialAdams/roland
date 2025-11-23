@@ -402,7 +402,9 @@ fn mark_address_escaped_expr(
          let a = mark_address_escaped_expr(*lhs, address_escaped, ast, procedure_vars);
          let b = mark_address_escaped_expr(*rhs, address_escaped, ast, procedure_vars);
 
-         if let Some(di_a) = a && let Some(di_b) = b {
+         if let Some(di_a) = a
+            && let Some(di_b) = b
+         {
             // give up
             address_escaped.set(di_a, true);
             address_escaped.set(di_b, true);
@@ -431,9 +433,7 @@ fn mark_address_escaped_expr(
 
          ea.or(eb).or(ec)
       }
-      Expression::Cast { expr, .. } => {
-         mark_address_escaped_expr(*expr, address_escaped, ast, procedure_vars)
-      }
+      Expression::Cast { expr, .. } => mark_address_escaped_expr(*expr, address_escaped, ast, procedure_vars),
       Expression::UnaryOperator(op, expr) => {
          mark_address_escaped_expr(*expr, address_escaped, ast, procedure_vars).filter(|_| *op != UnOp::Dereference)
       }
