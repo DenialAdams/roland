@@ -3,11 +3,11 @@
 #![allow(clippy::unnecessary_wraps)] // False positives
 
 use std::borrow::Cow;
-use std::error::Error;
+use std::fmt::Display;
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, ExitStatus};
 
 use rolandc::{CompilationContext, CompilationEntryPoint, FileResolver, Target};
 
@@ -189,19 +189,54 @@ fn main() {
    }
 }
 
-fn compile_qbe(mut ssa_path: PathBuf, final_path: Option<PathBuf>) -> std::result::Result<(), Box<dyn Error>> {
-   fn assemble_file(asm_path: &Path) -> Result<PathBuf, Box<dyn Error>> {
+enum QbeCompilationError {
+   AsInvocation(std::io::Error),
+   AsExecution(ExitStatus),
+   LdInvocation(std::io::Error),
+   LdExecution(ExitStatus),
+   QbeInvocation(std::io::Error),
+   QbeExecution(ExitStatus),
+}
+
+impl Display for QbeCompilationError {
+   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      match self {
+         QbeCompilationError::AsExecution(exit_status) => {
+            write!(f, "as failed to execute with code {}", exit_status)
+         }
+         QbeCompilationError::AsInvocation(io_err) => {
+            write!(f, "Failed to invoke as: {}", io_err)
+         }
+         QbeCompilationError::LdExecution(exit_status) => {
+            write!(f, "ld failed to execute with code {}", exit_status)
+         }
+         QbeCompilationError::LdInvocation(io_err) => {
+            write!(f, "Failed to invoke ld: {}", io_err)
+         }
+         QbeCompilationError::QbeExecution(exit_status) => {
+            write!(f, "qbe failed to execute with code {}", exit_status)
+         }
+         QbeCompilationError::QbeInvocation(io_err) => {
+            write!(f, "Failed to invoke qbe: {}", io_err)
+         }
+      }
+   }
+}
+
+fn compile_qbe(mut ssa_path: PathBuf, final_path: Option<PathBuf>) -> std::result::Result<(), QbeCompilationError> {
+   fn assemble_file(asm_path: &Path) -> Result<PathBuf, QbeCompilationError> {
       let mut the_object_path = asm_path.to_owned();
       the_object_path.set_extension("o");
-      let as_stat = Command::new("as")
+      match Command::new("as")
          .arg("-o")
          .arg(&the_object_path)
          .arg(asm_path)
-         .status()?;
-      if !as_stat.success() {
-         return Err(format!("as failed to execute with code {}", as_stat).into());
+         .status()
+      {
+         Ok(stat) if stat.success() => Ok(the_object_path),
+         Ok(stat) => Err(QbeCompilationError::AsExecution(stat)),
+         Err(e) => Err(QbeCompilationError::AsInvocation(e)),
       }
-      Ok(the_object_path)
    }
    let mut asm_path = ssa_path.clone();
    asm_path.set_extension("s");
@@ -217,10 +252,13 @@ fn compile_qbe(mut ssa_path: PathBuf, final_path: Option<PathBuf>) -> std::resul
    } else {
       Command::new("qbe")
    };
-   let qbe_stat = qbe_command.arg("-o").arg(&asm_path).arg(&ssa_path).status()?;
-   if !qbe_stat.success() {
-      return Err(format!("QBE failed to execute with code {}", qbe_stat).into());
+
+   match qbe_command.arg("-o").arg(&asm_path).arg(&ssa_path).status() {
+      Ok(stat) if stat.success() => (),
+      Ok(stat) => return Err(QbeCompilationError::QbeExecution(stat)),
+      Err(e) => return Err(QbeCompilationError::QbeInvocation(e)),
    }
+
    let program_object_path = assemble_file(&asm_path)?;
    let mut syscall_lib_path = asm_path.clone();
    syscall_lib_path.set_file_name(format!("{}_syscall.s", ssa_path.file_stem().unwrap().to_string_lossy()));
@@ -238,15 +276,15 @@ fn compile_qbe(mut ssa_path: PathBuf, final_path: Option<PathBuf>) -> std::resul
       ssa_path
    };
 
-   let ld_stat = Command::new("ld")
+   match Command::new("ld")
       .arg("-o")
       .arg(&the_final_path)
       .arg(&program_object_path)
       .arg(&syscall_object_path)
-      .status()?;
-   if !ld_stat.success() {
-      return Err(format!("ld failed to execute with code {}", ld_stat).into());
+      .status()
+   {
+      Ok(stat) if stat.success() => Ok(()),
+      Ok(stat) => Err(QbeCompilationError::LdExecution(stat)),
+      Err(e) => Err(QbeCompilationError::LdInvocation(e)),
    }
-
-   Ok(())
 }
