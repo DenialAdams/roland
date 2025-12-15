@@ -24,6 +24,7 @@ enum TestFailureReason {
    MismatchedCompilationErrorOutput(TestDetails),
    ExecutionTimeout,
    FailedToOpenTest,
+   ValidationFailedToRun,
    ValidationFailed(Vec<u8>),
 }
 
@@ -223,7 +224,7 @@ fn main() -> Result<(), &'static str> {
          TestFailureReason::FailedToRunExecutable => {
             writeln!(
                out_handle,
-               "Compilation seemingly succeeded, but the executable failed to run. Is wasmtime installed?"
+               "Compiled OK, but the executable failed to run. Is wasmtime installed?"
             )
             .unwrap();
             true
@@ -232,8 +233,16 @@ fn main() -> Result<(), &'static str> {
             writeln!(out_handle, "Compiled OK, but the executable failed to terminate.").unwrap();
             true
          }
+         TestFailureReason::ValidationFailedToRun => {
+            writeln!(
+               out_handle,
+               "Compiled OK, but validation failed to run. Is wasm-validate installed?"
+            )
+            .unwrap();
+            true
+         }
          TestFailureReason::ValidationFailed(validator_stderr) => {
-            writeln!(out_handle, "Compiled OK, but validation of hte program failed:").unwrap();
+            writeln!(out_handle, "Compiled OK, but validation of the program failed:").unwrap();
             writeln!(out_handle, "```").unwrap();
             out_handle.write_all(validator_stderr).unwrap();
             writeln!(out_handle, "```").unwrap();
@@ -402,7 +411,12 @@ fn test_result(
             // we shouldn't run the program, but should at least validate it
             let mut prog_command = Command::new("wasm-validate");
             prog_command.arg(prog_path.as_os_str());
-            let output = prog_command.output().unwrap();
+            let Ok(output) = prog_command.output() else {
+               return Err(TestFailureDetails {
+                  reason: TestFailureReason::ValidationFailedToRun,
+                  compilation_stderr: stderr_text.into_owned(),
+               });
+            };
             if !output.status.success() {
                return Err(TestFailureDetails {
                   reason: TestFailureReason::ValidationFailed(output.stderr),
