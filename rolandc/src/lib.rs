@@ -423,6 +423,15 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       None
    };
 
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp.rol").unwrap(),
+      )
+      .unwrap();
+   }
+
    let regalloc_result = {
       backend::regalloc::hoist_non_temp_var_uses(&mut ctx.program, config.target);
       let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
@@ -479,15 +488,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       // it's unclear to me how often we should run this - definitely want to run it before the backend
       // but conceivably could be run after any optimization pass that could change control flow or remove instructions
       linearize::simplify_cfg(&mut body.cfg, &ctx.program.ast.expressions);
-   }
-
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp.rol").unwrap(),
-      )
-      .unwrap();
    }
 
    if config.target == Target::Qbe {

@@ -1053,7 +1053,6 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             .instruction(&Instruction::I32Const(i32::from(*x)));
       }
       Expression::IntLiteral { val: x, .. } => {
-         // nocheckin todo after fixing current bug can we make propagation more brave about propagating when types do not match? need to revisit git log to remember the issue
          let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
          match wasm_type {
             ValType::I64 => generation_context

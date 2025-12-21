@@ -21,6 +21,7 @@ perf.data
 perf.data.old
 flamegraph.svg
 cfg.dot
+pointer_analysis.dot
 profile.json
 pp.rol
 pp_liveness.rol

@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 
 use crate::backend::linearize::{Cfg, CfgInstruction, post_order};
 use crate::disjoint_set::DisjointSet;
-use crate::parse::{Expression, ExpressionId, ExpressionPool, UnOp, VariableId};
+use crate::parse::{BinOp, Expression, ExpressionId, ExpressionPool, UnOp, VariableId};
 use crate::type_data::ExpressionType;
 
 pub struct PointerAnalysisResult {
@@ -26,6 +26,10 @@ impl PointerAnalysisResult {
       }
       // Anything pointing to unknown could also be pointing to this var
       let points_to_unknown_set = self.reverse_points_to.get(&self.ds.find(self.unknown));
+      if points_to_unknown_set.is_some_and(|m| m.contains(&self.unknown)) {
+         // unknown can point to unknown => all bets are off, gg
+         return WhoPointsTo::Unknown;
+      }
       WhoPointsTo::Vars(
          points_to_x_set
             .into_iter()
@@ -77,24 +81,19 @@ impl PointerAnalysisData {
       }
    }
 
-   fn add_points_to_unknown(&mut self, x: usize) {
-      self.add_points_to(x, self.unknown);
-   }
-
    fn add_unknown_points_to(&mut self, x: usize) {
       self.add_points_to(self.unknown, x);
    }
 
-   fn build_result(self) -> PointerAnalysisResult {
+   fn build_result(self, procedure_vars: &IndexMap<VariableId, ExpressionType>) -> PointerAnalysisResult {
       let mut reverse_points_to: HashMap<usize, HashSet<usize>> = HashMap::new();
-      for i in 0..self.ds.len() {
+      for i in 0..procedure_vars.len() {
          let rep = self.ds.find(i);
          let Some(rep_points_to) = self.points_to.get(&rep).map(|x| self.ds.find(*x)) else {
             continue;
          };
          reverse_points_to.entry(rep_points_to).or_default().insert(i);
       }
-      // important TODO. Any var that *points to* unknown ALSO can point to any var. How to represent this in our map?
       PointerAnalysisResult {
          reverse_points_to,
          ds: self.ds,
@@ -129,11 +128,9 @@ pub fn steensgard(
                let lhs_di = address_node_escaping_from_expr(*lhs, &mut data, ast, procedure_vars);
                let rhs_di = address_node_escaping_from_expr(*rhs, &mut data, ast, procedure_vars);
                match (lhs_di, rhs_di) {
-                  (None, None) => (),
-                  (Some(l), None) => {
-                     data.add_points_to_unknown(l);
-                  }
+                  (_, None) => (),
                   (None, Some(r)) => {
+                     // something like (0xdeadbeef as &u8)~ = &x;
                      data.add_unknown_points_to(r);
                   }
                   (Some(l), Some(r)) => {
@@ -151,7 +148,7 @@ pub fn steensgard(
       }
    }
 
-   data.build_result()
+   data.build_result(procedure_vars)
 }
 
 fn address_node_escaping_from_expr(
@@ -171,22 +168,42 @@ fn address_node_escaping_from_expr(
             }
          }
 
-         None
+         // Could have returned an address
+         Some(data.unknown)
       }
-      Expression::BinaryOperator { lhs, rhs, .. } => {
+      Expression::BinaryOperator { lhs, rhs, operator } => {
          let a = address_node_escaping_from_expr(*lhs, data, ast, procedure_vars);
          let b = address_node_escaping_from_expr(*rhs, data, ast, procedure_vars);
+
+         match operator {
+            BinOp::Add
+            | BinOp::Subtract
+            | BinOp::Multiply
+            | BinOp::Divide
+            | BinOp::Remainder
+            | BinOp::BitwiseAnd
+            | BinOp::BitwiseOr
+            | BinOp::BitwiseXor
+            | BinOp::BitwiseLeftShift
+            | BinOp::BitwiseRightShift => (),
+            BinOp::Equality
+            | BinOp::NotEquality
+            | BinOp::GreaterThan
+            | BinOp::LessThan
+            | BinOp::GreaterThanOrEqualTo
+            | BinOp::LessThanOrEqualTo
+            | BinOp::LogicalAnd
+            | BinOp::LogicalOr => return None,
+         }
 
          if let Some(di_a) = a
             && let Some(di_b) = b
          {
-            // weird, probably not real case. but just give up.
-            data.add_unknown_points_to(di_a);
-            data.add_unknown_points_to(di_b);
-            None
-         } else {
-            a.or(b)
+            // a strange case like &a + &b
+            data.join(di_a, di_b);
          }
+
+         a.or(b)
       }
       Expression::IfX(a, b, c) => {
          address_node_escaping_from_expr(*a, data, ast, procedure_vars);
@@ -204,13 +221,19 @@ fn address_node_escaping_from_expr(
       Expression::UnaryOperator(UnOp::Dereference, expr) => {
          let derefd_item = address_node_escaping_from_expr(*expr, data, ast, procedure_vars);
          derefd_item
-            .and_then(|i| data.points_to.get(&data.ds.find(i)).copied())
+            .map(|i| {
+               data
+                  .points_to
+                  .entry(data.ds.find(i))
+                  .or_insert_with(|| data.ds.add_new_set())
+            })
+            .copied()
             .map(|i| data.ds.find(i))
       }
       Expression::Cast { expr, .. } | Expression::UnaryOperator(_, expr) => {
          address_node_escaping_from_expr(*expr, data, ast, procedure_vars)
       }
-      Expression::Variable(v) => procedure_vars.get_index_of(v),
+      Expression::Variable(v) => procedure_vars.get_index_of(v).or(Some(data.unknown)),
       Expression::EnumLiteral(_, _)
       | Expression::BoundFcnLiteral(_, _)
       | Expression::BoolLiteral(_)

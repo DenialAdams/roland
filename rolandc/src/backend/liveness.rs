@@ -4,7 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 use super::linearize::{Cfg, CfgInstruction};
 use crate::backend::linearize::post_order;
 use crate::constant_folding::expression_could_have_side_effects;
-use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, UnOp, VariableId};
+use crate::parse::{BinOp, Expression, ExpressionId, ExpressionPool, ProcedureBody, UnOp, VariableId};
 use crate::type_data::ExpressionType;
 
 #[derive(Clone)]
@@ -398,20 +398,41 @@ fn mark_address_escaped_expr(
 
          None
       }
-      Expression::BinaryOperator { lhs, rhs, .. } => {
+      Expression::BinaryOperator { lhs, rhs, operator } => {
          let a = mark_address_escaped_expr(*lhs, address_escaped, ast, procedure_vars);
          let b = mark_address_escaped_expr(*rhs, address_escaped, ast, procedure_vars);
+
+         match operator {
+            BinOp::Add
+            | BinOp::Subtract
+            | BinOp::Multiply
+            | BinOp::Divide
+            | BinOp::Remainder
+            | BinOp::BitwiseAnd
+            | BinOp::BitwiseOr
+            | BinOp::BitwiseXor
+            | BinOp::BitwiseLeftShift
+            | BinOp::BitwiseRightShift => (),
+            BinOp::Equality
+            | BinOp::NotEquality
+            | BinOp::GreaterThan
+            | BinOp::LessThan
+            | BinOp::GreaterThanOrEqualTo
+            | BinOp::LessThanOrEqualTo
+            | BinOp::LogicalAnd
+            | BinOp::LogicalOr => return None,
+         }
 
          if let Some(di_a) = a
             && let Some(di_b) = b
          {
-            // give up
+            // a strange case like &a + &b, give up
             address_escaped.set(di_a, true);
             address_escaped.set(di_b, true);
-            None
-         } else {
-            a.or(b)
+            return None;
          }
+
+         a.or(b)
       }
       Expression::IfX(a, b, c) => {
          mark_address_escaped_expr(*a, address_escaped, ast, procedure_vars);
