@@ -414,8 +414,11 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       backend::wasm::sort_globals(&mut ctx.program, config.target);
    }
 
-   let mut pp_with_liveness_file = if config.dump_debugging_info {
-      Some(std::fs::File::create("pp_liveness.rol").unwrap())
+   let mut debugging_files = if config.dump_debugging_info {
+      Some((
+         std::fs::File::create("pp_liveness.rol").unwrap(),
+         std::fs::File::create("pointer_analysis.dot").unwrap(),
+      ))
    } else {
       None
    };
@@ -424,8 +427,10 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       backend::regalloc::hoist_non_temp_var_uses(&mut ctx.program, config.target);
       let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
       for (id, body) in ctx.program.procedure_bodies.iter_mut() {
+         let pointer_analysis_result =
+            backend::pointer_analysis::steensgard(&body.locals, &mut body.cfg, &ctx.program.ast.expressions);
          let liveness = backend::liveness::liveness(&body.locals, &mut body.cfg, &ctx.program.ast.expressions);
-         if let Some(pp_file) = pp_with_liveness_file.as_mut() {
+         if let Some(dbg_files) = debugging_files.as_mut() {
             pp::pp_proc(
                &ctx.program.ast,
                &ctx.program.procedures,
@@ -433,10 +438,35 @@ pub fn compile<'a, FR: FileResolver<'a>>(
                &ctx.program.user_defined_types,
                id,
                &ctx.interner,
-               pp_file,
+               &mut dbg_files.0,
                &liveness,
             )
             .unwrap();
+            {
+               use std::io::Write;
+               let f = &mut dbg_files.1;
+               writeln!(
+                  f,
+                  "digraph {} {{",
+                  ctx.interner.lookup(ctx.program.procedures[id].definition.name.str)
+               )
+               .unwrap();
+               for (local_di, local_var) in body.locals.keys().enumerate() {
+                  let who_points_to_local = pointer_analysis_result.who_points_to(local_di);
+                  match who_points_to_local {
+                     backend::pointer_analysis::WhoPointsTo::Unknown => {
+                        writeln!(f, "\"Unk\" -> \"v{}\"", local_var.0).unwrap();
+                     }
+                     backend::pointer_analysis::WhoPointsTo::Vars(it) => {
+                        for var_di in it {
+                           let pointing_var_id = body.locals.get_index(var_di).map(|x| *x.0).unwrap();
+                           writeln!(f, "\"v{}\" -> \"v{}\"", pointing_var_id.0, local_var.0).unwrap();
+                        }
+                     }
+                  }
+               }
+               writeln!(f, "}}").unwrap();
+            }
          }
          program_liveness.insert(id, compute_live_intervals(body, &liveness));
       }

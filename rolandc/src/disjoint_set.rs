@@ -25,6 +25,10 @@ impl DisjointSet {
       old_len
    }
 
+   pub fn len(&self) -> usize {
+      self.tree.len()
+   }
+
    // find with path compression
    pub fn find(&self, x: usize) -> usize {
       let mut at_x = self.tree[x].get();

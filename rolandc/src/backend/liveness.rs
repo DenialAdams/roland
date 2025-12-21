@@ -414,14 +414,11 @@ fn mark_address_escaped_expr(
          }
       }
       Expression::IfX(a, b, c) => {
-         let ea = mark_address_escaped_expr(*a, address_escaped, ast, procedure_vars);
+         mark_address_escaped_expr(*a, address_escaped, ast, procedure_vars);
          let eb = mark_address_escaped_expr(*b, address_escaped, ast, procedure_vars);
          let ec = mark_address_escaped_expr(*c, address_escaped, ast, procedure_vars);
 
-         if usize::from(ea.is_some()) + usize::from(eb.is_some()) + usize::from(ec.is_some()) > 1 {
-            if let Some(di) = ea {
-               address_escaped.set(di, true);
-            }
+         if eb.is_some() && ec.is_some() {
             if let Some(di) = eb {
                address_escaped.set(di, true);
             }
@@ -431,7 +428,7 @@ fn mark_address_escaped_expr(
             return None;
          }
 
-         ea.or(eb).or(ec)
+         eb.or(ec)
       }
       Expression::Cast { expr, .. } => mark_address_escaped_expr(*expr, address_escaped, ast, procedure_vars),
       Expression::UnaryOperator(op, expr) => {
