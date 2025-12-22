@@ -163,8 +163,9 @@ fn address_node_escaping_from_expr(
 
          for val in args.iter().map(|x| x.expr) {
             if let Some(di) = address_node_escaping_from_expr(val, data, ast, procedure_vars) {
-               // The caller could do anything with the address, so give up
+               // The caller could store the address into a global or write through it
                data.add_unknown_points_to(di);
+               data.add_points_to(di, data.unknown);
             }
          }
 
