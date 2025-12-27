@@ -1,5 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
+use bitvec::bitbox;
+use bitvec::boxed::BitBox;
+use bitvec::slice::BitSlice;
 use indexmap::IndexMap;
 
 use crate::backend::linearize::{Cfg, CfgInstruction, post_order};
@@ -9,28 +12,34 @@ use crate::type_data::ExpressionType;
 
 pub struct PointerAnalysisResult {
    ds: DisjointSet,
-   reverse_points_to: HashMap<usize, HashSet<usize>>,
-   unknown: usize,
+   reverse_points_to: HashMap<usize, WhoPointsToOwned>,
 }
 
-pub enum WhoPointsTo<I> {
+pub enum WhoPointsToOwned {
    Unknown,
-   Vars(I),
+   Vars(BitBox),
+}
+
+impl WhoPointsToOwned {
+   pub fn as_ref(&self) -> WhoPointsTo<'_> {
+      match self {
+         WhoPointsToOwned::Unknown => WhoPointsTo::Unknown,
+         WhoPointsToOwned::Vars(bb) => WhoPointsTo::Vars(bb.as_bitslice()),
+      }
+   }
+}
+
+pub enum WhoPointsTo<'a> {
+   Unknown,
+   Vars(&'a BitSlice),
 }
 
 impl PointerAnalysisResult {
-   pub fn who_points_to(&self, x: usize) -> WhoPointsTo<impl Iterator<Item = usize>> {
-      let points_to_x_set = self.reverse_points_to.get(&self.ds.find(x));
-      if points_to_x_set.is_some_and(|m| m.contains(&self.unknown)) {
-         return WhoPointsTo::Unknown;
-      }
-      WhoPointsTo::Vars(
-         points_to_x_set
-            .into_iter()
-            .flat_map(|m| m.iter())
-            .copied()
-            .filter(|x| *x != self.unknown),
-      )
+   pub fn who_points_to(&self, x: usize) -> WhoPointsTo<'_> {
+      self
+         .reverse_points_to
+         .get(&self.ds.find(x))
+         .map_or(WhoPointsTo::Vars(BitSlice::empty()), |x| x.as_ref())
    }
 }
 
@@ -79,25 +88,32 @@ impl PointerAnalysisData {
    }
 
    fn build_result(self, procedure_vars: &IndexMap<VariableId, ExpressionType>) -> PointerAnalysisResult {
-      let mut reverse_points_to: HashMap<usize, HashSet<usize>> = HashMap::new();
+      let mut reverse_points_to: HashMap<usize, WhoPointsToOwned> = HashMap::new();
+      // Unknown
+      {
+         let rep = self.ds.find(self.unknown);
+         if let Some(rep_points_to) = self.points_to.get(&rep).map(|x| self.ds.find(*x)) {
+            reverse_points_to.insert(rep_points_to, WhoPointsToOwned::Unknown);
+         }
+      }
       for i in 0..procedure_vars.len() {
          let rep = self.ds.find(i);
          let Some(rep_points_to) = self.points_to.get(&rep).map(|x| self.ds.find(*x)) else {
             continue;
          };
-         reverse_points_to.entry(rep_points_to).or_default().insert(i);
-      }
-      // Unknown
-      {
-         let rep = self.ds.find(self.unknown);
-         if let Some(rep_points_to) = self.points_to.get(&rep).map(|x| self.ds.find(*x)) {
-            reverse_points_to.entry(rep_points_to).or_default().insert(self.unknown);
+         match reverse_points_to
+            .entry(rep_points_to)
+            .or_insert(WhoPointsToOwned::Vars(bitbox![0; procedure_vars.len()]))
+         {
+            WhoPointsToOwned::Unknown => (),
+            WhoPointsToOwned::Vars(bit_vec) => {
+               bit_vec.set(i, true);
+            }
          }
       }
       PointerAnalysisResult {
          reverse_points_to,
          ds: self.ds,
-         unknown: self.unknown,
       }
    }
 }

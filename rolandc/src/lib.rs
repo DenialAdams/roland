@@ -467,7 +467,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
                         writeln!(f, "\"Unk\" -> \"v{}\"", local_var.0).unwrap();
                      }
                      backend::pointer_analysis::WhoPointsTo::Vars(it) => {
-                        for var_di in it {
+                        for var_di in it.iter_ones() {
                            let pointing_var_id = body.locals.get_index(var_di).map(|x| *x.0).unwrap();
                            writeln!(f, "\"v{}\" -> \"v{}\"", pointing_var_id.0, local_var.0).unwrap();
                         }
