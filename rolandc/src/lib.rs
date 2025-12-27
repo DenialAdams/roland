@@ -438,7 +438,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       for (id, body) in ctx.program.procedure_bodies.iter_mut() {
          let pointer_analysis_result =
             backend::pointer_analysis::steensgard(&body.locals, &mut body.cfg, &ctx.program.ast.expressions);
-         let liveness = backend::liveness::liveness(&body.locals, &mut body.cfg, &ctx.program.ast.expressions);
+         let liveness = backend::liveness::liveness(&body.locals, &mut body.cfg, &ctx.program.ast.expressions, &pointer_analysis_result);
          if let Some(dbg_files) = debugging_files.as_mut() {
             pp::pp_proc(
                &ctx.program.ast,
