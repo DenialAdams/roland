@@ -333,9 +333,11 @@ fn linearize_stmt(ctx: &mut Ctx, stmt: StatementId, ast: &mut AstPool, target: T
          true
       }
       Statement::Expression(e) => {
-         ctx.bbs[ctx.current_block]
-            .instructions
-            .push(CfgInstruction::Expression(*e));
+         if expression_could_have_side_effects(*e, &ast.expressions) {
+            ctx.bbs[ctx.current_block]
+               .instructions
+               .push(CfgInstruction::Expression(*e));
+         }
          false
       }
       Statement::Assignment(lhs, rhs) => {
