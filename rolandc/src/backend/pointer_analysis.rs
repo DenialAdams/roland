@@ -87,6 +87,13 @@ impl PointerAnalysisData {
          };
          reverse_points_to.entry(rep_points_to).or_default().insert(i);
       }
+      // Unknown
+      {
+         let rep = self.ds.find(self.unknown);
+         if let Some(rep_points_to) = self.points_to.get(&rep).map(|x| self.ds.find(*x)) {
+            reverse_points_to.entry(rep_points_to).or_default().insert(self.unknown);
+         }
+      }
       PointerAnalysisResult {
          reverse_points_to,
          ds: self.ds,
