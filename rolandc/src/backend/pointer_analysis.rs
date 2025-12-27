@@ -24,17 +24,10 @@ impl PointerAnalysisResult {
       if points_to_x_set.is_some_and(|m| m.contains(&self.unknown)) {
          return WhoPointsTo::Unknown;
       }
-      // Anything pointing to unknown could also be pointing to this var
-      let points_to_unknown_set = self.reverse_points_to.get(&self.ds.find(self.unknown));
-      if points_to_unknown_set.is_some_and(|m| m.contains(&self.unknown)) {
-         // unknown can point to unknown => all bets are off, gg
-         return WhoPointsTo::Unknown;
-      }
       WhoPointsTo::Vars(
          points_to_x_set
             .into_iter()
             .flat_map(|m| m.iter())
-            .chain(points_to_unknown_set.into_iter().flat_map(|m| m.iter()))
             .copied()
             .filter(|x| *x != self.unknown),
       )
