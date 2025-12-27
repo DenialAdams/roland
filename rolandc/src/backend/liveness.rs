@@ -262,7 +262,6 @@ pub fn liveness(
 
                   if visit_in_progress[v] {
                      // Indicates there is a cycle, X -> ... -> X
-                     // Asking "is X effectively live?" will query X again
                      return false;
                   }
                   visit_in_progress.set(v, true);
