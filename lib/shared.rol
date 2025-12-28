@@ -190,3 +190,7 @@ proc memset<T>(dest: &T, fill: T, length: usize) {
     (((dest transmute usize) + i * sizeof$<T>()) transmute &T)~ = fill;
   }
 }
+
+proc identity<T>(x: T) -> T {
+   return x;
+}

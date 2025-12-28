@@ -1,10 +1,6 @@
 proc main() {
-   id$<bool>(false);
-   id$<u64>(10);
-}
-
-proc id<T>(x: T) -> T {
-   return x;
+   identity$<bool>(false);
+   identity$<u64>(10);
 }
 
 __END__
