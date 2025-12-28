@@ -194,3 +194,7 @@ proc memset<T>(dest: &T, fill: T, length: usize) {
 proc identity<T>(x: T) -> T {
    return x;
 }
+
+proc nullptr<T>() -> &T {
+   return 0 transmute &T;
+}
