@@ -433,7 +433,9 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    }
 
    let regalloc_result = {
-      backend::regalloc::hoist_non_temp_var_uses(&mut ctx.program, config.target);
+      if config.target == Target::Qbe {
+         backend::regalloc::hoist_non_temp_var_uses(&mut ctx.program, config.target);
+      }
       let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
       for (id, body) in ctx.program.procedure_bodies.iter_mut() {
          let pointer_analysis_result =

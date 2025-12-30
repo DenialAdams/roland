@@ -100,10 +100,6 @@ pub fn hoist_non_temp_var_uses(program: &mut Program, target: Target) {
    for body in program.procedure_bodies.values_mut() {
       mark_escaping_vars_cfg(&body.cfg, &mut escaping_vars, &program.ast.expressions);
 
-      if target != Target::Qbe {
-         continue;
-      }
-
       let mut exprs_to_hoist: Vec<(ExpressionId, usize, ExpressionType)> = vec![];
 
       // For all var uses that are actually a load (now that we know the var is in mem),
