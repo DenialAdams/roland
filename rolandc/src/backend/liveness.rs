@@ -186,13 +186,7 @@ pub fn liveness(
          for (i, instruction) in bb.instructions.iter().enumerate() {
             match instruction {
                CfgInstruction::Assignment(lhs, rhs) => {
-                  if let Expression::Variable(v) = ast[*lhs].expression
-                     && let Some(_) = procedure_vars.get_index_of(&v)
-                  {
-                     // nothing
-                  } else {
-                     mark_address_taken_expr(*lhs, &mut current_address_taken, ast, procedure_vars);
-                  }
+                  mark_address_taken_expr(*lhs, &mut current_address_taken, ast, procedure_vars);
                   if let Some(di) = mark_address_taken_expr(*rhs, &mut current_address_taken, ast, procedure_vars) {
                      current_address_taken.set(di, true);
                   }
