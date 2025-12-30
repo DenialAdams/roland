@@ -58,11 +58,10 @@ impl PointerAnalysisData {
          return;
       }
 
-      self.ds.union(rx, ry);
-      let new_rep = self.ds.find(rx);
+      let new_rep = self.ds.union(rx, ry);
 
-      let x_target = self.points_to.get(&rx).copied().map(|t| self.ds.find(t));
-      let y_target = self.points_to.get(&ry).copied().map(|t| self.ds.find(t));
+      let x_target = self.points_to.remove(&rx).map(|t| self.ds.find(t));
+      let y_target = self.points_to.remove(&ry).map(|t| self.ds.find(t));
       match (x_target, y_target) {
          (None, None) => (),
          (None, Some(t)) | (Some(t), None) => {
@@ -70,7 +69,7 @@ impl PointerAnalysisData {
          }
          (Some(t1), Some(t2)) => {
             self.join(t1, t2);
-            self.points_to.insert(new_rep, self.ds.find(t1));
+            self.points_to.insert(self.ds.find(new_rep), self.ds.find(t1));
          }
       }
    }

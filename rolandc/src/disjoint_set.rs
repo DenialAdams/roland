@@ -40,12 +40,12 @@ impl DisjointSet {
    }
 
    // union by rank
-   pub fn union(&self, x: usize, y: usize) {
+   pub fn union(&self, x: usize, y: usize) -> usize {
       let x_root = self.find(x);
       let y_root = self.find(y);
 
       if x_root == y_root {
-         return;
+         return x_root;
       }
 
       let mut at_x = self.tree[x_root].get();
@@ -67,5 +67,7 @@ impl DisjointSet {
 
       self.tree[x_root].set(at_x);
       self.tree[y_root].set(at_y);
+
+      x_root
    }
 }
