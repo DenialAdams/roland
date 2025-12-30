@@ -438,8 +438,10 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       }
       let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
       for (id, body) in ctx.program.procedure_bodies.iter_mut() {
-         let pointer_analysis_result =
-            backend::pointer_analysis::steensgard(&body.locals, &mut body.cfg, &ctx.program.ast.expressions);
+         let pointer_analysis_result = {
+            let params = ctx.program.procedures[id].definition.parameters.iter().map(|x| x.var_id);
+            backend::pointer_analysis::steensgard(&body.locals, params, &mut body.cfg, &ctx.program.ast.expressions)
+         };
          let liveness = backend::liveness::liveness(&body.locals, &mut body.cfg, &ctx.program.ast.expressions, &pointer_analysis_result);
          if let Some(dbg_files) = debugging_files.as_mut() {
             pp::pp_proc(

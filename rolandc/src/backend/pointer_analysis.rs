@@ -118,8 +118,9 @@ impl PointerAnalysisData {
 }
 
 // Conservative, flow-insensitive pointer information
-pub fn steensgard(
+pub fn steensgard<I: IntoIterator<Item=VariableId>>(
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
+   parameters: I,
    cfg: &mut Cfg,
    ast: &ExpressionPool,
 ) -> PointerAnalysisResult {
@@ -135,6 +136,14 @@ pub fn steensgard(
          unknown,
       }
    };
+
+   // We don't know anything about our inputs
+   for param in parameters {
+      let di = procedure_vars.get_index_of(&param).unwrap();
+      data.add_points_to(data.unknown, di);
+      data.add_points_to(di, data.unknown);
+   }
+
    for bb_index in post_order(cfg) {
       let bb = &cfg.bbs[bb_index];
       for instr in bb.instructions.iter() {
