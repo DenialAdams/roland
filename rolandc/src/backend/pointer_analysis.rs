@@ -118,7 +118,7 @@ impl PointerAnalysisData {
 }
 
 // Conservative, flow-insensitive pointer information
-pub fn steensgard<I: IntoIterator<Item=VariableId>>(
+pub fn steensgard<I: IntoIterator<Item = VariableId>>(
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
    parameters: I,
    cfg: &mut Cfg,

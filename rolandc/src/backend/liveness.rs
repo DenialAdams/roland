@@ -246,7 +246,12 @@ pub fn liveness(
             }
 
             for a_taken_address_var in all_address_taken[&here].iter_ones() {
-               fn var_is_effectively_live(v: usize, visit_in_progress: &mut BitSlice, live_vars: &BitSlice, pointer_analysis_result: &PointerAnalysisResult) -> bool {
+               fn var_is_effectively_live(
+                  v: usize,
+                  visit_in_progress: &mut BitSlice,
+                  live_vars: &BitSlice,
+                  pointer_analysis_result: &PointerAnalysisResult,
+               ) -> bool {
                   if live_vars[v] {
                      // If a var was marked live, it's definitely live.
                      return true;
@@ -261,22 +266,25 @@ pub fn liveness(
                   visit_in_progress.set(v, true);
 
                   let res = match pointer_analysis_result.who_points_to(v) {
-                     crate::backend::pointer_analysis::WhoPointsTo::Unknown => {
-                        true
-                     },
-                     crate::backend::pointer_analysis::WhoPointsTo::Vars(bit_slice) => {
-                        bit_slice.iter_ones().any(|x| var_is_effectively_live(x, visit_in_progress, live_vars, pointer_analysis_result))
-                     },
+                     crate::backend::pointer_analysis::WhoPointsTo::Unknown => true,
+                     crate::backend::pointer_analysis::WhoPointsTo::Vars(bit_slice) => bit_slice
+                        .iter_ones()
+                        .any(|x| var_is_effectively_live(x, visit_in_progress, live_vars, pointer_analysis_result)),
                   };
 
                   visit_in_progress.set(v, false);
 
                   res
                }
-               let el = var_is_effectively_live(a_taken_address_var, &mut visit_in_progress, &current_live_variables, pointer_analysis_result);
+               let el = var_is_effectively_live(
+                  a_taken_address_var,
+                  &mut visit_in_progress,
+                  &current_live_variables,
+                  pointer_analysis_result,
+               );
                current_live_variables.set(a_taken_address_var, el);
             }
-   
+
             all_liveness.insert(here, current_live_variables.clone().into_boxed_bitslice());
          }
       }
