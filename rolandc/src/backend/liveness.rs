@@ -4,7 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 use super::linearize::{Cfg, CfgInstruction};
 use crate::Target;
 use crate::backend::linearize::post_order;
-use crate::backend::pointer_analysis::PointerAnalysisResult;
+use crate::backend::pointer_analysis::{PointerAnalysisResult, PointsTo, PointsToOwned};
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
    BinOp, Expression, ExpressionId, ExpressionPool, ProcedureBody, UnOp, UserDefinedTypeInfo, VariableId,
@@ -220,10 +220,46 @@ pub fn liveness(
                CfgInstruction::Assignment(lhs, rhs) => {
                   let lhs = *lhs;
                   let rhs = *rhs;
-                  if let Expression::Variable(v) = ast[lhs].expression
+                  let mut deref_count: usize = 0;
+                  let mut peeled_expr = lhs;
+                  {
+                     while let Expression::UnaryOperator(UnOp::Dereference, dt) = ast[peeled_expr].expression {
+                        peeled_expr = dt;
+                        deref_count += 1;
+                     }
+                  }
+                  if let Expression::Variable(v) = ast[peeled_expr].expression
                      && let Some(di) = procedure_vars.get_index_of(&v)
                   {
-                     if !current_live_variables[di] {
+                     let can_delete = if deref_count > 0 {
+                        let mut points_to_transitive_closure: PointsToOwned =
+                           pointer_analysis_result.points_to(di).to_owned();
+                        'outer: for _ in (0..deref_count).skip(1) {
+                           let PointsToOwned::Vars(ref mut closure_vars_in_progress) = points_to_transitive_closure
+                           else {
+                              break;
+                           };
+                           let og = closure_vars_in_progress.clone();
+                           for di in og.iter_ones() {
+                              match pointer_analysis_result.points_to(di) {
+                                 PointsTo::Unknown => {
+                                    points_to_transitive_closure = PointsToOwned::Unknown;
+                                    break 'outer;
+                                 }
+                                 PointsTo::Vars(bit_slice) => {
+                                    *closure_vars_in_progress |= bit_slice;
+                                 }
+                              }
+                           }
+                        }
+                        match points_to_transitive_closure {
+                           PointsToOwned::Unknown => false,
+                           PointsToOwned::Vars(bb) => (bb & &current_live_variables).not_any(),
+                        }
+                     } else {
+                        !current_live_variables[di]
+                     };
+                     if can_delete {
                         // never read. nuke the assignment.
                         // (we do this as we are processing so that we avoid marking anything in the RHS as live if we don't have to)
                         // note that removing the assignment is not strictly an optimization!
@@ -239,10 +275,13 @@ pub fn liveness(
                            worklist.insert(node_id);
                         }
                      }
-                     if sizeof_type_mem(procedure_vars.get(&v).unwrap(), udt, target)
-                        <= sizeof_type_mem(ast[rhs].exp_type.as_ref().unwrap(), udt, target)
+                     if deref_count == 0
+                        && sizeof_type_mem(procedure_vars.get(&v).unwrap(), udt, target)
+                           <= sizeof_type_mem(ast[rhs].exp_type.as_ref().unwrap(), udt, target)
                      {
                         current_live_variables.set(di, false);
+                     } else if !can_delete {
+                        update_live_variables_for_expr(lhs, &mut current_live_variables, ast, procedure_vars);
                      }
                   } else {
                      update_live_variables_for_expr(lhs, &mut current_live_variables, ast, procedure_vars);
@@ -278,8 +317,8 @@ pub fn liveness(
                   visit_in_progress.set(v, true);
 
                   let res = match pointer_analysis_result.who_points_to(v) {
-                     crate::backend::pointer_analysis::WhoPointsTo::Unknown => true,
-                     crate::backend::pointer_analysis::WhoPointsTo::Vars(bit_slice) => bit_slice
+                     PointsTo::Unknown => true,
+                     PointsTo::Vars(bit_slice) => bit_slice
                         .iter_ones()
                         .any(|x| var_is_effectively_live(x, visit_in_progress, live_vars, pointer_analysis_result)),
                   };

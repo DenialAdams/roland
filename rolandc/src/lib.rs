@@ -64,6 +64,8 @@ use slotmap::SecondaryMap;
 use source_info::SourcePath;
 use type_data::{ExpressionType, IntWidth};
 
+use crate::backend::pointer_analysis::PointsTo;
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Target {
    Wasi,
@@ -381,6 +383,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    explicit_lval_to_rval::make_lval_to_rval_explicit(&mut ctx.program);
 
    lower_aggregate_access::lower_aggregate_access(&mut ctx.program, config.target);
+
    // TODO: add an optimization pass here that fuses stuff like x * 4 * 2 => x * 8 to clean up the lower_aggregate_access
    pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target);
 
@@ -476,12 +479,26 @@ pub fn compile<'a, FR: FileResolver<'a>>(
                )
                .unwrap();
                for (local_di, local_var) in body.locals.keys().enumerate() {
+                  let points_to = pointer_analysis_result.points_to(local_di);
+                  match points_to {
+                     PointsTo::Unknown => {
+                        writeln!(f, "\"v{}\" -> \"Unk\"", local_var.0).unwrap();
+                     }
+                     PointsTo::Vars(it) => {
+                        for var_di in it.iter_ones() {
+                           let pointing_var_id = body.locals.get_index(var_di).map(|x| *x.0).unwrap();
+                           writeln!(f, "\"v{}\" -> \"v{}\"", local_var.0, pointing_var_id.0).unwrap();
+                        }
+                     }
+                  }
+               }
+               for (local_di, local_var) in body.locals.keys().enumerate() {
                   let who_points_to_local = pointer_analysis_result.who_points_to(local_di);
                   match who_points_to_local {
-                     backend::pointer_analysis::WhoPointsTo::Unknown => {
+                     PointsTo::Unknown => {
                         writeln!(f, "\"Unk\" -> \"v{}\"", local_var.0).unwrap();
                      }
-                     backend::pointer_analysis::WhoPointsTo::Vars(it) => {
+                     PointsTo::Vars(it) => {
                         for var_di in it.iter_ones() {
                            let pointing_var_id = body.locals.get_index(var_di).map(|x| *x.0).unwrap();
                            writeln!(f, "\"v{}\" -> \"v{}\"", pointing_var_id.0, local_var.0).unwrap();

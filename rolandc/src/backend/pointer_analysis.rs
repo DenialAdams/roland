@@ -12,34 +12,51 @@ use crate::type_data::ExpressionType;
 
 pub struct PointerAnalysisResult {
    ds: DisjointSet,
-   reverse_points_to: HashMap<usize, WhoPointsToOwned>,
+   reverse_points_to: HashMap<usize, PointsToOwned>,
+   points_to: HashMap<usize, PointsToOwned>,
 }
 
-pub enum WhoPointsToOwned {
+pub enum PointsToOwned {
    Unknown,
    Vars(BitBox),
 }
 
-impl WhoPointsToOwned {
-   pub fn as_ref(&self) -> WhoPointsTo<'_> {
+impl PointsToOwned {
+   pub fn as_ref(&self) -> PointsTo<'_> {
       match self {
-         WhoPointsToOwned::Unknown => WhoPointsTo::Unknown,
-         WhoPointsToOwned::Vars(bb) => WhoPointsTo::Vars(bb.as_bitslice()),
+         PointsToOwned::Unknown => PointsTo::Unknown,
+         PointsToOwned::Vars(bb) => PointsTo::Vars(bb.as_bitslice()),
       }
    }
 }
 
-pub enum WhoPointsTo<'a> {
+pub enum PointsTo<'a> {
    Unknown,
    Vars(&'a BitSlice),
 }
 
+impl PointsTo<'_> {
+   pub fn to_owned(&self) -> PointsToOwned {
+      match self {
+         PointsTo::Unknown => PointsToOwned::Unknown,
+         PointsTo::Vars(bb) => PointsToOwned::Vars(bb.to_bitvec().into_boxed_bitslice()),
+      }
+   }
+}
+
 impl PointerAnalysisResult {
-   pub fn who_points_to(&self, x: usize) -> WhoPointsTo<'_> {
+   pub fn who_points_to(&self, x: usize) -> PointsTo<'_> {
       self
          .reverse_points_to
          .get(&self.ds.find(x))
-         .map_or(WhoPointsTo::Vars(BitSlice::empty()), |x| x.as_ref())
+         .map_or(PointsTo::Vars(BitSlice::empty()), |x| x.as_ref())
+   }
+
+   pub fn points_to(&self, x: usize) -> PointsTo<'_> {
+      self
+         .points_to
+         .get(&self.ds.find(x))
+         .map_or(PointsTo::Vars(BitSlice::empty()), |x| x.as_ref())
    }
 }
 
@@ -82,19 +99,11 @@ impl PointerAnalysisData {
       }
    }
 
-   fn add_unknown_points_to(&mut self, x: usize) {
-      self.add_points_to(self.unknown, x);
-   }
-
    fn build_result(self, procedure_vars: &IndexMap<VariableId, ExpressionType>) -> PointerAnalysisResult {
-      let mut reverse_points_to: HashMap<usize, WhoPointsToOwned> = HashMap::new();
+      let mut reverse_points_to: HashMap<usize, PointsToOwned> = HashMap::new();
+      let mut points_to: HashMap<usize, PointsToOwned> = HashMap::new();
+
       // Unknown
-      {
-         let rep = self.ds.find(self.unknown);
-         if let Some(rep_points_to) = self.points_to.get(&rep).map(|x| self.ds.find(*x)) {
-            reverse_points_to.insert(rep_points_to, WhoPointsToOwned::Unknown);
-         }
-      }
       for i in 0..procedure_vars.len() {
          let rep = self.ds.find(i);
          let Some(rep_points_to) = self.points_to.get(&rep).map(|x| self.ds.find(*x)) else {
@@ -102,16 +111,47 @@ impl PointerAnalysisData {
          };
          match reverse_points_to
             .entry(rep_points_to)
-            .or_insert(WhoPointsToOwned::Vars(bitbox![0; procedure_vars.len()]))
+            .or_insert(PointsToOwned::Vars(bitbox![0; procedure_vars.len()]))
          {
-            WhoPointsToOwned::Unknown => (),
-            WhoPointsToOwned::Vars(bit_vec) => {
+            PointsToOwned::Unknown => (),
+            PointsToOwned::Vars(bit_vec) => {
                bit_vec.set(i, true);
             }
+         }
+         if rep_points_to == self.ds.find(self.unknown) {
+            points_to.insert(i, PointsToOwned::Unknown);
+         }
+      }
+      for i in 0..procedure_vars.len() {
+         match reverse_points_to
+            .get(&self.ds.find(i))
+            .map_or(PointsTo::Vars(BitSlice::empty()), |x| x.as_ref())
+         {
+            PointsTo::Unknown => (),
+            PointsTo::Vars(bb) => {
+               for di in bb.iter_ones() {
+                  match points_to
+                     .entry(self.ds.find(di))
+                     .or_insert(PointsToOwned::Vars(bitbox![0; procedure_vars.len()]))
+                  {
+                     PointsToOwned::Unknown => (),
+                     PointsToOwned::Vars(bb) => {
+                        bb.set(i, true);
+                     }
+                  }
+               }
+            }
+         }
+      }
+      {
+         let rep = self.ds.find(self.unknown);
+         if let Some(rep_points_to) = self.points_to.get(&rep).map(|x| self.ds.find(*x)) {
+            reverse_points_to.insert(rep_points_to, PointsToOwned::Unknown);
          }
       }
       PointerAnalysisResult {
          reverse_points_to,
+         points_to,
          ds: self.ds,
       }
    }
@@ -155,7 +195,7 @@ pub fn steensgard<I: IntoIterator<Item = VariableId>>(
                   (_, None) => (),
                   (None, Some(r)) => {
                      // something like (0xdeadbeef as &u8)~ = &x;
-                     data.add_unknown_points_to(r);
+                     data.add_points_to(data.unknown, r);
                   }
                   (Some(l), Some(r)) => {
                      data.add_points_to(l, r);
@@ -188,7 +228,7 @@ fn address_node_escaping_from_expr(
          for val in args.iter().map(|x| x.expr) {
             if let Some(di) = address_node_escaping_from_expr(val, data, ast, procedure_vars) {
                // The caller could store the address into a global or write through it
-               data.add_unknown_points_to(di);
+               data.add_points_to(data.unknown, di);
                data.add_points_to(di, data.unknown);
             }
          }
