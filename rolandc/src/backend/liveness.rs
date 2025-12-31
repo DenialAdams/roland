@@ -2,10 +2,14 @@ use bitvec::prelude::*;
 use indexmap::{IndexMap, IndexSet};
 
 use super::linearize::{Cfg, CfgInstruction};
+use crate::Target;
 use crate::backend::linearize::post_order;
 use crate::backend::pointer_analysis::PointerAnalysisResult;
 use crate::constant_folding::expression_could_have_side_effects;
-use crate::parse::{BinOp, Expression, ExpressionId, ExpressionPool, ProcedureBody, UnOp, VariableId};
+use crate::parse::{
+   BinOp, Expression, ExpressionId, ExpressionPool, ProcedureBody, UnOp, UserDefinedTypeInfo, VariableId,
+};
+use crate::size_info::sizeof_type_mem;
 use crate::type_data::ExpressionType;
 
 #[derive(Clone)]
@@ -46,6 +50,8 @@ pub fn liveness(
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
    cfg: &mut Cfg,
    ast: &ExpressionPool,
+   target: Target,
+   udt: &UserDefinedTypeInfo,
    pointer_analysis_result: &PointerAnalysisResult,
 ) -> IndexMap<ProgramIndex, BitBox> {
    let mut all_liveness: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
@@ -92,6 +98,8 @@ pub fn liveness(
                CfgInstruction::Assignment(lhs, rhs) => {
                   if let Expression::Variable(v) = ast[*lhs].expression
                      && let Some(di) = procedure_vars.get_index_of(&v)
+                     && sizeof_type_mem(procedure_vars.get(&v).unwrap(), udt, target)
+                        <= sizeof_type_mem(ast[*rhs].exp_type.as_ref().unwrap(), udt, target)
                   {
                      s.gen_.set(di, false);
                      s.kill.set(di, true);
@@ -231,7 +239,11 @@ pub fn liveness(
                            worklist.insert(node_id);
                         }
                      }
-                     current_live_variables.set(di, false);
+                     if sizeof_type_mem(procedure_vars.get(&v).unwrap(), udt, target)
+                        <= sizeof_type_mem(ast[rhs].exp_type.as_ref().unwrap(), udt, target)
+                     {
+                        current_live_variables.set(di, false);
+                     }
                   } else {
                      update_live_variables_for_expr(lhs, &mut current_live_variables, ast, procedure_vars);
                   }

@@ -450,6 +450,8 @@ pub fn compile<'a, FR: FileResolver<'a>>(
             &body.locals,
             &mut body.cfg,
             &ctx.program.ast.expressions,
+            config.target,
+            &ctx.program.user_defined_types,
             &pointer_analysis_result,
          );
          if let Some(dbg_files) = debugging_files.as_mut() {
