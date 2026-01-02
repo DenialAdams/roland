@@ -43,7 +43,7 @@ pub fn compile_wasm4(source_code: &str) -> Result<Vec<u8>, String> {
 
    ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner);
 
-   compile_result.map_err(|_| String::from_utf8_lossy(&err_out).into_owned())
+   compile_result.map_err(|()| String::from_utf8_lossy(&err_out).into_owned())
 }
 
 #[wasm_bindgen]

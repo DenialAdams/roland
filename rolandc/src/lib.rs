@@ -11,6 +11,7 @@
 #![allow(clippy::module_name_repetitions)] // I don't really care that much
 #![allow(clippy::new_without_default)] // I don't want dead code
 #![allow(clippy::needless_bitwise_bool)] // Sometimes I just don't want branches, man
+#![allow(clippy::result_unit_err)] // The error semantics come from the error manager
 
 mod backend;
 mod compile_consts;
@@ -141,7 +142,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    ctx: &mut CompilationContext,
    user_program_ep: CompilationEntryPoint<'a, FR>,
    config: &CompilationConfig,
-) -> Result<(), CompilationError> {
+) -> Result<(), ()> {
    ctx.program.clear();
    ctx.err_manager.clear();
    // We don't have to clear the interner - assumption is that the context is coming from a recent version of the same source, so symbols should be relevant
@@ -177,7 +178,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
                files_to_import[0].location,
                "Can't import files in the Roland playground",
             );
-            return Err(CompilationError::Io);
+            return Err(());
          }
       }
    }
@@ -190,7 +191,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    );
 
    if !ctx.err_manager.errors.is_empty() {
-      return Err(CompilationError::Semantic);
+      return Err(());
    }
 
    semantic_analysis::validator::validate_special_procedure_signatures(
@@ -276,7 +277,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       worklist.extend(specializations[specializations_before..].values());
    }
    if !ctx.err_manager.errors.is_empty() {
-      return Err(CompilationError::Semantic);
+      return Err(());
    }
    semantic_analysis::type_inference::lower_type_variables(
       &mut owned_validation_ctx,
@@ -285,7 +286,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       &mut ctx.err_manager,
    );
    if !ctx.err_manager.errors.is_empty() {
-      return Err(CompilationError::Semantic);
+      return Err(());
    }
    update_expressions_to_point_to_monomorphized_procedures(&mut ctx.program, &specializations);
    ctx.program
@@ -334,7 +335,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    compile_consts::compile_consts(&mut ctx.program, &ctx.interner, &mut ctx.err_manager, config.target);
 
    if !ctx.err_manager.errors.is_empty() {
-      return Err(CompilationError::Semantic);
+      return Err(());
    }
 
    logical_op_lowering::lower_logical_ops(&mut ctx.program);
@@ -353,7 +354,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       .retain(|_, v| v.kind != StorageKind::Const);
 
    if !ctx.err_manager.errors.is_empty() {
-      return Err(CompilationError::Semantic);
+      return Err(());
    }
 
    Ok(())
@@ -370,7 +371,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    ctx: &mut CompilationContext,
    user_program_ep: CompilationEntryPoint<'a, FR>,
    config: &CompilationConfig,
-) -> Result<Vec<u8>, CompilationError> {
+) -> Result<Vec<u8>, ()> {
    compile_for_errors(ctx, user_program_ep, config)?;
 
    pre_backend_lowering::replace_nonnative_casts_and_unique_overflow(&mut ctx.program, &ctx.interner, config.target);
@@ -540,7 +541,7 @@ fn lex_and_parse(
    err_manager: &mut ErrorManager,
    interner: &mut Interner,
    program: &mut Program,
-) -> Result<Vec<ImportNode>, CompilationError> {
-   let tokens = lex::lex(s, source_path, err_manager, interner).map_err(|()| CompilationError::Lex)?;
+) -> Result<Vec<ImportNode>, ()> {
+   let tokens = lex::lex(s, source_path, err_manager, interner)?;
    Ok(parse::astify(tokens, err_manager, interner, program))
 }
