@@ -222,11 +222,9 @@ pub fn liveness(
                   let rhs = *rhs;
                   let mut deref_count: usize = 0;
                   let mut peeled_expr = lhs;
-                  {
-                     while let Expression::UnaryOperator(UnOp::Dereference, dt) = ast[peeled_expr].expression {
-                        peeled_expr = dt;
-                        deref_count += 1;
-                     }
+                  while let Expression::UnaryOperator(UnOp::Dereference, dt) = ast[peeled_expr].expression {
+                     peeled_expr = dt;
+                     deref_count += 1;
                   }
                   if let Expression::Variable(v) = ast[peeled_expr].expression
                      && let Some(di) = procedure_vars.get_index_of(&v)
