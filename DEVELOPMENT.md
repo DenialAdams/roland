@@ -12,7 +12,7 @@ All commands that follow in this document are intended to be run in the root dir
 
 ## Obtaining QBE
 
-TODO
+`qbe` may be available form your distro's package manager. Failing that, check out the [qbe site](https://c9x.me/compile/releases.html).
 
 ## Obtaining wasmtime
 
