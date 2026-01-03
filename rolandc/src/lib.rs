@@ -66,6 +66,8 @@ use source_info::SourcePath;
 use type_data::{ExpressionType, IntWidth};
 
 use crate::backend::pointer_analysis::PointsTo;
+use crate::error_handling::error_handling_macros::rolandc_warn;
+use crate::parse::LinkNode;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Target {
@@ -142,7 +144,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    ctx: &mut CompilationContext,
    user_program_ep: CompilationEntryPoint<'a, FR>,
    config: &CompilationConfig,
-) -> Result<(), ()> {
+) -> Result<Vec<String>, ()> {
    ctx.program.clear();
    ctx.err_manager.clear();
    // We don't have to clear the interner - assumption is that the context is coming from a recent version of the same source, so symbols should be relevant
@@ -156,13 +158,15 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    }
    .into();
 
+   let mut link_requests: Vec<LinkNode> = vec![];
+
    if config.include_std {
-      imports::import_program(ctx, std_lib_start_path, imports::StdFileResolver)?;
+      imports::import_program(ctx, &mut link_requests, std_lib_start_path, imports::StdFileResolver)?;
    }
 
    match user_program_ep {
       CompilationEntryPoint::PathResolving(ep_path, resolver) => {
-         imports::import_program(ctx, ep_path, resolver)?;
+         imports::import_program(ctx, &mut link_requests, ep_path, resolver)?;
       }
       CompilationEntryPoint::Playground(contents) => {
          let files_to_import = lex_and_parse(
@@ -171,6 +175,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
             &mut ctx.err_manager,
             &mut ctx.interner,
             &mut ctx.program,
+            &mut link_requests,
          )?;
          if !files_to_import.is_empty() {
             rolandc_error!(
@@ -353,11 +358,27 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       .non_stack_var_info
       .retain(|_, v| v.kind != StorageKind::Const);
 
+   let link_requests = if config.target == Target::Qbe {
+      link_requests
+         .into_iter()
+         .map(|x| ctx.interner.lookup(x.link_name.str).to_string())
+         .collect()
+   } else {
+      for link_node in link_requests {
+         rolandc_warn!(
+            ctx.err_manager,
+            link_node.location,
+            "Link directives are not supported for this target, and will be ignored."
+         );
+      }
+      Vec::new()
+   };
+
    if !ctx.err_manager.errors.is_empty() {
       return Err(());
    }
 
-   Ok(())
+   Ok(link_requests)
 }
 
 pub struct CompilationConfig {
@@ -367,12 +388,17 @@ pub struct CompilationConfig {
    pub dump_debugging_info: bool,
 }
 
+pub struct CompilationResult {
+   pub program_bytes: Vec<u8>,
+   pub link_requests: Vec<String>,
+}
+
 pub fn compile<'a, FR: FileResolver<'a>>(
    ctx: &mut CompilationContext,
    user_program_ep: CompilationEntryPoint<'a, FR>,
    config: &CompilationConfig,
-) -> Result<Vec<u8>, ()> {
-   compile_for_errors(ctx, user_program_ep, config)?;
+) -> Result<CompilationResult, ()> {
+   let link_requests = compile_for_errors(ctx, user_program_ep, config)?;
 
    pre_backend_lowering::replace_nonnative_casts_and_unique_overflow(&mut ctx.program, &ctx.interner, config.target);
 
@@ -523,16 +549,16 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       linearize::simplify_cfg(&mut body.cfg, &ctx.program.ast.expressions);
    }
 
-   if config.target == Target::Qbe {
-      Ok(backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, regalloc_result))
+   let program_bytes = if config.target == Target::Qbe {
+      backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, regalloc_result)
    } else {
-      Ok(backend::wasm::emit_wasm(
-         &mut ctx.program,
-         &mut ctx.interner,
-         config,
-         regalloc_result,
-      ))
-   }
+      backend::wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, config, regalloc_result)
+   };
+
+   Ok(CompilationResult {
+      program_bytes,
+      link_requests,
+   })
 }
 
 fn lex_and_parse(
@@ -541,7 +567,8 @@ fn lex_and_parse(
    err_manager: &mut ErrorManager,
    interner: &mut Interner,
    program: &mut Program,
+   links: &mut Vec<LinkNode>,
 ) -> Result<Vec<ImportNode>, ()> {
    let tokens = lex::lex(s, source_path, err_manager, interner)?;
-   Ok(parse::astify(tokens, err_manager, interner, program))
+   Ok(parse::astify(tokens, err_manager, interner, program, links))
 }

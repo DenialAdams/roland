@@ -381,6 +381,12 @@ pub struct ImportNode {
    pub location: SourceInfo,
 }
 
+#[derive(Clone, Debug)]
+pub struct LinkNode {
+   pub link_name: StrNode,
+   pub location: SourceInfo,
+}
+
 #[derive(Clone)]
 pub struct BlockNode {
    pub statements: Vec<StatementId>,
@@ -572,6 +578,15 @@ fn parse_top_level_items(
                location: merge_locations(kw.source_info, sc.source_info),
             });
          }
+         Token::KeywordLink => {
+            let kw = lexer.next();
+            let link_name = parse_string(lexer, parse_context)?;
+            let sc = expect(lexer, parse_context, Token::Semicolon)?;
+            top.links.push(LinkNode {
+               link_name,
+               location: merge_locations(kw.source_info, sc.source_info),
+            });
+         }
          Token::KeywordStructDef => {
             let def = lexer.next();
             let s = parse_struct(lexer, parse_context, def.source_info)?;
@@ -649,6 +664,7 @@ struct TopLevelItems<'a> {
    consts: &'a mut Vec<ConstNode>,
    statics: &'a mut Vec<StaticNode>,
    imports: Vec<ImportNode>,
+   links: &'a mut Vec<LinkNode>,
 }
 
 pub fn astify(
@@ -656,6 +672,7 @@ pub fn astify(
    err_manager: &mut ErrorManager,
    interner: &Interner,
    program: &mut Program,
+   links: &mut Vec<LinkNode>,
 ) -> Vec<ImportNode> {
    let mut parse_context = ParseContext {
       err_manager,
@@ -672,6 +689,7 @@ pub fn astify(
       consts: &mut program.consts,
       statics: &mut program.statics,
       imports: vec![],
+      links,
    };
 
    while parse_top_level_items(&mut lexer, &mut parse_context, &mut program.ast, &mut top).is_err() {
@@ -683,6 +701,7 @@ pub fn astify(
             | Token::KeywordConst
             | Token::KeywordStatic
             | Token::KeywordImport
+            | Token::KeywordLink
             | Token::KeywordStructDef
             | Token::KeywordUnionDef
             | Token::KeywordEnumDef

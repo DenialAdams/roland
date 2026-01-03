@@ -43,7 +43,9 @@ pub fn compile_wasm4(source_code: &str) -> Result<Vec<u8>, String> {
 
    ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner);
 
-   compile_result.map_err(|()| String::from_utf8_lossy(&err_out).into_owned())
+   compile_result
+      .map(|x| x.program_bytes)
+      .map_err(|()| String::from_utf8_lossy(&err_out).into_owned())
 }
 
 #[wasm_bindgen]
@@ -91,8 +93,11 @@ pub fn compile_and_update_all(source_code: &str) -> Option<CompilationOutput> {
    ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner);
 
    if let Ok(v) = compile_result {
-      let disasm = wasmprinter::print_bytes(v.as_slice()).unwrap();
-      Some(CompilationOutput { bytes: v, disasm })
+      let disasm = wasmprinter::print_bytes(v.program_bytes.as_slice()).unwrap();
+      Some(CompilationOutput {
+         bytes: v.program_bytes,
+         disasm,
+      })
    } else {
       output_frame.set_text_content(String::from_utf8(err_out).ok().as_deref());
       None

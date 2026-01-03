@@ -158,7 +158,7 @@ fn main() {
 
    ctx.err_manager.write_out_errors(&mut err_stream_l, &ctx.interner);
 
-   let Ok(out_bytes) = compile_result else {
+   let Ok(compile_result) = compile_result else {
       std::process::exit(1);
    };
 
@@ -178,10 +178,10 @@ fn main() {
       output_path
    };
 
-   std::fs::write(&output_path, out_bytes).unwrap();
+   std::fs::write(&output_path, compile_result.program_bytes).unwrap();
 
    if config.target == Target::Qbe
-      && let Err(e) = compile_qbe(output_path, opts.output)
+      && let Err(e) = compile_qbe(output_path, opts.output, &compile_result.link_requests)
    {
       use std::io::Write;
       writeln!(err_stream_l, "Failed to compile produced IR to binary: {}", e).unwrap();
@@ -223,7 +223,11 @@ impl Display for QbeCompilationError {
    }
 }
 
-fn compile_qbe(mut ssa_path: PathBuf, final_path: Option<PathBuf>) -> std::result::Result<(), QbeCompilationError> {
+fn compile_qbe(
+   mut ssa_path: PathBuf,
+   final_path: Option<PathBuf>,
+   link_requests: impl IntoIterator<Item = impl AsRef<str>>,
+) -> std::result::Result<(), QbeCompilationError> {
    fn assemble_file(asm_path: &Path) -> Result<PathBuf, QbeCompilationError> {
       let mut the_object_path = asm_path.to_owned();
       the_object_path.set_extension("o");
@@ -276,13 +280,20 @@ fn compile_qbe(mut ssa_path: PathBuf, final_path: Option<PathBuf>) -> std::resul
       ssa_path
    };
 
-   match Command::new("ld")
+   let mut ld_command = Command::new("ld");
+
+   ld_command
+      .arg("-static")
       .arg("-o")
       .arg(&the_final_path)
       .arg(&program_object_path)
-      .arg(&syscall_object_path)
-      .status()
-   {
+      .arg(&syscall_object_path);
+
+   for link_request in link_requests {
+      ld_command.arg(format!("-l{}", link_request.as_ref()));
+   }
+
+   match ld_command.status() {
       Ok(stat) if stat.success() => Ok(()),
       Ok(stat) => Err(QbeCompilationError::LdExecution(stat)),
       Err(e) => Err(QbeCompilationError::LdInvocation(e)),

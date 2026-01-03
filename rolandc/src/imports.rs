@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use include_dir::{Dir, include_dir};
 
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
-use crate::parse::ImportNode;
+use crate::parse::{ImportNode, LinkNode};
 use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
 use crate::{CompilationContext, FileResolver, lex_and_parse};
 
@@ -33,6 +33,7 @@ impl<'a> FileResolver<'a> for StdFileResolver {
 
 pub fn import_program<'a, FR: FileResolver<'a>>(
    ctx: &mut CompilationContext,
+   links: &mut Vec<LinkNode>,
    path: PathBuf,
    mut resolver: FR,
 ) -> Result<(), ()> {
@@ -119,13 +120,14 @@ pub fn import_program<'a, FR: FileResolver<'a>>(
          &mut ctx.err_manager,
          &mut ctx.interner,
          &mut ctx.program,
+         links,
       )?;
 
       base_path.pop(); // /foo/bar/main.rol -> /foo/bar
       for file in imports {
          let file_str = ctx.interner.lookup(file.import_path.str);
          if let Some(std_path) = file_str.strip_prefix("std:") {
-            import_program(ctx, std_path.into(), StdFileResolver)?;
+            import_program(ctx, links, std_path.into(), StdFileResolver)?;
             continue;
          }
          let mut new_path = base_path.clone();
