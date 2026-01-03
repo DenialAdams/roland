@@ -294,7 +294,7 @@ fn compile_qbe(
       .arg(&program_object_path)
       .arg(&syscall_object_path)
       .arg("-L.") // let the user link whatever they got. why not
-      .arg("-L/usr/lib/musl/lib");
+      .arg("-L/usr/lib/musl/lib"); // the state of libc static linking is a tragedy
 
    ld_command.arg("--start-group");
    for link_request in link_requests {
