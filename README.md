@@ -205,7 +205,15 @@ An example WASM-4 game can be viewed here: https://github.com/DenialAdams/roland
 
 ### Linux x86_64
 
-By providing the `--amd64` flag to the roland compiler, a 64 bit ELF binary will be produced. By default the binary is completely static, directly using linux system calls. For this compilation target, you will need `qbe` and `as` installed on your system.
+By providing the `--amd64` flag to the roland compiler, a 64 bit ELF binary will be produced. For this compilation target, you will need `qbe` and `as` installed on your system. (As well as a linker, which defaults to `ld` but can be specified via `--linker`.)
+
+#### Linking
+
+You can specify additional libraries to link with the `link` directive.
+
+Do note that `libc` is not linked by default, and neither is any CRT (C Runtime). Libraries dependong on libc may fail to link, and libraries implicitly depending on the CRT may not work at runtime.
+
+The produced executable will be static. `rolandc` does not support dynamic linking due to the complexities associated with it.
 
 ## Tooling
 
