@@ -51,7 +51,7 @@ use backend::liveness::compute_live_intervals;
 use error_handling::ErrorManager;
 use error_handling::error_handling_macros::rolandc_error;
 use expression_hoisting::HoistingMode;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use interner::Interner;
 use monomorphization::update_expressions_to_point_to_monomorphized_procedures;
 pub use parse::Program;
@@ -144,7 +144,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    ctx: &mut CompilationContext,
    user_program_ep: CompilationEntryPoint<'a, FR>,
    config: &CompilationConfig,
-) -> Result<Vec<String>, ()> {
+) -> Result<IndexSet<String>, ()> {
    ctx.program.clear();
    ctx.err_manager.clear();
    // We don't have to clear the interner - assumption is that the context is coming from a recent version of the same source, so symbols should be relevant
@@ -371,7 +371,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
             "Link directives are not supported for this target, and will be ignored."
          );
       }
-      Vec::new()
+      IndexSet::new()
    };
 
    if !ctx.err_manager.errors.is_empty() {
@@ -390,7 +390,7 @@ pub struct CompilationConfig {
 
 pub struct CompilationResult {
    pub program_bytes: Vec<u8>,
-   pub link_requests: Vec<String>,
+   pub link_requests: IndexSet<String>,
 }
 
 pub fn compile<'a, FR: FileResolver<'a>>(

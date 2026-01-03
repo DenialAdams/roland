@@ -181,7 +181,7 @@ fn main() {
    std::fs::write(&output_path, compile_result.program_bytes).unwrap();
 
    if config.target == Target::Qbe
-      && let Err(e) = compile_qbe(output_path, opts.output, &compile_result.link_requests)
+      && let Err(e) = compile_qbe(output_path, opts.output, compile_result.link_requests)
    {
       use std::io::Write;
       writeln!(err_stream_l, "Failed to compile produced IR to binary: {}", e).unwrap();
@@ -226,7 +226,7 @@ impl Display for QbeCompilationError {
 fn compile_qbe(
    mut ssa_path: PathBuf,
    final_path: Option<PathBuf>,
-   link_requests: impl IntoIterator<Item = impl AsRef<str>>,
+   link_requests: impl IntoIterator<Item=impl AsRef<str>>,
 ) -> std::result::Result<(), QbeCompilationError> {
    fn assemble_file(asm_path: &Path) -> Result<PathBuf, QbeCompilationError> {
       let mut the_object_path = asm_path.to_owned();
@@ -283,15 +283,20 @@ fn compile_qbe(
    let mut ld_command = Command::new("ld");
 
    ld_command
+      .arg("-nostdlib")
       .arg("-static")
       .arg("-o")
       .arg(&the_final_path)
       .arg(&program_object_path)
-      .arg(&syscall_object_path);
+      .arg(&syscall_object_path)
+      .arg("-L.") // let the user link whatever they got. why not
+      .arg("-L/usr/lib/musl/lib");
 
+   ld_command.arg("--start-group");
    for link_request in link_requests {
       ld_command.arg(format!("-l{}", link_request.as_ref()));
    }
+   ld_command.arg("--end-group");
 
    match ld_command.status() {
       Ok(stat) if stat.success() => Ok(()),
