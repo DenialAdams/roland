@@ -27,16 +27,18 @@ Valid boolean options are:
 Valid options with arguments are:
 --output (output_file.wasm) | Specify the name of the output file
 --target (target_name)      | Specify the compilation target
+--linker (linker name)      | Specify the linker to use when linking the final binary on amd64
 
 Other modes:
 --help    | Prints this message
 --version | Prints the git commit this executable was built from";
 
 #[derive(Debug)]
-struct Opts {
+struct Opts<'a> {
    source_file: PathBuf,
    output: Option<PathBuf>,
    target: Option<Target>,
+   linker: Cow<'a, str>,
    dump_debugging_info: bool,
 }
 
@@ -56,7 +58,7 @@ fn parse_target(s: &std::ffi::OsStr) -> Result<Target, &'static str> {
    })
 }
 
-fn parse_args() -> Result<Opts, pico_args::Error> {
+fn parse_args() -> Result<Opts<'static>, pico_args::Error> {
    let mut pargs = pico_args::Arguments::from_env();
 
    if pargs.contains("--help") {
@@ -103,6 +105,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
       target,
       dump_debugging_info: pargs.contains("--dump-debugging-info"),
       output: pargs.opt_value_from_os_str("--output", parse_path)?,
+      linker: pargs.opt_value_from_str("--linker")?.map_or(Cow::Borrowed("ld"), |x: String| Cow::Owned(x)),
       source_file: pargs.free_from_os_str(parse_path)?,
    };
 
@@ -181,7 +184,7 @@ fn main() {
    std::fs::write(&output_path, compile_result.program_bytes).unwrap();
 
    if config.target == Target::Qbe
-      && let Err(e) = compile_qbe(output_path, opts.output, compile_result.link_requests)
+      && let Err(e) = compile_qbe(&opts.linker, output_path, opts.output, compile_result.link_requests)
    {
       use std::io::Write;
       writeln!(err_stream_l, "Failed to compile produced IR to binary: {}", e).unwrap();
@@ -208,10 +211,10 @@ impl Display for QbeCompilationError {
             write!(f, "Failed to invoke as: {}", io_err)
          }
          QbeCompilationError::LdExecution(exit_status) => {
-            write!(f, "ld failed to execute with code {}", exit_status)
+            write!(f, "linker failed to execute with code {}", exit_status)
          }
          QbeCompilationError::LdInvocation(io_err) => {
-            write!(f, "Failed to invoke ld: {}", io_err)
+            write!(f, "Failed to invoke linker: {}", io_err)
          }
          QbeCompilationError::QbeExecution(exit_status) => {
             write!(f, "qbe failed to execute with code {}", exit_status)
@@ -224,6 +227,7 @@ impl Display for QbeCompilationError {
 }
 
 fn compile_qbe(
+   linker: &str,
    mut ssa_path: PathBuf,
    final_path: Option<PathBuf>,
    link_requests: impl IntoIterator<Item=impl AsRef<str>>,
@@ -280,7 +284,7 @@ fn compile_qbe(
       ssa_path
    };
 
-   let mut ld_command = Command::new("ld");
+   let mut ld_command = Command::new(linker);
 
    ld_command
       .arg("-nostdlib")
