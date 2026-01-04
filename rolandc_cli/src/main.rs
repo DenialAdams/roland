@@ -3,6 +3,7 @@
 #![allow(clippy::unnecessary_wraps)] // False positives
 
 use std::borrow::Cow;
+use std::ffi::{OsStr, OsString};
 use std::fmt::Display;
 use std::fs::File;
 use std::io::Write;
@@ -34,11 +35,11 @@ Other modes:
 --version | Prints the git commit this executable was built from";
 
 #[derive(Debug)]
-struct Opts<'a> {
+struct Opts {
    source_file: PathBuf,
    output: Option<PathBuf>,
    target: Option<Target>,
-   linker: Cow<'a, str>,
+   linker: Option<OsString>,
    dump_debugging_info: bool,
 }
 
@@ -58,7 +59,7 @@ fn parse_target(s: &std::ffi::OsStr) -> Result<Target, &'static str> {
    })
 }
 
-fn parse_args() -> Result<Opts<'static>, pico_args::Error> {
+fn parse_args() -> Result<Opts, pico_args::Error> {
    let mut pargs = pico_args::Arguments::from_env();
 
    if pargs.contains("--help") {
@@ -105,7 +106,7 @@ fn parse_args() -> Result<Opts<'static>, pico_args::Error> {
       target,
       dump_debugging_info: pargs.contains("--dump-debugging-info"),
       output: pargs.opt_value_from_os_str("--output", parse_path)?,
-      linker: pargs.opt_value_from_str("--linker")?.map_or(Cow::Borrowed("ld"), |x: String| Cow::Owned(x)),
+      linker: pargs.opt_value_from_str("--linker")?,
       source_file: pargs.free_from_os_str(parse_path)?,
    };
 
@@ -184,7 +185,12 @@ fn main() {
    std::fs::write(&output_path, compile_result.program_bytes).unwrap();
 
    if config.target == Target::Qbe
-      && let Err(e) = compile_qbe(&opts.linker, output_path, opts.output, compile_result.link_requests)
+      && let Err(e) = compile_qbe(
+         opts.linker.as_ref().map(AsRef::as_ref),
+         output_path,
+         opts.output,
+         compile_result.link_requests,
+      )
    {
       use std::io::Write;
       writeln!(err_stream_l, "Failed to compile produced IR to binary: {}", e).unwrap();
@@ -196,7 +202,7 @@ enum QbeCompilationError {
    AsInvocation(std::io::Error),
    AsExecution(ExitStatus),
    LdInvocation(std::io::Error),
-   LdExecution(ExitStatus),
+   LdExecution(Option<ExitStatus>),
    QbeInvocation(std::io::Error),
    QbeExecution(ExitStatus),
 }
@@ -210,8 +216,11 @@ impl Display for QbeCompilationError {
          QbeCompilationError::AsInvocation(io_err) => {
             write!(f, "Failed to invoke as: {}", io_err)
          }
-         QbeCompilationError::LdExecution(exit_status) => {
+         QbeCompilationError::LdExecution(Some(exit_status)) => {
             write!(f, "linker failed to execute with code {}", exit_status)
+         }
+         QbeCompilationError::LdExecution(None) => {
+            write!(f, "linker failed to execute")
          }
          QbeCompilationError::LdInvocation(io_err) => {
             write!(f, "Failed to invoke linker: {}", io_err)
@@ -226,11 +235,12 @@ impl Display for QbeCompilationError {
    }
 }
 
+#[allow(clippy::ref_option)]
 fn compile_qbe(
-   linker: &str,
+   linker: Option<&OsStr>,
    mut ssa_path: PathBuf,
    final_path: Option<PathBuf>,
-   link_requests: impl IntoIterator<Item=impl AsRef<str>>,
+   link_requests: impl IntoIterator<Item = impl AsRef<str>>,
 ) -> std::result::Result<(), QbeCompilationError> {
    fn assemble_file(asm_path: &Path) -> Result<PathBuf, QbeCompilationError> {
       let mut the_object_path = asm_path.to_owned();
@@ -284,26 +294,37 @@ fn compile_qbe(
       ssa_path
    };
 
-   let mut ld_command = Command::new(linker);
+   let mut linker_args: Vec<OsString> = vec![
+      "-nostdlib".into(),
+      "--no-dynamic-linker".into(),
+      "-static".into(),
+      "-o".into(),
+      the_final_path.into(),
+      program_object_path.into(),
+      syscall_object_path.into(),
+   ];
 
-   ld_command
-      .arg("-nostdlib")
-      .arg("--no-dynamic-linker")
-      .arg("-static")
-      .arg("-o")
-      .arg(&the_final_path)
-      .arg(&program_object_path)
-      .arg(&syscall_object_path);
-
-   ld_command.arg("--start-group");
+   linker_args.push("--start-group".into());
    for link_request in link_requests {
-      ld_command.arg(format!("-l{}", link_request.as_ref()));
+      linker_args.push(format!("-l{}", link_request.as_ref()).into());
    }
-   ld_command.arg("--end-group");
+   linker_args.push("--end-group".into());
 
-   match ld_command.status() {
-      Ok(stat) if stat.success() => Ok(()),
-      Ok(stat) => Err(QbeCompilationError::LdExecution(stat)),
-      Err(e) => Err(QbeCompilationError::LdInvocation(e)),
+   if let Some(external_linker) = linker {
+      let mut ld_command = Command::new(external_linker);
+      ld_command.args(linker_args);
+
+      match ld_command.status() {
+         Ok(stat) if stat.success() => Ok(()),
+         Ok(stat) => Err(QbeCompilationError::LdExecution(Some(stat))),
+         Err(e) => Err(QbeCompilationError::LdInvocation(e)),
+      }
+   } else {
+      let args = libwild::Args::parse(|| linker_args.iter().map(|s| s.to_str().unwrap())).unwrap();
+
+      libwild::run(args).map_err(|e| {
+         libwild::error::report_error(&e);
+         QbeCompilationError::LdExecution(None)
+      })
    }
 }

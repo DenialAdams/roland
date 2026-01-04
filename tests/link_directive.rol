@@ -1,13 +1,10 @@
-link "c";
+link "notRealLib";
 proc main() {
-    when sizeof$<usize>() == 8 {
-        disablingThisTestOnAmd64ForNow;
-    }
 }
 __END__
 compile_wasi:
 Link directives are not supported for this target, and will be ignored.
 ↳ line 1, column 1 [tests/link_directive.rol]
 compile_amd64:
-Encountered undefined symbol `disablingThisTestOnAmd64ForNow`
-↳ line 4, column 9 [tests/link_directive.rol]
+wild: error: Couldn't find library `notRealLib` on library search path
+Failed to compile produced IR to binary: linker failed to execute

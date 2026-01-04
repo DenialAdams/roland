@@ -215,6 +215,8 @@ Do note that `libc` is not linked by default, and neither is any CRT (C Runtime)
 
 The produced executable will be static. `rolandc` does not support dynamic linking due to the complexities associated with it.
 
+By default rolandc will use an embedded copy of the `wild` linker, but you can specify an external linker via the `--linker` command-line option.
+
 ## Tooling
 
 ### Visual Studio Code Extension

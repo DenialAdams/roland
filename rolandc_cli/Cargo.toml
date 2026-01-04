@@ -8,6 +8,7 @@ edition = "2024"
 pico-args = { version = "0.5", default-features=false, features=[] }
 rolandc = { path = "../rolandc" }
 dhat = { version = "0.3", optional = true }
+libwild = "0.7"
 
 [features]
 dhat-heap = ["dep:dhat"]
