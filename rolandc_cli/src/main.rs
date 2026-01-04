@@ -288,13 +288,12 @@ fn compile_qbe(
 
    ld_command
       .arg("-nostdlib")
+      .arg("--no-dynamic-linker")
       .arg("-static")
       .arg("-o")
       .arg(&the_final_path)
       .arg(&program_object_path)
-      .arg(&syscall_object_path)
-      .arg("-L.") // let the user link whatever they got. why not
-      .arg("-L/usr/lib/musl/lib"); // the state of libc static linking is a tragedy
+      .arg(&syscall_object_path);
 
    ld_command.arg("--start-group");
    for link_request in link_requests {
