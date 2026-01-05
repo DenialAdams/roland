@@ -268,7 +268,7 @@ impl LanguageServer for Backend {
                   .client
                   .log_message(MessageType::INFO, "detected amd64 project")
                   .await;
-               WorkspaceMode::EntryPointAndTarget(root_path.join("main.rol"), Target::Qbe)
+               WorkspaceMode::EntryPointAndTarget(root_path.join("main.rol"), Target::QbeFreestanding)
             } else {
                self
                   .client

@@ -323,7 +323,11 @@ pub fn assign_variables_to_registers_and_mem(
       }
 
       if global.1.expr_type.e_type.is_aggregate()
-         || sizeof_type_mem(&global.1.expr_type.e_type, &program.user_defined_types, config.target.base_target()) == 0
+         || sizeof_type_mem(
+            &global.1.expr_type.e_type,
+            &program.user_defined_types,
+            config.target.base_target(),
+         ) == 0
       {
          continue;
       }

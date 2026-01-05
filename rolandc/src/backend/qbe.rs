@@ -225,7 +225,12 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
    }
 }
 
-pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: RegallocResult) -> Vec<u8> {
+pub fn emit_qbe(
+   freestanding: bool,
+   program: &mut Program,
+   interner: &Interner,
+   regalloc_result: RegallocResult,
+) -> Vec<u8> {
    fn emit_aggregate_def(
       buf: &mut Vec<u8>,
       emitted: &mut IndexSet<ExpressionType>,
@@ -348,10 +353,17 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
       );
    }
 
+   let mut main_proc = None;
    for (proc_id, procedure) in program.procedures.iter() {
       let Some(cfg) = program.procedure_bodies.get(proc_id).map(|x| &x.cfg) else {
          continue;
       };
+
+      let mangled_name = mangle(proc_id, &ctx.procedures[proc_id], ctx.interner);
+
+      if interner.lookup(procedure.definition.name.str) == "main" {
+         main_proc = Some(mangled_name);
+      }
 
       let abi_ret_type = roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs)
          .unwrap_or_else(|| "".into());
@@ -456,17 +468,19 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
       writeln!(ctx.buf, "}}").unwrap();
    }
 
-   ctx.buf
-      .write_all(
-         b"export
-function $_start() {
+   write!(
+      ctx.buf,
+      "export
+function {}() {{
 @entry
-   call $main()
+   call ${}()
    call $syscall1(l 231, l 0)
    hlt
-}",
-      )
-      .unwrap();
+}}",
+      if freestanding { "$_start" } else { "w $main" },
+      main_proc.unwrap()
+   )
+   .unwrap();
 
    ctx.buf
 }
@@ -966,7 +980,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
 
 fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner) -> Cow<'a, str> {
    let proc_name = interner.lookup(proc.definition.name.str);
-   if proc.impl_source != ProcImplSource::Native || proc_name == "main" {
+   if proc.impl_source != ProcImplSource::Native {
       // builtin procedures can't be monomorphized and thus don't need to be mangled
       // external procedures mustn't be mangled, for obvious reasons
       // TODO: we should still quote external identifiers in case they have unicode

@@ -25,6 +25,8 @@ scratch *args:
    wasmtime scratch.wasm
 scratch_amd64 *args:
    cargo run {{release_flag}} --bin rolandc_cli -- scratch.rol {{args}} --target amd64 && ./scratch
+scratch_amd64_system *args:
+   cargo run {{release_flag}} --bin rolandc_cli -- scratch.rol {{args}} --target amd64-host && ./scratch
 coverage:
    cargo clean
    RUSTFLAGS="-Cinstrument-coverage -Cstrip=none -Clink-dead-code -Cdebuginfo=2" cargo build --bin rolandc_cli

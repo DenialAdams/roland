@@ -50,7 +50,7 @@ pub fn get_special_procedures(target: Target, interner: &mut Interner) -> Box<[S
             return_type: ExpressionType::Unit,
          },
       ]),
-      Target::Wasi | Target::Qbe => Box::new([SpecialProcedure {
+      Target::Wasi | Target::QbeFreestanding | Target::QbeHost => Box::new([SpecialProcedure {
          name: interner.intern("main"),
          required: true,
          input_types: vec![],

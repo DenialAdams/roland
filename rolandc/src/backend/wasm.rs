@@ -150,18 +150,10 @@ impl TypeManager<'_> {
       self.function_val_types.clear();
 
       for param in parameters {
-         type_to_wasm_type(
-            param,
-            self.udt,
-            &mut self.function_val_types.param_val_types,
-         );
+         type_to_wasm_type(param, self.udt, &mut self.function_val_types.param_val_types);
       }
 
-      type_to_wasm_type(
-         ret_type,
-         self.udt,
-         &mut self.function_val_types.ret_val_types,
-      );
+      type_to_wasm_type(ret_type, self.udt, &mut self.function_val_types.ret_val_types);
 
       // (we are manually insert_full-ing here to minimize new vec allocation)
       let idx = if let Some(idx) = self.registered_types.get_index_of(&self.function_val_types) {
@@ -239,7 +231,7 @@ pub fn emit_wasm(
          .type_manager
          .register_or_find_type_by_definition(&external_procedure.definition);
       match config.target {
-         Target::Qbe | Target::Generic => unreachable!(),
+         Target::QbeFreestanding | Target::QbeHost | Target::Generic => unreachable!(),
          Target::Wasm4 | Target::Microw8 => {
             import_section.import(
                "env",
@@ -263,7 +255,7 @@ pub fn emit_wasm(
    // the base memory offset varies per platform;
    // on wasm-4/microw8, we don't own all of the memory!
    let mut offset: u32 = match config.target {
-      Target::Generic | Target::Qbe => unreachable!(),
+      Target::Generic | Target::QbeFreestanding | Target::QbeHost => unreachable!(),
       Target::Wasi => 0x0,
       Target::Wasm4 => 0x19a0,
       Target::Microw8 => 0x14000,
@@ -547,7 +539,7 @@ pub fn emit_wasm(
 
    // target specific imports/exports
    match config.target {
-      Target::Generic | Target::Qbe => unreachable!(),
+      Target::Generic | Target::QbeFreestanding | Target::QbeHost => unreachable!(),
       Target::Wasm4 => {
          import_section.import(
             "env",
@@ -948,20 +940,12 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
             if let Some(val) = value_of_field {
                literal_as_bytes(buf, val, generation_context);
             } else {
-               type_as_zero_bytes(
-                  buf,
-                  &field.1.e_type,
-                  generation_context.user_defined_types,
-               );
+               type_as_zero_bytes(buf, &field.1.e_type, generation_context.user_defined_types);
             }
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
             let padding_bytes = next_offset
                - this_offset
-               - sizeof_type_mem(
-                  &field.1.e_type,
-                  generation_context.user_defined_types,
-                  BaseTarget::Wasm,
-               );
+               - sizeof_type_mem(&field.1.e_type, generation_context.user_defined_types, BaseTarget::Wasm);
             for _ in 0..padding_bytes {
                buf.push(0);
             }
@@ -1433,8 +1417,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
 
          match (src_type, target_type) {
             (ExpressionType::Int(l), ExpressionType::Int(r))
-               if l.width.as_num_bytes(BaseTarget::Wasm)
-                  >= r.width.as_num_bytes(BaseTarget::Wasm) =>
+               if l.width.as_num_bytes(BaseTarget::Wasm) >= r.width.as_num_bytes(BaseTarget::Wasm) =>
             {
                match (l.width, r.width) {
                   (IntWidth::Eight, IntWidth::Four) => {
@@ -1717,12 +1700,7 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
 }
 
 fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   if sizeof_type_values(
-      val_type,
-      generation_context.user_defined_types,
-      BaseTarget::Wasm,
-   ) == 0
-   {
+   if sizeof_type_values(val_type, generation_context.user_defined_types, BaseTarget::Wasm) == 0 {
       // Drop the load address; nothing to load
       generation_context.active_fcn.instruction(&Instruction::Drop);
       return;
@@ -1734,15 +1712,9 @@ fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContex
       return;
    }
 
-   if sizeof_type_mem(
-      val_type,
-      generation_context.user_defined_types,
-      BaseTarget::Wasm,
-   ) == sizeof_type_wasm(
-      val_type,
-      generation_context.user_defined_types,
-      BaseTarget::Wasm,
-   ) {
+   if sizeof_type_mem(val_type, generation_context.user_defined_types, BaseTarget::Wasm)
+      == sizeof_type_wasm(val_type, generation_context.user_defined_types, BaseTarget::Wasm)
+   {
       match type_to_wasm_type_basic(val_type) {
          ValType::I64 => generation_context
             .active_fcn
@@ -1784,20 +1756,10 @@ fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContex
 }
 
 fn store_mem(val_type: &ExpressionType, generation_context: &mut GenerationContext) {
-   debug_assert!(
-      sizeof_type_values(
-         val_type,
-         generation_context.user_defined_types,
-         BaseTarget::Wasm
-      ) != 0
-   );
+   debug_assert!(sizeof_type_values(val_type, generation_context.user_defined_types, BaseTarget::Wasm) != 0);
 
    if val_type.is_aggregate() {
-      let size = sizeof_type_mem(
-         val_type,
-         generation_context.user_defined_types,
-         BaseTarget::Wasm,
-      );
+      let size = sizeof_type_mem(val_type, generation_context.user_defined_types, BaseTarget::Wasm);
       generation_context
          .active_fcn
          .instruction(&Instruction::I32Const(size as i32));
@@ -1807,15 +1769,9 @@ fn store_mem(val_type: &ExpressionType, generation_context: &mut GenerationConte
       return;
    }
 
-   if sizeof_type_mem(
-      val_type,
-      generation_context.user_defined_types,
-      BaseTarget::Wasm,
-   ) == sizeof_type_wasm(
-      val_type,
-      generation_context.user_defined_types,
-      BaseTarget::Wasm,
-   ) {
+   if sizeof_type_mem(val_type, generation_context.user_defined_types, BaseTarget::Wasm)
+      == sizeof_type_wasm(val_type, generation_context.user_defined_types, BaseTarget::Wasm)
+   {
       match type_to_wasm_type_basic(val_type) {
          ValType::I64 => generation_context
             .active_fcn

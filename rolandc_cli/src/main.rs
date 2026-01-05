@@ -10,7 +10,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 
-use rolandc::{CompilationContext, CompilationEntryPoint, FileResolver, Target};
+use rolandc::{BaseTarget, CompilationContext, CompilationEntryPoint, FileResolver, Target};
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
@@ -54,7 +54,8 @@ fn parse_target(s: &std::ffi::OsStr) -> Result<Target, &'static str> {
       "wasm4" | "wasm-4" => Target::Wasm4,
       "wasi" => Target::Wasi,
       "microw8" => Target::Microw8,
-      "amd64" => Target::Qbe,
+      "amd64" | "amd64-freestanding" => Target::QbeFreestanding,
+      "amd64-host" => Target::QbeHost,
       _ => return Err("Unrecognized target"),
    })
 }
@@ -79,7 +80,8 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
       ("--wasm4", Target::Wasm4),
       ("--microw8", Target::Microw8),
       ("--wasi", Target::Wasi),
-      ("--amd64", Target::Qbe),
+      ("--amd64", Target::QbeFreestanding),
+      ("--amd64-host", Target::QbeHost),
    ];
 
    for (opt, pot_target) in target_arr {
@@ -168,13 +170,13 @@ fn main() {
 
    let output_path = if let Some(v) = &opts.output {
       let mut cloned = v.clone();
-      if config.target == Target::Qbe {
+      if config.target.base_target() == BaseTarget::Qbe {
          cloned.set_extension("ssa");
       }
       cloned
    } else {
       let mut output_path = opts.source_file.clone();
-      if config.target == Target::Qbe {
+      if config.target.base_target() == BaseTarget::Qbe {
          output_path.set_extension("ssa");
       } else {
          output_path.set_extension("wasm");
@@ -184,12 +186,13 @@ fn main() {
 
    std::fs::write(&output_path, compile_result.program_bytes).unwrap();
 
-   if config.target == Target::Qbe
+   if config.target.base_target() == BaseTarget::Qbe
       && let Err(e) = compile_qbe(
          opts.linker.as_ref().map(AsRef::as_ref),
          output_path,
          opts.output,
          compile_result.link_requests,
+         config.target == Target::QbeFreestanding,
       )
    {
       use std::io::Write;
@@ -241,6 +244,7 @@ fn compile_qbe(
    mut ssa_path: PathBuf,
    final_path: Option<PathBuf>,
    link_requests: impl IntoIterator<Item = impl AsRef<str>>,
+   freestanding: bool,
 ) -> std::result::Result<(), QbeCompilationError> {
    fn assemble_file(asm_path: &Path) -> Result<PathBuf, QbeCompilationError> {
       let mut the_object_path = asm_path.to_owned();
@@ -294,37 +298,55 @@ fn compile_qbe(
       ssa_path
    };
 
-   let mut linker_args: Vec<OsString> = vec![
-      "-nostdlib".into(),
-      "--no-dynamic-linker".into(),
-      "-static".into(),
-      "-o".into(),
-      the_final_path.into(),
-      program_object_path.into(),
-      syscall_object_path.into(),
-   ];
+   if freestanding {
+      let mut linker_args: Vec<OsString> = vec![
+         "-nostdlib".into(),
+         "--no-dynamic-linker".into(),
+         "-static".into(),
+         "-o".into(),
+         the_final_path.into(),
+         program_object_path.into(),
+         syscall_object_path.into(),
+      ];
 
-   linker_args.push("--start-group".into());
-   for link_request in link_requests {
-      linker_args.push(format!("-l{}", link_request.as_ref()).into());
-   }
-   linker_args.push("--end-group".into());
+      linker_args.push("--start-group".into());
+      for link_request in link_requests {
+         linker_args.push(format!("-l{}", link_request.as_ref()).into());
+      }
+      linker_args.push("--end-group".into());
 
-   if let Some(external_linker) = linker {
-      let mut ld_command = Command::new(external_linker);
-      ld_command.args(linker_args);
+      if let Some(external_linker) = linker {
+         let mut ld_command = Command::new(external_linker);
+         ld_command.args(linker_args);
 
-      match ld_command.status() {
+         match ld_command.status() {
+            Ok(stat) if stat.success() => Ok(()),
+            Ok(stat) => Err(QbeCompilationError::LdExecution(Some(stat))),
+            Err(e) => Err(QbeCompilationError::LdInvocation(e)),
+         }
+      } else {
+         let args = libwild::Args::parse(|| linker_args.iter().map(|s| s.to_str().unwrap())).unwrap();
+
+         libwild::run(args).map_err(|e| {
+            libwild::error::report_error(&e);
+            QbeCompilationError::LdExecution(None)
+         })
+      }
+   } else {
+      let mut cc_command = Command::new("cc");
+      cc_command.arg("-o");
+      cc_command.args(&[the_final_path, program_object_path, syscall_object_path]);
+      if let Some(specified_linker) = linker {
+         cc_command.arg(format!("-fuse-ld={}", specified_linker.to_str().unwrap()));
+      }
+      for link_request in link_requests {
+         cc_command.arg(format!("-l{}", link_request.as_ref()));
+      }
+
+      match cc_command.status() {
          Ok(stat) if stat.success() => Ok(()),
          Ok(stat) => Err(QbeCompilationError::LdExecution(Some(stat))),
          Err(e) => Err(QbeCompilationError::LdInvocation(e)),
       }
-   } else {
-      let args = libwild::Args::parse(|| linker_args.iter().map(|s| s.to_str().unwrap())).unwrap();
-
-      libwild::run(args).map_err(|e| {
-         libwild::error::report_error(&e);
-         QbeCompilationError::LdExecution(None)
-      })
    }
 }

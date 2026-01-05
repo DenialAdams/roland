@@ -1,6 +1,6 @@
 use slotmap::SlotMap;
 
-use crate::{BaseTarget, Target};
+use crate::BaseTarget;
 use crate::backend::linearize::CfgInstruction;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
@@ -297,7 +297,7 @@ fn replace_shl(
    })
 }
 
-pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, interner: &Interner, target: Target) {
+pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, interner: &Interner, target: BaseTarget) {
    let mut replacements = vec![];
    for (expression, v) in program.ast.expressions.iter() {
       let opt_new_expr = match v.expression {
@@ -308,10 +308,10 @@ pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, intern
          Expression::BinaryOperator { operator, lhs, .. } => match operator {
             BinOp::Divide => replace_div(lhs, v.location, program, interner),
             BinOp::Remainder => replace_mod(lhs, v.location, program, interner),
-            BinOp::Add if target == Target::Qbe => replace_add(lhs, v.location, program, interner),
-            BinOp::Subtract if target == Target::Qbe => replace_sub(lhs, v.location, program, interner),
-            BinOp::Multiply if target == Target::Qbe => replace_mul(lhs, v.location, program, interner),
-            BinOp::BitwiseLeftShift if target == Target::Qbe => replace_shl(lhs, v.location, program, interner),
+            BinOp::Add if target == BaseTarget::Qbe => replace_add(lhs, v.location, program, interner),
+            BinOp::Subtract if target == BaseTarget::Qbe => replace_sub(lhs, v.location, program, interner),
+            BinOp::Multiply if target == BaseTarget::Qbe => replace_mul(lhs, v.location, program, interner),
+            BinOp::BitwiseLeftShift if target == BaseTarget::Qbe => replace_shl(lhs, v.location, program, interner),
             _ => None,
          },
          _ => None,

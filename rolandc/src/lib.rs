@@ -75,7 +75,8 @@ pub enum Target {
    Wasm4,
    Microw8,
    Generic,
-   Qbe,
+   QbeFreestanding,
+   QbeHost,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -101,13 +102,14 @@ impl BaseTarget {
 }
 
 impl Target {
-   fn base_target(self) -> BaseTarget {
+   #[must_use]
+   pub fn base_target(self) -> BaseTarget {
       match self {
          // Generic handling is obviously wrong here. But it's hard to do it better.
          // When we introduce a way to indicate that we want to produce a library (and therefore don't need a main)
          // we should be able to remove the generic target completely.
          Target::Microw8 | Target::Wasi | Target::Wasm4 | Target::Generic => BaseTarget::Wasm,
-         Target::Qbe => BaseTarget::Qbe,
+         Target::QbeFreestanding | Target::QbeHost => BaseTarget::Qbe,
       }
    }
 }
@@ -118,8 +120,8 @@ impl Display for Target {
          Target::Wasi => write!(f, "WASI"),
          Target::Wasm4 => write!(f, "WASM-4"),
          Target::Microw8 => write!(f, "Microw8"),
-         Target::Generic => write!(f, "lib"),
-         Target::Qbe => write!(f, "AMD64"),
+         Target::Generic => write!(f, "generic"),
+         Target::QbeFreestanding | Target::QbeHost => write!(f, "AMD64"),
       }
    }
 }
@@ -172,7 +174,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       Target::Wasm4 => "wasm4.rol",
       Target::Microw8 => "microw8.rol",
       Target::Generic => "shared.rol",
-      Target::Qbe => "amd64.rol",
+      Target::QbeFreestanding | Target::QbeHost => "amd64.rol",
    }
    .into();
 
@@ -355,7 +357,12 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
 
    definite_assignment::ensure_variables_definitely_assigned(&ctx.program, &mut ctx.err_manager);
 
-   compile_consts::compile_consts(&mut ctx.program, &ctx.interner, &mut ctx.err_manager, config.target.base_target());
+   compile_consts::compile_consts(
+      &mut ctx.program,
+      &ctx.interner,
+      &mut ctx.err_manager,
+      config.target.base_target(),
+   );
 
    if !ctx.err_manager.errors.is_empty() {
       return Err(());
@@ -371,12 +378,17 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    // affect side-effect order
    named_argument_lowering::lower_named_args(&mut ctx.program);
 
-   constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner, config.target.base_target());
+   constant_folding::fold_constants(
+      &mut ctx.program,
+      &mut ctx.err_manager,
+      &ctx.interner,
+      config.target.base_target(),
+   );
    ctx.program
       .non_stack_var_info
       .retain(|_, v| v.kind != StorageKind::Const);
 
-   let link_requests = if config.target == Target::Qbe {
+   let link_requests = if config.target.base_target() == BaseTarget::Qbe {
       link_requests
          .into_iter()
          .map(|x| ctx.interner.lookup(x.link_name.str).to_string())
@@ -418,7 +430,11 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 ) -> Result<CompilationResult, ()> {
    let link_requests = compile_for_errors(ctx, user_program_ep, config)?;
 
-   pre_backend_lowering::replace_nonnative_casts_and_unique_overflow(&mut ctx.program, &ctx.interner, config.target);
+   pre_backend_lowering::replace_nonnative_casts_and_unique_overflow(
+      &mut ctx.program,
+      &ctx.interner,
+      config.target.base_target(),
+   );
 
    dead_code_elimination::delete_unreachable_procedures_and_globals(&mut ctx.program, &mut ctx.interner, config.target);
 
@@ -432,7 +448,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    // TODO: add an optimization pass here that fuses stuff like x * 4 * 2 => x * 8 to clean up the lower_aggregate_access
    pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target.base_target());
 
-   if config.target == Target::Qbe {
+   if config.target.base_target() == BaseTarget::Qbe {
       expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::ThreeAddressCode);
    }
 
@@ -481,7 +497,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    }
 
    let regalloc_result = {
-      if config.target == Target::Qbe {
+      if config.target.base_target() == BaseTarget::Qbe {
          backend::regalloc::hoist_non_temp_var_uses(&mut ctx.program, config.target.base_target());
       }
       let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
@@ -567,8 +583,13 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       linearize::simplify_cfg(&mut body.cfg, &ctx.program.ast.expressions);
    }
 
-   let program_bytes = if config.target == Target::Qbe {
-      backend::qbe::emit_qbe(&mut ctx.program, &ctx.interner, regalloc_result)
+   let program_bytes = if config.target.base_target() == BaseTarget::Qbe {
+      backend::qbe::emit_qbe(
+         config.target == Target::QbeFreestanding,
+         &mut ctx.program,
+         &ctx.interner,
+         regalloc_result,
+      )
    } else {
       backend::wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, config, regalloc_result)
    };
