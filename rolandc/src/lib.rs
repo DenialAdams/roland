@@ -74,7 +74,7 @@ pub enum Target {
    Wasi,
    Wasm4,
    Microw8,
-   Lib,
+   Generic,
    Qbe,
 }
 
@@ -100,7 +100,7 @@ impl Display for Target {
          Target::Wasi => write!(f, "WASI"),
          Target::Wasm4 => write!(f, "WASM-4"),
          Target::Microw8 => write!(f, "Microw8"),
-         Target::Lib => write!(f, "lib"),
+         Target::Generic => write!(f, "lib"),
          Target::Qbe => write!(f, "AMD64"),
       }
    }
@@ -153,7 +153,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       Target::Wasi => "wasi.rol",
       Target::Wasm4 => "wasm4.rol",
       Target::Microw8 => "microw8.rol",
-      Target::Lib => "shared.rol",
+      Target::Generic => "shared.rol",
       Target::Qbe => "amd64.rol",
    }
    .into();

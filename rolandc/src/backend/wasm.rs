@@ -245,7 +245,7 @@ pub fn emit_wasm(
          .type_manager
          .register_or_find_type_by_definition(&external_procedure.definition);
       match config.target {
-         Target::Qbe | Target::Lib => unreachable!(),
+         Target::Qbe | Target::Generic => unreachable!(),
          Target::Wasm4 | Target::Microw8 => {
             import_section.import(
                "env",
@@ -269,7 +269,7 @@ pub fn emit_wasm(
    // the base memory offset varies per platform;
    // on wasm-4/microw8, we don't own all of the memory!
    let mut offset: u32 = match config.target {
-      Target::Lib | Target::Qbe => unreachable!(),
+      Target::Generic | Target::Qbe => unreachable!(),
       Target::Wasi => 0x0,
       Target::Wasm4 => 0x19a0,
       Target::Microw8 => 0x14000,
@@ -553,7 +553,7 @@ pub fn emit_wasm(
 
    // target specific imports/exports
    match config.target {
-      Target::Lib | Target::Qbe => unreachable!(),
+      Target::Generic | Target::Qbe => unreachable!(),
       Target::Wasm4 => {
          import_section.import(
             "env",

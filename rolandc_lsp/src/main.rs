@@ -159,7 +159,7 @@ impl Backend {
          let mode = &*self.mode.read();
          let (root_file_path, target) = match mode {
             WorkspaceMode::LooseFiles => (doc_uri.to_file_path().unwrap(), Target::Wasi),
-            WorkspaceMode::StdLib => (doc_uri.to_file_path().unwrap(), Target::Lib),
+            WorkspaceMode::StdLib => (doc_uri.to_file_path().unwrap(), Target::Generic),
             WorkspaceMode::EntryPointAndTarget(x, t) => (Cow::Owned(x.clone()), *t),
          };
          let config = rolandc::CompilationConfig {

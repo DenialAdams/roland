@@ -35,7 +35,7 @@ pub struct SpecialProcedure {
 
 pub fn get_special_procedures(target: Target, interner: &mut Interner) -> Box<[SpecialProcedure]> {
    match target {
-      Target::Lib => Box::new([]),
+      Target::Generic => Box::new([]),
       Target::Wasm4 => Box::new([
          SpecialProcedure {
             name: interner.intern("start"),
