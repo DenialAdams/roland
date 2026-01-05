@@ -2,7 +2,7 @@ use bitvec::prelude::*;
 use indexmap::{IndexMap, IndexSet};
 
 use super::linearize::{Cfg, CfgInstruction};
-use crate::Target;
+use crate::BaseTarget;
 use crate::backend::linearize::post_order;
 use crate::backend::pointer_analysis::{PointerAnalysisResult, PointsTo, PointsToOwned};
 use crate::constant_folding::expression_could_have_side_effects;
@@ -50,7 +50,7 @@ pub fn liveness(
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
    cfg: &mut Cfg,
    ast: &ExpressionPool,
-   target: Target,
+   target: BaseTarget,
    udt: &UserDefinedTypeInfo,
    pointer_analysis_result: &PointerAnalysisResult,
 ) -> IndexMap<ProgramIndex, BitBox> {

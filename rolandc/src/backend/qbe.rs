@@ -21,7 +21,7 @@ use crate::type_data::{
    ExpressionType, F32_TYPE, F64_TYPE, FloatType, FloatWidth, I8_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, IntType, IntWidth,
    U8_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
 };
-use crate::{Program, Target};
+use crate::{BaseTarget, Program};
 
 struct GenerationContext<'a> {
    buf: Vec<u8>,
@@ -73,7 +73,7 @@ fn roland_type_to_abi_type(
    udt: &UserDefinedTypeInfo,
    aggregate_defs: &IndexSet<ExpressionType>,
 ) -> Option<Cow<'static, str>> {
-   if sizeof_type_mem(r_type, udt, Target::Qbe) == 0 {
+   if sizeof_type_mem(r_type, udt, BaseTarget::Qbe) == 0 {
       return None;
    }
    Some(match r_type {
@@ -115,7 +115,7 @@ fn roland_type_to_sub_type(
    udt: &UserDefinedTypeInfo,
    aggregate_defs: &IndexSet<ExpressionType>,
 ) -> Option<Cow<'static, str>> {
-   if sizeof_type_mem(r_type, udt, Target::Qbe) == 0 {
+   if sizeof_type_mem(r_type, udt, BaseTarget::Qbe) == 0 {
       return None;
    }
    Some(match r_type {
@@ -204,13 +204,13 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
             if let Some(val) = value_of_field {
                literal_as_data(val, ctx);
             } else {
-               let sz = sizeof_type_mem(&field.1.e_type, ctx.udt, Target::Qbe);
+               let sz = sizeof_type_mem(&field.1.e_type, ctx.udt, BaseTarget::Qbe);
                if sz > 0 {
                   write!(ctx.buf, "z {}, ", sz).unwrap();
                }
             }
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
-            let padding_bytes = next_offset - this_offset - sizeof_type_mem(&field.1.e_type, ctx.udt, Target::Qbe);
+            let padding_bytes = next_offset - this_offset - sizeof_type_mem(&field.1.e_type, ctx.udt, BaseTarget::Qbe);
             if padding_bytes > 0 {
                write!(ctx.buf, "z {}, ", padding_bytes).unwrap();
             }
@@ -240,7 +240,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
          return;
       }
 
-      if sizeof_type_mem(et, udt, Target::Qbe) == 0 {
+      if sizeof_type_mem(et, udt, BaseTarget::Qbe) == 0 {
          return;
       }
 
@@ -266,7 +266,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
                   write!(buf, "{}, ", ft).unwrap();
                }
                let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
-               let padding_bytes = next_offset - this_offset - sizeof_type_mem(&field.1.e_type, udt, Target::Qbe);
+               let padding_bytes = next_offset - this_offset - sizeof_type_mem(&field.1.e_type, udt, BaseTarget::Qbe);
                if padding_bytes > 0 {
                   write!(buf, "b {}, ", padding_bytes).unwrap();
                }
@@ -328,7 +328,7 @@ pub fn emit_qbe(program: &mut Program, interner: &Interner, regalloc_result: Reg
             write!(
                ctx.buf,
                "z {} ",
-               sizeof_type_mem(&a_global.1.expr_type.e_type, ctx.udt, Target::Qbe)
+               sizeof_type_mem(&a_global.1.expr_type.e_type, ctx.udt, BaseTarget::Qbe)
             )
             .unwrap();
          }
@@ -500,7 +500,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   let size = sizeof_type_mem(
                      ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
                      ctx.udt,
-                     Target::Qbe,
+                     BaseTarget::Qbe,
                   );
                   writeln!(ctx.buf, "   blit {}, {}, {}", rhs_mem, lhs_mem, size).unwrap();
                } else if ctx.ast.expressions[*en].exp_type.as_ref().unwrap().is_aggregate() {
@@ -522,7 +522,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   let size = sizeof_type_mem(
                      ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
                      ctx.udt,
-                     Target::Qbe,
+                     BaseTarget::Qbe,
                   );
                   writeln!(ctx.buf, "   blit %t, {}, {}", lhs_mem, size).unwrap();
                } else {
@@ -789,7 +789,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                         let val = expr_to_val(*expr, ctx);
                         match (src_type, target_type) {
                            (ExpressionType::Int(l), ExpressionType::Int(r))
-                              if l.width.as_num_bytes(Target::Qbe) >= r.width.as_num_bytes(Target::Qbe) =>
+                              if l.width.as_num_bytes(BaseTarget::Qbe) >= r.width.as_num_bytes(BaseTarget::Qbe) =>
                            {
                               match (l.width, r.width) {
                                  (IntWidth::Eight | IntWidth::Four, IntWidth::Two) => {
@@ -828,9 +828,9 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                               }
                            }
                            (ExpressionType::Int(l), ExpressionType::Int(r))
-                              if l.width.as_num_bytes(Target::Qbe) < r.width.as_num_bytes(Target::Qbe) =>
+                              if l.width.as_num_bytes(BaseTarget::Qbe) < r.width.as_num_bytes(BaseTarget::Qbe) =>
                            {
-                              if l.width.as_num_bytes(Target::Qbe) <= 4 && r.width == IntWidth::Eight {
+                              if l.width.as_num_bytes(BaseTarget::Qbe) <= 4 && r.width == IntWidth::Eight {
                                  if l.signed {
                                     format!("extsw {}", val)
                                  } else {
@@ -942,7 +942,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
             } else if sizeof_type_mem(
                ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
                ctx.udt,
-               Target::Qbe,
+               BaseTarget::Qbe,
             ) == 0
             {
                writeln!(&mut ctx.buf, "   ret").unwrap();

@@ -12,7 +12,7 @@ use crate::semantic_analysis::{StructInfo, UnionInfo};
 use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
-use crate::{Program, Target};
+use crate::{BaseTarget, Program};
 
 pub const DEPTH_LIMIT: u64 = 100;
 
@@ -267,12 +267,12 @@ fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool) -> Expr
    expressions.insert(cloned)
 }
 
-pub fn monomorphize_types(program: &mut Program, target: Target) {
+pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
    fn lower_type(
       e: &mut ExpressionType,
       udt: &mut UserDefinedTypeInfo,
       tt: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
-      target: Target,
+      target: BaseTarget,
       already_lowered: &mut HashMap<(UserDefinedTypeId, Box<[ExpressionType]>), UserDefinedTypeId>,
    ) {
       match e {

@@ -1,6 +1,6 @@
 use slotmap::SlotMap;
 
-use crate::Target;
+use crate::{BaseTarget, Target};
 use crate::backend::linearize::CfgInstruction;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
@@ -10,7 +10,7 @@ use crate::size_info::sizeof_type_mem;
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, F32_TYPE, F64_TYPE, I8_TYPE, I16_TYPE, IntType, IntWidth, U8_TYPE, U16_TYPE};
 
-fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInfo>, target: Target) {
+fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInfo>, target: BaseTarget) {
    match the_type {
       ExpressionType::Enum(a) => {
          *the_type = enum_info.get(*a).unwrap().base_type.clone();
@@ -47,7 +47,7 @@ fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInf
 fn lower_single_expression(
    expression_node: &mut ExpressionNode,
    enum_info: &SlotMap<EnumId, EnumInfo>,
-   target: Target,
+   target: BaseTarget,
 ) {
    match &mut expression_node.expression {
       Expression::EnumLiteral(a, b) => {
@@ -83,7 +83,7 @@ fn lower_single_expression(
    lower_type(expression_node.exp_type.as_mut().unwrap(), enum_info, target);
 }
 
-pub fn lower_enums_and_pointers(program: &mut Program, target: Target) {
+pub fn lower_enums_and_pointers(program: &mut Program, target: BaseTarget) {
    for e in program.ast.expressions.values_mut() {
       lower_single_expression(e, &program.user_defined_types.enum_info, target);
    }
@@ -339,7 +339,7 @@ pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, intern
    }
 }
 
-pub fn kill_zst_assignments(program: &mut Program, target: Target) {
+pub fn kill_zst_assignments(program: &mut Program, target: BaseTarget) {
    for cfg in program.procedure_bodies.values_mut().map(|x| &mut x.cfg) {
       for bb in cfg.bbs.iter_mut() {
          // This feels pretty inefficient :(

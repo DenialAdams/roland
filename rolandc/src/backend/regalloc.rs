@@ -10,7 +10,7 @@ use crate::parse::{
 };
 use crate::size_info::{mem_alignment, sizeof_type_mem};
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
-use crate::{CompilationConfig, Program, Target};
+use crate::{BaseTarget, CompilationConfig, Program};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum VarSlot {
@@ -94,7 +94,7 @@ fn mark_loads_to_hoist<F: FnMut(ExpressionId, ExpressionType, VariableId)>(
    }
 }
 
-pub fn hoist_non_temp_var_uses(program: &mut Program, target: Target) {
+pub fn hoist_non_temp_var_uses(program: &mut Program, target: BaseTarget) {
    let mut escaping_vars = HashSet::new();
 
    for body in program.procedure_bodies.values_mut() {
@@ -209,7 +209,7 @@ pub fn assign_variables_to_registers_and_mem(
          let var = param.var_id;
          let typ = &param.p_type.e_type;
 
-         if sizeof_type_mem(typ, &program.user_defined_types, config.target) == 0 {
+         if sizeof_type_mem(typ, &program.user_defined_types, config.target.base_target()) == 0 {
             continue;
          }
 
@@ -220,7 +220,7 @@ pub fn assign_variables_to_registers_and_mem(
             body.locals.get(&var).unwrap(),
             escaping_vars.contains(&var),
             &program.user_defined_types,
-            config.target,
+            config.target.base_target(),
          );
 
          if matches!(sk, VarSlotKind::Stack(_)) {
@@ -230,7 +230,7 @@ pub fn assign_variables_to_registers_and_mem(
             if typ.is_aggregate() {
                free_slots
                   .entry(VarSlotKind::Register(
-                     if config.target.lowered_ptr_width() == IntWidth::Eight {
+                     if config.target.base_target().lowered_ptr_width() == IntWidth::Eight {
                         RegisterType::I64
                      } else {
                         RegisterType::I32
@@ -244,7 +244,7 @@ pub fn assign_variables_to_registers_and_mem(
                   body.locals.get(&var).unwrap(),
                   false,
                   &program.user_defined_types,
-                  config.target,
+                  config.target.base_target(),
                );
                debug_assert!(matches!(param_sk, VarSlotKind::Register(_)));
                free_slots.entry(param_sk).or_default().push(VarSlot::Register(reg));
@@ -270,7 +270,7 @@ pub fn assign_variables_to_registers_and_mem(
                body.locals.get(&expired_var).unwrap(),
                false,
                &program.user_defined_types,
-               config.target,
+               config.target.base_target(),
             );
             free_slots
                .entry(sk)
@@ -282,7 +282,7 @@ pub fn assign_variables_to_registers_and_mem(
             body.locals.get(var).unwrap(),
             escaping_vars.contains(var),
             &program.user_defined_types,
-            config.target,
+            config.target.base_target(),
          );
 
          let slot = if let Some(slot) = free_slots.entry(sk).or_default().pop() {
@@ -309,8 +309,8 @@ pub fn assign_variables_to_registers_and_mem(
       }
    }
 
-   if config.target == Target::Qbe {
-      // For QBE, there is simply no concept of global registers.
+   if config.target.base_target() != BaseTarget::Wasm {
+      // Only WASM has the concept of global registers
       return result;
    }
 
@@ -323,7 +323,7 @@ pub fn assign_variables_to_registers_and_mem(
       }
 
       if global.1.expr_type.e_type.is_aggregate()
-         || sizeof_type_mem(&global.1.expr_type.e_type, &program.user_defined_types, config.target) == 0
+         || sizeof_type_mem(&global.1.expr_type.e_type, &program.user_defined_types, config.target.base_target()) == 0
       {
          continue;
       }
@@ -341,7 +341,7 @@ fn type_to_slot_kind(
    et: &ExpressionType,
    var_is_escaping: bool,
    udt: &UserDefinedTypeInfo,
-   target: Target,
+   target: BaseTarget,
 ) -> VarSlotKind {
    let size = sizeof_type_mem(et, udt, target);
    if et.is_aggregate() || var_is_escaping || size == 0 {

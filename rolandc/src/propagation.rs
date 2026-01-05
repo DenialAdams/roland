@@ -12,7 +12,7 @@ use crate::parse::{
    AstPool, Expression, ExpressionId, ExpressionPool, ProcedureId, ProcedureNode, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::type_data::ExpressionType;
-use crate::{Program, Target};
+use crate::{BaseTarget, Program};
 
 fn fold_expr_id(
    expr_id: ExpressionId,
@@ -20,7 +20,7 @@ fn fold_expr_id(
    procedures: &SlotMap<ProcedureId, ProcedureNode>,
    user_defined_types: &UserDefinedTypeInfo,
    interner: &Interner,
-   target: Target,
+   target: BaseTarget,
 ) {
    let mut fc = FoldingContext {
       ast,
@@ -70,7 +70,7 @@ fn propagate_vals(
    procedures: &SlotMap<ProcedureId, ProcedureNode>,
    user_defined_types: &UserDefinedTypeInfo,
    interner: &Interner,
-   target: Target,
+   target: BaseTarget,
 ) {
    fn propagate_val_expr(
       e: ExpressionId,
@@ -166,7 +166,7 @@ fn propagate_vals(
 }
 
 // Conditional Copy/Constant Propagation
-pub fn propagate(program: &mut Program, interner: &Interner, target: Target) {
+pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget) {
    for proc in program.procedure_bodies.values_mut() {
       let mut escaping_vars = HashSet::new();
       mark_escaping_vars_cfg(&proc.cfg, &mut escaping_vars, &program.ast.expressions);

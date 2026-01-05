@@ -4,7 +4,7 @@ use std::ops::{BitAnd, BitOr, BitXor};
 use indexmap::IndexSet;
 use slotmap::SlotMap;
 
-use crate::Target;
+use crate::BaseTarget;
 use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_warn};
 use crate::interner::{Interner, StrId};
@@ -26,11 +26,11 @@ pub struct FoldingContext<'a> {
    pub user_defined_types: &'a UserDefinedTypeInfo,
    pub const_replacements: &'a HashMap<VariableId, ExpressionId>,
    pub current_proc_name: Option<StrId>,
-   pub target: Target,
+   pub target: BaseTarget,
    pub templated_types: &'a HashMap<UserDefinedTypeId, IndexSet<StrId>>,
 }
 
-pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, interner: &Interner, target: Target) {
+pub fn fold_constants(program: &mut Program, err_manager: &mut ErrorManager, interner: &Interner, target: BaseTarget) {
    let mut const_replacements: HashMap<VariableId, ExpressionId> = HashMap::new();
 
    for p_const in program
@@ -1036,7 +1036,7 @@ impl Literal {
       })
    }
 
-   fn do_as(self, target_type: &ExpressionType, target: Target) -> Option<Expression> {
+   fn do_as(self, target_type: &ExpressionType, target: BaseTarget) -> Option<Expression> {
       #[allow(clippy::match_same_arms, clippy::cast_precision_loss)]
       Some(match (self, make_int_type_concrete(target_type, target)) {
          // Float -> Float
@@ -1846,7 +1846,7 @@ impl PartialOrd for Literal {
    }
 }
 
-fn extract_literal(expr_node: &ExpressionNode, target: Target) -> Option<Literal> {
+fn extract_literal(expr_node: &ExpressionNode, target: BaseTarget) -> Option<Literal> {
    match &expr_node.expression {
       Expression::IntLiteral { val: x, .. } => {
          let x = *x;
@@ -1973,7 +1973,7 @@ fn deep_clone_literal_expr(expr: ExpressionId, expressions: &mut ExpressionPool)
    cloned
 }
 
-fn make_int_type_concrete(e: &ExpressionType, target: Target) -> &ExpressionType {
+fn make_int_type_concrete(e: &ExpressionType, target: BaseTarget) -> &ExpressionType {
    match *e {
       USIZE_TYPE if target.pointer_width() == 8 => &U64_TYPE,
       USIZE_TYPE if target.pointer_width() == 4 => &U32_TYPE,

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use indexmap::IndexSet;
 
-use crate::Target;
+use crate::BaseTarget;
 use crate::interner::StrId;
 use crate::parse::{StructId, UnionId, UserDefinedTypeId, UserDefinedTypeInfo};
 use crate::semantic_analysis::validator::map_generic_to_concrete_cow;
@@ -29,7 +29,7 @@ pub fn aligned_address(v: u32, a: u32) -> u32 {
 pub fn calculate_union_size_info(
    id: UnionId,
    udt: &mut UserDefinedTypeInfo,
-   target: Target,
+   target: BaseTarget,
    templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
 ) {
    if udt.union_info.get(id).unwrap().size.is_some() {
@@ -69,7 +69,7 @@ pub fn calculate_union_size_info(
 pub fn calculate_struct_size_info(
    id: StructId,
    udt: &mut UserDefinedTypeInfo,
-   target: Target,
+   target: BaseTarget,
    templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
 ) {
    if udt.struct_info.get(id).unwrap().size.is_some() {
@@ -131,7 +131,7 @@ pub fn calculate_struct_size_info(
 pub fn template_type_aware_mem_alignment(
    e: &ExpressionType,
    udt: &UserDefinedTypeInfo,
-   target: Target,
+   target: BaseTarget,
    templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
 ) -> u32 {
    match e {
@@ -178,7 +178,7 @@ pub fn template_type_aware_mem_alignment(
    }
 }
 
-pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) -> u32 {
+pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: BaseTarget) -> u32 {
    match e {
       ExpressionType::Enum(x) => {
          let base_type = &udt.enum_info.get(*x).unwrap().base_type;
@@ -220,7 +220,7 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Targ
 }
 
 /// The size of a type, in number of WASM values
-pub fn sizeof_type_values(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) -> u32 {
+pub fn sizeof_type_values(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: BaseTarget) -> u32 {
    if sizeof_type_mem(e, udt, target) == 0 {
       return 0;
    }
@@ -247,7 +247,7 @@ pub fn sizeof_type_values(e: &ExpressionType, udt: &UserDefinedTypeInfo, target:
 }
 
 /// The size of a type, in bytes, as it's stored in local memory (minimum size 4 bytes)
-pub fn sizeof_type_wasm(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) -> u32 {
+pub fn sizeof_type_wasm(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: BaseTarget) -> u32 {
    let size_mem = sizeof_type_mem(e, udt, target);
    if size_mem == 0 { 0 } else { std::cmp::max(4, size_mem) }
 }
@@ -255,7 +255,7 @@ pub fn sizeof_type_wasm(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: T
 pub fn template_type_aware_mem_size(
    e: &ExpressionType,
    udt: &UserDefinedTypeInfo,
-   target: Target,
+   target: BaseTarget,
    templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
 ) -> u32 {
    match e {
@@ -309,7 +309,7 @@ pub fn template_type_aware_mem_size(
 }
 
 /// The size of a type as it's stored in memory
-pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) -> u32 {
+pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: BaseTarget) -> u32 {
    match e {
       ExpressionType::Enum(x) => {
          let base_type = &udt.enum_info.get(*x).unwrap().base_type;

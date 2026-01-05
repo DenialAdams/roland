@@ -1356,13 +1356,13 @@ fn get_type(
                let size_source = template_type_aware_mem_size(
                   e_type,
                   validation_context.user_defined_types,
-                  validation_context.owned.target,
+                  validation_context.owned.target.base_target(),
                   validation_context.templated_types,
                );
                let size_target = template_type_aware_mem_size(
                   target_type,
                   validation_context.user_defined_types,
-                  validation_context.owned.target,
+                  validation_context.owned.target.base_target(),
                   validation_context.templated_types,
                );
 
@@ -1396,7 +1396,7 @@ fn get_type(
                         AlignOrUnknown::Alignment(template_type_aware_mem_alignment(
                            a_type,
                            ctx.user_defined_types,
-                           ctx.owned.target,
+                           ctx.owned.target.base_target(),
                            ctx.templated_types,
                         ))
                      }
@@ -2850,7 +2850,7 @@ fn fold_expr_id(expr_id: ExpressionId, err_manager: &mut ErrorManager, validatio
       user_defined_types: validation_context.user_defined_types,
       const_replacements: &HashMap::new(),
       current_proc_name,
-      target: validation_context.owned.target,
+      target: validation_context.owned.target.base_target(),
       templated_types: validation_context.templated_types,
    };
    constant_folding::try_fold_and_replace_expr(expr_id, &mut Some(err_manager), &mut fc, validation_context.interner);

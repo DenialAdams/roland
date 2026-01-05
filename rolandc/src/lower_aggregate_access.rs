@@ -1,9 +1,9 @@
 use crate::parse::{BinOp, Expression, ExpressionId, ExpressionNode};
 use crate::size_info::sizeof_type_mem;
 use crate::type_data::{ExpressionType, IntType, IntWidth};
-use crate::{Program, Target};
+use crate::{BaseTarget, Program};
 
-pub fn lower_aggregate_access(program: &mut Program, target: Target) {
+pub fn lower_aggregate_access(program: &mut Program, target: BaseTarget) {
    let expression_ids: Vec<ExpressionId> = program.ast.expressions.keys().collect();
    for e in expression_ids {
       match &program.ast.expressions[e].expression {

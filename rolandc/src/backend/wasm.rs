@@ -20,7 +20,7 @@ use crate::size_info::{aligned_address, mem_alignment, sizeof_type_mem, sizeof_t
 use crate::type_data::{
    ExpressionType, F32_TYPE, F64_TYPE, FloatType, FloatWidth, I8_TYPE, I16_TYPE, IntType, IntWidth, U8_TYPE, U16_TYPE,
 };
-use crate::{CompilationConfig, Target};
+use crate::{BaseTarget, CompilationConfig, Target};
 
 const NULL_MEM_ARG: MemArg = MemArg {
    offset: 0,
@@ -64,12 +64,11 @@ struct GenerationContext<'a> {
    procedure_indices: IndexSet<ProcedureId>,
    frames: Vec<ContainingSyntax>,
    var_to_slot: IndexMap<VariableId, VarSlot>,
-   target: Target,
    cfg_index_to_rpo_index: HashMap<usize, usize>,
 }
 
-fn type_to_wasm_type(t: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target, buf: &mut Vec<ValType>) {
-   if sizeof_type_mem(t, udt, target) == 0 {
+fn type_to_wasm_type(t: &ExpressionType, udt: &UserDefinedTypeInfo, buf: &mut Vec<ValType>) {
+   if sizeof_type_mem(t, udt, BaseTarget::Wasm) == 0 {
       return;
    }
 
@@ -124,17 +123,15 @@ impl Default for FunctionValTypes {
 
 struct TypeManager<'a> {
    udt: &'a UserDefinedTypeInfo,
-   target: Target,
    function_val_types: FunctionValTypes,
    registered_types: IndexSet<FunctionValTypes>,
    type_section: TypeSection,
 }
 
 impl TypeManager<'_> {
-   fn new(udt: &UserDefinedTypeInfo, target: Target) -> TypeManager<'_> {
+   fn new(udt: &UserDefinedTypeInfo) -> TypeManager<'_> {
       TypeManager {
          udt,
-         target,
          function_val_types: FunctionValTypes::new(),
          registered_types: IndexSet::new(),
          type_section: TypeSection::new(),
@@ -156,7 +153,6 @@ impl TypeManager<'_> {
          type_to_wasm_type(
             param,
             self.udt,
-            self.target,
             &mut self.function_val_types.param_val_types,
          );
       }
@@ -164,7 +160,6 @@ impl TypeManager<'_> {
       type_to_wasm_type(
          ret_type,
          self.udt,
-         self.target,
          &mut self.function_val_types.ret_val_types,
       );
 
@@ -185,7 +180,7 @@ impl TypeManager<'_> {
    }
 }
 
-pub fn sort_globals(program: &mut Program, target: Target) {
+pub fn sort_globals(program: &mut Program, target: BaseTarget) {
    program.non_stack_var_info.sort_by(|_k_1, v_1, _k_2, v_2| {
       let e_1 = &v_1.expr_type;
       let e_2 = &v_2.expr_type;
@@ -212,7 +207,7 @@ pub fn emit_wasm(
 ) -> Vec<u8> {
    let mut generation_context = GenerationContext {
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
-      type_manager: TypeManager::new(&program.user_defined_types, config.target),
+      type_manager: TypeManager::new(&program.user_defined_types),
       literal_offsets: HashMap::with_capacity(program.literals.len()),
       static_addresses: HashMap::with_capacity(program.non_stack_var_info.len()),
       global_info: &program.non_stack_var_info,
@@ -225,7 +220,6 @@ pub fn emit_wasm(
       frames: Vec::new(),
       var_to_slot: regalloc_result.var_to_slot,
       proc_name_table: &program.procedure_name_table,
-      target: config.target,
       cfg_index_to_rpo_index: HashMap::new(),
    };
 
@@ -298,7 +292,7 @@ pub fn emit_wasm(
          mem_alignment(
             &v.1.expr_type.e_type,
             generation_context.user_defined_types,
-            generation_context.target,
+            BaseTarget::Wasm,
          )
       } else {
          1
@@ -318,7 +312,7 @@ pub fn emit_wasm(
       offset += sizeof_type_mem(
          &static_details.expr_type.e_type,
          generation_context.user_defined_types,
-         generation_context.target,
+         BaseTarget::Wasm,
       );
    }
 
@@ -490,7 +484,7 @@ pub fn emit_wasm(
          if sizeof_type_values(
             &param.p_type.e_type,
             generation_context.user_defined_types,
-            generation_context.target,
+            BaseTarget::Wasm,
          ) == 0
          {
             continue;
@@ -814,7 +808,7 @@ fn node_within(
             for _ in 0..sizeof_type_values(
                generation_context.ast.expressions[*en].exp_type.as_ref().unwrap(),
                generation_context.user_defined_types,
-               generation_context.target,
+               BaseTarget::Wasm,
             ) {
                generation_context.active_fcn.instruction(&Instruction::Drop);
             }
@@ -958,7 +952,6 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
                   buf,
                   &field.1.e_type,
                   generation_context.user_defined_types,
-                  generation_context.target,
                );
             }
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
@@ -967,7 +960,7 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
                - sizeof_type_mem(
                   &field.1.e_type,
                   generation_context.user_defined_types,
-                  generation_context.target,
+                  BaseTarget::Wasm,
                );
             for _ in 0..padding_bytes {
                buf.push(0);
@@ -983,8 +976,8 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
    }
 }
 
-fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, udt: &UserDefinedTypeInfo, target: Target) {
-   let size = sizeof_type_mem(expr_type, udt, target);
+fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, udt: &UserDefinedTypeInfo) {
+   let size = sizeof_type_mem(expr_type, udt, BaseTarget::Wasm);
    buf.extend(std::iter::repeat_n(0, size as usize));
 }
 
@@ -1440,8 +1433,8 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
 
          match (src_type, target_type) {
             (ExpressionType::Int(l), ExpressionType::Int(r))
-               if l.width.as_num_bytes(generation_context.target)
-                  >= r.width.as_num_bytes(generation_context.target) =>
+               if l.width.as_num_bytes(BaseTarget::Wasm)
+                  >= r.width.as_num_bytes(BaseTarget::Wasm) =>
             {
                match (l.width, r.width) {
                   (IntWidth::Eight, IntWidth::Four) => {
@@ -1513,9 +1506,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                }
             }
             (ExpressionType::Int(l), ExpressionType::Int(r))
-               if l.width.as_num_bytes(generation_context.target) < r.width.as_num_bytes(generation_context.target) =>
+               if l.width.as_num_bytes(BaseTarget::Wasm) < r.width.as_num_bytes(BaseTarget::Wasm) =>
             {
-               if l.width.as_num_bytes(generation_context.target) <= 4 && r.width == IntWidth::Eight {
+               if l.width.as_num_bytes(BaseTarget::Wasm) <= 4 && r.width == IntWidth::Eight {
                   if l.signed {
                      generation_context.active_fcn.instruction(&Instruction::I64ExtendI32S);
                   } else {
@@ -1727,7 +1720,7 @@ fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContex
    if sizeof_type_values(
       val_type,
       generation_context.user_defined_types,
-      generation_context.target,
+      BaseTarget::Wasm,
    ) == 0
    {
       // Drop the load address; nothing to load
@@ -1744,11 +1737,11 @@ fn load_mem(val_type: &ExpressionType, generation_context: &mut GenerationContex
    if sizeof_type_mem(
       val_type,
       generation_context.user_defined_types,
-      generation_context.target,
+      BaseTarget::Wasm,
    ) == sizeof_type_wasm(
       val_type,
       generation_context.user_defined_types,
-      generation_context.target,
+      BaseTarget::Wasm,
    ) {
       match type_to_wasm_type_basic(val_type) {
          ValType::I64 => generation_context
@@ -1795,7 +1788,7 @@ fn store_mem(val_type: &ExpressionType, generation_context: &mut GenerationConte
       sizeof_type_values(
          val_type,
          generation_context.user_defined_types,
-         generation_context.target
+         BaseTarget::Wasm
       ) != 0
    );
 
@@ -1803,7 +1796,7 @@ fn store_mem(val_type: &ExpressionType, generation_context: &mut GenerationConte
       let size = sizeof_type_mem(
          val_type,
          generation_context.user_defined_types,
-         generation_context.target,
+         BaseTarget::Wasm,
       );
       generation_context
          .active_fcn
@@ -1817,11 +1810,11 @@ fn store_mem(val_type: &ExpressionType, generation_context: &mut GenerationConte
    if sizeof_type_mem(
       val_type,
       generation_context.user_defined_types,
-      generation_context.target,
+      BaseTarget::Wasm,
    ) == sizeof_type_wasm(
       val_type,
       generation_context.user_defined_types,
-      generation_context.target,
+      BaseTarget::Wasm,
    ) {
       match type_to_wasm_type_basic(val_type) {
          ValType::I64 => generation_context

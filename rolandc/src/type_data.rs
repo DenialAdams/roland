@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 
 use slotmap::SlotMap;
 
-use crate::Target;
+use crate::BaseTarget;
 use crate::interner::{Interner, StrId};
 use crate::parse::{EnumId, ProcedureId, ProcedureNode, StructId, UnionId, UserDefinedTypeInfo};
 use crate::semantic_analysis::type_variables::{TypeConstraint, TypeVariable, TypeVariableManager};
@@ -131,7 +131,7 @@ pub enum IntWidth {
 
 impl IntWidth {
    #[must_use]
-   pub fn as_num_bytes(self, target: Target) -> u8 {
+   pub fn as_num_bytes(self, target: BaseTarget) -> u8 {
       match self {
          IntWidth::Eight => 8,
          IntWidth::Four => 4,

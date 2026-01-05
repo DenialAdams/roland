@@ -78,18 +78,36 @@ pub enum Target {
    Qbe,
 }
 
-impl Target {
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum BaseTarget {
+   Wasm,
+   Qbe,
+}
+
+impl BaseTarget {
    fn pointer_width(self) -> u8 {
       match self {
-         Target::Qbe => 8,
-         _ => 4,
+         BaseTarget::Qbe => 8,
+         BaseTarget::Wasm => 4,
       }
    }
 
    fn lowered_ptr_width(self) -> IntWidth {
       match self {
-         Target::Qbe => IntWidth::Eight,
-         _ => IntWidth::Four,
+         BaseTarget::Qbe => IntWidth::Eight,
+         BaseTarget::Wasm => IntWidth::Four,
+      }
+   }
+}
+
+impl Target {
+   fn base_target(self) -> BaseTarget {
+      match self {
+         // Generic handling is obviously wrong here. But it's hard to do it better.
+         // When we introduce a way to indicate that we want to produce a library (and therefore don't need a main)
+         // we should be able to remove the generic target completely.
+         Target::Microw8 | Target::Wasi | Target::Wasm4 | Target::Generic => BaseTarget::Wasm,
+         Target::Qbe => BaseTarget::Qbe,
       }
    }
 }
@@ -304,7 +322,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    // longer be referenced now that we deleted all template procedures
    ctx.program.ast.expressions.retain(|_, x| x.exp_type.is_some());
 
-   monomorphization::monomorphize_types(&mut ctx.program, config.target);
+   monomorphization::monomorphize_types(&mut ctx.program, config.target.base_target());
 
    lower_transmutes_requiring_load::lower(&mut ctx.program.ast.expressions);
 
@@ -337,7 +355,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
 
    definite_assignment::ensure_variables_definitely_assigned(&ctx.program, &mut ctx.err_manager);
 
-   compile_consts::compile_consts(&mut ctx.program, &ctx.interner, &mut ctx.err_manager, config.target);
+   compile_consts::compile_consts(&mut ctx.program, &ctx.interner, &mut ctx.err_manager, config.target.base_target());
 
    if !ctx.err_manager.errors.is_empty() {
       return Err(());
@@ -353,7 +371,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    // affect side-effect order
    named_argument_lowering::lower_named_args(&mut ctx.program);
 
-   constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner, config.target);
+   constant_folding::fold_constants(&mut ctx.program, &mut ctx.err_manager, &ctx.interner, config.target.base_target());
    ctx.program
       .non_stack_var_info
       .retain(|_, v| v.kind != StorageKind::Const);
@@ -409,10 +427,10 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    explicit_lval_to_rval::make_lval_to_rval_explicit(&mut ctx.program);
 
-   lower_aggregate_access::lower_aggregate_access(&mut ctx.program, config.target);
+   lower_aggregate_access::lower_aggregate_access(&mut ctx.program, config.target.base_target());
 
    // TODO: add an optimization pass here that fuses stuff like x * 4 * 2 => x * 8 to clean up the lower_aggregate_access
-   pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target);
+   pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target.base_target());
 
    if config.target == Target::Qbe {
       expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::ThreeAddressCode);
@@ -434,14 +452,14 @@ pub fn compile<'a, FR: FileResolver<'a>>(
       ctx.program.ast.statements.clear();
    }
 
-   propagation::propagate(&mut ctx.program, &ctx.interner, config.target);
+   propagation::propagate(&mut ctx.program, &ctx.interner, config.target.base_target());
 
    // It would be nice to run this before deleting unreachable procedures,
    // but doing so would currently delete procedures that we take pointers to
-   pre_backend_lowering::kill_zst_assignments(&mut ctx.program, config.target);
+   pre_backend_lowering::kill_zst_assignments(&mut ctx.program, config.target.base_target());
 
-   if config.target != Target::Qbe {
-      backend::wasm::sort_globals(&mut ctx.program, config.target);
+   if config.target.base_target() == BaseTarget::Wasm {
+      backend::wasm::sort_globals(&mut ctx.program, config.target.base_target());
    }
 
    let mut debugging_files = if config.dump_debugging_info {
@@ -464,7 +482,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
 
    let regalloc_result = {
       if config.target == Target::Qbe {
-         backend::regalloc::hoist_non_temp_var_uses(&mut ctx.program, config.target);
+         backend::regalloc::hoist_non_temp_var_uses(&mut ctx.program, config.target.base_target());
       }
       let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
       for (id, body) in ctx.program.procedure_bodies.iter_mut() {
@@ -480,7 +498,7 @@ pub fn compile<'a, FR: FileResolver<'a>>(
             &body.locals,
             &mut body.cfg,
             &ctx.program.ast.expressions,
-            config.target,
+            config.target.base_target(),
             &ctx.program.user_defined_types,
             &pointer_analysis_result,
          );

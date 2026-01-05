@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use slotmap::SlotMap;
 
-use crate::Target;
+use crate::BaseTarget;
 use crate::constant_folding::{self, FoldingContext};
 use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::rolandc_error;
@@ -21,7 +21,7 @@ struct CgContext<'a> {
    procedures: &'a SlotMap<ProcedureId, ProcedureNode>,
    user_defined_types: &'a UserDefinedTypeInfo,
    interner: &'a Interner,
-   target: Target,
+   target: BaseTarget,
 }
 
 fn fold_expr_id(
@@ -32,7 +32,7 @@ fn fold_expr_id(
    user_defined_types: &UserDefinedTypeInfo,
    const_replacements: &HashMap<VariableId, ExpressionId>,
    interner: &Interner,
-   target: Target,
+   target: BaseTarget,
 ) {
    let mut fc = FoldingContext {
       ast,
@@ -46,7 +46,7 @@ fn fold_expr_id(
    constant_folding::try_fold_and_replace_expr(expr_id, &mut Some(err_manager), &mut fc, interner);
 }
 
-pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &mut ErrorManager, target: Target) {
+pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &mut ErrorManager, target: BaseTarget) {
    // There is an effective second compilation pipeline for constants. This is because:
    // 1) Lowering constants is something we need to do for compilation
    // 2) Constants can form a DAG of dependency, such that we need to lower them in the right order

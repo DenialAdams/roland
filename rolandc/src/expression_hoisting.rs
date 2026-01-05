@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::Target;
+use crate::BaseTarget;
 use crate::constant_folding::{expression_could_have_side_effects, is_non_aggregate_const};
 use crate::interner::Interner;
 use crate::parse::{
@@ -552,7 +552,7 @@ fn vv_expr(
             && sizeof_type_mem(
                expressions[expr_index].exp_type.as_ref().unwrap(),
                ctx.user_defined_types,
-               Target::Qbe,
+               BaseTarget::Qbe,
             ) == 0)
             || parent_ctx == ParentCtx::ExprStmt;
          let is_var = matches!(expressions[expr_index].expression, Expression::Variable(_));

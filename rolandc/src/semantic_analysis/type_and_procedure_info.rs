@@ -636,7 +636,7 @@ pub fn populate_type_and_procedure_info(
       calculate_struct_size_info(
          id,
          &mut program.user_defined_types,
-         config.target,
+         config.target.base_target(),
          &program.templated_types,
       );
    }
@@ -646,7 +646,7 @@ pub fn populate_type_and_procedure_info(
       calculate_union_size_info(
          id,
          &mut program.user_defined_types,
-         config.target,
+         config.target.base_target(),
          &program.templated_types,
       );
    }
