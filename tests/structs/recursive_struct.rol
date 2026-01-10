@@ -18,3 +18,5 @@ Struct `X` contains itself, which isn't allowed as it would result in an infinit
 ↳ line 1, column 1 [tests/structs/recursive_struct.rol]
 Struct `Y` contains itself, which isn't allowed as it would result in an infinitely large struct
 ↳ line 5, column 1 [tests/structs/recursive_struct.rol]
+Struct `S` contains itself, which isn't allowed as it would result in an infinitely large struct
+↳ line 9, column 1 [tests/structs/recursive_struct.rol]
