@@ -105,6 +105,14 @@ pub struct UnionNode {
 }
 
 #[derive(Clone)]
+pub struct TypeAliasNode {
+   pub name: StrId,
+   pub target: ExpressionTypeNode,
+   pub location: SourceInfo,
+   pub generic_parameters: Vec<StrNode>,
+}
+
+#[derive(Clone)]
 pub struct EnumNode {
    pub name: StrId,
    pub requested_size: Option<ExpressionTypeNode>,
@@ -399,11 +407,12 @@ new_key_type! { pub struct UnionId; }
 new_key_type! { pub struct StructId; }
 new_key_type! { pub struct EnumId; }
 
-#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 pub enum UserDefinedTypeId {
    Struct(StructId),
    Union(UnionId),
    Enum(EnumId),
+   Alias(ExpressionType),
 }
 
 #[derive(Clone)]
@@ -429,11 +438,12 @@ pub struct Program {
    // These fields are populated by the parser
    pub procedures: SlotMap<ProcedureId, ProcedureNode>,
    pub procedure_bodies: SecondaryMap<ProcedureId, ProcedureBody>,
-   pub enums: Vec<EnumNode>,     // killed during info population
-   pub structs: Vec<StructNode>, // killed during info population
-   pub unions: Vec<UnionNode>,   // killed during info population
-   pub statics: Vec<StaticNode>, // killed during info population
-   pub consts: Vec<ConstNode>,   // killed after AST constant folding
+   pub enums: Vec<EnumNode>,             // killed during info population
+   pub structs: Vec<StructNode>,         // killed during info population
+   pub unions: Vec<UnionNode>,           // killed during info population
+   pub type_aliases: Vec<TypeAliasNode>, // killed during info population
+   pub statics: Vec<StaticNode>,         // killed during info population
+   pub consts: Vec<ConstNode>,           // killed after AST constant folding
 
    // (only read by the language server)
    pub source_to_definition: IndexMap<SourceInfo, SourceInfo>,
@@ -473,6 +483,7 @@ impl Program {
          enums: Vec::new(),
          structs: Vec::new(),
          unions: Vec::new(),
+         type_aliases: Vec::new(),
          consts: Vec::new(),
          statics: Vec::new(),
          parsed_types: Vec::new(),
@@ -602,6 +613,11 @@ fn parse_top_level_items(
             let s = parse_enum(lexer, parse_context, def.source_info)?;
             top.enums.push(s);
          }
+         Token::KeywordTypeDef => {
+            let def = lexer.next();
+            let s = parse_type_alias(lexer, parse_context, def.source_info)?;
+            top.type_aliases.push(s);
+         }
          Token::KeywordConst => {
             let a_const = lexer.next();
             let variable_name = parse_identifier(lexer, parse_context)?;
@@ -661,6 +677,7 @@ struct TopLevelItems<'a> {
    structs: &'a mut Vec<StructNode>,
    unions: &'a mut Vec<UnionNode>,
    enums: &'a mut Vec<EnumNode>,
+   type_aliases: &'a mut Vec<TypeAliasNode>,
    consts: &'a mut Vec<ConstNode>,
    statics: &'a mut Vec<StaticNode>,
    imports: Vec<ImportNode>,
@@ -686,6 +703,7 @@ pub fn astify(
       structs: &mut program.structs,
       unions: &mut program.unions,
       enums: &mut program.enums,
+      type_aliases: &mut program.type_aliases,
       consts: &mut program.consts,
       statics: &mut program.statics,
       imports: vec![],
@@ -968,6 +986,28 @@ fn parse_enum(l: &mut Lexer, parse_context: &mut ParseContext, source_info: Sour
       variants,
       requested_size,
       location: merge_locations(source_info, close_brace.source_info),
+   })
+}
+
+fn parse_type_alias(
+   l: &mut Lexer,
+   parse_context: &mut ParseContext,
+   source_info: SourceInfo,
+) -> Result<TypeAliasNode, ()> {
+   let alias_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
+   let generic_parameters = if l.peek_token() == Token::LessThan {
+      parse_generic_parameters(l, parse_context)?
+   } else {
+      vec![]
+   };
+   expect(l, parse_context, Token::Assignment)?;
+   let target = parse_type(l, parse_context)?;
+   let sc = expect(l, parse_context, Token::Semicolon)?;
+   Ok(TypeAliasNode {
+      name: alias_name,
+      location: merge_locations(source_info, sc.source_info),
+      target,
+      generic_parameters,
    })
 }
 

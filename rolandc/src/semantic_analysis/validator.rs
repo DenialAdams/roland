@@ -316,6 +316,28 @@ where
                }
                ExpressionType::Struct(*y, std::mem::take(generic_args))
             }
+            Some(UserDefinedTypeId::Alias(y)) => {
+               let empty_set = IndexSet::new();
+               let expected_type_args = template_types
+                  .get(&UserDefinedTypeId::Alias(y.clone())) // very painful clone
+                  .unwrap_or(&empty_set);
+
+               if expected_type_args.len() != generic_args.len() {
+                  rolandc_error!(
+                     err_manager,
+                     location_for_error,
+                     "Expected {} type arguments but got {}",
+                     expected_type_args.len(),
+                     generic_args.len(),
+                  );
+
+                  return false;
+               }
+
+               let mut owned_t = y.clone();
+               map_generic_to_concrete(&mut owned_t, generic_args, expected_type_args);
+               owned_t
+            }
             None => {
                if let Some(bt) = str_to_builtin_type(interner.lookup(*x)) {
                   if !generic_args.is_empty() {
@@ -1155,8 +1177,7 @@ fn type_expression(
             .map(|x| &validation_context.procedures[x].specialized_type_parameters);
          if let ExpressionType::Unresolved { name, generic_args } = &mut base_type_node.e_type
             && generic_args.is_empty()
-            && let Some(UserDefinedTypeId::Struct(s_id)) =
-               validation_context.user_defined_type_name_table.get(name).copied()
+            && let Some(&UserDefinedTypeId::Struct(s_id)) = validation_context.user_defined_type_name_table.get(name)
          {
             let expected_num_type_args = validation_context
                .templated_types
@@ -2211,59 +2232,71 @@ fn get_type(
             None => unreachable!(),
          }
       }
-      Expression::UnresolvedEnumLiteral(x, v) => match validation_context.user_defined_type_name_table.get(&x.str) {
-         Some(UserDefinedTypeId::Struct(_)) => {
-            rolandc_error!(
-               err_manager,
-               x.location,
-               "Attempted to instantiate struct `{}` as an enum",
-               validation_context.interner.lookup(x.str),
-            );
-            ExpressionType::CompileError
-         }
-         Some(UserDefinedTypeId::Union(_)) => {
-            rolandc_error!(
-               err_manager,
-               x.location,
-               "Attempted to instantiate union `{}` as an enum",
-               validation_context.interner.lookup(x.str),
-            );
-            ExpressionType::CompileError
-         }
-         Some(UserDefinedTypeId::Enum(eid)) => {
-            let enum_info = validation_context.user_defined_types.enum_info.get(*eid).unwrap();
-            validation_context
-               .source_to_definition
-               .insert(x.location, enum_info.location);
-            if let Some(variant_location) = enum_info.variants.get(&v.str) {
+      Expression::UnresolvedEnumLiteral(x, v) => {
+         let mut base_t = ExpressionType::Unresolved {
+            name: x.str,
+            generic_args: Box::new([]),
+         };
+
+         let spec_params = validation_context
+            .owned
+            .cur_procedure
+            .map(|x| &validation_context.procedures[x].specialized_type_parameters);
+         resolve_type::<()>(
+            &mut base_t,
+            validation_context.user_defined_type_name_table,
+            None,
+            spec_params,
+            err_manager,
+            validation_context.interner,
+            v.location,
+            validation_context.templated_types,
+         );
+
+         match base_t {
+            ExpressionType::Enum(eid) => {
+               let enum_info = validation_context.user_defined_types.enum_info.get(eid).unwrap();
                validation_context
                   .source_to_definition
-                  .insert(v.location, *variant_location);
-               *expr = Expression::EnumLiteral(*eid, v.str);
-               ExpressionType::Enum(*eid)
-            } else {
+                  .insert(x.location, enum_info.location);
+               if let Some(variant_location) = enum_info.variants.get(&v.str) {
+                  validation_context
+                     .source_to_definition
+                     .insert(v.location, *variant_location);
+                  *expr = Expression::EnumLiteral(eid, v.str);
+                  ExpressionType::Enum(eid)
+               } else {
+                  rolandc_error!(
+                     err_manager,
+                     v.location,
+                     "Attempted to instantiate unknown variant `{}` of enum `{}`",
+                     validation_context.interner.lookup(v.str),
+                     validation_context.interner.lookup(x.str),
+                  );
+
+                  ExpressionType::CompileError
+               }
+            }
+            ExpressionType::Unresolved { .. } => {
+               // Resolution already errored
+               ExpressionType::CompileError
+            }
+            other_t => {
                rolandc_error!(
                   err_manager,
-                  v.location,
-                  "Attempted to instantiate unknown variant `{}` of enum `{}`",
-                  validation_context.interner.lookup(v.str),
-                  validation_context.interner.lookup(x.str),
+                  x.location,
+                  "Attempted to instatiate `{}` as an enum",
+                  other_t.as_roland_type_info(
+                     validation_context.interner,
+                     validation_context.user_defined_types,
+                     validation_context.procedures,
+                     &validation_context.owned.type_variables
+                  )
                );
-
                ExpressionType::CompileError
             }
          }
-         None => {
-            rolandc_error!(
-               err_manager,
-               x.location,
-               "Attempted to instantiate enum `{}`, which does not exist",
-               validation_context.interner.lookup(x.str),
-            );
-
-            ExpressionType::CompileError
-         }
-      },
+      }
       Expression::IfX(a, b, c) => {
          type_expression(err_manager, *a, validation_context);
          type_expression(err_manager, *b, validation_context);

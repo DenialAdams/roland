@@ -16,7 +16,7 @@ use crate::type_data::{ExpressionType, U8_TYPE, U16_TYPE, U32_TYPE, U64_TYPE};
 use crate::{CompilationConfig, Program};
 
 fn recursive_struct_union_check(
-   base_id: UserDefinedTypeId,
+   base_id: &UserDefinedTypeId,
    seen_structs_or_unions: &mut HashSet<UserDefinedTypeId>,
    struct_or_union_fields: &IndexMap<StrId, ExpressionTypeNode>,
    struct_info: &SlotMap<StructId, StructInfo>,
@@ -27,7 +27,7 @@ fn recursive_struct_union_check(
    for field in struct_or_union_fields.iter() {
       match &field.1.e_type {
          ExpressionType::Struct(x, _) => {
-            if UserDefinedTypeId::Struct(*x) == base_id {
+            if UserDefinedTypeId::Struct(*x) == *base_id {
                is_recursive = true;
                break;
             }
@@ -45,7 +45,7 @@ fn recursive_struct_union_check(
             );
          }
          ExpressionType::Union(x, _) => {
-            if UserDefinedTypeId::Union(*x) == base_id {
+            if UserDefinedTypeId::Union(*x) == *base_id {
                is_recursive = true;
                break;
             }
@@ -229,6 +229,47 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       }
    }
 
+   for mut an_alias in program.type_aliases.drain(..) {
+      let mut type_parameters = IndexSet::new();
+      for type_param in an_alias.generic_parameters.iter() {
+         if !type_parameters.insert(type_param.str) {
+            rolandc_error!(
+               err_manager,
+               type_param.location,
+               "Type alias `{}` has a duplicate type parameter `{}`",
+               interner.lookup(an_alias.name),
+               interner.lookup(type_param.str),
+            );
+         }
+      }
+
+      insert_or_error_duplicated(&mut all_types, err_manager, an_alias.name, an_alias.location, interner);
+
+      if !resolve_type(
+         &mut an_alias.target.e_type,
+         &program.user_defined_type_name_table,
+         Some(&type_parameters),
+         None,
+         err_manager,
+         interner,
+         an_alias.target.location,
+         &program.templated_types,
+      ) {
+         continue;
+      }
+
+      if !type_parameters.is_empty() {
+         program.templated_types.insert(
+            UserDefinedTypeId::Alias(an_alias.target.e_type.clone()),
+            type_parameters,
+         );
+      }
+
+      program
+         .user_defined_type_name_table
+         .insert(an_alias.name, UserDefinedTypeId::Alias(an_alias.target.e_type));
+   }
+
    for (id, enum_i) in program.user_defined_types.enum_info.iter_mut() {
       let base_type_location = enum_base_type_locations[id];
 
@@ -347,7 +388,7 @@ pub fn populate_type_and_procedure_info(
    for struct_i in program.user_defined_types.struct_info.iter() {
       seen_structs_or_unions.clear();
       if recursive_struct_union_check(
-         UserDefinedTypeId::Struct(struct_i.0),
+         &UserDefinedTypeId::Struct(struct_i.0),
          &mut seen_structs_or_unions,
          &struct_i.1.field_types,
          &program.user_defined_types.struct_info,
@@ -365,7 +406,7 @@ pub fn populate_type_and_procedure_info(
    for union_i in program.user_defined_types.union_info.iter() {
       seen_structs_or_unions.clear();
       if recursive_struct_union_check(
-         UserDefinedTypeId::Union(union_i.0),
+         &UserDefinedTypeId::Union(union_i.0),
          &mut seen_structs_or_unions,
          &union_i.1.field_types,
          &program.user_defined_types.struct_info,

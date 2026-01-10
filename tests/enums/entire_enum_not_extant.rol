@@ -3,5 +3,5 @@ proc main() {
 }
 __END__
 compile:
-Attempted to instantiate enum `Foo`, which does not exist
-↳ line 2, column 12 [tests/enums/entire_enum_not_extant.rol]
+Undeclared type `Foo`
+↳ line 2, column 17 [tests/enums/entire_enum_not_extant.rol]

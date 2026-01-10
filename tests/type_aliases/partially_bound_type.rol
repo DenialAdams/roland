@@ -1,0 +1,16 @@
+struct Foo<A, B> {
+    x: A,
+    y: B,
+}
+
+type MyPartiallyResolvedFoo<C> = Foo<C, u8>;
+
+proc main() {
+    let z = MyPartiallyResolvedFoo$<f64> { 
+        x: 10.0,
+        y: 10,
+    };
+    identity(z);
+}
+__END__
+run:

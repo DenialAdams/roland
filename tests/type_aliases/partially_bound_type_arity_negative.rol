@@ -1,0 +1,14 @@
+struct Foo<A, B> {
+    x: A,
+    y: B,
+}
+
+type MyPartiallyResolvedFoo<C> = Foo<C, u8>;
+
+proc main() {
+    let z: MyPartiallyResolvedFoo = ___;
+}
+__END__
+compile:
+Expected 1 type arguments but got 0
+↳ line 9, column 12 [tests/type_aliases/partially_bound_type_arity_negative.rol]

@@ -1,0 +1,15 @@
+struct Foo<T> {
+    x: T,
+}
+
+type MyUnit = unit;
+type MyResolvedFoo = Foo<u8>;
+
+proc main() {
+    let x: MyUnit = unit();
+    let y = MyResolvedFoo { x: 3 };
+    identity(x);
+    identity(y);
+}
+__END__
+run:

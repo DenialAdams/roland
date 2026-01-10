@@ -39,6 +39,7 @@ pub enum Token {
    KeywordWhere,
    KeywordIfx,
    KeywordWhen,
+   KeywordTypeDef,
    OpenBrace,
    CloseBrace,
    OpenParen,
@@ -149,6 +150,7 @@ impl Token {
          Token::KeywordWhile => "keyword 'while'",
          Token::KeywordIn => "keyword 'in'",
          Token::KeywordWhen => "keyword 'when'",
+         Token::KeywordTypeDef => "keyword 'type'",
          Token::Dollar => "token '$'",
          Token::Deref => "token '~'",
          Token::TripleUnderscore => "token '___'",
@@ -200,6 +202,7 @@ fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
       "where" => Token::KeywordWhere,
       "ifx" => Token::KeywordIfx,
       "when" => Token::KeywordWhen,
+      "type" => Token::KeywordTypeDef,
       other => Token::Identifier(interner.intern(other)),
    }
 }
