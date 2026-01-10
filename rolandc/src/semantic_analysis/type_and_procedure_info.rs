@@ -9,7 +9,7 @@ use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::interner::{Interner, StrId};
 use crate::parse::{AliasId, EnumId, ExpressionTypeNode, ProcImplSource, StructId, UnionId, UserDefinedTypeId};
-use crate::semantic_analysis::AliasInfo;
+use crate::semantic_analysis::{AliasInfo, AliasTarget};
 use crate::semantic_analysis::validator::resolve_type;
 use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
 use crate::source_info::{SourceInfo, SourcePath};
@@ -27,11 +27,8 @@ fn recursive_struct_union_check(
 
    for field in struct_or_union_fields.iter() {
       let mut t = &field.1.e_type;
-      loop {
-         t = match t {
-            ExpressionType::Array(bt, _) => bt,
-            _ => break,
-         }
+      while let ExpressionType::Array(bt, _) = t {
+         t = bt;
       }
       match t {
          ExpressionType::Struct(x, _) => {
@@ -253,7 +250,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
 
       insert_or_error_duplicated(&mut all_types, err_manager, an_alias.name, an_alias.location, interner);
       let alias_id = program.user_defined_types.alias_info.insert(AliasInfo {
-         target_type: an_alias.target,
+         target_type: AliasTarget::TypeNode(an_alias.target),
          location: an_alias.location,
          name: an_alias.name,
       });
@@ -269,25 +266,25 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
 
    let keys: Vec<AliasId> = program.user_defined_types.alias_info.keys().collect(); // annoying clone
    for id in keys {
-      let target_type_location = program.user_defined_types.alias_info[id].target_type.location;
+      let AliasTarget::TypeNode(mut etn) = std::mem::replace(
+         &mut program.user_defined_types.alias_info[id].target_type,
+         AliasTarget::RecursionSentinel,
+      ) else {
+         unreachable!()
+      };
 
-      // recursively defined aliases will resolve to unit. we will check and error on this soon
-      let mut target_type = std::mem::replace(
-         &mut program.user_defined_types.alias_info[id].target_type.e_type,
-         ExpressionType::Unit,
-      );
       resolve_type(
-         &mut target_type,
+         &mut etn.e_type,
          &program.user_defined_type_name_table,
          program.templated_types.get(&UserDefinedTypeId::Alias(id)),
          None,
          err_manager,
          interner,
-         target_type_location,
+         etn.location,
          &program.templated_types,
          &program.user_defined_types.alias_info,
       );
-      program.user_defined_types.alias_info[id].target_type.e_type = target_type;
+      program.user_defined_types.alias_info[id].target_type = AliasTarget::TypeNode(etn);
    }
 
    for (id, enum_i) in program.user_defined_types.enum_info.iter_mut() {

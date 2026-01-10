@@ -46,8 +46,14 @@ pub struct UnionInfo {
 }
 
 #[derive(Clone)]
+pub enum AliasTarget {
+   TypeNode(ExpressionTypeNode),
+   RecursionSentinel,
+}
+
+#[derive(Clone)]
 pub struct AliasInfo {
-   pub target_type: ExpressionTypeNode,
+   pub target_type: AliasTarget,
    pub location: SourceInfo,
    pub name: StrId,
 }

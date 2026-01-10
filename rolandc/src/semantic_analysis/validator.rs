@@ -22,7 +22,7 @@ use crate::parse::{
    ExpressionPool, ExpressionTypeNode, ProcImplSource, ProcedureId, ProcedureNode, Program, Statement, StatementId,
    StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId, statement_always_or_never_returns,
 };
-use crate::semantic_analysis::AliasInfo;
+use crate::semantic_analysis::{AliasInfo, AliasTarget};
 use crate::size_info::{template_type_aware_mem_alignment, template_type_aware_mem_size};
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, F32_TYPE, F64_TYPE, I32_TYPE, IntType, U32_TYPE, U64_TYPE, USIZE_TYPE};
@@ -335,14 +335,26 @@ where
                      expected_type_args.len(),
                      generic_args.len(),
                   );
+               }
 
+               let AliasTarget::TypeNode(ref etn) = alias_info.get(*y).unwrap().target_type else {
+                  rolandc_error!(
+                     err_manager,
+                     location_for_error,
+                     "Type alias `{}` is recursively defined",
+                     interner.lookup(*x),
+                  );
+                  return false;
+               };
+
+               if expected_type_args.len() != generic_args.len() {
                   return false;
                }
 
-               let mut owned_t = alias_info.get(*y).unwrap().target_type.e_type.clone();
+               let mut owned_t = etn.e_type.clone();
                map_generic_to_concrete(&mut owned_t, generic_args, expected_type_args);
 
-               resolve_type(
+               if !resolve_type(
                   &mut owned_t,
                   type_name_table,
                   type_params,
@@ -352,7 +364,9 @@ where
                   location_for_error,
                   template_types,
                   alias_info,
-               );
+               ) {
+                  return false;
+               }
 
                owned_t
             }

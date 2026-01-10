@@ -8,9 +8,20 @@ type Bar = Foo;
 
 type Alias = S<Alias>;
 
+// We want to get both errors at once - type arity and recursion
+type MyType = MyType<u8>;
+
 proc main() {
 }
 __END__
 compile:
-Expected 1 type arguments but got 0
-↳ line 9, column 12 [tests/type_aliases/partially_bound_type_arity_negative.rol]
+Type alias `Foo` is recursively defined
+↳ line 6, column 12 [tests/type_aliases/recursive_aliases.rol]
+Type alias `Bar` is recursively defined
+↳ line 7, column 12 [tests/type_aliases/recursive_aliases.rol]
+Type alias `Alias` is recursively defined
+↳ line 9, column 14 [tests/type_aliases/recursive_aliases.rol]
+Expected 0 type arguments but got 1
+↳ line 12, column 15 [tests/type_aliases/recursive_aliases.rol]
+Type alias `MyType` is recursively defined
+↳ line 12, column 15 [tests/type_aliases/recursive_aliases.rol]
