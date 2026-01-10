@@ -61,8 +61,7 @@ pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationCon
                ctx.program.user_defined_types.struct_info.get(*x).map(|x| x.location)
             }
             Some(UserDefinedTypeId::Union(x)) => ctx.program.user_defined_types.union_info.get(*x).map(|x| x.location),
-            // Limitation :\
-            Some(UserDefinedTypeId::Alias(_)) => None,
+            Some(UserDefinedTypeId::Alias(x)) => ctx.program.user_defined_types.alias_info.get(*x).map(|x| x.location),
             None => None,
          };
       }

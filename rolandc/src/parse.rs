@@ -10,7 +10,7 @@ use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::interner::{DUMMY_STR_TOKEN, Interner, StrId};
 use crate::lex::Lexer;
-use crate::semantic_analysis::{EnumInfo, GlobalInfo, StorageKind, StructInfo, UnionInfo};
+use crate::semantic_analysis::{AliasInfo, EnumInfo, GlobalInfo, StorageKind, StructInfo, UnionInfo};
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 
@@ -406,13 +406,14 @@ new_key_type! { pub struct ProcedureId; }
 new_key_type! { pub struct UnionId; }
 new_key_type! { pub struct StructId; }
 new_key_type! { pub struct EnumId; }
+new_key_type! { pub struct AliasId; }
 
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum UserDefinedTypeId {
    Struct(StructId),
    Union(UnionId),
    Enum(EnumId),
-   Alias(ExpressionType),
+   Alias(AliasId),
 }
 
 #[derive(Clone)]
@@ -420,6 +421,7 @@ pub struct UserDefinedTypeInfo {
    pub enum_info: SlotMap<EnumId, EnumInfo>,
    pub struct_info: SlotMap<StructId, StructInfo>,
    pub union_info: SlotMap<UnionId, UnionInfo>,
+   pub alias_info: SlotMap<AliasId, AliasInfo>,
 }
 
 #[derive(Clone)]
@@ -492,6 +494,7 @@ impl Program {
             enum_info: SlotMap::with_key(),
             struct_info: SlotMap::with_key(),
             union_info: SlotMap::with_key(),
+            alias_info: SlotMap::with_key(),
          },
          non_stack_var_info: IndexMap::new(),
          procedure_name_table: HashMap::new(),
@@ -519,6 +522,7 @@ impl Program {
       reset_slotmap(&mut self.user_defined_types.enum_info);
       reset_slotmap(&mut self.user_defined_types.struct_info);
       reset_slotmap(&mut self.user_defined_types.union_info);
+      reset_slotmap(&mut self.user_defined_types.alias_info);
       self.non_stack_var_info.clear();
       self.user_defined_type_name_table.clear();
       self.procedure_name_table.clear();

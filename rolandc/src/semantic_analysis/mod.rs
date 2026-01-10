@@ -45,6 +45,13 @@ pub struct UnionInfo {
    pub name: StrId,
 }
 
+#[derive(Clone)]
+pub struct AliasInfo {
+   pub target_type: ExpressionTypeNode,
+   pub location: SourceInfo,
+   pub name: StrId,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum StorageKind {
    Static,

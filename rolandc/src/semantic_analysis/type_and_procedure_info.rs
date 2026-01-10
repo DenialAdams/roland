@@ -8,7 +8,8 @@ use super::{EnumInfo, GlobalInfo, StorageKind, StructInfo, UnionInfo};
 use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::interner::{Interner, StrId};
-use crate::parse::{EnumId, ExpressionTypeNode, ProcImplSource, StructId, UnionId, UserDefinedTypeId};
+use crate::parse::{AliasId, EnumId, ExpressionTypeNode, ProcImplSource, StructId, UnionId, UserDefinedTypeId};
+use crate::semantic_analysis::AliasInfo;
 use crate::semantic_analysis::validator::resolve_type;
 use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
 use crate::source_info::{SourceInfo, SourcePath};
@@ -16,7 +17,7 @@ use crate::type_data::{ExpressionType, U8_TYPE, U16_TYPE, U32_TYPE, U64_TYPE};
 use crate::{CompilationConfig, Program};
 
 fn recursive_struct_union_check(
-   base_id: &UserDefinedTypeId,
+   base_id: UserDefinedTypeId,
    seen_structs_or_unions: &mut HashSet<UserDefinedTypeId>,
    struct_or_union_fields: &IndexMap<StrId, ExpressionTypeNode>,
    struct_info: &SlotMap<StructId, StructInfo>,
@@ -27,7 +28,7 @@ fn recursive_struct_union_check(
    for field in struct_or_union_fields.iter() {
       match &field.1.e_type {
          ExpressionType::Struct(x, _) => {
-            if UserDefinedTypeId::Struct(*x) == *base_id {
+            if UserDefinedTypeId::Struct(*x) == base_id {
                is_recursive = true;
                break;
             }
@@ -45,7 +46,7 @@ fn recursive_struct_union_check(
             );
          }
          ExpressionType::Union(x, _) => {
-            if UserDefinedTypeId::Union(*x) == *base_id {
+            if UserDefinedTypeId::Union(*x) == base_id {
                is_recursive = true;
                break;
             }
@@ -229,7 +230,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       }
    }
 
-   for mut an_alias in program.type_aliases.drain(..) {
+   for an_alias in program.type_aliases.drain(..) {
       let mut type_parameters = IndexSet::new();
       for type_param in an_alias.generic_parameters.iter() {
          if !type_parameters.insert(type_param.str) {
@@ -244,30 +245,42 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       }
 
       insert_or_error_duplicated(&mut all_types, err_manager, an_alias.name, an_alias.location, interner);
+      let alias_id = program.user_defined_types.alias_info.insert(AliasInfo {
+         target_type: an_alias.target,
+         location: an_alias.location,
+         name: an_alias.name,
+      });
+      program
+         .user_defined_type_name_table
+         .insert(an_alias.name, UserDefinedTypeId::Alias(alias_id));
+      if !type_parameters.is_empty() {
+         program
+            .templated_types
+            .insert(UserDefinedTypeId::Alias(alias_id), type_parameters);
+      }
+   }
 
-      if !resolve_type(
-         &mut an_alias.target.e_type,
+   let keys: Vec<AliasId> = program.user_defined_types.alias_info.keys().collect(); // annoying clone
+   for id in keys {
+      let target_type_location = program.user_defined_types.alias_info[id].target_type.location;
+
+      // recursively defined aliases will resolve to unit. we will check and error on this soon
+      let mut target_type = std::mem::replace(
+         &mut program.user_defined_types.alias_info[id].target_type.e_type,
+         ExpressionType::Unit,
+      );
+      resolve_type(
+         &mut target_type,
          &program.user_defined_type_name_table,
-         Some(&type_parameters),
+         program.templated_types.get(&UserDefinedTypeId::Alias(id)),
          None,
          err_manager,
          interner,
-         an_alias.target.location,
+         target_type_location,
          &program.templated_types,
-      ) {
-         continue;
-      }
-
-      if !type_parameters.is_empty() {
-         program.templated_types.insert(
-            UserDefinedTypeId::Alias(an_alias.target.e_type.clone()),
-            type_parameters,
-         );
-      }
-
-      program
-         .user_defined_type_name_table
-         .insert(an_alias.name, UserDefinedTypeId::Alias(an_alias.target.e_type));
+         &program.user_defined_types.alias_info,
+      );
+      program.user_defined_types.alias_info[id].target_type.e_type = target_type;
    }
 
    for (id, enum_i) in program.user_defined_types.enum_info.iter_mut() {
@@ -282,6 +295,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          interner,
          base_type_location,
          &program.templated_types,
+         &program.user_defined_types.alias_info,
       ) {
          continue;
       }
@@ -356,6 +370,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
             interner,
             etn.location,
             &program.templated_types,
+            &program.user_defined_types.alias_info,
          );
       }
    }
@@ -370,6 +385,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
             interner,
             etn.location,
             &program.templated_types,
+            &program.user_defined_types.alias_info,
          );
       }
    }
@@ -388,7 +404,7 @@ pub fn populate_type_and_procedure_info(
    for struct_i in program.user_defined_types.struct_info.iter() {
       seen_structs_or_unions.clear();
       if recursive_struct_union_check(
-         &UserDefinedTypeId::Struct(struct_i.0),
+         UserDefinedTypeId::Struct(struct_i.0),
          &mut seen_structs_or_unions,
          &struct_i.1.field_types,
          &program.user_defined_types.struct_info,
@@ -406,7 +422,7 @@ pub fn populate_type_and_procedure_info(
    for union_i in program.user_defined_types.union_info.iter() {
       seen_structs_or_unions.clear();
       if recursive_struct_union_check(
-         &UserDefinedTypeId::Union(union_i.0),
+         UserDefinedTypeId::Union(union_i.0),
          &mut seen_structs_or_unions,
          &union_i.1.field_types,
          &program.user_defined_types.struct_info,
@@ -431,6 +447,7 @@ pub fn populate_type_and_procedure_info(
          interner,
          const_node.const_type.location,
          &program.templated_types,
+         &program.user_defined_types.alias_info,
       );
 
       if let Some(old_value) = program.non_stack_var_info.insert(
@@ -466,6 +483,7 @@ pub fn populate_type_and_procedure_info(
          interner,
          static_node.static_type.location,
          &program.templated_types,
+         &program.user_defined_types.alias_info,
       );
 
       if let Some(old_value) = program.non_stack_var_info.insert(
@@ -623,6 +641,7 @@ pub fn populate_type_and_procedure_info(
             interner,
             parameter.p_type.location,
             &program.templated_types,
+            &program.user_defined_types.alias_info,
          );
       }
 
@@ -635,6 +654,7 @@ pub fn populate_type_and_procedure_info(
          interner,
          proc.definition.ret_type.location,
          &program.templated_types,
+         &program.user_defined_types.alias_info,
       );
 
       proc.type_parameters = type_parameters_with_constraints;

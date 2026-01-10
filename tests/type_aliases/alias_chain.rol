@@ -1,0 +1,10 @@
+type Foo = Bar;
+type Bar = Baz;
+type Baz = u8;
+
+proc main() {
+    let a: Foo = 10;
+    identity(a);
+}
+__END__
+compile:

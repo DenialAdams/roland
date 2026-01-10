@@ -18,10 +18,11 @@ use crate::error_handling::error_handling_macros::{
 use crate::interner::{Interner, StrId};
 use crate::monomorphization::SpecializationRequest;
 use crate::parse::{
-   ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression, ExpressionId, ExpressionNode,
+   AliasId, ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression, ExpressionId, ExpressionNode,
    ExpressionPool, ExpressionTypeNode, ProcImplSource, ProcedureId, ProcedureNode, Program, Statement, StatementId,
    StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId, statement_always_or_never_returns,
 };
+use crate::semantic_analysis::AliasInfo;
 use crate::size_info::{template_type_aware_mem_alignment, template_type_aware_mem_size};
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, F32_TYPE, F64_TYPE, I32_TYPE, IntType, U32_TYPE, U64_TYPE, USIZE_TYPE};
@@ -186,6 +187,7 @@ pub fn resolve_type<T>(
    interner: &Interner,
    location_for_error: SourceInfo,
    template_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
+   alias_info: &SlotMap<AliasId, AliasInfo>,
 ) -> bool
 where
    T: CanCheckContainsStrId,
@@ -200,6 +202,7 @@ where
          interner,
          location_for_error,
          template_types,
+         alias_info,
       ),
       ExpressionType::Array(exp, _) => resolve_type(
          exp,
@@ -210,6 +213,7 @@ where
          interner,
          location_for_error,
          template_types,
+         alias_info,
       ),
       ExpressionType::ProcedurePointer {
          parameters,
@@ -226,6 +230,7 @@ where
                interner,
                location_for_error,
                template_types,
+               alias_info,
             );
          }
          resolve_result &= resolve_type(
@@ -237,6 +242,7 @@ where
             interner,
             location_for_error,
             template_types,
+            alias_info,
          );
          resolve_result
       }
@@ -264,6 +270,7 @@ where
                interner,
                location_for_error,
                template_types,
+               alias_info,
             );
          }
 
@@ -318,9 +325,7 @@ where
             }
             Some(UserDefinedTypeId::Alias(y)) => {
                let empty_set = IndexSet::new();
-               let expected_type_args = template_types
-                  .get(&UserDefinedTypeId::Alias(y.clone())) // very painful clone
-                  .unwrap_or(&empty_set);
+               let expected_type_args = template_types.get(&UserDefinedTypeId::Alias(*y)).unwrap_or(&empty_set);
 
                if expected_type_args.len() != generic_args.len() {
                   rolandc_error!(
@@ -334,8 +339,21 @@ where
                   return false;
                }
 
-               let mut owned_t = y.clone();
+               let mut owned_t = alias_info.get(*y).unwrap().target_type.e_type.clone();
                map_generic_to_concrete(&mut owned_t, generic_args, expected_type_args);
+
+               resolve_type(
+                  &mut owned_t,
+                  type_name_table,
+                  type_params,
+                  specialized_types,
+                  err_manager,
+                  interner,
+                  location_for_error,
+                  template_types,
+                  alias_info,
+               );
+
                owned_t
             }
             None => {
@@ -960,6 +978,7 @@ fn type_statement_inner(
                   validation_context.interner,
                   v.location,
                   validation_context.templated_types,
+                  &validation_context.user_defined_types.alias_info,
                ) {
                   if let DeclarationValue::Expr(enid) = opt_enid {
                      let merged = try_merge_types(
@@ -1122,6 +1141,7 @@ fn type_expression(
             validation_context.interner,
             expr_location,
             validation_context.templated_types,
+            &validation_context.user_defined_types.alias_info,
          ) {
             *target_type = ExpressionType::CompileError;
          }
@@ -1159,6 +1179,7 @@ fn type_expression(
                validation_context.interner,
                g_arg.location,
                validation_context.templated_types,
+               &validation_context.user_defined_types.alias_info,
             );
          }
 
@@ -1177,7 +1198,8 @@ fn type_expression(
             .map(|x| &validation_context.procedures[x].specialized_type_parameters);
          if let ExpressionType::Unresolved { name, generic_args } = &mut base_type_node.e_type
             && generic_args.is_empty()
-            && let Some(&UserDefinedTypeId::Struct(s_id)) = validation_context.user_defined_type_name_table.get(name)
+            && let Some(UserDefinedTypeId::Struct(s_id)) =
+               validation_context.user_defined_type_name_table.get(name).copied()
          {
             let expected_num_type_args = validation_context
                .templated_types
@@ -1206,6 +1228,7 @@ fn type_expression(
             validation_context.interner,
             base_type_node.location,
             validation_context.templated_types,
+            &validation_context.user_defined_types.alias_info,
          ) {
             base_type_node.e_type = ExpressionType::CompileError;
          }
@@ -2251,6 +2274,7 @@ fn get_type(
             validation_context.interner,
             v.location,
             validation_context.templated_types,
+            &validation_context.user_defined_types.alias_info,
          );
 
          match base_t {

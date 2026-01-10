@@ -13,4 +13,4 @@ proc main() {
     identity(z);
 }
 __END__
-run:
+compile:
