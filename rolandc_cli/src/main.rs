@@ -1,6 +1,7 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::uninlined_format_args)] // I'm an old man and I like the way it was before
 #![allow(clippy::unnecessary_wraps)] // False positives
+#![allow(clippy::too_many_lines)] // A procedure should have however many lines as it needs. More procedures is not better.
 
 use std::borrow::Cow;
 use std::ffi::{OsStr, OsString};
@@ -315,7 +316,16 @@ fn compile_qbe(
       }
       linker_args.push("--end-group".into());
 
-      if let Some(external_linker) = linker {
+      if let Some(external_linker) = linker.or({
+         #[cfg(not(target_os = "linux"))]
+         {
+            Some(OsStr::new("ld"))
+         }
+         #[cfg(target_os = "linux")]
+         {
+            None
+         }
+      }) {
          let mut ld_command = Command::new(external_linker);
          ld_command.args(linker_args);
 
@@ -325,12 +335,19 @@ fn compile_qbe(
             Err(e) => Err(QbeCompilationError::LdInvocation(e)),
          }
       } else {
-         let args = libwild::Args::parse(|| linker_args.iter().map(|s| s.to_str().unwrap())).unwrap();
+         #[cfg(not(target_os = "linux"))]
+         {
+            unreachable!()
+         }
+         #[cfg(target_os = "linux")]
+         {
+            let args = libwild::Args::parse(|| linker_args.iter().map(|s| s.to_str().unwrap())).unwrap();
 
-         libwild::run(args).map_err(|e| {
-            libwild::error::report_error(&e);
-            QbeCompilationError::LdExecution(None)
-         })
+            libwild::run(args).map_err(|e| {
+               libwild::error::report_error(&e);
+               QbeCompilationError::LdExecution(None)
+            })
+         }
       }
    } else {
       let mut cc_command = Command::new("cc");
