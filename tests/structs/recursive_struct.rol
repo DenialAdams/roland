@@ -6,8 +6,11 @@ struct Y {
    uh_oh: X,
 }
 
+struct S {
+   array_field: [S; 3],
+}
+
 proc main() {
-   println("kaboom");
 }
 __END__
 compile:
