@@ -1,0 +1,18 @@
+enum Foo : u32 {
+  A,
+  B
+}
+
+enum Bar : u64 {
+  A,
+  B,
+}
+
+const ENUM_TRANSMUTE: u32 = Foo::B transmute u32;
+const ENUM_TRANSMUTE_F32: f32 = Foo::B transmute f32;
+const ENUM_TRANSMUTE_F64: f64 = Bar::B transmute f64;
+
+proc main() {
+}
+__END__
+run:
