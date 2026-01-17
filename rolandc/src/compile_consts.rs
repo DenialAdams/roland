@@ -88,7 +88,17 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
       return;
    }
 
-   cg_context.consts_being_processed.insert(c_id);
+   if !cg_context.consts_being_processed.insert(c_id) {
+      let loc = cg_context.all_consts[&c_id].0;
+      let name = cg_context.all_consts[&c_id].2;
+      rolandc_error!(
+         err_manager,
+         loc,
+         "const `{}` has a cyclic dependency",
+         cg_context.interner.lookup(name),
+      );
+      return;
+   }
 
    let c = cg_context.all_consts[&c_id];
    cg_expr(c.1, cg_context, err_manager);
@@ -132,18 +142,7 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
          cg_expr(*c, cg_context, err_manager);
       }
       Expression::Variable(x) => {
-         if cg_context.consts_being_processed.contains(x) {
-            let loc = cg_context.all_consts[x].0;
-            let name = cg_context.all_consts[x].2;
-            rolandc_error!(
-               err_manager,
-               loc,
-               "const `{}` has a cyclic dependency",
-               cg_context.interner.lookup(name),
-            );
-         } else if cg_context.const_replacements.contains_key(x) {
-            // We've already visited this constant, great, nothing to do
-         } else if cg_context.all_consts.contains_key(x) {
+         if cg_context.all_consts.contains_key(x) {
             cg_const(*x, cg_context, err_manager);
          }
       }
