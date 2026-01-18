@@ -117,6 +117,7 @@ pub struct EnumNode {
    pub name: StrId,
    pub requested_size: Option<ExpressionTypeNode>,
    pub variants: Vec<StrNode>,
+   pub values: Vec<Option<ExpressionId>>,
    pub location: SourceInfo,
 }
 
@@ -614,7 +615,7 @@ fn parse_top_level_items(
          }
          Token::KeywordEnumDef => {
             let def = lexer.next();
-            let s = parse_enum(lexer, parse_context, def.source_info)?;
+            let s = parse_enum(lexer, parse_context, def.source_info, &mut ast.expressions)?;
             top.enums.push(s);
          }
          Token::KeywordTypeDef => {
@@ -955,7 +956,12 @@ fn parse_union(l: &mut Lexer, parse_context: &mut ParseContext, source_info: Sou
    })
 }
 
-fn parse_enum(l: &mut Lexer, parse_context: &mut ParseContext, source_info: SourceInfo) -> Result<EnumNode, ()> {
+fn parse_enum(
+   l: &mut Lexer,
+   parse_context: &mut ParseContext,
+   source_info: SourceInfo,
+   expressions: &mut ExpressionPool,
+) -> Result<EnumNode, ()> {
    let enum_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
    let requested_size = if l.peek_token() == Token::Colon {
       let _ = l.next();
@@ -965,11 +971,19 @@ fn parse_enum(l: &mut Lexer, parse_context: &mut ParseContext, source_info: Sour
    };
    expect(l, parse_context, Token::OpenBrace)?;
    let mut variants = vec![];
+   let mut values = vec![];
    let close_brace = loop {
       if l.peek_token() == Token::CloseBrace {
          break l.next();
       }
       variants.push(parse_identifier(l, parse_context)?);
+      if l.peek_token() == Token::Assignment {
+         let _ = l.next();
+         let val = parse_expression(l, parse_context, false, expressions)?;
+         values.push(Some(val));
+      } else {
+         values.push(None);
+      }
       if l.peek_token() == Token::CloseBrace {
          break l.next();
       } else if let Token::Identifier(x) = l.peek_token() {
@@ -987,6 +1001,7 @@ fn parse_enum(l: &mut Lexer, parse_context: &mut ParseContext, source_info: Sour
    };
    Ok(EnumNode {
       name: enum_name,
+      values,
       variants,
       requested_size,
       location: merge_locations(source_info, close_brace.source_info),

@@ -763,7 +763,12 @@ fn fold_expr_inner(
 
          if let Some(literal) = extract_literal(operand, folding_context.target) {
             match cast_type {
-               CastType::Transmute => literal.transmute(expr_type, &folding_context.user_defined_types.enum_info),
+               CastType::Transmute => literal.transmute(
+                  expr_type,
+                  &folding_context.user_defined_types.enum_info,
+                  &folding_context.ast.expressions,
+                  folding_context.target,
+               ),
                CastType::As => literal.do_as(expr_type, folding_context.target),
             }
          } else {
@@ -1003,7 +1008,13 @@ impl Literal {
       )
    }
 
-   fn transmute(self, target_type: &ExpressionType, enum_info: &SlotMap<EnumId, EnumInfo>) -> Option<Expression> {
+   fn transmute(
+      self,
+      target_type: &ExpressionType,
+      enum_info: &SlotMap<EnumId, EnumInfo>,
+      exprs: &SlotMap<ExpressionId, ExpressionNode>,
+      target: BaseTarget,
+   ) -> Option<Expression> {
       #[allow(clippy::match_same_arms)]
       Some(match (self, target_type) {
          // int to float
@@ -1012,44 +1023,68 @@ impl Literal {
          (Literal::Int64(i), &F64_TYPE) => Expression::FloatLiteral(f64::from_bits(i as u64)),
          (Literal::Uint64(i), &F64_TYPE) => Expression::FloatLiteral(f64::from_bits(i)),
 
-         // float to int
-         (Literal::Float32(f), &ExpressionType::Int(_)) => Expression::IntLiteral {
+         // float to int/pointer
+         (Literal::Float32(f), &ExpressionType::Int(_) | &ExpressionType::Pointer(_)) => Expression::IntLiteral {
             val: u64::from(f.to_bits()),
             synthetic: true,
          },
-         (Literal::Float64(f), &ExpressionType::Int(_)) => Expression::IntLiteral {
+         (Literal::Float64(f), &ExpressionType::Int(_) | &ExpressionType::Pointer(_)) => Expression::IntLiteral {
             val: f.to_bits(),
             synthetic: true,
          },
 
-         // float to pointer
-         (Literal::Float32(f), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
-            val: u64::from(f.to_bits()),
+         // int to int/pointer
+         (Literal::Int8(i), &I8_TYPE) => Expression::IntLiteral {
+            val: u64::from(i as u8),
             synthetic: true,
          },
-         (Literal::Float64(f), &ExpressionType::Pointer(_)) => Expression::IntLiteral {
-            val: f.to_bits(),
+         (Literal::Uint8(i), &U8_TYPE) => Expression::IntLiteral {
+            val: u64::from(i),
+            synthetic: true,
+         },
+         (Literal::Int16(i), &I16_TYPE) => Expression::IntLiteral {
+            val: u64::from(i as u16),
+            synthetic: true,
+         },
+         (Literal::Uint16(i), &U16_TYPE) => Expression::IntLiteral {
+            val: u64::from(i),
+            synthetic: true,
+         },
+         (Literal::Int32(i), &U32_TYPE | &I32_TYPE | &ExpressionType::Pointer(_)) => Expression::IntLiteral {
+            val: u64::from(i as u32),
+            synthetic: true,
+         },
+         (Literal::Uint32(i), &U32_TYPE | &I32_TYPE | &ExpressionType::Pointer(_)) => Expression::IntLiteral {
+            val: u64::from(i),
+            synthetic: true,
+         },
+         (Literal::Int64(i), &U64_TYPE | &I64_TYPE | &ExpressionType::Pointer(_)) => Expression::IntLiteral {
+            val: i as u64,
+            synthetic: true,
+         },
+         (Literal::Uint64(i), &U64_TYPE | &I64_TYPE | &ExpressionType::Pointer(_)) => Expression::IntLiteral {
+            val: i,
             synthetic: true,
          },
 
-         // enum to int
-         (Literal::Enum(e_id, variant_str), &ExpressionType::Int(_)) => Expression::IntLiteral {
-            val: enum_info[e_id].variants.get_index_of(&variant_str).unwrap() as u64,
-            synthetic: true,
-         },
-
-         // enum to float
-         (Literal::Enum(e_id, variant_str), &F32_TYPE) => Expression::FloatLiteral(f64::from(f32::from_bits(
-            enum_info[e_id].variants.get_index_of(&variant_str).unwrap() as u32,
-         ))),
-         (Literal::Enum(e_id, variant_str), &F64_TYPE) => Expression::FloatLiteral(f64::from_bits(
-            enum_info[e_id].variants.get_index_of(&variant_str).unwrap() as u64,
-         )),
+         // enum to anything
+         (Literal::Enum(e_id, variant_str), _) => {
+            let ei = enum_info.get(e_id).unwrap();
+            extract_literal(
+               &exprs[ei.values[ei.variants.get_index_of(&variant_str).unwrap()].unwrap()],
+               target,
+            )?
+            .transmute(target_type, enum_info, exprs, target)?
+         }
 
          _ => return None,
       })
    }
 
+   // NOTE: this method (unlike transmute) does not support some cases that it "should"
+   // For instance, and Int32 literal as i32. This is because these are handled by the type based
+   // cast removal, at the callsite of this method. If we support enum casts via as, would need to beef this
+   // method up to handle all cases.
    fn do_as(self, target_type: &ExpressionType, target: BaseTarget) -> Option<Expression> {
       #[allow(clippy::match_same_arms, clippy::cast_precision_loss)]
       Some(match (self, make_int_type_concrete(target_type, target)) {

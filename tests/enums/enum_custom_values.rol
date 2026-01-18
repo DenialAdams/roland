@@ -1,0 +1,10 @@
+enum Foo {
+    A = 1,
+    B = 5,
+    C,
+    D = 123,
+}
+
+proc main() {
+    
+}

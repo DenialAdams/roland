@@ -2,9 +2,19 @@ enum Foo : u32 {
    A
 }
 
+type Alias = u64;
+
+// Alias base should still work
+
+enum Bar : Alias {
+   B
+}
+
 proc main() {
    println(uint_to_string(sizeof$<Foo>() as u64));
+   println(uint_to_string(sizeof$<Bar>() as u64));
 }
 __END__
 run:
 4
+8

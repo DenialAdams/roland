@@ -48,22 +48,11 @@ fn lower_single_expression(
    expression_node: &mut ExpressionNode,
    enum_info: &SlotMap<EnumId, EnumInfo>,
    target: BaseTarget,
-) {
+) -> bool {
+   let mut is_enum_literal = false;
    match &mut expression_node.expression {
-      Expression::EnumLiteral(a, b) => {
-         let ei = enum_info.get(*a).unwrap();
-         let replacement_expr = match ei.base_type {
-            ExpressionType::Unit => Expression::UnitLiteral,
-            ExpressionType::Int(_) => {
-               let val = ei.variants.get_index_of(b).unwrap();
-               Expression::IntLiteral {
-                  val: val as u64,
-                  synthetic: true,
-               }
-            }
-            _ => unreachable!(),
-         };
-         expression_node.expression = replacement_expr;
+      Expression::EnumLiteral(_, _) => {
+         is_enum_literal = true;
       }
       Expression::Cast {
          cast_type: _,
@@ -81,11 +70,31 @@ fn lower_single_expression(
    }
 
    lower_type(expression_node.exp_type.as_mut().unwrap(), enum_info, target);
+
+   is_enum_literal
 }
 
 pub fn lower_enums_and_pointers(program: &mut Program, target: BaseTarget) {
-   for e in program.ast.expressions.values_mut() {
-      lower_single_expression(e, &program.user_defined_types.enum_info, target);
+   let mut enums_literals: Vec<ExpressionId> = vec![]; // Due to borrowck (illegitimate), we need to do enum lowering by collect-lower
+   for (id, e) in program.ast.expressions.iter_mut() {
+      if lower_single_expression(e, &program.user_defined_types.enum_info, target) {
+         enums_literals.push(id);
+      }
+   }
+   for id in enums_literals {
+      let Expression::EnumLiteral(enum_id, variant) = program.ast.expressions[id].expression else {
+         unreachable!()
+      };
+      let ei = program.user_defined_types.enum_info.get(enum_id).unwrap();
+      let replacement_expr = match ei.base_type {
+         ExpressionType::Unit => Expression::UnitLiteral,
+         ExpressionType::Int(_) => program.ast.expressions
+            [ei.values[ei.variants.get_index_of(&variant).unwrap()].unwrap()]
+         .expression
+         .clone(),
+         _ => unreachable!(),
+      };
+      program.ast.expressions[id].expression = replacement_expr;
    }
 
    for struct_info in program.user_defined_types.struct_info.values_mut() {
