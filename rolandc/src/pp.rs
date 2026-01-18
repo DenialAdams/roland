@@ -7,10 +7,9 @@ use slotmap::SlotMap;
 use crate::Program;
 use crate::backend::linearize::{CfgInstruction, post_order};
 use crate::backend::liveness::ProgramIndex;
-use crate::interner::Interner;
+use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, BinOp, BlockNode, DeclarationValue, Expression, ExpressionId, ProcImplSource, ProcedureBody, ProcedureId,
-   ProcedureNode, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
+   AstPool, BinOp, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionTypeNode, ProcImplSource, ProcedureBody, ProcedureId, ProcedureNode, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId
 };
 use crate::semantic_analysis::StorageKind;
 use crate::type_data::ExpressionType;
@@ -135,7 +134,7 @@ fn pp_proc_internal<W: Write>(
 }
 
 fn pp_block<W: Write>(block: &BlockNode, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
-   writeln!(pp_ctx.output, " {{")?;
+   writeln!(pp_ctx.output, "{{")?;
    pp_ctx.indentation_level += 1;
    for stmt in block.statements.iter().copied() {
       pp_ctx.indent()?;
@@ -160,7 +159,7 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
          pp_block(bn, pp_ctx)?;
       }
       Statement::Loop(bn) => {
-         write!(pp_ctx.output, "loop")?;
+         write!(pp_ctx.output, "loop ")?;
          pp_block(bn, pp_ctx)?;
       }
       Statement::While(cond, bn) => {
@@ -189,8 +188,8 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
          } else {
             write!(pp_ctx.output, "..")?;
          }
-         write!(pp_ctx.output, "..")?;
          pp_expr(*end, pp_ctx)?;
+         write!(pp_ctx.output, " ")?;
          pp_block(body, pp_ctx)?;
       }
       Statement::Continue => writeln!(pp_ctx.output, "continue;")?,
@@ -211,6 +210,7 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
             write!(pp_ctx.output, "if ")?;
          }
          pp_expr(*cond, pp_ctx)?;
+         write!(pp_ctx.output, " ")?;
          pp_block(then, pp_ctx)?;
          let display_else = if let Statement::Block(bn) = &pp_ctx.ast.statements[*else_e].statement {
             !bn.statements.is_empty()
@@ -398,6 +398,7 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
       }
       Expression::StructLiteral(_, field_exprs) => {
          pp_type(expr.exp_type.as_ref().unwrap(), pp_ctx)?;
+         pp_struct_initializer(field_exprs.iter().map(|x| (*x.0, *x.1)), field_exprs.len(), pp_ctx)?;
          write!(pp_ctx.output, " {{ ",)?;
          for (i, field_expr) in field_exprs.iter().enumerate() {
             if let Some(e) = field_expr.1 {
@@ -433,22 +434,13 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          pp_type(expr.exp_type.as_ref().unwrap(), pp_ctx)?;
          write!(pp_ctx.output, "::{}", pp_ctx.interner.lookup(*variant))?;
       }
-      Expression::BoundFcnLiteral(id, generic_args) => {
+      Expression::BoundFcnLiteral(id, type_args) => {
          if let Some(proc_name) = pp_ctx.procedures.get(*id).map(|x| x.definition.name.str) {
             write!(pp_ctx.output, "{}", pp_ctx.interner.lookup(proc_name))?;
          } else {
             write!(pp_ctx.output, "XXX")?;
          }
-         if !generic_args.is_empty() {
-            write!(pp_ctx.output, "$<")?;
-            for (i, generic_arg) in generic_args.iter().enumerate() {
-               pp_type(&generic_arg.e_type, pp_ctx)?;
-               if i != generic_args.len() - 1 {
-                  write!(pp_ctx.output, ", ")?;
-               }
-            }
-            write!(pp_ctx.output, ">")?;
-         }
+         pp_type_arguments(type_args, pp_ctx)?;
       }
       Expression::IfX(a, b, c) => {
          write!(pp_ctx.output, "ifx ")?;
@@ -458,12 +450,50 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          write!(pp_ctx.output, " else ")?;
          pp_expr(*c, pp_ctx)?;
       }
-      Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _, _)
-      | Expression::UnresolvedEnumLiteral(_, _) => unimplemented!(),
+      Expression::UnresolvedVariable(var_name) => {
+         write!(pp_ctx.output, "{}", pp_ctx.interner.lookup(var_name.str))?;
+      }
+      Expression::UnresolvedProcLiteral(proc_name, type_args) => {
+         write!(pp_ctx.output, "{}", pp_ctx.interner.lookup(proc_name.str))?;
+         pp_type_arguments(type_args, pp_ctx)?;
+      }
+      Expression::UnresolvedStructLiteral(etn, fields, _) => {
+         pp_type(&etn.e_type, pp_ctx)?;
+         pp_struct_initializer(fields.iter().copied(), fields.len(), pp_ctx)?;
+      }
+      Expression::UnresolvedEnumLiteral(_, _) => unimplemented!(),
    }
 
+   Ok(())
+}
+
+fn pp_struct_initializer<W: Write, I: IntoIterator<Item=(StrId, Option<ExpressionId>)>>(field_exprs: I, field_exprs_len: usize, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
+   write!(pp_ctx.output, " {{ ",)?;
+   for (i, field_expr) in field_exprs.into_iter().enumerate() {
+      if let Some(e) = field_expr.1 {
+         write!(pp_ctx.output, "{}: ", pp_ctx.interner.lookup(field_expr.0))?;
+         pp_expr(e, pp_ctx)?;
+      } else {
+         write!(pp_ctx.output, "{},", pp_ctx.interner.lookup(field_expr.0))?;
+      }
+      if i != field_exprs_len - 1 {
+         write!(pp_ctx.output, ", ",)?;
+      }
+   }
+   write!(pp_ctx.output, " }}")
+}
+
+fn pp_type_arguments<W: Write>(type_args: &[ExpressionTypeNode], pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
+   if !type_args.is_empty() {
+      write!(pp_ctx.output, "$<")?;
+      for (i, type_arg) in type_args.iter().enumerate() {
+         pp_type(&type_arg.e_type, pp_ctx)?;
+         if i != type_args.len() - 1 {
+            write!(pp_ctx.output, ", ")?;
+         }
+      }
+      write!(pp_ctx.output, ">")?;
+   }
    Ok(())
 }
 
