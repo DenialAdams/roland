@@ -8,7 +8,10 @@ use super::{EnumInfo, GlobalInfo, StorageKind, StructInfo, UnionInfo};
 use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::interner::{Interner, StrId};
-use crate::parse::{AliasId, EnumId, ExpressionTypeNode, ProcImplSource, StructId, UnionId, UserDefinedTypeId};
+use crate::parse::{
+   AliasId, BinOp, CastType, EnumId, Expression, ExpressionNode, ExpressionTypeNode, ProcImplSource, StructId, UnionId,
+   UserDefinedTypeId,
+};
 use crate::semantic_analysis::validator::resolve_type;
 use crate::semantic_analysis::{AliasInfo, AliasTarget};
 use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
@@ -134,6 +137,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       insert_or_error_duplicated(&mut all_types, err_manager, a_enum.name, a_enum.location, interner);
       let enum_id = program.user_defined_types.enum_info.insert(EnumInfo {
          variants: a_enum.variants.iter().map(|x| (x.str, x.location)).collect(),
+         values: a_enum.values, // This will be refined once we know have resolved the base type
          location: a_enum.location,
          name: a_enum.name,
          base_type,
@@ -360,6 +364,60 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
                base_type_location,
                "Enum base type must be an unsigned integer"
             );
+         }
+      }
+
+      let mut last_specified_variant: Option<StrId> = None;
+      let mut since_last_expr: u64 = 0;
+      for (i, (variant, variant_location)) in enum_i.variants.iter().enumerate() {
+         if enum_i.values[i].is_some() {
+            last_specified_variant = Some(*variant);
+            since_last_expr = 0;
+         } else {
+            let final_expr = if let Some(lsv) = last_specified_variant {
+               let num_expr = program.ast.expressions.insert(ExpressionNode {
+                  expression: Expression::IntLiteral {
+                     val: since_last_expr + 1,
+                     synthetic: true,
+                  },
+                  exp_type: Some(enum_i.base_type.clone()),
+                  location: *variant_location,
+               });
+               let since_expr = program.ast.expressions.insert(ExpressionNode {
+                  expression: Expression::EnumLiteral(id, lsv),
+                  exp_type: Some(ExpressionType::Enum(id)),
+                  location: *variant_location,
+               });
+               let cast_expr = program.ast.expressions.insert(ExpressionNode {
+                  expression: Expression::Cast {
+                     cast_type: CastType::Transmute,
+                     target_type: enum_i.base_type.clone(),
+                     expr: since_expr,
+                  },
+                  exp_type: Some(enum_i.base_type.clone()),
+                  location: *variant_location,
+               });
+               program.ast.expressions.insert(ExpressionNode {
+                  expression: Expression::BinaryOperator {
+                     operator: BinOp::Add,
+                     lhs: cast_expr,
+                     rhs: num_expr,
+                  },
+                  exp_type: Some(enum_i.base_type.clone()),
+                  location: *variant_location,
+               })
+            } else {
+               program.ast.expressions.insert(ExpressionNode {
+                  expression: Expression::IntLiteral {
+                     val: i as u64,
+                     synthetic: true,
+                  },
+                  exp_type: Some(enum_i.base_type.clone()),
+                  location: *variant_location,
+               })
+            };
+            enum_i.values[i] = Some(final_expr);
+            since_last_expr += 1;
          }
       }
    }

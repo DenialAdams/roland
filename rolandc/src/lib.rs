@@ -447,8 +447,9 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    explicit_lval_to_rval::make_lval_to_rval_explicit(&mut ctx.program);
 
    lower_aggregate_access::lower_aggregate_access(&mut ctx.program, config.target.base_target());
-
    // TODO: add an optimization pass here that fuses stuff like x * 4 * 2 => x * 8 to clean up the lower_aggregate_access
+
+   
    pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target.base_target());
 
    if config.target.base_target() == BaseTarget::Qbe {
