@@ -10,4 +10,4 @@ proc main() {
 __END__
 compile:
 Value of when condition can't be constant folded
-↳ line 7, column 9 [tests/constant_folding/when_side_effect_zst_pointer.rol]
+↳ line 7, column 9 [tests/when/when_side_effect_zst_pointer.rol]
