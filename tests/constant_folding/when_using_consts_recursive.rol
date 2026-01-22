@@ -1,0 +1,21 @@
+
+const A: u64 = B;
+const B: u64 = A;
+
+proc main() {
+  when A == B {
+    println("ok");
+  }
+}
+__END__
+compile:
+const `A` has a cyclic dependency
+↳ line 2, column 1 [tests/constant_folding/when_using_consts_recursive.rol]
+Value of const `B` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static and initialize it on program start.
+↳ line 3, column 16 [tests/constant_folding/when_using_consts_recursive.rol]
+Value of const `A` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static and initialize it on program start.
+↳ line 2, column 16 [tests/constant_folding/when_using_consts_recursive.rol]
+const `B` has a cyclic dependency
+↳ line 3, column 1 [tests/constant_folding/when_using_consts_recursive.rol]
+Value of when condition can't be constant folded
+↳ line 6, column 8 [tests/constant_folding/when_using_consts_recursive.rol]

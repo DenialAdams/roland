@@ -9,7 +9,8 @@ use crate::backend::linearize::{CfgInstruction, post_order};
 use crate::backend::liveness::ProgramIndex;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, BinOp, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionTypeNode, ProcImplSource, ProcedureBody, ProcedureId, ProcedureNode, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId
+   AstPool, BinOp, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionTypeNode, ProcImplSource,
+   ProcedureBody, ProcedureId, ProcedureNode, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::StorageKind;
 use crate::type_data::ExpressionType;
@@ -467,7 +468,11 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
    Ok(())
 }
 
-fn pp_struct_initializer<W: Write, I: IntoIterator<Item=(StrId, Option<ExpressionId>)>>(field_exprs: I, field_exprs_len: usize, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
+fn pp_struct_initializer<W: Write, I: IntoIterator<Item = (StrId, Option<ExpressionId>)>>(
+   field_exprs: I,
+   field_exprs_len: usize,
+   pp_ctx: &mut PpCtx<W>,
+) -> Result<(), std::io::Error> {
    write!(pp_ctx.output, " {{ ",)?;
    for (i, field_expr) in field_exprs.into_iter().enumerate() {
       if let Some(e) = field_expr.1 {

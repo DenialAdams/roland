@@ -43,6 +43,7 @@ pub mod type_data;
 mod variable_declaration_lowering;
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 
@@ -259,6 +260,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       cur_procedure_locals: IndexMap::new(),
       string_struct_id,
       procedures_to_specialize: Vec::new(),
+      const_replacements: HashMap::new(),
    };
 
    semantic_analysis::validator::check_globals(
@@ -266,6 +268,14 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       &mut owned_validation_ctx,
       &mut ctx.interner,
       &mut ctx.err_manager,
+   );
+
+   owned_validation_ctx.const_replacements = compile_consts::compile_consts(
+      &mut ctx.program,
+      &ctx.interner,
+      &mut ctx.err_manager,
+      config.target.base_target(),
+      &owned_validation_ctx.type_variables,
    );
 
    while !worklist.is_empty() {
@@ -356,13 +366,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
    defer::process_defer_statements(&mut ctx.program);
 
    definite_assignment::ensure_variables_definitely_assigned(&ctx.program, &mut ctx.err_manager);
-
-   compile_consts::compile_consts(
-      &mut ctx.program,
-      &ctx.interner,
-      &mut ctx.err_manager,
-      config.target.base_target(),
-   );
 
    if !ctx.err_manager.errors.is_empty() {
       return Err(());
@@ -486,15 +489,6 @@ pub fn compile<'a, FR: FileResolver<'a>>(
    } else {
       None
    };
-
-   if config.dump_debugging_info {
-      pp::pp(
-         &ctx.program,
-         &ctx.interner,
-         &mut std::fs::File::create("pp.rol").unwrap(),
-      )
-      .unwrap();
-   }
 
    let regalloc_result = {
       if config.target.base_target() == BaseTarget::Qbe {

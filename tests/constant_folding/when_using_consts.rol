@@ -1,0 +1,12 @@
+
+const A: u64 = B;
+const B: u64 = 11;
+
+proc main() {
+  when A == 11 {
+    println("ok");
+  }
+}
+__END__
+run:
+ok

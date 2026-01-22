@@ -95,6 +95,7 @@ pub struct OwnedValidationContext {
    pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,
    pub string_struct_id: StructId,
    pub procedures_to_specialize: Vec<SpecializationRequest>,
+   pub const_replacements: HashMap<VariableId, ExpressionId>,
 }
 
 pub struct ValidationContext<'a, 'b> {

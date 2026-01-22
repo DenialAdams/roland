@@ -11,6 +11,7 @@ use crate::parse::{
    AstPool, Expression, ExpressionId, ProcedureId, ProcedureNode, Program, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::StorageKind;
+use crate::semantic_analysis::type_variables::TypeVariableManager;
 use crate::source_info::SourceInfo;
 
 struct CgContext<'a> {
@@ -20,6 +21,7 @@ struct CgContext<'a> {
    const_replacements: &'a mut HashMap<VariableId, ExpressionId>,
    procedures: &'a SlotMap<ProcedureId, ProcedureNode>,
    user_defined_types: &'a UserDefinedTypeInfo,
+   type_variables: &'a TypeVariableManager,
    interner: &'a Interner,
    target: BaseTarget,
 }
@@ -31,9 +33,14 @@ fn fold_expr_id(
    procedures: &SlotMap<ProcedureId, ProcedureNode>,
    user_defined_types: &UserDefinedTypeInfo,
    const_replacements: &HashMap<VariableId, ExpressionId>,
+   type_variables: &TypeVariableManager,
    interner: &Interner,
    target: BaseTarget,
 ) {
+   use crate::semantic_analysis::type_inference::tree_is_well_typed;
+   if !tree_is_well_typed(expr_id, &mut ast.expressions, type_variables) {
+      return;
+   }
    let mut fc = FoldingContext {
       ast,
       procedures,
@@ -46,7 +53,14 @@ fn fold_expr_id(
    constant_folding::try_fold_and_replace_expr(expr_id, &mut Some(err_manager), &mut fc, interner);
 }
 
-pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &mut ErrorManager, target: BaseTarget) {
+#[must_use]
+pub fn compile_consts(
+   program: &mut Program,
+   interner: &Interner,
+   err_manager: &mut ErrorManager,
+   target: BaseTarget,
+   type_variables: &TypeVariableManager,
+) -> HashMap<VariableId, ExpressionId> {
    // There is an effective second compilation pipeline for constants. This is because:
    // 1) Lowering constants is something we need to do for compilation
    // 2) Constants can form a DAG of dependency, such that we need to lower them in the right order
@@ -69,6 +83,7 @@ pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &
       consts_being_processed: &mut consts_being_processed,
       const_replacements: &mut const_replacements,
       user_defined_types: &program.user_defined_types,
+      type_variables,
       interner,
       target,
    };
@@ -81,6 +96,8 @@ pub fn compile_consts(program: &mut Program, interner: &Interner, err_manager: &
    {
       cg_const(c_var_id, &mut cg_ctx, err_manager);
    }
+
+   const_replacements
 }
 
 fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
@@ -110,6 +127,7 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
       cg_context.procedures,
       cg_context.user_defined_types,
       cg_context.const_replacements,
+      cg_context.type_variables,
       cg_context.interner,
       cg_context.target,
    );
