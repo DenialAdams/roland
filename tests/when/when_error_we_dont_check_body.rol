@@ -1,7 +1,3 @@
-proc foo() -> unit {
-   println("wololo");
-}
-
 proc main() {
    // shouldn't ever constant fold
    when &10 transmute usize == 0 {
@@ -11,4 +7,4 @@ proc main() {
 __END__
 compile:
 Value of when condition can't be constant folded
-↳ line 7, column 9 [tests/when/when_error_we_dont_check_body.rol]
+↳ line 3, column 9 [tests/when/when_error_we_dont_check_body.rol]
