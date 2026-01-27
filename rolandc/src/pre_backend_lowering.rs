@@ -13,7 +13,7 @@ use crate::type_data::{ExpressionType, F32_TYPE, F64_TYPE, I8_TYPE, I16_TYPE, In
 fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInfo>, target: BaseTarget) {
    match the_type {
       ExpressionType::Enum(a) => {
-         *the_type = enum_info.get(*a).unwrap().base_type.clone();
+         *the_type = enum_info.get(*a).unwrap().base_type.e_type.clone();
       }
       ExpressionType::Array(inner_type, _) => {
          lower_type(inner_type, enum_info, target);
@@ -86,7 +86,7 @@ pub fn lower_enums_and_pointers(program: &mut Program, target: BaseTarget) {
          unreachable!()
       };
       let ei = program.user_defined_types.enum_info.get(enum_id).unwrap();
-      let replacement_expr = match ei.base_type {
+      let replacement_expr = match ei.base_type.e_type {
          ExpressionType::Unit => Expression::UnitLiteral,
          ExpressionType::Int(_) => program.ast.expressions
             [ei.values[ei.variants.get_index_of(&variant).unwrap()].unwrap()]
