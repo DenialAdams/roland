@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use indexmap::{IndexMap, IndexSet};
-use slotmap::{SecondaryMap, SlotMap};
+use slotmap::SlotMap;
 
 use super::validator::str_to_builtin_type;
 use super::{EnumInfo, GlobalInfo, StorageKind, StructInfo, UnionInfo};
@@ -9,7 +9,7 @@ use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_w_details};
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AliasId, BinOp, CastType, EnumId, Expression, ExpressionNode, ExpressionTypeNode, ProcImplSource, StructId, UnionId,
+   AliasId, BinOp, CastType, Expression, ExpressionNode, ExpressionTypeNode, ProcImplSource, StructId, UnionId,
    UserDefinedTypeId,
 };
 use crate::semantic_analysis::validator::resolve_type;
@@ -104,7 +104,6 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
    let mut dupe_check = HashSet::new();
    let mut all_types = HashMap::new();
 
-   let mut enum_base_type_locations: SecondaryMap<EnumId, SourceInfo> = SecondaryMap::new();
    for a_enum in program.enums.drain(..) {
       dupe_check.clear();
       for variant in a_enum.variants.iter() {
@@ -119,19 +118,19 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          }
       }
 
-      let (base_type, btl) = if let Some(etn) = a_enum.requested_size {
+      let base_type = if let Some(etn) = a_enum.requested_size {
          // We'll resolve this type after all preliminary type info has been populated
-         (etn.e_type, etn.location)
+         ExpressionTypeNode { e_type: etn.e_type, location: etn.location }
       } else if a_enum.variants.len() > (u64::from(u32::MAX) + 1) as usize {
-         (U64_TYPE, a_enum.location)
+         ExpressionTypeNode { e_type: U64_TYPE, location: a_enum.location }
       } else if a_enum.variants.len() > (u32::from(u16::MAX) + 1) as usize {
-         (U32_TYPE, a_enum.location)
+         ExpressionTypeNode { e_type: U32_TYPE, location: a_enum.location }
       } else if a_enum.variants.len() > (u16::from(u8::MAX) + 1) as usize {
-         (U16_TYPE, a_enum.location)
+         ExpressionTypeNode { e_type: U16_TYPE, location: a_enum.location }
       } else if !a_enum.variants.is_empty() {
-         (U8_TYPE, a_enum.location)
+         ExpressionTypeNode { e_type: U8_TYPE, location: a_enum.location }
       } else {
-         (ExpressionType::Unit, a_enum.location)
+         ExpressionTypeNode { e_type: ExpressionType::Unit, location: a_enum.location }
       };
 
       insert_or_error_duplicated(&mut all_types, err_manager, a_enum.name, a_enum.location, interner);
@@ -145,7 +144,6 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       program
          .user_defined_type_name_table
          .insert(a_enum.name, UserDefinedTypeId::Enum(enum_id));
-      enum_base_type_locations.insert(enum_id, btl);
    }
 
    for a_struct in program.structs.drain(..) {
@@ -292,10 +290,10 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
    }
 
    for (id, enum_i) in program.user_defined_types.enum_info.iter_mut() {
-      let base_type_location = enum_base_type_locations[id];
+      let base_type_location = enum_i.base_type.location;
 
       if !resolve_type::<()>(
-         &mut enum_i.base_type,
+         &mut enum_i.base_type.e_type,
          &program.user_defined_type_name_table,
          None,
          None,
@@ -308,7 +306,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          continue;
       }
 
-      match enum_i.base_type {
+      match enum_i.base_type.e_type {
          U64_TYPE => (),
          U32_TYPE => {
             if enum_i.variants.len() > (u64::from(u32::MAX) + 1) as usize {
@@ -380,7 +378,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
                      val: since_last_expr + 1,
                      synthetic: true,
                   },
-                  exp_type: Some(enum_i.base_type.clone()),
+                  exp_type: Some(enum_i.base_type.e_type.clone()),
                   location: *variant_location,
                });
                let since_expr = program.ast.expressions.insert(ExpressionNode {
@@ -391,10 +389,10 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
                let cast_expr = program.ast.expressions.insert(ExpressionNode {
                   expression: Expression::Cast {
                      cast_type: CastType::Transmute,
-                     target_type: enum_i.base_type.clone(),
+                     target_type: enum_i.base_type.e_type.clone(),
                      expr: since_expr,
                   },
-                  exp_type: Some(enum_i.base_type.clone()),
+                  exp_type: Some(enum_i.base_type.e_type.clone()),
                   location: *variant_location,
                });
                program.ast.expressions.insert(ExpressionNode {
@@ -403,7 +401,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
                      lhs: cast_expr,
                      rhs: num_expr,
                   },
-                  exp_type: Some(enum_i.base_type.clone()),
+                  exp_type: Some(enum_i.base_type.e_type.clone()),
                   location: *variant_location,
                })
             } else {
@@ -412,7 +410,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
                      val: i as u64,
                      synthetic: true,
                   },
-                  exp_type: Some(enum_i.base_type.clone()),
+                  exp_type: Some(enum_i.base_type.e_type.clone()),
                   location: *variant_location,
                })
             };

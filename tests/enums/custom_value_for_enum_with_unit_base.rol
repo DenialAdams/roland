@@ -1,0 +1,10 @@
+enum E : unit {
+    A = unit(),
+}
+
+proc main() {
+    
+}__END__
+compile:
+Enum `E` has 1 variants, which exceeds the maximum capacity of the specified base type (0)
+↳ line 1, column 10 [tests/enums/custom_value_for_enum_with_unit_base.rol]

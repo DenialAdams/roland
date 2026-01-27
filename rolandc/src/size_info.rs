@@ -182,7 +182,7 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Base
    match e {
       ExpressionType::Enum(x) => {
          let base_type = &udt.enum_info.get(*x).unwrap().base_type;
-         mem_alignment(base_type, udt, target)
+         mem_alignment(&base_type.e_type, udt, target)
       }
       ExpressionType::Int(x) => match x.width {
          IntWidth::Eight => 8,
@@ -228,7 +228,7 @@ pub fn sizeof_type_values(e: &ExpressionType, udt: &UserDefinedTypeInfo, target:
    match e {
       ExpressionType::Enum(x) => {
          let base_type = &udt.enum_info.get(*x).unwrap().base_type;
-         sizeof_type_values(base_type, udt, target)
+         sizeof_type_values(&base_type.e_type, udt, target)
       }
       ExpressionType::Int(_)
       | ExpressionType::Float(_)
@@ -313,7 +313,7 @@ pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Ba
    match e {
       ExpressionType::Enum(x) => {
          let base_type = &udt.enum_info.get(*x).unwrap().base_type;
-         sizeof_type_mem(base_type, udt, target)
+         sizeof_type_mem(&base_type.e_type, udt, target)
       }
       ExpressionType::Int(x) => u32::from(x.width.as_num_bytes(target)),
       ExpressionType::Float(x) => u32::from(x.width.as_num_bytes()),

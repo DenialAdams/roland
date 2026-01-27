@@ -26,7 +26,7 @@ pub struct EnumInfo {
    pub variants: IndexMap<StrId, SourceInfo>,
    pub values: Vec<Option<ExpressionId>>,
    pub location: SourceInfo,
-   pub base_type: ExpressionType,
+   pub base_type: ExpressionTypeNode,
    pub name: StrId,
 }
 
