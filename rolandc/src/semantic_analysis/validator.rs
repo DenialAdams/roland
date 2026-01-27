@@ -2775,6 +2775,14 @@ pub fn check_globals(
       .global_info
       .values()
       .filter_map(|x| x.initializer)
+      .chain(
+         validation_context
+            .user_defined_types
+            .enum_info
+            .values()
+            .flat_map(|x| x.values.iter().flatten().copied())
+            .filter(|x| validation_context.ast.expressions[*x].exp_type.is_none()),
+      )
       .collect();
    for initializer in initializers {
       type_expression(err_manager, initializer, &mut validation_context);
@@ -2806,6 +2814,38 @@ pub fn check_globals(
             &validation_context.owned.type_variables,
             err_manager,
          );
+      }
+   }
+
+   for enum_info in validation_context.user_defined_types.enum_info.values() {
+      for (i, value) in enum_info.values.iter().enumerate().filter_map(|(i, v)| v.map(|v| (i, v))) {
+         let merged = try_merge_types(
+            &enum_info.base_type,
+            validation_context.ast.expressions[value].exp_type.as_ref().unwrap(),
+            &mut validation_context.owned.type_variables,
+         );
+
+         if !merged {
+            rolandc_error!(
+               err_manager,
+               enum_info.location,
+               "Type for enum variant {}::{} ({}) does not match the base type of the enum ({})",
+               validation_context.interner.lookup(enum_info.name),
+               validation_context.interner.lookup(*enum_info.variants.get_index(i).unwrap().0),
+               validation_context.ast.expressions[value].exp_type.as_ref().unwrap().as_roland_type_info(
+                  validation_context.interner,
+                  validation_context.user_defined_types,
+                  validation_context.procedures,
+                  &validation_context.owned.type_variables
+               ),
+               enum_info.base_type.as_roland_type_info(
+                  validation_context.interner,
+                  validation_context.user_defined_types,
+                  validation_context.procedures,
+                  &validation_context.owned.type_variables
+               ),
+            );
+         }
       }
    }
 }

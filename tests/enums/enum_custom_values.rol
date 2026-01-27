@@ -1,4 +1,4 @@
-enum Foo {
+enum Foo : u64 {
     A = 1,
     B = 5,
     C,
@@ -6,5 +6,8 @@ enum Foo {
 }
 
 proc main() {
-    
+    println(uint_to_string(Foo::C transmute u64));
 }
+__END__
+run:
+6

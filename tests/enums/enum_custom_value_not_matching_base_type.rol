@@ -1,0 +1,10 @@
+enum E : u32 {
+    A = "hello",
+}
+
+proc main() {
+    
+}__END__
+compile:
+Type for enum variant E::A (String) does not match the base type of the enum (u32)
+↳ line 1, column 1 [tests/enums/enum_custom_value_not_matching_base_type.rol]
