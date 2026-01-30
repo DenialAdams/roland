@@ -121,6 +121,9 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       let base_type = if let Some(etn) = a_enum.requested_size {
          // We'll resolve this type after all preliminary type info has been populated
          ExpressionTypeNode { e_type: etn.e_type, location: etn.location }
+      } else if a_enum.values.iter().any(Option::is_some) {
+         rolandc_error!(err_manager, a_enum.location, "You must specify the base type of an enum if custom values are provided");
+         ExpressionTypeNode { e_type: ExpressionType::CompileError, location: a_enum.location }
       } else if a_enum.variants.len() > (u64::from(u32::MAX) + 1) as usize {
          ExpressionTypeNode { e_type: U64_TYPE, location: a_enum.location }
       } else if a_enum.variants.len() > (u32::from(u16::MAX) + 1) as usize {
@@ -136,7 +139,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       insert_or_error_duplicated(&mut all_types, err_manager, a_enum.name, a_enum.location, interner);
       let enum_id = program.user_defined_types.enum_info.insert(EnumInfo {
          variants: a_enum.variants.iter().map(|x| (x.str, x.location)).collect(),
-         values: a_enum.values, // This will be refined once we know have resolved the base type
+         values: a_enum.values, // This will be refined once we have resolved the base type
          location: a_enum.location,
          name: a_enum.name,
          base_type,
@@ -307,7 +310,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       }
 
       match enum_i.base_type.e_type {
-         U64_TYPE => (),
+         U64_TYPE | ExpressionType::CompileError => (),
          U32_TYPE => {
             if enum_i.variants.len() > (u64::from(u32::MAX) + 1) as usize {
                rolandc_error!(

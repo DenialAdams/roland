@@ -3,12 +3,9 @@ enum E {
 }
 
 proc main() {
-    
+    println(uint_to_string(sizeof$<E>() as u64));
 }
 __END__
 compile:
-Still figuring this one out
-Current idea is to make the base type of an unspecified enum a type variable
-When we create the type variable, it should be constrained to be numeric and unsigned
-(Unit base type is still possible, if enum has no variants, just do that instead of a type variable)
-After we compile enum values to consts, decide what that type var should be if it's not yet determined
+You must specify the base type of an enum if custom values are provided
+↳ line 1, column 1 [tests/enums/custom_variant_values_with_default_base_type.rol]
