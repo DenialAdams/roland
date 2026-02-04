@@ -2,8 +2,12 @@
 const A: u64 = B;
 const B: u64 = 11;
 
+enum E : u32 {
+  Discriminant = 111,
+}
+
 proc main() {
-  when A == 11 {
+  when A == 11 and E::Discriminant transmute u32 == 111 {
     println("ok");
   }
 }
