@@ -8,7 +8,7 @@ use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, Expression, ExpressionId, ProcedureId, ProcedureNode, Program, UserDefinedTypeInfo, VariableId,
+   AstPool, EnumId, Expression, ExpressionId, ProcedureId, ProcedureNode, Program, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::StorageKind;
 use crate::semantic_analysis::type_variables::TypeVariableManager;
@@ -17,8 +17,9 @@ use crate::source_info::SourceInfo;
 struct CgContext<'a> {
    ast: &'a mut AstPool,
    all_consts: &'a HashMap<VariableId, (SourceInfo, ExpressionId, StrId)>,
-   consts_being_processed: &'a mut HashSet<VariableId>,
-   const_replacements: &'a mut HashMap<VariableId, ExpressionId>,
+   consts_being_processed: HashSet<VariableId>,
+   enums_being_processed: HashSet<(EnumId, StrId)>,
+   const_replacements: HashMap<VariableId, ExpressionId>,
    procedures: &'a SlotMap<ProcedureId, ProcedureNode>,
    user_defined_types: &'a UserDefinedTypeInfo,
    type_variables: &'a TypeVariableManager,
@@ -64,7 +65,7 @@ pub fn compile_consts(
    // There is an effective second compilation pipeline for constants. This is because:
    // 1) Lowering constants is something we need to do for compilation
    // 2) Constants can form a DAG of dependency, such that we need to lower them in the right order
-   // 3) Constants can use sizeof, MY_ARRAY.length (constant time expressions)
+   // 3) Constants can use sizeof, MY_ARRAY.length (compile time expressions)
    // As a result, we need to completely simplify constant expressions in the correct (DAG) order before we can proceed with the rest of compilation.
 
    let all_consts: HashMap<VariableId, (SourceInfo, ExpressionId, StrId)> = program
@@ -73,15 +74,14 @@ pub fn compile_consts(
       .filter(|x| x.1.kind == StorageKind::Const)
       .map(|x| (*x.0, (x.1.location, x.1.initializer.unwrap(), x.1.name)))
       .collect();
-   let mut consts_being_processed: HashSet<VariableId> = HashSet::new();
-   let mut const_replacements: HashMap<VariableId, ExpressionId> = HashMap::new();
 
    let mut cg_ctx = CgContext {
       ast: &mut program.ast,
       procedures: &program.procedures,
       all_consts: &all_consts,
-      consts_being_processed: &mut consts_being_processed,
-      const_replacements: &mut const_replacements,
+      consts_being_processed: HashSet::new(),
+      enums_being_processed: HashSet::new(),
+      const_replacements: HashMap::new(),
       user_defined_types: &program.user_defined_types,
       type_variables,
       interner,
@@ -97,7 +97,13 @@ pub fn compile_consts(
       cg_const(c_var_id, &mut cg_ctx, err_manager);
    }
 
-   const_replacements
+   for (e_id, info) in program.user_defined_types.enum_info.iter() {
+      for variant_str in info.variants.keys().copied() {
+         cg_enum_literal(e_id, variant_str, &mut cg_ctx, err_manager);
+      }
+   }
+
+   cg_ctx.const_replacements
 }
 
 fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
@@ -126,7 +132,7 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
       cg_context.ast,
       cg_context.procedures,
       cg_context.user_defined_types,
-      cg_context.const_replacements,
+      &cg_context.const_replacements,
       cg_context.type_variables,
       cg_context.interner,
       cg_context.target,
@@ -146,6 +152,60 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
    }
 
    cg_context.consts_being_processed.remove(&c_id);
+}
+
+fn cg_enum_literal(e_id: EnumId, variant_str: StrId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
+   let enum_info = &cg_context.user_defined_types.enum_info[e_id];
+
+   let expression_id = enum_info.values[enum_info.variants.get_index_of(&variant_str).unwrap()].unwrap();
+   if crate::constant_folding::is_const(
+      &cg_context.ast.expressions[expression_id].expression,
+      &cg_context.ast.expressions,
+   ) {
+      return;
+   }
+
+   if !cg_context.enums_being_processed.insert((e_id, variant_str)) {
+      /*
+      let loc = cg_context.all_consts[&c_id].0;
+      let name = cg_context.all_consts[&c_id].2;
+      rolandc_error!(
+         err_manager,
+         loc,
+         "const `{}` has a cyclic dependency",
+         cg_context.interner.lookup(name),
+      ); */
+      todo!();
+      return;
+   }
+
+   cg_expr(expression_id, cg_context, err_manager);
+
+   fold_expr_id(
+      expression_id,
+      err_manager,
+      cg_context.ast,
+      cg_context.procedures,
+      cg_context.user_defined_types,
+      &cg_context.const_replacements,
+      cg_context.type_variables,
+      cg_context.interner,
+      cg_context.target,
+   );
+
+   let p_const_expr = &cg_context.ast.expressions[expression_id];
+
+   if !crate::constant_folding::is_const(&p_const_expr.expression, &cg_context.ast.expressions) {
+      todo!();
+      /*rolandc_error!(
+         err_manager,
+         p_const_expr.location,
+         "Value of const `{}` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static and initialize it on program start.",
+         cg_context.interner.lookup(c.2)
+      );*/
+   }
+
+   cg_context.enums_being_processed.remove(&(e_id, variant_str));
 }
 
 fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
@@ -205,8 +265,8 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
             cg_expr(*expr, cg_context, err_manager);
          }
       }
-      Expression::EnumLiteral(_, _)
-      | Expression::BoolLiteral(_)
+      Expression::EnumLiteral(e_id, variant_str) => cg_enum_literal(*e_id, *variant_str, cg_context, err_manager),
+      Expression::BoolLiteral(_)
       | Expression::StringLiteral(_)
       | Expression::IntLiteral { .. }
       | Expression::FloatLiteral(_)

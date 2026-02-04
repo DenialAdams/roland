@@ -2819,7 +2819,12 @@ pub fn check_globals(
    }
 
    for enum_info in validation_context.user_defined_types.enum_info.values() {
-      for (i, value) in enum_info.values.iter().enumerate().filter_map(|(i, v)| v.map(|v| (i, v))) {
+      for (i, value) in enum_info
+         .values
+         .iter()
+         .enumerate()
+         .filter_map(|(i, v)| v.map(|v| (i, v)))
+      {
          let merged = try_merge_types(
             &enum_info.base_type.e_type,
             validation_context.ast.expressions[value].exp_type.as_ref().unwrap(),
@@ -2830,16 +2835,25 @@ pub fn check_globals(
             let value_location = validation_context.ast.expressions[value].location;
             rolandc_error_w_details!(
                err_manager,
-               &[(value_location, "enum value"), (enum_info.base_type.location, "enum base type")],
+               &[
+                  (value_location, "enum value"),
+                  (enum_info.base_type.location, "enum base type")
+               ],
                "Type for enum variant {}::{} ({}) does not match the base type of the enum ({})",
                validation_context.interner.lookup(enum_info.name),
-               validation_context.interner.lookup(*enum_info.variants.get_index(i).unwrap().0),
-               validation_context.ast.expressions[value].exp_type.as_ref().unwrap().as_roland_type_info(
-                  validation_context.interner,
-                  validation_context.user_defined_types,
-                  validation_context.procedures,
-                  &validation_context.owned.type_variables
-               ),
+               validation_context
+                  .interner
+                  .lookup(*enum_info.variants.get_index(i).unwrap().0),
+               validation_context.ast.expressions[value]
+                  .exp_type
+                  .as_ref()
+                  .unwrap()
+                  .as_roland_type_info(
+                     validation_context.interner,
+                     validation_context.user_defined_types,
+                     validation_context.procedures,
+                     &validation_context.owned.type_variables
+                  ),
                enum_info.base_type.e_type.as_roland_type_info(
                   validation_context.interner,
                   validation_context.user_defined_types,

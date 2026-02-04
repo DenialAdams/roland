@@ -229,16 +229,6 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       &mut ctx.err_manager,
    );
 
-   let mut worklist: Vec<ProcedureId> = ctx
-      .program
-      .procedures
-      .iter()
-      .filter(|(_, v)| v.definition.type_parameters.is_empty() && v.impl_source == ProcImplSource::Native)
-      .map(|(k, _)| k)
-      .collect();
-   let mut specializations: IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId> = IndexMap::new();
-   let mut iteration: u64 = 0;
-
    let string_struct_id = {
       let UserDefinedTypeId::Struct(s_id) = ctx
          .program
@@ -277,6 +267,16 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       config.target.base_target(),
       &owned_validation_ctx.type_variables,
    );
+
+   let mut worklist: Vec<ProcedureId> = ctx
+      .program
+      .procedures
+      .iter()
+      .filter(|(_, v)| v.definition.type_parameters.is_empty() && v.impl_source == ProcImplSource::Native)
+      .map(|(k, _)| k)
+      .collect();
+   let mut specializations: IndexMap<(ProcedureId, Box<[ExpressionType]>), ProcedureId> = IndexMap::new();
+   let mut iteration: u64 = 0;
 
    while !worklist.is_empty() {
       iteration += 1;

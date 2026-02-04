@@ -120,20 +120,45 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
 
       let base_type = if let Some(etn) = a_enum.requested_size {
          // We'll resolve this type after all preliminary type info has been populated
-         ExpressionTypeNode { e_type: etn.e_type, location: etn.location }
+         ExpressionTypeNode {
+            e_type: etn.e_type,
+            location: etn.location,
+         }
       } else if a_enum.values.iter().any(Option::is_some) {
-         rolandc_error!(err_manager, a_enum.location, "You must specify the base type of an enum if custom values are provided");
-         ExpressionTypeNode { e_type: ExpressionType::CompileError, location: a_enum.location }
+         rolandc_error!(
+            err_manager,
+            a_enum.location,
+            "You must specify the base type of an enum if custom values are provided"
+         );
+         ExpressionTypeNode {
+            e_type: ExpressionType::CompileError,
+            location: a_enum.location,
+         }
       } else if a_enum.variants.len() > (u64::from(u32::MAX) + 1) as usize {
-         ExpressionTypeNode { e_type: U64_TYPE, location: a_enum.location }
+         ExpressionTypeNode {
+            e_type: U64_TYPE,
+            location: a_enum.location,
+         }
       } else if a_enum.variants.len() > (u32::from(u16::MAX) + 1) as usize {
-         ExpressionTypeNode { e_type: U32_TYPE, location: a_enum.location }
+         ExpressionTypeNode {
+            e_type: U32_TYPE,
+            location: a_enum.location,
+         }
       } else if a_enum.variants.len() > (u16::from(u8::MAX) + 1) as usize {
-         ExpressionTypeNode { e_type: U16_TYPE, location: a_enum.location }
+         ExpressionTypeNode {
+            e_type: U16_TYPE,
+            location: a_enum.location,
+         }
       } else if !a_enum.variants.is_empty() {
-         ExpressionTypeNode { e_type: U8_TYPE, location: a_enum.location }
+         ExpressionTypeNode {
+            e_type: U8_TYPE,
+            location: a_enum.location,
+         }
       } else {
-         ExpressionTypeNode { e_type: ExpressionType::Unit, location: a_enum.location }
+         ExpressionTypeNode {
+            e_type: ExpressionType::Unit,
+            location: a_enum.location,
+         }
       };
 
       insert_or_error_duplicated(&mut all_types, err_manager, a_enum.name, a_enum.location, interner);
