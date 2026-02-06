@@ -2831,7 +2831,13 @@ pub fn check_globals(
             &mut validation_context.owned.type_variables,
          );
 
-         if !merged {
+         if !merged
+            && !validation_context.ast.expressions[value]
+               .exp_type
+               .as_ref()
+               .unwrap()
+               .is_or_contains_or_points_to_error()
+         {
             let value_location = validation_context.ast.expressions[value].location;
             rolandc_error_w_details!(
                err_manager,
@@ -2839,7 +2845,7 @@ pub fn check_globals(
                   (value_location, "enum value"),
                   (enum_info.base_type.location, "enum base type")
                ],
-               "Type for enum variant {}::{} ({}) does not match the base type of the enum ({})",
+               "Type of enum variant `{}::{}` ({}) does not match the base type of the enum ({})",
                validation_context.interner.lookup(enum_info.name),
                validation_context
                   .interner

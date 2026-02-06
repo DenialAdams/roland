@@ -1,0 +1,25 @@
+const A_CONST: u64 = 10;
+const B_CONST: u64 = Foo::C transmute u64;
+
+enum Foo : u64 {
+    C = A_CONST,
+    D = B_CONST + 123,
+    E = Foo::F transmute u64 + 10,
+    F = 11,
+    G = Foo::F transmute u64 + 11,
+}
+
+proc main() {
+    println(uint_to_string(Foo::C transmute u64));
+    println(uint_to_string(Foo::D transmute u64));
+    println(uint_to_string(Foo::E transmute u64));
+    println(uint_to_string(Foo::F transmute u64));
+    println(uint_to_string(Foo::G transmute u64));
+}
+__END__
+run:
+10
+133
+21
+11
+22

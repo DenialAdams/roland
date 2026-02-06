@@ -1,0 +1,9 @@
+const F: u8 = 256;
+
+proc main() {
+
+}
+__END__
+compile:
+Literal of type u8 has value `256` which would immediately over/underflow
+↳ line 1, column 15 [tests/variables/consts/const_too_big.rol]

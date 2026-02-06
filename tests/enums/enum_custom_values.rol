@@ -5,9 +5,15 @@ enum Foo : u64 {
     D = 123,
 }
 
+proc get_foo() -> Foo {
+    return Foo::C;
+}
+
 proc main() {
     println(uint_to_string(Foo::C transmute u64));
+    println(uint_to_string(get_foo() transmute u64));
 }
 __END__
 run:
+6
 6

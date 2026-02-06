@@ -1,0 +1,20 @@
+enum E : u8 {
+    A = 255,
+    B,
+    C = E::A transmute u8 + 2,
+    D = 300,
+}
+
+proc main() {
+
+}
+__END__
+compile:
+During constant folding, got overflow while adding
+↳ line 3, column 5 [tests/enums/custom_value_not_fitting_into_base.rol]
+During constant folding, got overflow while adding
+↳ line 4, column 9 [tests/enums/custom_value_not_fitting_into_base.rol]
+Value of enum variant `E::C` can't be constant folded
+↳ line 4, column 9 [tests/enums/custom_value_not_fitting_into_base.rol]
+Literal of type u8 has value `300` which would immediately over/underflow
+↳ line 5, column 9 [tests/enums/custom_value_not_fitting_into_base.rol]

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use bitvec::boxed::BitBox;
 use indexmap::{IndexMap, IndexSet};
 use slotmap::SlotMap;
 
@@ -25,6 +26,7 @@ pub mod validator;
 pub struct EnumInfo {
    pub variants: IndexMap<StrId, SourceInfo>,
    pub values: Vec<Option<ExpressionId>>,
+   pub variants_with_default_values: BitBox,
    pub location: SourceInfo,
    pub base_type: ExpressionTypeNode,
    pub name: StrId,

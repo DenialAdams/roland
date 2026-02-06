@@ -1,0 +1,15 @@
+enum E : u8 {
+    A = ausdasoda,
+    B,
+    C = E::A transmute u8 + 1,
+}
+
+proc main() {
+
+}
+__END__
+compile:
+Encountered undefined symbol `ausdasoda`
+↳ line 2, column 9 [tests/enums/custom_value_is_error_type.rol]
+Value of enum variant `E::C` can't be constant folded
+↳ line 4, column 9 [tests/enums/custom_value_is_error_type.rol]

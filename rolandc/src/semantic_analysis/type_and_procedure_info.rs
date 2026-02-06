@@ -164,6 +164,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
       insert_or_error_duplicated(&mut all_types, err_manager, a_enum.name, a_enum.location, interner);
       let enum_id = program.user_defined_types.enum_info.insert(EnumInfo {
          variants: a_enum.variants.iter().map(|x| (x.str, x.location)).collect(),
+         variants_with_default_values: a_enum.values.iter().map(std::option::Option::is_none).collect(),
          values: a_enum.values, // This will be refined once we have resolved the base type
          location: a_enum.location,
          name: a_enum.name,
@@ -400,6 +401,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
             last_specified_variant = Some(*variant);
             since_last_expr = 0;
          } else {
+            enum_i.variants_with_default_values.set(i, true);
             let final_expr = if let Some(lsv) = last_specified_variant {
                let num_expr = program.ast.expressions.insert(ExpressionNode {
                   expression: Expression::IntLiteral {

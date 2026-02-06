@@ -10,15 +10,22 @@ use crate::interner::{Interner, StrId};
 use crate::parse::{
    AstPool, EnumId, Expression, ExpressionId, ProcedureId, ProcedureNode, Program, UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::StorageKind;
+use crate::semantic_analysis::type_inference::tree_is_well_typed;
 use crate::semantic_analysis::type_variables::TypeVariableManager;
+use crate::semantic_analysis::{EnumInfo, StorageKind};
 use crate::source_info::SourceInfo;
+
+#[derive(PartialEq, Eq)]
+enum ProcessingState {
+   InProgress,
+   Finished,
+}
 
 struct CgContext<'a> {
    ast: &'a mut AstPool,
    all_consts: &'a HashMap<VariableId, (SourceInfo, ExpressionId, StrId)>,
    consts_being_processed: HashSet<VariableId>,
-   enums_being_processed: HashSet<(EnumId, StrId)>,
+   enums_being_processed: HashMap<(EnumId, usize), ProcessingState>,
    const_replacements: HashMap<VariableId, ExpressionId>,
    procedures: &'a SlotMap<ProcedureId, ProcedureNode>,
    user_defined_types: &'a UserDefinedTypeInfo,
@@ -38,10 +45,7 @@ fn fold_expr_id(
    interner: &Interner,
    target: BaseTarget,
 ) {
-   use crate::semantic_analysis::type_inference::tree_is_well_typed;
-   if !tree_is_well_typed(expr_id, &mut ast.expressions, type_variables) {
-      return;
-   }
+   debug_assert!(tree_is_well_typed(expr_id, &mut ast.expressions, type_variables));
    let mut fc = FoldingContext {
       ast,
       procedures,
@@ -80,7 +84,7 @@ pub fn compile_consts(
       procedures: &program.procedures,
       all_consts: &all_consts,
       consts_being_processed: HashSet::new(),
-      enums_being_processed: HashSet::new(),
+      enums_being_processed: HashMap::new(),
       const_replacements: HashMap::new(),
       user_defined_types: &program.user_defined_types,
       type_variables,
@@ -98,8 +102,8 @@ pub fn compile_consts(
    }
 
    for (e_id, info) in program.user_defined_types.enum_info.iter() {
-      for variant_str in info.variants.keys().copied() {
-         cg_enum_literal(e_id, variant_str, &mut cg_ctx, err_manager);
+      for i in 0..info.variants.len() {
+         cg_enum_variant(e_id, info, i, &mut cg_ctx, err_manager);
       }
    }
 
@@ -111,19 +115,22 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
       return;
    }
 
+   let c = cg_context.all_consts[&c_id];
+
+   if !tree_is_well_typed(c.1, &mut cg_context.ast.expressions, cg_context.type_variables) {
+      return;
+   }
+
    if !cg_context.consts_being_processed.insert(c_id) {
-      let loc = cg_context.all_consts[&c_id].0;
-      let name = cg_context.all_consts[&c_id].2;
       rolandc_error!(
          err_manager,
-         loc,
+         c.0,
          "const `{}` has a cyclic dependency",
-         cg_context.interner.lookup(name),
+         cg_context.interner.lookup(c.2),
       );
       return;
    }
 
-   let c = cg_context.all_consts[&c_id];
    cg_expr(c.1, cg_context, err_manager);
 
    fold_expr_id(
@@ -154,29 +161,42 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
    cg_context.consts_being_processed.remove(&c_id);
 }
 
-fn cg_enum_literal(e_id: EnumId, variant_str: StrId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
-   let enum_info = &cg_context.user_defined_types.enum_info[e_id];
+fn cg_enum_variant(
+   e_id: EnumId,
+   enum_info: &EnumInfo,
+   variant_index: usize,
+   cg_context: &mut CgContext,
+   err_manager: &mut ErrorManager,
+) {
+   let expression_id = enum_info.values[variant_index].unwrap();
 
-   let expression_id = enum_info.values[enum_info.variants.get_index_of(&variant_str).unwrap()].unwrap();
-   if crate::constant_folding::is_const(
-      &cg_context.ast.expressions[expression_id].expression,
-      &cg_context.ast.expressions,
+   if !tree_is_well_typed(
+      expression_id,
+      &mut cg_context.ast.expressions,
+      cg_context.type_variables,
    ) {
       return;
    }
 
-   if !cg_context.enums_being_processed.insert((e_id, variant_str)) {
-      /*
-      let loc = cg_context.all_consts[&c_id].0;
-      let name = cg_context.all_consts[&c_id].2;
-      rolandc_error!(
-         err_manager,
-         loc,
-         "const `{}` has a cyclic dependency",
-         cg_context.interner.lookup(name),
-      ); */
-      todo!();
-      return;
+   match cg_context.enums_being_processed.entry((e_id, variant_index)) {
+      std::collections::hash_map::Entry::Occupied(occ) => match occ.get() {
+         ProcessingState::Finished => return,
+         ProcessingState::InProgress => {
+            rolandc_error!(
+               err_manager,
+               cg_context.ast.expressions[expression_id].location,
+               "Value of enum variant `{}::{}` has a cyclic dependency",
+               cg_context.interner.lookup(enum_info.name),
+               cg_context
+                  .interner
+                  .lookup(*enum_info.variants.get_index(variant_index).unwrap().0),
+            );
+            return;
+         }
+      },
+      std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+         vacant_entry.insert(ProcessingState::InProgress);
+      }
    }
 
    cg_expr(expression_id, cg_context, err_manager);
@@ -195,17 +215,23 @@ fn cg_enum_literal(e_id: EnumId, variant_str: StrId, cg_context: &mut CgContext,
 
    let p_const_expr = &cg_context.ast.expressions[expression_id];
 
-   if !crate::constant_folding::is_const(&p_const_expr.expression, &cg_context.ast.expressions) {
-      todo!();
-      /*rolandc_error!(
+   if !crate::constant_folding::is_const(&p_const_expr.expression, &cg_context.ast.expressions)
+      && !enum_info.variants_with_default_values[variant_index]
+   {
+      rolandc_error!(
          err_manager,
          p_const_expr.location,
-         "Value of const `{}` can't be constant folded. Hint: Either simplify the expression, or turn the constant into a static and initialize it on program start.",
-         cg_context.interner.lookup(c.2)
-      );*/
+         "Value of enum variant `{}::{}` can't be constant folded",
+         cg_context.interner.lookup(enum_info.name),
+         cg_context
+            .interner
+            .lookup(*enum_info.variants.get_index(variant_index).unwrap().0),
+      );
    }
 
-   cg_context.enums_being_processed.remove(&(e_id, variant_str));
+   cg_context
+      .enums_being_processed
+      .insert((e_id, variant_index), ProcessingState::Finished);
 }
 
 fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
@@ -265,7 +291,11 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
             cg_expr(*expr, cg_context, err_manager);
          }
       }
-      Expression::EnumLiteral(e_id, variant_str) => cg_enum_literal(*e_id, *variant_str, cg_context, err_manager),
+      Expression::EnumLiteral(e_id, variant_str) => {
+         let enum_info = &cg_context.user_defined_types.enum_info[*e_id];
+         let variant_index = enum_info.variants.get_index_of(variant_str).unwrap();
+         cg_enum_variant(*e_id, enum_info, variant_index, cg_context, err_manager);
+      }
       Expression::BoolLiteral(_)
       | Expression::StringLiteral(_)
       | Expression::IntLiteral { .. }

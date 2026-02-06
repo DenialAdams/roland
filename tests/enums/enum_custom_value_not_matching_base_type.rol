@@ -4,8 +4,9 @@ enum E : u32 {
 
 proc main() {
     
-}__END__
+}
+__END__
 compile:
-Type for enum variant E::A (String) does not match the base type of the enum (u32)
+Type of enum variant `E::A` (String) does not match the base type of the enum (u32)
 ↳ enum value @ line 2, column 9 [tests/enums/enum_custom_value_not_matching_base_type.rol]
 ↳ enum base type @ line 1, column 10 [tests/enums/enum_custom_value_not_matching_base_type.rol]
