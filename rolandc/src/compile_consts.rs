@@ -66,6 +66,12 @@ pub fn compile_consts(
    target: BaseTarget,
    type_variables: &TypeVariableManager,
 ) -> HashMap<VariableId, ExpressionId> {
+   #[derive(PartialEq, Eq, Hash)]
+   enum ConstEnumExpression {
+      Int(u64),
+      Unit,
+   }
+
    // There is an effective second compilation pipeline for constants. This is because:
    // 1) Lowering constants is something we need to do for compilation
    // 2) Constants can form a DAG of dependency, such that we need to lower them in the right order
@@ -101,9 +107,32 @@ pub fn compile_consts(
       cg_const(c_var_id, &mut cg_ctx, err_manager);
    }
 
+   let mut dupe_check: HashMap<ConstEnumExpression, usize> = HashMap::new();
    for (e_id, info) in program.user_defined_types.enum_info.iter() {
+      dupe_check.clear();
       for i in 0..info.variants.len() {
-         cg_enum_variant(e_id, info, i, &mut cg_ctx, err_manager);
+         if let Some(const_expression) = cg_enum_variant(e_id, info, i, &mut cg_ctx, err_manager) {
+            let const_expression = match const_expression {
+               Expression::UnitLiteral => ConstEnumExpression::Unit,
+               Expression::IntLiteral { val, synthetic: _ } => ConstEnumExpression::Int(val),
+               _ => continue, // Possible to hit in cases where we are already erroring
+            };
+            if let Some(old_val) = dupe_check.insert(const_expression, i) {
+               rolandc_error!(
+                  err_manager,
+                  *info.variants.get_index(i).unwrap().1,
+                  "Value of enum variant `{}::{}` has the same value as `{}::{}`",
+                  cg_ctx.interner.lookup(info.name),
+                  cg_ctx
+                     .interner
+                     .lookup(*info.variants.get_index(i).unwrap().0),
+                  cg_ctx.interner.lookup(info.name),
+                  cg_ctx
+                     .interner
+                     .lookup(*info.variants.get_index(old_val).unwrap().0),
+               );
+            }
+         }
       }
    }
 
@@ -167,7 +196,7 @@ fn cg_enum_variant(
    variant_index: usize,
    cg_context: &mut CgContext,
    err_manager: &mut ErrorManager,
-) {
+) -> Option<Expression> {
    let expression_id = enum_info.values[variant_index].unwrap();
 
    if !tree_is_well_typed(
@@ -175,12 +204,19 @@ fn cg_enum_variant(
       &mut cg_context.ast.expressions,
       cg_context.type_variables,
    ) {
-      return;
+      return None;
    }
 
    match cg_context.enums_being_processed.entry((e_id, variant_index)) {
       std::collections::hash_map::Entry::Occupied(occ) => match occ.get() {
-         ProcessingState::Finished => return,
+         ProcessingState::Finished => {
+            let p_const_expr = &cg_context.ast.expressions[expression_id];
+            return if crate::constant_folding::is_const(&p_const_expr.expression, &cg_context.ast.expressions) {
+               Some(p_const_expr.expression.clone())
+            } else {
+               None
+            };
+         }
          ProcessingState::InProgress => {
             rolandc_error!(
                err_manager,
@@ -191,7 +227,7 @@ fn cg_enum_variant(
                   .interner
                   .lookup(*enum_info.variants.get_index(variant_index).unwrap().0),
             );
-            return;
+            return None;
          }
       },
       std::collections::hash_map::Entry::Vacant(vacant_entry) => {
@@ -232,6 +268,12 @@ fn cg_enum_variant(
    cg_context
       .enums_being_processed
       .insert((e_id, variant_index), ProcessingState::Finished);
+
+   if crate::constant_folding::is_const(&p_const_expr.expression, &cg_context.ast.expressions) {
+      Some(p_const_expr.expression.clone())
+   } else {
+      None
+   }
 }
 
 fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {

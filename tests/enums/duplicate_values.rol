@@ -1,0 +1,18 @@
+enum E : u32 {
+    A = 100,
+    B,
+    C = 101,
+    D = 101,
+}
+
+enum F : u32 {
+    A = 101, // Should obviously not error
+}
+
+proc main() {}
+__END__
+compile:
+Value of enum variant `E::C` has the same value as `E::B`
+↳ line 4, column 5 [tests/enums/duplicate_values.rol]
+Value of enum variant `E::D` has the same value as `E::C`
+↳ line 5, column 5 [tests/enums/duplicate_values.rol]
