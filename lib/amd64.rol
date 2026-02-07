@@ -5,7 +5,6 @@ import "ryu/d2s.rol";
 import "number_to_string.rol";
 
 proc print(s: String) {
-
    let written: usize = 0;
    let buf: &u8 = s.pointer;
    loop {
