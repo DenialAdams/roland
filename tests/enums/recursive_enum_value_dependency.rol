@@ -1,0 +1,30 @@
+enum E : u32 {
+    A = E::B transmute u32 / 2,
+    B = E::A transmute u32 * 2,
+}
+
+enum EE : u32 {
+    A = FF::A transmute u32,
+}
+
+enum FF : u32 {
+    A = EE::A transmute u32,
+}
+
+proc main() {
+
+}
+__END__
+compile:
+Value of enum variant `E::A` has a cyclic dependency
+↳ line 2, column 9 [tests/enums/recursive_enum_value_dependency.rol]
+Value of enum variant `E::B` can't be constant folded
+↳ line 3, column 9 [tests/enums/recursive_enum_value_dependency.rol]
+Value of enum variant `E::A` can't be constant folded
+↳ line 2, column 9 [tests/enums/recursive_enum_value_dependency.rol]
+Value of enum variant `EE::A` has a cyclic dependency
+↳ line 7, column 9 [tests/enums/recursive_enum_value_dependency.rol]
+Value of enum variant `FF::A` can't be constant folded
+↳ line 11, column 9 [tests/enums/recursive_enum_value_dependency.rol]
+Value of enum variant `EE::A` can't be constant folded
+↳ line 7, column 9 [tests/enums/recursive_enum_value_dependency.rol]
