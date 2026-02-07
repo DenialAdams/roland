@@ -114,11 +114,12 @@ pub fn compile_consts(
                rolandc_error!(
                   err_manager,
                   *info.variants.get_index(i).unwrap().1,
-                  "Value of enum variant `{}::{}` has the same value as `{}::{}`",
+                  "Value of enum variant `{}::{}` has the same value ({}) as `{}::{}`",
                   cg_ctx.interner.lookup(info.name),
                   cg_ctx
                      .interner
                      .lookup(*info.variants.get_index(i).unwrap().0),
+                  val,
                   cg_ctx.interner.lookup(info.name),
                   cg_ctx
                      .interner

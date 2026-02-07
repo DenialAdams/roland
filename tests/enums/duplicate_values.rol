@@ -12,7 +12,7 @@ enum F : u32 {
 proc main() {}
 __END__
 compile:
-Value of enum variant `E::C` has the same value as `E::B`
+Value of enum variant `E::C` has the same value (101) as `E::B`
 ↳ line 4, column 5 [tests/enums/duplicate_values.rol]
-Value of enum variant `E::D` has the same value as `E::C`
+Value of enum variant `E::D` has the same value (101) as `E::C`
 ↳ line 5, column 5 [tests/enums/duplicate_values.rol]
