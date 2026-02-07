@@ -66,12 +66,6 @@ pub fn compile_consts(
    target: BaseTarget,
    type_variables: &TypeVariableManager,
 ) -> HashMap<VariableId, ExpressionId> {
-   #[derive(PartialEq, Eq, Hash)]
-   enum ConstEnumExpression {
-      Int(u64),
-      Unit,
-   }
-
    // There is an effective second compilation pipeline for constants. This is because:
    // 1) Lowering constants is something we need to do for compilation
    // 2) Constants can form a DAG of dependency, such that we need to lower them in the right order
@@ -107,17 +101,16 @@ pub fn compile_consts(
       cg_const(c_var_id, &mut cg_ctx, err_manager);
    }
 
-   let mut dupe_check: HashMap<ConstEnumExpression, usize> = HashMap::new();
+   let mut dupe_check: HashMap<u64, usize> = HashMap::new();
    for (e_id, info) in program.user_defined_types.enum_info.iter() {
       dupe_check.clear();
       for i in 0..info.variants.len() {
          if let Some(const_expression) = cg_enum_variant(e_id, info, i, &mut cg_ctx, err_manager) {
-            let const_expression = match const_expression {
-               Expression::UnitLiteral => ConstEnumExpression::Unit,
-               Expression::IntLiteral { val, synthetic: _ } => ConstEnumExpression::Int(val),
-               _ => continue, // Possible to hit in cases where we are already erroring
+            let Expression::IntLiteral { val, synthetic: _ } = const_expression else {
+               // Possible to hit in cases where we are already erroring
+               continue;
             };
-            if let Some(old_val) = dupe_check.insert(const_expression, i) {
+            if let Some(old_index) = dupe_check.insert(val, i) {
                rolandc_error!(
                   err_manager,
                   *info.variants.get_index(i).unwrap().1,
@@ -129,7 +122,7 @@ pub fn compile_consts(
                   cg_ctx.interner.lookup(info.name),
                   cg_ctx
                      .interner
-                     .lookup(*info.variants.get_index(old_val).unwrap().0),
+                     .lookup(*info.variants.get_index(old_index).unwrap().0),
                );
             }
          }
