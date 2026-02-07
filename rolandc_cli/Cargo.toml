@@ -10,7 +10,7 @@ rolandc = { path = "../rolandc" }
 dhat = { version = "0.3", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-libwild = "0.7"
+libwild = "0.8"
 
 [features]
 dhat-heap = ["dep:dhat"]
