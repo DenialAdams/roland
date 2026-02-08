@@ -16,8 +16,10 @@ proc main() {
    process_data(ReticulateSplines::Always);
    process_data(ReticulateSplines::Sometimes);
    process_data(ReticulateSplines::Never);
+   println(uint_to_string(ReticulateSplines::Always transmute u8 as u64)); // should start at 0
 }
 __END__
 run:
 Reticulating splines...
 Maybe reticulating splines...
+0
