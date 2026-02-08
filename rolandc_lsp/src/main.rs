@@ -13,8 +13,8 @@ use rolandc::interner::Interner;
 use rolandc::source_info::{SourceInfo, SourcePath, SourcePosition};
 use rolandc::*;
 use tower_lsp_server::jsonrpc::Result;
-use tower_lsp_server::lsp_types::*;
-use tower_lsp_server::{Client, LanguageServer, LspService, Server, UriExt};
+use tower_lsp_server::ls_types::*;
+use tower_lsp_server::{Client, LanguageServer, LspService, Server};
 
 mod goto_definition;
 
