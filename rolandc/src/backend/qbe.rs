@@ -341,7 +341,7 @@ pub fn emit_qbe(
       writeln!(ctx.buf, "}}").unwrap();
    }
 
-   for procedure in program.procedures.values() {
+   for (proc_id, procedure) in program.procedures.iter() {
       for param_type in procedure.definition.parameters.iter().map(|x| &x.p_type.e_type) {
          emit_aggregate_def(&mut ctx.buf, &mut ctx.aggregate_defs, ctx.udt, param_type);
       }
@@ -351,6 +351,82 @@ pub fn emit_qbe(
          ctx.udt,
          &procedure.definition.ret_type.e_type,
       );
+      let Some(cfg) = program.procedure_bodies.get(proc_id).map(|x| &x.cfg) else {
+         continue;
+      };
+      // With variadics, it's still possible to call a function with an aggregate type
+      // and that aggregate to have never appeared in a procedure signature.
+      // Imagine foo(...) called as foo(MyStruct{})
+      // So we need to go through all calls as well
+      for instr in cfg.bbs.iter().flat_map(|x| x.instructions.iter()) {
+         fn recurse(e: ExpressionId, ctx: &mut GenerationContext) {
+            match &ctx.ast.expressions[e].expression {
+               Expression::ProcedureCall { proc_expr, args } => {
+                  recurse(*proc_expr, ctx);
+                  for arg in args {
+                     recurse(arg.expr, ctx);
+                     emit_aggregate_def(
+                        &mut ctx.buf,
+                        &mut ctx.aggregate_defs,
+                        ctx.udt,
+                        ctx.ast.expressions[arg.expr].exp_type.as_ref().unwrap(),
+                     );
+                  }
+               },
+               Expression::ArrayLiteral(expression_ids) => {
+                  for expr in expression_ids.iter().copied() {
+                     recurse(expr, ctx);
+                  }
+               }
+               Expression::ArrayIndex { array: lhs, index: rhs }
+               | Expression::BinaryOperator { operator: _, lhs, rhs } => {
+                  recurse(*lhs, ctx);
+                  recurse(*rhs, ctx);
+               }
+               Expression::StructLiteral(_, index_map) => {
+                  for expr in index_map.values().flat_map(|x| x.iter()) {
+                     recurse(*expr, ctx);
+                  }
+               }
+               Expression::UnaryOperator(_, expr)
+               | Expression::FieldAccess(_, expr)
+               | Expression::Cast {
+                  cast_type: _,
+                  target_type: _,
+                  expr,
+               } => {
+                  recurse(*expr, ctx);
+               }
+               Expression::IfX(a, b, c) => {
+                  recurse(*a, ctx);
+                  recurse(*b, ctx);
+                  recurse(*c, ctx);
+               }
+               Expression::BoolLiteral(_)
+               | Expression::StringLiteral(_)
+               | Expression::IntLiteral { .. }
+               | Expression::FloatLiteral(_)
+               | Expression::UnitLiteral
+               | Expression::Variable(_)
+               | Expression::EnumLiteral(_, _)
+               | Expression::BoundFcnLiteral(_, _) => (),
+               Expression::UnresolvedEnumLiteral(_, _)
+               | Expression::UnresolvedProcLiteral(_, _)
+               | Expression::UnresolvedVariable(_)
+               | Expression::UnresolvedStructLiteral(_, _, _) => unreachable!(),
+            }
+         }
+         match instr {
+            CfgInstruction::Assignment(lhs, rhs) => {
+               recurse(*lhs, &mut ctx);
+               recurse(*rhs, &mut ctx);
+            }
+            CfgInstruction::Expression(expression_id)
+            | CfgInstruction::ConditionalJump(expression_id, _, _)
+            | CfgInstruction::Return(expression_id) => recurse(*expression_id, &mut ctx),
+            CfgInstruction::Jump(_) | CfgInstruction::Nop => (),
+         }
+      }
    }
 
    let mut main_proc = None;
@@ -1118,27 +1194,52 @@ fn make_load(load_target: &str, a_type: &ExpressionType) -> String {
 
 #[must_use]
 fn make_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &GenerationContext) -> String {
+   enum Arg {
+      Expr(ExpressionId),
+      VarargSep,
+   }
    use std::fmt::Write;
 
    let mut s = String::new();
-   match ctx.ast.expressions[proc_expr].exp_type.as_ref().unwrap() {
+   let opt_num_non_variadic_args = match ctx.ast.expressions[proc_expr].exp_type.as_ref().unwrap() {
       ExpressionType::ProcedureItem(id, _) => {
          write!(&mut s, "call ${}(", mangle(*id, &ctx.procedures[*id], ctx.interner)).unwrap();
+         let def = &ctx.procedures[*id].definition;
+         if def.variadic { Some(def.parameters.len()) } else { None }
       }
-      ExpressionType::ProcedurePointer { .. } => {
+      ExpressionType::ProcedurePointer {
+         variadic,
+         parameters,
+         ret_type: _,
+      } => {
          let val = expr_to_val(proc_expr, ctx);
          write!(&mut s, "call {}(", val).unwrap();
+         if *variadic { Some(parameters.len()) } else { None }
       }
       _ => unreachable!(),
-   }
-   for arg in args.iter() {
-      if let Some(arg_type) = roland_type_to_abi_type(
-         ctx.ast.expressions[arg.expr].exp_type.as_ref().unwrap(),
-         ctx.udt,
-         &ctx.aggregate_defs,
-      ) {
-         let val = expr_to_val(arg.expr, ctx);
-         write!(&mut s, "{} {}, ", arg_type, val).unwrap();
+   };
+   let num_non_variadic_args = opt_num_non_variadic_args.unwrap_or(args.len());
+   let args_iter = args
+      .iter()
+      .map(|x| Arg::Expr(x.expr))
+      .take(num_non_variadic_args)
+      .chain(std::iter::once(Arg::VarargSep).take_while(|_| opt_num_non_variadic_args.is_some()))
+      .chain(args.iter().map(|x| Arg::Expr(x.expr)).skip(num_non_variadic_args));
+   for arg in args_iter {
+      match arg {
+         Arg::Expr(ex) => {
+            if let Some(arg_type) = roland_type_to_abi_type(
+               ctx.ast.expressions[ex].exp_type.as_ref().unwrap(),
+               ctx.udt,
+               &ctx.aggregate_defs,
+            ) {
+               let val = expr_to_val(ex, ctx);
+               write!(&mut s, "{} {}, ", arg_type, val).unwrap();
+            }
+         }
+         Arg::VarargSep => {
+            write!(&mut s, "..., ").unwrap();
+         }
       }
    }
    write!(&mut s, ")").unwrap();

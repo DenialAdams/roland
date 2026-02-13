@@ -29,7 +29,11 @@ fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInf
             it.width = target.lowered_ptr_width();
          }
       }
-      ExpressionType::ProcedurePointer { parameters, ret_type } => {
+      ExpressionType::ProcedurePointer {
+         parameters,
+         ret_type,
+         variadic: _,
+      } => {
          for param in parameters.iter_mut() {
             lower_type(param, enum_info, target);
          }

@@ -218,6 +218,7 @@ where
       ExpressionType::ProcedurePointer {
          parameters,
          ret_type: ret_val,
+         variadic: _,
       } => {
          let mut resolve_result = true;
          for parameter in parameters.iter_mut() {
@@ -1704,6 +1705,7 @@ fn get_type(
             return ExpressionType::ProcedurePointer {
                parameters,
                ret_type: Box::new(ret_type),
+               variadic: proc.definition.variadic,
             };
          }
 
@@ -1972,6 +1974,7 @@ fn get_type(
                   proc.definition.parameters.iter().map(|x| &x.p_type.e_type),
                   &proc.named_parameters,
                   &proc.type_parameters,
+                  proc.definition.variadic,
                   expr_location,
                   validation_context,
                   err_manager,
@@ -1980,7 +1983,11 @@ fn get_type(
                map_generic_to_concrete(&mut resulting_type, generic_args, &proc.type_parameters);
                resulting_type
             }
-            ExpressionType::ProcedurePointer { parameters, ret_type } => {
+            ExpressionType::ProcedurePointer {
+               parameters,
+               ret_type,
+               variadic,
+            } => {
                check_procedure_call(
                   args,
                   &mut [],
@@ -1988,6 +1995,7 @@ fn get_type(
                   parameters.iter(),
                   &HashMap::new(),
                   &IndexMap::new(),
+                  *variadic,
                   expr_location,
                   validation_context,
                   err_manager,
@@ -2419,6 +2427,7 @@ fn check_procedure_call<'a, I>(
    parameters: I,
    named_parameters: &HashMap<StrId, ExpressionType>,
    generic_parameters: &IndexMap<StrId, IndexSet<StrId>>,
+   variadic: bool,
    call_location: SourceInfo,
    validation_context: &mut ValidationContext,
    err_manager: &mut ErrorManager,
@@ -2444,7 +2453,9 @@ fn check_procedure_call<'a, I>(
       );
    }
 
-   if args_in_order && num_parameters != args.len() {
+   let arity_ok = num_parameters == args.len() || num_parameters < args.len() && variadic;
+
+   if args_in_order && !arity_ok {
       rolandc_error!(
          err_manager,
          call_location,
@@ -2715,7 +2726,11 @@ pub fn map_generic_to_concrete<T>(
       ExpressionType::Array(inner_type, _) | ExpressionType::Pointer(inner_type) => {
          map_generic_to_concrete(inner_type, generic_args, generic_parameters);
       }
-      ExpressionType::ProcedurePointer { parameters, ret_type } => {
+      ExpressionType::ProcedurePointer {
+         parameters,
+         ret_type,
+         variadic: _,
+      } => {
          for param in parameters.iter_mut() {
             map_generic_to_concrete(param, generic_args, generic_parameters);
          }

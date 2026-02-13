@@ -75,6 +75,7 @@ pub enum Token {
    Exclam,
    Period,
    DoublePeriod,
+   TriplePeriod,
    Dollar,
    Deref,
    Eof,
@@ -144,6 +145,7 @@ impl Token {
          Token::Exclam => "token '!'",
          Token::Period => "token '.'",
          Token::DoublePeriod => "token '..'",
+         Token::TriplePeriod => "token '...'",
          Token::ShiftLeft => "token '<<'",
          Token::ShiftRight => "token '>>'",
          Token::KeywordFor => "keyword 'for'",
@@ -609,15 +611,28 @@ pub fn lex_for_tokens(
                let _ = chars.next().unwrap();
                if chars.peek() == Some(&'.') {
                   let _ = chars.next().unwrap();
-                  tokens.push(SourceToken {
-                     source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.col_plus(2),
-                        file: source_path,
-                     },
-                     token: Token::DoublePeriod,
-                  });
-                  cur_position.col += 2;
+                  if chars.peek() == Some(&'.') {
+                     let _ = chars.next().unwrap();
+                     tokens.push(SourceToken {
+                        source_info: SourceInfo {
+                           begin: cur_position,
+                           end: cur_position.col_plus(3),
+                           file: source_path,
+                        },
+                        token: Token::TriplePeriod,
+                     });
+                     cur_position.col += 3;
+                  } else {
+                     tokens.push(SourceToken {
+                        source_info: SourceInfo {
+                           begin: cur_position,
+                           end: cur_position.col_plus(2),
+                           file: source_path,
+                        },
+                        token: Token::DoublePeriod,
+                     });
+                     cur_position.col += 2;
+                  }
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {

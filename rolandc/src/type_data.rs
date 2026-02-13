@@ -83,6 +83,7 @@ pub enum ExpressionType {
    ProcedurePointer {
       parameters: Box<[ExpressionType]>,
       ret_type: Box<ExpressionType>,
+      variadic: bool,
    },
    GenericParam(StrId),
    Unresolved {
@@ -178,7 +179,11 @@ impl ExpressionType {
          ExpressionType::ProcedureItem(_, type_args)
          | ExpressionType::Struct(_, type_args)
          | ExpressionType::Union(_, type_args) => type_args.iter().all(ExpressionType::is_concrete),
-         ExpressionType::ProcedurePointer { parameters, ret_type } => parameters
+         ExpressionType::ProcedurePointer {
+            parameters,
+            ret_type,
+            variadic: _,
+         } => parameters
             .iter()
             .chain(std::iter::once(ret_type.as_ref()))
             .all(ExpressionType::is_concrete),
@@ -197,7 +202,11 @@ impl ExpressionType {
          | ExpressionType::Union(_, type_args) => type_args
             .iter()
             .all(|type_arg| !matches!(type_arg, ExpressionType::Unknown(_))),
-         ExpressionType::ProcedurePointer { parameters, ret_type } => parameters
+         ExpressionType::ProcedurePointer {
+            parameters,
+            ret_type,
+            variadic: _,
+         } => parameters
             .iter()
             .chain(std::iter::once(ret_type.as_ref()))
             .all(|p| !matches!(p, ExpressionType::Unknown(_))),
@@ -377,6 +386,7 @@ impl ExpressionType {
          ExpressionType::ProcedurePointer {
             parameters,
             ret_type: ret_val,
+            variadic,
          } => {
             let params: String = parameters
                .iter()
@@ -384,8 +394,9 @@ impl ExpressionType {
                .collect::<Vec<_>>()
                .join(", ");
             Cow::Owned(format!(
-               "proc({}) -> {}",
+               "proc({}{}) -> {}",
                params,
+               if *variadic { ", ..." } else { "" },
                ret_val.as_roland_type_info_inner(interner, udt, procedures, type_variable_info)
             ))
          }
@@ -506,6 +517,7 @@ impl ExpressionType {
          ExpressionType::ProcedurePointer {
             parameters,
             ret_type: ret_val,
+            variadic,
          } => {
             let params: String = parameters
                .iter()
@@ -513,8 +525,9 @@ impl ExpressionType {
                .collect::<Vec<_>>()
                .join(", ");
             Cow::Owned(format!(
-               "proc({}) -> {}",
+               "proc({}{}) -> {}",
                params,
+               if *variadic { ", ..." } else { "" },
                ret_val.as_roland_type_info_like_source(interner, udt)
             ))
          }

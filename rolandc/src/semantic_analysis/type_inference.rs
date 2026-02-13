@@ -72,10 +72,12 @@ pub fn try_merge_types(
          ExpressionType::ProcedurePointer {
             parameters: current_parameters,
             ret_type: current_ret_type,
+            variadic: _,
          },
          ExpressionType::ProcedurePointer {
             parameters: incoming_parameters,
             ret_type: incoming_ret_type,
+            variadic: _,
          },
       ) => {
          if current_parameters.len() != incoming_parameters.len() {
@@ -175,7 +177,11 @@ pub fn lower_unknowns_in_type(e: &mut ExpressionType, type_variables: &TypeVaria
             lower_unknowns_in_type(t_arg, type_variables);
          }
       }
-      ExpressionType::ProcedurePointer { parameters, ret_type } => {
+      ExpressionType::ProcedurePointer {
+         parameters,
+         ret_type,
+         variadic: _,
+      } => {
          for p in parameters {
             lower_unknowns_in_type(p, type_variables);
          }
@@ -196,7 +202,11 @@ fn well_typed(et: &mut ExpressionType, type_variables: &TypeVariableManager) -> 
       ExpressionType::ProcedureItem(_, type_args)
       | ExpressionType::Struct(_, type_args)
       | ExpressionType::Union(_, type_args) => type_args.iter_mut().all(|t| well_typed(t, type_variables)),
-      ExpressionType::ProcedurePointer { parameters, ret_type } => parameters
+      ExpressionType::ProcedurePointer {
+         parameters,
+         ret_type,
+         variadic: _,
+      } => parameters
          .iter_mut()
          .chain(std::iter::once(ret_type.as_mut()))
          .all(|t| well_typed(t, type_variables)),

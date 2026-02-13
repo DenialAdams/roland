@@ -1019,7 +1019,7 @@ extern proc OpenURL(url: &i8); // Open URL with default system browser (availabl
 
 // NOTE: Following functions implemented in module [utils]
 //------------------------------------------------------------------
-//extern proc TraceLog(logLevel: i32, text: &i8, ...); // Show trace log messages (LOG_INFO: LOG_DEBUG,, LOG_WARNING, LOG_ERROR...)
+extern proc TraceLog(logLevel: i32, text: &i8, ...); // Show trace log messages (LOG_INFO: LOG_DEBUG,, LOG_WARNING, LOG_ERROR...)
 extern proc SetTraceLogLevel(logLevel: i32); // Set the current threshold (minimum) log level
 extern proc MemAlloc(size: u32) -> &unit;                          // Internal memory allocator
 extern proc MemRealloc(ptr: &unit, size: u32) -> &unit;             // Internal memory reallocator
@@ -1424,7 +1424,7 @@ extern proc CodepointToUTF8(codepoint: i32, utf8Size: &i32) -> &i8; // Encode on
 extern proc TextCopy(dst: &i8, src: &i8) -> i32; // Copy one string to another, returns bytes copied
 extern proc TextIsEqual(text1: &i8, text2: &i8) -> bool; // Check if two text string are equal
 extern proc TextLength(text: &i8) -> u32; // Get text length, checks for '\0' ending
-//extern proc TextFormat(text: &i8, ...) -> &i8; // Text formatting with variables (style: sprintf())
+extern proc TextFormat(text: &i8, ...) -> &i8; // Text formatting with variables (style: sprintf())
 extern proc TextSubtext(text: &i8, position: i32, length: i32) -> &i8; // Get a piece of a text string
 extern proc TextReplace(text: &i8, replace: &i8, by: &i8) -> &i8; // Replace text string (WARNING: memory must be freed!)
 extern proc TextInsert(text: &i8, insert: &i8, position: i32) -> &i8; // Insert text in a position (WARNING: memory must be freed!)

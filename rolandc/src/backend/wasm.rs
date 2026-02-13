@@ -1619,7 +1619,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                let idx = generation_context.procedure_indices.get_index_of(proc_name).unwrap() as u32;
                generation_context.active_fcn.instruction(&Instruction::Call(idx));
             }
-            ExpressionType::ProcedurePointer { parameters, ret_type } => {
+            ExpressionType::ProcedurePointer {
+               parameters,
+               ret_type,
+               variadic: _,
+            } => {
                for arg in args.iter() {
                   do_emit(arg.expr, generation_context);
                }

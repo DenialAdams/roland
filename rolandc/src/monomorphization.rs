@@ -391,7 +391,11 @@ pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
                lower_type(a, udt, tt, target, already_lowered);
             }
          }
-         ExpressionType::ProcedurePointer { parameters, ret_type } => {
+         ExpressionType::ProcedurePointer {
+            parameters,
+            ret_type,
+            variadic: _,
+         } => {
             for p in parameters.iter_mut() {
                lower_type(p, udt, tt, target, already_lowered);
             }

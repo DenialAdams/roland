@@ -57,6 +57,7 @@ pub struct ProcedureDefinition {
    pub constraints: IndexMap<StrId, IndexSet<StrId>>,
    pub parameters: Vec<ParameterNode>,
    pub ret_type: ExpressionTypeNode,
+   pub variadic: bool,
 }
 
 #[derive(Clone)]
@@ -787,6 +788,12 @@ fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -
    };
    expect(l, parse_context, Token::OpenParen)?;
    let parameters = parse_parameters(l, parse_context)?;
+   let variadic = if l.peek_token() == Token::TriplePeriod {
+      let _ = l.next();
+      true
+   } else {
+      false
+   };
    let close_paren = expect(l, parse_context, Token::CloseParen)?;
    let ret_type = if l.peek_token() == Token::Arrow {
       let _ = l.next();
@@ -822,6 +829,7 @@ fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -
       constraints,
       parameters,
       ret_type,
+      variadic,
    })
 }
 
@@ -1387,7 +1395,7 @@ fn parse_parameters(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<V
             }
             expect(l, parse_context, Token::Comma)?;
          }
-         Token::CloseParen => {
+         Token::CloseParen | Token::TriplePeriod => {
             break;
          }
          x => {
@@ -1572,6 +1580,12 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
             }
             expect(l, parse_context, Token::Comma)?;
          }
+         let variadic = if l.peek_token() == Token::TriplePeriod {
+            let _ = l.next();
+            true
+         } else {
+            false
+         };
          let close_paren = expect(l, parse_context, Token::CloseParen)?;
          let (return_type, last_location) = if l.peek_token() == Token::Arrow {
             let _ = l.next();
@@ -1585,6 +1599,7 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
             ExpressionType::ProcedurePointer {
                parameters: parameters.into_boxed_slice(),
                ret_type: Box::new(return_type),
+               variadic,
             },
          )
       }
