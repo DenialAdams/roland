@@ -1064,7 +1064,7 @@ fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner
    }
    let mut full_str = format!(".{}_{}", proc_id.data().as_ffi(), proc_name).into_bytes();
 
-   // The QBE max char length is 80 minutes the two quotes = 78
+   // The QBE max char length is 80 minus the two quotes = 78
    // ... and minus one more for reasons I don't understand, but is empirically necessary
    full_str.truncate(77);
    // we may have just truncated a unicode character. let's fix it up:
