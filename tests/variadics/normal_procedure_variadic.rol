@@ -1,0 +1,9 @@
+proc foo(...) {}
+
+proc main() {
+    
+}
+__END__
+compile:
+Procedure `foo` is declared to be variadic, but only external or builtin procedures can be variadic
+↳ line 1, column 1 [tests/variadics/normal_procedure_variadic.rol]

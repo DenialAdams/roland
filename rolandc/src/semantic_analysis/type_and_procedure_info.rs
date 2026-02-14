@@ -17,7 +17,7 @@ use crate::semantic_analysis::{AliasInfo, AliasTarget};
 use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
 use crate::source_info::{SourceInfo, SourcePath};
 use crate::type_data::{ExpressionType, U8_TYPE, U16_TYPE, U32_TYPE, U64_TYPE};
-use crate::{CompilationConfig, Program};
+use crate::{BaseTarget, CompilationConfig, Program};
 
 fn recursive_struct_union_check(
    base_id: UserDefinedTypeId,
@@ -601,8 +601,6 @@ pub fn populate_type_and_procedure_info(
 
    let mut dupe_check = HashSet::new();
    for proc in program.procedures.values_mut() {
-      dupe_check.clear();
-
       if proc.impl_source == ProcImplSource::Builtin && !source_is_std(proc.location, config) {
          rolandc_error!(
             err_manager,
@@ -612,8 +610,28 @@ pub fn populate_type_and_procedure_info(
          );
       }
 
+      if proc.definition.variadic {
+         if proc.impl_source == ProcImplSource::Native{
+            rolandc_error!(
+               err_manager,
+               proc.location,
+               "Procedure `{}` is declared to be variadic, but only external or builtin procedures can be variadic",
+               interner.lookup(proc.definition.name.str),
+            );
+         } else if proc.impl_source == ProcImplSource::External && config.target.base_target() != BaseTarget::Qbe {
+            rolandc_error!(
+               err_manager,
+               proc.location,
+               "External procedure `{}` is declared to be variadic, but external variadic procedures are not supported on this target ({})",
+               interner.lookup(proc.definition.name.str),
+               config.target,
+            );
+         }
+      }
+
       let mut first_named_param = None;
       let mut reported_named_error = false;
+      dupe_check.clear();
       for (i, param) in proc.definition.parameters.iter().enumerate() {
          if !dupe_check.insert(param.name) {
             rolandc_error!(
@@ -670,6 +688,15 @@ pub fn populate_type_and_procedure_info(
                interner.lookup(generic_param.str),
             );
          }
+      }
+
+      if !dupe_check.is_empty() && proc.impl_source == ProcImplSource::External {
+         rolandc_error!(
+            err_manager,
+            proc.location,
+            "External procedure `{}` has type parameter(s), which isn't supported",
+            interner.lookup(proc.definition.name.str),
+         );
       }
 
       for constraint in proc.definition.constraints.iter() {

@@ -1,0 +1,9 @@
+extern proc foo<T>(x: T);
+
+proc main() {
+    
+}
+__END__
+compile:
+External procedure `foo` has type parameter(s), which isn't supported
+↳ line 1, column 1 [tests/external_procedures/external_procedure_type_parameter.rol]
