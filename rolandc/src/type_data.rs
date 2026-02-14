@@ -393,10 +393,17 @@ impl ExpressionType {
                .map(|x| x.as_roland_type_info_inner(interner, udt, procedures, type_variable_info))
                .collect::<Vec<_>>()
                .join(", ");
+            let variadic_marker = if params.is_empty() && *variadic {
+               "..."
+            } else if *variadic {
+               ", ..."
+            } else {
+               ""
+            };
             Cow::Owned(format!(
                "proc({}{}) -> {}",
                params,
-               if *variadic { ", ..." } else { "" },
+               variadic_marker,
                ret_val.as_roland_type_info_inner(interner, udt, procedures, type_variable_info)
             ))
          }
@@ -524,10 +531,17 @@ impl ExpressionType {
                .map(|x| x.as_roland_type_info_like_source(interner, udt))
                .collect::<Vec<_>>()
                .join(", ");
+            let variadic_marker = if params.is_empty() && *variadic {
+               "..."
+            } else if *variadic {
+               ", ..."
+            } else {
+               ""
+            };
             Cow::Owned(format!(
                "proc({}{}) -> {}",
                params,
-               if *variadic { ", ..." } else { "" },
+               variadic_marker,
                ret_val.as_roland_type_info_like_source(interner, udt)
             ))
          }

@@ -1571,7 +1571,7 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
          expect(l, parse_context, Token::OpenParen)?;
          let mut parameters = vec![];
          loop {
-            if l.peek_token() == Token::CloseParen {
+            if l.peek_token() == Token::CloseParen || l.peek_token() == Token::TriplePeriod {
                break;
             }
             parameters.push(parse_type(l, parse_context)?.e_type);

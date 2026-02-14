@@ -1,10 +1,18 @@
-extern proc foo(...);
+extern proc foo(x: u8, ...);
+
+proc gimme_pointer() -> proc(u8, ...) { // demonstrating we can parse in type context
+    return &foo; // demonstrating procedure pointers to variadics can be created
+}
 
 proc main() {
-
+    foo(10, true, true);
+    gimme_pointer()(10, false);
+    foo(); // Too few arguments still errors
 }
 __END__
 compile_wasi:
 External procedure `foo` is declared to be variadic, but external variadic procedures are not supported on this target (WASI)
 ↳ line 1, column 1 [tests/variadics/extern_procedure_variadic.rol]
 compile_amd64:
+Mismatched arity for procedure call. Expected 1 arguments but got 0
+↳ line 10, column 5 [tests/variadics/extern_procedure_variadic.rol]
