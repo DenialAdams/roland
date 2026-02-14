@@ -34,6 +34,7 @@ impl<W: Write> PpCtx<'_, W> {
    }
 }
 
+#[allow(unused)] // Debugging function
 pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> Result<(), std::io::Error> {
    let mut pp_ctx = PpCtx {
       indentation_level: 0,
