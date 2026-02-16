@@ -611,7 +611,7 @@ pub fn populate_type_and_procedure_info(
       }
 
       if proc.definition.variadic {
-         if proc.impl_source == ProcImplSource::Native{
+         if proc.impl_source == ProcImplSource::Native {
             rolandc_error!(
                err_manager,
                proc.location,
