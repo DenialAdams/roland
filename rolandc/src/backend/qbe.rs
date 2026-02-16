@@ -358,7 +358,7 @@ pub fn emit_qbe(
       // and that aggregate to have never appeared in a procedure signature.
       // Imagine foo(...) called as foo(MyStruct{})
       // So we need to go through all calls as well
-      for instr in cfg.bbs.iter().flat_map(|x| x.instructions.iter()) {
+      for instr in post_order(cfg).iter().flat_map(|x| cfg.bbs[*x].instructions.iter()) {
          fn recurse(e: ExpressionId, ctx: &mut GenerationContext) {
             match &ctx.ast.expressions[e].expression {
                Expression::ProcedureCall { proc_expr, args } => {
