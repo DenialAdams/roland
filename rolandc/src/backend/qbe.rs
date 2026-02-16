@@ -33,6 +33,7 @@ struct GenerationContext<'a> {
    string_literals: &'a IndexSet<StrId>,
    global_info: &'a IndexMap<VariableId, GlobalInfo>,
    aggregate_defs: IndexSet<ExpressionType>,
+   unused_return_counter: usize,
 }
 
 fn roland_type_to_base_type(r_type: &ExpressionType) -> &'static str {
@@ -310,6 +311,7 @@ pub fn emit_qbe(
       string_literals: &program.literals,
       global_info: &program.non_stack_var_info,
       aggregate_defs: IndexSet::new(),
+      unused_return_counter: 0,
    };
 
    for (i, string_literal) in ctx.string_literals.iter().enumerate() {
@@ -504,6 +506,7 @@ pub fn emit_qbe(
             RegisterType::F64 => writeln!(ctx.buf, "   %r{} =d copy 0", i).unwrap(),
          }
       }
+      ctx.unused_return_counter = 0;
       for bb_id in post_order(cfg).iter().rev().copied().filter(|x| *x != CFG_END_NODE) {
          emit_bb(cfg, bb_id, &mut ctx);
       }
@@ -1082,7 +1085,26 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
          }
          CfgInstruction::Expression(en) => match &ctx.ast.expressions[*en].expression {
             Expression::ProcedureCall { proc_expr, args } => {
-               writeln!(ctx.buf, "   {}", make_call_expr(*proc_expr, args, ctx)).unwrap();
+               // For ABI reasons, all non-unit calls should be assigned into a temporary.
+               // Per QBE documentation:
+               // "Unless the called function does not return a value, a return temporary must be specified, even if it is never used afterwards."
+               if let Some(return_abi_type) = roland_type_to_abi_type(
+                  ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
+                  ctx.udt,
+                  &ctx.aggregate_defs,
+               ) {
+                  let next_counter = ctx.unused_return_counter + 1;
+                  writeln!(
+                     ctx.buf,
+                     "   %unusedReturn{} ={} {}",
+                     std::mem::replace(&mut ctx.unused_return_counter, next_counter),
+                     return_abi_type,
+                     make_call_expr(*proc_expr, args, ctx)
+                  )
+                  .unwrap();
+               } else {
+                  writeln!(ctx.buf, "   {}", make_call_expr(*proc_expr, args, ctx)).unwrap();
+               }
             }
             _ => debug_assert!(!expression_could_have_side_effects(*en, &ctx.ast.expressions)),
          },
