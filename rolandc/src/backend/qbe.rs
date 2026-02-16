@@ -1044,6 +1044,40 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   rhs_expr,
                )
                .unwrap();
+
+               if is_call {
+                  // Per QBE documentation:
+                  // "Calls with a sub-word return type define a temporary of base type w with its most significant bits unspecified."
+                  // Thus, we explicitly extend to reify the upper bits.
+                  match rhs_expr_node.exp_type.as_ref().unwrap() {
+                     ExpressionType::Int(IntType {
+                        signed: true,
+                        width: IntWidth::Two,
+                     }) => {
+                        writeln!(ctx.buf, "   %r{0} =w extsh %r{0}", reg).unwrap();
+                     }
+                     ExpressionType::Int(IntType {
+                        signed: false,
+                        width: IntWidth::Two,
+                     }) => {
+                        writeln!(ctx.buf, "   %r{0} =w extuh %r{0}", reg).unwrap();
+                     }
+                     ExpressionType::Int(IntType {
+                        signed: true,
+                        width: IntWidth::One,
+                     }) => {
+                        writeln!(ctx.buf, "   %r{0} =w extsb %r{0}", reg).unwrap();
+                     }
+                     ExpressionType::Int(IntType {
+                        signed: false,
+                        width: IntWidth::One,
+                     })
+                     | ExpressionType::Bool => {
+                        writeln!(ctx.buf, "   %r{0} =w extub %r{0}", reg).unwrap();
+                     }
+                     _ => (),
+                  }
+               }
             }
          }
          CfgInstruction::Expression(en) => match &ctx.ast.expressions[*en].expression {
