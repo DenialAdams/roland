@@ -132,7 +132,7 @@ impl PointerAnalysisData {
                for di in bb.iter_ones() {
                   match points_to
                      .entry(self.ds.find(di))
-                     .or_insert(PointsToOwned::Vars(bitbox![0; procedure_vars.len()]))
+                     .or_insert_with(|| PointsToOwned::Vars(bitbox![0; procedure_vars.len()]))
                   {
                      PointsToOwned::Unknown => (),
                      PointsToOwned::Vars(bb) => {
