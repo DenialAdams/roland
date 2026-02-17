@@ -1191,6 +1191,7 @@ version = "0.1.0"
 dependencies = [
  "arrayvec",
  "bitvec",
+ "hashbrown 0.16.1",
  "include_dir",
  "indexmap",
  "slotmap",
