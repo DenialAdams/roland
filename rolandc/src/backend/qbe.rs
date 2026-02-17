@@ -1139,23 +1139,35 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
 
 fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner) -> Cow<'a, str> {
    let proc_name = interner.lookup(proc.definition.name.str);
-   if proc.impl_source != ProcImplSource::Native {
-      // builtin procedures can't be monomorphized and thus don't need to be mangled
-      // external procedures mustn't be mangled, for obvious reasons
-      // TODO: we should still quote external identifiers in case they have unicode
-      return Cow::Borrowed(proc_name);
-   }
-   let mut full_str = format!("\".{}_{}", proc_id.data().as_ffi(), proc_name).into_bytes();
+   let mut full_str = match proc.impl_source {
+      ProcImplSource::Builtin => {
+         return Cow::Borrowed(proc_name);
+      }
+      ProcImplSource::External => {
+         debug_assert!(proc_name.len() <= 78);
+         if proc_name.is_ascii() {
+            // Avoids allocating
+            return Cow::Borrowed(proc_name);
+         }
+         format!("\"{}", proc_name).into_bytes()
+      }
+      ProcImplSource::Native => {
+         let mut s = format!("\".{}_{}", proc_id.data().as_ffi(), proc_name).into_bytes();
 
-   // The QBE max char length is 80 minus one more quote we'll tack on = 79
-   // ... and minus one more for reasons I don't understand, but is empirically necessary
-   full_str.truncate(78);
-   // we may have just truncated a unicode character. let's fix it up:
-   // (this is incredibly lazy. it truncates all non single-byte utf-8 characters)
-   // (TODO: a more sophisticated algorithm that removes trailing broken char only)
-   while (full_str.last().unwrap() & 0x80) != 0 {
-      full_str.pop();
-   }
+         // The QBE max char length is 80 minus one more quote we'll tack on = 79
+         // ... and minus one more for reasons I don't understand, but is empirically necessary
+         s.truncate(78);
+         // we may have just truncated a unicode character. let's fix it up:
+         // (this is incredibly lazy. it truncates all non single-byte utf-8 characters)
+         // (TODO: a more sophisticated algorithm that removes trailing broken char only)
+         while (s.last().unwrap() & 0x80) != 0 {
+            s.pop();
+         }
+
+         s
+      },
+   };
+
    full_str.push(b'"');
 
    let final_string = if cfg!(debug_assertions) {

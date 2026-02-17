@@ -1,0 +1,11 @@
+extern proc 多多多();
+
+proc main() {
+   多多多();
+}
+__END__
+compile_wasi:
+compile_amd64:
+wild: error: Undefined symbol 多多多, referenced by 
+    tests/external_procedures/unicode_external_proc.o
+Failed to compile produced IR to binary: linker failed to execute
