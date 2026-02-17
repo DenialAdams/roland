@@ -1,3 +1,4 @@
+use std::fmt;
 use std::io::Write;
 
 use indexmap::IndexSet;
@@ -7,19 +8,19 @@ use crate::source_info::{SourceInfo, SourcePath};
 
 pub(crate) mod error_handling_macros {
    macro_rules! rolandc_error {
-      ($dst:expr, $loc:expr, $($arg:tt)*) => ($dst.emit_error($loc, format!($($arg)*)))
+      ($dst:expr, $loc:expr, $($arg:tt)*) => ($dst.emit_error($loc, format_args!($($arg)*)))
    }
 
    macro_rules! rolandc_error_no_loc {
-      ($dst:expr, $($arg:tt)*) => ($dst.emit_error_no_location(format!($($arg)*)))
+      ($dst:expr, $($arg:tt)*) => ($dst.emit_error_no_location(format_args!($($arg)*)))
    }
 
    macro_rules! rolandc_error_w_details {
-      ($dst:expr, $loc:expr, $($arg:tt)*) => ($dst.emit_error_with_details($loc, format!($($arg)*)))
+      ($dst:expr, $loc:expr, $($arg:tt)*) => ($dst.emit_error_with_details($loc, format_args!($($arg)*)))
    }
 
    macro_rules! rolandc_warn {
-      ($dst:expr, $loc:expr, $($arg:tt)*) => ($dst.emit_warning($loc, format!($($arg)*)))
+      ($dst:expr, $loc:expr, $($arg:tt)*) => ($dst.emit_warning($loc, format_args!($($arg)*)))
    }
 
    pub(crate) use {rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn};
@@ -68,34 +69,34 @@ impl ErrorManager {
       }
    }
 
-   pub fn emit_error(&mut self, location: SourceInfo, message: String) {
+   pub fn emit_error(&mut self, location: SourceInfo, message: fmt::Arguments) {
       self.errors.push(ErrorInfo {
-         message,
+         message: message.to_string(),
          location: ErrorLocation::Simple(location),
          came_from_stack: Vec::new(),
       });
    }
 
-   pub fn emit_warning(&mut self, location: SourceInfo, message: String) {
+   pub fn emit_warning(&mut self, location: SourceInfo, message: fmt::Arguments) {
       self.warnings.push(ErrorInfo {
-         message,
+         message: message.to_string(),
          location: ErrorLocation::Simple(location),
          came_from_stack: Vec::new(),
       });
    }
 
-   pub fn emit_error_with_details<I: ToString>(&mut self, location: &[(SourceInfo, I)], message: String) {
+   pub fn emit_error_with_details<I: ToString>(&mut self, location: &[(SourceInfo, I)], message: fmt::Arguments) {
       let location_vec = location.iter().map(|x| (x.0, x.1.to_string())).collect();
       self.errors.push(ErrorInfo {
-         message,
+         message: message.to_string(),
          location: ErrorLocation::WithDetails(location_vec),
          came_from_stack: Vec::new(),
       });
    }
 
-   pub fn emit_error_no_location(&mut self, message: String) {
+   pub fn emit_error_no_location(&mut self, message: fmt::Arguments) {
       self.errors.push(ErrorInfo {
-         message,
+         message: message.to_string(),
          location: ErrorLocation::NoLocation,
          came_from_stack: Vec::new(),
       });
