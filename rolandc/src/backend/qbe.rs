@@ -1139,7 +1139,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
 
 fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner) -> Cow<'a, str> {
    let proc_name = interner.lookup(proc.definition.name.str);
-   let mut full_str = match proc.impl_source {
+   let full_str = match proc.impl_source {
       ProcImplSource::Builtin => {
          return Cow::Borrowed(proc_name);
       }
@@ -1149,7 +1149,7 @@ fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner
             // Avoids allocating
             return Cow::Borrowed(proc_name);
          }
-         format!("\"{}", proc_name).into_bytes()
+         format!("\"{}\"", proc_name).into_bytes()
       }
       ProcImplSource::Native => {
          let mut s = format!("\".{}_{}", proc_id.data().as_ffi(), proc_name).into_bytes();
@@ -1164,11 +1164,11 @@ fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner
             s.pop();
          }
 
+         s.push(b'"');
+
          s
       },
    };
-
-   full_str.push(b'"');
 
    let final_string = if cfg!(debug_assertions) {
       String::from_utf8(full_str).unwrap()
