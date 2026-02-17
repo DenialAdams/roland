@@ -401,7 +401,8 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
          rolandc_warn!(
             ctx.err_manager,
             link_node.location,
-            "Link directives are not supported for this target, and will be ignored."
+            "Link directives are not supported on this target ({}), and will be ignored.",
+            config.target,
          );
       }
       IndexSet::new()

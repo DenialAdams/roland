@@ -1167,7 +1167,7 @@ fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner
          s.push(b'"');
 
          s
-      },
+      }
    };
 
    let final_string = if cfg!(debug_assertions) {

@@ -629,6 +629,19 @@ pub fn populate_type_and_procedure_info(
          }
       }
 
+      if proc.impl_source == ProcImplSource::External
+         && interner.lookup(proc.definition.name.str).len() > 78
+         && config.target.base_target() == BaseTarget::Qbe
+      {
+         rolandc_error!(
+            err_manager,
+            proc.location,
+            "External procedure `{}` has a name that is too long for this target ({})",
+            interner.lookup(proc.definition.name.str),
+            config.target,
+         );
+      }
+
       let mut first_named_param = None;
       let mut reported_named_error = false;
       dupe_check.clear();

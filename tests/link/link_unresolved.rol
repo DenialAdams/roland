@@ -3,7 +3,7 @@ proc main() {
 }
 __END__
 compile_wasi:
-Link directives are not supported for this target, and will be ignored.
+Link directives are not supported on this target (WASI), and will be ignored.
 ↳ line 1, column 1 [tests/link/link_unresolved.rol]
 compile_amd64:
 wild: error: Couldn't find library `notRealLib` on library search path
