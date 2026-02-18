@@ -564,19 +564,38 @@ function {}() {{
    ctx.buf
 }
 
-fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext, is_lhs: bool) -> Option<String> {
-   match ctx.ast.expressions[expr].expression {
-      Expression::Variable(v) if is_lhs => {
-         if ctx.global_info.contains_key(&v) {
-            Some(format!("$.v{}", v.0))
-         } else {
-            match ctx.var_to_slot.get(&v).unwrap() {
-               VarSlot::Register(_) => None,
-               VarSlot::Stack(v) => Some(format!("%v{}", v)),
-            }
-         }
+enum MemOffset {
+   DerefRegister(u32),
+   StackSlot(u32),
+   Global(u64),
+}
+
+impl std::fmt::Display for MemOffset {
+   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      match self {
+         MemOffset::DerefRegister(reg) => write!(f, "%r{}", reg),
+         MemOffset::StackSlot(slot) => write!(f, "%v{}", slot),
+         MemOffset::Global(var_id) => write!(f, "$.v{}", var_id),
       }
-      Expression::UnaryOperator(UnOp::Dereference, e) if is_lhs => Some(expr_to_val(e, ctx)),
+   }
+}
+
+fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext, is_lhs: bool) -> Option<MemOffset> {
+   match ctx.ast.expressions[expr].expression {
+      Expression::Variable(v) if is_lhs => match ctx.var_to_slot.get(&v) {
+         Some(VarSlot::Register(_)) => None,
+         Some(VarSlot::Stack(s)) => Some(MemOffset::StackSlot(*s)),
+         None => Some(MemOffset::Global(v.0)),
+      },
+      Expression::UnaryOperator(UnOp::Dereference, e) if is_lhs => {
+         let Expression::Variable(v) = ctx.ast.expressions[e].expression else {
+            unreachable!()
+         };
+         let Some(VarSlot::Register(reg)) = ctx.var_to_slot.get(&v) else {
+            unreachable!()
+         };
+         Some(MemOffset::DerefRegister(*reg))
+      }
       Expression::UnaryOperator(UnOp::Dereference, e) => compute_offset(e, ctx, true),
       _ => None,
    }
@@ -620,8 +639,9 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   writeln!(ctx.buf, "   blit %t, {}, {}", lhs_mem, size).unwrap();
                } else {
                   let suffix = roland_type_to_extended_type(ctx.ast.expressions[*en].exp_type.as_ref().unwrap());
-                  let val = expr_to_val(*en, ctx);
-                  writeln!(ctx.buf, "   store{} {}, {}", suffix, val, lhs_mem).unwrap();
+                  write!(ctx.buf, "   store{} ", suffix).unwrap();
+                  emit_expr_as_val(*en, ctx).unwrap();
+                  writeln!(ctx.buf, ", {}", lhs_mem).unwrap();
                }
             } else {
                let Expression::Variable(v) = ctx.ast.expressions[*lid].expression else {
@@ -651,7 +671,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   Expression::ProcedureCall { proc_expr, args } => {
                      emit_call_expr_and_newline(*proc_expr, args, ctx);
                      Ok(())
-                  },
+                  }
                   Expression::BoolLiteral(v) => writeln!(ctx.buf, "copy {}", u8::from(*v)),
                   Expression::IntLiteral { val, .. } => {
                      let signed = matches!(
@@ -842,9 +862,11 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                         },
                         BinOp::LogicalAnd | BinOp::LogicalOr => unreachable!(),
                      };
-                     let lhs_val = expr_to_val(*lhs, ctx);
-                     let rhs_val = expr_to_val(*rhs, ctx);
-                     writeln!(ctx.buf, "{} {}, {}", opcode, lhs_val, rhs_val)
+                     write!(ctx.buf, "{} ", opcode).unwrap();
+                     emit_expr_as_val(*lhs, ctx).unwrap();
+                     write!(ctx.buf, ", ").unwrap();
+                     emit_expr_as_val(*rhs, ctx).unwrap();
+                     writeln!(ctx.buf)
                   }
                   Expression::UnaryOperator(UnOp::TakeProcedurePointer, inner_id) => {
                      let ExpressionType::ProcedureItem(proc_id, _bound_type_params) =
@@ -860,13 +882,13 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   }
                   Expression::UnaryOperator(operator, inner_id) => match operator {
                      UnOp::Negate => {
-                        let inner_val = expr_to_val(*inner_id, ctx);
-                        writeln!(ctx.buf, "neg {}", inner_val)
+                        write!(ctx.buf, "neg ").unwrap();
+                        emit_expr_as_val(*inner_id, ctx).unwrap();
+                        writeln!(ctx.buf)
                      }
                      UnOp::Complement => {
-                        let inner_val = expr_to_val(*inner_id, ctx);
                         if *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() == ExpressionType::Bool {
-                           writeln!(ctx.buf, "ceqw {}, 0", inner_val)
+                           write!(ctx.buf, "ceqw 0, ")
                         } else {
                            let magic_const: u64 = match *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() {
                               crate::type_data::U8_TYPE => u64::from(u8::MAX),
@@ -878,8 +900,11 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                               crate::type_data::I64_TYPE | crate::type_data::U64_TYPE => u64::MAX,
                               _ => unreachable!(),
                            };
-                           writeln!(ctx.buf, "xor {}, {}", inner_val, magic_const)
+                           write!(ctx.buf, "xor {}, ", magic_const)
                         }
+                        .unwrap();
+                        emit_expr_as_val(*inner_id, ctx).unwrap();
+                        writeln!(ctx.buf)
                      }
                      UnOp::Dereference => {
                         if let Expression::Variable(v) = ctx.ast.expressions[*inner_id].expression {
@@ -887,11 +912,13 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                               writeln!(ctx.buf, "copy %r{}", reg)
                            } else {
                               emit_load(&mut ctx.buf, rhs_expr_node.exp_type.as_ref().unwrap()).unwrap();
-                              writeln!(ctx.buf, "{}", expr_to_val(*inner_id, ctx))
+                              emit_expr_as_val(*inner_id, ctx).unwrap();
+                              writeln!(ctx.buf)
                            }
                         } else {
                            emit_load(&mut ctx.buf, rhs_expr_node.exp_type.as_ref().unwrap()).unwrap();
-                           writeln!(ctx.buf, "{}", expr_to_val(*inner_id, ctx))
+                           emit_expr_as_val(*inner_id, ctx).unwrap();
+                           writeln!(ctx.buf)
                         }
                      }
                      UnOp::AddressOf | UnOp::TakeProcedurePointer => unreachable!(),
@@ -902,7 +929,6 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                      expr,
                   } => {
                      let src_type = ctx.ast.expressions[*expr].exp_type.as_ref().unwrap();
-                     let val = expr_to_val(*expr, ctx);
                      match (src_type, target_type) {
                         (ExpressionType::Int(l), ExpressionType::Int(r))
                            if l.width.as_num_bytes(BaseTarget::Qbe) >= r.width.as_num_bytes(BaseTarget::Qbe) =>
@@ -910,37 +936,37 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                            match (l.width, r.width) {
                               (IntWidth::Eight | IntWidth::Four, IntWidth::Two) => {
                                  if r.signed {
-                                    writeln!(ctx.buf, "extsh {}", val)
+                                    write!(ctx.buf, "extsh ")
                                  } else {
-                                    writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111)
+                                    write!(ctx.buf, "and {}, ", 0b0000_0000_0000_0000_1111_1111_1111_1111)
                                  }
                               }
                               (IntWidth::Eight | IntWidth::Four | IntWidth::Two, IntWidth::One) => {
                                  if r.signed {
-                                    writeln!(ctx.buf, "extsb {}", val)
+                                    write!(ctx.buf, "extsb ")
                                  } else {
-                                    writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111)
+                                    write!(ctx.buf, "and {}, ", 0b0000_0000_0000_0000_0000_0000_1111_1111)
                                  }
                               }
                               (IntWidth::Two, IntWidth::Two) => {
                                  if !l.signed && r.signed {
-                                    writeln!(ctx.buf, "extsh {}", val)
+                                    write!(ctx.buf, "extsh ")
                                  } else if l.signed && !r.signed {
-                                    writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111)
+                                    write!(ctx.buf, "and {}, ", 0b0000_0000_0000_0000_1111_1111_1111_1111)
                                  } else {
-                                    writeln!(ctx.buf, "copy {}", val)
+                                    write!(ctx.buf, "copy ")
                                  }
                               }
                               (IntWidth::One, IntWidth::One) => {
                                  if !l.signed && r.signed {
-                                    writeln!(ctx.buf, "extsb {}", val)
+                                    write!(ctx.buf, "extsb ")
                                  } else if l.signed && !r.signed {
-                                    writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111)
+                                    write!(ctx.buf, "and {}, ", 0b0000_0000_0000_0000_0000_0000_1111_1111)
                                  } else {
-                                    writeln!(ctx.buf, "copy {}", val)
+                                    write!(ctx.buf, "copy ")
                                  }
                               }
-                              _ => writeln!(ctx.buf, "copy {}", val),
+                              _ => write!(ctx.buf, "copy "),
                            }
                         }
                         (ExpressionType::Int(l), ExpressionType::Int(r))
@@ -948,21 +974,21 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                         {
                            if l.width.as_num_bytes(BaseTarget::Qbe) <= 4 && r.width == IntWidth::Eight {
                               if l.signed {
-                                 writeln!(ctx.buf, "extsw {}", val)
+                                 write!(ctx.buf, "extsw ")
                               } else {
-                                 writeln!(ctx.buf, "extuw {}", val)
+                                 write!(ctx.buf, "extuw ")
                               }
                            } else if l.width == IntWidth::One && r.width == IntWidth::Two && l.signed && !r.signed {
-                              writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111)
+                              write!(ctx.buf, "and {}, ", 0b0000_0000_0000_0000_1111_1111_1111_1111)
                            } else {
-                              writeln!(ctx.buf, "copy {}", val)
+                              write!(ctx.buf, "copy ")
                            }
                         }
                         (&F64_TYPE, &F32_TYPE) => {
-                           writeln!(ctx.buf, "truncd {}", val)
+                           write!(ctx.buf, "truncd ")
                         }
                         (&F32_TYPE, &F64_TYPE) => {
-                           writeln!(ctx.buf, "exts {}", val)
+                           write!(ctx.buf, "exts ")
                         }
                         (
                            ExpressionType::Float(FloatType { width: src_width }),
@@ -970,16 +996,16 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                         ) => match src_width {
                            FloatWidth::Eight => {
                               if *signed {
-                                 writeln!(ctx.buf, "dtosi {}", val)
+                                 write!(ctx.buf, "dtosi ")
                               } else {
-                                 writeln!(ctx.buf, "dtoui {}", val)
+                                 write!(ctx.buf, "dtoui ")
                               }
                            }
                            FloatWidth::Four => {
                               if *signed {
-                                 writeln!(ctx.buf, "stosi {}", val)
+                                 write!(ctx.buf, "stosi ")
                               } else {
-                                 writeln!(ctx.buf, "stoui {}", val)
+                                 write!(ctx.buf, "stoui ")
                               }
                            }
                         },
@@ -990,46 +1016,51 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                            }),
                            ExpressionType::Float(_),
                         ) => match (src_width, signed) {
-                           (IntWidth::Eight, true) => writeln!(ctx.buf, "sltof {}", val),
-                           (IntWidth::Eight, false) => writeln!(ctx.buf, "ultof {}", val),
-                           (_, true) => writeln!(ctx.buf, "swtof {}", val),
-                           (_, false) => writeln!(ctx.buf, "uwtof {}", val),
+                           (IntWidth::Eight, true) => write!(ctx.buf, "sltof "),
+                           (IntWidth::Eight, false) => write!(ctx.buf, "ultof "),
+                           (_, true) => write!(ctx.buf, "swtof "),
+                           (_, false) => write!(ctx.buf, "uwtof "),
                         },
                         (ExpressionType::Bool, ExpressionType::Int(i)) => {
                            if i.width == IntWidth::Eight {
-                              writeln!(ctx.buf, "extuw {}", val)
+                              write!(ctx.buf, "extuw ")
                            } else {
-                              writeln!(ctx.buf, "copy {}", val)
+                              write!(ctx.buf, "copy ")
                            }
                         }
-                        _ => writeln!(ctx.buf, "copy {}", val),
+                        _ => write!(ctx.buf, "copy "),
                      }
+                     .unwrap();
+                     emit_expr_as_val(*expr, ctx).unwrap();
+                     writeln!(ctx.buf)
                   }
                   Expression::Cast {
                      cast_type: CastType::Transmute,
                      target_type,
                      expr,
                   } => {
-                     let val = expr_to_val(*expr, ctx);
                      match (ctx.ast.expressions[*expr].exp_type.as_ref().unwrap(), target_type) {
                         (&I16_TYPE, &U16_TYPE) => {
-                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111)
+                           write!(ctx.buf, "and {}, ", 0b0000_0000_0000_0000_1111_1111_1111_1111)
                         }
                         (&I8_TYPE, &U8_TYPE) => {
-                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111)
+                           write!(ctx.buf, "and {}, ", 0b0000_0000_0000_0000_0000_0000_1111_1111)
                         }
                         (&U16_TYPE, &I16_TYPE) => {
-                           writeln!(ctx.buf, "extsh {}", val)
+                           write!(ctx.buf, "extsh ")
                         }
                         (&U8_TYPE, &I8_TYPE) => {
-                           writeln!(ctx.buf, "extsb {}", val)
+                           write!(ctx.buf, "extsb ")
                         }
                         (ExpressionType::Float(_), ExpressionType::Int(_))
                         | (ExpressionType::Int(_), ExpressionType::Float(_)) => {
-                           writeln!(ctx.buf, "cast {}", val)
+                           write!(ctx.buf, "cast ")
                         }
-                        _ => writeln!(ctx.buf, "copy {}", val),
+                        _ => write!(ctx.buf, "copy "),
                      }
+                     .unwrap();
+                     emit_expr_as_val(*expr, ctx).unwrap();
+                     writeln!(ctx.buf)
                   }
                   _ => unreachable!(),
                }
@@ -1108,8 +1139,9 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
             {
                writeln!(&mut ctx.buf, "   ret").unwrap();
             } else {
-               let val = expr_to_val(*en, ctx);
-               writeln!(&mut ctx.buf, "   ret {}", val).unwrap();
+               write!(&mut ctx.buf, "   ret ").unwrap();
+               emit_expr_as_val(*en, ctx).unwrap();
+               writeln!(&mut ctx.buf).unwrap();
             }
          }
          CfgInstruction::Jump(dest) => {
@@ -1118,8 +1150,9 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
             }
          }
          CfgInstruction::ConditionalJump(expr, then_dest, else_dest) => {
-            let cond = expr_to_val(*expr, ctx);
-            writeln!(&mut ctx.buf, "   jnz {}, @b{}, @b{}", cond, then_dest, else_dest).unwrap();
+            write!(&mut ctx.buf, "   jnz ").unwrap();
+            emit_expr_as_val(*expr, ctx).unwrap();
+            writeln!(&mut ctx.buf, ", @b{}, @b{}", then_dest, else_dest).unwrap();
          }
       }
    }
@@ -1169,8 +1202,7 @@ fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner
    Cow::Owned(final_string)
 }
 
-// TODO: rework this to write directly into bytestream or otherwise not allocate
-fn expr_to_val(expr_index: ExpressionId, ctx: &GenerationContext) -> String {
+fn emit_expr_as_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> std::io::Result<()> {
    let expr_node = &ctx.ast.expressions[expr_index];
    match &expr_node.expression {
       Expression::IntLiteral { val, .. } => {
@@ -1179,32 +1211,32 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &GenerationContext) -> String {
             ExpressionType::Int(IntType { signed: true, .. })
          );
          if signed {
-            format!("{}", *val as i64)
+            write!(ctx.buf, "{}", *val as i64)
          } else {
-            format!("{}", *val)
+            write!(ctx.buf, "{}", *val)
          }
       }
       Expression::FloatLiteral(v) => match *expr_node.exp_type.as_ref().unwrap() {
-         F64_TYPE => format!("d_{}", v),
-         F32_TYPE => format!("s_{}", v),
+         F64_TYPE => write!(ctx.buf, "d_{}", v),
+         F32_TYPE => write!(ctx.buf, "s_{}", v),
          _ => unreachable!(),
       },
       Expression::BoolLiteral(val) => {
-         format!("{}", u8::from(*val))
+         write!(ctx.buf, "{}", u8::from(*val))
       }
       Expression::UnaryOperator(UnOp::Dereference, inner) => {
          if let Expression::Variable(v) = ctx.ast.expressions[*inner].expression {
             match ctx.var_to_slot.get(&v) {
                Some(VarSlot::Register(reg)) => {
-                  format!("%r{}", reg)
+                  write!(ctx.buf, "%r{}", reg)
                }
                // TODO: justify why producing an address is OK here
                Some(VarSlot::Stack(v)) => {
-                  format!("%v{}", v)
+                  write!(ctx.buf, "%v{}", v)
                }
                None => {
                   // global
-                  format!("$.v{}", v.0)
+                  write!(ctx.buf, "$.v{}", v.0)
                }
             }
          } else {
@@ -1213,24 +1245,25 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &GenerationContext) -> String {
       }
       Expression::Variable(v) => {
          match ctx.var_to_slot.get(v) {
-            Some(VarSlot::Register(reg)) => {
-               // TODO this should not be reachable?
-               format!("%r{}", reg)
-            }
+            Some(VarSlot::Register(_)) => unreachable!(),
             Some(VarSlot::Stack(v)) => {
-               format!("%v{}", v)
+               write!(ctx.buf, "%v{}", v)
             }
             None => {
                // global
-               format!("$.v{}", v.0)
+               write!(ctx.buf, "$.v{}", v.0)
             }
          }
       }
       Expression::StringLiteral(id) => {
-         format!("$.s{}", ctx.string_literals.get_index_of(id).unwrap())
+         write!(ctx.buf, "$.s{}", ctx.string_literals.get_index_of(id).unwrap())
       }
       Expression::BoundFcnLiteral(proc_id, _) => {
-         format!("${}", mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner))
+         write!(
+            ctx.buf,
+            "${}",
+            mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner)
+         )
       }
       _ => unreachable!(),
    }
@@ -1286,8 +1319,9 @@ fn emit_call_expr_and_newline(proc_expr: ExpressionId, args: &[ArgumentNode], ct
          parameters,
          ret_type: _,
       } => {
-         let val = expr_to_val(proc_expr, ctx);
-         write!(ctx.buf, "call {}(", val).unwrap();
+         write!(ctx.buf, "call ").unwrap();
+         emit_expr_as_val(proc_expr, ctx).unwrap();
+         write!(ctx.buf, "(").unwrap();
          if *variadic { Some(parameters.len()) } else { None }
       }
       _ => unreachable!(),
@@ -1307,8 +1341,9 @@ fn emit_call_expr_and_newline(proc_expr: ExpressionId, args: &[ArgumentNode], ct
                ctx.udt,
                &ctx.aggregate_defs,
             ) {
-               let val = expr_to_val(ex, ctx);
-               write!(ctx.buf, "{} {}, ", arg_type, val).unwrap();
+               write!(ctx.buf, "{} ", arg_type).unwrap();
+               emit_expr_as_val(ex, ctx).unwrap();
+               write!(ctx.buf, ", ").unwrap();
             }
          }
          Arg::VarargSep => {
