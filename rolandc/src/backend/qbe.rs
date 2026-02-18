@@ -600,18 +600,18 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   let Expression::ProcedureCall { proc_expr, args } = &ctx.ast.expressions[*en].expression else {
                      unreachable!()
                   };
-                  writeln!(
+                  write!(
                      ctx.buf,
-                     "   %t ={} {}",
+                     "   %t ={} ",
                      roland_type_to_abi_type(
                         ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
                         ctx.udt,
                         &ctx.aggregate_defs
                      )
                      .unwrap(),
-                     make_call_expr(*proc_expr, args, ctx)
                   )
                   .unwrap();
+                  emit_call_expr_and_newline(*proc_expr, args, ctx);
                   let size = sizeof_type_mem(
                      ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
                      ctx.udt,
@@ -632,411 +632,11 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                };
 
                let rhs_expr_node = &ctx.ast.expressions[*en];
-               let (is_call, rhs_expr) = {
-                  match &rhs_expr_node.expression {
-                     Expression::ProcedureCall { proc_expr, args } => (true, make_call_expr(*proc_expr, args, ctx)),
-                     Expression::BoolLiteral(v) => (false, format!("copy {}", u8::from(*v))),
-                     Expression::IntLiteral { val, .. } => {
-                        let signed = matches!(
-                           rhs_expr_node.exp_type.as_ref().unwrap(),
-                           ExpressionType::Int(IntType { signed: true, .. })
-                        );
-                        (
-                           false,
-                           if signed {
-                              format!("copy {}", *val as i64)
-                           } else {
-                              format!("copy {}", *val)
-                           },
-                        )
-                     }
-                     Expression::FloatLiteral(val) => (
-                        false,
-                        match *rhs_expr_node.exp_type.as_ref().unwrap() {
-                           F64_TYPE => format!("copy d_{}", val),
-                           F32_TYPE => format!("copy s_{}", val),
-                           _ => unreachable!(),
-                        },
-                     ),
-                     Expression::BoundFcnLiteral(proc_id, _) => {
-                        debug_assert!(matches!(
-                           rhs_expr_node.exp_type,
-                           Some(ExpressionType::ProcedurePointer { .. })
-                        ));
-                        (
-                           false,
-                           format!("copy ${}", mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner)),
-                        )
-                     }
-                     Expression::Variable(v) => (
-                        false,
-                        if ctx.global_info.contains_key(v) {
-                           format!("copy $.v{}", v.0)
-                        } else {
-                           match ctx.var_to_slot.get(v).unwrap() {
-                              VarSlot::Register(_) => unreachable!(),
-                              VarSlot::Stack(v) => format!("copy %v{}", v),
-                           }
-                        },
-                     ),
-                     Expression::BinaryOperator { operator, lhs, rhs } => {
-                        let typ = ctx.ast.expressions[*lhs].exp_type.as_ref().unwrap();
-                        let opcode = match operator {
-                           BinOp::Add => "add",
-                           BinOp::Subtract => "sub",
-                           BinOp::Multiply => "mul",
-                           BinOp::Divide => match typ {
-                              &F32_TYPE | &F64_TYPE | ExpressionType::Int(IntType { signed: true, width: _ }) => "div",
-                              ExpressionType::Int(IntType {
-                                 signed: false,
-                                 width: _,
-                              }) => "udiv",
-                              _ => unreachable!(),
-                           },
-                           BinOp::Remainder => match typ {
-                              ExpressionType::Int(IntType {
-                                 signed: false,
-                                 width: _,
-                              }) => "urem",
-                              ExpressionType::Int(IntType { signed: true, width: _ }) => "rem",
-                              _ => unreachable!(),
-                           },
-                           BinOp::Equality => match typ {
-                              &F32_TYPE => "ceqs",
-                              &F64_TYPE => "ceqd",
-                              ExpressionType::Int(IntType {
-                                 signed: _,
-                                 width: IntWidth::Eight,
-                              }) => "ceql",
-                              ExpressionType::Int(IntType {
-                                 signed: _,
-                                 width: IntWidth::Four | IntWidth::Two | IntWidth::One,
-                              })
-                              | ExpressionType::Bool => "ceqw",
-                              _ => unreachable!(),
-                           },
-                           BinOp::NotEquality => match typ {
-                              &F32_TYPE => "cnes",
-                              &F64_TYPE => "cned",
-                              ExpressionType::Int(IntType {
-                                 signed: _,
-                                 width: IntWidth::Eight,
-                              }) => "cnel",
-                              ExpressionType::Int(IntType {
-                                 signed: _,
-                                 width: IntWidth::Four | IntWidth::Two | IntWidth::One,
-                              })
-                              | ExpressionType::Bool => "cnew",
-                              _ => unreachable!(),
-                           },
-                           BinOp::GreaterThan => match typ {
-                              &F32_TYPE => "cgts",
-                              &F64_TYPE => "cgtd",
-                              ExpressionType::Int(IntType {
-                                 signed: false,
-                                 width: IntWidth::Eight,
-                              }) => "cugtl",
-                              ExpressionType::Int(IntType {
-                                 signed: false,
-                                 width: IntWidth::Four | IntWidth::Two | IntWidth::One,
-                              })
-                              | ExpressionType::Bool => "cugtw",
-                              ExpressionType::Int(IntType {
-                                 signed: true,
-                                 width: IntWidth::Eight,
-                              }) => "csgtl",
-                              ExpressionType::Int(IntType {
-                                 signed: true,
-                                 width: IntWidth::Four | IntWidth::Two | IntWidth::One,
-                              }) => "csgtw",
-                              _ => unreachable!(),
-                           },
-                           BinOp::LessThan => match typ {
-                              &F32_TYPE => "clts",
-                              &F64_TYPE => "cltd",
-                              ExpressionType::Int(IntType {
-                                 signed: false,
-                                 width: IntWidth::Eight,
-                              }) => "cultl",
-                              ExpressionType::Int(IntType {
-                                 signed: false,
-                                 width: IntWidth::Four | IntWidth::Two | IntWidth::One,
-                              })
-                              | ExpressionType::Bool => "cultw",
-                              ExpressionType::Int(IntType {
-                                 signed: true,
-                                 width: IntWidth::Eight,
-                              }) => "csltl",
-                              ExpressionType::Int(IntType {
-                                 signed: true,
-                                 width: IntWidth::Four | IntWidth::Two | IntWidth::One,
-                              }) => "csltw",
-                              _ => unreachable!(),
-                           },
-                           BinOp::GreaterThanOrEqualTo => match typ {
-                              &F32_TYPE => "cges",
-                              &F64_TYPE => "cged",
-                              ExpressionType::Int(IntType {
-                                 signed: false,
-                                 width: IntWidth::Eight,
-                              }) => "cugel",
-                              ExpressionType::Int(IntType {
-                                 signed: false,
-                                 width: IntWidth::Four | IntWidth::Two | IntWidth::One,
-                              })
-                              | ExpressionType::Bool => "cugew",
-                              ExpressionType::Int(IntType {
-                                 signed: true,
-                                 width: IntWidth::Eight,
-                              }) => "csgel",
-                              ExpressionType::Int(IntType {
-                                 signed: true,
-                                 width: IntWidth::Four | IntWidth::Two | IntWidth::One,
-                              }) => "csgew",
-                              _ => unreachable!(),
-                           },
-                           BinOp::LessThanOrEqualTo => match typ {
-                              &F32_TYPE => "cles",
-                              &F64_TYPE => "cled",
-                              ExpressionType::Int(IntType {
-                                 signed: false,
-                                 width: IntWidth::Eight,
-                              }) => "culel",
-                              ExpressionType::Int(IntType {
-                                 signed: false,
-                                 width: IntWidth::Four | IntWidth::Two | IntWidth::One,
-                              })
-                              | ExpressionType::Bool => "culew",
-                              ExpressionType::Int(IntType {
-                                 signed: true,
-                                 width: IntWidth::Eight,
-                              }) => "cslel",
-                              ExpressionType::Int(IntType {
-                                 signed: true,
-                                 width: IntWidth::Four | IntWidth::Two | IntWidth::One,
-                              }) => "cslew",
-                              _ => unreachable!(),
-                           },
-                           BinOp::BitwiseAnd => "and",
-                           BinOp::BitwiseOr => "or",
-                           BinOp::BitwiseXor => "xor",
-                           BinOp::BitwiseLeftShift => "shl",
-                           BinOp::BitwiseRightShift => match typ {
-                              ExpressionType::Int(IntType { signed: true, width: _ }) => "sar",
-                              ExpressionType::Int(IntType {
-                                 signed: false,
-                                 width: _,
-                              }) => "shr",
-                              _ => unreachable!(),
-                           },
-                           BinOp::LogicalAnd | BinOp::LogicalOr => unreachable!(),
-                        };
-                        let lhs_val = expr_to_val(*lhs, ctx);
-                        let rhs_val = expr_to_val(*rhs, ctx);
-                        (false, format!("{} {}, {}", opcode, lhs_val, rhs_val))
-                     }
-                     Expression::UnaryOperator(UnOp::TakeProcedurePointer, inner_id) => {
-                        let ExpressionType::ProcedureItem(proc_id, _bound_type_params) =
-                           ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap()
-                        else {
-                           unreachable!();
-                        };
-                        (
-                           false,
-                           format!("copy ${}", mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner)),
-                        )
-                     }
-                     Expression::UnaryOperator(operator, inner_id) => (
-                        false,
-                        match operator {
-                           UnOp::Negate => {
-                              let inner_val = expr_to_val(*inner_id, ctx);
-                              format!("neg {}", inner_val)
-                           }
-                           UnOp::Complement => {
-                              let inner_val = expr_to_val(*inner_id, ctx);
-                              if *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() == ExpressionType::Bool {
-                                 format!("ceqw {}, 0", inner_val)
-                              } else {
-                                 let magic_const: u64 = match *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap()
-                                 {
-                                    crate::type_data::U8_TYPE => u64::from(u8::MAX),
-                                    crate::type_data::U16_TYPE => u64::from(u16::MAX),
-                                    crate::type_data::U32_TYPE
-                                    | crate::type_data::I8_TYPE
-                                    | crate::type_data::I16_TYPE
-                                    | crate::type_data::I32_TYPE => u64::from(u32::MAX),
-                                    crate::type_data::I64_TYPE | crate::type_data::U64_TYPE => u64::MAX,
-                                    _ => unreachable!(),
-                                 };
-                                 format!("xor {}, {}", inner_val, magic_const)
-                              }
-                           }
-                           UnOp::Dereference => {
-                              if let Expression::Variable(v) = ctx.ast.expressions[*inner_id].expression {
-                                 if let Some(VarSlot::Register(reg)) = ctx.var_to_slot.get(&v) {
-                                    format!("copy %r{}", reg)
-                                 } else {
-                                    let inner_val = expr_to_val(*inner_id, ctx);
-                                    make_load(&inner_val, rhs_expr_node.exp_type.as_ref().unwrap())
-                                 }
-                              } else {
-                                 let inner_val = expr_to_val(*inner_id, ctx);
-                                 make_load(&inner_val, rhs_expr_node.exp_type.as_ref().unwrap())
-                              }
-                           }
-                           UnOp::AddressOf | UnOp::TakeProcedurePointer => unreachable!(),
-                        },
-                     ),
-                     Expression::Cast {
-                        cast_type: CastType::As,
-                        target_type,
-                        expr,
-                     } => {
-                        let src_type = ctx.ast.expressions[*expr].exp_type.as_ref().unwrap();
-                        let val = expr_to_val(*expr, ctx);
-                        (
-                           false,
-                           match (src_type, target_type) {
-                              (ExpressionType::Int(l), ExpressionType::Int(r))
-                                 if l.width.as_num_bytes(BaseTarget::Qbe) >= r.width.as_num_bytes(BaseTarget::Qbe) =>
-                              {
-                                 match (l.width, r.width) {
-                                    (IntWidth::Eight | IntWidth::Four, IntWidth::Two) => {
-                                       if r.signed {
-                                          format!("extsh {}", val)
-                                       } else {
-                                          format!("and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111)
-                                       }
-                                    }
-                                    (IntWidth::Eight | IntWidth::Four | IntWidth::Two, IntWidth::One) => {
-                                       if r.signed {
-                                          format!("extsb {}", val)
-                                       } else {
-                                          format!("and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111)
-                                       }
-                                    }
-                                    (IntWidth::Two, IntWidth::Two) => {
-                                       if !l.signed && r.signed {
-                                          format!("extsh {}", val)
-                                       } else if l.signed && !r.signed {
-                                          format!("and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111)
-                                       } else {
-                                          format!("copy {}", val)
-                                       }
-                                    }
-                                    (IntWidth::One, IntWidth::One) => {
-                                       if !l.signed && r.signed {
-                                          format!("extsb {}", val)
-                                       } else if l.signed && !r.signed {
-                                          format!("and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111)
-                                       } else {
-                                          format!("copy {}", val)
-                                       }
-                                    }
-                                    _ => format!("copy {}", val),
-                                 }
-                              }
-                              (ExpressionType::Int(l), ExpressionType::Int(r))
-                                 if l.width.as_num_bytes(BaseTarget::Qbe) < r.width.as_num_bytes(BaseTarget::Qbe) =>
-                              {
-                                 if l.width.as_num_bytes(BaseTarget::Qbe) <= 4 && r.width == IntWidth::Eight {
-                                    if l.signed {
-                                       format!("extsw {}", val)
-                                    } else {
-                                       format!("extuw {}", val)
-                                    }
-                                 } else if l.width == IntWidth::One && r.width == IntWidth::Two && l.signed && !r.signed
-                                 {
-                                    format!("and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111)
-                                 } else {
-                                    format!("copy {}", val)
-                                 }
-                              }
-                              (&F64_TYPE, &F32_TYPE) => {
-                                 format!("truncd {}", val)
-                              }
-                              (&F32_TYPE, &F64_TYPE) => {
-                                 format!("exts {}", val)
-                              }
-                              (
-                                 ExpressionType::Float(FloatType { width: src_width }),
-                                 ExpressionType::Int(IntType { signed, .. }),
-                              ) => match src_width {
-                                 FloatWidth::Eight => {
-                                    if *signed {
-                                       format!("dtosi {}", val)
-                                    } else {
-                                       format!("dtoui {}", val)
-                                    }
-                                 }
-                                 FloatWidth::Four => {
-                                    if *signed {
-                                       format!("stosi {}", val)
-                                    } else {
-                                       format!("stoui {}", val)
-                                    }
-                                 }
-                              },
-                              (
-                                 ExpressionType::Int(IntType {
-                                    signed,
-                                    width: src_width,
-                                 }),
-                                 ExpressionType::Float(_),
-                              ) => match (src_width, signed) {
-                                 (IntWidth::Eight, true) => format!("sltof {}", val),
-                                 (IntWidth::Eight, false) => format!("ultof {}", val),
-                                 (_, true) => format!("swtof {}", val),
-                                 (_, false) => format!("uwtof {}", val),
-                              },
-                              (ExpressionType::Bool, ExpressionType::Int(i)) => {
-                                 if i.width == IntWidth::Eight {
-                                    format!("extuw {}", val)
-                                 } else {
-                                    format!("copy {}", val)
-                                 }
-                              }
-                              _ => format!("copy {}", val),
-                           },
-                        )
-                     }
-                     Expression::Cast {
-                        cast_type: CastType::Transmute,
-                        target_type,
-                        expr,
-                     } => {
-                        let val = expr_to_val(*expr, ctx);
-                        (
-                           false,
-                           match (ctx.ast.expressions[*expr].exp_type.as_ref().unwrap(), target_type) {
-                              (&I16_TYPE, &U16_TYPE) => {
-                                 format!("and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111)
-                              }
-                              (&I8_TYPE, &U8_TYPE) => {
-                                 format!("and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111)
-                              }
-                              (&U16_TYPE, &I16_TYPE) => {
-                                 format!("extsh {}", val)
-                              }
-                              (&U8_TYPE, &I8_TYPE) => {
-                                 format!("extsb {}", val)
-                              }
-                              (ExpressionType::Float(_), ExpressionType::Int(_))
-                              | (ExpressionType::Int(_), ExpressionType::Float(_)) => {
-                                 format!("cast {}", val)
-                              }
-                              _ => format!("copy {}", val),
-                           },
-                        )
-                     }
-                     _ => unreachable!(),
-                  }
-               };
+               let is_call = matches!(rhs_expr_node.expression, Expression::ProcedureCall { .. });
 
-               writeln!(
+               write!(
                   ctx.buf,
-                  "   %r{} ={} {}",
+                  "   %r{} ={} ",
                   reg,
                   if is_call {
                      roland_type_to_abi_type(rhs_expr_node.exp_type.as_ref().unwrap(), ctx.udt, &ctx.aggregate_defs)
@@ -1044,8 +644,395 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   } else {
                      Cow::Borrowed(roland_type_to_base_type(rhs_expr_node.exp_type.as_ref().unwrap()))
                   },
-                  rhs_expr,
                )
+               .unwrap();
+
+               match &rhs_expr_node.expression {
+                  Expression::ProcedureCall { proc_expr, args } => {
+                     emit_call_expr_and_newline(*proc_expr, args, ctx);
+                     Ok(())
+                  },
+                  Expression::BoolLiteral(v) => writeln!(ctx.buf, "copy {}", u8::from(*v)),
+                  Expression::IntLiteral { val, .. } => {
+                     let signed = matches!(
+                        rhs_expr_node.exp_type.as_ref().unwrap(),
+                        ExpressionType::Int(IntType { signed: true, .. })
+                     );
+                     if signed {
+                        writeln!(ctx.buf, "copy {}", *val as i64)
+                     } else {
+                        writeln!(ctx.buf, "copy {}", *val)
+                     }
+                  }
+                  Expression::FloatLiteral(val) => match *rhs_expr_node.exp_type.as_ref().unwrap() {
+                     F64_TYPE => writeln!(ctx.buf, "copy d_{}", val),
+                     F32_TYPE => writeln!(ctx.buf, "copy s_{}", val),
+                     _ => unreachable!(),
+                  },
+                  Expression::BoundFcnLiteral(proc_id, _) => {
+                     debug_assert!(matches!(
+                        rhs_expr_node.exp_type,
+                        Some(ExpressionType::ProcedurePointer { .. })
+                     ));
+                     writeln!(
+                        ctx.buf,
+                        "copy ${}",
+                        mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner)
+                     )
+                  }
+                  Expression::Variable(v) => {
+                     if ctx.global_info.contains_key(v) {
+                        writeln!(ctx.buf, "copy $.v{}", v.0)
+                     } else {
+                        match ctx.var_to_slot.get(v).unwrap() {
+                           VarSlot::Register(_) => unreachable!(),
+                           VarSlot::Stack(v) => writeln!(ctx.buf, "copy %v{}", v),
+                        }
+                     }
+                  }
+                  Expression::BinaryOperator { operator, lhs, rhs } => {
+                     let typ = ctx.ast.expressions[*lhs].exp_type.as_ref().unwrap();
+                     let opcode = match operator {
+                        BinOp::Add => "add",
+                        BinOp::Subtract => "sub",
+                        BinOp::Multiply => "mul",
+                        BinOp::Divide => match typ {
+                           &F32_TYPE | &F64_TYPE | ExpressionType::Int(IntType { signed: true, width: _ }) => "div",
+                           ExpressionType::Int(IntType {
+                              signed: false,
+                              width: _,
+                           }) => "udiv",
+                           _ => unreachable!(),
+                        },
+                        BinOp::Remainder => match typ {
+                           ExpressionType::Int(IntType {
+                              signed: false,
+                              width: _,
+                           }) => "urem",
+                           ExpressionType::Int(IntType { signed: true, width: _ }) => "rem",
+                           _ => unreachable!(),
+                        },
+                        BinOp::Equality => match typ {
+                           &F32_TYPE => "ceqs",
+                           &F64_TYPE => "ceqd",
+                           ExpressionType::Int(IntType {
+                              signed: _,
+                              width: IntWidth::Eight,
+                           }) => "ceql",
+                           ExpressionType::Int(IntType {
+                              signed: _,
+                              width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+                           })
+                           | ExpressionType::Bool => "ceqw",
+                           _ => unreachable!(),
+                        },
+                        BinOp::NotEquality => match typ {
+                           &F32_TYPE => "cnes",
+                           &F64_TYPE => "cned",
+                           ExpressionType::Int(IntType {
+                              signed: _,
+                              width: IntWidth::Eight,
+                           }) => "cnel",
+                           ExpressionType::Int(IntType {
+                              signed: _,
+                              width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+                           })
+                           | ExpressionType::Bool => "cnew",
+                           _ => unreachable!(),
+                        },
+                        BinOp::GreaterThan => match typ {
+                           &F32_TYPE => "cgts",
+                           &F64_TYPE => "cgtd",
+                           ExpressionType::Int(IntType {
+                              signed: false,
+                              width: IntWidth::Eight,
+                           }) => "cugtl",
+                           ExpressionType::Int(IntType {
+                              signed: false,
+                              width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+                           })
+                           | ExpressionType::Bool => "cugtw",
+                           ExpressionType::Int(IntType {
+                              signed: true,
+                              width: IntWidth::Eight,
+                           }) => "csgtl",
+                           ExpressionType::Int(IntType {
+                              signed: true,
+                              width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+                           }) => "csgtw",
+                           _ => unreachable!(),
+                        },
+                        BinOp::LessThan => match typ {
+                           &F32_TYPE => "clts",
+                           &F64_TYPE => "cltd",
+                           ExpressionType::Int(IntType {
+                              signed: false,
+                              width: IntWidth::Eight,
+                           }) => "cultl",
+                           ExpressionType::Int(IntType {
+                              signed: false,
+                              width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+                           })
+                           | ExpressionType::Bool => "cultw",
+                           ExpressionType::Int(IntType {
+                              signed: true,
+                              width: IntWidth::Eight,
+                           }) => "csltl",
+                           ExpressionType::Int(IntType {
+                              signed: true,
+                              width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+                           }) => "csltw",
+                           _ => unreachable!(),
+                        },
+                        BinOp::GreaterThanOrEqualTo => match typ {
+                           &F32_TYPE => "cges",
+                           &F64_TYPE => "cged",
+                           ExpressionType::Int(IntType {
+                              signed: false,
+                              width: IntWidth::Eight,
+                           }) => "cugel",
+                           ExpressionType::Int(IntType {
+                              signed: false,
+                              width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+                           })
+                           | ExpressionType::Bool => "cugew",
+                           ExpressionType::Int(IntType {
+                              signed: true,
+                              width: IntWidth::Eight,
+                           }) => "csgel",
+                           ExpressionType::Int(IntType {
+                              signed: true,
+                              width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+                           }) => "csgew",
+                           _ => unreachable!(),
+                        },
+                        BinOp::LessThanOrEqualTo => match typ {
+                           &F32_TYPE => "cles",
+                           &F64_TYPE => "cled",
+                           ExpressionType::Int(IntType {
+                              signed: false,
+                              width: IntWidth::Eight,
+                           }) => "culel",
+                           ExpressionType::Int(IntType {
+                              signed: false,
+                              width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+                           })
+                           | ExpressionType::Bool => "culew",
+                           ExpressionType::Int(IntType {
+                              signed: true,
+                              width: IntWidth::Eight,
+                           }) => "cslel",
+                           ExpressionType::Int(IntType {
+                              signed: true,
+                              width: IntWidth::Four | IntWidth::Two | IntWidth::One,
+                           }) => "cslew",
+                           _ => unreachable!(),
+                        },
+                        BinOp::BitwiseAnd => "and",
+                        BinOp::BitwiseOr => "or",
+                        BinOp::BitwiseXor => "xor",
+                        BinOp::BitwiseLeftShift => "shl",
+                        BinOp::BitwiseRightShift => match typ {
+                           ExpressionType::Int(IntType { signed: true, width: _ }) => "sar",
+                           ExpressionType::Int(IntType {
+                              signed: false,
+                              width: _,
+                           }) => "shr",
+                           _ => unreachable!(),
+                        },
+                        BinOp::LogicalAnd | BinOp::LogicalOr => unreachable!(),
+                     };
+                     let lhs_val = expr_to_val(*lhs, ctx);
+                     let rhs_val = expr_to_val(*rhs, ctx);
+                     writeln!(ctx.buf, "{} {}, {}", opcode, lhs_val, rhs_val)
+                  }
+                  Expression::UnaryOperator(UnOp::TakeProcedurePointer, inner_id) => {
+                     let ExpressionType::ProcedureItem(proc_id, _bound_type_params) =
+                        ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap()
+                     else {
+                        unreachable!();
+                     };
+                     writeln!(
+                        ctx.buf,
+                        "copy ${}",
+                        mangle(*proc_id, &ctx.procedures[*proc_id], ctx.interner)
+                     )
+                  }
+                  Expression::UnaryOperator(operator, inner_id) => match operator {
+                     UnOp::Negate => {
+                        let inner_val = expr_to_val(*inner_id, ctx);
+                        writeln!(ctx.buf, "neg {}", inner_val)
+                     }
+                     UnOp::Complement => {
+                        let inner_val = expr_to_val(*inner_id, ctx);
+                        if *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() == ExpressionType::Bool {
+                           writeln!(ctx.buf, "ceqw {}, 0", inner_val)
+                        } else {
+                           let magic_const: u64 = match *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() {
+                              crate::type_data::U8_TYPE => u64::from(u8::MAX),
+                              crate::type_data::U16_TYPE => u64::from(u16::MAX),
+                              crate::type_data::U32_TYPE
+                              | crate::type_data::I8_TYPE
+                              | crate::type_data::I16_TYPE
+                              | crate::type_data::I32_TYPE => u64::from(u32::MAX),
+                              crate::type_data::I64_TYPE | crate::type_data::U64_TYPE => u64::MAX,
+                              _ => unreachable!(),
+                           };
+                           writeln!(ctx.buf, "xor {}, {}", inner_val, magic_const)
+                        }
+                     }
+                     UnOp::Dereference => {
+                        if let Expression::Variable(v) = ctx.ast.expressions[*inner_id].expression {
+                           if let Some(VarSlot::Register(reg)) = ctx.var_to_slot.get(&v) {
+                              writeln!(ctx.buf, "copy %r{}", reg)
+                           } else {
+                              emit_load(&mut ctx.buf, rhs_expr_node.exp_type.as_ref().unwrap()).unwrap();
+                              writeln!(ctx.buf, "{}", expr_to_val(*inner_id, ctx))
+                           }
+                        } else {
+                           emit_load(&mut ctx.buf, rhs_expr_node.exp_type.as_ref().unwrap()).unwrap();
+                           writeln!(ctx.buf, "{}", expr_to_val(*inner_id, ctx))
+                        }
+                     }
+                     UnOp::AddressOf | UnOp::TakeProcedurePointer => unreachable!(),
+                  },
+                  Expression::Cast {
+                     cast_type: CastType::As,
+                     target_type,
+                     expr,
+                  } => {
+                     let src_type = ctx.ast.expressions[*expr].exp_type.as_ref().unwrap();
+                     let val = expr_to_val(*expr, ctx);
+                     match (src_type, target_type) {
+                        (ExpressionType::Int(l), ExpressionType::Int(r))
+                           if l.width.as_num_bytes(BaseTarget::Qbe) >= r.width.as_num_bytes(BaseTarget::Qbe) =>
+                        {
+                           match (l.width, r.width) {
+                              (IntWidth::Eight | IntWidth::Four, IntWidth::Two) => {
+                                 if r.signed {
+                                    writeln!(ctx.buf, "extsh {}", val)
+                                 } else {
+                                    writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111)
+                                 }
+                              }
+                              (IntWidth::Eight | IntWidth::Four | IntWidth::Two, IntWidth::One) => {
+                                 if r.signed {
+                                    writeln!(ctx.buf, "extsb {}", val)
+                                 } else {
+                                    writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111)
+                                 }
+                              }
+                              (IntWidth::Two, IntWidth::Two) => {
+                                 if !l.signed && r.signed {
+                                    writeln!(ctx.buf, "extsh {}", val)
+                                 } else if l.signed && !r.signed {
+                                    writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111)
+                                 } else {
+                                    writeln!(ctx.buf, "copy {}", val)
+                                 }
+                              }
+                              (IntWidth::One, IntWidth::One) => {
+                                 if !l.signed && r.signed {
+                                    writeln!(ctx.buf, "extsb {}", val)
+                                 } else if l.signed && !r.signed {
+                                    writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111)
+                                 } else {
+                                    writeln!(ctx.buf, "copy {}", val)
+                                 }
+                              }
+                              _ => writeln!(ctx.buf, "copy {}", val),
+                           }
+                        }
+                        (ExpressionType::Int(l), ExpressionType::Int(r))
+                           if l.width.as_num_bytes(BaseTarget::Qbe) < r.width.as_num_bytes(BaseTarget::Qbe) =>
+                        {
+                           if l.width.as_num_bytes(BaseTarget::Qbe) <= 4 && r.width == IntWidth::Eight {
+                              if l.signed {
+                                 writeln!(ctx.buf, "extsw {}", val)
+                              } else {
+                                 writeln!(ctx.buf, "extuw {}", val)
+                              }
+                           } else if l.width == IntWidth::One && r.width == IntWidth::Two && l.signed && !r.signed {
+                              writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111)
+                           } else {
+                              writeln!(ctx.buf, "copy {}", val)
+                           }
+                        }
+                        (&F64_TYPE, &F32_TYPE) => {
+                           writeln!(ctx.buf, "truncd {}", val)
+                        }
+                        (&F32_TYPE, &F64_TYPE) => {
+                           writeln!(ctx.buf, "exts {}", val)
+                        }
+                        (
+                           ExpressionType::Float(FloatType { width: src_width }),
+                           ExpressionType::Int(IntType { signed, .. }),
+                        ) => match src_width {
+                           FloatWidth::Eight => {
+                              if *signed {
+                                 writeln!(ctx.buf, "dtosi {}", val)
+                              } else {
+                                 writeln!(ctx.buf, "dtoui {}", val)
+                              }
+                           }
+                           FloatWidth::Four => {
+                              if *signed {
+                                 writeln!(ctx.buf, "stosi {}", val)
+                              } else {
+                                 writeln!(ctx.buf, "stoui {}", val)
+                              }
+                           }
+                        },
+                        (
+                           ExpressionType::Int(IntType {
+                              signed,
+                              width: src_width,
+                           }),
+                           ExpressionType::Float(_),
+                        ) => match (src_width, signed) {
+                           (IntWidth::Eight, true) => writeln!(ctx.buf, "sltof {}", val),
+                           (IntWidth::Eight, false) => writeln!(ctx.buf, "ultof {}", val),
+                           (_, true) => writeln!(ctx.buf, "swtof {}", val),
+                           (_, false) => writeln!(ctx.buf, "uwtof {}", val),
+                        },
+                        (ExpressionType::Bool, ExpressionType::Int(i)) => {
+                           if i.width == IntWidth::Eight {
+                              writeln!(ctx.buf, "extuw {}", val)
+                           } else {
+                              writeln!(ctx.buf, "copy {}", val)
+                           }
+                        }
+                        _ => writeln!(ctx.buf, "copy {}", val),
+                     }
+                  }
+                  Expression::Cast {
+                     cast_type: CastType::Transmute,
+                     target_type,
+                     expr,
+                  } => {
+                     let val = expr_to_val(*expr, ctx);
+                     match (ctx.ast.expressions[*expr].exp_type.as_ref().unwrap(), target_type) {
+                        (&I16_TYPE, &U16_TYPE) => {
+                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_1111_1111_1111_1111)
+                        }
+                        (&I8_TYPE, &U8_TYPE) => {
+                           writeln!(ctx.buf, "and {}, {}", val, 0b0000_0000_0000_0000_0000_0000_1111_1111)
+                        }
+                        (&U16_TYPE, &I16_TYPE) => {
+                           writeln!(ctx.buf, "extsh {}", val)
+                        }
+                        (&U8_TYPE, &I8_TYPE) => {
+                           writeln!(ctx.buf, "extsb {}", val)
+                        }
+                        (ExpressionType::Float(_), ExpressionType::Int(_))
+                        | (ExpressionType::Int(_), ExpressionType::Float(_)) => {
+                           writeln!(ctx.buf, "cast {}", val)
+                        }
+                        _ => writeln!(ctx.buf, "copy {}", val),
+                     }
+                  }
+                  _ => unreachable!(),
+               }
                .unwrap();
 
                if is_call {
@@ -1094,16 +1081,17 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   &ctx.aggregate_defs,
                ) {
                   let next_counter = ctx.unused_return_counter + 1;
-                  writeln!(
+                  write!(
                      ctx.buf,
-                     "   %unusedReturn{} ={} {}",
+                     "   %unusedReturn{} ={} ",
                      std::mem::replace(&mut ctx.unused_return_counter, next_counter),
-                     return_abi_type,
-                     make_call_expr(*proc_expr, args, ctx)
+                     return_abi_type
                   )
                   .unwrap();
+                  emit_call_expr_and_newline(*proc_expr, args, ctx);
                } else {
-                  writeln!(ctx.buf, "   {}", make_call_expr(*proc_expr, args, ctx)).unwrap();
+                  write!(ctx.buf, "   ").unwrap();
+                  emit_call_expr_and_newline(*proc_expr, args, ctx);
                }
             }
             _ => debug_assert!(!expression_could_have_side_effects(*en, &ctx.ast.expressions)),
@@ -1248,52 +1236,48 @@ fn expr_to_val(expr_index: ExpressionId, ctx: &GenerationContext) -> String {
    }
 }
 
-#[must_use]
-fn make_load(load_target: &str, a_type: &ExpressionType) -> String {
+fn emit_load(buf: &mut Vec<u8>, a_type: &ExpressionType) -> std::io::Result<()> {
    match a_type {
       ExpressionType::Bool | &U8_TYPE => {
-         format!("loadub {}", load_target)
+         write!(buf, "loadub ")
       }
       &I8_TYPE => {
-         format!("loadsb {}", load_target)
+         write!(buf, "loadsb ")
       }
       &U16_TYPE => {
-         format!("loaduh {}", load_target)
+         write!(buf, "loaduh ")
       }
       &I16_TYPE => {
-         format!("loadsh {}", load_target)
+         write!(buf, "loadsh ")
       }
       &U32_TYPE => {
-         format!("loaduw {}", load_target)
+         write!(buf, "loaduw ")
       }
       &I32_TYPE => {
-         format!("loadsw {}", load_target)
+         write!(buf, "loadsw ")
       }
       &U64_TYPE | &I64_TYPE | ExpressionType::ProcedurePointer { .. } => {
-         format!("loadl {}", load_target)
+         write!(buf, "loadl ")
       }
       &F32_TYPE => {
-         format!("loads {}", load_target)
+         write!(buf, "loads ")
       }
       &F64_TYPE => {
-         format!("loadd {}", load_target)
+         write!(buf, "loadd ")
       }
       _ => unreachable!(),
    }
 }
 
-#[must_use]
-fn make_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &GenerationContext) -> String {
+fn emit_call_expr_and_newline(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &mut GenerationContext) {
    enum Arg {
       Expr(ExpressionId),
       VarargSep,
    }
-   use std::fmt::Write;
 
-   let mut s = String::new();
    let opt_num_non_variadic_args = match ctx.ast.expressions[proc_expr].exp_type.as_ref().unwrap() {
       ExpressionType::ProcedureItem(id, _) => {
-         write!(&mut s, "call ${}(", mangle(*id, &ctx.procedures[*id], ctx.interner)).unwrap();
+         write!(ctx.buf, "call ${}(", mangle(*id, &ctx.procedures[*id], ctx.interner)).unwrap();
          let def = &ctx.procedures[*id].definition;
          if def.variadic { Some(def.parameters.len()) } else { None }
       }
@@ -1303,7 +1287,7 @@ fn make_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &Generati
          ret_type: _,
       } => {
          let val = expr_to_val(proc_expr, ctx);
-         write!(&mut s, "call {}(", val).unwrap();
+         write!(ctx.buf, "call {}(", val).unwrap();
          if *variadic { Some(parameters.len()) } else { None }
       }
       _ => unreachable!(),
@@ -1324,14 +1308,13 @@ fn make_call_expr(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &Generati
                &ctx.aggregate_defs,
             ) {
                let val = expr_to_val(ex, ctx);
-               write!(&mut s, "{} {}, ", arg_type, val).unwrap();
+               write!(ctx.buf, "{} {}, ", arg_type, val).unwrap();
             }
          }
          Arg::VarargSep => {
-            write!(&mut s, "..., ").unwrap();
+            write!(ctx.buf, "..., ").unwrap();
          }
       }
    }
-   write!(&mut s, ")").unwrap();
-   s
+   writeln!(ctx.buf, ")").unwrap();
 }
