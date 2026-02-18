@@ -69,11 +69,29 @@ fn roland_type_to_extended_type(r_type: &ExpressionType) -> &'static str {
    }
 }
 
+enum QbeTypeStr {
+   Text(&'static str),
+   Struct(usize),
+   Union(usize),
+   Array(usize),
+}
+
+impl std::fmt::Display for QbeTypeStr {
+   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      match self {
+         QbeTypeStr::Text(str) => f.write_str(str),
+         QbeTypeStr::Struct(u) => write!(f, ":s{}", u),
+         QbeTypeStr::Union(u) => write!(f, ":u{}", u),
+         QbeTypeStr::Array(u) => write!(f, ":a{}", u),
+      }
+   }
+}
+
 fn roland_type_to_abi_type(
    r_type: &ExpressionType,
    udt: &UserDefinedTypeInfo,
    aggregate_defs: &IndexSet<ExpressionType>,
-) -> Option<Cow<'static, str>> {
+) -> Option<QbeTypeStr> {
    if sizeof_type_mem(r_type, udt, BaseTarget::Qbe) == 0 {
       return None;
    }
@@ -81,33 +99,33 @@ fn roland_type_to_abi_type(
       ExpressionType::Int(IntType {
          signed: true,
          width: IntWidth::Two,
-      }) => Cow::Borrowed("sh"),
+      }) => QbeTypeStr::Text("sh"),
       ExpressionType::Int(IntType {
          signed: false,
          width: IntWidth::Two,
-      }) => Cow::Borrowed("uh"),
+      }) => QbeTypeStr::Text("uh"),
       ExpressionType::Int(IntType {
          signed: true,
          width: IntWidth::One,
-      }) => Cow::Borrowed("sb"),
+      }) => QbeTypeStr::Text("sb"),
       ExpressionType::Int(IntType {
          signed: false,
          width: IntWidth::One,
       })
-      | ExpressionType::Bool => Cow::Borrowed("ub"),
+      | ExpressionType::Bool => QbeTypeStr::Text("ub"),
       ExpressionType::Struct(_, _) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
-         Cow::Owned(format!(":s{}", index))
+         QbeTypeStr::Struct(index)
       }
       ExpressionType::Union(_, _) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
-         Cow::Owned(format!(":u{}", index))
+         QbeTypeStr::Union(index)
       }
       ExpressionType::Array(_, _) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
-         Cow::Owned(format!(":a{}", index))
+         QbeTypeStr::Array(index)
       }
-      _ => Cow::Borrowed(roland_type_to_base_type(r_type)),
+      _ => QbeTypeStr::Text(roland_type_to_base_type(r_type)),
    })
 }
 
@@ -115,28 +133,28 @@ fn roland_type_to_sub_type(
    r_type: &ExpressionType,
    udt: &UserDefinedTypeInfo,
    aggregate_defs: &IndexSet<ExpressionType>,
-) -> Option<Cow<'static, str>> {
+) -> Option<QbeTypeStr> {
    if sizeof_type_mem(r_type, udt, BaseTarget::Qbe) == 0 {
       return None;
    }
    Some(match r_type {
       ExpressionType::Struct(_, _) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
-         Cow::Owned(format!(":s{}", index))
+         QbeTypeStr::Struct(index)
       }
       ExpressionType::Union(_, _) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
-         Cow::Owned(format!(":u{}", index))
+         QbeTypeStr::Union(index)
       }
       ExpressionType::Array(_, _) => {
          let index = aggregate_defs.get_index_of(r_type).unwrap();
-         Cow::Owned(format!(":a{}", index))
+         QbeTypeStr::Array(index)
       }
-      _ => Cow::Borrowed(roland_type_to_extended_type(r_type)),
+      _ => QbeTypeStr::Text(roland_type_to_extended_type(r_type)),
    })
 }
 
-fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
+fn emit_literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
    let expr_node = &ctx.ast.expressions[expr_index];
    match &expr_node.expression {
       Expression::BoundFcnLiteral(proc_id, _) => {
@@ -203,7 +221,7 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
          ) {
             let value_of_field = fields.get(field.0).copied().unwrap();
             if let Some(val) = value_of_field {
-               literal_as_data(val, ctx);
+               emit_literal_as_data(val, ctx);
             } else {
                let sz = sizeof_type_mem(&field.1.e_type, ctx.udt, BaseTarget::Qbe);
                if sz > 0 {
@@ -219,7 +237,7 @@ fn literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
-            literal_as_data(*expr, ctx);
+            emit_literal_as_data(*expr, ctx);
          }
       }
       _ => unreachable!(),
@@ -328,7 +346,7 @@ pub fn emit_qbe(
       write!(ctx.buf, "data $.v{} = {{ ", a_global.0.0).unwrap();
       match a_global.1.initializer {
          Some(e) => {
-            literal_as_data(e, &mut ctx);
+            emit_literal_as_data(e, &mut ctx);
          }
          None => {
             // Just zero init
@@ -444,7 +462,7 @@ pub fn emit_qbe(
       }
 
       let abi_ret_type = roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs)
-         .unwrap_or_else(|| "".into());
+         .unwrap_or(QbeTypeStr::Text(""));
       write!(
          ctx.buf,
          "function {} ${}(",
@@ -527,7 +545,7 @@ pub fn emit_qbe(
          ctx.buf,
          "function {} ${}(",
          roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs)
-            .unwrap_or_else(|| "".into()),
+            .unwrap_or(QbeTypeStr::Text("")),
          mangle(proc_id, &ctx.procedures[proc_id], ctx.interner)
       )
       .unwrap();
@@ -662,7 +680,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                      roland_type_to_abi_type(rhs_expr_node.exp_type.as_ref().unwrap(), ctx.udt, &ctx.aggregate_defs)
                         .unwrap()
                   } else {
-                     Cow::Borrowed(roland_type_to_base_type(rhs_expr_node.exp_type.as_ref().unwrap()))
+                     QbeTypeStr::Text(roland_type_to_base_type(rhs_expr_node.exp_type.as_ref().unwrap()))
                   },
                )
                .unwrap();
