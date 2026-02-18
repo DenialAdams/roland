@@ -1178,17 +1178,15 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
 
 fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner) -> Cow<'a, str> {
    let proc_name = interner.lookup(proc.definition.name.str);
-   let full_str = match proc.impl_source {
-      ProcImplSource::Builtin => {
-         return Cow::Borrowed(proc_name);
-      }
-      ProcImplSource::External => {
+   match proc.impl_source {
+      ProcImplSource::Builtin | ProcImplSource::External => {
          debug_assert!(proc_name.len() <= 78);
          if proc_name.is_ascii() {
             // Avoids allocating
-            return Cow::Borrowed(proc_name);
+            Cow::Borrowed(proc_name)
+         } else {
+            Cow::Owned(format!("\"{}\"", proc_name))
          }
-         format!("\"{}\"", proc_name).into_bytes()
       }
       ProcImplSource::Native => {
          let mut s = format!("\".{}_{}", proc_id.data().as_ffi(), proc_name).into_bytes();
@@ -1205,19 +1203,15 @@ fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner
 
          s.push(b'"');
 
-         s
+         Cow::Owned(if cfg!(debug_assertions) {
+            String::from_utf8(s).unwrap()
+         } else {
+            // safety: above algorithm ensures that after truncating we remove any invalid unicode bytes
+            // we do it this way to avoid examining the whole string
+            unsafe { String::from_utf8_unchecked(s) }
+         })
       }
-   };
-
-   let final_string = if cfg!(debug_assertions) {
-      String::from_utf8(full_str).unwrap()
-   } else {
-      // safety: above algorithm ensures that after truncating we remove any invalid unicode bytes
-      // we do it this way to avoid examining the whole string
-      unsafe { String::from_utf8_unchecked(full_str) }
-   };
-
-   Cow::Owned(final_string)
+   }
 }
 
 fn emit_expr_as_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> std::io::Result<()> {
