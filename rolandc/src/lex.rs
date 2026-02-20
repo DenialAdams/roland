@@ -264,23 +264,25 @@ pub fn lex_for_tokens(
    // numeric literals
    let mut is_float = false;
 
-   let mut chars = input.chars().peekable();
+   let mut chars = input.chars();
 
-   while let Some(c) = chars.peek().copied() {
+   let mut next_char = chars.next();
+
+   while let Some(c) = next_char {
       match mode {
          LexMode::Normal => {
             if c == '\n' {
                cur_position.line += 1;
                cur_position.col = 0;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c.is_whitespace() {
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == '"' {
                mode = LexMode::StringLiteral;
                str_begin = cur_position;
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == '{' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
@@ -291,7 +293,7 @@ pub fn lex_for_tokens(
                   token: Token::OpenBrace,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == '}' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
@@ -302,7 +304,7 @@ pub fn lex_for_tokens(
                   token: Token::CloseBrace,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == '(' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
@@ -313,7 +315,7 @@ pub fn lex_for_tokens(
                   token: Token::OpenParen,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == ')' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
@@ -324,10 +326,10 @@ pub fn lex_for_tokens(
                   token: Token::CloseParen,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == ':' {
-               let _ = chars.next().unwrap();
-               if chars.peek() == Some(&':') {
+               next_char = chars.next();
+               if next_char == Some(':') {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
@@ -337,7 +339,7 @@ pub fn lex_for_tokens(
                      token: Token::DoubleColon,
                   });
                   cur_position.col += 2;
-                  let _ = chars.next().unwrap();
+                  next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
@@ -359,7 +361,7 @@ pub fn lex_for_tokens(
                   token: Token::Semicolon,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == '+' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
@@ -370,10 +372,10 @@ pub fn lex_for_tokens(
                   token: Token::Plus,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == '-' {
-               let _ = chars.next().unwrap();
-               if chars.peek() == Some(&'>') {
+               next_char = chars.next();
+               if next_char == Some('>') {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
@@ -383,7 +385,7 @@ pub fn lex_for_tokens(
                      token: Token::Arrow,
                   });
                   cur_position.col += 2;
-                  let _ = chars.next().unwrap();
+                  next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
@@ -405,11 +407,11 @@ pub fn lex_for_tokens(
                   token: Token::Multiply,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == '/' {
-               let _ = chars.next().unwrap();
-               if chars.peek() == Some(&'/') {
-                  let _ = chars.next().unwrap();
+               next_char = chars.next();
+               if next_char == Some('/') {
+                  next_char = chars.next();
                   mode = LexMode::Comment;
                   cur_position.col += 2;
                } else {
@@ -433,7 +435,7 @@ pub fn lex_for_tokens(
                   token: Token::Remainder,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == '$' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
@@ -444,7 +446,7 @@ pub fn lex_for_tokens(
                   token: Token::Dollar,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == ',' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
@@ -455,7 +457,7 @@ pub fn lex_for_tokens(
                   token: Token::Comma,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == '&' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
@@ -466,7 +468,7 @@ pub fn lex_for_tokens(
                   token: Token::Amp,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == '^' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
@@ -477,7 +479,7 @@ pub fn lex_for_tokens(
                   token: Token::Caret,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == '|' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
@@ -488,10 +490,10 @@ pub fn lex_for_tokens(
                   token: Token::Pipe,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == '=' {
-               let _ = chars.next().unwrap();
-               if chars.peek() == Some(&'=') {
+               next_char = chars.next();
+               if next_char == Some('=') {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
@@ -501,7 +503,7 @@ pub fn lex_for_tokens(
                      token: Token::Equality,
                   });
                   cur_position.col += 2;
-                  let _ = chars.next().unwrap();
+                  next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
@@ -514,8 +516,8 @@ pub fn lex_for_tokens(
                   cur_position.col += 1;
                }
             } else if c == '>' {
-               let _ = chars.next().unwrap();
-               if chars.peek() == Some(&'=') {
+               next_char = chars.next();
+               if next_char == Some('=') {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
@@ -525,8 +527,8 @@ pub fn lex_for_tokens(
                      token: Token::GreaterThanOrEqualTo,
                   });
                   cur_position.col += 2;
-                  let _ = chars.next().unwrap();
-               } else if chars.peek() == Some(&'>') {
+                  next_char = chars.next();
+               } else if next_char == Some('>') {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
@@ -536,7 +538,7 @@ pub fn lex_for_tokens(
                      token: Token::ShiftRight,
                   });
                   cur_position.col += 2;
-                  let _ = chars.next().unwrap();
+                  next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
@@ -549,8 +551,8 @@ pub fn lex_for_tokens(
                   cur_position.col += 1;
                }
             } else if c == '<' {
-               let _ = chars.next().unwrap();
-               if chars.peek() == Some(&'=') {
+               next_char = chars.next();
+               if next_char == Some('=') {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
@@ -560,8 +562,8 @@ pub fn lex_for_tokens(
                      token: Token::LessThanOrEqualTo,
                   });
                   cur_position.col += 2;
-                  let _ = chars.next().unwrap();
-               } else if chars.peek() == Some(&'<') {
+                  next_char = chars.next();
+               } else if next_char == Some('<') {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
@@ -571,7 +573,7 @@ pub fn lex_for_tokens(
                      token: Token::ShiftLeft,
                   });
                   cur_position.col += 2;
-                  let _ = chars.next().unwrap();
+                  next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
@@ -584,8 +586,8 @@ pub fn lex_for_tokens(
                   cur_position.col += 1;
                }
             } else if c == '!' {
-               let _ = chars.next().unwrap();
-               if chars.peek() == Some(&'=') {
+               next_char = chars.next();
+               if next_char == Some('=') {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
@@ -595,7 +597,7 @@ pub fn lex_for_tokens(
                      token: Token::NotEquality,
                   });
                   cur_position.col += 2;
-                  let _ = chars.next().unwrap();
+                  next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
@@ -608,11 +610,11 @@ pub fn lex_for_tokens(
                   cur_position.col += 1;
                }
             } else if c == '.' {
-               let _ = chars.next().unwrap();
-               if chars.peek() == Some(&'.') {
-                  let _ = chars.next().unwrap();
-                  if chars.peek() == Some(&'.') {
-                     let _ = chars.next().unwrap();
+               next_char = chars.next();
+               if next_char == Some('.') {
+                  next_char = chars.next();
+                  if next_char == Some('.') {
+                     next_char = chars.next();
                      tokens.push(SourceToken {
                         source_info: SourceInfo {
                            begin: cur_position,
@@ -654,7 +656,7 @@ pub fn lex_for_tokens(
                   token: Token::OpenSquareBracket,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == ']' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
@@ -665,7 +667,7 @@ pub fn lex_for_tokens(
                   token: Token::CloseSquareBracket,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == '~' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
@@ -676,7 +678,7 @@ pub fn lex_for_tokens(
                   token: Token::Deref,
                });
                cur_position.col += 1;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c.is_ascii_digit() {
                mode = LexMode::NumericLiteral;
             } else if is_xid_start(c) || c == '_' {
@@ -698,7 +700,7 @@ pub fn lex_for_tokens(
          LexMode::Ident => {
             if is_xid_continue(c) {
                str_buf.push(c);
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
                if str_buf.buf == "__END__" {
                   // reset the lexing mode so we don't push __END__ as a token
                   mode = LexMode::Normal;
@@ -757,7 +759,7 @@ pub fn lex_for_tokens(
             } else {
                cur_position.col += 1;
             }
-            let _ = chars.next().unwrap();
+            next_char = chars.next();
          }
          LexMode::StringLiteralEscape => {
             if c == '\\' {
@@ -790,7 +792,7 @@ pub fn lex_for_tokens(
                );
                return Err(());
             }
-            let _ = chars.next().unwrap();
+            next_char = chars.next();
             mode = LexMode::StringLiteral;
          }
          LexMode::NumericLiteral => {
@@ -799,16 +801,16 @@ pub fn lex_for_tokens(
             if (c == 'e' || c == 'E') && !str_buf.buf.starts_with("0x") {
                str_buf.push(c);
                is_float = true;
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
                mode = LexMode::FloatLiteralAfterE;
             } else if c.is_ascii_alphanumeric() {
                str_buf.push(c);
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == '_' {
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else if c == '.' {
-               let _ = chars.next().unwrap();
-               if chars.peek().copied() == Some('.') {
+               next_char = chars.next();
+               if next_char == Some('.') {
                   // This is pretty hacky, but oh well
                   tokens.push(finish_numeric_literal(
                      &str_buf.buf,
@@ -824,7 +826,7 @@ pub fn lex_for_tokens(
                   is_float = false;
                   mode = LexMode::Normal;
 
-                  let _ = chars.next().unwrap();
+                  next_char = chars.next();
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
@@ -873,7 +875,7 @@ pub fn lex_for_tokens(
                || ((c == '-' || c == '+') && str_buf.buf.as_bytes().last().map(u8::to_ascii_lowercase) == Some(b'e'))
             {
                str_buf.push(c);
-               let _ = chars.next().unwrap();
+               next_char = chars.next();
             } else {
                tokens.push(finish_numeric_literal(
                   &str_buf.buf,
@@ -898,7 +900,7 @@ pub fn lex_for_tokens(
             } else {
                cur_position.col += 1;
             }
-            let _ = chars.next().unwrap();
+            next_char = chars.next();
          }
       }
    }
