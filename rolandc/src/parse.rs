@@ -1525,8 +1525,7 @@ fn parse_expression(
    if_head: bool,
    expressions: &mut ExpressionPool,
 ) -> Result<ExpressionId, ()> {
-   let exp = pratt(l, parse_context, 0, if_head, expressions)?;
-   Ok(exp)
+   pratt(l, parse_context, 0, if_head, expressions)
 }
 
 fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<ExpressionTypeNode, ()> {
