@@ -34,6 +34,7 @@ struct Opts {
    overwrite_error_files: bool,
    amd64: bool,
    preserve_artifacts: bool,
+   wasm_executor: String,
 }
 
 fn parse_path(s: &std::ffi::OsStr) -> Result<std::path::PathBuf, &'static str> {
@@ -46,11 +47,12 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
    let cli_path = pargs.value_from_os_str("--cli", parse_path)?;
 
    let opts = Opts {
-      test_path: pargs.free_from_os_str(parse_path)?,
       tc_path: cli_path,
       overwrite_error_files: pargs.contains("--overwrite-error-files"),
       amd64: pargs.contains("--amd64"),
       preserve_artifacts: pargs.contains("--preserve-artifacts"),
+      wasm_executor: pargs.opt_value_from_str("--wasm-executor")?.unwrap_or_else(|| "wasmtime".into()),
+      test_path: pargs.free_from_os_str(parse_path)?,
    };
 
    let remaining_args = pargs.finish();
@@ -147,7 +149,7 @@ fn main() -> Result<(), &'static str> {
       } else {
          Command::new(&opts.tc_path).arg(entry.clone()).output().unwrap()
       };
-      let test_ok = test_result(&tc_output, entry, opts.amd64, opts.preserve_artifacts);
+      let test_ok = test_result(&tc_output, entry, opts.amd64, opts.preserve_artifacts, &opts.wasm_executor);
       let name = entry.strip_prefix(&prefix).unwrap().to_str().unwrap();
       match test_ok {
          Ok(captured_stderr_minus_expected) if captured_stderr_minus_expected.is_empty() => {
@@ -347,6 +349,7 @@ fn test_result(
    t_file_path: &Path,
    amd64: bool,
    preserve_artifacts: bool,
+   wasm_executor: &str,
 ) -> Result<String, TestFailureDetails> {
    let stderr_text = String::from_utf8_lossy(&tc_output.stderr);
 
@@ -396,7 +399,7 @@ fn test_result(
       }
 
       let stderr_text = if let Some(ero) = td.result.run_output {
-         let (prog_output, stderr_text) = execute_program(&mut prog_path, amd64, stderr_text)?;
+         let (prog_output, stderr_text) = execute_program(&mut prog_path, amd64, stderr_text, wasm_executor)?;
 
          if prog_output != ero {
             return Err(TestFailureDetails {
@@ -459,12 +462,13 @@ fn execute_program<'b>(
    prog_path: &mut PathBuf,
    amd64: bool,
    stderr_text: Cow<'b, str>,
+   wasm_executor: &str,
 ) -> Result<(String, Cow<'b, str>), TestFailureDetails> {
    let (mut handle, mut prog_output_stream) = {
       let mut prog_command = if amd64 {
          Command::new(&prog_path)
       } else {
-         let mut prog_command = Command::new("wasmtime");
+         let mut prog_command = Command::new(wasm_executor);
          prog_command.arg(prog_path.as_os_str());
          prog_command
       };
