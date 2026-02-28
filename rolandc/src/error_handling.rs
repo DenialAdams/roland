@@ -23,7 +23,10 @@ pub(crate) mod error_handling_macros {
       ($dst:expr, $loc:expr, $($arg:tt)*) => ($dst.emit_warning($loc, format_args!($($arg)*)))
    }
 
-   pub(crate) use {rolandc_error, rolandc_error_no_loc, rolandc_error_w_details, rolandc_warn};
+   pub(crate) use rolandc_error;
+   pub(crate) use rolandc_error_no_loc;
+   pub(crate) use rolandc_error_w_details;
+   pub(crate) use rolandc_warn;
 }
 
 #[derive(Hash, PartialEq, Eq, Clone)]

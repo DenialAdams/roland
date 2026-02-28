@@ -2465,7 +2465,7 @@ fn check_procedure_call<'a, I>(
       );
       // We shortcircuit here, because there will likely be lots of mismatched types if an arg was forgotten
    } else if args_in_order {
-      for (i, (actual, expected_raw)) in args.iter().zip(parameters.into_iter()).enumerate() {
+      for (i, (actual, expected_raw)) in args.iter().zip(parameters).enumerate() {
          // These should be at the end by now, so we've checked everything we needed to
          if actual.name.is_some() {
             break;

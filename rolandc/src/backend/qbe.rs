@@ -510,7 +510,7 @@ pub fn emit_qbe(
             Some((e_type, param_index)) => Some((param_index, roland_type_to_extended_type(e_type))),
             None => None,
          };
-         writeln!(ctx.buf, "   %v{} =l alloc{} {}", i, alignment, sz,).unwrap();
+         writeln!(ctx.buf, "   %v{} =l alloc{} {}", i, alignment, sz).unwrap();
          if let Some((reg_idx, suffix)) = reg_and_suffix {
             writeln!(ctx.buf, "   store{} %r{}, %v{}", suffix, reg_idx, i).unwrap();
          }

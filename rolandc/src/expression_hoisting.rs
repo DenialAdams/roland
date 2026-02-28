@@ -536,10 +536,10 @@ fn vv_expr(
          }
          Expression::UnaryOperator(UnOp::AddressOf, expr)
          | Expression::FieldAccess(_, expr)
-         | Expression::ArrayIndex { array: expr, .. } => {
-            if !expressions[*expr].expression.is_lvalue(expressions, ctx.global_info) {
-               ctx.mark_expr_for_hoisting(*expr, current_stmt, HoistReason::Must);
-            }
+         | Expression::ArrayIndex { array: expr, .. }
+            if !expressions[*expr].expression.is_lvalue(expressions, ctx.global_info) =>
+         {
+            ctx.mark_expr_for_hoisting(*expr, current_stmt, HoistReason::Must);
          }
          Expression::IfX(_, _, _) => {
             ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);

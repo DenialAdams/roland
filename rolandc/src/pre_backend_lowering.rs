@@ -24,10 +24,8 @@ fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInf
             signed: false,
          });
       }
-      ExpressionType::Int(it) => {
-         if it.width == IntWidth::Pointer {
-            it.width = target.lowered_ptr_width();
-         }
+      ExpressionType::Int(it) if it.width == IntWidth::Pointer => {
+         it.width = target.lowered_ptr_width();
       }
       ExpressionType::ProcedurePointer {
          parameters,

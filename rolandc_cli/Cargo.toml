@@ -11,6 +11,9 @@ dhat = { version = "0.3", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libwild = "0.8"
+# We don't actually depend on perf-event, working around an issue with this transitive dependency
+# After updating libwild we can toss this 
+perf-event = "=0.4.8"
 
 [features]
 dhat-heap = ["dep:dhat"]

@@ -401,7 +401,7 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
       Expression::StructLiteral(_, field_exprs) => {
          pp_type(expr.exp_type.as_ref().unwrap(), pp_ctx)?;
          pp_struct_initializer(field_exprs.iter().map(|x| (*x.0, *x.1)), field_exprs.len(), pp_ctx)?;
-         write!(pp_ctx.output, " {{ ",)?;
+         write!(pp_ctx.output, " {{ ")?;
          for (i, field_expr) in field_exprs.iter().enumerate() {
             if let Some(e) = field_expr.1 {
                write!(pp_ctx.output, "{}: ", pp_ctx.interner.lookup(*field_expr.0))?;
@@ -410,7 +410,7 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
                write!(pp_ctx.output, "{},", pp_ctx.interner.lookup(*field_expr.0))?;
             }
             if i != field_exprs.len() - 1 {
-               write!(pp_ctx.output, ", ",)?;
+               write!(pp_ctx.output, ", ")?;
             }
          }
          write!(pp_ctx.output, " }}")?;
@@ -474,7 +474,7 @@ fn pp_struct_initializer<W: Write, I: IntoIterator<Item = (StrId, Option<Express
    field_exprs_len: usize,
    pp_ctx: &mut PpCtx<W>,
 ) -> Result<(), std::io::Error> {
-   write!(pp_ctx.output, " {{ ",)?;
+   write!(pp_ctx.output, " {{ ")?;
    for (i, field_expr) in field_exprs.into_iter().enumerate() {
       if let Some(e) = field_expr.1 {
          write!(pp_ctx.output, "{}: ", pp_ctx.interner.lookup(field_expr.0))?;
@@ -483,7 +483,7 @@ fn pp_struct_initializer<W: Write, I: IntoIterator<Item = (StrId, Option<Express
          write!(pp_ctx.output, "{},", pp_ctx.interner.lookup(field_expr.0))?;
       }
       if i != field_exprs_len - 1 {
-         write!(pp_ctx.output, ", ",)?;
+         write!(pp_ctx.output, ", ")?;
       }
    }
    write!(pp_ctx.output, " }}")

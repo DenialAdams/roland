@@ -334,7 +334,7 @@ impl ExpressionType {
                   .collect::<Vec<_>>()
                   .join(", ");
 
-               Cow::Owned(format!("Struct {}<{}>", name, g_args,))
+               Cow::Owned(format!("Struct {}<{}>", name, g_args))
             }
          }
          ExpressionType::Union(x, type_args) => {
@@ -379,7 +379,7 @@ impl ExpressionType {
                   .collect::<Vec<_>>()
                   .join(", ");
 
-               Cow::Owned(format!("{}<{}>", interner.lookup(*x), g_args,))
+               Cow::Owned(format!("{}<{}>", interner.lookup(*x), g_args))
             }
          }
          ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
@@ -410,7 +410,7 @@ impl ExpressionType {
          ExpressionType::ProcedureItem(proc_id, type_arguments) => {
             let proc_name = procedures[*proc_id].definition.name.str;
             if type_arguments.is_empty() {
-               Cow::Owned(format!("proc() {{{}}}", interner.lookup(proc_name),))
+               Cow::Owned(format!("proc() {{{}}}", interner.lookup(proc_name)))
             } else {
                let type_argument_string = type_arguments
                   .iter()
@@ -517,7 +517,7 @@ impl ExpressionType {
                   .collect::<Vec<_>>()
                   .join(", ");
 
-               Cow::Owned(format!("{}<{}>", interner.lookup(*x), g_args,))
+               Cow::Owned(format!("{}<{}>", interner.lookup(*x), g_args))
             }
          }
          ExpressionType::GenericParam(x) => Cow::Borrowed(interner.lookup(*x)),
