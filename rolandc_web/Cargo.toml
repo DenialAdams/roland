@@ -12,4 +12,4 @@ rolandc = { path = "../rolandc" }
 wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1"
 web-sys = { version = "0.3", features = ["Window", "Document", "Element", "Node", "HtmlElement", "HtmlInputElement"] }
-wasmprinter = "0.244"
+wasmprinter = "0.245"
