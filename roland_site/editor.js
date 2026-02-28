@@ -6,7 +6,7 @@ import { closeBrackets, autocompletion, closeBracketsKeymap, completionKeymap } 
 import { lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, keymap, EditorView } from '@codemirror/view';
 
 // Language
-import { wastLanguage } from "@codemirror/lang-wast"
+import { wast } from "@codemirror/lang-wast"
 
 function createEditorState(initialContents, roAndWasm) {
     let extensions = [
@@ -39,7 +39,7 @@ function createEditorState(initialContents, roAndWasm) {
     ]
 
     if (roAndWasm) {
-        extensions.push(wastLanguage);
+        extensions.push(wast());
     }
 
     return EditorState.create({
