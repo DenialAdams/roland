@@ -51,7 +51,9 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
       overwrite_error_files: pargs.contains("--overwrite-error-files"),
       amd64: pargs.contains("--amd64"),
       preserve_artifacts: pargs.contains("--preserve-artifacts"),
-      wasm_executor: pargs.opt_value_from_str("--wasm-executor")?.unwrap_or_else(|| "wasmtime".into()),
+      wasm_executor: pargs
+         .opt_value_from_str("--wasm-executor")?
+         .unwrap_or_else(|| "wasmtime".into()),
       test_path: pargs.free_from_os_str(parse_path)?,
    };
 
@@ -149,7 +151,13 @@ fn main() -> Result<(), &'static str> {
       } else {
          Command::new(&opts.tc_path).arg(entry.clone()).output().unwrap()
       };
-      let test_ok = test_result(&tc_output, entry, opts.amd64, opts.preserve_artifacts, &opts.wasm_executor);
+      let test_ok = test_result(
+         &tc_output,
+         entry,
+         opts.amd64,
+         opts.preserve_artifacts,
+         &opts.wasm_executor,
+      );
       let name = entry.strip_prefix(&prefix).unwrap().to_str().unwrap();
       match test_ok {
          Ok(captured_stderr_minus_expected) if captured_stderr_minus_expected.is_empty() => {
