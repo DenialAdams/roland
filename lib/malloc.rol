@@ -79,17 +79,13 @@ proc free(ptr: &u8) {
       return;
    }
 
-   let cur_node = &free_list_head;
-   while cur_node~ transmute usize != 0 {
-      cur_node = &cur_node~~.next;
-   }
-
    while ((ptr transmute usize - 1) transmute &u8)~ != 0xFF {
       ptr = (ptr transmute usize - 1) transmute &u8;
    }
 
-   cur_node~ = (ptr transmute usize - PREFIX_SIZE) transmute &_free_list_node;
-   cur_node~~.next = 0 transmute &_free_list_node;
+   let node = (ptr transmute usize - PREFIX_SIZE) transmute &_free_list_node;
+   node~.next = free_list_head;
+   free_list_head = node;
 }
 
 struct TypedMallocResult<T> {
