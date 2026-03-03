@@ -14,6 +14,14 @@ struct MemoryBlock {
 
 const PREFIX_SIZE: usize = sizeof$<usize>() + 1;
 
+proc _compute_padding(address: usize, alignment: usize) -> usize {
+   let rem = address % alignment;
+   if rem == 0 {
+      return 0;
+   }
+   return alignment - rem;
+}
+
 proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
    if bytes == 0 {
       return MemoryBlock {
@@ -21,6 +29,8 @@ proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
          size: 0,
       };
    }
+
+   assert(alignment > 0);
 
    // ALLOCATED: [size, 0xFF, <padding>, XXXX]
    // FREE: [_free_list_node, 0xFF, ____]
@@ -31,8 +41,8 @@ proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
    let cur_node = &free_list_head;
    while cur_node~ transmute usize != 0 {
       let buf_start = (cur_node~ transmute usize + PREFIX_SIZE);
-      let padding = buf_start % alignment;
-      if (cur_node~~.size + padding) >= bytes {
+      let padding = _compute_padding(buf_start, alignment);
+      if cur_node~~.size >= (bytes + padding) {
          // We assume that fresh memory is zeroed, and so won't conflict with our marker byte.
          // But we can assume no such thing for re-used memory. Zero them.
          memset((cur_node~ transmute usize + PREFIX_SIZE) transmute &u8, 0, padding);
@@ -53,7 +63,7 @@ proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
    // No suitable node. Allocate a new one.
    let cur_address = brk(0);
    // Adjust allocation request for alignment
-   let padding = cur_address % alignment;
+   let padding = _compute_padding(cur_address + PREFIX_SIZE, alignment);
    bytes = bytes + padding;
    // Ensure that we are allocating enough space such that when we free it we can record metadata
    if bytes < sizeof$<_free_list_node>() {
