@@ -1,0 +1,9 @@
+import "foo.rol";
+
+proc main() {
+
+}
+__END__
+compile:
+Failed to canonicalize path 'tests/import/foo.rol': No such file or directory (os error 2)
+↳ line 1, column 8 [tests/import/import_non_existing_file.rol]

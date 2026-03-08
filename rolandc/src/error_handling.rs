@@ -1,5 +1,6 @@
-use std::fmt;
+use std::borrow::Cow;
 use std::io::Write;
+use std::{env, fmt};
 
 use indexmap::IndexSet;
 
@@ -111,29 +112,44 @@ pub fn write_out_error_buf<'a, W: Write, I: IntoIterator<Item = &'a ErrorInfo>>(
    interner: &Interner,
    buf: I,
 ) {
+   // Error paths refer to canonical paths - i.e. fully expanded, symlinks resolved, etc.
+   // In an attempt to make the errors more concise, we remove the prefix
+   // n.b. it's weird that we use the current working directory for this purpose -
+   // would be better for clients to pass it in, since this is library code.
+   // Possibly good enough for now.
+   let canonical_cwd = env::current_dir().and_then(std::fs::canonicalize);
+   let cwd_str = canonical_cwd
+      .as_ref()
+      .map_or(Cow::Borrowed(""), |x| x.to_string_lossy());
    for error in buf {
       writeln!(err_stream, "{}", error.message).unwrap();
       match &error.location {
          ErrorLocation::NoLocation => {}
          ErrorLocation::Simple(loc) => {
-            emit_source_info(err_stream, *loc, interner);
+            emit_source_info(err_stream, *loc, interner, &cwd_str);
          }
          ErrorLocation::WithDetails(locs) => {
-            for loc in locs {
-               emit_source_info_with_description(err_stream, loc.0, &loc.1, interner);
+            for (loc, label) in locs {
+               emit_source_info_with_description(err_stream, *loc, label, interner, &cwd_str);
             }
          }
       }
       for source in error.came_from_stack.iter().copied() {
-         emit_source_info_with_description(err_stream, source, "instantiation", interner);
+         emit_source_info_with_description(err_stream, source, "instantiation", interner, &cwd_str);
       }
    }
 }
 
-pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo, interner: &Interner) {
+fn remove_base_dir_prefix<'a>(full_path: &'a str, base_dir: &str) -> &'a str {
+   full_path.strip_prefix(base_dir)
+      .and_then(|x| x.strip_prefix(std::path::MAIN_SEPARATOR))
+      .unwrap_or(full_path)
+}
+
+fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo, interner: &Interner, base_dir: &str) {
    match source_info.file {
       SourcePath::File(x) => {
-         let path_str = interner.lookup(x);
+         let path_str = remove_base_dir_prefix(interner.lookup(x), base_dir);
          writeln!(
             err_stream,
             "↳ line {}, column {} [{}]",
@@ -166,22 +182,23 @@ pub fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo, i
    }
 }
 
-pub fn emit_source_info_with_description<W: Write>(
+fn emit_source_info_with_description<W: Write>(
    err_stream: &mut W,
    source_info: SourceInfo,
    description: &str,
    interner: &Interner,
+   base_dir: &str,
 ) {
    match source_info.file {
       SourcePath::File(x) => {
-         let path_str = interner.lookup(x);
+         let path_str = remove_base_dir_prefix(interner.lookup(x), base_dir);
          writeln!(
             err_stream,
             "↳ {} @ line {}, column {} [{}]",
             description,
             source_info.begin.line + 1,
             source_info.begin.col + 1,
-            path_str
+            path_str,
          )
          .unwrap();
       }

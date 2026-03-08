@@ -69,11 +69,12 @@ pub fn import_program<'a, FR: FileResolver<'a>>(
             }
          }
       };
-      if !imported_files.insert(canonical_path) {
+
+      if !imported_files.insert(canonical_path.clone()) {
          continue;
       }
 
-      let program_s = match resolver.resolve_path(&base_path) {
+      let program_s = match resolver.resolve_path(&canonical_path) {
          Ok(s) => s,
          Err(e) => {
             if let Some(l) = import_location {
@@ -81,14 +82,14 @@ pub fn import_program<'a, FR: FileResolver<'a>>(
                   ctx.err_manager,
                   l.import_path.location,
                   "Failed to read imported file '{}': {}",
-                  base_path.as_os_str().to_string_lossy(),
+                  canonical_path.as_os_str().to_string_lossy(),
                   e
                );
             } else {
                rolandc_error_no_loc!(
                   ctx.err_manager,
                   "Failed to read imported file '{}': {}",
-                  base_path.as_os_str().to_string_lossy(),
+                  canonical_path.as_os_str().to_string_lossy(),
                   e
                );
             }
@@ -97,9 +98,9 @@ pub fn import_program<'a, FR: FileResolver<'a>>(
       };
 
       let source_path = if FR::IS_STD {
-         SourcePath::Std(ctx.interner.intern(&base_path.as_os_str().to_string_lossy()))
+         SourcePath::Std(ctx.interner.intern(&canonical_path.as_os_str().to_string_lossy()))
       } else {
-         SourcePath::File(ctx.interner.intern(&base_path.as_os_str().to_string_lossy()))
+         SourcePath::File(ctx.interner.intern(&canonical_path.as_os_str().to_string_lossy()))
       };
 
       if let Some(il) = import_location {

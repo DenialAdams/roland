@@ -31,8 +31,8 @@ struct LSPFileResolver<'a> {
 
 impl<'a> FileResolver<'a> for LSPFileResolver<'a> {
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<Cow<'a, str>> {
-      let canon_path = std::fs::canonicalize(path)?;
-      let resolved = if let Some(buf) = self.file_map.get(&canon_path) {
+      debug_assert_eq!(path, std::fs::canonicalize(path)?);
+      let resolved = if let Some(buf) = self.file_map.get(path) {
          Ok(Cow::Borrowed(buf.0.as_str()))
       } else {
          match std::fs::read_to_string(path) {
@@ -40,7 +40,7 @@ impl<'a> FileResolver<'a> for LSPFileResolver<'a> {
             Err(e) => Err(e),
          }
       };
-      self.touched_paths.push(canon_path);
+      self.touched_paths.push(path.to_path_buf());
       resolved
    }
 }
