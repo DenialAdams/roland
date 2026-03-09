@@ -3,9 +3,9 @@
 #![allow(clippy::missing_panics_doc)] // We don't have any documentation
 #![allow(clippy::missing_errors_doc)] // We don't have any documentation
 
-use std::sync::Mutex;
+use std::{borrow::Cow, path::{Path, PathBuf}, sync::Mutex};
 
-use rolandc::{CompilationContext, FileResolver};
+use rolandc::{CompilationContext, CompilationEntryPoint, FileResolver};
 use wasm_bindgen::prelude::*;
 
 static COMPILATION_CTX: Mutex<Option<CompilationContext>> = Mutex::new(None);
@@ -16,11 +16,22 @@ pub fn start() {
    *COMPILATION_CTX.lock().unwrap() = Some(CompilationContext::new());
 }
 
-struct PlaygroundFileResolver;
+const SANDBOX_FILE_NAME: &str = "sandbox";
 
-impl<'a> FileResolver<'a> for PlaygroundFileResolver {
-   fn resolve_path(&mut self, _path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'a, str>> {
-      unreachable!()
+struct PlaygroundFileResolver<'a> {
+   playground_contents: &'a str,
+}
+
+impl FileResolver for PlaygroundFileResolver<'_> {
+   const REQUIRES_CANONIZATION: bool = false;
+   fn resolve_path<'a>(&'a mut self, path: &std::path::Path) -> std::io::Result<Cow<'a, str>> {
+      if path == Path::new(SANDBOX_FILE_NAME) {
+         return Ok(Cow::Borrowed(self.playground_contents));
+      }
+      Err(std::io::Error::new(
+         std::io::ErrorKind::Unsupported,
+         "Files can't be imported on the roland playground",
+      ))
    }
 }
 
@@ -38,10 +49,17 @@ pub fn compile_wasm4(source_code: &str) -> Result<Vec<u8>, String> {
       dump_debugging_info: false,
    };
 
-   let compile_result =
-      rolandc::compile::<PlaygroundFileResolver>(ctx, rolandc::CompilationEntryPoint::Playground(source_code), &config);
+   let resolver = PlaygroundFileResolver {
+      playground_contents: source_code,
+   };
 
-   ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner);
+   let compile_result =
+      rolandc::compile::<PlaygroundFileResolver>(ctx, rolandc::CompilationEntryPoint {
+         ep_path: PathBuf::from(SANDBOX_FILE_NAME),
+         resolver
+      }, &config);
+
+   ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner, false);
 
    compile_result
       .map(|x| x.program_bytes)
@@ -87,10 +105,17 @@ pub fn compile_and_update_all(source_code: &str) -> Option<CompilationOutput> {
       dump_debugging_info: false,
    };
 
-   let compile_result =
-      rolandc::compile::<PlaygroundFileResolver>(ctx, rolandc::CompilationEntryPoint::Playground(source_code), &config);
+   let resolver = PlaygroundFileResolver {
+      playground_contents: source_code,
+   };
 
-   ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner);
+   let compile_result =
+      rolandc::compile::<PlaygroundFileResolver>(ctx, CompilationEntryPoint {
+         ep_path: PathBuf::from(SANDBOX_FILE_NAME),
+         resolver,
+      }, &config);
+
+   ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner, false);
 
    if let Ok(v) = compile_result {
       let disasm = wasmprinter::print_bytes(v.program_bytes.as_slice()).unwrap();

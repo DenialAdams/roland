@@ -133,14 +133,21 @@ pub enum CompilationError {
    Io,
 }
 
-pub trait FileResolver<'a> {
-   fn resolve_path(&mut self, path: &Path) -> std::io::Result<Cow<'a, str>>;
-   const IS_STD: bool = false;
+pub enum SourceInfoKind {
+   Std,
+   Sandbox,
+   Filesystem,
 }
 
-pub enum CompilationEntryPoint<'a, FR: FileResolver<'a>> {
-   Playground(&'a str),
-   PathResolving(PathBuf, FR),
+pub trait FileResolver {
+   fn resolve_path<'a>(&'a mut self, path: &Path) -> std::io::Result<Cow<'a, str>>;
+   const IS_STD: bool = false;
+   const REQUIRES_CANONIZATION: bool;
+}
+
+pub struct CompilationEntryPoint<FR: FileResolver> {
+   pub ep_path: PathBuf,
+   pub resolver: FR,
 }
 
 // Repeated compilations can be sped up by reusing the context
@@ -148,6 +155,7 @@ pub struct CompilationContext {
    pub interner: Interner,
    pub err_manager: ErrorManager,
    pub program: Program,
+   pub user_files: HashMap<PathBuf, Vec<u8>>,
 }
 
 impl CompilationContext {
@@ -157,13 +165,14 @@ impl CompilationContext {
          interner: Interner::with_capacity(1024),
          err_manager: ErrorManager::new(),
          program: Program::new(),
+         user_files: HashMap::new(),
       }
    }
 }
 
-pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
+pub fn compile_for_errors<FR: FileResolver>(
    ctx: &mut CompilationContext,
-   user_program_ep: CompilationEntryPoint<'a, FR>,
+   user_program_ep: CompilationEntryPoint<FR>,
    config: &CompilationConfig,
 ) -> Result<IndexSet<String>, ()> {
    ctx.program.clear();
@@ -185,29 +194,12 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
       imports::import_program(ctx, &mut link_requests, std_lib_start_path, imports::StdFileResolver)?;
    }
 
-   match user_program_ep {
-      CompilationEntryPoint::PathResolving(ep_path, resolver) => {
-         imports::import_program(ctx, &mut link_requests, ep_path, resolver)?;
-      }
-      CompilationEntryPoint::Playground(contents) => {
-         let files_to_import = lex_and_parse(
-            contents,
-            SourcePath::Sandbox,
-            &mut ctx.err_manager,
-            &mut ctx.interner,
-            &mut ctx.program,
-            &mut link_requests,
-         )?;
-         if !files_to_import.is_empty() {
-            rolandc_error!(
-               ctx.err_manager,
-               files_to_import[0].location,
-               "Can't import files in the Roland playground",
-            );
-            return Err(());
-         }
-      }
-   }
+   imports::import_program(
+      ctx,
+      &mut link_requests,
+      user_program_ep.ep_path,
+      user_program_ep.resolver,
+   )?;
 
    semantic_analysis::type_and_procedure_info::populate_type_and_procedure_info(
       &mut ctx.program,
@@ -418,7 +410,7 @@ pub fn compile_for_errors<'a, FR: FileResolver<'a>>(
 pub struct CompilationConfig {
    pub target: Target,
    pub include_std: bool,
-   pub i_am_std: bool,
+   pub i_am_std: bool, // TODO: move this into CompilationEntryPoint?
    pub dump_debugging_info: bool,
 }
 
@@ -427,9 +419,9 @@ pub struct CompilationResult {
    pub link_requests: IndexSet<String>,
 }
 
-pub fn compile<'a, FR: FileResolver<'a>>(
+pub fn compile<FR: FileResolver>(
    ctx: &mut CompilationContext,
-   user_program_ep: CompilationEntryPoint<'a, FR>,
+   user_program_ep: CompilationEntryPoint<FR>,
    config: &CompilationConfig,
 ) -> Result<CompilationResult, ()> {
    let link_requests = compile_for_errors(ctx, user_program_ep, config)?;

@@ -1,4 +1,4 @@
-use crate::interner::StrId;
+use crate::interner::{DUMMY_STR_TOKEN, StrId};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SourcePosition {
@@ -34,14 +34,13 @@ impl SourceInfo {
       SourceInfo {
          begin: SourcePosition { line: 0, col: 0 },
          end: SourcePosition { line: 0, col: 0 },
-         file: SourcePath::Sandbox,
+         file: SourcePath::File(DUMMY_STR_TOKEN),
       }
    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum SourcePath {
-   Sandbox,
    Std(StrId),
    File(StrId),
 }

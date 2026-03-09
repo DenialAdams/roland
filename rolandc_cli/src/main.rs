@@ -127,8 +127,9 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
 
 struct CliFileResolver {}
 
-impl<'a> FileResolver<'a> for CliFileResolver {
-   fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'a, str>> {
+impl FileResolver for CliFileResolver {
+   const REQUIRES_CANONIZATION: bool = true;
+   fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'_, str>> {
       std::fs::read_to_string(path).map(Cow::Owned)
    }
 }
@@ -159,11 +160,14 @@ fn main() {
 
    let compile_result = rolandc::compile::<CliFileResolver>(
       &mut ctx,
-      CompilationEntryPoint::PathResolving(opts.source_file.clone(), CliFileResolver {}),
+      CompilationEntryPoint {
+         ep_path: opts.source_file.clone(),
+         resolver: CliFileResolver {},
+      },
       &config,
    );
 
-   ctx.err_manager.write_out_errors(&mut err_stream_l, &ctx.interner);
+   ctx.err_manager.write_out_errors(&mut err_stream_l, &ctx.interner, true);
 
    let Ok(compile_result) = compile_result else {
       std::process::exit(1);

@@ -13,9 +13,10 @@ static STDLIB_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../lib");
 
 pub struct StdFileResolver;
 
-impl<'a> FileResolver<'a> for StdFileResolver {
+impl FileResolver for StdFileResolver {
    const IS_STD: bool = true;
-   fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'a, str>> {
+   const REQUIRES_CANONIZATION: bool = true;
+   fn resolve_path<'a>(&'a mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'a, str>> {
       Ok(Cow::Borrowed(
          STDLIB_DIR
             .get_file(path)
@@ -31,7 +32,7 @@ impl<'a> FileResolver<'a> for StdFileResolver {
    }
 }
 
-pub fn import_program<'a, FR: FileResolver<'a>>(
+pub fn import_program<FR: FileResolver>(
    ctx: &mut CompilationContext,
    links: &mut Vec<LinkNode>,
    path: PathBuf,

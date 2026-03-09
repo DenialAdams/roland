@@ -29,8 +29,9 @@ struct LSPFileResolver<'a> {
    touched_paths: &'a mut Vec<PathBuf>,
 }
 
-impl<'a> FileResolver<'a> for LSPFileResolver<'a> {
-   fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<Cow<'a, str>> {
+impl FileResolver for LSPFileResolver<'_> {
+   const REQUIRES_CANONIZATION: bool = true;
+   fn resolve_path<'a>(&'a mut self, path: &std::path::Path) -> std::io::Result<Cow<'a, str>> {
       debug_assert_eq!(path, std::fs::canonicalize(path)?);
       let resolved = if let Some(buf) = self.file_map.get(path) {
          Ok(Cow::Borrowed(buf.0.as_str()))
@@ -54,8 +55,7 @@ struct Backend {
 
 fn roland_source_path_to_canon_path(source_path: &SourcePath, interner: &Interner) -> Option<std::io::Result<PathBuf>> {
    match source_path {
-      SourcePath::Sandbox => unreachable!(), // No language server in the roland sandbox
-      SourcePath::Std(_) => None, // This is possible to be hit when Roland provides a reference to a standard library defined type
+      SourcePath::Std(_) => None, // Hit when rolandc provides a reference to a standard library defined type
       SourcePath::File(str_id) => {
          let some_path = interner.lookup(*str_id);
          Some(std::fs::canonicalize(some_path))
@@ -181,7 +181,10 @@ impl Backend {
             };
             let _ = rolandc::compile_for_errors(
                &mut ctx_ref,
-               CompilationEntryPoint::PathResolving(root_file_path.to_path_buf(), resolver),
+               CompilationEntryPoint {
+                  ep_path: root_file_path.to_path_buf(),
+                  resolver,
+               },
                &config,
             );
             (
