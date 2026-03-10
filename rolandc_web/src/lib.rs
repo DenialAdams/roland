@@ -3,7 +3,9 @@
 #![allow(clippy::missing_panics_doc)] // We don't have any documentation
 #![allow(clippy::missing_errors_doc)] // We don't have any documentation
 
-use std::{borrow::Cow, path::{Path, PathBuf}, sync::Mutex};
+use std::borrow::Cow;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use rolandc::{CompilationContext, CompilationEntryPoint, FileResolver};
 use wasm_bindgen::prelude::*;
@@ -24,9 +26,9 @@ struct PlaygroundFileResolver<'a> {
 
 impl FileResolver for PlaygroundFileResolver<'_> {
    const REQUIRES_CANONIZATION: bool = false;
-   fn resolve_path<'a>(&'a mut self, path: &std::path::Path) -> std::io::Result<Cow<'a, str>> {
+   fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<Cow<'static, str>> {
       if path == Path::new(SANDBOX_FILE_NAME) {
-         return Ok(Cow::Borrowed(self.playground_contents));
+         return Ok(Cow::Owned(self.playground_contents.to_string()));
       }
       Err(std::io::Error::new(
          std::io::ErrorKind::Unsupported,
@@ -53,13 +55,16 @@ pub fn compile_wasm4(source_code: &str) -> Result<Vec<u8>, String> {
       playground_contents: source_code,
    };
 
-   let compile_result =
-      rolandc::compile::<PlaygroundFileResolver>(ctx, rolandc::CompilationEntryPoint {
+   let compile_result = rolandc::compile::<PlaygroundFileResolver>(
+      ctx,
+      rolandc::CompilationEntryPoint {
          ep_path: PathBuf::from(SANDBOX_FILE_NAME),
-         resolver
-      }, &config);
+         resolver,
+      },
+      &config,
+   );
 
-   ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner, false);
+   ctx.err_manager.write_out_errors(&mut err_out, false, &ctx.source_files);
 
    compile_result
       .map(|x| x.program_bytes)
@@ -109,13 +114,16 @@ pub fn compile_and_update_all(source_code: &str) -> Option<CompilationOutput> {
       playground_contents: source_code,
    };
 
-   let compile_result =
-      rolandc::compile::<PlaygroundFileResolver>(ctx, CompilationEntryPoint {
+   let compile_result = rolandc::compile::<PlaygroundFileResolver>(
+      ctx,
+      CompilationEntryPoint {
          ep_path: PathBuf::from(SANDBOX_FILE_NAME),
          resolver,
-      }, &config);
+      },
+      &config,
+   );
 
-   ctx.err_manager.write_out_errors(&mut err_out, &ctx.interner, false);
+   ctx.err_manager.write_out_errors(&mut err_out, false, &ctx.source_files);
 
    if let Ok(v) = compile_result {
       let disasm = wasmprinter::print_bytes(v.program_bytes.as_slice()).unwrap();

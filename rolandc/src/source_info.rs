@@ -1,5 +1,3 @@
-use crate::interner::{DUMMY_STR_TOKEN, StrId};
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SourcePosition {
    pub line: usize,
@@ -34,13 +32,16 @@ impl SourceInfo {
       SourceInfo {
          begin: SourcePosition { line: 0, col: 0 },
          end: SourcePosition { line: 0, col: 0 },
-         file: SourcePath::File(DUMMY_STR_TOKEN),
+         file: SourcePath(usize::MAX),
       }
    }
 }
 
+// TODO: killing this enum
+// Instead sourcepath is an index into an IndexMap<(PathBuf, bool), String> map
+// bool is for std.
+// benefits: SourcePath will be smaller AND we can get the PathBuf exactly back instead of having to go through StrId which is lossy
+// AND AND we have a clear place to stick the damn file contents so we can get them back for error reporting. ka-boom.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum SourcePath {
-   Std(StrId),
-   File(StrId),
-}
+#[repr(transparent)]
+pub struct SourcePath(pub usize);

@@ -129,7 +129,7 @@ struct CliFileResolver {}
 
 impl FileResolver for CliFileResolver {
    const REQUIRES_CANONIZATION: bool = true;
-   fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'_, str>> {
+   fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'static, str>> {
       std::fs::read_to_string(path).map(Cow::Owned)
    }
 }
@@ -167,7 +167,7 @@ fn main() {
       &config,
    );
 
-   ctx.err_manager.write_out_errors(&mut err_stream_l, &ctx.interner, true);
+   ctx.err_manager.write_out_errors(&mut err_stream_l, true, &ctx.source_files);
 
    let Ok(compile_result) = compile_result else {
       std::process::exit(1);

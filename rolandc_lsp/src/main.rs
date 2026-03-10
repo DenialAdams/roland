@@ -9,7 +9,6 @@ use std::path::PathBuf;
 use goto_definition::find_definition;
 use parking_lot::{Mutex, RwLock};
 use rolandc::error_handling::{ErrorInfo, ErrorLocation};
-use rolandc::interner::Interner;
 use rolandc::source_info::{SourceInfo, SourcePath, SourcePosition};
 use rolandc::*;
 use tower_lsp_server::jsonrpc::Result;
@@ -31,10 +30,10 @@ struct LSPFileResolver<'a> {
 
 impl FileResolver for LSPFileResolver<'_> {
    const REQUIRES_CANONIZATION: bool = true;
-   fn resolve_path<'a>(&'a mut self, path: &std::path::Path) -> std::io::Result<Cow<'a, str>> {
+   fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<Cow<'static, str>> {
       debug_assert_eq!(path, std::fs::canonicalize(path)?);
       let resolved = if let Some(buf) = self.file_map.get(path) {
-         Ok(Cow::Borrowed(buf.0.as_str()))
+         Ok(Cow::Owned(buf.0.clone()))
       } else {
          match std::fs::read_to_string(path) {
             Ok(s) => Ok(Cow::Owned(s)),
@@ -53,24 +52,23 @@ struct Backend {
    ctx: Mutex<CompilationContext>,
 }
 
-fn roland_source_path_to_canon_path(source_path: &SourcePath, interner: &Interner) -> Option<std::io::Result<PathBuf>> {
-   match source_path {
-      SourcePath::Std(_) => None, // Hit when rolandc provides a reference to a standard library defined type
-      SourcePath::File(str_id) => {
-         let some_path = interner.lookup(*str_id);
-         Some(std::fs::canonicalize(some_path))
-      }
+fn roland_source_path_to_canon_path(source_path: &SourcePath, file_map: &FileMap) -> Option<std::io::Result<PathBuf>> {
+   let ((path, is_std), _file_contents) = file_map.get_index(source_path.0).unwrap();
+   if *is_std {
+      // Hit when rolandc provides a reference to a standard library defined type
+      return None;
    }
+   Some(std::fs::canonicalize(path))
 }
 
 fn roland_error_to_lsp_error(
    re: ErrorInfo,
-   interner: &Interner,
+   file_map: &FileMap,
    severity: DiagnosticSeverity,
 ) -> (Option<PathBuf>, Diagnostic) {
    let (report_path, range, mut related_info) = match re.location {
       ErrorLocation::Simple(x) => (
-         roland_source_path_to_canon_path(&x.file, interner).map(|x| x.unwrap()),
+         roland_source_path_to_canon_path(&x.file, file_map).map(|x| x.unwrap()),
          Range {
             start: Position {
                line: x.begin.line as u32,
@@ -84,7 +82,7 @@ fn roland_error_to_lsp_error(
          Vec::new(),
       ),
       ErrorLocation::WithDetails(x) => (
-         roland_source_path_to_canon_path(&x[0].0.file, interner).map(|x| x.unwrap()),
+         roland_source_path_to_canon_path(&x[0].0.file, file_map).map(|x| x.unwrap()),
          Range {
             start: Position {
                line: x[0].0.begin.line as u32,
@@ -96,7 +94,7 @@ fn roland_error_to_lsp_error(
             },
          },
          x.into_iter()
-            .flat_map(|x| rolandc_detail_to_diagnostic_detail(x, interner))
+            .flat_map(|x| rolandc_detail_to_diagnostic_detail(x, file_map))
             .collect(),
       ),
       // Reporting this error with a bogus location is... well, it works, but can look strange.
@@ -113,7 +111,7 @@ fn roland_error_to_lsp_error(
    };
 
    for came_from in re.came_from_stack {
-      if let Some(d) = rolandc_detail_to_diagnostic_detail((came_from, "instantiation".into()), interner) {
+      if let Some(d) = rolandc_detail_to_diagnostic_detail((came_from, "instantiation".into()), file_map) {
          related_info.push(d);
       }
    }
@@ -132,9 +130,9 @@ fn roland_error_to_lsp_error(
 
 fn rolandc_detail_to_diagnostic_detail(
    y: (SourceInfo, String),
-   interner: &Interner,
+   file_map: &FileMap,
 ) -> Option<DiagnosticRelatedInformation> {
-   let path = roland_source_path_to_canon_path(&y.0.file, interner).map(|x| x.unwrap());
+   let path = roland_source_path_to_canon_path(&y.0.file, file_map).map(|x| x.unwrap());
    path.map(|sp| DiagnosticRelatedInformation {
       location: Location {
          uri: Uri::from_file_path(sp).unwrap(),
@@ -208,10 +206,10 @@ impl Backend {
          let obj = ctx_ref.deref_mut();
          let errs = &mut obj.err_manager.errors;
          let warnings = &mut obj.err_manager.warnings;
-         let interner = &obj.interner;
+         let file_map = &obj.source_files;
 
          for err in errs.drain(..) {
-            let (bucket, lsp_error) = roland_error_to_lsp_error(err, interner, DiagnosticSeverity::ERROR);
+            let (bucket, lsp_error) = roland_error_to_lsp_error(err, file_map, DiagnosticSeverity::ERROR);
             diagnostic_buckets
                .entry(bucket)
                .or_insert_with(Vec::new)
@@ -219,7 +217,7 @@ impl Backend {
          }
 
          for warning in warnings.drain(..) {
-            let (bucket, lsp_error) = roland_error_to_lsp_error(warning, interner, DiagnosticSeverity::WARNING);
+            let (bucket, lsp_error) = roland_error_to_lsp_error(warning, file_map, DiagnosticSeverity::WARNING);
             diagnostic_buckets
                .entry(bucket)
                .or_insert_with(Vec::new)
@@ -350,7 +348,7 @@ impl LanguageServer for Backend {
                      character: si.end.col as u32,
                   },
                };
-               let target_path = roland_source_path_to_canon_path(&si.file, &ctx.interner);
+               let target_path = roland_source_path_to_canon_path(&si.file, &ctx.source_files);
                return Ok(target_path.map(|x| {
                   GotoDefinitionResponse::Link(vec![LocationLink {
                      origin_selection_range: None,

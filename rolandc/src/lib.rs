@@ -140,7 +140,7 @@ pub enum SourceInfoKind {
 }
 
 pub trait FileResolver {
-   fn resolve_path<'a>(&'a mut self, path: &Path) -> std::io::Result<Cow<'a, str>>;
+   fn resolve_path(&mut self, path: &Path) -> std::io::Result<Cow<'static, str>>;
    const IS_STD: bool = false;
    const REQUIRES_CANONIZATION: bool;
 }
@@ -155,8 +155,10 @@ pub struct CompilationContext {
    pub interner: Interner,
    pub err_manager: ErrorManager,
    pub program: Program,
-   pub user_files: HashMap<PathBuf, Vec<u8>>,
+   pub source_files: FileMap,
 }
+// The bool indicates that the path is from the standard library
+pub type FileMap = IndexMap<(PathBuf, bool), Cow<'static, str>>;
 
 impl CompilationContext {
    #[must_use]
@@ -165,7 +167,7 @@ impl CompilationContext {
          interner: Interner::with_capacity(1024),
          err_manager: ErrorManager::new(),
          program: Program::new(),
-         user_files: HashMap::new(),
+         source_files: IndexMap::new(),
       }
    }
 }
@@ -188,6 +190,10 @@ pub fn compile_for_errors<FR: FileResolver>(
    }
    .into();
 
+   // We keep file buffers around for error reporting purposes
+   // (extracing line + column from byte indices)
+   ctx.source_files.clear();
+
    let mut link_requests: Vec<LinkNode> = vec![];
 
    if config.include_std {
@@ -206,6 +212,7 @@ pub fn compile_for_errors<FR: FileResolver>(
       &mut ctx.err_manager,
       &ctx.interner,
       config,
+      &ctx.source_files,
    );
 
    if !ctx.err_manager.errors.is_empty() {

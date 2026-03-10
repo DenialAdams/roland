@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::path::PathBuf;
 
 use include_dir::{Dir, include_dir};
@@ -16,7 +15,7 @@ pub struct StdFileResolver;
 impl FileResolver for StdFileResolver {
    const IS_STD: bool = true;
    const REQUIRES_CANONIZATION: bool = true;
-   fn resolve_path<'a>(&'a mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'a, str>> {
+   fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'static, str>> {
       Ok(Cow::Borrowed(
          STDLIB_DIR
             .get_file(path)
@@ -40,7 +39,6 @@ pub fn import_program<FR: FileResolver>(
 ) -> Result<(), ()> {
    let mut import_queue: Vec<(PathBuf, Option<ImportNode>)> = vec![(path, None)];
 
-   let mut imported_files = HashSet::new();
    while let Some(pair) = import_queue.pop() {
       let mut base_path = pair.0;
       let import_location = pair.1;
@@ -71,37 +69,36 @@ pub fn import_program<FR: FileResolver>(
          }
       };
 
-      if !imported_files.insert(canonical_path.clone()) {
-         continue;
-      }
-
-      let program_s = match resolver.resolve_path(&canonical_path) {
-         Ok(s) => s,
-         Err(e) => {
-            if let Some(l) = import_location {
-               rolandc_error!(
-                  ctx.err_manager,
-                  l.import_path.location,
-                  "Failed to read imported file '{}': {}",
-                  canonical_path.as_os_str().to_string_lossy(),
-                  e
-               );
-            } else {
-               rolandc_error_no_loc!(
-                  ctx.err_manager,
-                  "Failed to read imported file '{}': {}",
-                  canonical_path.as_os_str().to_string_lossy(),
-                  e
-               );
-            }
-            return Err(());
+      let source_path: SourcePath;
+      // TODO: fix this using some form of raw entry so we only clone canonical_path when we have to
+      let program_s = match ctx.source_files.entry((canonical_path.clone(), FR::IS_STD)) {
+         indexmap::map::Entry::Occupied(_) => continue,
+         indexmap::map::Entry::Vacant(vacant_entry) => {
+            let program_s = match resolver.resolve_path(&canonical_path) {
+               Ok(s) => s,
+               Err(e) => {
+                  if let Some(l) = import_location {
+                     rolandc_error!(
+                        ctx.err_manager,
+                        l.import_path.location,
+                        "Failed to read imported file '{}': {}",
+                        canonical_path.as_os_str().to_string_lossy(),
+                        e
+                     );
+                  } else {
+                     rolandc_error_no_loc!(
+                        ctx.err_manager,
+                        "Failed to read imported file '{}': {}",
+                        canonical_path.as_os_str().to_string_lossy(),
+                        e
+                     );
+                  }
+                  return Err(());
+               }
+            };
+            source_path = SourcePath(vacant_entry.index());
+            vacant_entry.insert(program_s)
          }
-      };
-
-      let source_path = if FR::IS_STD {
-         SourcePath::Std(ctx.interner.intern(&canonical_path.as_os_str().to_string_lossy()))
-      } else {
-         SourcePath::File(ctx.interner.intern(&canonical_path.as_os_str().to_string_lossy()))
       };
 
       if let Some(il) = import_location {
@@ -117,7 +114,7 @@ pub fn import_program<FR: FileResolver>(
       }
 
       let imports = lex_and_parse(
-         &program_s,
+         program_s,
          source_path,
          &mut ctx.err_manager,
          &mut ctx.interner,

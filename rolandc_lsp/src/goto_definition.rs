@@ -1,7 +1,6 @@
 use std::path::Path;
 
-use rolandc::CompilationContext;
-use rolandc::interner::Interner;
+use rolandc::{CompilationContext, FileMap};
 use rolandc::parse::UserDefinedTypeId;
 use rolandc::source_info::{SourceInfo, SourcePosition};
 use rolandc::type_data::ExpressionType;
@@ -9,7 +8,7 @@ use rolandc::type_data::ExpressionType;
 use crate::roland_source_path_to_canon_path;
 
 #[must_use]
-fn span_contains(span: SourceInfo, location: SourcePosition, document: &Path, interner: &Interner) -> bool {
+fn span_contains(span: SourceInfo, location: SourcePosition, document: &Path, file_map: &FileMap) -> bool {
    let span_begin = span.begin;
    let span_end = span.end;
 
@@ -33,7 +32,7 @@ fn span_contains(span: SourceInfo, location: SourcePosition, document: &Path, in
 
    if in_range_of_span {
       // now verify the document matches (allocates)
-      let canon_path = roland_source_path_to_canon_path(&span.file, interner);
+      let canon_path = roland_source_path_to_canon_path(&span.file, file_map);
       canon_path
          .map(|x| x.map(|x| x == document).unwrap_or(false))
          .unwrap_or(false)
@@ -45,7 +44,7 @@ fn span_contains(span: SourceInfo, location: SourcePosition, document: &Path, in
 #[must_use]
 pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationContext) -> Option<SourceInfo> {
    for parsed_type in ctx.program.parsed_types.iter() {
-      if !span_contains(parsed_type.location, sp, document, &ctx.interner) {
+      if !span_contains(parsed_type.location, sp, document, &ctx.source_files) {
          continue;
       }
 
@@ -68,7 +67,7 @@ pub fn find_definition(sp: SourcePosition, document: &Path, ctx: &CompilationCon
    }
 
    for (source_span, definition_span) in ctx.program.source_to_definition.iter() {
-      if span_contains(*source_span, sp, document, &ctx.interner) {
+      if span_contains(*source_span, sp, document, &ctx.source_files) {
          return Some(*definition_span);
       }
    }

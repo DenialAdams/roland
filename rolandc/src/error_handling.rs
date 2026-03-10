@@ -4,8 +4,8 @@ use std::{env, fmt};
 
 use indexmap::IndexSet;
 
-use crate::interner::Interner;
-use crate::source_info::{SourceInfo, SourcePath};
+use crate::FileMap;
+use crate::source_info::SourceInfo;
 
 pub(crate) mod error_handling_macros {
    macro_rules! rolandc_error {
@@ -63,13 +63,13 @@ impl ErrorManager {
       self.warnings.clear();
    }
 
-   pub fn write_out_errors<W: Write>(&self, err_stream: &mut W, interner: &Interner, show_file_paths: bool) {
+   pub fn write_out_errors<W: Write>(&self, err_stream: &mut W, show_file_paths: bool, user_files: &FileMap) {
       let errs_unique: IndexSet<ErrorInfo> = self.errors.iter().cloned().collect();
-      write_out_error_buf(err_stream, interner, errs_unique.iter(), show_file_paths);
+      write_out_error_buf(err_stream, errs_unique.iter(), show_file_paths, user_files);
 
       if self.errors.is_empty() {
          let warns_unique: IndexSet<ErrorInfo> = self.warnings.iter().cloned().collect();
-         write_out_error_buf(err_stream, interner, warns_unique.iter(), show_file_paths);
+         write_out_error_buf(err_stream, warns_unique.iter(), show_file_paths, user_files);
       }
    }
 
@@ -109,9 +109,9 @@ impl ErrorManager {
 
 pub fn write_out_error_buf<'a, W: Write, I: IntoIterator<Item = &'a ErrorInfo>>(
    err_stream: &mut W,
-   interner: &Interner,
    buf: I,
    show_file_paths: bool,
+   user_files: &FileMap,
 ) {
    // Error paths refer to canonical paths - i.e. fully expanded, symlinks resolved, etc.
    // In an attempt to make the errors more concise, we remove the prefix
@@ -127,60 +127,57 @@ pub fn write_out_error_buf<'a, W: Write, I: IntoIterator<Item = &'a ErrorInfo>>(
       match &error.location {
          ErrorLocation::NoLocation => {}
          ErrorLocation::Simple(loc) => {
-            emit_source_info(err_stream, *loc, interner, &cwd_str, show_file_paths);
+            emit_source_info(err_stream, *loc, &cwd_str, show_file_paths, user_files);
          }
          ErrorLocation::WithDetails(locs) => {
             for (loc, label) in locs {
-               emit_source_info_with_description(err_stream, *loc, label, interner, &cwd_str, show_file_paths);
+               emit_source_info_with_description(err_stream, *loc, label, &cwd_str, show_file_paths, user_files);
             }
          }
       }
       for source in error.came_from_stack.iter().copied() {
-         emit_source_info_with_description(err_stream, source, "instantiation", interner, &cwd_str, show_file_paths);
+         emit_source_info_with_description(err_stream, source, "instantiation", &cwd_str, show_file_paths, user_files);
       }
    }
 }
 
-fn remove_base_dir_prefix<'a>(full_path: &'a str, base_dir: &str) -> &'a str {
-   full_path
-      .strip_prefix(base_dir)
-      .and_then(|x| x.strip_prefix(std::path::MAIN_SEPARATOR))
-      .unwrap_or(full_path)
-}
+fn emit_source_info<W: Write>(
+   err_stream: &mut W,
+   source_info: SourceInfo,
+   base_dir: &str,
+   show_file_paths: bool,
+   user_files: &FileMap,
+) {
+   let ((path, is_std), _file_contents) = user_files.get_index(source_info.file.0).unwrap();
 
-fn emit_source_info<W: Write>(err_stream: &mut W, source_info: SourceInfo, interner: &Interner, base_dir: &str, show_file_paths: bool) {
-   match source_info.file {
-      SourcePath::File(x) if show_file_paths => {
-         let path_str = remove_base_dir_prefix(interner.lookup(x), base_dir);
-         writeln!(
-            err_stream,
-            "↳ line {}, column {} [{}]",
-            source_info.begin.line + 1,
-            source_info.begin.col + 1,
-            path_str
-         )
-         .unwrap();
-      }
-      SourcePath::File(_) => {
-         writeln!(
-            err_stream,
-            "↳ line {}, column {}",
-            source_info.begin.line + 1,
-            source_info.begin.col + 1,
-         )
-         .unwrap();
-      }
-      SourcePath::Std(x) => {
-         let path_str = interner.lookup(x);
-         writeln!(
-            err_stream,
-            "↳ line {}, column {} [rolandc:{}]",
-            source_info.begin.line + 1,
-            source_info.begin.col + 1,
-            path_str
-         )
-         .unwrap();
-      }
+   if *is_std {
+      let path_str = path.to_string_lossy();
+      writeln!(
+         err_stream,
+         "↳ line {}, column {} [rolandc:{}]",
+         source_info.begin.line + 1,
+         source_info.begin.col + 1,
+         path_str
+      )
+      .unwrap();
+   } else if show_file_paths {
+      let path_str = path.strip_prefix(base_dir).unwrap_or(path).to_string_lossy();
+      writeln!(
+         err_stream,
+         "↳ line {}, column {} [{}]",
+         source_info.begin.line + 1,
+         source_info.begin.col + 1,
+         path_str
+      )
+      .unwrap();
+   } else {
+      writeln!(
+         err_stream,
+         "↳ line {}, column {}",
+         source_info.begin.line + 1,
+         source_info.begin.col + 1,
+      )
+      .unwrap();
    }
 }
 
@@ -188,44 +185,42 @@ fn emit_source_info_with_description<W: Write>(
    err_stream: &mut W,
    source_info: SourceInfo,
    description: &str,
-   interner: &Interner,
    base_dir: &str,
    show_file_paths: bool,
+   user_files: &FileMap,
 ) {
-   match source_info.file {
-      SourcePath::File(x) if show_file_paths => {
-         let path_str = remove_base_dir_prefix(interner.lookup(x), base_dir);
-         writeln!(
-            err_stream,
-            "↳ {} @ line {}, column {} [{}]",
-            description,
-            source_info.begin.line + 1,
-            source_info.begin.col + 1,
-            path_str,
-         )
-         .unwrap();
-      }
-      SourcePath::File(_) => {
-         writeln!(
-            err_stream,
-            "↳ {} @ line {}, column {}",
-            description,
-            source_info.begin.line + 1,
-            source_info.begin.col + 1,
-         )
-         .unwrap();
-      }
-      SourcePath::Std(x) => {
-         let path_str = interner.lookup(x);
-         writeln!(
-            err_stream,
-            "↳ {} @ line {}, column {} [rolandc:{}]",
-            description,
-            source_info.begin.line + 1,
-            source_info.begin.col + 1,
-            path_str
-         )
-         .unwrap();
-      }
+   let ((path, is_std), _file_contents) = user_files.get_index(source_info.file.0).unwrap();
+
+   if *is_std {
+      let path_str = path.to_string_lossy();
+      writeln!(
+         err_stream,
+         "↳ {} @ line {}, column {} [rolandc:{}]",
+         description,
+         source_info.begin.line + 1,
+         source_info.begin.col + 1,
+         path_str
+      )
+      .unwrap();
+   } else if show_file_paths {
+      let path_str = path.strip_prefix(base_dir).unwrap_or(path).to_string_lossy();
+      writeln!(
+         err_stream,
+         "↳ {} @ line {}, column {} [{}]",
+         description,
+         source_info.begin.line + 1,
+         source_info.begin.col + 1,
+         path_str,
+      )
+      .unwrap();
+   } else {
+      writeln!(
+         err_stream,
+         "↳ {} @ line {}, column {}",
+         description,
+         source_info.begin.line + 1,
+         source_info.begin.col + 1,
+      )
+      .unwrap();
    }
 }

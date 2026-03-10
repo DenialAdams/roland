@@ -15,9 +15,9 @@ use crate::parse::{
 use crate::semantic_analysis::validator::resolve_type;
 use crate::semantic_analysis::{AliasInfo, AliasTarget};
 use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
-use crate::source_info::{SourceInfo, SourcePath};
+use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, U8_TYPE, U16_TYPE, U32_TYPE, U64_TYPE};
-use crate::{BaseTarget, CompilationConfig, Program};
+use crate::{BaseTarget, CompilationConfig, FileMap, Program};
 
 fn recursive_struct_union_check(
    base_id: UserDefinedTypeId,
@@ -486,6 +486,7 @@ pub fn populate_type_and_procedure_info(
    err_manager: &mut ErrorManager,
    interner: &Interner,
    config: &CompilationConfig,
+   file_map: &FileMap,
 ) {
    populate_user_defined_type_info(program, err_manager, interner);
 
@@ -601,7 +602,7 @@ pub fn populate_type_and_procedure_info(
 
    let mut dupe_check = HashSet::new();
    for proc in program.procedures.values_mut() {
-      if proc.impl_source == ProcImplSource::Builtin && !source_is_std(proc.location, config) {
+      if proc.impl_source == ProcImplSource::Builtin && !source_is_std(proc.location, config, file_map) {
          rolandc_error!(
             err_manager,
             proc.location,
@@ -843,6 +844,6 @@ pub fn populate_type_and_procedure_info(
    }
 }
 
-fn source_is_std(source_location: SourceInfo, config: &CompilationConfig) -> bool {
-   matches!(source_location.file, SourcePath::Std(_)) || config.i_am_std
+fn source_is_std(source_location: SourceInfo, config: &CompilationConfig, file_map: &FileMap) -> bool {
+   file_map.get_index(source_location.file.0).unwrap().0.1 || config.i_am_std
 }
