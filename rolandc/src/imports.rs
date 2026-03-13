@@ -102,7 +102,7 @@ pub fn import_program<FR: FileResolver>(
       };
 
       if let Some(il) = import_location {
-         let dummy_sp = SourcePosition { line: 0, col: 0 };
+         let dummy_sp = SourcePosition(0);
          ctx.program.source_to_definition.insert(
             il.import_path.location,
             SourceInfo {

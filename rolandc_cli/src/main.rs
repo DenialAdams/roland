@@ -167,7 +167,8 @@ fn main() {
       &config,
    );
 
-   ctx.err_manager.write_out_errors(&mut err_stream_l, true, &ctx.source_files);
+   ctx.err_manager
+      .write_out_errors(&mut err_stream_l, true, &ctx.source_files);
 
    let Ok(compile_result) = compile_result else {
       std::process::exit(1);

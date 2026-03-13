@@ -1440,10 +1440,10 @@ fn parse_generic_arguments(
       let mut cur_source = *source_info;
       // update next token
       *tok = Token::GreaterThan;
-      source_info.begin.col += 1;
+      source_info.begin.0 += 1;
 
       // adjust the location of this "token"
-      cur_source.end.col -= 1;
+      cur_source.end.0 -= 1;
       cur_source
    } else {
       expect(l, parse_context, Token::GreaterThan)?.source_info

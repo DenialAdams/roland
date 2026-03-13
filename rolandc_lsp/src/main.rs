@@ -8,10 +8,10 @@ use std::path::PathBuf;
 
 use goto_definition::find_definition;
 use parking_lot::{Mutex, RwLock};
-use rolandc::error_handling::{ErrorInfo, ErrorLocation};
+use rolandc::error_handling::{ErrorInfo, ErrorLocation, ExpandedErrorLocation, convert_positions_to_line_column};
 use rolandc::source_info::{SourceInfo, SourcePath, SourcePosition};
 use rolandc::*;
-use tower_lsp_server::jsonrpc::Result;
+use tower_lsp_server::jsonrpc::{Error, ErrorCode, Result};
 use tower_lsp_server::ls_types::*;
 use tower_lsp_server::{Client, LanguageServer, LspService, Server};
 
@@ -64,39 +64,48 @@ fn roland_source_path_to_canon_path(source_path: &SourcePath, file_map: &FileMap
 fn roland_error_to_lsp_error(
    re: ErrorInfo,
    file_map: &FileMap,
+   err_locations: &HashMap<(SourcePath, usize), ExpandedErrorLocation>,
    severity: DiagnosticSeverity,
 ) -> (Option<PathBuf>, Diagnostic) {
    let (report_path, range, mut related_info) = match re.location {
-      ErrorLocation::Simple(x) => (
-         roland_source_path_to_canon_path(&x.file, file_map).map(|x| x.unwrap()),
-         Range {
-            start: Position {
-               line: x.begin.line as u32,
-               character: x.begin.col as u32,
+      ErrorLocation::Simple(x) => {
+         let (begin_line, begin_col) = err_locations[&(x.file, x.begin.0)];
+         let (end_line, end_col) = err_locations[&(x.file, x.end.0)];
+         (
+            roland_source_path_to_canon_path(&x.file, file_map).map(|x| x.unwrap()),
+            Range {
+               start: Position {
+                  line: begin_line as u32,
+                  character: begin_col as u32,
+               },
+               end: Position {
+                  line: end_line as u32,
+                  character: end_col as u32,
+               },
             },
-            end: Position {
-               line: x.end.line as u32,
-               character: x.end.col as u32,
+            Vec::new(),
+         )
+      }
+      ErrorLocation::WithDetails(x) => {
+         let (begin_line, begin_col) = err_locations[&(x[0].0.file, x[0].0.begin.0)];
+         let (end_line, end_col) = err_locations[&(x[0].0.file, x[0].0.end.0)];
+         (
+            roland_source_path_to_canon_path(&x[0].0.file, file_map).map(|x| x.unwrap()),
+            Range {
+               start: Position {
+                  line: begin_line as u32,
+                  character: begin_col as u32,
+               },
+               end: Position {
+                  line: end_line as u32,
+                  character: end_col as u32,
+               },
             },
-         },
-         Vec::new(),
-      ),
-      ErrorLocation::WithDetails(x) => (
-         roland_source_path_to_canon_path(&x[0].0.file, file_map).map(|x| x.unwrap()),
-         Range {
-            start: Position {
-               line: x[0].0.begin.line as u32,
-               character: x[0].0.begin.col as u32,
-            },
-            end: Position {
-               line: x[0].0.end.line as u32,
-               character: x[0].0.end.col as u32,
-            },
-         },
-         x.into_iter()
-            .flat_map(|x| rolandc_detail_to_diagnostic_detail(x, file_map))
-            .collect(),
-      ),
+            x.into_iter()
+               .flat_map(|x| rolandc_detail_to_diagnostic_detail(x, file_map, err_locations))
+               .collect(),
+         )
+      }
       // Reporting this error with a bogus location is... well, it works, but can look strange.
       // The problem is that there is no good way to report an error that truly has no associated location.
       // See https://github.com/microsoft/language-server-protocol/issues/256
@@ -111,7 +120,8 @@ fn roland_error_to_lsp_error(
    };
 
    for came_from in re.came_from_stack {
-      if let Some(d) = rolandc_detail_to_diagnostic_detail((came_from, "instantiation".into()), file_map) {
+      if let Some(d) = rolandc_detail_to_diagnostic_detail((came_from, "instantiation".into()), file_map, err_locations)
+      {
          related_info.push(d);
       }
    }
@@ -131,19 +141,22 @@ fn roland_error_to_lsp_error(
 fn rolandc_detail_to_diagnostic_detail(
    y: (SourceInfo, String),
    file_map: &FileMap,
+   err_locations: &HashMap<(SourcePath, usize), ExpandedErrorLocation>,
 ) -> Option<DiagnosticRelatedInformation> {
+   let (begin_line, begin_col) = err_locations[&(y.0.file, y.0.begin.0)];
+   let (end_line, end_col) = err_locations[&(y.0.file, y.0.end.0)];
    let path = roland_source_path_to_canon_path(&y.0.file, file_map).map(|x| x.unwrap());
    path.map(|sp| DiagnosticRelatedInformation {
       location: Location {
          uri: Uri::from_file_path(sp).unwrap(),
          range: Range {
             start: Position {
-               line: y.0.begin.line as u32,
-               character: y.0.begin.col as u32,
+               line: begin_line as u32,
+               character: begin_col as u32,
             },
             end: Position {
-               line: y.0.end.line as u32,
-               character: y.0.end.col as u32,
+               line: end_line as u32,
+               character: end_col as u32,
             },
          },
       },
@@ -204,12 +217,18 @@ impl Backend {
 
          // This obj local allows the subsequent split borrow to succeed
          let obj = ctx_ref.deref_mut();
-         let errs = &mut obj.err_manager.errors;
-         let warnings = &mut obj.err_manager.warnings;
          let file_map = &obj.source_files;
 
+         let err_location_map = obj
+            .err_manager
+            .map_all_err_locations_to_line_col::<false, true>(file_map);
+
+         let errs = &mut obj.err_manager.errors;
+         let warnings = &mut obj.err_manager.warnings;
+
          for err in errs.drain(..) {
-            let (bucket, lsp_error) = roland_error_to_lsp_error(err, file_map, DiagnosticSeverity::ERROR);
+            let (bucket, lsp_error) =
+               roland_error_to_lsp_error(err, file_map, &err_location_map, DiagnosticSeverity::ERROR);
             diagnostic_buckets
                .entry(bucket)
                .or_insert_with(Vec::new)
@@ -217,7 +236,8 @@ impl Backend {
          }
 
          for warning in warnings.drain(..) {
-            let (bucket, lsp_error) = roland_error_to_lsp_error(warning, file_map, DiagnosticSeverity::WARNING);
+            let (bucket, lsp_error) =
+               roland_error_to_lsp_error(warning, file_map, &err_location_map, DiagnosticSeverity::WARNING);
             diagnostic_buckets
                .entry(bucket)
                .or_insert_with(Vec::new)
@@ -241,6 +261,20 @@ impl Backend {
 
 impl LanguageServer for Backend {
    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+      if !params
+         .capabilities
+         .general
+         .and_then(|x| x.position_encodings)
+         .is_some_and(|x| x.contains(&PositionEncodingKind::UTF8))
+      {
+         return Err(Error {
+            code: ErrorCode::InvalidParams,
+            message: Cow::Borrowed(
+               "The roland language server only supports UTF-8 position encoding, but the client did not advertise this capability.",
+            ),
+            data: None,
+         });
+      }
       // TODO: this just takes the first root path
       #[allow(clippy::never_loop)]
       for root_path in params
@@ -292,6 +326,7 @@ impl LanguageServer for Backend {
                   },
                })),
                text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+               position_encoding: Some(PositionEncodingKind::UTF8),
                ..Default::default()
             },
             ..Default::default()
@@ -306,6 +341,7 @@ impl LanguageServer for Backend {
                },
             })),
             text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+            position_encoding: Some(PositionEncodingKind::UTF8),
             ..Default::default()
          },
          ..Default::default()
@@ -327,49 +363,8 @@ impl LanguageServer for Backend {
    async fn goto_definition(&self, params: GotoDefinitionParams) -> Result<Option<GotoDefinitionResponse>> {
       let given_document = params.text_document_position_params.text_document;
       let given_location = params.text_document_position_params.position;
-      if let Some(p) = given_document.uri.to_file_path() {
-         if let Ok(canon_path) = std::fs::canonicalize(p) {
-            let ctx = self.ctx.lock();
-            if let Some(si) = find_definition(
-               SourcePosition {
-                  line: given_location.line as usize,
-                  col: given_location.character as usize,
-               },
-               &canon_path,
-               &ctx,
-            ) {
-               let dest_range = Range {
-                  start: Position {
-                     line: si.begin.line as u32,
-                     character: si.begin.col as u32,
-                  },
-                  end: Position {
-                     line: si.end.line as u32,
-                     character: si.end.col as u32,
-                  },
-               };
-               let target_path = roland_source_path_to_canon_path(&si.file, &ctx.source_files);
-               return Ok(target_path.map(|x| {
-                  GotoDefinitionResponse::Link(vec![LocationLink {
-                     origin_selection_range: None,
-                     target_uri: Uri::from_file_path(x.unwrap()).unwrap(),
-                     target_range: dest_range,
-                     target_selection_range: dest_range,
-                  }])
-               }));
-            } else {
-               return Ok(None);
-            }
-         } else {
-            self
-               .client
-               .log_message(
-                  MessageType::WARNING,
-                  format!("Can't canonicalize path: {:?}", given_document.uri),
-               )
-               .await;
-         }
-      } else {
+
+      let Some(p) = given_document.uri.to_file_path() else {
          self
             .client
             .log_message(
@@ -380,9 +375,71 @@ impl LanguageServer for Backend {
                ),
             )
             .await;
-      }
+         return Ok(None);
+      };
 
-      Ok(None)
+      let Ok(canon_path) = std::fs::canonicalize(p) else {
+         self
+            .client
+            .log_message(
+               MessageType::WARNING,
+               format!("Can't canonicalize path: {:?}", given_document.uri),
+            )
+            .await;
+         return Ok(None);
+      };
+
+      let source_pos: SourcePosition = {
+         let opened_files = self.opened_files.read();
+         let buf = opened_files
+            .get(&canon_path)
+            .map_or("", |x| &x.0)
+            .as_bytes();
+
+         let start_of_line_idx = if given_location.line == 0 {
+            0
+         } else {
+            match memchr::memchr_iter(b'\n', buf).nth((given_location.line - 1) as usize) {
+               Some(nl_idx) => nl_idx + 1,
+               None => return Ok(None),
+            }
+         };
+
+         SourcePosition(start_of_line_idx + given_location.character as usize)
+      };
+      let ctx = self.ctx.lock();
+      if let Some(si) = find_definition(source_pos, &canon_path, &ctx) {
+         let mut res: HashMap<(SourcePath, usize), ExpandedErrorLocation> = HashMap::new();
+         convert_positions_to_line_column::<false, _>(
+            vec![si.end.0, si.begin.0],
+            si.file,
+            ctx.source_files.get_index(si.file.0).unwrap().1,
+            &mut res,
+         );
+         let (start_line, start_col) = res[&(si.file, si.begin.0)];
+         let (end_line, end_col) = res[&(si.file, si.begin.0)];
+         let dest_range = Range {
+            start: Position {
+               line: start_line as u32,
+               character: start_col as u32,
+            },
+            end: Position {
+               line: end_line as u32,
+               character: end_col as u32,
+            },
+         };
+         let target_path = roland_source_path_to_canon_path(&si.file, &ctx.source_files);
+         Ok(target_path.map(|x| {
+            GotoDefinitionResponse::Link(vec![LocationLink {
+               origin_selection_range: None,
+               target_uri: Uri::from_file_path(x.unwrap()).unwrap(),
+               target_range: dest_range,
+               target_selection_range: dest_range,
+            }])
+         }))
+      } else {
+         Ok(None)
+      }
    }
 
    async fn did_open(&self, params: DidOpenTextDocumentParams) {

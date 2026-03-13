@@ -250,7 +250,7 @@ pub fn lex_for_tokens(
    let mut tokens: Vec<SourceToken> = Vec::new();
    let mut mode = LexMode::Normal;
 
-   let mut cur_position = SourcePosition { line: 0, col: 0 };
+   let mut cur_position = SourcePosition(0);
 
    // Temporary buffer we use in various parts of the lexer
    let mut str_buf = CharCountingBuffer {
@@ -271,61 +271,57 @@ pub fn lex_for_tokens(
    while let Some(c) = next_char {
       match mode {
          LexMode::Normal => {
-            if c == '\n' {
-               cur_position.line += 1;
-               cur_position.col = 0;
-               next_char = chars.next();
-            } else if c.is_whitespace() {
-               cur_position.col += 1;
+            if c.is_whitespace() {
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '"' {
                mode = LexMode::StringLiteral;
                str_begin = cur_position;
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '{' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::OpenBrace,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '}' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::CloseBrace,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '(' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::OpenParen,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == ')' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::CloseParen,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == ':' {
                next_char = chars.next();
@@ -333,45 +329,45 @@ pub fn lex_for_tokens(
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.col_plus(2),
+                        end: cur_position.index_plus(2),
                         file: source_path,
                      },
                      token: Token::DoubleColon,
                   });
-                  cur_position.col += 2;
+                  cur_position.0 += 2;
                   next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.next_col(),
+                        end: cur_position.next_index(),
                         file: source_path,
                      },
                      token: Token::Colon,
                   });
-                  cur_position.col += 1;
+                  cur_position.0 += 1;
                }
             } else if c == ';' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::Semicolon,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '+' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::Plus,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '-' {
                next_char = chars.next();
@@ -379,117 +375,117 @@ pub fn lex_for_tokens(
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.col_plus(2),
+                        end: cur_position.index_plus(2),
                         file: source_path,
                      },
                      token: Token::Arrow,
                   });
-                  cur_position.col += 2;
+                  cur_position.0 += 2;
                   next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.next_col(),
+                        end: cur_position.next_index(),
                         file: source_path,
                      },
                      token: Token::Minus,
                   });
-                  cur_position.col += 1;
+                  cur_position.0 += 1;
                }
             } else if c == '*' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::Multiply,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '/' {
                next_char = chars.next();
                if next_char == Some('/') {
                   next_char = chars.next();
                   mode = LexMode::Comment;
-                  cur_position.col += 2;
+                  cur_position.0 += 2;
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.next_col(),
+                        end: cur_position.next_index(),
                         file: source_path,
                      },
                      token: Token::Divide,
                   });
-                  cur_position.col += 1;
+                  cur_position.0 += 1;
                }
             } else if c == '%' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::Remainder,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '$' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::Dollar,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == ',' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::Comma,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '&' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::Amp,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '^' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::Caret,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '|' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::Pipe,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '=' {
                next_char = chars.next();
@@ -497,23 +493,23 @@ pub fn lex_for_tokens(
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.col_plus(2),
+                        end: cur_position.index_plus(2),
                         file: source_path,
                      },
                      token: Token::Equality,
                   });
-                  cur_position.col += 2;
+                  cur_position.0 += 2;
                   next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.next_col(),
+                        end: cur_position.next_index(),
                         file: source_path,
                      },
                      token: Token::Assignment,
                   });
-                  cur_position.col += 1;
+                  cur_position.0 += 1;
                }
             } else if c == '>' {
                next_char = chars.next();
@@ -521,34 +517,34 @@ pub fn lex_for_tokens(
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.col_plus(2),
+                        end: cur_position.index_plus(2),
                         file: source_path,
                      },
                      token: Token::GreaterThanOrEqualTo,
                   });
-                  cur_position.col += 2;
+                  cur_position.0 += 2;
                   next_char = chars.next();
                } else if next_char == Some('>') {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.col_plus(2),
+                        end: cur_position.index_plus(2),
                         file: source_path,
                      },
                      token: Token::ShiftRight,
                   });
-                  cur_position.col += 2;
+                  cur_position.0 += 2;
                   next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.next_col(),
+                        end: cur_position.next_index(),
                         file: source_path,
                      },
                      token: Token::GreaterThan,
                   });
-                  cur_position.col += 1;
+                  cur_position.0 += 1;
                }
             } else if c == '<' {
                next_char = chars.next();
@@ -556,34 +552,34 @@ pub fn lex_for_tokens(
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.col_plus(2),
+                        end: cur_position.index_plus(2),
                         file: source_path,
                      },
                      token: Token::LessThanOrEqualTo,
                   });
-                  cur_position.col += 2;
+                  cur_position.0 += 2;
                   next_char = chars.next();
                } else if next_char == Some('<') {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.col_plus(2),
+                        end: cur_position.index_plus(2),
                         file: source_path,
                      },
                      token: Token::ShiftLeft,
                   });
-                  cur_position.col += 2;
+                  cur_position.0 += 2;
                   next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.next_col(),
+                        end: cur_position.next_index(),
                         file: source_path,
                      },
                      token: Token::LessThan,
                   });
-                  cur_position.col += 1;
+                  cur_position.0 += 1;
                }
             } else if c == '!' {
                next_char = chars.next();
@@ -591,23 +587,23 @@ pub fn lex_for_tokens(
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.col_plus(2),
+                        end: cur_position.index_plus(2),
                         file: source_path,
                      },
                      token: Token::NotEquality,
                   });
-                  cur_position.col += 2;
+                  cur_position.0 += 2;
                   next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.next_col(),
+                        end: cur_position.next_index(),
                         file: source_path,
                      },
                      token: Token::Exclam,
                   });
-                  cur_position.col += 1;
+                  cur_position.0 += 1;
                }
             } else if c == '.' {
                next_char = chars.next();
@@ -618,66 +614,66 @@ pub fn lex_for_tokens(
                      tokens.push(SourceToken {
                         source_info: SourceInfo {
                            begin: cur_position,
-                           end: cur_position.col_plus(3),
+                           end: cur_position.index_plus(3),
                            file: source_path,
                         },
                         token: Token::TriplePeriod,
                      });
-                     cur_position.col += 3;
+                     cur_position.0 += 3;
                   } else {
                      tokens.push(SourceToken {
                         source_info: SourceInfo {
                            begin: cur_position,
-                           end: cur_position.col_plus(2),
+                           end: cur_position.index_plus(2),
                            file: source_path,
                         },
                         token: Token::DoublePeriod,
                      });
-                     cur_position.col += 2;
+                     cur_position.0 += 2;
                   }
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.next_col(),
+                        end: cur_position.next_index(),
                         file: source_path,
                      },
                      token: Token::Period,
                   });
-                  cur_position.col += 1;
+                  cur_position.0 += 1;
                }
             } else if c == '[' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::OpenSquareBracket,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == ']' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::CloseSquareBracket,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '~' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::Deref,
                });
-               cur_position.col += 1;
+               cur_position.0 += 1;
                next_char = chars.next();
             } else if c.is_ascii_digit() {
                mode = LexMode::NumericLiteral;
@@ -688,7 +684,7 @@ pub fn lex_for_tokens(
                   err_manager,
                   SourceInfo {
                      begin: cur_position,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   "Encountered unexpected character {}",
@@ -713,12 +709,12 @@ pub fn lex_for_tokens(
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.col_plus(str_buf.length_in_chars),
+                        end: cur_position.index_plus(str_buf.length_in_chars),
                         file: source_path,
                      },
                      token: Token::TripleUnderscore,
                   });
-                  cur_position.col += str_buf.clear();
+                  cur_position.0 += str_buf.clear();
                   mode = LexMode::Normal;
                }
             } else {
@@ -726,12 +722,12 @@ pub fn lex_for_tokens(
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.col_plus(str_buf.length_in_chars),
+                     end: cur_position.index_plus(str_buf.length_in_chars),
                      file: source_path,
                   },
                   token: resulting_token,
                });
-               cur_position.col += str_buf.clear();
+               cur_position.0 += str_buf.clear();
                mode = LexMode::Normal;
             }
          }
@@ -741,7 +737,7 @@ pub fn lex_for_tokens(
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: str_begin,
-                     end: cur_position.next_col(),
+                     end: cur_position.next_index(),
                      file: source_path,
                   },
                   token: Token::StringLiteral(final_str),
@@ -753,12 +749,7 @@ pub fn lex_for_tokens(
             } else {
                str_buf.push(c);
             }
-            if c == '\n' {
-               cur_position.line += 1;
-               cur_position.col = 0;
-            } else {
-               cur_position.col += 1;
-            }
+            cur_position.0 += 1;
             next_char = chars.next();
          }
          LexMode::StringLiteralEscape => {
@@ -775,11 +766,8 @@ pub fn lex_for_tokens(
             } else if c == '"' {
                str_buf.push('"');
             } else {
-               let escape_begin = SourcePosition {
-                  col: cur_position.col - 1,
-                  line: cur_position.line,
-               };
-               cur_position.col += 1;
+               let escape_begin = SourcePosition(cur_position.0 - 1);
+               cur_position.0 += 1;
                rolandc_error!(
                   err_manager,
                   SourceInfo {
@@ -817,12 +805,12 @@ pub fn lex_for_tokens(
                      err_manager,
                      SourceInfo {
                         begin: cur_position,
-                        end: cur_position.col_plus(str_buf.length_in_chars),
+                        end: cur_position.index_plus(str_buf.length_in_chars),
                         file: source_path,
                      },
                      is_float,
                   )?);
-                  cur_position.col += str_buf.clear();
+                  cur_position.0 += str_buf.clear();
                   is_float = false;
                   mode = LexMode::Normal;
 
@@ -830,12 +818,12 @@ pub fn lex_for_tokens(
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.col_plus(2),
+                        end: cur_position.index_plus(2),
                         file: source_path,
                      },
                      token: Token::DoublePeriod,
                   });
-                  cur_position.col += 2;
+                  cur_position.0 += 2;
                } else if !is_float {
                   is_float = true;
                   str_buf.push(c);
@@ -845,12 +833,12 @@ pub fn lex_for_tokens(
                      err_manager,
                      SourceInfo {
                         begin: cur_position,
-                        end: cur_position.col_plus(str_buf.length_in_chars),
+                        end: cur_position.index_plus(str_buf.length_in_chars),
                         file: source_path,
                      },
                      is_float,
                   )?);
-                  cur_position.col += str_buf.clear();
+                  cur_position.0 += str_buf.clear();
                   is_float = false;
                   mode = LexMode::Normal;
                }
@@ -860,12 +848,12 @@ pub fn lex_for_tokens(
                   err_manager,
                   SourceInfo {
                      begin: cur_position,
-                     end: cur_position.col_plus(str_buf.length_in_chars),
+                     end: cur_position.index_plus(str_buf.length_in_chars),
                      file: source_path,
                   },
                   is_float,
                )?);
-               cur_position.col += str_buf.clear();
+               cur_position.0 += str_buf.clear();
                is_float = false;
                mode = LexMode::Normal;
             }
@@ -882,24 +870,21 @@ pub fn lex_for_tokens(
                   err_manager,
                   SourceInfo {
                      begin: cur_position,
-                     end: cur_position.col_plus(str_buf.length_in_chars),
+                     end: cur_position.index_plus(str_buf.length_in_chars),
                      file: source_path,
                   },
                   is_float,
                )?);
-               cur_position.col += str_buf.clear();
+               cur_position.0 += str_buf.clear();
                is_float = false;
                mode = LexMode::Normal;
             }
          }
          LexMode::Comment => {
             if c == '\n' {
-               cur_position.col = 0;
-               cur_position.line += 1;
                mode = LexMode::Normal;
-            } else {
-               cur_position.col += 1;
             }
+            cur_position.0 += 1;
             next_char = chars.next();
          }
       }
@@ -913,7 +898,7 @@ pub fn lex_for_tokens(
          tokens.push(SourceToken {
             source_info: SourceInfo {
                begin: cur_position,
-               end: cur_position.col_plus(str_buf.length_in_chars),
+               end: cur_position.index_plus(str_buf.length_in_chars),
                file: source_path,
             },
             token: resulting_token,
@@ -927,7 +912,7 @@ pub fn lex_for_tokens(
             err_manager,
             SourceInfo {
                begin: cur_position,
-               end: cur_position.col_plus(str_buf.length_in_chars),
+               end: cur_position.index_plus(str_buf.length_in_chars),
                file: source_path,
             },
             is_float,
@@ -1018,8 +1003,8 @@ impl Lexer {
    pub fn from_tokens(tokens: Vec<SourceToken>, file: SourcePath) -> Lexer {
       let eof_location = tokens.last().map_or(
          SourceInfo {
-            begin: SourcePosition { line: 0, col: 0 },
-            end: SourcePosition { line: 0, col: 0 },
+            begin: SourcePosition(0),
+            end: SourcePosition(0),
             file,
          },
          |x| SourceInfo {
@@ -1064,5 +1049,16 @@ impl Lexer {
          self.cur_position += 1;
          self.tokens[self.cur_position - 1]
       }
+   }
+}
+
+#[cfg(test)]
+mod tests {
+   use super::*;
+
+   // TODO: replace with static assert when rust can support it without a feature
+   #[test]
+   fn no_token_bloat() {
+      assert_eq!(std::mem::size_of::<SourceToken>(), 40);
    }
 }

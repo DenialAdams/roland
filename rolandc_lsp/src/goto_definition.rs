@@ -1,34 +1,15 @@
 use std::path::Path;
 
-use rolandc::{CompilationContext, FileMap};
 use rolandc::parse::UserDefinedTypeId;
 use rolandc::source_info::{SourceInfo, SourcePosition};
 use rolandc::type_data::ExpressionType;
+use rolandc::{CompilationContext, FileMap};
 
 use crate::roland_source_path_to_canon_path;
 
 #[must_use]
 fn span_contains(span: SourceInfo, location: SourcePosition, document: &Path, file_map: &FileMap) -> bool {
-   let span_begin = span.begin;
-   let span_end = span.end;
-
-   #[allow(clippy::if_same_then_else)]
-   let in_range_of_span = if location.line > span_begin.line && location.line < span_end.line {
-      // the line is entirely contained
-      true
-   } else if location.line > span_begin.line && location.line == span_end.line && location.col <= span_end.col {
-      // the location is in the last line of the span
-      true
-   } else if location.line == span_begin.line && location.line < span_end.line && location.col >= span_begin.col {
-      // the location is in the first line of the span
-      true
-   } else {
-      // the span is single line and the location is in it
-      location.line == span_begin.line
-         && location.col >= span_begin.col
-         && location.line == span_end.line
-         && location.col <= span_end.col
-   };
+   let in_range_of_span = location.0 >= span.begin.0 && location.0 <= span.end.0;
 
    if in_range_of_span {
       // now verify the document matches (allocates)

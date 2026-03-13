@@ -1252,6 +1252,7 @@ dependencies = [
  "hashbrown 0.16.1",
  "include_dir",
  "indexmap",
+ "memchr",
  "slotmap",
  "unicode-ident",
  "wasm-encoder 0.245.1",
@@ -1272,6 +1273,7 @@ dependencies = [
 name = "rolandc_lsp"
 version = "0.1.0"
 dependencies = [
+ "memchr",
  "parking_lot",
  "rolandc",
  "tokio",
