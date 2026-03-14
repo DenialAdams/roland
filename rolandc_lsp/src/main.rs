@@ -391,10 +391,7 @@ impl LanguageServer for Backend {
 
       let source_pos: SourcePosition = {
          let opened_files = self.opened_files.read();
-         let buf = opened_files
-            .get(&canon_path)
-            .map_or("", |x| &x.0)
-            .as_bytes();
+         let buf = opened_files.get(&canon_path).map_or("", |x| &x.0).as_bytes();
 
          let start_of_line_idx = if given_location.line == 0 {
             0
