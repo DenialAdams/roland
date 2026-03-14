@@ -15,5 +15,8 @@ libwild = "0.8"
 # After updating libwild we can toss this 
 perf-event = "=0.4.8"
 
+[target.'cfg(target_env = "musl")'.dependencies]
+mimalloc = { version = "*", features = ["v3"] }
+
 [features]
 dhat-heap = ["dep:dhat"]

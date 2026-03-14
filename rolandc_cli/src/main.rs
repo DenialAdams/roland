@@ -17,6 +17,10 @@ use rolandc::{BaseTarget, CompilationContext, CompilationEntryPoint, FileResolve
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 const HELP: &str = r"
 Usage: rolandc (source.rol) [OPTION]*
 
