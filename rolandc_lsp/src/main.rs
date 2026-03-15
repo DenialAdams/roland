@@ -8,10 +8,12 @@ use std::path::PathBuf;
 
 use goto_definition::find_definition;
 use parking_lot::{Mutex, RwLock};
-use rolandc::error_handling::{ErrorInfo, ErrorLocation, ExpandedErrorLocation, convert_positions_to_line_column};
+use rolandc::error_handling::{
+   ColumnCountingCodeUnits, ErrorInfo, ErrorLocation, ExpandedErrorLocation, convert_positions_to_line_column,
+};
 use rolandc::source_info::{SourceInfo, SourcePath, SourcePosition};
 use rolandc::*;
-use tower_lsp_server::jsonrpc::{Error, ErrorCode, Result};
+use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::*;
 use tower_lsp_server::{Client, LanguageServer, LspService, Server};
 
@@ -52,6 +54,7 @@ impl FileResolver for LSPFileResolver<'_> {
 struct Backend {
    client: Client,
    mode: RwLock<WorkspaceMode>,
+   column_encoding: RwLock<PositionEncodingKind>,
    opened_files: RwLock<HashMap<PathBuf, (String, i32)>>,
    ctx: Mutex<CompilationContext>,
 }
@@ -223,9 +226,13 @@ impl Backend {
          let obj = ctx_ref.deref_mut();
          let file_map = &obj.source_files;
 
-         let err_location_map = obj
-            .err_manager
-            .map_all_err_locations_to_line_col::<false, true>(file_map);
+         let err_location_map = if *self.column_encoding.read() == PositionEncodingKind::UTF8 {
+            obj.err_manager
+               .map_all_err_locations_to_line_col::<{ ColumnCountingCodeUnits::Utf8 }, true>(file_map)
+         } else {
+            obj.err_manager
+               .map_all_err_locations_to_line_col::<{ ColumnCountingCodeUnits::Utf16 }, true>(file_map)
+         };
 
          let errs = &mut obj.err_manager.errors;
          let warnings = &mut obj.err_manager.warnings;
@@ -265,20 +272,21 @@ impl Backend {
 
 impl LanguageServer for Backend {
    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
-      if !params
+      let chosen_column_encoding = if params
          .capabilities
          .general
          .and_then(|x| x.position_encodings)
          .is_some_and(|x| x.contains(&PositionEncodingKind::UTF8))
       {
-         return Err(Error {
-            code: ErrorCode::InvalidParams,
-            message: Cow::Borrowed(
-               "The roland language server only supports UTF-8 position encoding, but the client did not advertise this capability.",
-            ),
-            data: None,
-         });
-      }
+         // fastest for rolandc to decode, since it stores text as utf-8
+         // and can just subtract instead of counting utf-16 code units
+         // this is pure hopium, vscode doesn't support this and never will.
+         PositionEncodingKind::UTF8
+      } else {
+         // allegedly always supported
+         PositionEncodingKind::UTF16
+      };
+
       // TODO: this just takes the first root path
       #[allow(clippy::never_loop)]
       for root_path in params
@@ -322,6 +330,7 @@ impl LanguageServer for Backend {
             WorkspaceMode::LooseFiles
          };
          *self.mode.write() = mode;
+         *self.column_encoding.write() = chosen_column_encoding.clone();
          return Ok(InitializeResult {
             capabilities: ServerCapabilities {
                definition_provider: Some(OneOf::Right(DefinitionOptions {
@@ -330,7 +339,7 @@ impl LanguageServer for Backend {
                   },
                })),
                text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
-               position_encoding: Some(PositionEncodingKind::UTF8),
+               position_encoding: Some(chosen_column_encoding),
                ..Default::default()
             },
             ..Default::default()
@@ -345,7 +354,7 @@ impl LanguageServer for Backend {
                },
             })),
             text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
-            position_encoding: Some(PositionEncodingKind::UTF8),
+            position_encoding: Some(chosen_column_encoding),
             ..Default::default()
          },
          ..Default::default()
@@ -411,12 +420,21 @@ impl LanguageServer for Backend {
       let ctx = self.ctx.lock();
       if let Some(si) = find_definition(source_pos, &canon_path, &ctx) {
          let mut res: HashMap<(SourcePath, usize), ExpandedErrorLocation> = HashMap::new();
-         convert_positions_to_line_column::<false, _>(
-            vec![si.end.0, si.begin.0],
-            si.file,
-            ctx.source_files.get_index(si.file.0).unwrap().1,
-            &mut res,
-         );
+         if *self.column_encoding.read() == PositionEncodingKind::UTF8 {
+            convert_positions_to_line_column::<{ ColumnCountingCodeUnits::Utf8 }, _>(
+               vec![si.end.0, si.begin.0],
+               si.file,
+               ctx.source_files.get_index(si.file.0).unwrap().1,
+               &mut res,
+            );
+         } else {
+            convert_positions_to_line_column::<{ ColumnCountingCodeUnits::Utf16 }, _>(
+               vec![si.end.0, si.begin.0],
+               si.file,
+               ctx.source_files.get_index(si.file.0).unwrap().1,
+               &mut res,
+            );
+         }
          let (start_line, start_col) = res[&(si.file, si.begin.0)];
          let (end_line, end_col) = res[&(si.file, si.begin.0)];
          let dest_range = Range {
@@ -508,6 +526,7 @@ async fn main() {
    let (stdin, stdout) = (tokio::io::stdin(), tokio::io::stdout());
    let (service, socket) = LspService::new(|client| Backend {
       client,
+      column_encoding: RwLock::new(PositionEncodingKind::UTF8),
       mode: RwLock::new(WorkspaceMode::LooseFiles),
       opened_files: RwLock::new(HashMap::new()),
       ctx: Mutex::new(CompilationContext::new()),

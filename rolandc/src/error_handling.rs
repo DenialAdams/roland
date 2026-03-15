@@ -66,7 +66,7 @@ impl ErrorManager {
    }
 
    #[must_use]
-   pub fn map_all_err_locations_to_line_col<const COLUMN_IS_CHARS: bool, const INCLUDE_END_LOCATIONS: bool>(
+   pub fn map_all_err_locations_to_line_col<const COLUMN_COUNTING_METHOD: u8, const INCLUDE_END_LOCATIONS: bool>(
       &self,
       user_files: &FileMap,
    ) -> HashMap<(SourcePath, usize), ExpandedErrorLocation> {
@@ -100,14 +100,19 @@ impl ErrorManager {
 
       let mut res: HashMap<(SourcePath, usize), ExpandedErrorLocation> = HashMap::new();
       for (k, v) in all_source_locations_by_path.drain() {
-         convert_positions_to_line_column::<COLUMN_IS_CHARS, _>(v, k, user_files.get_index(k.0).unwrap().1, &mut res);
+         convert_positions_to_line_column::<COLUMN_COUNTING_METHOD, _>(
+            v,
+            k,
+            user_files.get_index(k.0).unwrap().1,
+            &mut res,
+         );
       }
 
       res
    }
 
    pub fn write_out_errors<W: Write>(&self, err_stream: &mut W, show_file_paths: bool, user_files: &FileMap) {
-      let res = self.map_all_err_locations_to_line_col::<true, false>(user_files);
+      let res = self.map_all_err_locations_to_line_col::<{ ColumnCountingCodeUnits::Utf32 }, false>(user_files);
 
       let errs_unique: IndexSet<ErrorInfo> = self.errors.iter().cloned().collect();
       write_out_error_buf(err_stream, errs_unique.iter(), show_file_paths, user_files, &res);
@@ -154,7 +159,24 @@ impl ErrorManager {
 
 pub type ExpandedErrorLocation = (usize, usize);
 
-pub fn convert_positions_to_line_column<const COLUMN_IS_CHARS: bool, S: BuildHasher>(
+pub mod ColumnCountingCodeUnits {
+   #![allow(non_snake_case)] // faking an enum
+   #![allow(non_upper_case_globals)] // faking an enum
+   pub const Utf8: u8 = 0; // equivalent to byte length
+   pub const Utf16: u8 = 1;
+   pub const Utf32: u8 = 2;
+}
+
+fn count_column<const COLUMN_COUNTING_METHOD: u8>(start_of_line_to_column_span: &str) -> usize {
+   match COLUMN_COUNTING_METHOD {
+      ColumnCountingCodeUnits::Utf8 => start_of_line_to_column_span.len(),
+      ColumnCountingCodeUnits::Utf16 => start_of_line_to_column_span.encode_utf16().count(),
+      ColumnCountingCodeUnits::Utf32 => start_of_line_to_column_span.chars().count(),
+      _ => unreachable!(),
+   }
+}
+
+pub fn convert_positions_to_line_column<const COLUMN_COUNTING_METHOD: u8, S: BuildHasher>(
    mut indices: Vec<usize>,
    path: SourcePath,
    file_contents: &str,
@@ -179,22 +201,14 @@ pub fn convert_positions_to_line_column<const COLUMN_IS_CHARS: bool, S: BuildHas
          }
          let _ = indices.pop();
          debug_assert!(file_contents.is_char_boundary(next_index_to_convert));
-         let col = if COLUMN_IS_CHARS {
-            file_contents[current_index..next_index_to_convert].chars().count()
-         } else {
-            next_index_to_convert - current_index
-         };
+         let col = count_column::<COLUMN_COUNTING_METHOD>(&file_contents[current_index..next_index_to_convert]);
          out_error_locations.insert((path, next_index_to_convert), (current_line, col));
       }
       return;
    }
    while let Some(next_index_to_convert) = indices.pop() {
       debug_assert!(file_contents.is_char_boundary(next_index_to_convert));
-      let col = if COLUMN_IS_CHARS {
-         file_contents[current_index..next_index_to_convert].chars().count()
-      } else {
-         next_index_to_convert - current_index
-      };
+      let col = count_column::<COLUMN_COUNTING_METHOD>(&file_contents[current_index..next_index_to_convert]);
       out_error_locations.insert((path, next_index_to_convert), (current_line, col));
    }
 }
