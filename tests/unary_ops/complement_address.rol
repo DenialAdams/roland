@@ -1,0 +1,14 @@
+// The point of this test is to create some strange IR, covering the atypical space where a variable's address is
+// the target of unary op other than dereference.
+
+proc main() {
+    let y = complement_address();
+    println(int_to_string(y as i64));
+}
+
+proc complement_address() -> usize {
+    let x = true;
+    return !(&x transmute usize);
+}
+__END__
+compile:

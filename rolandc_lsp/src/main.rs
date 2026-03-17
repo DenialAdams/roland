@@ -436,7 +436,7 @@ impl LanguageServer for Backend {
             );
          }
          let (start_line, start_col) = res[&(si.file, si.begin.0)];
-         let (end_line, end_col) = res[&(si.file, si.begin.0)];
+         let (end_line, end_col) = res[&(si.file, si.end.0)];
          let dest_range = Range {
             start: Position {
                line: start_line as u32,
