@@ -215,10 +215,10 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget)
                   // The reaching def of this var must not have changed between this use and the def
                   let reaching_defs_of_v_here = &reaching_defs.get(&reaching_var).unwrap_or(&empty_definitions);
                   if !var_rd.iter().all(|def_this_val_came_from| {
-                     let Definition::DefinedAt(loc) = def_this_val_came_from else {
+                     let Definition::DefinedAt(def_loc) = def_this_val_came_from else {
                         unreachable!()
                      };
-                     all_reaching_defs[loc].get(&reaching_var).unwrap_or(&empty_definitions) == *reaching_defs_of_v_here
+                     all_reaching_defs[def_loc].get(&reaching_var).unwrap_or(&empty_definitions) == *reaching_defs_of_v_here
                   }) {
                      return None;
                   }
