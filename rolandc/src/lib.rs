@@ -492,7 +492,25 @@ pub fn compile<FR: FileResolver>(
 
    let regalloc_result = {
       if config.target.base_target() == BaseTarget::Qbe {
-         backend::regalloc::hoist_non_temp_var_uses(&mut ctx.program, config.target.base_target());
+         if config.dump_debugging_info {
+            pp::pp(
+               &ctx.program,
+               &ctx.interner,
+               &mut std::fs::File::create("pp_before.rol").unwrap(),
+            )
+            .unwrap();
+         }
+
+         backend::regalloc::hoist_non_temp_loads_stores(&mut ctx.program, config.target.base_target());
+
+         if config.dump_debugging_info {
+            pp::pp(
+               &ctx.program,
+               &ctx.interner,
+               &mut std::fs::File::create("pp_after.rol").unwrap(),
+            )
+            .unwrap();
+         }
       }
       let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
       for (id, body) in ctx.program.procedure_bodies.iter_mut() {

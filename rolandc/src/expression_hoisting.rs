@@ -2,15 +2,13 @@ use std::collections::HashSet;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::BaseTarget;
 use crate::constant_folding::{expression_could_have_side_effects, is_non_aggregate_const};
 use crate::interner::Interner;
 use crate::parse::{
    AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement, StatementId,
-   StatementNode, UnOp, UserDefinedTypeInfo, VariableId,
+   StatementNode, UnOp, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
-use crate::size_info::sizeof_type_mem;
 use crate::type_data::{ExpressionType, U8_TYPE, USIZE_TYPE};
 
 #[derive(Copy, Clone, PartialEq)]
@@ -39,7 +37,6 @@ struct VvContext<'a> {
    exprs_to_hoist: Vec<ExprWithContainingStmtIndex>,
    statements_that_need_hoisting: Vec<usize>,
    mode: HoistingMode,
-   user_defined_types: &'a UserDefinedTypeInfo,
    interner: &'a Interner,
 }
 
@@ -73,7 +70,6 @@ pub fn expression_hoisting(program: &mut Program, interner: &Interner, mode: Hoi
       exprs_to_hoist: Vec::new(),
       statements_that_need_hoisting: Vec::new(),
       mode,
-      user_defined_types: &program.user_defined_types,
       interner,
    };
 
@@ -548,13 +544,7 @@ fn vv_expr(
       },
       HoistingMode::ThreeAddressCode => {
          let is_ifx = matches!(expressions[expr_index].expression, Expression::IfX(_, _, _));
-         let is_effective_top_level = (parent_ctx == ParentCtx::AssignmentRhs
-            && sizeof_type_mem(
-               expressions[expr_index].exp_type.as_ref().unwrap(),
-               ctx.user_defined_types,
-               BaseTarget::Qbe,
-            ) == 0)
-            || parent_ctx == ParentCtx::ExprStmt;
+         let is_top_level = parent_ctx == ParentCtx::AssignmentRhs || parent_ctx == ParentCtx::ExprStmt;
          let is_var = matches!(expressions[expr_index].expression, Expression::Variable(_));
          let is_var_deref =
             if let Expression::UnaryOperator(UnOp::Dereference, child) = expressions[expr_index].expression {
@@ -563,7 +553,7 @@ fn vv_expr(
                false
             };
          let is_literal = is_non_aggregate_const(&expressions[expr_index].expression);
-         if is_ifx || (!is_effective_top_level && !is_literal && !is_var && !is_var_deref) {
+         if is_ifx || (!is_top_level && !is_literal && !is_var && !is_var_deref) {
             ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
          }
       }
