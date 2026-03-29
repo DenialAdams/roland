@@ -19,7 +19,7 @@ pub enum VarSlot {
    Register(u32),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum RegisterType {
    I32,
    I64,
@@ -27,7 +27,7 @@ pub enum RegisterType {
    F64,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum VarSlotKind {
    Stack((u32, u32)), // (size, alignment)
    Register(RegisterType),
@@ -346,14 +346,19 @@ pub fn assign_variables_to_registers_and_mem(
          for expired_var in active.extract_if(.., |v| live_intervals.get(v).is_none_or(|x| x.end < range.begin)) {
             let sk = type_to_slot_kind(
                body.locals.get(&expired_var).unwrap(),
-               false,
+               escaping_vars.contains(&expired_var),
                &program.user_defined_types,
                config.target.base_target(),
+            );
+            let newly_free_slot = result.var_to_slot.get(&expired_var).copied().unwrap();
+            debug_assert!(
+               (matches!(sk, VarSlotKind::Stack(_)) && matches!(newly_free_slot, VarSlot::Stack(_)))
+                  || (matches!(sk, VarSlotKind::Register(_)) && matches!(newly_free_slot, VarSlot::Register(_)))
             );
             free_slots
                .entry(sk)
                .or_default()
-               .push(result.var_to_slot.get(&expired_var).copied().unwrap());
+               .push(newly_free_slot);
          }
 
          let sk = type_to_slot_kind(
