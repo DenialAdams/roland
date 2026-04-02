@@ -355,10 +355,7 @@ pub fn assign_variables_to_registers_and_mem(
                (matches!(sk, VarSlotKind::Stack(_)) && matches!(newly_free_slot, VarSlot::Stack(_)))
                   || (matches!(sk, VarSlotKind::Register(_)) && matches!(newly_free_slot, VarSlot::Register(_)))
             );
-            free_slots
-               .entry(sk)
-               .or_default()
-               .push(newly_free_slot);
+            free_slots.entry(sk).or_default().push(newly_free_slot);
          }
 
          let sk = type_to_slot_kind(

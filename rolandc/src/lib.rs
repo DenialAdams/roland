@@ -471,7 +471,25 @@ pub fn compile<FR: FileResolver>(
       ctx.program.ast.statements.clear();
    }
 
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp_before.rol").unwrap(),
+      )
+      .unwrap();
+   }
+
    propagation::propagate(&mut ctx.program, &ctx.interner, config.target.base_target());
+
+   if config.dump_debugging_info {
+      pp::pp(
+         &ctx.program,
+         &ctx.interner,
+         &mut std::fs::File::create("pp_after.rol").unwrap(),
+      )
+      .unwrap();
+   }
 
    // It would be nice to run this before deleting unreachable procedures,
    // but doing so would currently delete procedures that we take pointers to
@@ -492,25 +510,7 @@ pub fn compile<FR: FileResolver>(
 
    let regalloc_result = {
       if config.target.base_target() == BaseTarget::Qbe {
-         if config.dump_debugging_info {
-            pp::pp(
-               &ctx.program,
-               &ctx.interner,
-               &mut std::fs::File::create("pp_before.rol").unwrap(),
-            )
-            .unwrap();
-         }
-
          backend::regalloc::hoist_non_temp_loads_stores(&mut ctx.program, config.target.base_target());
-
-         if config.dump_debugging_info {
-            pp::pp(
-               &ctx.program,
-               &ctx.interner,
-               &mut std::fs::File::create("pp_after.rol").unwrap(),
-            )
-            .unwrap();
-         }
       }
       let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
       for (id, body) in ctx.program.procedure_bodies.iter_mut() {

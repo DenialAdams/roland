@@ -56,6 +56,24 @@ pub struct Cfg {
    pub start: usize,
 }
 
+impl Cfg {
+   pub fn remove_pred_and_prune_unreachable(&mut self, bb: usize, pred: usize) {
+      let mut worklist = vec![(bb, pred)];
+      while let Some((bb, pred)) = worklist.pop() {
+         if bb == self.start {
+            continue;
+         }
+         if !self.bbs[bb].predecessors.remove(&pred) {
+            continue;
+         }
+         if !self.bbs[bb].predecessors.is_empty() {
+            continue;
+         }
+         worklist.extend(self.bbs[bb].successors().iter().copied().map(|x| (x, bb)));
+      }
+   }
+}
+
 struct Ctx {
    bbs: Vec<BasicBlock>,
    current_block: usize,

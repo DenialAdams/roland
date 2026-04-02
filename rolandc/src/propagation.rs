@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::iter;
 
@@ -171,102 +172,117 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget)
    for proc in program.procedure_bodies.values_mut() {
       let mut escaping_vars = HashSet::new();
       mark_escaping_vars_cfg(&proc.cfg, &mut escaping_vars, &program.ast.expressions);
-      let mut all_reaching_defs = reaching_definitions(&proc.locals, &proc.cfg, &program.ast.expressions);
 
       let mut reaching_values: HashMap<VariableId, Option<ReachingVal>> = HashMap::new();
-      let rpo = {
-         let mut x = post_order(&proc.cfg);
-         x.reverse();
-         x
-      };
-      let mut reachable_bbs: HashSet<usize> = rpo.iter().copied().collect();
-      for (rpo_index, bb_index) in rpo.iter().enumerate() {
-         for (i, instr) in proc.cfg.bbs[*bb_index].instructions.iter().enumerate() {
-            let reaching_defs = &all_reaching_defs[&ProgramIndex(rpo_index, i)];
 
-            reaching_values.clear();
-            let get_reaching_val = |v: VariableId, ast: &ExpressionPool| -> Option<ReachingVal> {
-               if escaping_vars.contains(&v) {
-                  return None;
-               }
-               let var_rd = reaching_defs.get(&v)?;
-               let the_reaching_val = var_rd
-                  .iter()
-                  .next()
-                  .and_then(|x| find_reaching_val(*x, &proc.cfg, &rpo, ast))?;
-               if !var_rd
-                  .iter()
-                  .skip(1)
-                  .all(|x| find_reaching_val(*x, &proc.cfg, &rpo, ast) == Some(the_reaching_val))
-               {
-                  return None;
-               }
-               // We have ensured that there is a single reaching value, or multiple equivalent reaching values
-               // For constants, we are done. For vars, this is insufficient.
-               // 1. The var may be escaping or a global, in which case its value may have changed
-               // 2. The var may have been updated
-               if let ReachingVal::Var(reaching_var) = the_reaching_val {
-                  if escaping_vars.contains(&reaching_var) {
-                     return None;
-                  }
-                  if !proc.locals.contains_key(&reaching_var) {
-                     return None;
-                  }
-                  // The reaching def of this var must not have changed between this use and the def
-                  let reaching_defs_of_v_here = &reaching_defs.get(&reaching_var).unwrap_or(&empty_definitions);
-                  if !var_rd.iter().all(|def_this_val_came_from| {
-                     let Definition::DefinedAt(def_loc) = def_this_val_came_from else {
-                        unreachable!()
-                     };
-                     all_reaching_defs[def_loc].get(&reaching_var).unwrap_or(&empty_definitions) == *reaching_defs_of_v_here
-                  }) {
-                     return None;
-                  }
-               }
-               Some(the_reaching_val)
-            };
-            let mut get_reaching_val_memoized = |v: VariableId, ast: &ExpressionPool| -> Option<ReachingVal> {
-               *reaching_values.entry(v).or_insert_with(|| get_reaching_val(v, ast))
-            };
-
-            propagate_vals(
-               instr,
-               &mut program.ast,
-               &mut get_reaching_val_memoized,
-               &program.procedures,
-               &program.user_defined_types,
-               interner,
-               target,
-            );
-         }
-
-         // If we are conditionally jumping, try to prune it now that we have propagated constants.
-         // This may prune reaching definitions, making our optimization more precise.
-         let (jump_target, dead_target) = if let Some(CfgInstruction::ConditionalJump(cond, then_target, else_target)) =
-            proc.cfg.bbs[*bb_index].instructions.last()
-         {
-            match program.ast.expressions[*cond].expression {
-               Expression::BoolLiteral(true) => (*then_target, *else_target),
-               Expression::BoolLiteral(false) => (*else_target, *then_target),
-               _ => continue,
-            }
-         } else {
-            continue;
+      'outer: loop {
+         let all_reaching_defs = reaching_definitions(&proc.locals, &proc.cfg, &program.ast.expressions);
+         let rpo = {
+            let mut x = post_order(&proc.cfg);
+            x.reverse();
+            x
          };
-         *proc.cfg.bbs[*bb_index].instructions.last_mut().unwrap() = CfgInstruction::Jump(jump_target);
-         proc.cfg.bbs[dead_target].predecessors.remove(bb_index);
-         reachable_bbs.clear();
-         reachable_bbs.extend(post_order(&proc.cfg).iter().copied());
+         for (rpo_index, bb_index) in rpo.iter().enumerate() {
+            // This HashMap allocation can't be hoisted due to borrowck :/
+            let mut reaching_defs_here: HashMap<VariableId, Cow<HashSet<Definition>>> = all_reaching_defs[*bb_index]
+               .r_in
+               .iter()
+               .map(|(k, v)| (*k, Cow::Borrowed(v)))
+               .collect();
+            for (i, instr) in proc.cfg.bbs[*bb_index].instructions.iter().enumerate() {
+               reaching_values.clear();
+               let get_reaching_val = |v: VariableId, ast: &ExpressionPool| -> Option<ReachingVal> {
+                  if escaping_vars.contains(&v) {
+                     return None;
+                  }
+                  let var_rd = reaching_defs_here.get(&v)?;
+                  let the_reaching_val = var_rd
+                     .iter()
+                     .next()
+                     .and_then(|x| find_reaching_val(*x, &proc.cfg, &rpo, ast))?;
+                  if !var_rd
+                     .iter()
+                     .skip(1)
+                     .all(|x| find_reaching_val(*x, &proc.cfg, &rpo, ast) == Some(the_reaching_val))
+                  {
+                     return None;
+                  }
+                  // We have ensured that there is a single reaching value, or multiple equivalent reaching values
+                  // For constants, we are done. For vars, this is insufficient.
+                  // 1. The var may be escaping or a global, in which case its value may have changed
+                  // 2. The var may have been updated
+                  if let ReachingVal::Var(reaching_var) = the_reaching_val {
+                     if escaping_vars.contains(&reaching_var) {
+                        return None;
+                     }
+                     if !proc.locals.contains_key(&reaching_var) {
+                        return None;
+                     }
+                     // The reaching def of this var must not have changed between this use and the def
+                     let empty_def_cow = Cow::Borrowed(&empty_definitions);
+                     let reaching_defs_of_reaching_var_here =
+                        reaching_defs_here.get(&reaching_var).unwrap_or(&empty_def_cow);
+                     if !var_rd.iter().all(|def_this_val_came_from| {
+                        let Definition::DefinedAt(def_loc) = def_this_val_came_from else {
+                           unreachable!()
+                        };
+                        get_reaching_defs_for_var_at_loc(&all_reaching_defs, *def_loc, reaching_var, &proc.cfg, ast)
+                           == *reaching_defs_of_reaching_var_here
+                     }) {
+                        return None;
+                     }
+                  }
+                  Some(the_reaching_val)
+               };
+               let mut get_reaching_val_memoized = |v: VariableId, ast: &ExpressionPool| -> Option<ReachingVal> {
+                  *reaching_values.entry(v).or_insert_with(|| get_reaching_val(v, ast))
+               };
 
-         // Update reaching definitions
-         for defs_at_given_location in all_reaching_defs.values_mut() {
-            for defs in defs_at_given_location.values_mut() {
-               defs.retain(|x| match x {
-                  Definition::DefinedAt(loc) => reachable_bbs.contains(&rpo[loc.0]),
-                  Definition::NoDefinitionInProc => true,
-               });
+               propagate_vals(
+                  instr,
+                  &mut program.ast,
+                  &mut get_reaching_val_memoized,
+                  &program.procedures,
+                  &program.user_defined_types,
+                  interner,
+                  target,
+               );
+
+               if let CfgInstruction::Assignment(lhs, _) = instr
+                  && let Expression::Variable(v) = program.ast.expressions[*lhs].expression
+                  && proc.locals.contains_key(&v)
+               {
+                  let reaching_defs_of_v_here = reaching_defs_here.entry(v).or_default().to_mut();
+                  reaching_defs_of_v_here.clear();
+                  reaching_defs_of_v_here.insert(Definition::DefinedAt(ProgramIndex(rpo_index, i)));
+               }
             }
+
+            // If we are conditionally jumping, try to prune it now that we have propagated constants.
+            // This may prune reaching definitions, making our optimization more precise.
+            let (jump_target, dead_target) =
+               if let Some(CfgInstruction::ConditionalJump(cond, then_target, else_target)) =
+                  proc.cfg.bbs[*bb_index].instructions.last()
+               {
+                  match program.ast.expressions[*cond].expression {
+                     Expression::BoolLiteral(true) => (*then_target, *else_target),
+                     Expression::BoolLiteral(false) => (*else_target, *then_target),
+                     _ => continue,
+                  }
+               } else {
+                  continue;
+               };
+            *proc.cfg.bbs[*bb_index].instructions.last_mut().unwrap() = CfgInstruction::Jump(jump_target);
+            proc.cfg.remove_pred_and_prune_unreachable(dead_target, *bb_index);
+
+            // We currently recompute reaching definitions across the whole CFG.
+            // This is correct but this seems like overkill -
+            // there should be some way to populate an initial worklist that contains only CFGs impacted by
+            // the pruning
+            // (although actually that might be difficult because we may have invalidated program indices? damn.)
+            continue 'outer;
          }
+         break;
       }
    }
 }
@@ -288,12 +304,41 @@ struct ReachingDefsState {
    // kill is implicit from gen
 }
 
+type ReachingDefs = Vec<ReachingDefsState>;
+
+fn get_reaching_defs_for_var_at_loc<'r>(
+   reaching_defs: &'r ReachingDefs,
+   loc: ProgramIndex,
+   var: VariableId,
+   cfg: &Cfg,
+   ast: &ExpressionPool,
+) -> Cow<'r, HashSet<Definition>> {
+   // TODO: map_or_default when that is stable
+   let bb_index = post_order(cfg).iter().rev().nth(loc.0).copied().unwrap();
+   let mut reaching_defs_of_var_here: Cow<HashSet<Definition>> = reaching_defs[bb_index]
+      .r_in
+      .get(&var)
+      .map_or_else(|| Cow::Owned(HashSet::new()), Cow::Borrowed);
+   for (i, instr) in cfg.bbs[bb_index].instructions.iter().enumerate().take(loc.1) {
+      if let CfgInstruction::Assignment(lhs, _) = instr
+         && let Expression::Variable(v) = ast[*lhs].expression
+         && v == var
+      {
+         let reaching_defs_of_var_here_mut = reaching_defs_of_var_here.to_mut();
+         reaching_defs_of_var_here_mut.clear();
+         reaching_defs_of_var_here_mut.insert(Definition::DefinedAt(ProgramIndex(loc.0, i)));
+      }
+   }
+
+   reaching_defs_of_var_here
+}
+
 #[must_use]
 fn reaching_definitions(
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
    cfg: &Cfg,
    ast: &ExpressionPool,
-) -> IndexMap<ProgramIndex, MultiDefMap> {
+) -> ReachingDefs {
    // Dataflow Analyis on the CFG
    let mut state = vec![
       ReachingDefsState {
@@ -365,30 +410,7 @@ fn reaching_definitions(
       }
    }
 
-   // Construct the final results
-   let mut all_reaching_defs: IndexMap<ProgramIndex, MultiDefMap> = IndexMap::new();
-   let mut current_reaching_defs = MultiDefMap::new();
-   for (rpo_index, node_id) in post_order(cfg).iter().copied().rev().enumerate() {
-      let bb = &cfg.bbs[node_id];
-      let s = &state[node_id];
-      current_reaching_defs.clear();
-      current_reaching_defs.extend(s.r_in.iter().map(|(k, v)| (*k, v.clone())));
-      all_reaching_defs.reserve(bb.instructions.len());
-      for (i, instruction) in bb.instructions.iter().enumerate() {
-         let pi = ProgramIndex(rpo_index, i);
-         all_reaching_defs.insert(pi, current_reaching_defs.clone());
-         if let CfgInstruction::Assignment(lhs, _) = instruction
-            && let Expression::Variable(v) = ast[*lhs].expression
-            && procedure_vars.contains_key(&v)
-         {
-            let reaching_defs = current_reaching_defs.entry(v).or_default();
-            reaching_defs.clear();
-            reaching_defs.insert(Definition::DefinedAt(ProgramIndex(rpo_index, i)));
-         }
-      }
-   }
-
-   all_reaching_defs
+   state
 }
 
 // MARK: Escape Analysis
