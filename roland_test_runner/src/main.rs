@@ -136,20 +136,20 @@ fn main() -> Result<(), &'static str> {
    let failures: Mutex<Vec<TestFailure>> = Mutex::new(Vec::new());
 
    entries.par_iter().for_each(|entry| {
-      let tc_output = if opts.amd64 {
-         Command::new(&opts.tc_path)
-            .arg(entry.clone())
-            .arg("--amd64")
-            .arg("--output")
-            .arg({
+      let tc_output = {
+         let mut cmd = Command::new(&opts.tc_path);
+         if opts.amd64 {
+            cmd.arg(entry.clone()).arg("--amd64").arg("--output").arg({
                let mut x = entry.clone();
                x.set_extension("out");
                x
             })
-            .output()
-            .unwrap()
-      } else {
-         Command::new(&opts.tc_path).arg(entry.clone()).output().unwrap()
+         } else {
+            cmd.arg(entry.clone())
+         }
+         .env("RAYON_NUM_THREADS", "1") // Prefer our parallelism over the compilers internal parallelism
+         .output()
+         .unwrap()
       };
       let test_ok = test_result(
          &tc_output,
