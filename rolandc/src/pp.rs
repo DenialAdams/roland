@@ -9,15 +9,15 @@ use crate::backend::linearize::{CfgInstruction, post_order};
 use crate::backend::liveness::ProgramIndex;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, BinOp, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionTypeNode, ProcImplSource,
-   ProcedureBody, ProcedureId, ProcedureNode, Statement, StatementId, UnOp, UserDefinedTypeInfo, VariableId,
+   AstPool, BinOp, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionPool, ExpressionTypeNode,
+   ProcImplSource, ProcedureBody, ProcedureId, ProcedureNode, Statement, StatementId, UnOp, UserDefinedTypeInfo,
+   VariableId,
 };
 use crate::semantic_analysis::StorageKind;
 use crate::type_data::ExpressionType;
 
 struct PpCtx<'a, W: Write> {
    indentation_level: usize,
-   ast: &'a AstPool,
    procedures: &'a SlotMap<ProcedureId, ProcedureNode>,
    interner: &'a Interner,
    user_defined_types: &'a UserDefinedTypeInfo,
@@ -38,7 +38,6 @@ impl<W: Write> PpCtx<'_, W> {
 pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> Result<(), std::io::Error> {
    let mut pp_ctx = PpCtx {
       indentation_level: 0,
-      ast: &program.ast,
       interner,
       output,
       procedures: &program.procedures,
@@ -54,7 +53,6 @@ pub fn pp<W: Write>(program: &Program, interner: &Interner, output: &mut W) -> R
 }
 
 pub fn pp_proc<W: Write>(
-   ast: &AstPool,
    procedures: &SlotMap<ProcedureId, ProcedureNode>,
    procedure_body: Option<&ProcedureBody>,
    user_defined_types: &UserDefinedTypeInfo,
@@ -65,7 +63,6 @@ pub fn pp_proc<W: Write>(
 ) -> Result<(), std::io::Error> {
    let mut pp_ctx = PpCtx {
       indentation_level: 0,
-      ast,
       interner,
       output,
       procedures,
@@ -126,21 +123,21 @@ fn pp_proc_internal<W: Write>(
          writeln!(pp_ctx.output, ";")?;
       }
       if b.cfg.bbs.is_empty() {
-         pp_block(&b.block, pp_ctx)
+         pp_block(&b.block, &b.ast, pp_ctx)
       } else {
-         pp_cfg(b, pp_ctx)
+         pp_cfg(b, &b.ast.expressions, pp_ctx)
       }
    } else {
       writeln!(pp_ctx.output, ";")
    }
 }
 
-fn pp_block<W: Write>(block: &BlockNode, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
+fn pp_block<W: Write>(block: &BlockNode, ast: &AstPool, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
    writeln!(pp_ctx.output, "{{")?;
    pp_ctx.indentation_level += 1;
    for stmt in block.statements.iter().copied() {
       pp_ctx.indent()?;
-      pp_stmt(stmt, pp_ctx)?;
+      pp_stmt(stmt, ast, pp_ctx)?;
    }
    pp_ctx.indentation_level -= 1;
    pp_ctx.indent()?;
@@ -148,30 +145,30 @@ fn pp_block<W: Write>(block: &BlockNode, pp_ctx: &mut PpCtx<W>) -> Result<(), st
    Ok(())
 }
 
-fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
-   let stmt = &pp_ctx.ast.statements[stmt];
+fn pp_stmt<W: Write>(stmt: StatementId, ast: &AstPool, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
+   let stmt = &ast.statements[stmt];
    match &stmt.statement {
       Statement::Assignment(lhs, rhs) => {
-         pp_expr(*lhs, pp_ctx)?;
+         pp_expr(*lhs, &ast.expressions, pp_ctx)?;
          write!(pp_ctx.output, " = ")?;
-         pp_expr(*rhs, pp_ctx)?;
+         pp_expr(*rhs, &ast.expressions, pp_ctx)?;
          writeln!(pp_ctx.output, ";")?;
       }
       Statement::Block(bn) => {
-         pp_block(bn, pp_ctx)?;
+         pp_block(bn, ast, pp_ctx)?;
       }
       Statement::Loop(bn) => {
          write!(pp_ctx.output, "loop ")?;
-         pp_block(bn, pp_ctx)?;
+         pp_block(bn, ast, pp_ctx)?;
       }
       Statement::While(cond, bn) => {
          write!(pp_ctx.output, "while ")?;
-         pp_expr(*cond, pp_ctx)?;
-         pp_block(bn, pp_ctx)?;
+         pp_expr(*cond, &ast.expressions, pp_ctx)?;
+         pp_block(bn, ast, pp_ctx)?;
       }
       Statement::Defer(stmt) => {
          write!(pp_ctx.output, "defer ")?;
-         pp_stmt(*stmt, pp_ctx)?;
+         pp_stmt(*stmt, ast, pp_ctx)?;
       }
       Statement::For {
          range_start: start,
@@ -184,20 +181,20 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
          write!(pp_ctx.output, "for ")?;
          pp_var(*var, pp_ctx)?;
          write!(pp_ctx.output, " in ")?;
-         pp_expr(*start, pp_ctx)?;
+         pp_expr(*start, &ast.expressions, pp_ctx)?;
          if *range_inclusive {
             write!(pp_ctx.output, "..=")?;
          } else {
             write!(pp_ctx.output, "..")?;
          }
-         pp_expr(*end, pp_ctx)?;
+         pp_expr(*end, &ast.expressions, pp_ctx)?;
          write!(pp_ctx.output, " ")?;
-         pp_block(body, pp_ctx)?;
+         pp_block(body, ast, pp_ctx)?;
       }
       Statement::Continue => writeln!(pp_ctx.output, "continue;")?,
       Statement::Break => writeln!(pp_ctx.output, "break;")?,
       Statement::Expression(expr) => {
-         pp_expr(*expr, pp_ctx)?;
+         pp_expr(*expr, &ast.expressions, pp_ctx)?;
          writeln!(pp_ctx.output, ";")?;
       }
       Statement::IfElse {
@@ -211,10 +208,10 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
          } else {
             write!(pp_ctx.output, "if ")?;
          }
-         pp_expr(*cond, pp_ctx)?;
+         pp_expr(*cond, &ast.expressions, pp_ctx)?;
          write!(pp_ctx.output, " ")?;
-         pp_block(then, pp_ctx)?;
-         let display_else = if let Statement::Block(bn) = &pp_ctx.ast.statements[*else_e].statement {
+         pp_block(then, ast, pp_ctx)?;
+         let display_else = if let Statement::Block(bn) = &ast.statements[*else_e].statement {
             !bn.statements.is_empty()
          } else {
             true
@@ -223,12 +220,12 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
             // This indent isn't quite right :)
             pp_ctx.indent()?;
             write!(pp_ctx.output, "else ")?;
-            pp_stmt(*else_e, pp_ctx)?;
+            pp_stmt(*else_e, ast, pp_ctx)?;
          }
       }
       Statement::Return(expr) => {
          write!(pp_ctx.output, "return ")?;
-         pp_expr(*expr, pp_ctx)?;
+         pp_expr(*expr, &ast.expressions, pp_ctx)?;
          writeln!(pp_ctx.output, ";")?;
       }
       Statement::VariableDeclaration {
@@ -251,7 +248,7 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
          match initializer {
             DeclarationValue::Expr(e) => {
                write!(pp_ctx.output, " = ")?;
-               pp_expr(*e, pp_ctx)?;
+               pp_expr(*e, &ast.expressions, pp_ctx)?;
             }
             DeclarationValue::Uninit => write!(pp_ctx.output, " = ___")?,
             DeclarationValue::None => (),
@@ -262,7 +259,7 @@ fn pp_stmt<W: Write>(stmt: StatementId, pp_ctx: &mut PpCtx<W>) -> Result<(), std
    Ok(())
 }
 
-fn pp_cfg<W: Write>(body: &ProcedureBody, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
+fn pp_cfg<W: Write>(body: &ProcedureBody, ast: &ExpressionPool, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
    writeln!(pp_ctx.output, " {{")?;
    for (i, bb) in post_order(&body.cfg).iter().rev().enumerate() {
       pp_ctx.indent()?;
@@ -272,13 +269,13 @@ fn pp_cfg<W: Write>(body: &ProcedureBody, pp_ctx: &mut PpCtx<W>) -> Result<(), s
          pp_ctx.indent()?;
          match instr {
             CfgInstruction::Assignment(lhs, rhs) => {
-               pp_expr(*lhs, pp_ctx)?;
+               pp_expr(*lhs, ast, pp_ctx)?;
                write!(pp_ctx.output, " = ")?;
-               pp_expr(*rhs, pp_ctx)?;
+               pp_expr(*rhs, ast, pp_ctx)?;
             }
             CfgInstruction::ConditionalJump(e, pass, fail) => {
                write!(pp_ctx.output, "jnz ")?;
-               pp_expr(*e, pp_ctx)?;
+               pp_expr(*e, ast, pp_ctx)?;
                write!(pp_ctx.output, " : {}, {}", pass, fail)?;
             }
             CfgInstruction::Jump(dst) => {
@@ -286,10 +283,10 @@ fn pp_cfg<W: Write>(body: &ProcedureBody, pp_ctx: &mut PpCtx<W>) -> Result<(), s
             }
             CfgInstruction::Return(e) => {
                write!(pp_ctx.output, "ret ")?;
-               pp_expr(*e, pp_ctx)?;
+               pp_expr(*e, ast, pp_ctx)?;
             }
             CfgInstruction::Expression(e) => {
-               pp_expr(*e, pp_ctx)?;
+               pp_expr(*e, ast, pp_ctx)?;
             }
             CfgInstruction::Nop => write!(pp_ctx.output, "nop")?,
          }
@@ -311,15 +308,15 @@ fn pp_cfg<W: Write>(body: &ProcedureBody, pp_ctx: &mut PpCtx<W>) -> Result<(), s
    Ok(())
 }
 
-fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
+fn pp_expr<W: Write>(expr: ExpressionId, ast: &ExpressionPool, pp_ctx: &mut PpCtx<W>) -> Result<(), std::io::Error> {
    // Note that printing an expr might not reflect correct order of operations.
-   let expr = &pp_ctx.ast.expressions[expr];
+   let expr = &ast[expr];
    match &expr.expression {
       Expression::ProcedureCall { proc_expr, args } => {
-         pp_expr(*proc_expr, pp_ctx)?;
+         pp_expr(*proc_expr, ast, pp_ctx)?;
          write!(pp_ctx.output, "(")?;
          for (i, arg) in args.iter().enumerate() {
-            pp_expr(arg.expr, pp_ctx)?;
+            pp_expr(arg.expr, ast, pp_ctx)?;
             if i != args.len() - 1 {
                write!(pp_ctx.output, ", ")?;
             }
@@ -329,7 +326,7 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
       Expression::ArrayLiteral(exprs) => {
          write!(pp_ctx.output, "[")?;
          for (i, expr) in exprs.iter().enumerate() {
-            pp_expr(*expr, pp_ctx)?;
+            pp_expr(*expr, ast, pp_ctx)?;
             if i != exprs.len() - 1 {
                write!(pp_ctx.output, ", ")?;
             }
@@ -337,9 +334,9 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          write!(pp_ctx.output, "]")?;
       }
       Expression::ArrayIndex { array, index } => {
-         pp_expr(*array, pp_ctx)?;
+         pp_expr(*array, ast, pp_ctx)?;
          write!(pp_ctx.output, "[")?;
-         pp_expr(*index, pp_ctx)?;
+         pp_expr(*index, ast, pp_ctx)?;
          write!(pp_ctx.output, "]")?;
       }
       Expression::BoolLiteral(val) => {
@@ -362,7 +359,7 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
       }
       Expression::BinaryOperator { lhs, rhs, operator } => {
          write!(pp_ctx.output, "(")?;
-         pp_expr(*lhs, pp_ctx)?;
+         pp_expr(*lhs, ast, pp_ctx)?;
          let op_str = match operator {
             BinOp::Add => "+",
             BinOp::Subtract => "-",
@@ -384,7 +381,7 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
             BinOp::LogicalOr => "or",
          };
          write!(pp_ctx.output, " {} ", op_str)?;
-         pp_expr(*rhs, pp_ctx)?;
+         pp_expr(*rhs, ast, pp_ctx)?;
          write!(pp_ctx.output, ")")?;
       }
       Expression::UnaryOperator(operator, operand) => {
@@ -395,17 +392,17 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
             UnOp::Dereference => ("", "~"),
          };
          write!(pp_ctx.output, "{}", prefix)?;
-         pp_expr(*operand, pp_ctx)?;
+         pp_expr(*operand, ast, pp_ctx)?;
          write!(pp_ctx.output, "{}", suffix)?;
       }
       Expression::StructLiteral(_, field_exprs) => {
          pp_type(expr.exp_type.as_ref().unwrap(), pp_ctx)?;
-         pp_struct_initializer(field_exprs.iter().map(|x| (*x.0, *x.1)), field_exprs.len(), pp_ctx)?;
+         pp_struct_initializer(field_exprs.iter().map(|x| (*x.0, *x.1)), field_exprs.len(), ast, pp_ctx)?;
          write!(pp_ctx.output, " {{ ")?;
          for (i, field_expr) in field_exprs.iter().enumerate() {
             if let Some(e) = field_expr.1 {
                write!(pp_ctx.output, "{}: ", pp_ctx.interner.lookup(*field_expr.0))?;
-               pp_expr(*e, pp_ctx)?;
+               pp_expr(*e, ast, pp_ctx)?;
             } else {
                write!(pp_ctx.output, "{},", pp_ctx.interner.lookup(*field_expr.0))?;
             }
@@ -416,7 +413,7 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          write!(pp_ctx.output, " }}")?;
       }
       Expression::FieldAccess(field, base) => {
-         pp_expr(*base, pp_ctx)?;
+         pp_expr(*base, ast, pp_ctx)?;
          write!(pp_ctx.output, ".{}", pp_ctx.interner.lookup(*field))?;
       }
       Expression::Cast {
@@ -424,7 +421,7 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
          expr,
          cast_type,
       } => {
-         pp_expr(*expr, pp_ctx)?;
+         pp_expr(*expr, ast, pp_ctx)?;
          let op_str = match cast_type {
             crate::parse::CastType::As => "as",
             crate::parse::CastType::Transmute => "transmute",
@@ -446,11 +443,11 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
       }
       Expression::IfX(a, b, c) => {
          write!(pp_ctx.output, "ifx ")?;
-         pp_expr(*a, pp_ctx)?;
+         pp_expr(*a, ast, pp_ctx)?;
          write!(pp_ctx.output, " ")?;
-         pp_expr(*b, pp_ctx)?;
+         pp_expr(*b, ast, pp_ctx)?;
          write!(pp_ctx.output, " else ")?;
-         pp_expr(*c, pp_ctx)?;
+         pp_expr(*c, ast, pp_ctx)?;
       }
       Expression::UnresolvedVariable(var_name) => {
          write!(pp_ctx.output, "{}", pp_ctx.interner.lookup(var_name.str))?;
@@ -461,7 +458,7 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
       }
       Expression::UnresolvedStructLiteral(etn, fields, _) => {
          pp_type(&etn.e_type, pp_ctx)?;
-         pp_struct_initializer(fields.iter().copied(), fields.len(), pp_ctx)?;
+         pp_struct_initializer(fields.iter().copied(), fields.len(), ast, pp_ctx)?;
       }
       Expression::UnresolvedEnumLiteral(_, _) => unimplemented!(),
    }
@@ -472,13 +469,14 @@ fn pp_expr<W: Write>(expr: ExpressionId, pp_ctx: &mut PpCtx<W>) -> Result<(), st
 fn pp_struct_initializer<W: Write, I: IntoIterator<Item = (StrId, Option<ExpressionId>)>>(
    field_exprs: I,
    field_exprs_len: usize,
+   ast: &ExpressionPool,
    pp_ctx: &mut PpCtx<W>,
 ) -> Result<(), std::io::Error> {
    write!(pp_ctx.output, " {{ ")?;
    for (i, field_expr) in field_exprs.into_iter().enumerate() {
       if let Some(e) = field_expr.1 {
          write!(pp_ctx.output, "{}: ", pp_ctx.interner.lookup(field_expr.0))?;
-         pp_expr(e, pp_ctx)?;
+         pp_expr(e, ast, pp_ctx)?;
       } else {
          write!(pp_ctx.output, "{},", pp_ctx.interner.lookup(field_expr.0))?;
       }

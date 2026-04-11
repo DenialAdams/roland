@@ -21,7 +21,7 @@ pub fn lower_fors_and_whiles(program: &mut Program) {
 
    for body in program.procedure_bodies.values_mut() {
       ctx.cur_procedure_locals = &mut body.locals;
-      lower_block(&mut body.block, &mut ctx, &mut program.ast);
+      lower_block(&mut body.block, &mut ctx, &mut body.ast);
    }
 }
 

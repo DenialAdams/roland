@@ -1,10 +1,15 @@
+use std::collections::HashMap;
+
 use slotmap::SlotMap;
 
 use crate::BaseTarget;
 use crate::backend::linearize::CfgInstruction;
 use crate::constant_folding::expression_could_have_side_effects;
-use crate::interner::Interner;
-use crate::parse::{ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, Program, UnOp};
+use crate::interner::{Interner, StrId};
+use crate::parse::{
+   ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcedureId, Program, UnOp,
+   all_expression_pools_mut,
+};
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::sizeof_type_mem;
 use crate::source_info::SourceInfo;
@@ -77,26 +82,39 @@ fn lower_single_expression(
 }
 
 pub fn lower_enums_and_pointers(program: &mut Program, target: BaseTarget) {
-   let mut enums_literals: Vec<ExpressionId> = vec![]; // Due to borrowck (illegitimate), we need to do enum lowering by collect-lower
-   for (id, e) in program.ast.expressions.iter_mut() {
-      if lower_single_expression(e, &program.user_defined_types.enum_info, target) {
-         enums_literals.push(id);
+   fn lower_expressions_in_ast(
+      enums_literals: &mut Vec<ExpressionId>,
+      ast: &mut ExpressionPool,
+      global_exprs: Option<&ExpressionPool>,
+      enum_info: &SlotMap<EnumId, EnumInfo>,
+      target: BaseTarget,
+   ) {
+      for (id, e) in ast.iter_mut() {
+         if lower_single_expression(e, enum_info, target) {
+            enums_literals.push(id);
+         }
+      }
+      for id in enums_literals.drain(..) {
+         let Expression::EnumLiteral(enum_id, variant) = ast[id].expression else {
+            unreachable!()
+         };
+         let ei = enum_info.get(enum_id).unwrap();
+         let replacement_expr = match ei.base_type.e_type {
+            ExpressionType::Unit => Expression::UnitLiteral,
+            ExpressionType::Int(_) => global_exprs.unwrap_or(ast)
+               [ei.values[ei.variants.get_index_of(&variant).unwrap()].unwrap()]
+            .expression
+            .clone(),
+            _ => unreachable!(),
+         };
+         ast[id].expression = replacement_expr;
       }
    }
-   for id in enums_literals {
-      let Expression::EnumLiteral(enum_id, variant) = program.ast.expressions[id].expression else {
-         unreachable!()
-      };
-      let ei = program.user_defined_types.enum_info.get(enum_id).unwrap();
-      let replacement_expr = match ei.base_type.e_type {
-         ExpressionType::Unit => Expression::UnitLiteral,
-         ExpressionType::Int(_) => program.ast.expressions
-            [ei.values[ei.variants.get_index_of(&variant).unwrap()].unwrap()]
-         .expression
-         .clone(),
-         _ => unreachable!(),
-      };
-      program.ast.expressions[id].expression = replacement_expr;
+   let mut enums_literals: Vec<ExpressionId> = vec![]; // Due to borrowck (illegitimate), we need to do enum lowering by collect-lower
+
+   lower_expressions_in_ast(&mut enums_literals, &mut program.global_exprs, None, &program.user_defined_types.enum_info, target);
+   for ast in program.procedure_bodies.values_mut().map(|x| &mut x.ast.expressions) {
+      lower_expressions_in_ast(&mut enums_literals, ast, Some(&program.global_exprs), &program.user_defined_types.enum_info, target);
    }
 
    for struct_info in program.user_defined_types.struct_info.values_mut() {
@@ -140,10 +158,11 @@ pub fn lower_enums_and_pointers(program: &mut Program, target: BaseTarget) {
 fn replace_cast_expr(
    src: ExpressionId,
    target: &ExpressionNode,
-   program: &Program,
+   ast: &ExpressionPool,
+   procedure_name_table: &HashMap<StrId, ProcedureId>,
    interner: &Interner,
 ) -> Option<ExpressionNode> {
-   let src_type = program.ast.expressions[src].exp_type.as_ref().unwrap();
+   let src_type = ast[src].exp_type.as_ref().unwrap();
    let target_type = target.exp_type.as_ref().unwrap();
    let proc_name = match (src_type, target_type) {
       (&F32_TYPE, &I8_TYPE) => "f32_to_i8",
@@ -152,7 +171,7 @@ fn replace_cast_expr(
       (&F64_TYPE, &I16_TYPE) => "f64_to_i16",
       _ => return None,
    };
-   let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
+   let proc_id = procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
    Some(ExpressionNode {
       expression: Expression::BoundFcnLiteral(proc_id, Box::new([])),
       exp_type: Some(ExpressionType::ProcedureItem(proc_id, Box::new([]))),
@@ -163,16 +182,17 @@ fn replace_cast_expr(
 fn replace_negate(
    operand: ExpressionId,
    location: SourceInfo,
-   program: &Program,
+   ast: &ExpressionPool,
+   procedure_name_table: &HashMap<StrId, ProcedureId>,
    interner: &Interner,
 ) -> Option<ExpressionNode> {
-   let operand_type = program.ast.expressions[operand].exp_type.as_ref().unwrap();
+   let operand_type = ast[operand].exp_type.as_ref().unwrap();
    let proc_name = match *operand_type {
       I8_TYPE => "neg_i8",
       I16_TYPE => "neg_i16",
       _ => return None,
    };
-   let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
+   let proc_id = procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
    Some(ExpressionNode {
       expression: Expression::BoundFcnLiteral(proc_id, Box::new([])),
       exp_type: Some(ExpressionType::ProcedureItem(proc_id, Box::new([]))),
@@ -183,16 +203,17 @@ fn replace_negate(
 fn replace_div(
    operand: ExpressionId,
    location: SourceInfo,
-   program: &Program,
+   ast: &ExpressionPool,
+   procedure_name_table: &HashMap<StrId, ProcedureId>,
    interner: &Interner,
 ) -> Option<ExpressionNode> {
-   let operand_type = program.ast.expressions[operand].exp_type.as_ref().unwrap();
+   let operand_type = ast[operand].exp_type.as_ref().unwrap();
    let proc_name = match *operand_type {
       I8_TYPE => "div_i8",
       I16_TYPE => "div_i16",
       _ => return None,
    };
-   let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
+   let proc_id = procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
    Some(ExpressionNode {
       expression: Expression::BoundFcnLiteral(proc_id, Box::new([])),
       exp_type: Some(ExpressionType::ProcedureItem(proc_id, Box::new([]))),
@@ -203,16 +224,17 @@ fn replace_div(
 fn replace_mod(
    operand: ExpressionId,
    location: SourceInfo,
-   program: &Program,
+   ast: &ExpressionPool,
+   procedure_name_table: &HashMap<StrId, ProcedureId>,
    interner: &Interner,
 ) -> Option<ExpressionNode> {
-   let operand_type = program.ast.expressions[operand].exp_type.as_ref().unwrap();
+   let operand_type = ast[operand].exp_type.as_ref().unwrap();
    let proc_name = match *operand_type {
       I8_TYPE => "mod_i8",
       I16_TYPE => "mod_i16",
       _ => return None,
    };
-   let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
+   let proc_id = procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
    Some(ExpressionNode {
       expression: Expression::BoundFcnLiteral(proc_id, Box::new([])),
       exp_type: Some(ExpressionType::ProcedureItem(proc_id, Box::new([]))),
@@ -223,10 +245,11 @@ fn replace_mod(
 fn replace_add(
    operand: ExpressionId,
    location: SourceInfo,
-   program: &Program,
+   ast: &ExpressionPool,
+   procedure_name_table: &HashMap<StrId, ProcedureId>,
    interner: &Interner,
 ) -> Option<ExpressionNode> {
-   let operand_type = program.ast.expressions[operand].exp_type.as_ref().unwrap();
+   let operand_type = ast[operand].exp_type.as_ref().unwrap();
    let proc_name = match *operand_type {
       I8_TYPE => "add_i8",
       I16_TYPE => "add_i16",
@@ -234,7 +257,7 @@ fn replace_add(
       U16_TYPE => "add_u16",
       _ => return None,
    };
-   let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
+   let proc_id = procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
    Some(ExpressionNode {
       expression: Expression::BoundFcnLiteral(proc_id, Box::new([])),
       exp_type: Some(ExpressionType::ProcedureItem(proc_id, Box::new([]))),
@@ -245,10 +268,11 @@ fn replace_add(
 fn replace_sub(
    operand: ExpressionId,
    location: SourceInfo,
-   program: &Program,
+   ast: &ExpressionPool,
+   procedure_name_table: &HashMap<StrId, ProcedureId>,
    interner: &Interner,
 ) -> Option<ExpressionNode> {
-   let operand_type = program.ast.expressions[operand].exp_type.as_ref().unwrap();
+   let operand_type = ast[operand].exp_type.as_ref().unwrap();
    let proc_name = match *operand_type {
       I8_TYPE => "sub_i8",
       I16_TYPE => "sub_i16",
@@ -256,7 +280,7 @@ fn replace_sub(
       U16_TYPE => "sub_u16",
       _ => return None,
    };
-   let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
+   let proc_id = procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
    Some(ExpressionNode {
       expression: Expression::BoundFcnLiteral(proc_id, Box::new([])),
       exp_type: Some(ExpressionType::ProcedureItem(proc_id, Box::new([]))),
@@ -267,10 +291,11 @@ fn replace_sub(
 fn replace_mul(
    operand: ExpressionId,
    location: SourceInfo,
-   program: &Program,
+   ast: &ExpressionPool,
+   procedure_name_table: &HashMap<StrId, ProcedureId>,
    interner: &Interner,
 ) -> Option<ExpressionNode> {
-   let operand_type = program.ast.expressions[operand].exp_type.as_ref().unwrap();
+   let operand_type = ast[operand].exp_type.as_ref().unwrap();
    let proc_name = match *operand_type {
       I8_TYPE => "mul_i8",
       I16_TYPE => "mul_i16",
@@ -278,7 +303,7 @@ fn replace_mul(
       U16_TYPE => "mul_u16",
       _ => return None,
    };
-   let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
+   let proc_id = procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
    Some(ExpressionNode {
       expression: Expression::BoundFcnLiteral(proc_id, Box::new([])),
       exp_type: Some(ExpressionType::ProcedureItem(proc_id, Box::new([]))),
@@ -289,10 +314,11 @@ fn replace_mul(
 fn replace_shl(
    operand: ExpressionId,
    location: SourceInfo,
-   program: &Program,
+   ast: &ExpressionPool,
+   procedure_name_table: &HashMap<StrId, ProcedureId>,
    interner: &Interner,
 ) -> Option<ExpressionNode> {
-   let operand_type = program.ast.expressions[operand].exp_type.as_ref().unwrap();
+   let operand_type = ast[operand].exp_type.as_ref().unwrap();
    let proc_name = match *operand_type {
       I8_TYPE => "shl_i8",
       I16_TYPE => "shl_i16",
@@ -300,7 +326,7 @@ fn replace_shl(
       U16_TYPE => "shl_u16",
       _ => return None,
    };
-   let proc_id = program.procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
+   let proc_id = procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
    Some(ExpressionNode {
       expression: Expression::BoundFcnLiteral(proc_id, Box::new([])),
       exp_type: Some(ExpressionType::ProcedureItem(proc_id, Box::new([]))),
@@ -310,49 +336,61 @@ fn replace_shl(
 
 pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, interner: &Interner, target: BaseTarget) {
    let mut replacements = vec![];
-   for (expression, v) in program.ast.expressions.iter() {
-      let opt_new_expr = match v.expression {
-         Expression::Cast { expr: src_expr, .. } => replace_cast_expr(src_expr, v, program, interner),
-         Expression::UnaryOperator(UnOp::Negate, inner_expr) => {
-            replace_negate(inner_expr, v.location, program, interner)
-         }
-         Expression::BinaryOperator { operator, lhs, .. } => match operator {
-            BinOp::Divide => replace_div(lhs, v.location, program, interner),
-            BinOp::Remainder => replace_mod(lhs, v.location, program, interner),
-            BinOp::Add if target == BaseTarget::Qbe => replace_add(lhs, v.location, program, interner),
-            BinOp::Subtract if target == BaseTarget::Qbe => replace_sub(lhs, v.location, program, interner),
-            BinOp::Multiply if target == BaseTarget::Qbe => replace_mul(lhs, v.location, program, interner),
-            BinOp::BitwiseLeftShift if target == BaseTarget::Qbe => replace_shl(lhs, v.location, program, interner),
+   for ast in all_expression_pools_mut(&mut program.global_exprs, &mut program.procedure_bodies) {
+      for (expression, v) in ast.iter() {
+         let opt_new_expr = match v.expression {
+            Expression::Cast { expr: src_expr, .. } => {
+               replace_cast_expr(src_expr, v, ast, &program.procedure_name_table, interner)
+            }
+            Expression::UnaryOperator(UnOp::Negate, inner_expr) => {
+               replace_negate(inner_expr, v.location, ast, &program.procedure_name_table, interner)
+            }
+            Expression::BinaryOperator { operator, lhs, .. } => match operator {
+               BinOp::Divide => replace_div(lhs, v.location, ast, &program.procedure_name_table, interner),
+               BinOp::Remainder => replace_mod(lhs, v.location, ast, &program.procedure_name_table, interner),
+               BinOp::Add if target == BaseTarget::Qbe => {
+                  replace_add(lhs, v.location, ast, &program.procedure_name_table, interner)
+               }
+               BinOp::Subtract if target == BaseTarget::Qbe => {
+                  replace_sub(lhs, v.location, ast, &program.procedure_name_table, interner)
+               }
+               BinOp::Multiply if target == BaseTarget::Qbe => {
+                  replace_mul(lhs, v.location, ast, &program.procedure_name_table, interner)
+               }
+               BinOp::BitwiseLeftShift if target == BaseTarget::Qbe => {
+                  replace_shl(lhs, v.location, ast, &program.procedure_name_table, interner)
+               }
+               _ => None,
+            },
             _ => None,
-         },
-         _ => None,
-      };
-      if let Some(new_expr) = opt_new_expr {
-         replacements.push((expression, new_expr));
+         };
+         if let Some(new_expr) = opt_new_expr {
+            replacements.push((expression, new_expr));
+         }
       }
-   }
-   for replacement in replacements {
-      let pid = program.ast.expressions.insert(replacement.1);
-      let args = match &program.ast.expressions[replacement.0].expression {
-         Expression::Cast { expr: castee, .. } => [Some(*castee), None],
-         Expression::UnaryOperator(_, operand) => [Some(*operand), None],
-         Expression::BinaryOperator { lhs, rhs, .. } => [Some(*lhs), Some(*rhs)],
-         _ => unreachable!(),
-      };
-      program.ast.expressions[replacement.0].expression = Expression::ProcedureCall {
-         proc_expr: pid,
-         args: args
-            .iter()
-            .flatten()
-            .map(|x| ArgumentNode { name: None, expr: *x })
-            .collect(),
-      };
+      for replacement in replacements.drain(..) {
+         let pid = ast.insert(replacement.1);
+         let args = match &ast[replacement.0].expression {
+            Expression::Cast { expr: castee, .. } => [Some(*castee), None],
+            Expression::UnaryOperator(_, operand) => [Some(*operand), None],
+            Expression::BinaryOperator { lhs, rhs, .. } => [Some(*lhs), Some(*rhs)],
+            _ => unreachable!(),
+         };
+         ast[replacement.0].expression = Expression::ProcedureCall {
+            proc_expr: pid,
+            args: args
+               .iter()
+               .flatten()
+               .map(|x| ArgumentNode { name: None, expr: *x })
+               .collect(),
+         };
+      }
    }
 }
 
 pub fn kill_zst_assignments(program: &mut Program, target: BaseTarget) {
-   for cfg in program.procedure_bodies.values_mut().map(|x| &mut x.cfg) {
-      for bb in cfg.bbs.iter_mut() {
+   for body in program.procedure_bodies.values_mut() {
+      for bb in body.cfg.bbs.iter_mut() {
          // This feels pretty inefficient :(
          // do this at cfg construction time?
          // at the very least, most basic blocks have no such assignments
@@ -361,13 +399,13 @@ pub fn kill_zst_assignments(program: &mut Program, target: BaseTarget) {
             .drain(..)
             .flat_map(|x| match x {
                CfgInstruction::Assignment(lhs, rhs) => {
-                  let rhs_t = program.ast.expressions[rhs].exp_type.as_ref().unwrap();
+                  let rhs_t = body.ast.expressions[rhs].exp_type.as_ref().unwrap();
                   if sizeof_type_mem(rhs_t, &program.user_defined_types, target) == 0 {
                      [
                         Some(CfgInstruction::Expression(lhs))
-                           .filter(|_| expression_could_have_side_effects(lhs, &program.ast.expressions)),
+                           .filter(|_| expression_could_have_side_effects(lhs, &body.ast.expressions)),
                         Some(CfgInstruction::Expression(rhs))
-                           .filter(|_| expression_could_have_side_effects(rhs, &program.ast.expressions)),
+                           .filter(|_| expression_could_have_side_effects(rhs, &body.ast.expressions)),
                      ]
                   } else {
                      [Some(x), None]

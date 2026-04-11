@@ -8,7 +8,8 @@ use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, EnumId, Expression, ExpressionId, ProcedureId, ProcedureNode, Program, UserDefinedTypeInfo, VariableId,
+   EnumId, Expression, ExpressionId, ExpressionPool, ProcedureId, ProcedureNode, Program, UserDefinedTypeInfo,
+   VariableId,
 };
 use crate::semantic_analysis::type_inference::tree_is_well_typed;
 use crate::semantic_analysis::type_variables::TypeVariableManager;
@@ -22,7 +23,7 @@ enum ProcessingState {
 }
 
 struct CgContext<'a> {
-   ast: &'a mut AstPool,
+   ast: &'a mut ExpressionPool,
    all_consts: &'a HashMap<VariableId, (SourceInfo, ExpressionId, StrId)>,
    consts_being_processed: HashSet<VariableId>,
    enums_being_processed: HashMap<(EnumId, usize), ProcessingState>,
@@ -37,7 +38,7 @@ struct CgContext<'a> {
 fn fold_expr_id(
    expr_id: ExpressionId,
    err_manager: &mut ErrorManager,
-   ast: &mut AstPool,
+   ast: &mut ExpressionPool,
    procedures: &SlotMap<ProcedureId, ProcedureNode>,
    user_defined_types: &UserDefinedTypeInfo,
    const_replacements: &HashMap<VariableId, ExpressionId>,
@@ -45,17 +46,17 @@ fn fold_expr_id(
    interner: &Interner,
    target: BaseTarget,
 ) {
-   debug_assert!(tree_is_well_typed(expr_id, &mut ast.expressions, type_variables));
+   debug_assert!(tree_is_well_typed(expr_id, ast, type_variables));
    let mut fc = FoldingContext {
-      ast,
       procedures,
       user_defined_types,
-      const_replacements,
+      global_expressions: None,
+      const_replacements: Some(const_replacements),
       current_proc_name: None,
       target,
       templated_types: &HashMap::new(),
    };
-   constant_folding::try_fold_and_replace_expr(expr_id, &mut Some(err_manager), &mut fc, interner);
+   constant_folding::try_fold_and_replace_expr(expr_id, &mut Some(err_manager), ast, &mut fc, interner);
 }
 
 #[must_use]
@@ -80,7 +81,7 @@ pub fn compile_consts(
       .collect();
 
    let mut cg_ctx = CgContext {
-      ast: &mut program.ast,
+      ast: &mut program.global_exprs,
       procedures: &program.procedures,
       all_consts: &all_consts,
       consts_being_processed: HashSet::new(),
@@ -136,7 +137,7 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
 
    let c = cg_context.all_consts[&c_id];
 
-   if !tree_is_well_typed(c.1, &mut cg_context.ast.expressions, cg_context.type_variables) {
+   if !tree_is_well_typed(c.1, cg_context.ast, cg_context.type_variables) {
       return;
    }
 
@@ -164,9 +165,9 @@ fn cg_const(c_id: VariableId, cg_context: &mut CgContext, err_manager: &mut Erro
       cg_context.target,
    );
 
-   let p_const_expr = &cg_context.ast.expressions[c.1];
+   let p_const_expr = &cg_context.ast[c.1];
 
-   if crate::constant_folding::is_const(&p_const_expr.expression, &cg_context.ast.expressions) {
+   if crate::constant_folding::is_const(&p_const_expr.expression, cg_context.ast) {
       cg_context.const_replacements.insert(c_id, c.1);
    } else {
       rolandc_error!(
@@ -189,19 +190,15 @@ fn cg_enum_variant(
 ) -> Option<Expression> {
    let expression_id = enum_info.values[variant_index].unwrap();
 
-   if !tree_is_well_typed(
-      expression_id,
-      &mut cg_context.ast.expressions,
-      cg_context.type_variables,
-   ) {
+   if !tree_is_well_typed(expression_id, cg_context.ast, cg_context.type_variables) {
       return None;
    }
 
    match cg_context.enums_being_processed.entry((e_id, variant_index)) {
       std::collections::hash_map::Entry::Occupied(occ) => match occ.get() {
          ProcessingState::Finished => {
-            let p_const_expr = &cg_context.ast.expressions[expression_id];
-            return if crate::constant_folding::is_const(&p_const_expr.expression, &cg_context.ast.expressions) {
+            let p_const_expr = &cg_context.ast[expression_id];
+            return if crate::constant_folding::is_const(&p_const_expr.expression, cg_context.ast) {
                Some(p_const_expr.expression.clone())
             } else {
                None
@@ -210,7 +207,7 @@ fn cg_enum_variant(
          ProcessingState::InProgress => {
             rolandc_error!(
                err_manager,
-               cg_context.ast.expressions[expression_id].location,
+               cg_context.ast[expression_id].location,
                "Value of enum variant `{}::{}` has a cyclic dependency",
                cg_context.interner.lookup(enum_info.name),
                cg_context
@@ -239,9 +236,9 @@ fn cg_enum_variant(
       cg_context.target,
    );
 
-   let p_const_expr = &cg_context.ast.expressions[expression_id];
+   let p_const_expr = &cg_context.ast[expression_id];
 
-   if !crate::constant_folding::is_const(&p_const_expr.expression, &cg_context.ast.expressions)
+   if !crate::constant_folding::is_const(&p_const_expr.expression, cg_context.ast)
       && !enum_info.variants_with_default_values[variant_index]
    {
       rolandc_error!(
@@ -259,7 +256,7 @@ fn cg_enum_variant(
       .enums_being_processed
       .insert((e_id, variant_index), ProcessingState::Finished);
 
-   if crate::constant_folding::is_const(&p_const_expr.expression, &cg_context.ast.expressions) {
+   if crate::constant_folding::is_const(&p_const_expr.expression, cg_context.ast) {
       Some(p_const_expr.expression.clone())
    } else {
       None
@@ -267,10 +264,7 @@ fn cg_enum_variant(
 }
 
 fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
-   let the_expr = std::mem::replace(
-      &mut cg_context.ast.expressions[expr_index].expression,
-      Expression::UnitLiteral,
-   );
+   let the_expr = std::mem::replace(&mut cg_context.ast[expr_index].expression, Expression::UnitLiteral);
    match &the_expr {
       Expression::IfX(a, b, c) => {
          cg_expr(*a, cg_context, err_manager);
@@ -335,5 +329,5 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
       | Expression::UnitLiteral
       | Expression::BoundFcnLiteral(_, _) => (),
    }
-   cg_context.ast.expressions[expr_index].expression = the_expr;
+   cg_context.ast[expr_index].expression = the_expr;
 }

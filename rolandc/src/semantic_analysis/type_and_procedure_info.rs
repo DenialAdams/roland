@@ -403,7 +403,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
          } else {
             enum_i.variants_with_default_values.set(i, true);
             let final_expr = if let Some(lsv) = last_specified_variant {
-               let num_expr = program.ast.expressions.insert(ExpressionNode {
+               let num_expr = program.global_exprs.insert(ExpressionNode {
                   expression: Expression::IntLiteral {
                      val: since_last_expr + 1,
                      synthetic: true,
@@ -411,12 +411,12 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
                   exp_type: Some(enum_i.base_type.e_type.clone()),
                   location: *variant_location,
                });
-               let since_expr = program.ast.expressions.insert(ExpressionNode {
+               let since_expr = program.global_exprs.insert(ExpressionNode {
                   expression: Expression::EnumLiteral(id, lsv),
                   exp_type: Some(ExpressionType::Enum(id)),
                   location: *variant_location,
                });
-               let cast_expr = program.ast.expressions.insert(ExpressionNode {
+               let cast_expr = program.global_exprs.insert(ExpressionNode {
                   expression: Expression::Cast {
                      cast_type: CastType::Transmute,
                      target_type: enum_i.base_type.e_type.clone(),
@@ -425,7 +425,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
                   exp_type: Some(enum_i.base_type.e_type.clone()),
                   location: *variant_location,
                });
-               program.ast.expressions.insert(ExpressionNode {
+               program.global_exprs.insert(ExpressionNode {
                   expression: Expression::BinaryOperator {
                      operator: BinOp::Add,
                      lhs: cast_expr,
@@ -435,7 +435,7 @@ fn populate_user_defined_type_info(program: &mut Program, err_manager: &mut Erro
                   location: *variant_location,
                })
             } else {
-               program.ast.expressions.insert(ExpressionNode {
+               program.global_exprs.insert(ExpressionNode {
                   expression: Expression::IntLiteral {
                      val: i as u64,
                      synthetic: true,

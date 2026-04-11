@@ -8,7 +8,7 @@ use crate::type_data::ExpressionType;
 
 pub fn lower_variable_decls(program: &mut Program) {
    for proc_body in program.procedure_bodies.values_mut() {
-      lower_block(&mut proc_body.block, &mut program.ast, &proc_body.locals);
+      lower_block(&mut proc_body.block, &mut proc_body.ast, &proc_body.locals);
    }
 }
 

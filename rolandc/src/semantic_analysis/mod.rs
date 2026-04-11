@@ -9,8 +9,8 @@ use crate::Target;
 use crate::interner::{Interner, StrId};
 use crate::monomorphization::SpecializationRequest;
 use crate::parse::{
-   AstPool, ExpressionId, ExpressionTypeNode, ProcedureId, ProcedureNode, StructId, UserDefinedTypeId,
-   UserDefinedTypeInfo, VariableId,
+   ExpressionId, ExpressionTypeNode, ProcedureId, ProcedureNode, StructId, UserDefinedTypeId, UserDefinedTypeInfo,
+   VariableId,
 };
 use crate::size_info::{StructSizeInfo, UnionSizeInfo};
 use crate::source_info::SourceInfo;
@@ -103,7 +103,6 @@ pub struct OwnedValidationContext {
 
 pub struct ValidationContext<'a, 'b> {
    pub owned: &'b mut OwnedValidationContext,
-   pub ast: &'a mut AstPool,
    pub source_to_definition: &'a mut IndexMap<SourceInfo, SourceInfo>,
    pub interner: &'a mut Interner,
    pub procedures: &'a SlotMap<ProcedureId, ProcedureNode>,

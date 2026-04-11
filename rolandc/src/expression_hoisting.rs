@@ -75,7 +75,7 @@ pub fn expression_hoisting(program: &mut Program, interner: &Interner, mode: Hoi
 
    for body in program.procedure_bodies.values_mut() {
       vv_context.cur_procedure_locals = &mut body.locals;
-      vv_block(&mut body.block, &mut vv_context, &mut program.ast);
+      vv_block(&mut body.block, &mut vv_context, &mut body.ast);
    }
 
    program.next_variable = vv_context.next_variable;

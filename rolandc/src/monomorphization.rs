@@ -4,8 +4,8 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::interner::StrId;
 use crate::parse::{
-   AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureBody, ProcedureId, ProcedureNode, Statement,
-   StatementId, StructId, UnionId, UserDefinedTypeId, UserDefinedTypeInfo, VariableId,
+   Expression, ProcedureBody, ProcedureId, ProcedureNode, StructId, UnionId, UserDefinedTypeId, UserDefinedTypeInfo,
+   all_expression_pools_mut,
 };
 use crate::semantic_analysis::validator::map_generic_to_concrete;
 use crate::semantic_analysis::{StructInfo, UnionInfo};
@@ -47,7 +47,6 @@ pub fn monomorphize(
          body,
          &new_spec.proc_and_type_arguments.1,
          &template_procedure.type_parameters,
-         &mut program.ast,
       );
       cloned_procedure.0.where_instantiated.push(new_spec.callsite);
 
@@ -82,24 +81,26 @@ pub fn update_expressions_to_point_to_monomorphized_procedures(
          lower_type(var_type, specialized_procedures);
       }
    }
-   for expr in program.ast.expressions.values_mut() {
-      if let Some(et) = expr.exp_type.as_mut() {
-         lower_type(et, specialized_procedures);
-      }
-      if let Expression::BoundFcnLiteral(id, generic_args) = &mut expr.expression {
-         if generic_args.is_empty() {
-            continue;
+   for ast in all_expression_pools_mut(&mut program.global_exprs, &mut program.procedure_bodies) {
+      for expr in ast.values_mut() {
+         if let Some(et) = expr.exp_type.as_mut() {
+            lower_type(et, specialized_procedures);
          }
+         if let Expression::BoundFcnLiteral(id, generic_args) = &mut expr.expression {
+            if generic_args.is_empty() {
+               continue;
+            }
 
-         let gargs = generic_args
-            .iter()
-            .map(|x| x.e_type.clone())
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
+            let gargs = generic_args
+               .iter()
+               .map(|x| x.e_type.clone())
+               .collect::<Vec<_>>()
+               .into_boxed_slice();
 
-         if let Some(new_id) = specialized_procedures.get(&(*id, gargs)).copied() {
-            *id = new_id;
-            *generic_args = Box::new([]);
+            if let Some(new_id) = specialized_procedures.get(&(*id, gargs)).copied() {
+               *id = new_id;
+               *generic_args = Box::new([]);
+            }
          }
       }
    }
@@ -110,10 +111,8 @@ fn clone_procedure(
    template_body: &ProcedureBody,
    concrete_types: &[ExpressionType],
    type_parameters: &IndexMap<StrId, IndexSet<StrId>>,
-   ast: &mut AstPool,
 ) -> (ProcedureNode, ProcedureBody) {
    let mut cloned_proc = template_procedure.clone();
-   let mut cloned_body = template_body.clone();
 
    for param in cloned_proc.definition.parameters.iter_mut() {
       map_generic_to_concrete(&mut param.p_type.e_type, concrete_types, type_parameters);
@@ -124,8 +123,6 @@ fn clone_procedure(
       type_parameters,
    );
 
-   deep_clone_block(&mut cloned_body.block, ast);
-
    cloned_proc.definition.type_parameters.clear();
    cloned_proc.type_parameters.clear();
 
@@ -135,136 +132,7 @@ fn clone_procedure(
       .zip(concrete_types.iter().cloned())
       .collect();
 
-   (cloned_proc, cloned_body)
-}
-
-fn deep_clone_block(block: &mut BlockNode, ast: &mut AstPool) {
-   for stmt in block.statements.iter_mut() {
-      *stmt = deep_clone_stmt(*stmt, ast);
-   }
-}
-
-#[must_use]
-fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool) -> StatementId {
-   let mut cloned = ast.statements[stmt].clone();
-   match &mut cloned.statement {
-      Statement::Assignment(lhs, rhs) => {
-         *lhs = deep_clone_expr(*lhs, &mut ast.expressions);
-         *rhs = deep_clone_expr(*rhs, &mut ast.expressions);
-      }
-      Statement::Block(bn) | Statement::Loop(bn) => {
-         deep_clone_block(bn, ast);
-      }
-      Statement::Continue | Statement::Break => (),
-      Statement::IfElse {
-         cond,
-         then,
-         otherwise: else_s,
-         constant: _,
-      } => {
-         *cond = deep_clone_expr(*cond, &mut ast.expressions);
-         deep_clone_block(then, ast);
-         *else_s = deep_clone_stmt(*else_s, ast);
-      }
-      Statement::Expression(expr) | Statement::Return(expr) => {
-         *expr = deep_clone_expr(*expr, &mut ast.expressions);
-      }
-      Statement::Defer(ds) => {
-         *ds = deep_clone_stmt(*ds, ast);
-      }
-      Statement::VariableDeclaration {
-         var_name: _,
-         value: val,
-         declared_type: _,
-         var_id,
-         storage: _,
-      } => {
-         debug_assert!(*var_id == VariableId::first());
-         match val {
-            crate::parse::DeclarationValue::Expr(e) => {
-               *e = deep_clone_expr(*e, &mut ast.expressions);
-            }
-            crate::parse::DeclarationValue::Uninit | crate::parse::DeclarationValue::None => (),
-         }
-      }
-      Statement::While(e, body) => {
-         *e = deep_clone_expr(*e, &mut ast.expressions);
-         deep_clone_block(body, ast);
-      }
-      Statement::For {
-         range_start,
-         range_end,
-         body,
-         ..
-      } => {
-         *range_start = deep_clone_expr(*range_start, &mut ast.expressions);
-         *range_end = deep_clone_expr(*range_end, &mut ast.expressions);
-         deep_clone_block(body, ast);
-      }
-   }
-   ast.statements.insert(cloned)
-}
-
-#[must_use]
-fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool) -> ExpressionId {
-   let mut cloned = expressions[expr].clone();
-   debug_assert!(cloned.exp_type.is_none());
-   match &mut cloned.expression {
-      Expression::ProcedureCall { proc_expr, args } => {
-         *proc_expr = deep_clone_expr(*proc_expr, expressions);
-         for arg in args.iter_mut() {
-            arg.expr = deep_clone_expr(arg.expr, expressions);
-         }
-      }
-      Expression::ArrayLiteral(exprs) => {
-         for expr in exprs.iter_mut() {
-            *expr = deep_clone_expr(*expr, expressions);
-         }
-      }
-      Expression::ArrayIndex { array, index } => {
-         *array = deep_clone_expr(*array, expressions);
-         *index = deep_clone_expr(*index, expressions);
-      }
-      Expression::UnresolvedEnumLiteral(_, _)
-      | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedVariable(_)
-      | Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_)
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_)
-      | Expression::UnitLiteral => (),
-      Expression::BinaryOperator { lhs, rhs, .. } => {
-         *lhs = deep_clone_expr(*lhs, expressions);
-         *rhs = deep_clone_expr(*rhs, expressions);
-      }
-      Expression::UnaryOperator(_, operand) => {
-         *operand = deep_clone_expr(*operand, expressions);
-      }
-      Expression::FieldAccess(_, base) => {
-         *base = deep_clone_expr(*base, expressions);
-      }
-      Expression::Cast { expr, .. } => {
-         *expr = deep_clone_expr(*expr, expressions);
-      }
-      Expression::IfX(a, b, c) => {
-         *a = deep_clone_expr(*a, expressions);
-         *b = deep_clone_expr(*b, expressions);
-         *c = deep_clone_expr(*c, expressions);
-      }
-      Expression::UnresolvedStructLiteral(_, fields, _) => {
-         for field in fields.iter_mut() {
-            if let Some(e) = &mut field.1 {
-               *e = deep_clone_expr(*e, expressions);
-            }
-         }
-      }
-      // These should not yet be resolved
-      Expression::BoundFcnLiteral(_, _)
-      | Expression::EnumLiteral(_, _)
-      | Expression::StructLiteral(_, _)
-      | Expression::Variable(_) => unreachable!(),
-   }
-   expressions.insert(cloned)
+   (cloned_proc, template_body.clone())
 }
 
 pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
@@ -406,45 +274,40 @@ pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
 
    let mut lowered = HashMap::new();
 
-   for exp in program.ast.expressions.values_mut() {
-      match &mut exp.expression {
-         Expression::BoundFcnLiteral(_, type_arg_nodes) => {
-            for n in type_arg_nodes.iter_mut() {
+   for ast in all_expression_pools_mut(&mut program.global_exprs, &mut program.procedure_bodies) {
+      for exp in ast.values_mut() {
+         match &mut exp.expression {
+            Expression::BoundFcnLiteral(_, type_arg_nodes) => {
+               for n in type_arg_nodes.iter_mut() {
+                  lower_type(
+                     &mut n.e_type,
+                     &mut program.user_defined_types,
+                     &program.templated_types,
+                     target,
+                     &mut lowered,
+                  );
+               }
+            }
+            Expression::Cast { target_type, .. } => {
                lower_type(
-                  &mut n.e_type,
+                  target_type,
                   &mut program.user_defined_types,
                   &program.templated_types,
                   target,
                   &mut lowered,
                );
             }
+            _ => (),
          }
-         Expression::Cast { target_type, .. } => {
-            lower_type(
-               target_type,
-               &mut program.user_defined_types,
-               &program.templated_types,
-               target,
-               &mut lowered,
-            );
-         }
-         _ => (),
-      }
-   }
 
-   for exp_type in program
-      .ast
-      .expressions
-      .iter_mut()
-      .map(|x| x.1.exp_type.as_mut().unwrap())
-   {
-      lower_type(
-         exp_type,
-         &mut program.user_defined_types,
-         &program.templated_types,
-         target,
-         &mut lowered,
-      );
+         lower_type(
+            exp.exp_type.as_mut().unwrap(),
+            &mut program.user_defined_types,
+            &program.templated_types,
+            target,
+            &mut lowered,
+         );
+      }
    }
 
    let struct_ids: Vec<StructId> = program
@@ -455,7 +318,7 @@ pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
       .map(|x| x.0)
       .collect();
    for struct_id in struct_ids {
-      // Taking field_types temporarily is fine, since lower_type should only ready field_types from
+      // Taking field_types temporarily is fine, since lower_type should only read field_types from
       // template structs (i.e. size is_none)
       let mut fts = std::mem::take(&mut program.user_defined_types.struct_info[struct_id].field_types);
       for field_type in fts.values_mut() {

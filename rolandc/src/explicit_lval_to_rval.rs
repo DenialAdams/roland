@@ -5,11 +5,11 @@ use crate::parse::{
 use crate::type_data::ExpressionType;
 
 pub fn make_lval_to_rval_explicit(program: &mut Program) {
-   for body in program.procedure_bodies.iter() {
-      do_block(&body.1.block, &mut program.ast);
+   for body in program.procedure_bodies.iter_mut() {
+      do_block(&body.1.block, &mut body.1.ast);
    }
    for a_static_expr in program.non_stack_var_info.iter().filter_map(|x| x.1.initializer) {
-      do_expr(a_static_expr, &mut program.ast.expressions, false);
+      do_expr(a_static_expr, &mut program.global_exprs, false);
    }
 }
 

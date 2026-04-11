@@ -12,8 +12,8 @@ use super::regalloc::{RegallocResult, RegisterType, VarSlot};
 use crate::dominators::{DominatorTree, compute_dominators};
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureDefinition, ProcedureId, Program, UnOp,
-   UserDefinedTypeInfo, VariableId,
+   BinOp, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureDefinition, ProcedureId,
+   Program, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::{GlobalInfo, StorageKind};
 use crate::size_info::{aligned_address, mem_alignment, sizeof_type_mem, sizeof_type_values, sizeof_type_wasm};
@@ -58,7 +58,6 @@ struct GenerationContext<'a> {
    stack_offsets_mem: HashMap<usize, u32>,
    user_defined_types: &'a UserDefinedTypeInfo,
    sum_sizeof_locals_mem: u32,
-   ast: &'a AstPool,
    proc_name_table: &'a HashMap<StrId, ProcedureId>,
    procedure_to_table_index: IndexSet<ProcedureId>,
    procedure_indices: IndexSet<ProcedureId>,
@@ -206,7 +205,6 @@ pub fn emit_wasm(
       stack_offsets_mem: HashMap::new(),
       user_defined_types: &program.user_defined_types,
       sum_sizeof_locals_mem: 0,
-      ast: &program.ast,
       procedure_to_table_index: IndexSet::new(),
       procedure_indices: IndexSet::new(),
       frames: Vec::new(),
@@ -314,7 +312,12 @@ pub fn emit_wasm(
          continue;
       }
 
-      literal_as_bytes(&mut buf, p_static.initializer.unwrap(), &mut generation_context);
+      literal_as_bytes(
+         &mut buf,
+         p_static.initializer.unwrap(),
+         &program.global_exprs,
+         &mut generation_context,
+      );
       let static_address = generation_context.static_addresses.get(p_var).copied().unwrap();
       data_section.active(0, &ConstExpr::i32_const(static_address as i32), buf.drain(..));
    }
@@ -344,7 +347,7 @@ pub fn emit_wasm(
          let wt = type_to_wasm_type_basic(&global.1.expr_type.e_type);
 
          let initial_val = if let Some(initializer) = global.1.initializer {
-            literal_as_wasm_const(initializer, &mut generation_context)
+            literal_as_wasm_const(initializer, &program.global_exprs, &mut generation_context)
          } else {
             match wt {
                ValType::I32 => ConstExpr::i32_const(0),
@@ -434,7 +437,7 @@ pub fn emit_wasm(
    }
 
    for (proc_id, procedure) in program.procedures.iter() {
-      let Some(cfg) = program.procedure_bodies.get(proc_id).map(|x| &x.cfg) else {
+      let Some(body) = program.procedure_bodies.get(proc_id) else {
          continue;
       };
       generation_context.active_fcn = Function::new_with_locals_types(
@@ -490,13 +493,20 @@ pub fn emit_wasm(
          values_index += 1;
       }
 
-      let rpo: Vec<usize> = post_order(cfg).into_iter().rev().collect();
+      let rpo: Vec<usize> = post_order(&body.cfg).into_iter().rev().collect();
       generation_context.cfg_index_to_rpo_index.clear();
       generation_context
          .cfg_index_to_rpo_index
          .extend(rpo.iter().enumerate().map(|(i, x)| (*x, i)));
-      let dominator_tree = compute_dominators(cfg, &rpo, &generation_context.cfg_index_to_rpo_index);
-      do_tree(0, &dominator_tree, &rpo, cfg, &mut generation_context);
+      let dominator_tree = compute_dominators(&body.cfg, &rpo, &generation_context.cfg_index_to_rpo_index);
+      do_tree(
+         0,
+         &dominator_tree,
+         &rpo,
+         &body.cfg,
+         &body.ast.expressions,
+         &mut generation_context,
+      );
       generation_context.active_fcn.instruction(&Instruction::Unreachable);
       generation_context.active_fcn.instruction(&Instruction::End);
 
@@ -667,6 +677,7 @@ fn do_tree(
    dominator_tree: &DominatorTree,
    rpo: &[usize],
    cfg: &Cfg,
+   ast: &ExpressionPool,
    generation_context: &mut GenerationContext,
 ) {
    let empty_children = IndexSet::new();
@@ -700,6 +711,7 @@ fn do_tree(
       dominator_tree,
       rpo,
       cfg,
+      ast,
       generation_context,
    );
 
@@ -715,6 +727,7 @@ fn node_within(
    dominator_tree: &DominatorTree,
    rpo: &[usize],
    cfg: &Cfg,
+   ast: &ExpressionPool,
    generation_context: &mut GenerationContext,
 ) {
    if let Some(merge_node_child) = merge_node_children.first().copied() {
@@ -730,18 +743,19 @@ fn node_within(
          dominator_tree,
          rpo,
          cfg,
+         ast,
          generation_context,
       );
       generation_context.frames.pop();
       generation_context.active_fcn.instruction(&Instruction::End);
-      do_tree(merge_node_child, dominator_tree, rpo, cfg, generation_context);
+      do_tree(merge_node_child, dominator_tree, rpo, cfg, ast, generation_context);
       return;
    }
 
    for instr in cfg.bbs[rpo[rpo_index]].instructions.iter() {
       match instr {
          CfgInstruction::ConditionalJump(condition, then, otherwise) => {
-            do_emit(*condition, generation_context);
+            do_emit(*condition, ast, generation_context);
             generation_context.frames.push(ContainingSyntax::IfThenElse);
             generation_context
                .active_fcn
@@ -752,6 +766,7 @@ fn node_within(
                dominator_tree,
                rpo,
                cfg,
+               ast,
                generation_context,
             );
             // else
@@ -762,6 +777,7 @@ fn node_within(
                dominator_tree,
                rpo,
                cfg,
+               ast,
                generation_context,
             );
             // finish if
@@ -776,14 +792,15 @@ fn node_within(
                dominator_tree,
                rpo,
                cfg,
+               ast,
                generation_context,
             );
          }
          CfgInstruction::Assignment(len, en) => {
-            do_emit(*len, generation_context);
-            do_emit(*en, generation_context);
-            let val_type = generation_context.ast.expressions[*en].exp_type.as_ref().unwrap();
-            if let Some((is_global, a_reg)) = register_for_var(*len, generation_context) {
+            do_emit(*len, ast, generation_context);
+            do_emit(*en, ast, generation_context);
+            let val_type = ast[*en].exp_type.as_ref().unwrap();
+            if let Some((is_global, a_reg)) = register_for_var(*len, ast, generation_context) {
                if is_global {
                   generation_context
                      .active_fcn
@@ -796,9 +813,9 @@ fn node_within(
             }
          }
          CfgInstruction::Expression(en) => {
-            do_emit(*en, generation_context);
+            do_emit(*en, ast, generation_context);
             for _ in 0..sizeof_type_values(
-               generation_context.ast.expressions[*en].exp_type.as_ref().unwrap(),
+               ast[*en].exp_type.as_ref().unwrap(),
                generation_context.user_defined_types,
                BaseTarget::Wasm,
             ) {
@@ -806,14 +823,9 @@ fn node_within(
             }
          }
          CfgInstruction::Return(en) => {
-            do_emit(*en, generation_context);
+            do_emit(*en, ast, generation_context);
 
-            if generation_context.ast.expressions[*en]
-               .exp_type
-               .as_ref()
-               .unwrap()
-               .is_never()
-            {
+            if ast[*en].exp_type.as_ref().unwrap().is_never() {
                // We have already emitted a literal "unreachable", no need to adjust the stack
             } else {
                adjust_stack_function_exit(generation_context);
@@ -831,6 +843,7 @@ fn do_branch(
    dominator_tree: &DominatorTree,
    rpo: &[usize],
    cfg: &Cfg,
+   ast: &ExpressionPool,
    generation_context: &mut GenerationContext,
 ) {
    if target_rpo_index <= source_rpo_index
@@ -851,12 +864,16 @@ fn do_branch(
          .active_fcn
          .instruction(&Instruction::Br(index as u32));
    } else {
-      do_tree(target_rpo_index, dominator_tree, rpo, cfg, generation_context);
+      do_tree(target_rpo_index, dominator_tree, rpo, cfg, ast, generation_context);
    }
 }
 
-fn register_for_var(expr_id: ExpressionId, generation_context: &GenerationContext) -> Option<(bool, u32)> {
-   let node = &generation_context.ast.expressions[expr_id];
+fn register_for_var(
+   expr_id: ExpressionId,
+   ast: &ExpressionPool,
+   generation_context: &GenerationContext,
+) -> Option<(bool, u32)> {
+   let node = &ast[expr_id];
    match &node.expression {
       Expression::Variable(v) => generation_context
          .var_to_slot
@@ -867,8 +884,13 @@ fn register_for_var(expr_id: ExpressionId, generation_context: &GenerationContex
    }
 }
 
-fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_context: &mut GenerationContext) {
-   let expr_node = &generation_context.ast.expressions[expr_index];
+fn literal_as_bytes(
+   buf: &mut Vec<u8>,
+   expr_index: ExpressionId,
+   ast: &ExpressionPool,
+   generation_context: &mut GenerationContext,
+) {
+   let expr_node = &ast[expr_index];
    match &expr_node.expression {
       Expression::BoundFcnLiteral(proc_id, _) => {
          let (my_index, _) = generation_context.procedure_to_table_index.insert_full(*proc_id);
@@ -938,7 +960,7 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
          ) {
             let value_of_field = fields.get(field.0).copied().unwrap();
             if let Some(val) = value_of_field {
-               literal_as_bytes(buf, val, generation_context);
+               literal_as_bytes(buf, val, ast, generation_context);
             } else {
                type_as_zero_bytes(buf, &field.1.e_type, generation_context.user_defined_types);
             }
@@ -953,7 +975,7 @@ fn literal_as_bytes(buf: &mut Vec<u8>, expr_index: ExpressionId, generation_cont
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
-            literal_as_bytes(buf, *expr, generation_context);
+            literal_as_bytes(buf, *expr, ast, generation_context);
          }
       }
       _ => unreachable!(),
@@ -965,8 +987,12 @@ fn type_as_zero_bytes(buf: &mut Vec<u8>, expr_type: &ExpressionType, udt: &UserD
    buf.extend(std::iter::repeat_n(0, size as usize));
 }
 
-fn literal_as_wasm_const(expr_index: ExpressionId, generation_context: &mut GenerationContext) -> ConstExpr {
-   let expr_node = &generation_context.ast.expressions[expr_index];
+fn literal_as_wasm_const(
+   expr_index: ExpressionId,
+   ast: &ExpressionPool,
+   generation_context: &mut GenerationContext,
+) -> ConstExpr {
+   let expr_node = &ast[expr_index];
    match &expr_node.expression {
       Expression::BoundFcnLiteral(proc_id, _) => {
          let (my_index, _) = generation_context.procedure_to_table_index.insert_full(*proc_id);
@@ -999,12 +1025,12 @@ fn literal_as_wasm_const(expr_index: ExpressionId, generation_context: &mut Gene
    }
 }
 
-fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext) {
-   let expr_node = &generation_context.ast.expressions[expr_index];
+fn do_emit(expr_index: ExpressionId, ast: &ExpressionPool, generation_context: &mut GenerationContext) {
+   let expr_node = &ast[expr_index];
    match &expr_node.expression {
       Expression::UnitLiteral => (),
       Expression::IfX(a, b, c) => {
-         do_emit(*a, generation_context);
+         do_emit(*a, ast, generation_context);
          let ifx_type = generation_context
             .type_manager
             .register_or_find_type(&[], expr_node.exp_type.as_ref().unwrap());
@@ -1012,10 +1038,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             .active_fcn
             .instruction(&Instruction::If(BlockType::FunctionType(ifx_type)));
          // then
-         do_emit(*b, generation_context);
+         do_emit(*b, ast, generation_context);
          // else
          generation_context.active_fcn.instruction(&Instruction::Else);
-         do_emit(*c, generation_context);
+         do_emit(*c, ast, generation_context);
          // finish if
          generation_context.active_fcn.instruction(&Instruction::End);
       }
@@ -1059,11 +1085,11 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             .instruction(&Instruction::I32Const(*offset as i32));
       }
       Expression::BinaryOperator { operator, lhs, rhs } => {
-         do_emit(*lhs, generation_context);
+         do_emit(*lhs, ast, generation_context);
 
-         do_emit(*rhs, generation_context);
+         do_emit(*rhs, ast, generation_context);
 
-         let (wasm_type, signed) = match generation_context.ast.expressions[*lhs].exp_type.as_ref().unwrap() {
+         let (wasm_type, signed) = match ast[*lhs].exp_type.as_ref().unwrap() {
             ExpressionType::Int(x) => match x.width {
                IntWidth::Eight => (ValType::I64, x.signed),
                _ => (ValType::I32, x.signed),
@@ -1077,7 +1103,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          };
 
          if matches!(operator, BinOp::BitwiseLeftShift) {
-            let op_type = generation_context.ast.expressions[*rhs].exp_type.as_ref().unwrap();
+            let op_type = ast[*rhs].exp_type.as_ref().unwrap();
             if let ExpressionType::Int(x) = op_type {
                match x.width {
                   IntWidth::Two => {
@@ -1246,7 +1272,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          }
 
          if matches!(operator, BinOp::Add | BinOp::Multiply | BinOp::Subtract) {
-            let op_type = generation_context.ast.expressions[*lhs].exp_type.as_ref().unwrap();
+            let op_type = ast[*lhs].exp_type.as_ref().unwrap();
             if let ExpressionType::Int(x) = op_type {
                // Emulate overflow for necessary types
                match (x.width, x.signed) {
@@ -1274,7 +1300,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          }
       }
       Expression::UnaryOperator(un_op, e_index) => {
-         let e = &generation_context.ast.expressions[*e_index];
+         let e = &ast[*e_index];
 
          match un_op {
             UnOp::TakeProcedurePointer => {
@@ -1284,9 +1310,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
                emit_procedure_pointer_index(*proc_id, generation_context);
             }
             UnOp::Dereference => {
-               do_emit(*e_index, generation_context);
+               do_emit(*e_index, ast, generation_context);
 
-               if let Some((is_global, a_reg)) = register_for_var(*e_index, generation_context) {
+               if let Some((is_global, a_reg)) = register_for_var(*e_index, ast, generation_context) {
                   if is_global {
                      generation_context
                         .active_fcn
@@ -1300,7 +1326,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             }
             UnOp::Complement => {
                let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
-               do_emit(*e_index, generation_context);
+               do_emit(*e_index, ast, generation_context);
 
                if *e.exp_type.as_ref().unwrap() == ExpressionType::Bool {
                   generation_context.active_fcn.instruction(&Instruction::I32Eqz);
@@ -1310,7 +1336,7 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             }
             UnOp::Negate => {
                let wasm_type = type_to_wasm_type_basic(expr_node.exp_type.as_ref().unwrap());
-               do_emit(*e_index, generation_context);
+               do_emit(*e_index, ast, generation_context);
 
                match wasm_type {
                   ValType::I64 => {
@@ -1340,10 +1366,10 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          expr: e_id,
          ..
       } => {
-         let e = &generation_context.ast.expressions[*e_id];
+         let e = &ast[*e_id];
          let target_type = expr_node.exp_type.as_ref().unwrap();
 
-         do_emit(*e_id, generation_context);
+         do_emit(*e_id, ast, generation_context);
 
          match (e.exp_type.as_ref().unwrap(), target_type) {
             (&I16_TYPE, &U16_TYPE) => {
@@ -1404,9 +1430,9 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
          expr: e,
          ..
       } => {
-         do_emit(*e, generation_context);
+         do_emit(*e, ast, generation_context);
 
-         let e = &generation_context.ast.expressions[*e];
+         let e = &ast[*e];
 
          let src_type = e.exp_type.as_ref().unwrap();
          let target_type = expr_node.exp_type.as_ref().unwrap();
@@ -1605,40 +1631,34 @@ fn do_emit(expr_index: ExpressionId, generation_context: &mut GenerationContext)
             get_stack_address_of_local(*id, generation_context);
          }
       }
-      Expression::ProcedureCall { proc_expr, args } => {
-         match generation_context.ast.expressions[*proc_expr]
-            .exp_type
-            .as_ref()
-            .unwrap()
-         {
-            ExpressionType::ProcedureItem(proc_name, _) => {
-               do_emit(*proc_expr, generation_context);
-               for arg in args.iter() {
-                  do_emit(arg.expr, generation_context);
-               }
-               let idx = generation_context.procedure_indices.get_index_of(proc_name).unwrap() as u32;
-               generation_context.active_fcn.instruction(&Instruction::Call(idx));
+      Expression::ProcedureCall { proc_expr, args } => match ast[*proc_expr].exp_type.as_ref().unwrap() {
+         ExpressionType::ProcedureItem(proc_name, _) => {
+            do_emit(*proc_expr, ast, generation_context);
+            for arg in args.iter() {
+               do_emit(arg.expr, ast, generation_context);
             }
-            ExpressionType::ProcedurePointer {
-               parameters,
-               ret_type,
-               variadic: _,
-            } => {
-               for arg in args.iter() {
-                  do_emit(arg.expr, generation_context);
-               }
-               do_emit(*proc_expr, generation_context);
-               let type_index = generation_context
-                  .type_manager
-                  .register_or_find_type(parameters.iter(), ret_type);
-               generation_context.active_fcn.instruction(&Instruction::CallIndirect {
-                  type_index,
-                  table_index: 0,
-               });
-            }
-            _ => unreachable!(),
+            let idx = generation_context.procedure_indices.get_index_of(proc_name).unwrap() as u32;
+            generation_context.active_fcn.instruction(&Instruction::Call(idx));
          }
-      }
+         ExpressionType::ProcedurePointer {
+            parameters,
+            ret_type,
+            variadic: _,
+         } => {
+            for arg in args.iter() {
+               do_emit(arg.expr, ast, generation_context);
+            }
+            do_emit(*proc_expr, ast, generation_context);
+            let type_index = generation_context
+               .type_manager
+               .register_or_find_type(parameters.iter(), ret_type);
+            generation_context.active_fcn.instruction(&Instruction::CallIndirect {
+               type_index,
+               table_index: 0,
+            });
+         }
+         _ => unreachable!(),
+      },
       Expression::FieldAccess(_, _)
       | Expression::ArrayIndex { .. }
       | Expression::EnumLiteral(_, _)

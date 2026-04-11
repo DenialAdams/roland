@@ -26,6 +26,16 @@ pub struct AstPool {
    pub expressions: ExpressionPool,
 }
 
+impl AstPool {
+   #[must_use]
+   pub fn new() -> AstPool {
+      AstPool {
+         statements: StatementPool::with_key(),
+         expressions: ExpressionPool::with_key(),
+      }
+   }
+}
+
 fn merge_locations(begin: SourceInfo, end: SourceInfo) -> SourceInfo {
    SourceInfo {
       begin: begin.begin,
@@ -73,7 +83,7 @@ pub struct ProcedureNode {
    pub where_instantiated: Vec<(Option<ProcedureId>, SourceInfo)>,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ProcImplSource {
    Builtin,
    External,
@@ -430,6 +440,8 @@ pub struct UserDefinedTypeInfo {
 pub struct ProcedureBody {
    // Includes parameters
    pub locals: IndexMap<VariableId, ExpressionType>,
+
+   pub ast: AstPool,
    pub block: BlockNode,
 
    // Populated late, for the backend
@@ -437,7 +449,7 @@ pub struct ProcedureBody {
 }
 
 pub struct Program {
-   pub ast: AstPool,
+   pub global_exprs: ExpressionPool,
 
    // These fields are populated by the parser
    pub procedures: SlotMap<ProcedureId, ProcedureNode>,
@@ -461,6 +473,13 @@ pub struct Program {
    pub user_defined_types: UserDefinedTypeInfo,
    pub templated_types: HashMap<UserDefinedTypeId, IndexSet<StrId>>,
    pub next_variable: VariableId,
+}
+
+pub fn all_expression_pools_mut<'a>(
+   global_exprs: &'a mut ExpressionPool,
+   procedure_bodies: &'a mut SecondaryMap<ProcedureId, ProcedureBody>,
+) -> impl Iterator<Item = &'a mut ExpressionPool> {
+   std::iter::once(global_exprs).chain(procedure_bodies.values_mut().map(|b| &mut b.ast.expressions))
 }
 
 // SlotMaps are deterministic, but the order that you get after clearing it is not the same as you would get
@@ -503,10 +522,7 @@ impl Program {
          user_defined_type_name_table: HashMap::new(),
          source_to_definition: IndexMap::new(),
          next_variable: VariableId::first(),
-         ast: AstPool {
-            expressions: ExpressionPool::with_key(),
-            statements: StatementPool::with_key(),
-         },
+         global_exprs: ExpressionPool::with_key(),
          templated_types: HashMap::new(),
       }
    }
@@ -529,8 +545,7 @@ impl Program {
       self.user_defined_type_name_table.clear();
       self.procedure_name_table.clear();
       self.source_to_definition.clear();
-      reset_slotmap(&mut self.ast.expressions);
-      reset_slotmap(&mut self.ast.statements);
+      reset_slotmap(&mut self.global_exprs);
       self.templated_types.clear();
       self.next_variable = VariableId::first();
    }
@@ -562,7 +577,7 @@ struct ParseContext<'a> {
 fn parse_top_level_items(
    lexer: &mut Lexer,
    parse_context: &mut ParseContext,
-   ast: &mut AstPool,
+   global_ast: &mut ExpressionPool,
    top: &mut TopLevelItems,
 ) -> Result<(), ()> {
    loop {
@@ -582,7 +597,7 @@ fn parse_top_level_items(
          }
          Token::KeywordProc => {
             let def = lexer.next();
-            let p = parse_procedure(lexer, parse_context, def.source_info, ast)?;
+            let p = parse_procedure(lexer, parse_context, def.source_info)?;
             let id = top.procedures.insert(p.0);
             top.procedure_bodies.insert(id, p.1);
          }
@@ -616,7 +631,7 @@ fn parse_top_level_items(
          }
          Token::KeywordEnumDef => {
             let def = lexer.next();
-            let s = parse_enum(lexer, parse_context, def.source_info, &mut ast.expressions)?;
+            let s = parse_enum(lexer, parse_context, def.source_info, global_ast)?;
             top.enums.push(s);
          }
          Token::KeywordTypeDef => {
@@ -630,7 +645,7 @@ fn parse_top_level_items(
             expect(lexer, parse_context, Token::Colon)?;
             let const_type = parse_type(lexer, parse_context)?;
             expect(lexer, parse_context, Token::Assignment)?;
-            let exp = parse_expression(lexer, parse_context, false, &mut ast.expressions)?;
+            let exp = parse_expression(lexer, parse_context, false, global_ast)?;
             let end_token = expect(lexer, parse_context, Token::Semicolon)?;
             top.consts.push(ConstNode {
                name: variable_name,
@@ -650,7 +665,7 @@ fn parse_top_level_items(
                let _ = lexer.next();
                None
             } else {
-               Some(parse_expression(lexer, parse_context, false, &mut ast.expressions)?)
+               Some(parse_expression(lexer, parse_context, false, global_ast)?)
             };
             let end_token = expect(lexer, parse_context, Token::Semicolon)?;
             top.statics.push(StaticNode {
@@ -716,7 +731,7 @@ pub fn astify(
       links,
    };
 
-   while parse_top_level_items(&mut lexer, &mut parse_context, &mut program.ast, &mut top).is_err() {
+   while parse_top_level_items(&mut lexer, &mut parse_context, &mut program.global_exprs, &mut top).is_err() {
       // skip tokens until we get to a token that must be at the top level and continue parsing
       // in order to give the user more valid errors
       loop {
@@ -837,10 +852,10 @@ fn parse_procedure(
    l: &mut Lexer,
    parse_context: &mut ParseContext,
    source_info: SourceInfo,
-   ast: &mut AstPool,
 ) -> Result<(ProcedureNode, ProcedureBody), ()> {
    let definition = parse_procedure_definition(l, parse_context)?;
-   let block = parse_block(l, parse_context, ast)?;
+   let mut ast = AstPool::new();
+   let block = parse_block(l, parse_context, &mut ast)?;
    let combined_location = merge_locations(source_info, block.location);
    Ok((
       ProcedureNode {
@@ -854,6 +869,7 @@ fn parse_procedure(
       },
       ProcedureBody {
          locals: IndexMap::new(),
+         ast,
          cfg: Cfg {
             bbs: Vec::new(),
             start: 0,

@@ -102,7 +102,7 @@ pub fn hoist_non_temp_loads_stores(program: &mut Program, target: BaseTarget) {
    let mut loads_to_hoist: Vec<(ExpressionId, usize, ExpressionType)> = vec![];
 
    for body in program.procedure_bodies.values_mut() {
-      mark_escaping_vars_cfg(&body.cfg, &mut escaping_vars, &program.ast.expressions);
+      mark_escaping_vars_cfg(&body.cfg, &mut escaping_vars, &body.ast.expressions);
 
       // For all var uses that are actually a load (now that we know the var is in mem),
       // hoist the use. All newly created vars must not be in mem.
@@ -112,19 +112,18 @@ pub fn hoist_non_temp_loads_stores(program: &mut Program, target: BaseTarget) {
          // Hoist stores
          for (i, instr) in bb.instructions.iter().enumerate() {
             if let CfgInstruction::Assignment(lhs, rhs) = instr {
-               let is_var = matches!(program.ast.expressions[*rhs].expression, Expression::Variable(_));
-               let is_var_deref = if let Expression::UnaryOperator(UnOp::Dereference, child) =
-                  program.ast.expressions[*rhs].expression
-               {
-                  matches!(program.ast.expressions[child].expression, Expression::Variable(_))
-               } else {
-                  false
-               };
-               let is_literal = is_non_aggregate_const(&program.ast.expressions[*rhs].expression);
+               let is_var = matches!(body.ast.expressions[*rhs].expression, Expression::Variable(_));
+               let is_var_deref =
+                  if let Expression::UnaryOperator(UnOp::Dereference, child) = body.ast.expressions[*rhs].expression {
+                     matches!(body.ast.expressions[child].expression, Expression::Variable(_))
+                  } else {
+                     false
+                  };
+               let is_literal = is_non_aggregate_const(&body.ast.expressions[*rhs].expression);
                if is_var || is_var_deref || is_literal {
                   continue;
                }
-               if let Expression::Variable(lhs_v) = program.ast.expressions[*lhs].expression
+               if let Expression::Variable(lhs_v) = body.ast.expressions[*lhs].expression
                   && body.locals.get(&lhs_v).is_some_and(|lt| {
                      matches!(
                         type_to_slot_kind(lt, escaping_vars.contains(&lhs_v), &program.user_defined_types, target),
@@ -135,7 +134,7 @@ pub fn hoist_non_temp_loads_stores(program: &mut Program, target: BaseTarget) {
                   // assignment is to a register
                   continue;
                }
-               let rhs_t = program.ast.expressions[*rhs].exp_type.as_ref().unwrap();
+               let rhs_t = body.ast.expressions[*rhs].exp_type.as_ref().unwrap();
                if let VarSlotKind::Stack(_) = type_to_slot_kind(rhs_t, false, &program.user_defined_types, target) {
                   // no point in hoisting, new assignment would also be to mem
                   continue;
@@ -152,32 +151,32 @@ pub fn hoist_non_temp_loads_stores(program: &mut Program, target: BaseTarget) {
             let new_temp = {
                body.locals.insert(
                   program.next_variable,
-                  program.ast.expressions[*this_assign_rhs].exp_type.clone().unwrap(),
+                  body.ast.expressions[*this_assign_rhs].exp_type.clone().unwrap(),
                );
                let next = program.next_variable.next();
                std::mem::replace(&mut program.next_variable, next)
             };
 
-            let new_lhs = program.ast.expressions.insert(ExpressionNode {
+            let new_lhs = body.ast.expressions.insert(ExpressionNode {
                expression: Expression::Variable(new_temp),
                exp_type: Some(ExpressionType::Pointer(Box::new(
-                  program.ast.expressions[*this_assign_rhs].exp_type.clone().unwrap(),
+                  body.ast.expressions[*this_assign_rhs].exp_type.clone().unwrap(),
                ))),
-               location: program.ast.expressions[*this_assign_rhs].location,
+               location: body.ast.expressions[*this_assign_rhs].location,
             });
 
-            let temp_var_expr = program.ast.expressions.insert(ExpressionNode {
+            let temp_var_expr = body.ast.expressions.insert(ExpressionNode {
                expression: Expression::Variable(new_temp),
                exp_type: Some(ExpressionType::Pointer(Box::new(
-                  program.ast.expressions[*this_assign_rhs].exp_type.clone().unwrap(),
+                  body.ast.expressions[*this_assign_rhs].exp_type.clone().unwrap(),
                ))),
-               location: program.ast.expressions[*this_assign_rhs].location,
+               location: body.ast.expressions[*this_assign_rhs].location,
             });
             let hoisted_expr = *this_assign_rhs;
-            *this_assign_rhs = program.ast.expressions.insert(ExpressionNode {
+            *this_assign_rhs = body.ast.expressions.insert(ExpressionNode {
                expression: Expression::UnaryOperator(UnOp::Dereference, temp_var_expr),
-               exp_type: program.ast.expressions[*this_assign_rhs].exp_type.clone(),
-               location: program.ast.expressions[*this_assign_rhs].location,
+               exp_type: body.ast.expressions[*this_assign_rhs].exp_type.clone(),
+               location: body.ast.expressions[*this_assign_rhs].location,
             });
             bb.instructions
                .insert(stmt_index, CfgInstruction::Assignment(new_lhs, hoisted_expr));
@@ -203,45 +202,44 @@ pub fn hoist_non_temp_loads_stores(program: &mut Program, target: BaseTarget) {
             match instr {
                CfgInstruction::Assignment(ex1, ex2) => {
                   // skip var = var~ assignments
-                  if let Expression::Variable(_) = program.ast.expressions[*ex1].expression
-                     && let Expression::UnaryOperator(UnOp::Dereference, child) =
-                        program.ast.expressions[*ex2].expression
-                     && let Expression::Variable(_) = program.ast.expressions[child].expression
+                  if let Expression::Variable(_) = body.ast.expressions[*ex1].expression
+                     && let Expression::UnaryOperator(UnOp::Dereference, child) = body.ast.expressions[*ex2].expression
+                     && let Expression::Variable(_) = body.ast.expressions[child].expression
                   {
                      continue;
                   }
-                  mark_loads_to_hoist(*ex1, &program.ast.expressions, &mut mark_expr_fcn);
-                  mark_loads_to_hoist(*ex2, &program.ast.expressions, &mut mark_expr_fcn);
+                  mark_loads_to_hoist(*ex1, &body.ast.expressions, &mut mark_expr_fcn);
+                  mark_loads_to_hoist(*ex2, &body.ast.expressions, &mut mark_expr_fcn);
                }
                CfgInstruction::Expression(ex)
                | CfgInstruction::Return(ex)
                | CfgInstruction::ConditionalJump(ex, _, _) => {
-                  mark_loads_to_hoist(*ex, &program.ast.expressions, &mut mark_expr_fcn);
+                  mark_loads_to_hoist(*ex, &body.ast.expressions, &mut mark_expr_fcn);
                }
                CfgInstruction::Jump(_) | CfgInstruction::Nop => (),
             }
          }
 
          for (x, i, deref_t) in loads_to_hoist.drain(..).rev() {
-            let old_v = match &mut program.ast.expressions[x].expression {
+            let old_v = match &mut body.ast.expressions[x].expression {
                Expression::Variable(v) => std::mem::replace(v, program.next_variable),
                _ => unreachable!(),
             };
 
-            let new_lhs = program.ast.expressions.insert(ExpressionNode {
+            let new_lhs = body.ast.expressions.insert(ExpressionNode {
                expression: Expression::Variable(program.next_variable),
-               exp_type: program.ast.expressions[x].exp_type.clone(),
-               location: program.ast.expressions[x].location,
+               exp_type: body.ast.expressions[x].exp_type.clone(),
+               location: body.ast.expressions[x].location,
             });
-            let new_rhs_var = program.ast.expressions.insert(ExpressionNode {
+            let new_rhs_var = body.ast.expressions.insert(ExpressionNode {
                expression: Expression::Variable(old_v),
-               exp_type: program.ast.expressions[x].exp_type.clone(),
-               location: program.ast.expressions[x].location,
+               exp_type: body.ast.expressions[x].exp_type.clone(),
+               location: body.ast.expressions[x].location,
             });
-            let new_rhs = program.ast.expressions.insert(ExpressionNode {
+            let new_rhs = body.ast.expressions.insert(ExpressionNode {
                expression: Expression::UnaryOperator(UnOp::Dereference, new_rhs_var),
                exp_type: Some(deref_t.clone()),
-               location: program.ast.expressions[x].location,
+               location: body.ast.expressions[x].location,
             });
             bb.instructions.insert(i, CfgInstruction::Assignment(new_lhs, new_rhs));
 
@@ -280,7 +278,7 @@ pub fn assign_variables_to_registers_and_mem(
       let mut total_registers = 0;
       let mut total_stack_slots = 0;
 
-      mark_escaping_vars_cfg(&body.cfg, &mut escaping_vars, &program.ast.expressions);
+      mark_escaping_vars_cfg(&body.cfg, &mut escaping_vars, &body.ast.expressions);
 
       // All parameters start in registers
       for param in program.procedures[proc_id].definition.parameters.iter() {
@@ -463,14 +461,13 @@ pub fn kill_self_assignments(program: &mut Program, var_to_slot: &IndexMap<Varia
             let CfgInstruction::Assignment(lhs, rhs) = *instr else {
                continue;
             };
-            let Expression::Variable(l_var) = program.ast.expressions[lhs].expression else {
+            let Expression::Variable(l_var) = body.ast.expressions[lhs].expression else {
                continue;
             };
-            let Expression::UnaryOperator(UnOp::Dereference, deref_child) = program.ast.expressions[rhs].expression
-            else {
+            let Expression::UnaryOperator(UnOp::Dereference, deref_child) = body.ast.expressions[rhs].expression else {
                continue;
             };
-            let Expression::Variable(r_var) = program.ast.expressions[deref_child].expression else {
+            let Expression::Variable(r_var) = body.ast.expressions[deref_child].expression else {
                continue;
             };
             let lhs_slot = var_to_slot.get(&l_var);

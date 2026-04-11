@@ -26,7 +26,7 @@ pub fn ensure_variables_definitely_assigned(program: &Program, err_manager: &mut
          &mut assigned_vars,
          &mut None,
          &body.locals,
-         &program.ast,
+         &body.ast,
          err_manager,
       );
    }

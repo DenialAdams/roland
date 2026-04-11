@@ -316,7 +316,7 @@ pub fn compile_for_errors<FR: FileResolver>(
    semantic_analysis::type_inference::lower_type_variables(
       &mut owned_validation_ctx,
       &mut ctx.program.procedure_bodies,
-      &mut ctx.program.ast.expressions,
+      &mut ctx.program.global_exprs,
       &mut ctx.err_manager,
    );
    if !ctx.err_manager.errors.is_empty() {
@@ -326,16 +326,14 @@ pub fn compile_for_errors<FR: FileResolver>(
    ctx.program
       .procedures
       .retain(|_, x| x.definition.type_parameters.is_empty() || x.impl_source != ProcImplSource::Native);
-   ctx.program
-      .procedure_bodies
-      .retain(|k, _| ctx.program.procedures.contains_key(k));
-   // Throw out all untyped expressions, on the basis that untyped expressions should no
-   // longer be referenced now that we deleted all template procedures
-   ctx.program.ast.expressions.retain(|_, x| x.exp_type.is_some());
+   ctx.program.procedure_bodies.retain(|k, v| {
+      v.ast.expressions.retain(|_, x| x.exp_type.is_some()); // (lingering untyped expressions due to when statements)
+      ctx.program.procedures.contains_key(k)
+   });
 
    monomorphization::monomorphize_types(&mut ctx.program, config.target.base_target());
 
-   lower_transmutes_requiring_load::lower(&mut ctx.program.ast.expressions);
+   lower_transmutes_requiring_load::lower(&mut ctx.program.global_exprs, &mut ctx.program.procedure_bodies);
 
    loop_lowering::lower_fors_and_whiles(&mut ctx.program);
 
@@ -346,15 +344,15 @@ pub fn compile_for_errors<FR: FileResolver>(
          .statements
          .last()
          .copied()
-         .is_some_and(|x| statement_always_or_never_returns(x, &ctx.program.ast))
+         .is_some_and(|x| statement_always_or_never_returns(x, &body.ast))
       {
          // There is an implicit final return - make it explicit
-         let unit_lit = ctx.program.ast.expressions.insert(ExpressionNode {
+         let unit_lit = body.ast.expressions.insert(ExpressionNode {
             expression: Expression::UnitLiteral,
             exp_type: Some(ExpressionType::Unit),
             location,
          });
-         let ret_stmt = ctx.program.ast.statements.insert(StatementNode {
+         let ret_stmt = body.ast.statements.insert(StatementNode {
             statement: Statement::Return(unit_lit),
             location,
          });
@@ -465,10 +463,10 @@ pub fn compile<FR: FileResolver>(
       );
 
       // Clean up
-      for old_body in ctx.program.procedure_bodies.values_mut().map(|x| &mut x.block) {
-         old_body.statements.clear();
+      for old_body in ctx.program.procedure_bodies.values_mut() {
+         old_body.block.statements.clear();
+         old_body.ast.statements.clear();
       }
-      ctx.program.ast.statements.clear();
    }
 
    if config.dump_debugging_info {
@@ -520,19 +518,18 @@ pub fn compile<FR: FileResolver>(
                .parameters
                .iter()
                .map(|x| x.var_id);
-            backend::pointer_analysis::steensgard(&body.locals, params, &mut body.cfg, &ctx.program.ast.expressions)
+            backend::pointer_analysis::steensgard(&body.locals, params, &mut body.cfg, &body.ast.expressions)
          };
          let liveness = backend::liveness::liveness(
             &body.locals,
             &mut body.cfg,
-            &ctx.program.ast.expressions,
+            &body.ast.expressions,
             config.target.base_target(),
             &ctx.program.user_defined_types,
             &pointer_analysis_result,
          );
          if let Some(dbg_files) = debugging_files.as_mut() {
             pp::pp_proc(
-               &ctx.program.ast,
                &ctx.program.procedures,
                Some(body),
                &ctx.program.user_defined_types,
@@ -592,7 +589,7 @@ pub fn compile<FR: FileResolver>(
    for body in ctx.program.procedure_bodies.values_mut() {
       // it's unclear to me how often we should run this - definitely want to run it before the backend
       // but conceivably could be run after any optimization pass that could change control flow or remove instructions
-      linearize::simplify_cfg(&mut body.cfg, &ctx.program.ast.expressions);
+      linearize::simplify_cfg(&mut body.cfg, &body.ast.expressions);
    }
 
    let program_bytes = if config.target.base_target() == BaseTarget::Qbe {

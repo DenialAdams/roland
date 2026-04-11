@@ -18,9 +18,9 @@ use crate::error_handling::error_handling_macros::{
 use crate::interner::{Interner, StrId};
 use crate::monomorphization::SpecializationRequest;
 use crate::parse::{
-   AliasId, ArgumentNode, BinOp, BlockNode, CastType, DeclarationValue, Expression, ExpressionId, ExpressionNode,
-   ExpressionPool, ExpressionTypeNode, ProcImplSource, ProcedureId, ProcedureNode, Program, Statement, StatementId,
-   StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId, statement_always_or_never_returns,
+   AliasId, ArgumentNode, AstPool, BinOp, BlockNode, CastType, DeclarationValue, Expression, ExpressionId,
+   ExpressionNode, ExpressionPool, ExpressionTypeNode, ProcImplSource, ProcedureId, ProcedureNode, Program, Statement,
+   StatementId, StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId, statement_always_or_never_returns,
 };
 use crate::semantic_analysis::{AliasInfo, AliasTarget};
 use crate::size_info::{template_type_aware_mem_alignment, template_type_aware_mem_size};
@@ -527,7 +527,6 @@ pub fn type_and_check_validity(
       source_to_definition: &mut program.source_to_definition,
       next_var_dont_access: &mut program.next_variable,
       interner,
-      ast: &mut program.ast,
       procedures: &program.procedures,
       proc_name_table: &program.procedure_name_table,
       user_defined_type_name_table: &program.user_defined_type_name_table,
@@ -561,7 +560,13 @@ pub fn type_and_check_validity(
             .insert(parameter.var_id, parameter.p_type.e_type.clone());
       }
 
-      type_block(err_manager, &body.block, &mut validation_context);
+      type_block(
+         err_manager,
+         &body.block,
+         &mut program.global_exprs,
+         &mut body.ast,
+         &mut validation_context,
+      );
       fall_out_of_scope(err_manager, &mut validation_context, num_globals);
 
       std::mem::swap(&mut validation_context.owned.cur_procedure_locals, &mut body.locals);
@@ -570,7 +575,7 @@ pub fn type_and_check_validity(
       // (it has already been type checked, so we don't have to check that)
       match (&proc.definition.ret_type.e_type, body.block.statements.last().copied()) {
          (ExpressionType::Unit, _) => (),
-         (_, Some(s)) if statement_always_or_never_returns(s, validation_context.ast) => (),
+         (_, Some(s)) if statement_always_or_never_returns(s, &body.ast) => (),
          (x, _) => {
             let x_str = x.as_roland_type_info(
                validation_context.interner,
@@ -580,7 +585,7 @@ pub fn type_and_check_validity(
             );
             let mut err_details = vec![(proc.location, "procedure defined")];
             if let Some(fs) = body.block.statements.last() {
-               let loc = validation_context.ast.statements[*fs].location;
+               let loc = body.ast.statements[*fs].location;
                err_details.push((loc, "actual final statement"));
             }
             rolandc_error_w_details!(
@@ -618,37 +623,49 @@ pub fn type_and_check_validity(
    std::mem::take(&mut validation_context.owned.procedures_to_specialize)
 }
 
-fn type_statement(err_manager: &mut ErrorManager, statement: StatementId, validation_context: &mut ValidationContext) {
-   let mut stmt_loc = validation_context.ast.statements[statement].location;
-   let mut the_statement = std::mem::replace(
-      &mut validation_context.ast.statements[statement].statement,
-      Statement::Break,
+fn type_statement(
+   err_manager: &mut ErrorManager,
+   statement: StatementId,
+   global_ast: &mut ExpressionPool,
+   ast: &mut AstPool,
+   validation_context: &mut ValidationContext,
+) {
+   let mut stmt_loc = ast.statements[statement].location;
+   let mut the_statement = std::mem::replace(&mut ast.statements[statement].statement, Statement::Break);
+   type_statement_inner(
+      err_manager,
+      &mut the_statement,
+      &mut stmt_loc,
+      global_ast,
+      ast,
+      validation_context,
    );
-   type_statement_inner(err_manager, &mut the_statement, &mut stmt_loc, validation_context);
-   validation_context.ast.statements[statement].statement = the_statement;
-   validation_context.ast.statements[statement].location = stmt_loc;
+   ast.statements[statement].statement = the_statement;
+   ast.statements[statement].location = stmt_loc;
 }
 
 fn type_statement_inner(
    err_manager: &mut ErrorManager,
    statement: &mut Statement,
    stmt_loc: &mut SourceInfo,
+   global_ast: &mut ExpressionPool,
+   ast: &mut AstPool,
    validation_context: &mut ValidationContext,
 ) {
    match statement {
       Statement::Assignment(lhs, rhs) => {
-         type_expression(err_manager, *lhs, validation_context);
-         type_expression(err_manager, *rhs, validation_context);
+         type_expression(err_manager, *lhs, &mut ast.expressions, validation_context);
+         type_expression(err_manager, *rhs, &mut ast.expressions, validation_context);
 
          let merged = try_merge_types_of_two_distinct_expressions(
             *lhs,
             *rhs,
-            &validation_context.ast.expressions,
+            &ast.expressions,
             &mut validation_context.owned.type_variables,
          );
 
-         let len = &validation_context.ast.expressions[*lhs];
-         let en = &validation_context.ast.expressions[*rhs];
+         let len = &ast.expressions[*lhs];
+         let en = &ast.expressions[*rhs];
 
          let lhs_type = len.exp_type.as_ref().unwrap();
          let rhs_type = en.exp_type.as_ref().unwrap();
@@ -675,12 +692,9 @@ fn type_statement_inner(
             );
          } else if !len
             .expression
-            .is_lvalue(&validation_context.ast.expressions, validation_context.global_info)
+            .is_lvalue(&ast.expressions, validation_context.global_info)
          {
-            if len
-               .expression
-               .is_lvalue_disregard_consts(&validation_context.ast.expressions)
-            {
+            if len.expression.is_lvalue_disregard_consts(&ast.expressions) {
                rolandc_error!(
                   err_manager,
                   len.location,
@@ -696,7 +710,7 @@ fn type_statement_inner(
          }
       }
       Statement::Block(bn) => {
-         type_block(err_manager, bn, validation_context);
+         type_block(err_manager, bn, global_ast, ast, validation_context);
       }
       Statement::Continue => {
          if validation_context.owned.loop_depth == 0 {
@@ -716,12 +730,12 @@ fn type_statement_inner(
          range_inclusive: inclusive,
          induction_var: var_id,
       } => {
-         type_expression(err_manager, *start, validation_context);
-         type_expression(err_manager, *end, validation_context);
+         type_expression(err_manager, *start, &mut ast.expressions, validation_context);
+         type_expression(err_manager, *end, &mut ast.expressions, validation_context);
 
          let mut constrained_to_int = false;
          for expr_id in [*start, *end] {
-            if let ExpressionType::Unknown(x) = validation_context.ast.expressions[expr_id].exp_type.as_ref().unwrap() {
+            if let ExpressionType::Unknown(x) = ast.expressions[expr_id].exp_type.as_ref().unwrap() {
                let tvd = validation_context.owned.type_variables.get_data_mut(*x);
                constrained_to_int = tvd.add_constraint(TypeConstraint::Int).is_ok();
             }
@@ -730,12 +744,12 @@ fn type_statement_inner(
          let merged = try_merge_types_of_two_distinct_expressions(
             *start,
             *end,
-            &validation_context.ast.expressions,
+            &ast.expressions,
             &mut validation_context.owned.type_variables,
          );
 
-         let start_expr = &validation_context.ast.expressions[*start];
-         let end_expr = &validation_context.ast.expressions[*end];
+         let start_expr = &ast.expressions[*start];
+         let end_expr = &ast.expressions[*end];
 
          let result_type = if merged
             && (constrained_to_int || matches!(start_expr.exp_type.as_ref().unwrap(), ExpressionType::Int(_)))
@@ -784,14 +798,14 @@ fn type_statement_inner(
             .cur_procedure_locals
             .insert(*var_id, result_type);
 
-         type_loop_block(err_manager, bn, validation_context);
+         type_loop_block(err_manager, bn, global_ast, ast, validation_context);
 
          fall_out_of_scope(err_manager, validation_context, vars_before);
       }
       Statement::While(cond, bn) => {
-         type_expression(err_manager, *cond, validation_context);
+         type_expression(err_manager, *cond, &mut ast.expressions, validation_context);
 
-         let cond_node = &validation_context.ast.expressions[*cond];
+         let cond_node = &ast.expressions[*cond];
          let is_bool = try_merge_types(
             &ExpressionType::Bool,
             cond_node.exp_type.as_ref().unwrap(),
@@ -812,27 +826,24 @@ fn type_statement_inner(
             );
          }
 
-         type_loop_block(err_manager, bn, validation_context);
+         type_loop_block(err_manager, bn, global_ast, ast, validation_context);
       }
       Statement::Loop(bn) => {
-         type_loop_block(err_manager, bn, validation_context);
+         type_loop_block(err_manager, bn, global_ast, ast, validation_context);
       }
       Statement::Defer(si) => {
-         if matches!(
-            validation_context.ast.statements[*si].statement,
-            Statement::VariableDeclaration { .. }
-         ) {
+         if matches!(ast.statements[*si].statement, Statement::VariableDeclaration { .. }) {
             rolandc_error!(
                err_manager,
-               validation_context.ast.statements[*si].location,
+               ast.statements[*si].location,
                "Deferring a variable declaration at top level is not allowed"
             );
          } else {
-            type_statement(err_manager, *si, validation_context);
+            type_statement(err_manager, *si, global_ast, ast, validation_context);
          }
       }
       Statement::Expression(en) => {
-         type_expression(err_manager, *en, validation_context);
+         type_expression(err_manager, *en, &mut ast.expressions, validation_context);
       }
       Statement::IfElse {
          cond,
@@ -840,8 +851,8 @@ fn type_statement_inner(
          otherwise,
          constant: true,
       } => {
-         type_expression(err_manager, *cond, validation_context);
-         let en = &validation_context.ast.expressions[*cond];
+         type_expression(err_manager, *cond, &mut ast.expressions, validation_context);
+         let en = &ast.expressions[*cond];
          let if_exp_type = en.exp_type.as_ref().unwrap();
          let is_bool = try_merge_types(
             &ExpressionType::Bool,
@@ -865,11 +876,11 @@ fn type_statement_inner(
             );
             return;
          }
-         fold_expr_id(*cond, err_manager, validation_context);
-         let en = &mut validation_context.ast.expressions[*cond];
+         fold_expr_id(*cond, err_manager, &mut ast.expressions, global_ast, validation_context);
+         let en = &mut ast.expressions[*cond];
          match en.expression {
             Expression::BoolLiteral(true) => {
-               type_block(err_manager, then, validation_context);
+               type_block(err_manager, then, global_ast, ast, validation_context);
                *stmt_loc = then.location;
                let if_blk = std::mem::replace(
                   then,
@@ -881,12 +892,9 @@ fn type_statement_inner(
                *statement = Statement::Block(if_blk);
             }
             Expression::BoolLiteral(false) => {
-               type_statement(err_manager, *otherwise, validation_context);
-               *stmt_loc = validation_context.ast.statements[*otherwise].location;
-               let else_stmt = std::mem::replace(
-                  &mut validation_context.ast.statements[*otherwise].statement,
-                  Statement::Break,
-               );
+               type_statement(err_manager, *otherwise, global_ast, ast, validation_context);
+               *stmt_loc = ast.statements[*otherwise].location;
+               let else_stmt = std::mem::replace(&mut ast.statements[*otherwise].statement, Statement::Break);
                *statement = else_stmt;
             }
             _ => {
@@ -904,11 +912,11 @@ fn type_statement_inner(
          otherwise: block_2,
          constant: false,
       } => {
-         type_block(err_manager, block_1, validation_context);
-         type_statement(err_manager, *block_2, validation_context);
-         type_expression(err_manager, *en, validation_context);
+         type_block(err_manager, block_1, global_ast, ast, validation_context);
+         type_statement(err_manager, *block_2, global_ast, ast, validation_context);
+         type_expression(err_manager, *en, &mut ast.expressions, validation_context);
 
-         let en = &validation_context.ast.expressions[*en];
+         let en = &ast.expressions[*en];
          let if_exp_type = en.exp_type.as_ref().unwrap();
          let is_bool = try_merge_types(
             &ExpressionType::Bool,
@@ -930,7 +938,7 @@ fn type_statement_inner(
          }
       }
       Statement::Return(en) => {
-         type_expression(err_manager, *en, validation_context);
+         type_expression(err_manager, *en, &mut ast.expressions, validation_context);
          let cur_procedure_ret = &validation_context.procedures[validation_context.owned.cur_procedure.unwrap()]
             .definition
             .ret_type
@@ -938,11 +946,11 @@ fn type_statement_inner(
 
          let return_type_matches = try_merge_types(
             cur_procedure_ret,
-            validation_context.ast.expressions[*en].exp_type.as_ref().unwrap(),
+            ast.expressions[*en].exp_type.as_ref().unwrap(),
             &mut validation_context.owned.type_variables,
          );
 
-         let en = &validation_context.ast.expressions[*en];
+         let en = &ast.expressions[*en];
 
          if !en.exp_type.as_ref().unwrap().is_or_contains_or_points_to_error()
             && !en.exp_type.as_ref().unwrap().is_never()
@@ -975,7 +983,7 @@ fn type_statement_inner(
          storage,
       } => {
          if let DeclarationValue::Expr(enid) = opt_enid {
-            type_expression(err_manager, *enid, validation_context);
+            type_expression(err_manager, *enid, &mut ast.expressions, validation_context);
          }
 
          let result_type_node = match dt {
@@ -998,13 +1006,13 @@ fn type_statement_inner(
                   if let DeclarationValue::Expr(enid) = opt_enid {
                      let merged = try_merge_types(
                         &v.e_type,
-                        validation_context.ast.expressions[*enid].exp_type.as_ref().unwrap(),
+                        ast.expressions[*enid].exp_type.as_ref().unwrap(),
                         &mut validation_context.owned.type_variables,
                      );
                      if !merged {
                         error_type_declared_vs_actual(
                            v,
-                           &validation_context.ast.expressions[*enid],
+                           &ast.expressions[*enid],
                            validation_context.interner,
                            validation_context.user_defined_types,
                            validation_context.procedures,
@@ -1024,8 +1032,8 @@ fn type_statement_inner(
             None => {
                if let DeclarationValue::Expr(en) = opt_enid {
                   ExpressionTypeNode {
-                     e_type: validation_context.ast.expressions[*en].exp_type.clone().unwrap(),
-                     location: validation_context.ast.expressions[*en].location,
+                     e_type: ast.expressions[*en].exp_type.clone().unwrap(),
+                     location: ast.expressions[*en].location,
                   }
                } else {
                   rolandc_error!(
@@ -1049,7 +1057,7 @@ fn type_statement_inner(
                GlobalInfo {
                   expr_type: result_type_node,
                   initializer: match opt_enid {
-                     DeclarationValue::Expr(expression_id) => Some(*expression_id),
+                     DeclarationValue::Expr(expression_id) => Some(deep_clone_expr(*expression_id, &ast.expressions, global_ast)),
                      DeclarationValue::Uninit | DeclarationValue::None => None,
                   },
                   location: *stmt_loc,
@@ -1065,6 +1073,57 @@ fn type_statement_inner(
          }
       }
    }
+}
+
+#[must_use]
+fn deep_clone_expr(expr: ExpressionId, src_ast: &ExpressionPool, dest_ast: &mut ExpressionPool) -> ExpressionId {
+   let mut cloned = src_ast[expr].clone();
+   match &mut cloned.expression {
+      Expression::IfX(a, b, c) => {
+         *a = deep_clone_expr(*a, src_ast, dest_ast);
+         *b = deep_clone_expr(*b, src_ast, dest_ast);
+         *c = deep_clone_expr(*c, src_ast, dest_ast);
+      }
+      Expression::ProcedureCall { proc_expr, args } => {
+         *proc_expr = deep_clone_expr(*proc_expr, src_ast, dest_ast);
+         for arg in args.iter_mut() {
+            arg.expr = deep_clone_expr(arg.expr, src_ast, dest_ast);
+         }
+      }
+      Expression::ArrayLiteral(exprs) => {
+         for expr in exprs.iter_mut() {
+            *expr = deep_clone_expr(*expr, src_ast, dest_ast);
+         }
+      }
+      Expression::BinaryOperator { lhs: a, rhs: b, .. } | Expression::ArrayIndex { array: a, index: b } => {
+         *a = deep_clone_expr(*a, src_ast, dest_ast);
+         *b = deep_clone_expr(*b, src_ast, dest_ast);
+      }
+      Expression::UnaryOperator(_, operand) => {
+         *operand = deep_clone_expr(*operand, src_ast, dest_ast);
+      }
+      Expression::StructLiteral(_, field_exprs) => {
+         for field_expr in field_exprs.values_mut().flatten() {
+            *field_expr = deep_clone_expr(*field_expr, src_ast, dest_ast);
+         }
+      }
+      Expression::FieldAccess(_, expr) | Expression::Cast { expr, .. } => {
+         *expr = deep_clone_expr(*expr, src_ast, dest_ast);
+      }
+      Expression::Variable(_)
+      | Expression::BoolLiteral(_)
+      | Expression::StringLiteral(_)
+      | Expression::IntLiteral { .. }
+      | Expression::FloatLiteral(_)
+      | Expression::UnitLiteral
+      | Expression::EnumLiteral(_, _)
+      | Expression::BoundFcnLiteral(_, _) => (),
+      Expression::UnresolvedVariable(_)
+      | Expression::UnresolvedProcLiteral(_, _)
+      | Expression::UnresolvedStructLiteral(_, _, _)
+      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+   }
+   dest_ast.insert(cloned)
 }
 
 #[must_use]
@@ -1117,17 +1176,29 @@ fn fall_out_of_scope(
    }
 }
 
-fn type_loop_block(err_manager: &mut ErrorManager, bn: &BlockNode, validation_context: &mut ValidationContext) {
+fn type_loop_block(
+   err_manager: &mut ErrorManager,
+   bn: &BlockNode,
+   global_ast: &mut ExpressionPool,
+   ast: &mut AstPool,
+   validation_context: &mut ValidationContext,
+) {
    validation_context.owned.loop_depth += 1;
-   type_block(err_manager, bn, validation_context);
+   type_block(err_manager, bn, global_ast, ast, validation_context);
    validation_context.owned.loop_depth -= 1;
 }
 
-fn type_block(err_manager: &mut ErrorManager, bn: &BlockNode, validation_context: &mut ValidationContext) {
+fn type_block(
+   err_manager: &mut ErrorManager,
+   bn: &BlockNode,
+   global_ast: &mut ExpressionPool,
+   ast: &mut AstPool,
+   validation_context: &mut ValidationContext,
+) {
    let num_vars = validation_context.owned.variable_types.len();
 
    for statement in bn.statements.iter().copied() {
-      type_statement(err_manager, statement, validation_context);
+      type_statement(err_manager, statement, global_ast, ast, validation_context);
    }
 
    fall_out_of_scope(err_manager, validation_context, num_vars);
@@ -1136,12 +1207,13 @@ fn type_block(err_manager: &mut ErrorManager, bn: &BlockNode, validation_context
 fn type_expression(
    err_manager: &mut ErrorManager,
    expr_index: ExpressionId,
+   ast: &mut ExpressionPool,
    validation_context: &mut ValidationContext,
 ) {
-   let expr_location = validation_context.ast.expressions[expr_index].location;
+   let expr_location = ast[expr_index].location;
 
    // Resolve types and names first
-   match &mut validation_context.ast.expressions[expr_index].expression {
+   match &mut ast[expr_index].expression {
       Expression::Cast { target_type, .. } => {
          let spec_params = validation_context
             .owned
@@ -1167,15 +1239,14 @@ fn type_expression(
             validation_context
                .source_to_definition
                .insert(expr_location, var_info.declaration_location);
-            validation_context.ast.expressions[expr_index].expression = Expression::Variable(var_info.var_id);
+            ast[expr_index].expression = Expression::Variable(var_info.var_id);
          }
          None => {
             if let Some(proc_id) = validation_context.proc_name_table.get(&id.str).copied() {
                validation_context
                   .source_to_definition
                   .insert(id.location, validation_context.procedures[proc_id].location);
-               validation_context.ast.expressions[expr_index].expression =
-                  Expression::BoundFcnLiteral(proc_id, Box::new([]));
+               ast[expr_index].expression = Expression::BoundFcnLiteral(proc_id, Box::new([]));
             }
          }
       },
@@ -1202,8 +1273,7 @@ fn type_expression(
             validation_context
                .source_to_definition
                .insert(name.location, validation_context.procedures[proc_id].location);
-            validation_context.ast.expressions[expr_index].expression =
-               Expression::BoundFcnLiteral(proc_id, std::mem::take(g_args));
+            ast[expr_index].expression = Expression::BoundFcnLiteral(proc_id, std::mem::take(g_args));
          }
       }
       Expression::UnresolvedStructLiteral(base_type_node, _, _) => {
@@ -1251,19 +1321,22 @@ fn type_expression(
       _ => (),
    }
 
-   let mut the_expr = std::mem::replace(
-      &mut validation_context.ast.expressions[expr_index].expression,
-      Expression::UnitLiteral,
-   );
-   validation_context.ast.expressions[expr_index].exp_type =
-      Some(get_type(&mut the_expr, expr_location, err_manager, validation_context));
-   validation_context.ast.expressions[expr_index].expression = the_expr;
+   let mut the_expr = std::mem::replace(&mut ast[expr_index].expression, Expression::UnitLiteral);
+   ast[expr_index].exp_type = Some(get_type(
+      &mut the_expr,
+      expr_location,
+      err_manager,
+      ast,
+      validation_context,
+   ));
+   ast[expr_index].expression = the_expr;
 }
 
 fn get_type(
    expr: &mut Expression,
    expr_location: SourceInfo,
    err_manager: &mut ErrorManager,
+   ast: &mut ExpressionPool,
    validation_context: &mut ValidationContext,
 ) -> ExpressionType {
    match expr {
@@ -1289,7 +1362,7 @@ fn get_type(
          target_type,
          expr: expr_id,
       } => {
-         type_expression(err_manager, *expr_id, validation_context);
+         type_expression(err_manager, *expr_id, ast, validation_context);
 
          if target_type.is_or_contains_or_points_to_error() {
             // this can occur when the target type is unresolved
@@ -1299,7 +1372,7 @@ fn get_type(
          }
 
          let from_type_is_unknown_int = {
-            let exp_type = validation_context.ast.expressions[*expr_id].exp_type.as_ref().unwrap();
+            let exp_type = ast[*expr_id].exp_type.as_ref().unwrap();
             match exp_type {
                ExpressionType::Unknown(v) => {
                   matches!(
@@ -1312,7 +1385,7 @@ fn get_type(
          };
 
          let from_int_literal = matches!(
-            validation_context.ast.expressions[*expr_id].expression,
+            ast[*expr_id].expression,
             Expression::IntLiteral {
                val: _,
                synthetic: false
@@ -1345,18 +1418,18 @@ fn get_type(
                };
                try_merge_types(
                   guessed_source_type,
-                  validation_context.ast.expressions[*expr_id].exp_type.as_ref().unwrap(),
+                  ast[*expr_id].exp_type.as_ref().unwrap(),
                   &mut validation_context.owned.type_variables,
                );
             }
          }
 
          lower_unknowns_in_type(
-            validation_context.ast.expressions[*expr_id].exp_type.as_mut().unwrap(),
+            ast[*expr_id].exp_type.as_mut().unwrap(),
             &validation_context.owned.type_variables,
          );
 
-         let e = &validation_context.ast.expressions[*expr_id];
+         let e = &ast[*expr_id];
          let e_type = e.exp_type.as_ref().unwrap();
 
          if e_type.is_or_contains_or_points_to_error() {
@@ -1528,8 +1601,8 @@ fn get_type(
          }
       }
       Expression::BinaryOperator { operator, lhs, rhs } => {
-         type_expression(err_manager, *lhs, validation_context);
-         type_expression(err_manager, *rhs, validation_context);
+         type_expression(err_manager, *lhs, ast, validation_context);
+         type_expression(err_manager, *rhs, ast, validation_context);
 
          let correct_arg_types: &[TypeValidator] = match operator {
             BinOp::Add
@@ -1552,24 +1625,20 @@ fn get_type(
             BinOp::BitwiseLeftShift | BinOp::BitwiseRightShift | BinOp::Remainder => &[TypeValidator::AnyInt],
          };
 
-         let merged = try_merge_types_of_two_distinct_expressions(
-            *lhs,
-            *rhs,
-            &validation_context.ast.expressions,
-            &mut validation_context.owned.type_variables,
-         );
+         let merged =
+            try_merge_types_of_two_distinct_expressions(*lhs, *rhs, ast, &mut validation_context.owned.type_variables);
 
          lower_unknowns_in_type(
-            validation_context.ast.expressions[*lhs].exp_type.as_mut().unwrap(),
+            ast[*lhs].exp_type.as_mut().unwrap(),
             &validation_context.owned.type_variables,
          );
          lower_unknowns_in_type(
-            validation_context.ast.expressions[*rhs].exp_type.as_mut().unwrap(),
+            ast[*rhs].exp_type.as_mut().unwrap(),
             &validation_context.owned.type_variables,
          );
 
-         let lhs_expr = &validation_context.ast.expressions[*lhs];
-         let rhs_expr = &validation_context.ast.expressions[*rhs];
+         let lhs_expr = &ast[*lhs];
+         let rhs_expr = &ast[*rhs];
 
          let lhs_type = lhs_expr.exp_type.as_ref().unwrap();
          let rhs_type = rhs_expr.exp_type.as_ref().unwrap();
@@ -1654,13 +1723,13 @@ fn get_type(
          }
       }
       Expression::UnaryOperator(un_op, e) => {
-         type_expression(err_manager, *e, validation_context);
+         type_expression(err_manager, *e, ast, validation_context);
          lower_unknowns_in_type(
-            validation_context.ast.expressions[*e].exp_type.as_mut().unwrap(),
+            ast[*e].exp_type.as_mut().unwrap(),
             &validation_context.owned.type_variables,
          );
 
-         let e = &validation_context.ast.expressions[*e];
+         let e = &ast[*e];
 
          if *un_op == UnOp::AddressOf
             && let ExpressionType::ProcedureItem(proc_id, bound_type_params) = e.exp_type.as_ref().unwrap()
@@ -1837,7 +1906,7 @@ fn get_type(
       }
       Expression::UnresolvedStructLiteral(provided_type, fields, base_ident_location) => {
          for field_val in fields.iter().filter_map(|x| x.1) {
-            type_expression(err_manager, field_val, validation_context);
+            type_expression(err_manager, field_val, ast, validation_context);
          }
 
          let final_type = std::mem::replace(&mut provided_type.e_type, ExpressionType::Unit);
@@ -1886,10 +1955,10 @@ fn get_type(
                   if let Some(field_val) = field.1 {
                      let merged = try_merge_types(
                         &defined_type,
-                        validation_context.ast.expressions[field_val].exp_type.as_ref().unwrap(),
+                        ast[field_val].exp_type.as_ref().unwrap(),
                         &mut validation_context.owned.type_variables,
                      );
-                     let field_expr = &validation_context.ast.expressions[field_val];
+                     let field_expr = &ast[field_val];
 
                      if !merged
                         && !field_expr
@@ -1958,12 +2027,12 @@ fn get_type(
          final_type
       }
       Expression::ProcedureCall { proc_expr, args } => {
-         type_expression(err_manager, *proc_expr, validation_context);
+         type_expression(err_manager, *proc_expr, ast, validation_context);
          for arg in args.iter() {
-            type_expression(err_manager, arg.expr, validation_context);
+            type_expression(err_manager, arg.expr, ast, validation_context);
          }
 
-         let mut the_type = validation_context.ast.expressions[*proc_expr].exp_type.take().unwrap();
+         let mut the_type = ast[*proc_expr].exp_type.take().unwrap();
          let resulting_type = match &mut the_type {
             ExpressionType::ProcedureItem(proc_id, generic_args) => {
                let proc = &validation_context.procedures[*proc_id];
@@ -1976,6 +2045,7 @@ fn get_type(
                   &proc.type_parameters,
                   proc.definition.variadic,
                   expr_location,
+                  ast,
                   validation_context,
                   err_manager,
                );
@@ -1997,6 +2067,7 @@ fn get_type(
                   &IndexMap::new(),
                   *variadic,
                   expr_location,
+                  ast,
                   validation_context,
                   err_manager,
                );
@@ -2006,7 +2077,7 @@ fn get_type(
             bad_type => {
                rolandc_error!(
                   err_manager,
-                  validation_context.ast.expressions[*proc_expr].location,
+                  ast[*proc_expr].location,
                   "Attempting to invoke a procedure on non-procedure type {}",
                   bad_type.as_roland_type_info(
                      validation_context.interner,
@@ -2018,14 +2089,14 @@ fn get_type(
                ExpressionType::CompileError
             }
          };
-         validation_context.ast.expressions[*proc_expr].exp_type = Some(the_type);
+         ast[*proc_expr].exp_type = Some(the_type);
          resulting_type
       }
       Expression::FieldAccess(field, lhs) => {
          let field = *field;
-         type_expression(err_manager, *lhs, validation_context);
+         type_expression(err_manager, *lhs, ast, validation_context);
 
-         let lhs = &validation_context.ast.expressions[*lhs];
+         let lhs = &ast[*lhs];
          let mut lhs_type = lhs.exp_type.as_ref().unwrap().clone();
 
          let length_token = validation_context.interner.reverse_lookup("length");
@@ -2113,7 +2184,7 @@ fn get_type(
       }
       Expression::ArrayLiteral(elems) => {
          for elem in elems.iter() {
-            type_expression(err_manager, *elem, validation_context);
+            type_expression(err_manager, *elem, ast, validation_context);
          }
 
          let mut any_error = false;
@@ -2122,12 +2193,12 @@ fn get_type(
             let merged = try_merge_types_of_two_distinct_expressions(
                elems[i - 1],
                elems[i],
-               &validation_context.ast.expressions,
+               ast,
                &mut validation_context.owned.type_variables,
             );
 
-            let last_elem_expr = &validation_context.ast.expressions[elems[i - 1]];
-            let this_elem_expr = &validation_context.ast.expressions[elems[i]];
+            let last_elem_expr = &ast[elems[i - 1]];
+            let this_elem_expr = &ast[elems[i]];
 
             if last_elem_expr
                .exp_type
@@ -2194,27 +2265,24 @@ fn get_type(
             // We specifically want to type the array with the last element, because we have accumulated type information while iterating the literal
             // For instance: [2, 2, 2u8, 3]
             // In this example, the first element will have a type variable that should resolve to u8, but the last element will already be u8
-            let a_type = validation_context.ast.expressions[*elems.last().unwrap()]
-               .exp_type
-               .clone()
-               .unwrap();
+            let a_type = ast[*elems.last().unwrap()].exp_type.clone().unwrap();
             let t_len = elems.len().try_into().unwrap(); // unwrap should always succeed due to error check above
             ExpressionType::Array(Box::new(a_type), t_len)
          }
       }
       Expression::ArrayIndex { array, index } => {
-         type_expression(err_manager, *array, validation_context);
-         type_expression(err_manager, *index, validation_context);
+         type_expression(err_manager, *array, ast, validation_context);
+         type_expression(err_manager, *index, ast, validation_context);
 
          // Typing the index
          {
             let merged = try_merge_types(
                &USIZE_TYPE,
-               validation_context.ast.expressions[*index].exp_type.as_ref().unwrap(),
+               ast[*index].exp_type.as_ref().unwrap(),
                &mut validation_context.owned.type_variables,
             );
 
-            let index_expression = &validation_context.ast.expressions[*index];
+            let index_expression = &ast[*index];
             if index_expression
                .exp_type
                .as_ref()
@@ -2237,7 +2305,7 @@ fn get_type(
             }
          }
 
-         let array_expression = &mut validation_context.ast.expressions[*array];
+         let array_expression = &mut ast[*array];
          lower_unknowns_in_type(
             array_expression.exp_type.as_mut().unwrap(),
             &validation_context.owned.type_variables,
@@ -2345,18 +2413,14 @@ fn get_type(
          }
       }
       Expression::IfX(a, b, c) => {
-         type_expression(err_manager, *a, validation_context);
-         type_expression(err_manager, *b, validation_context);
-         type_expression(err_manager, *c, validation_context);
+         type_expression(err_manager, *a, ast, validation_context);
+         type_expression(err_manager, *b, ast, validation_context);
+         type_expression(err_manager, *c, ast, validation_context);
 
-         let merged = try_merge_types_of_two_distinct_expressions(
-            *b,
-            *c,
-            &validation_context.ast.expressions,
-            &mut validation_context.owned.type_variables,
-         );
+         let merged =
+            try_merge_types_of_two_distinct_expressions(*b, *c, ast, &mut validation_context.owned.type_variables);
 
-         let en = &validation_context.ast.expressions[*a];
+         let en = &ast[*a];
          let is_bool = try_merge_types(
             &ExpressionType::Bool,
             en.exp_type.as_ref().unwrap(),
@@ -2377,9 +2441,9 @@ fn get_type(
             );
          }
 
-         let then_expr = &validation_context.ast.expressions[*b];
+         let then_expr = &ast[*b];
          let then_type = then_expr.exp_type.as_ref().unwrap();
-         let else_expr = &validation_context.ast.expressions[*c];
+         let else_expr = &ast[*c];
          let else_type = else_expr.exp_type.as_ref().unwrap();
          if then_type.is_never() {
             else_type.clone()
@@ -2429,6 +2493,7 @@ fn check_procedure_call<'a, I>(
    generic_parameters: &IndexMap<StrId, IndexSet<StrId>>,
    variadic: bool,
    call_location: SourceInfo,
+   ast: &ExpressionPool,
    validation_context: &mut ValidationContext,
    err_manager: &mut ErrorManager,
 ) where
@@ -2475,14 +2540,11 @@ fn check_procedure_call<'a, I>(
 
          let merged = try_merge_types(
             &expected,
-            validation_context.ast.expressions[actual.expr]
-               .exp_type
-               .as_ref()
-               .unwrap(),
+            ast[actual.expr].exp_type.as_ref().unwrap(),
             &mut validation_context.owned.type_variables,
          );
 
-         let actual_expr = &validation_context.ast.expressions[actual.expr];
+         let actual_expr = &ast[actual.expr];
          let actual_type = actual_expr.exp_type.as_ref().unwrap();
 
          if !merged && !actual_type.is_or_contains_or_points_to_error() {
@@ -2526,11 +2588,11 @@ fn check_procedure_call<'a, I>(
 
          let merged = try_merge_types(
             &expected,
-            validation_context.ast.expressions[arg.expr].exp_type.as_ref().unwrap(),
+            ast[arg.expr].exp_type.as_ref().unwrap(),
             &mut validation_context.owned.type_variables,
          );
 
-         let arg_expr = &validation_context.ast.expressions[arg.expr];
+         let arg_expr = &ast[arg.expr];
 
          let actual_type = arg_expr.exp_type.as_ref().unwrap();
          if !merged && !actual_type.is_or_contains_or_points_to_error() {
@@ -2765,7 +2827,6 @@ pub fn check_globals(
       source_to_definition: &mut program.source_to_definition,
       next_var_dont_access: &mut program.next_variable,
       interner,
-      ast: &mut program.ast,
       procedures: &program.procedures,
       proc_name_table: &program.procedure_name_table,
       user_defined_type_name_table: &program.user_defined_type_name_table,
@@ -2797,11 +2858,16 @@ pub fn check_globals(
             .enum_info
             .values()
             .flat_map(|x| x.values.iter().flatten().copied())
-            .filter(|x| validation_context.ast.expressions[*x].exp_type.is_none()),
+            .filter(|x| program.global_exprs[*x].exp_type.is_none()),
       )
       .collect();
    for initializer in initializers {
-      type_expression(err_manager, initializer, &mut validation_context);
+      type_expression(
+         err_manager,
+         initializer,
+         &mut program.global_exprs,
+         &mut validation_context,
+      );
    }
 
    for p_global in validation_context
@@ -2811,7 +2877,7 @@ pub fn check_globals(
    {
       let merged = try_merge_types(
          &p_global.expr_type.e_type,
-         validation_context.ast.expressions[p_global.initializer.unwrap()]
+         program.global_exprs[p_global.initializer.unwrap()]
             .exp_type
             .as_ref()
             .unwrap(),
@@ -2819,7 +2885,7 @@ pub fn check_globals(
       );
 
       if !merged {
-         let p_static_expr = &validation_context.ast.expressions[p_global.initializer.unwrap()];
+         let p_static_expr = &program.global_exprs[p_global.initializer.unwrap()];
 
          error_type_declared_vs_actual(
             &p_global.expr_type,
@@ -2842,18 +2908,18 @@ pub fn check_globals(
       {
          let merged = try_merge_types(
             &enum_info.base_type.e_type,
-            validation_context.ast.expressions[value].exp_type.as_ref().unwrap(),
+            program.global_exprs[value].exp_type.as_ref().unwrap(),
             &mut validation_context.owned.type_variables,
          );
 
          if !merged
-            && !validation_context.ast.expressions[value]
+            && !program.global_exprs[value]
                .exp_type
                .as_ref()
                .unwrap()
                .is_or_contains_or_points_to_error()
          {
-            let value_location = validation_context.ast.expressions[value].location;
+            let value_location = program.global_exprs[value].location;
             rolandc_error_w_details!(
                err_manager,
                &[
@@ -2865,7 +2931,7 @@ pub fn check_globals(
                validation_context
                   .interner
                   .lookup(*enum_info.variants.get_index(i).unwrap().0),
-               validation_context.ast.expressions[value]
+               program.global_exprs[value]
                   .exp_type
                   .as_ref()
                   .unwrap()
@@ -2900,13 +2966,15 @@ fn try_merge_types_of_two_distinct_expressions(
    )
 }
 
-fn fold_expr_id(expr_id: ExpressionId, err_manager: &mut ErrorManager, validation_context: &mut ValidationContext) {
+fn fold_expr_id(
+   expr_id: ExpressionId,
+   err_manager: &mut ErrorManager,
+   proc_ast: &mut ExpressionPool,
+   globals_ast: &ExpressionPool,
+   validation_context: &mut ValidationContext,
+) {
    use crate::semantic_analysis::type_inference::tree_is_well_typed;
-   if !tree_is_well_typed(
-      expr_id,
-      &mut validation_context.ast.expressions,
-      &validation_context.owned.type_variables,
-   ) {
+   if !tree_is_well_typed(expr_id, proc_ast, &validation_context.owned.type_variables) {
       return;
    }
    let current_proc_name = validation_context
@@ -2914,13 +2982,19 @@ fn fold_expr_id(expr_id: ExpressionId, err_manager: &mut ErrorManager, validatio
       .cur_procedure
       .map(|x| validation_context.procedures[x].definition.name.str);
    let mut fc = FoldingContext {
-      ast: validation_context.ast,
       procedures: validation_context.procedures,
       user_defined_types: validation_context.user_defined_types,
-      const_replacements: &validation_context.owned.const_replacements,
+      global_expressions: Some(globals_ast),
+      const_replacements: Some(&validation_context.owned.const_replacements),
       current_proc_name,
       target: validation_context.owned.target.base_target(),
       templated_types: validation_context.templated_types,
    };
-   constant_folding::try_fold_and_replace_expr(expr_id, &mut Some(err_manager), &mut fc, validation_context.interner);
+   constant_folding::try_fold_and_replace_expr(
+      expr_id,
+      &mut Some(err_manager),
+      proc_ast,
+      &mut fc,
+      validation_context.interner,
+   );
 }

@@ -3,7 +3,9 @@ use std::collections::HashSet;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::interner::{Interner, StrId};
-use crate::parse::{AstPool, BlockNode, Expression, ExpressionId, ProcedureId, Statement, StatementId, VariableId};
+use crate::parse::{
+   AstPool, BlockNode, Expression, ExpressionId, ExpressionPool, ProcedureId, Statement, StatementId, VariableId,
+};
 use crate::semantic_analysis::GlobalInfo;
 use crate::semantic_analysis::validator::get_special_procedures;
 use crate::{Program, Target};
@@ -45,7 +47,7 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
             }
 
             if let Some(body) = program.procedure_bodies.get_mut(reachable_proc) {
-               mark_reachable_block(&body.block, &program.ast, &mut ctx);
+               mark_reachable_block(&body.block, &body.ast, &mut ctx);
             }
          }
          WorkItem::Static(reachable_global) => {
@@ -54,7 +56,7 @@ pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner
             }
 
             if let Some(val_expr) = program.non_stack_var_info[&reachable_global].initializer {
-               mark_reachable_expr(val_expr, &program.ast, &mut ctx);
+               mark_reachable_expr(val_expr, &program.global_exprs, &mut ctx);
             }
          }
       }
@@ -76,14 +78,14 @@ fn mark_reachable_block(block: &BlockNode, ast: &AstPool, ctx: &mut DceCtx) {
 fn mark_reachable_stmt(stmt: StatementId, ast: &AstPool, ctx: &mut DceCtx) {
    match &ast.statements[stmt].statement {
       Statement::Assignment(lhs, rhs) => {
-         mark_reachable_expr(*lhs, ast, ctx);
-         mark_reachable_expr(*rhs, ast, ctx);
+         mark_reachable_expr(*lhs, &ast.expressions, ctx);
+         mark_reachable_expr(*rhs, &ast.expressions, ctx);
       }
       Statement::Block(bn) | Statement::Loop(bn) => {
          mark_reachable_block(bn, ast, ctx);
       }
       Statement::Expression(expr) | Statement::Return(expr) => {
-         mark_reachable_expr(*expr, ast, ctx);
+         mark_reachable_expr(*expr, &ast.expressions, ctx);
       }
       Statement::IfElse {
          cond,
@@ -91,7 +93,7 @@ fn mark_reachable_stmt(stmt: StatementId, ast: &AstPool, ctx: &mut DceCtx) {
          otherwise: else_s,
          constant: _,
       } => {
-         mark_reachable_expr(*cond, ast, ctx);
+         mark_reachable_expr(*cond, &ast.expressions, ctx);
          mark_reachable_block(then, ast, ctx);
          mark_reachable_stmt(*else_s, ast, ctx);
       }
@@ -102,8 +104,8 @@ fn mark_reachable_stmt(stmt: StatementId, ast: &AstPool, ctx: &mut DceCtx) {
    }
 }
 
-fn mark_reachable_expr(expr: ExpressionId, ast: &AstPool, ctx: &mut DceCtx) {
-   match &ast.expressions[expr].expression {
+fn mark_reachable_expr(expr: ExpressionId, ast: &ExpressionPool, ctx: &mut DceCtx) {
+   match &ast[expr].expression {
       Expression::ProcedureCall { proc_expr, args } => {
          mark_reachable_expr(*proc_expr, ast, ctx);
          for arg in args.iter() {

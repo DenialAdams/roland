@@ -181,9 +181,9 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool, tar
       });
       ctx.current_block = 0;
 
-      if !linearize_block(&mut ctx, &body.block, &mut program.ast, target) {
+      if !linearize_block(&mut ctx, &body.block, &mut body.ast, target) {
          let location = program.procedures[id].location;
-         let return_expr = program.ast.expressions.insert(ExpressionNode {
+         let return_expr = body.ast.expressions.insert(ExpressionNode {
             expression: Expression::UnitLiteral,
             exp_type: Some(ExpressionType::Never),
             location,
@@ -195,7 +195,7 @@ pub fn linearize(program: &mut Program, interner: &Interner, dump_cfg: bool, tar
 
       body.cfg.bbs = std::mem::take(&mut ctx.bbs);
 
-      simplify_cfg(&mut body.cfg, &program.ast.expressions);
+      simplify_cfg(&mut body.cfg, &body.ast.expressions);
    }
 
    if dump_cfg {

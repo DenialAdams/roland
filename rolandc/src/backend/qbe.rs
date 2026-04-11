@@ -12,8 +12,8 @@ use crate::backend::regalloc::RegisterType;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   ArgumentNode, AstPool, BinOp, CastType, Expression, ExpressionId, ProcImplSource, ProcedureId, ProcedureNode, UnOp,
-   UserDefinedTypeInfo, VariableId,
+   ArgumentNode, BinOp, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, ProcedureNode,
+   UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
 use crate::size_info::sizeof_type_mem;
@@ -26,7 +26,6 @@ use crate::{BaseTarget, Program};
 struct GenerationContext<'a> {
    buf: Vec<u8>,
    var_to_slot: IndexMap<VariableId, VarSlot>,
-   ast: &'a AstPool,
    procedures: &'a SlotMap<ProcedureId, ProcedureNode>,
    interner: &'a Interner,
    udt: &'a UserDefinedTypeInfo,
@@ -154,8 +153,8 @@ fn roland_type_to_sub_type(
    })
 }
 
-fn emit_literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
-   let expr_node = &ctx.ast.expressions[expr_index];
+fn emit_literal_as_data(expr_index: ExpressionId, ast: &ExpressionPool, ctx: &mut GenerationContext) {
+   let expr_node = &ast[expr_index];
    match &expr_node.expression {
       Expression::BoundFcnLiteral(proc_id, _) => {
          write!(
@@ -221,7 +220,7 @@ fn emit_literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
          ) {
             let value_of_field = fields.get(field.0).copied().unwrap();
             if let Some(val) = value_of_field {
-               emit_literal_as_data(val, ctx);
+               emit_literal_as_data(val, ast, ctx);
             } else {
                let sz = sizeof_type_mem(&field.1.e_type, ctx.udt, BaseTarget::Qbe);
                if sz > 0 {
@@ -237,7 +236,7 @@ fn emit_literal_as_data(expr_index: ExpressionId, ctx: &mut GenerationContext) {
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter() {
-            emit_literal_as_data(*expr, ctx);
+            emit_literal_as_data(*expr, ast, ctx);
          }
       }
       _ => unreachable!(),
@@ -322,7 +321,6 @@ pub fn emit_qbe(
    let mut ctx = GenerationContext {
       buf: vec![],
       var_to_slot: regalloc_result.var_to_slot,
-      ast: &program.ast,
       procedures: &program.procedures,
       interner,
       udt: &program.user_defined_types,
@@ -346,7 +344,7 @@ pub fn emit_qbe(
       write!(ctx.buf, "data $.v{} = {{ ", a_global.0.0).unwrap();
       match a_global.1.initializer {
          Some(e) => {
-            emit_literal_as_data(e, &mut ctx);
+            emit_literal_as_data(e, &program.global_exprs, &mut ctx);
          }
          None => {
             // Just zero init
@@ -371,41 +369,44 @@ pub fn emit_qbe(
          ctx.udt,
          &procedure.definition.ret_type.e_type,
       );
-      let Some(cfg) = program.procedure_bodies.get(proc_id).map(|x| &x.cfg) else {
+      let Some(body) = program.procedure_bodies.get(proc_id) else {
          continue;
       };
       // With variadics, it's still possible to call a function with an aggregate type
       // and that aggregate to have never appeared in a procedure signature.
       // Imagine foo(...) called as foo(MyStruct{})
       // So we need to go through all calls as well
-      for instr in post_order(cfg).iter().flat_map(|x| cfg.bbs[*x].instructions.iter()) {
-         fn recurse(e: ExpressionId, ctx: &mut GenerationContext) {
-            match &ctx.ast.expressions[e].expression {
+      for instr in post_order(&body.cfg)
+         .iter()
+         .flat_map(|x| body.cfg.bbs[*x].instructions.iter())
+      {
+         fn recurse(e: ExpressionId, ast: &ExpressionPool, ctx: &mut GenerationContext) {
+            match &ast[e].expression {
                Expression::ProcedureCall { proc_expr, args } => {
-                  recurse(*proc_expr, ctx);
+                  recurse(*proc_expr, ast, ctx);
                   for arg in args {
-                     recurse(arg.expr, ctx);
+                     recurse(arg.expr, ast, ctx);
                      emit_aggregate_def(
                         &mut ctx.buf,
                         &mut ctx.aggregate_defs,
                         ctx.udt,
-                        ctx.ast.expressions[arg.expr].exp_type.as_ref().unwrap(),
+                        ast[arg.expr].exp_type.as_ref().unwrap(),
                      );
                   }
                }
                Expression::ArrayLiteral(expression_ids) => {
                   for expr in expression_ids.iter().copied() {
-                     recurse(expr, ctx);
+                     recurse(expr, ast, ctx);
                   }
                }
                Expression::ArrayIndex { array: lhs, index: rhs }
                | Expression::BinaryOperator { operator: _, lhs, rhs } => {
-                  recurse(*lhs, ctx);
-                  recurse(*rhs, ctx);
+                  recurse(*lhs, ast, ctx);
+                  recurse(*rhs, ast, ctx);
                }
                Expression::StructLiteral(_, index_map) => {
                   for expr in index_map.values().flat_map(|x| x.iter()) {
-                     recurse(*expr, ctx);
+                     recurse(*expr, ast, ctx);
                   }
                }
                Expression::UnaryOperator(_, expr)
@@ -415,12 +416,12 @@ pub fn emit_qbe(
                   target_type: _,
                   expr,
                } => {
-                  recurse(*expr, ctx);
+                  recurse(*expr, ast, ctx);
                }
                Expression::IfX(a, b, c) => {
-                  recurse(*a, ctx);
-                  recurse(*b, ctx);
-                  recurse(*c, ctx);
+                  recurse(*a, ast, ctx);
+                  recurse(*b, ast, ctx);
+                  recurse(*c, ast, ctx);
                }
                Expression::BoolLiteral(_)
                | Expression::StringLiteral(_)
@@ -438,12 +439,12 @@ pub fn emit_qbe(
          }
          match instr {
             CfgInstruction::Assignment(lhs, rhs) => {
-               recurse(*lhs, &mut ctx);
-               recurse(*rhs, &mut ctx);
+               recurse(*lhs, &body.ast.expressions, &mut ctx);
+               recurse(*rhs, &body.ast.expressions, &mut ctx);
             }
             CfgInstruction::Expression(expression_id)
             | CfgInstruction::ConditionalJump(expression_id, _, _)
-            | CfgInstruction::Return(expression_id) => recurse(*expression_id, &mut ctx),
+            | CfgInstruction::Return(expression_id) => recurse(*expression_id, &body.ast.expressions, &mut ctx),
             CfgInstruction::Jump(_) | CfgInstruction::Nop => (),
          }
       }
@@ -451,7 +452,7 @@ pub fn emit_qbe(
 
    let mut main_proc = None;
    for (proc_id, procedure) in program.procedures.iter() {
-      let Some(cfg) = program.procedure_bodies.get(proc_id).map(|x| &x.cfg) else {
+      let Some(body) = program.procedure_bodies.get(proc_id) else {
          continue;
       };
 
@@ -525,8 +526,13 @@ pub fn emit_qbe(
          }
       }
       ctx.unused_return_counter = 0;
-      for bb_id in post_order(cfg).iter().rev().copied().filter(|x| *x != CFG_END_NODE) {
-         emit_bb(cfg, bb_id, &mut ctx);
+      for bb_id in post_order(&body.cfg)
+         .iter()
+         .rev()
+         .copied()
+         .filter(|x| *x != CFG_END_NODE)
+      {
+         emit_bb(&body.cfg, &body.ast.expressions, bb_id, &mut ctx);
       }
       writeln!(ctx.buf, "}}").unwrap();
    }
@@ -598,15 +604,20 @@ impl std::fmt::Display for MemOffset {
    }
 }
 
-fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext, is_lhs: bool) -> Option<MemOffset> {
-   match ctx.ast.expressions[expr].expression {
+fn compute_offset(
+   expr: ExpressionId,
+   ast: &ExpressionPool,
+   ctx: &mut GenerationContext,
+   is_lhs: bool,
+) -> Option<MemOffset> {
+   match ast[expr].expression {
       Expression::Variable(v) if is_lhs => match ctx.var_to_slot.get(&v) {
          Some(VarSlot::Register(_)) => None,
          Some(VarSlot::Stack(s)) => Some(MemOffset::StackSlot(*s)),
          None => Some(MemOffset::Global(v.0)),
       },
       Expression::UnaryOperator(UnOp::Dereference, e) if is_lhs => {
-         let Expression::Variable(v) = ctx.ast.expressions[e].expression else {
+         let Expression::Variable(v) = ast[e].expression else {
             unreachable!()
          };
          let Some(VarSlot::Register(reg)) = ctx.var_to_slot.get(&v) else {
@@ -614,62 +625,50 @@ fn compute_offset(expr: ExpressionId, ctx: &mut GenerationContext, is_lhs: bool)
          };
          Some(MemOffset::DerefRegister(*reg))
       }
-      Expression::UnaryOperator(UnOp::Dereference, e) => compute_offset(e, ctx, true),
+      Expression::UnaryOperator(UnOp::Dereference, e) => compute_offset(e, ast, ctx, true),
       _ => None,
    }
 }
 
-fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
+fn emit_bb(cfg: &Cfg, ast: &ExpressionPool, bb: usize, ctx: &mut GenerationContext) {
    writeln!(ctx.buf, "@b{}", bb).unwrap();
    for instr in cfg.bbs[bb].instructions.iter() {
       match instr {
          CfgInstruction::Nop => (),
          CfgInstruction::Assignment(lid, en) => {
-            if let Some(lhs_mem) = compute_offset(*lid, ctx, true) {
-               if let Some(rhs_mem) = compute_offset(*en, ctx, false) {
-                  let size = sizeof_type_mem(
-                     ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
-                     ctx.udt,
-                     BaseTarget::Qbe,
-                  );
+            if let Some(lhs_mem) = compute_offset(*lid, ast, ctx, true) {
+               if let Some(rhs_mem) = compute_offset(*en, ast, ctx, false) {
+                  let size = sizeof_type_mem(ast[*en].exp_type.as_ref().unwrap(), ctx.udt, BaseTarget::Qbe);
                   writeln!(ctx.buf, "   blit {}, {}, {}", rhs_mem, lhs_mem, size).unwrap();
-               } else if ctx.ast.expressions[*en].exp_type.as_ref().unwrap().is_aggregate() {
-                  let Expression::ProcedureCall { proc_expr, args } = &ctx.ast.expressions[*en].expression else {
+               } else if ast[*en].exp_type.as_ref().unwrap().is_aggregate() {
+                  let Expression::ProcedureCall { proc_expr, args } = &ast[*en].expression else {
                      unreachable!()
                   };
                   write!(
                      ctx.buf,
                      "   %t ={} ",
-                     roland_type_to_abi_type(
-                        ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
-                        ctx.udt,
-                        &ctx.aggregate_defs
-                     )
-                     .unwrap(),
+                     roland_type_to_abi_type(ast[*en].exp_type.as_ref().unwrap(), ctx.udt, &ctx.aggregate_defs)
+                        .unwrap(),
                   )
                   .unwrap();
-                  emit_call_expr_and_newline(*proc_expr, args, ctx);
-                  let size = sizeof_type_mem(
-                     ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
-                     ctx.udt,
-                     BaseTarget::Qbe,
-                  );
+                  emit_call_expr_and_newline(*proc_expr, args, ast, ctx);
+                  let size = sizeof_type_mem(ast[*en].exp_type.as_ref().unwrap(), ctx.udt, BaseTarget::Qbe);
                   writeln!(ctx.buf, "   blit %t, {}, {}", lhs_mem, size).unwrap();
                } else {
-                  let suffix = roland_type_to_extended_type(ctx.ast.expressions[*en].exp_type.as_ref().unwrap());
+                  let suffix = roland_type_to_extended_type(ast[*en].exp_type.as_ref().unwrap());
                   write!(ctx.buf, "   store{} ", suffix).unwrap();
-                  emit_expr_as_val(*en, ctx).unwrap();
+                  emit_expr_as_val(*en, ast, ctx).unwrap();
                   writeln!(ctx.buf, ", {}", lhs_mem).unwrap();
                }
             } else {
-               let Expression::Variable(v) = ctx.ast.expressions[*lid].expression else {
+               let Expression::Variable(v) = ast[*lid].expression else {
                   unreachable!()
                };
                let Some(VarSlot::Register(reg)) = ctx.var_to_slot.get(&v).copied() else {
                   unreachable!()
                };
 
-               let rhs_expr_node = &ctx.ast.expressions[*en];
+               let rhs_expr_node = &ast[*en];
                let is_call = matches!(rhs_expr_node.expression, Expression::ProcedureCall { .. });
 
                write!(
@@ -687,7 +686,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
 
                match &rhs_expr_node.expression {
                   Expression::ProcedureCall { proc_expr, args } => {
-                     emit_call_expr_and_newline(*proc_expr, args, ctx);
+                     emit_call_expr_and_newline(*proc_expr, args, ast, ctx);
                      Ok(())
                   }
                   Expression::BoolLiteral(v) => writeln!(ctx.buf, "copy {}", u8::from(*v)),
@@ -729,7 +728,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                      }
                   }
                   Expression::BinaryOperator { operator, lhs, rhs } => {
-                     let typ = ctx.ast.expressions[*lhs].exp_type.as_ref().unwrap();
+                     let typ = ast[*lhs].exp_type.as_ref().unwrap();
                      let opcode = match operator {
                         BinOp::Add => "add",
                         BinOp::Subtract => "sub",
@@ -881,14 +880,14 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                         BinOp::LogicalAnd | BinOp::LogicalOr => unreachable!(),
                      };
                      write!(ctx.buf, "{} ", opcode).unwrap();
-                     emit_expr_as_val(*lhs, ctx).unwrap();
+                     emit_expr_as_val(*lhs, ast, ctx).unwrap();
                      write!(ctx.buf, ", ").unwrap();
-                     emit_expr_as_val(*rhs, ctx).unwrap();
+                     emit_expr_as_val(*rhs, ast, ctx).unwrap();
                      writeln!(ctx.buf)
                   }
                   Expression::UnaryOperator(UnOp::TakeProcedurePointer, inner_id) => {
                      let ExpressionType::ProcedureItem(proc_id, _bound_type_params) =
-                        ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap()
+                        ast[*inner_id].exp_type.as_ref().unwrap()
                      else {
                         unreachable!();
                      };
@@ -901,14 +900,14 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                   Expression::UnaryOperator(operator, inner_id) => match operator {
                      UnOp::Negate => {
                         write!(ctx.buf, "neg ").unwrap();
-                        emit_expr_as_val(*inner_id, ctx).unwrap();
+                        emit_expr_as_val(*inner_id, ast, ctx).unwrap();
                         writeln!(ctx.buf)
                      }
                      UnOp::Complement => {
-                        if *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() == ExpressionType::Bool {
+                        if *ast[*inner_id].exp_type.as_ref().unwrap() == ExpressionType::Bool {
                            write!(ctx.buf, "ceqw 0, ")
                         } else {
-                           let magic_const: u64 = match *ctx.ast.expressions[*inner_id].exp_type.as_ref().unwrap() {
+                           let magic_const: u64 = match *ast[*inner_id].exp_type.as_ref().unwrap() {
                               crate::type_data::U8_TYPE => u64::from(u8::MAX),
                               crate::type_data::U16_TYPE => u64::from(u16::MAX),
                               crate::type_data::U32_TYPE
@@ -921,21 +920,21 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                            write!(ctx.buf, "xor {}, ", magic_const)
                         }
                         .unwrap();
-                        emit_expr_as_val(*inner_id, ctx).unwrap();
+                        emit_expr_as_val(*inner_id, ast, ctx).unwrap();
                         writeln!(ctx.buf)
                      }
                      UnOp::Dereference => {
-                        if let Expression::Variable(v) = ctx.ast.expressions[*inner_id].expression {
+                        if let Expression::Variable(v) = ast[*inner_id].expression {
                            if let Some(VarSlot::Register(reg)) = ctx.var_to_slot.get(&v) {
                               writeln!(ctx.buf, "copy %r{}", reg)
                            } else {
                               emit_load(&mut ctx.buf, rhs_expr_node.exp_type.as_ref().unwrap()).unwrap();
-                              emit_expr_as_val(*inner_id, ctx).unwrap();
+                              emit_expr_as_val(*inner_id, ast, ctx).unwrap();
                               writeln!(ctx.buf)
                            }
                         } else {
                            emit_load(&mut ctx.buf, rhs_expr_node.exp_type.as_ref().unwrap()).unwrap();
-                           emit_expr_as_val(*inner_id, ctx).unwrap();
+                           emit_expr_as_val(*inner_id, ast, ctx).unwrap();
                            writeln!(ctx.buf)
                         }
                      }
@@ -946,7 +945,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                      target_type,
                      expr,
                   } => {
-                     let src_type = ctx.ast.expressions[*expr].exp_type.as_ref().unwrap();
+                     let src_type = ast[*expr].exp_type.as_ref().unwrap();
                      match (src_type, target_type) {
                         (ExpressionType::Int(l), ExpressionType::Int(r))
                            if l.width.as_num_bytes(BaseTarget::Qbe) >= r.width.as_num_bytes(BaseTarget::Qbe) =>
@@ -1049,7 +1048,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                         _ => write!(ctx.buf, "copy "),
                      }
                      .unwrap();
-                     emit_expr_as_val(*expr, ctx).unwrap();
+                     emit_expr_as_val(*expr, ast, ctx).unwrap();
                      writeln!(ctx.buf)
                   }
                   Expression::Cast {
@@ -1057,7 +1056,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                      target_type,
                      expr,
                   } => {
-                     match (ctx.ast.expressions[*expr].exp_type.as_ref().unwrap(), target_type) {
+                     match (ast[*expr].exp_type.as_ref().unwrap(), target_type) {
                         (&I16_TYPE, &U16_TYPE) => {
                            write!(ctx.buf, "and {}, ", 0b0000_0000_0000_0000_1111_1111_1111_1111)
                         }
@@ -1077,7 +1076,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                         _ => write!(ctx.buf, "copy "),
                      }
                      .unwrap();
-                     emit_expr_as_val(*expr, ctx).unwrap();
+                     emit_expr_as_val(*expr, ast, ctx).unwrap();
                      writeln!(ctx.buf)
                   }
                   _ => unreachable!(),
@@ -1119,16 +1118,14 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                }
             }
          }
-         CfgInstruction::Expression(en) => match &ctx.ast.expressions[*en].expression {
+         CfgInstruction::Expression(en) => match &ast[*en].expression {
             Expression::ProcedureCall { proc_expr, args } => {
                // For ABI reasons, all non-unit calls should be assigned into a temporary.
                // Per QBE documentation:
                // "Unless the called function does not return a value, a return temporary must be specified, even if it is never used afterwards."
-               if let Some(return_abi_type) = roland_type_to_abi_type(
-                  ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
-                  ctx.udt,
-                  &ctx.aggregate_defs,
-               ) {
+               if let Some(return_abi_type) =
+                  roland_type_to_abi_type(ast[*en].exp_type.as_ref().unwrap(), ctx.udt, &ctx.aggregate_defs)
+               {
                   let next_counter = ctx.unused_return_counter + 1;
                   write!(
                      ctx.buf,
@@ -1137,28 +1134,23 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
                      return_abi_type
                   )
                   .unwrap();
-                  emit_call_expr_and_newline(*proc_expr, args, ctx);
+                  emit_call_expr_and_newline(*proc_expr, args, ast, ctx);
                } else {
                   write!(ctx.buf, "   ").unwrap();
-                  emit_call_expr_and_newline(*proc_expr, args, ctx);
+                  emit_call_expr_and_newline(*proc_expr, args, ast, ctx);
                }
             }
-            _ => debug_assert!(!expression_could_have_side_effects(*en, &ctx.ast.expressions)),
+            _ => debug_assert!(!expression_could_have_side_effects(*en, ast)),
          },
          CfgInstruction::Return(en) => {
-            debug_assert!(!expression_could_have_side_effects(*en, &ctx.ast.expressions));
-            if *ctx.ast.expressions[*en].exp_type.as_ref().unwrap() == ExpressionType::Never {
+            debug_assert!(!expression_could_have_side_effects(*en, ast));
+            if *ast[*en].exp_type.as_ref().unwrap() == ExpressionType::Never {
                writeln!(&mut ctx.buf, "   hlt").unwrap();
-            } else if sizeof_type_mem(
-               ctx.ast.expressions[*en].exp_type.as_ref().unwrap(),
-               ctx.udt,
-               BaseTarget::Qbe,
-            ) == 0
-            {
+            } else if sizeof_type_mem(ast[*en].exp_type.as_ref().unwrap(), ctx.udt, BaseTarget::Qbe) == 0 {
                writeln!(&mut ctx.buf, "   ret").unwrap();
             } else {
                write!(&mut ctx.buf, "   ret ").unwrap();
-               emit_expr_as_val(*en, ctx).unwrap();
+               emit_expr_as_val(*en, ast, ctx).unwrap();
                writeln!(&mut ctx.buf).unwrap();
             }
          }
@@ -1169,7 +1161,7 @@ fn emit_bb(cfg: &Cfg, bb: usize, ctx: &mut GenerationContext) {
          }
          CfgInstruction::ConditionalJump(expr, then_dest, else_dest) => {
             write!(&mut ctx.buf, "   jnz ").unwrap();
-            emit_expr_as_val(*expr, ctx).unwrap();
+            emit_expr_as_val(*expr, ast, ctx).unwrap();
             writeln!(&mut ctx.buf, ", @b{}, @b{}", then_dest, else_dest).unwrap();
          }
       }
@@ -1214,8 +1206,12 @@ fn mangle<'a>(proc_id: ProcedureId, proc: &ProcedureNode, interner: &'a Interner
    }
 }
 
-fn emit_expr_as_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> std::io::Result<()> {
-   let expr_node = &ctx.ast.expressions[expr_index];
+fn emit_expr_as_val(
+   expr_index: ExpressionId,
+   ast: &ExpressionPool,
+   ctx: &mut GenerationContext,
+) -> std::io::Result<()> {
+   let expr_node = &ast[expr_index];
    match &expr_node.expression {
       Expression::IntLiteral { val, .. } => {
          let signed = matches!(
@@ -1237,7 +1233,7 @@ fn emit_expr_as_val(expr_index: ExpressionId, ctx: &mut GenerationContext) -> st
          write!(ctx.buf, "{}", u8::from(*val))
       }
       Expression::UnaryOperator(UnOp::Dereference, inner) => {
-         if let Expression::Variable(v) = ctx.ast.expressions[*inner].expression {
+         if let Expression::Variable(v) = ast[*inner].expression {
             match ctx.var_to_slot.get(&v) {
                Some(VarSlot::Register(reg)) => {
                   write!(ctx.buf, "%r{}", reg)
@@ -1314,13 +1310,18 @@ fn emit_load(buf: &mut Vec<u8>, a_type: &ExpressionType) -> std::io::Result<()> 
    }
 }
 
-fn emit_call_expr_and_newline(proc_expr: ExpressionId, args: &[ArgumentNode], ctx: &mut GenerationContext) {
+fn emit_call_expr_and_newline(
+   proc_expr: ExpressionId,
+   args: &[ArgumentNode],
+   ast: &ExpressionPool,
+   ctx: &mut GenerationContext,
+) {
    enum Arg {
       Expr(ExpressionId),
       VarargSep,
    }
 
-   let opt_num_non_variadic_args = match ctx.ast.expressions[proc_expr].exp_type.as_ref().unwrap() {
+   let opt_num_non_variadic_args = match ast[proc_expr].exp_type.as_ref().unwrap() {
       ExpressionType::ProcedureItem(id, _) => {
          write!(ctx.buf, "call ${}(", mangle(*id, &ctx.procedures[*id], ctx.interner)).unwrap();
          let def = &ctx.procedures[*id].definition;
@@ -1332,7 +1333,7 @@ fn emit_call_expr_and_newline(proc_expr: ExpressionId, args: &[ArgumentNode], ct
          ret_type: _,
       } => {
          write!(ctx.buf, "call ").unwrap();
-         emit_expr_as_val(proc_expr, ctx).unwrap();
+         emit_expr_as_val(proc_expr, ast, ctx).unwrap();
          write!(ctx.buf, "(").unwrap();
          if *variadic { Some(parameters.len()) } else { None }
       }
@@ -1348,13 +1349,11 @@ fn emit_call_expr_and_newline(proc_expr: ExpressionId, args: &[ArgumentNode], ct
    for arg in args_iter {
       match arg {
          Arg::Expr(ex) => {
-            if let Some(arg_type) = roland_type_to_abi_type(
-               ctx.ast.expressions[ex].exp_type.as_ref().unwrap(),
-               ctx.udt,
-               &ctx.aggregate_defs,
-            ) {
+            if let Some(arg_type) =
+               roland_type_to_abi_type(ast[ex].exp_type.as_ref().unwrap(), ctx.udt, &ctx.aggregate_defs)
+            {
                write!(ctx.buf, "{} ", arg_type).unwrap();
-               emit_expr_as_val(ex, ctx).unwrap();
+               emit_expr_as_val(ex, ast, ctx).unwrap();
                write!(ctx.buf, ", ").unwrap();
             }
          }

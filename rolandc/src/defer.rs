@@ -40,7 +40,7 @@ pub fn process_defer_statements(program: &mut Program) {
    };
    for body in program.procedure_bodies.values_mut() {
       vm.local_types = &mut body.locals;
-      defer_block(&mut body.block, &mut ctx, &mut program.ast, &mut vm);
+      defer_block(&mut body.block, &mut ctx, &mut body.ast, &mut vm);
    }
 }
 

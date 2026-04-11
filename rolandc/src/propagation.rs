@@ -10,29 +10,30 @@ use crate::backend::liveness::ProgramIndex;
 use crate::constant_folding::{self, FoldingContext, is_non_aggregate_const};
 use crate::interner::Interner;
 use crate::parse::{
-   AstPool, Expression, ExpressionId, ExpressionPool, ProcedureId, ProcedureNode, UnOp, UserDefinedTypeInfo, VariableId,
+   Expression, ExpressionId, ExpressionPool, ProcedureId, ProcedureNode, UnOp, UserDefinedTypeInfo, VariableId,
 };
 use crate::type_data::ExpressionType;
 use crate::{BaseTarget, Program};
 
 fn fold_expr_id(
    expr_id: ExpressionId,
-   ast: &mut AstPool,
+   ast: &mut ExpressionPool,
    procedures: &SlotMap<ProcedureId, ProcedureNode>,
    user_defined_types: &UserDefinedTypeInfo,
+   global_exprs: &ExpressionPool,
    interner: &Interner,
    target: BaseTarget,
 ) {
    let mut fc = FoldingContext {
-      ast,
       procedures,
       user_defined_types,
-      const_replacements: &HashMap::new(),
+      global_expressions: Some(global_exprs),
+      const_replacements: None,
       current_proc_name: None,
       target,
       templated_types: &HashMap::new(),
    };
-   constant_folding::try_fold_and_replace_expr(expr_id, &mut None, &mut fc, interner);
+   constant_folding::try_fold_and_replace_expr(expr_id, &mut None, ast, &mut fc, interner);
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
@@ -66,10 +67,11 @@ fn find_reaching_val(x: Definition, body: &Cfg, rpo: &[usize], exprs: &Expressio
 
 fn propagate_vals(
    instruction: &CfgInstruction,
-   ast: &mut AstPool,
+   ast: &mut ExpressionPool,
    get_reaching_val: &mut impl FnMut(VariableId, &ExpressionPool) -> Option<ReachingVal>,
    procedures: &SlotMap<ProcedureId, ProcedureNode>,
    user_defined_types: &UserDefinedTypeInfo,
+   global_exprs: &ExpressionPool,
    interner: &Interner,
    target: BaseTarget,
 ) {
@@ -150,16 +152,40 @@ fn propagate_vals(
    }
    match instruction {
       CfgInstruction::Assignment(lhs, rhs) => {
-         if propagate_val_expr(*lhs, &mut ast.expressions, get_reaching_val) {
-            fold_expr_id(*lhs, ast, procedures, user_defined_types, interner, target);
+         if propagate_val_expr(*lhs, ast, get_reaching_val) {
+            fold_expr_id(
+               *lhs,
+               ast,
+               procedures,
+               user_defined_types,
+               global_exprs,
+               interner,
+               target,
+            );
          }
-         if propagate_val_expr(*rhs, &mut ast.expressions, get_reaching_val) {
-            fold_expr_id(*rhs, ast, procedures, user_defined_types, interner, target);
+         if propagate_val_expr(*rhs, ast, get_reaching_val) {
+            fold_expr_id(
+               *rhs,
+               ast,
+               procedures,
+               user_defined_types,
+               global_exprs,
+               interner,
+               target,
+            );
          }
       }
       CfgInstruction::Expression(expr) | CfgInstruction::Return(expr) | CfgInstruction::ConditionalJump(expr, _, _) => {
-         if propagate_val_expr(*expr, &mut ast.expressions, get_reaching_val) {
-            fold_expr_id(*expr, ast, procedures, user_defined_types, interner, target);
+         if propagate_val_expr(*expr, ast, get_reaching_val) {
+            fold_expr_id(
+               *expr,
+               ast,
+               procedures,
+               user_defined_types,
+               global_exprs,
+               interner,
+               target,
+            );
          }
       }
       CfgInstruction::Nop | CfgInstruction::Jump(_) => (),
@@ -171,12 +197,12 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget)
    let empty_definitions = HashSet::new();
    for proc in program.procedure_bodies.values_mut() {
       let mut escaping_vars = HashSet::new();
-      mark_escaping_vars_cfg(&proc.cfg, &mut escaping_vars, &program.ast.expressions);
+      mark_escaping_vars_cfg(&proc.cfg, &mut escaping_vars, &proc.ast.expressions);
 
       let mut reaching_values: HashMap<VariableId, Option<ReachingVal>> = HashMap::new();
 
       'outer: loop {
-         let all_reaching_defs = reaching_definitions(&proc.locals, &proc.cfg, &program.ast.expressions);
+         let all_reaching_defs = reaching_definitions(&proc.locals, &proc.cfg, &proc.ast.expressions);
          let rpo = {
             let mut x = post_order(&proc.cfg);
             x.reverse();
@@ -240,16 +266,17 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget)
 
                propagate_vals(
                   instr,
-                  &mut program.ast,
+                  &mut proc.ast.expressions,
                   &mut get_reaching_val_memoized,
                   &program.procedures,
                   &program.user_defined_types,
+                  &program.global_exprs,
                   interner,
                   target,
                );
 
                if let CfgInstruction::Assignment(lhs, _) = instr
-                  && let Expression::Variable(v) = program.ast.expressions[*lhs].expression
+                  && let Expression::Variable(v) = proc.ast.expressions[*lhs].expression
                   && proc.locals.contains_key(&v)
                {
                   let reaching_defs_of_v_here = reaching_defs_here.entry(v).or_default().to_mut();
@@ -264,7 +291,7 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget)
                if let Some(CfgInstruction::ConditionalJump(cond, then_target, else_target)) =
                   proc.cfg.bbs[*bb_index].instructions.last()
                {
-                  match program.ast.expressions[*cond].expression {
+                  match proc.ast.expressions[*cond].expression {
                      Expression::BoolLiteral(true) => (*then_target, *else_target),
                      Expression::BoolLiteral(false) => (*else_target, *then_target),
                      _ => continue,

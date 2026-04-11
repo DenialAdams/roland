@@ -4,7 +4,8 @@ use super::OwnedValidationContext;
 use super::type_variables::{TypeConstraint, TypeVariableManager};
 use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::rolandc_error_w_details;
-use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, ProcedureId};
+use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, ProcedureId, all_expression_pools_mut};
+use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, IntType};
 
 fn constraint_compatible_with_concrete(constraint: TypeConstraint, concrete: &ExpressionType) -> bool {
@@ -110,40 +111,37 @@ pub fn try_merge_types(
 pub fn lower_type_variables(
    ctx: &mut OwnedValidationContext,
    procedure_bodies: &mut SecondaryMap<ProcedureId, ProcedureBody>,
-   expressions: &mut ExpressionPool,
+   global_expressions: &mut ExpressionPool,
    err_manager: &mut ErrorManager,
 ) {
-   let mut unknown_literals: Vec<ExpressionId> = Vec::new();
-   for (i, e) in expressions.iter_mut() {
-      if let Some(exp_type) = e.exp_type.as_mut() {
-         lower_unknowns_in_type(exp_type, &ctx.type_variables);
-         if matches!(
-            e.expression,
-            Expression::IntLiteral { .. }
-               | Expression::FloatLiteral(_)
-               | Expression::BoundFcnLiteral(_, _)
-               | Expression::StructLiteral(_, _)
-               | Expression::ArrayLiteral(_)
-         ) && !exp_type.is_concrete_shallow()
-         {
-            unknown_literals.push(i);
+   let mut unknown_literals: Vec<SourceInfo> = Vec::new();
+
+   for ast in all_expression_pools_mut(global_expressions, procedure_bodies) {
+      for e in ast.values_mut() {
+         if let Some(exp_type) = e.exp_type.as_mut() {
+            lower_unknowns_in_type(exp_type, &ctx.type_variables);
+            if matches!(
+               e.expression,
+               Expression::IntLiteral { .. }
+                  | Expression::FloatLiteral(_)
+                  | Expression::BoundFcnLiteral(_, _)
+                  | Expression::StructLiteral(_, _)
+                  | Expression::ArrayLiteral(_)
+            ) && !exp_type.is_concrete_shallow()
+            {
+               unknown_literals.push(e.location);
+            }
          }
-      }
-      if let Expression::BoundFcnLiteral(_, type_arguments) = &mut e.expression {
-         for type_arg in type_arguments.iter_mut() {
-            lower_unknowns_in_type(&mut type_arg.e_type, &ctx.type_variables);
+         if let Expression::BoundFcnLiteral(_, type_arguments) = &mut e.expression {
+            for type_arg in type_arguments.iter_mut() {
+               lower_unknowns_in_type(&mut type_arg.e_type, &ctx.type_variables);
+            }
          }
       }
    }
 
    if !unknown_literals.is_empty() {
-      let err_details: Vec<_> = unknown_literals
-         .iter()
-         .map(|x| {
-            let loc = expressions[*x].location;
-            (loc, "literal")
-         })
-         .collect();
+      let err_details: Vec<_> = unknown_literals.iter().map(|loc| (*loc, "literal")).collect();
       rolandc_error_w_details!(
          err_manager,
          &err_details,
