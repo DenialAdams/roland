@@ -1,0 +1,8 @@
+proc main() {
+    let x: u64 = 1;
+    static T: u64 = x + 1;
+}
+__END__
+compile:
+Value of static `T` can't be constant folded. Hint: Either simplify the expression, or initialize it yourself on program start.
+↳ line 3, column 21 [tests/variables/local_with_nonlocal_storage_referencing_scope.rol]
