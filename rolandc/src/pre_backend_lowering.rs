@@ -112,9 +112,21 @@ pub fn lower_enums_and_pointers(program: &mut Program, target: BaseTarget) {
    }
    let mut enums_literals: Vec<ExpressionId> = vec![]; // Due to borrowck (illegitimate), we need to do enum lowering by collect-lower
 
-   lower_expressions_in_ast(&mut enums_literals, &mut program.global_exprs, None, &program.user_defined_types.enum_info, target);
+   lower_expressions_in_ast(
+      &mut enums_literals,
+      &mut program.global_exprs,
+      None,
+      &program.user_defined_types.enum_info,
+      target,
+   );
    for ast in program.procedure_bodies.values_mut().map(|x| &mut x.ast.expressions) {
-      lower_expressions_in_ast(&mut enums_literals, ast, Some(&program.global_exprs), &program.user_defined_types.enum_info, target);
+      lower_expressions_in_ast(
+         &mut enums_literals,
+         ast,
+         Some(&program.global_exprs),
+         &program.user_defined_types.enum_info,
+         target,
+      );
    }
 
    for struct_info in program.user_defined_types.struct_info.values_mut() {

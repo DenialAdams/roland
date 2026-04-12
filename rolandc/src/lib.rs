@@ -46,6 +46,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use backend::linearize;
 use backend::liveness::compute_live_intervals;
@@ -60,6 +61,7 @@ use parse::{
    Expression, ExpressionNode, ImportNode, ProcImplSource, ProcedureId, Statement, StatementNode, UserDefinedTypeId,
    statement_always_or_never_returns,
 };
+use rayon::iter::ParallelIterator;
 use semantic_analysis::type_variables::TypeVariableManager;
 use semantic_analysis::{OwnedValidationContext, StorageKind, definite_assignment};
 use slotmap::SecondaryMap;
@@ -497,11 +499,11 @@ pub fn compile<FR: FileResolver>(
       backend::wasm::sort_globals(&mut ctx.program, config.target.base_target());
    }
 
-   let mut debugging_files = if config.dump_debugging_info {
-      Some((
+   let debugging_files = if config.dump_debugging_info {
+      Some(Mutex::new((
          std::fs::File::create("pp_liveness.rol").unwrap(),
          std::fs::File::create("pointer_analysis.dot").unwrap(),
-      ))
+      )))
    } else {
       None
    };
@@ -510,77 +512,86 @@ pub fn compile<FR: FileResolver>(
       if config.target.base_target() == BaseTarget::Qbe {
          backend::regalloc::hoist_non_temp_loads_stores(&mut ctx.program, config.target.base_target());
       }
-      let mut program_liveness = SecondaryMap::with_capacity(ctx.program.procedure_bodies.len());
-      for (id, body) in ctx.program.procedure_bodies.iter_mut() {
-         let pointer_analysis_result = {
-            let params = ctx.program.procedures[id]
-               .definition
-               .parameters
-               .iter()
-               .map(|x| x.var_id);
-            backend::pointer_analysis::steensgard(&body.locals, params, &mut body.cfg, &body.ast.expressions)
-         };
-         let liveness = backend::liveness::liveness(
-            &body.locals,
-            &mut body.cfg,
-            &body.ast.expressions,
-            config.target.base_target(),
-            &ctx.program.user_defined_types,
-            &pointer_analysis_result,
-         );
-         if let Some(dbg_files) = debugging_files.as_mut() {
-            pp::pp_proc(
-               &ctx.program.procedures,
-               Some(body),
+      let program_liveness = ctx
+         .program
+         .procedure_bodies
+         .par_iter_mut()
+         .fold(SecondaryMap::new, |mut liveness_result, (id, body)| {
+            let pointer_analysis_result = {
+               let params = ctx.program.procedures[id]
+                  .definition
+                  .parameters
+                  .iter()
+                  .map(|x| x.var_id);
+               backend::pointer_analysis::steensgard(&body.locals, params, &mut body.cfg, &body.ast.expressions)
+            };
+            let liveness = backend::liveness::liveness(
+               &body.locals,
+               &mut body.cfg,
+               &body.ast.expressions,
+               config.target.base_target(),
                &ctx.program.user_defined_types,
-               id,
-               &ctx.interner,
-               &mut dbg_files.0,
-               &liveness,
-            )
-            .unwrap();
-            {
-               use std::io::Write;
-               let f = &mut dbg_files.1;
-               writeln!(
-                  f,
-                  "digraph {} {{",
-                  ctx.interner.lookup(ctx.program.procedures[id].definition.name.str)
+               &pointer_analysis_result,
+            );
+            if let Some(dbg_files_mutex) = debugging_files.as_ref() {
+               let mut dbg_files = dbg_files_mutex.lock().unwrap();
+               pp::pp_proc(
+                  &ctx.program.procedures,
+                  Some(body),
+                  &ctx.program.user_defined_types,
+                  id,
+                  &ctx.interner,
+                  &mut dbg_files.0,
+                  &liveness,
                )
                .unwrap();
-               for (local_di, local_var) in body.locals.keys().enumerate() {
-                  let points_to = pointer_analysis_result.points_to(local_di);
-                  match points_to {
-                     PointsTo::Unknown => {
-                        writeln!(f, "\"v{}\" -> \"Unk\"", local_var.0).unwrap();
-                     }
-                     PointsTo::Vars(it) => {
-                        for var_di in it.iter_ones() {
-                           let pointing_var_id = body.locals.get_index(var_di).map(|x| *x.0).unwrap();
-                           writeln!(f, "\"v{}\" -> \"v{}\"", local_var.0, pointing_var_id.0).unwrap();
+               {
+                  use std::io::Write;
+                  let f = &mut dbg_files.1;
+                  writeln!(
+                     f,
+                     "digraph {} {{",
+                     ctx.interner.lookup(ctx.program.procedures[id].definition.name.str)
+                  )
+                  .unwrap();
+                  for (local_di, local_var) in body.locals.keys().enumerate() {
+                     let points_to = pointer_analysis_result.points_to(local_di);
+                     match points_to {
+                        PointsTo::Unknown => {
+                           writeln!(f, "\"v{}\" -> \"Unk\"", local_var.0).unwrap();
+                        }
+                        PointsTo::Vars(it) => {
+                           for var_di in it.iter_ones() {
+                              let pointing_var_id = body.locals.get_index(var_di).map(|x| *x.0).unwrap();
+                              writeln!(f, "\"v{}\" -> \"v{}\"", local_var.0, pointing_var_id.0).unwrap();
+                           }
                         }
                      }
                   }
-               }
-               for (local_di, local_var) in body.locals.keys().enumerate() {
-                  let who_points_to_local = pointer_analysis_result.who_points_to(local_di);
-                  match who_points_to_local {
-                     PointsTo::Unknown => {
-                        writeln!(f, "\"Unk\" -> \"v{}\"", local_var.0).unwrap();
-                     }
-                     PointsTo::Vars(it) => {
-                        for var_di in it.iter_ones() {
-                           let pointing_var_id = body.locals.get_index(var_di).map(|x| *x.0).unwrap();
-                           writeln!(f, "\"v{}\" -> \"v{}\"", pointing_var_id.0, local_var.0).unwrap();
+                  for (local_di, local_var) in body.locals.keys().enumerate() {
+                     let who_points_to_local = pointer_analysis_result.who_points_to(local_di);
+                     match who_points_to_local {
+                        PointsTo::Unknown => {
+                           writeln!(f, "\"Unk\" -> \"v{}\"", local_var.0).unwrap();
+                        }
+                        PointsTo::Vars(it) => {
+                           for var_di in it.iter_ones() {
+                              let pointing_var_id = body.locals.get_index(var_di).map(|x| *x.0).unwrap();
+                              writeln!(f, "\"v{}\" -> \"v{}\"", pointing_var_id.0, local_var.0).unwrap();
+                           }
                         }
                      }
                   }
+                  writeln!(f, "}}").unwrap();
                }
-               writeln!(f, "}}").unwrap();
             }
-         }
-         program_liveness.insert(id, compute_live_intervals(body, &liveness));
-      }
+            liveness_result.insert(id, compute_live_intervals(body, &liveness));
+            liveness_result
+         })
+         .reduce(SecondaryMap::new, |mut a, b| {
+            a.extend(b);
+            a
+         });
       backend::regalloc::assign_variables_to_registers_and_mem(&ctx.program, config, &program_liveness)
    };
 

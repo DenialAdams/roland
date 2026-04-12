@@ -1282,6 +1282,7 @@ dependencies = [
  "include_dir",
  "indexmap",
  "memchr",
+ "rayon",
  "slotmap",
  "unicode-ident",
  "wasm-encoder 0.246.2",
@@ -1475,9 +1476,9 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 [[package]]
 name = "slotmap"
 version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdd58c3c93c3d278ca835519292445cb4b0d4dc59ccfdf7ceadaab3f8aeb4038"
+source = "git+https://github.com/DenialAdams/slotmap.git?branch=rayon#75e9f0374235b41b2d6abd948138dd366e5a24b9"
 dependencies = [
+ "rayon",
  "version_check",
 ]
 

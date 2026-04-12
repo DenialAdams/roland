@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::iter;
 
 use indexmap::{IndexMap, IndexSet};
+use rayon::iter::ParallelIterator;
 use slotmap::SlotMap;
 
 use crate::backend::linearize::{Cfg, CfgInstruction, post_order};
@@ -195,7 +196,7 @@ fn propagate_vals(
 // Conditional Copy/Constant Propagation
 pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget) {
    let empty_definitions = HashSet::new();
-   for proc in program.procedure_bodies.values_mut() {
+   program.procedure_bodies.par_values_mut().for_each(|proc| {
       let mut escaping_vars = HashSet::new();
       mark_escaping_vars_cfg(&proc.cfg, &mut escaping_vars, &proc.ast.expressions);
 
@@ -311,7 +312,7 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget)
          }
          break;
       }
-   }
+   });
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]

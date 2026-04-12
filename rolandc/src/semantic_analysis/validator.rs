@@ -1057,7 +1057,9 @@ fn type_statement_inner(
                GlobalInfo {
                   expr_type: result_type_node,
                   initializer: match opt_enid {
-                     DeclarationValue::Expr(expression_id) => Some(deep_clone_expr(*expression_id, &ast.expressions, global_ast)),
+                     DeclarationValue::Expr(expression_id) => {
+                        Some(deep_clone_expr(*expression_id, &ast.expressions, global_ast))
+                     }
                      DeclarationValue::Uninit | DeclarationValue::None => None,
                   },
                   location: *stmt_loc,
