@@ -42,7 +42,7 @@ pub fn import_program<FR: FileResolver>(
    while let Some(pair) = import_queue.pop() {
       let mut base_path = pair.0;
       let import_location = pair.1;
-      let canonical_path = if FR::IS_STD {
+      let canonical_path = if FR::IS_STD || !FR::REQUIRES_CANONIZATION {
          base_path.clone()
       } else {
          match std::fs::canonicalize(&base_path) {
