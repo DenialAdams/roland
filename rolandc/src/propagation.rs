@@ -202,6 +202,8 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget)
 
       let mut reaching_values: HashMap<VariableId, Option<ReachingVal>> = HashMap::new();
 
+      let mut reaching_defs_here: HashMap<VariableId, Cow<HashSet<Definition>>> = HashMap::new();
+
       'outer: loop {
          let all_reaching_defs = reaching_definitions(&proc.locals, &proc.cfg, &proc.ast.expressions);
          let rpo = {
@@ -210,12 +212,10 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget)
             x
          };
          for (rpo_index, bb_index) in rpo.iter().enumerate() {
-            // This HashMap allocation can't be hoisted due to borrowck :/
-            let mut reaching_defs_here: HashMap<VariableId, Cow<HashSet<Definition>>> = all_reaching_defs[*bb_index]
+            reaching_defs_here.extend(all_reaching_defs[*bb_index]
                .r_in
                .iter()
-               .map(|(k, v)| (*k, Cow::Borrowed(v)))
-               .collect();
+               .map(|(k, v)| (*k, Cow::Borrowed(v))));
             for (i, instr) in proc.cfg.bbs[*bb_index].instructions.iter().enumerate() {
                reaching_values.clear();
                let get_reaching_val = |v: VariableId, ast: &ExpressionPool| -> Option<ReachingVal> {
@@ -285,6 +285,9 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget)
                   reaching_defs_of_v_here.insert(Definition::DefinedAt(ProgramIndex(rpo_index, i)));
                }
             }
+
+            reaching_defs_here.clear();
+            reaching_defs_here = reaching_defs_here.into_iter().map(|_| unreachable!()).collect();
 
             // If we are conditionally jumping, try to prune it now that we have propagated constants.
             // This may prune reaching definitions, making our optimization more precise.
