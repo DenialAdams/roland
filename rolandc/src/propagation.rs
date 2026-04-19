@@ -212,10 +212,12 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget)
             x
          };
          for (rpo_index, bb_index) in rpo.iter().enumerate() {
-            reaching_defs_here.extend(all_reaching_defs[*bb_index]
-               .r_in
-               .iter()
-               .map(|(k, v)| (*k, Cow::Borrowed(v))));
+            reaching_defs_here.extend(
+               all_reaching_defs[*bb_index]
+                  .r_in
+                  .iter()
+                  .map(|(k, v)| (*k, Cow::Borrowed(v))),
+            );
             for (i, instr) in proc.cfg.bbs[*bb_index].instructions.iter().enumerate() {
                reaching_values.clear();
                let get_reaching_val = |v: VariableId, ast: &ExpressionPool| -> Option<ReachingVal> {

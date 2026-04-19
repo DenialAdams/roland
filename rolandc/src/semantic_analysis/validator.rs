@@ -1344,20 +1344,18 @@ fn get_type(
    match expr {
       Expression::UnitLiteral => ExpressionType::Unit,
       Expression::BoolLiteral(_) => ExpressionType::Bool,
-      Expression::IntLiteral { .. } => {
-         let new_type_variable = validation_context
+      Expression::IntLiteral { .. } => ExpressionType::Unknown(
+         validation_context
             .owned
             .type_variables
-            .new_type_variable(TypeConstraint::Int);
-         ExpressionType::Unknown(new_type_variable)
-      }
-      Expression::FloatLiteral(_) => {
-         let new_type_variable = validation_context
+            .new_type_variable(TypeConstraint::Int),
+      ),
+      Expression::FloatLiteral(_) => ExpressionType::Unknown(
+         validation_context
             .owned
             .type_variables
-            .new_type_variable(TypeConstraint::Float);
-         ExpressionType::Unknown(new_type_variable)
-      }
+            .new_type_variable(TypeConstraint::Float),
+      ),
       Expression::StringLiteral(_) => ExpressionType::Struct(validation_context.owned.string_struct_id, Box::new([])),
       Expression::Cast {
          cast_type,
