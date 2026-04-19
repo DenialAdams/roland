@@ -2191,16 +2191,16 @@ fn get_type(
 
          let mut any_error = false;
 
-         for i in 1..elems.len() {
+         for (i, window) in elems.windows(2).enumerate() {
             let merged = try_merge_types_of_two_distinct_expressions(
-               elems[i - 1],
-               elems[i],
+               window[0],
+               window[1],
                ast,
                &mut validation_context.owned.type_variables,
             );
 
-            let last_elem_expr = &ast[elems[i - 1]];
-            let this_elem_expr = &ast[elems[i]];
+            let last_elem_expr = &ast[window[0]];
+            let this_elem_expr = &ast[window[1]];
 
             if last_elem_expr
                .exp_type
@@ -2219,18 +2219,18 @@ fn get_type(
                   err_manager,
                   &[
                      (expr_location, "array literal".into()),
-                     (last_elem_expr.location, format!("element {}", i - 1)),
-                     (this_elem_expr.location, format!("element {}", i))
+                     (last_elem_expr.location, format!("element {}", i)),
+                     (this_elem_expr.location, format!("element {}", i + 1))
                   ],
                   "Element at array index {} has type of {}, but element at array index {} has mismatching type of {}",
-                  i - 1,
+                  i,
                   last_elem_expr.exp_type.as_ref().unwrap().as_roland_type_info(
                      validation_context.interner,
                      validation_context.user_defined_types,
                      validation_context.procedures,
                      &validation_context.owned.type_variables
                   ),
-                  i,
+                  i + 1,
                   this_elem_expr.exp_type.as_ref().unwrap().as_roland_type_info(
                      validation_context.interner,
                      validation_context.user_defined_types,
