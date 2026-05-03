@@ -94,8 +94,7 @@ pub fn update_expressions_to_point_to_monomorphized_procedures(
             let gargs = generic_args
                .iter()
                .map(|x| x.e_type.clone())
-               .collect::<Vec<_>>()
-               .into_boxed_slice();
+               .collect::<Box<_>>();
 
             if let Some(new_id) = specialized_procedures.get(&(*id, gargs)).copied() {
                *id = new_id;

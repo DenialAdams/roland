@@ -1877,8 +1877,7 @@ fn get_type(
                      type_arguments
                         .iter()
                         .map(|x| x.e_type.clone())
-                        .collect::<Vec<_>>()
-                        .into_boxed_slice(),
+                        .collect::<Box<_>>(),
                   ),
                   callsite: (validation_context.owned.cur_procedure, expr_location),
                });
@@ -2685,8 +2684,7 @@ fn check_procedure_item(
          type_arguments
             .iter()
             .map(|x| x.e_type.clone())
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
+            .collect::<Box<_>>(),
       ),
       type_arguments_are_valid,
    )
