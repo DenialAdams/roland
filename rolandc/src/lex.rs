@@ -239,7 +239,7 @@ pub fn lex_for_tokens(
    let mut tokens: Vec<SourceToken> = Vec::new();
    let mut mode = LexMode::Normal;
 
-   // Temporary buffer we use in various parts of the lexer
+   // Temporary buffer we use for string and numeric literals
    let mut str_buf = String::new();
 
    let mut fragment_begin: usize = 0;
@@ -648,14 +648,14 @@ pub fn lex_for_tokens(
             }
          }
          LexMode::Ident => {
+            let current_fragment = &input[fragment_begin..c_byte_range.end];
             if is_xid_continue(c) {
-               str_buf.push(c);
                next_char = chars.next();
-               if str_buf == "__END__" {
+               if current_fragment == "__END__" {
                   // reset the lexing mode so we don't push __END__ as a token
                   mode = LexMode::Normal;
                   break;
-               } else if str_buf == "___" {
+               } else if current_fragment == "___" {
                   // Looking for this token in identifier lexing is pretty hacky,
                   // but we do it for n-lookahead (in this case, n=2.)
                   // It would be nice if we had arbitrary lookahead, perhaps by
@@ -668,20 +668,19 @@ pub fn lex_for_tokens(
                      },
                      token: Token::TripleUnderscore,
                   });
-                  str_buf.clear();
                   mode = LexMode::Normal;
                }
             } else {
-               let resulting_token = extract_keyword_or_ident(&str_buf, interner);
+               let fragment_excluding_this = &input[fragment_begin..c_byte_range.start];
+               let resulting_token = extract_keyword_or_ident(fragment_excluding_this, interner);
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: SourcePosition(fragment_begin),
-                     end: SourcePosition(fragment_begin + str_buf.len()),
+                     end: SourcePosition(fragment_begin + fragment_excluding_this.len()),
                      file: source_path,
                   },
                   token: resulting_token,
                });
-               str_buf.clear();
                mode = LexMode::Normal;
             }
          }
