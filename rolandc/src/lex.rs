@@ -251,7 +251,13 @@ pub fn lex_for_tokens(
       // Naturally this should be a range start..end
       // If Rust ranges ever implement Copy (2027 edition?)
       // will change
-      (CopyRange{start, end: (start + ch.len_utf8())}, ch)
+      (
+         CopyRange {
+            start,
+            end: (start + ch.len_utf8()),
+         },
+         ch,
+      )
    });
 
    let mut next_char = chars.next();
@@ -842,14 +848,13 @@ pub fn lex_for_tokens(
       LexMode::Normal | LexMode::Comment => Ok(tokens),
       // Probably no valid program ends with a keyword or identifier, but we'll let the parser determine that
       LexMode::Ident => {
-         let resulting_token = extract_keyword_or_ident(&str_buf, interner);
          tokens.push(SourceToken {
             source_info: SourceInfo {
                begin: SourcePosition(fragment_begin),
                end: SourcePosition(input.len()),
                file: source_path,
             },
-            token: resulting_token,
+            token: extract_keyword_or_ident(&str_buf, interner),
          });
          Ok(tokens)
       }
@@ -868,14 +873,13 @@ pub fn lex_for_tokens(
          Ok(tokens)
       }
       LexMode::StringLiteral | LexMode::StringLiteralEscape => {
-         let str_lit_loc = SourceInfo {
-            begin: SourcePosition(fragment_begin),
-            end: SourcePosition(input.len()),
-            file: source_path,
-         };
          rolandc_error!(
             err_manager,
-            str_lit_loc,
+            SourceInfo {
+               begin: SourcePosition(fragment_begin),
+               end: SourcePosition(input.len()),
+               file: source_path,
+            },
             "Encountered EOF while parsing string literal. Hint: Are you missing a closing \"?"
          );
          Err(())
