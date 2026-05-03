@@ -91,10 +91,7 @@ pub fn update_expressions_to_point_to_monomorphized_procedures(
                continue;
             }
 
-            let gargs = generic_args
-               .iter()
-               .map(|x| x.e_type.clone())
-               .collect::<Box<_>>();
+            let gargs = generic_args.iter().map(|x| x.e_type.clone()).collect::<Box<_>>();
 
             if let Some(new_id) = specialized_procedures.get(&(*id, gargs)).copied() {
                *id = new_id;

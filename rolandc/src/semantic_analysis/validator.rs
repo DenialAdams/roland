@@ -1872,13 +1872,7 @@ fn get_type(
                .owned
                .procedures_to_specialize
                .push(SpecializationRequest {
-                  proc_and_type_arguments: (
-                     *id,
-                     type_arguments
-                        .iter()
-                        .map(|x| x.e_type.clone())
-                        .collect::<Box<_>>(),
-                  ),
+                  proc_and_type_arguments: (*id, type_arguments.iter().map(|x| x.e_type.clone()).collect::<Box<_>>()),
                   callsite: (validation_context.owned.cur_procedure, expr_location),
                });
          }
@@ -2681,10 +2675,7 @@ fn check_procedure_item(
    (
       ExpressionType::ProcedureItem(
          callee_proc_id,
-         type_arguments
-            .iter()
-            .map(|x| x.e_type.clone())
-            .collect::<Box<_>>(),
+         type_arguments.iter().map(|x| x.e_type.clone()).collect::<Box<_>>(),
       ),
       type_arguments_are_valid,
    )
