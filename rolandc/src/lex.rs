@@ -248,11 +248,10 @@ pub fn lex_for_tokens(
    let mut is_float = false;
 
    let mut chars = input.char_indices().map(|(start, ch)| {
-      let end = start + ch.len_utf8();
       // Naturally this should be a range start..end
       // If Rust ranges ever implement Copy (2027 edition?)
       // will change
-      (CopyRange{start, end}, ch)
+      (CopyRange{start, end: (start + ch.len_utf8())}, ch)
    });
 
    let mut next_char = chars.next();
