@@ -215,23 +215,6 @@ pub struct SourceToken {
    pub source_info: SourceInfo,
 }
 
-struct CharCountingBuffer {
-   length_in_chars: usize,
-   buf: String,
-}
-
-impl CharCountingBuffer {
-   fn push(&mut self, c: char) {
-      self.buf.push(c);
-      self.length_in_chars += 1;
-   }
-
-   fn clear(&mut self) -> usize {
-      self.buf.clear();
-      std::mem::replace(&mut self.length_in_chars, 0)
-   }
-}
-
 pub fn lex(
    input: &str,
    source_path: SourcePath,
@@ -241,22 +224,26 @@ pub fn lex(
    lex_for_tokens(input, source_path, err_manager, interner).map(|x| Lexer::from_tokens(x, source_path))
 }
 
+
 pub fn lex_for_tokens(
    input: &str,
    source_path: SourcePath,
    err_manager: &mut ErrorManager,
    interner: &mut Interner,
 ) -> Result<Vec<SourceToken>, ()> {
+   fn clear_for_length(s: &mut String) -> usize {
+      let len = s.len();
+      s.clear();
+      len
+   }
+
    let mut tokens: Vec<SourceToken> = Vec::new();
    let mut mode = LexMode::Normal;
 
    let mut cur_position = SourcePosition(0);
 
    // Temporary buffer we use in various parts of the lexer
-   let mut str_buf = CharCountingBuffer {
-      length_in_chars: 0,
-      buf: String::new(),
-   };
+   let mut str_buf = String::new();
 
    // identifiers and string literal
    let mut str_begin = cur_position;
@@ -272,7 +259,7 @@ pub fn lex_for_tokens(
       match mode {
          LexMode::Normal => {
             if c.is_whitespace() {
-               cur_position.0 += 1;
+               cur_position.0 += c.len_utf8();
                next_char = chars.next();
             } else if c == '"' {
                mode = LexMode::StringLiteral;
@@ -697,11 +684,11 @@ pub fn lex_for_tokens(
             if is_xid_continue(c) {
                str_buf.push(c);
                next_char = chars.next();
-               if str_buf.buf == "__END__" {
+               if str_buf == "__END__" {
                   // reset the lexing mode so we don't push __END__ as a token
                   mode = LexMode::Normal;
                   break;
-               } else if str_buf.buf == "___" {
+               } else if str_buf == "___" {
                   // Looking for this token in identifier lexing is pretty hacky,
                   // but we do it for n-lookahead (in this case, n=2.)
                   // It would be nice if we had arbitrary lookahead, perhaps by
@@ -709,31 +696,31 @@ pub fn lex_for_tokens(
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
                         begin: cur_position,
-                        end: cur_position.index_plus(str_buf.length_in_chars),
+                        end: cur_position.index_plus(str_buf.len()),
                         file: source_path,
                      },
                      token: Token::TripleUnderscore,
                   });
-                  cur_position.0 += str_buf.clear();
+                  cur_position.0 += clear_for_length(&mut str_buf);
                   mode = LexMode::Normal;
                }
             } else {
-               let resulting_token = extract_keyword_or_ident(&str_buf.buf, interner);
+               let resulting_token = extract_keyword_or_ident(&str_buf, interner);
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: cur_position,
-                     end: cur_position.index_plus(str_buf.length_in_chars),
+                     end: cur_position.index_plus(str_buf.len()),
                      file: source_path,
                   },
                   token: resulting_token,
                });
-               cur_position.0 += str_buf.clear();
+               cur_position.0 += clear_for_length(&mut str_buf);
                mode = LexMode::Normal;
             }
          }
          LexMode::StringLiteral => {
             if c == '"' {
-               let final_str = interner.intern(&str_buf.buf);
+               let final_str = interner.intern(&str_buf);
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: str_begin,
@@ -742,14 +729,14 @@ pub fn lex_for_tokens(
                   },
                   token: Token::StringLiteral(final_str),
                });
-               str_buf.clear();
+               clear_for_length(&mut str_buf);
                mode = LexMode::Normal;
             } else if c == '\\' {
                mode = LexMode::StringLiteralEscape;
             } else {
                str_buf.push(c);
             }
-            cur_position.0 += 1;
+            cur_position.0 += c.len_utf8();
             next_char = chars.next();
          }
          LexMode::StringLiteralEscape => {
@@ -766,8 +753,8 @@ pub fn lex_for_tokens(
             } else if c == '"' {
                str_buf.push('"');
             } else {
-               let escape_begin = SourcePosition(cur_position.0 - 1);
-               cur_position.0 += 1;
+               let escape_begin = SourcePosition(cur_position.0 - '\\'.len_utf8());
+               cur_position.0 += c.len_utf8();
                rolandc_error!(
                   err_manager,
                   SourceInfo {
@@ -786,7 +773,7 @@ pub fn lex_for_tokens(
          LexMode::NumericLiteral => {
             // Alphanumeric because we support parsing hex, i.e. 0xff
             // '-' to support i.e. 3.14E-10
-            if (c == 'e' || c == 'E') && !str_buf.buf.starts_with("0x") {
+            if (c == 'e' || c == 'E') && !str_buf.starts_with("0x") {
                str_buf.push(c);
                is_float = true;
                next_char = chars.next();
@@ -801,16 +788,16 @@ pub fn lex_for_tokens(
                if next_char == Some('.') {
                   // This is pretty hacky, but oh well
                   tokens.push(finish_numeric_literal(
-                     &str_buf.buf,
+                     &str_buf,
                      err_manager,
                      SourceInfo {
                         begin: cur_position,
-                        end: cur_position.index_plus(str_buf.length_in_chars),
+                        end: cur_position.index_plus(str_buf.len()),
                         file: source_path,
                      },
                      is_float,
                   )?);
-                  cur_position.0 += str_buf.clear();
+                  cur_position.0 += clear_for_length(&mut str_buf);
                   is_float = false;
                   mode = LexMode::Normal;
 
@@ -829,53 +816,53 @@ pub fn lex_for_tokens(
                   str_buf.push(c);
                } else {
                   tokens.push(finish_numeric_literal(
-                     &str_buf.buf,
+                     &str_buf,
                      err_manager,
                      SourceInfo {
                         begin: cur_position,
-                        end: cur_position.index_plus(str_buf.length_in_chars),
+                        end: cur_position.index_plus(str_buf.len()),
                         file: source_path,
                      },
                      is_float,
                   )?);
-                  cur_position.0 += str_buf.clear();
+                  cur_position.0 += clear_for_length(&mut str_buf);
                   is_float = false;
                   mode = LexMode::Normal;
                }
             } else {
                tokens.push(finish_numeric_literal(
-                  &str_buf.buf,
+                  &str_buf,
                   err_manager,
                   SourceInfo {
                      begin: cur_position,
-                     end: cur_position.index_plus(str_buf.length_in_chars),
+                     end: cur_position.index_plus(str_buf.len()),
                      file: source_path,
                   },
                   is_float,
                )?);
-               cur_position.0 += str_buf.clear();
+               cur_position.0 += clear_for_length(&mut str_buf);
                is_float = false;
                mode = LexMode::Normal;
             }
          }
          LexMode::FloatLiteralAfterE => {
             if c.is_ascii_digit()
-               || ((c == '-' || c == '+') && str_buf.buf.as_bytes().last().map(u8::to_ascii_lowercase) == Some(b'e'))
+               || ((c == '-' || c == '+') && str_buf.as_bytes().last().map(u8::to_ascii_lowercase) == Some(b'e'))
             {
                str_buf.push(c);
                next_char = chars.next();
             } else {
                tokens.push(finish_numeric_literal(
-                  &str_buf.buf,
+                  &str_buf,
                   err_manager,
                   SourceInfo {
                      begin: cur_position,
-                     end: cur_position.index_plus(str_buf.length_in_chars),
+                     end: cur_position.index_plus(str_buf.len()),
                      file: source_path,
                   },
                   is_float,
                )?);
-               cur_position.0 += str_buf.clear();
+               cur_position.0 += clear_for_length(&mut str_buf);
                is_float = false;
                mode = LexMode::Normal;
             }
@@ -884,7 +871,7 @@ pub fn lex_for_tokens(
             if c == '\n' {
                mode = LexMode::Normal;
             }
-            cur_position.0 += 1;
+            cur_position.0 += c.len_utf8();
             next_char = chars.next();
          }
       }
@@ -894,11 +881,11 @@ pub fn lex_for_tokens(
       LexMode::Normal | LexMode::Comment => Ok(tokens),
       // Probably no valid program ends with a keyword or identifier, but we'll let the parser determine that
       LexMode::Ident => {
-         let resulting_token = extract_keyword_or_ident(&str_buf.buf, interner);
+         let resulting_token = extract_keyword_or_ident(&str_buf, interner);
          tokens.push(SourceToken {
             source_info: SourceInfo {
                begin: cur_position,
-               end: cur_position.index_plus(str_buf.length_in_chars),
+               end: cur_position.index_plus(str_buf.len()),
                file: source_path,
             },
             token: resulting_token,
@@ -908,11 +895,11 @@ pub fn lex_for_tokens(
       // Same for numbers
       LexMode::NumericLiteral | LexMode::FloatLiteralAfterE => {
          tokens.push(finish_numeric_literal(
-            &str_buf.buf,
+            &str_buf,
             err_manager,
             SourceInfo {
                begin: cur_position,
-               end: cur_position.index_plus(str_buf.length_in_chars),
+               end: cur_position.index_plus(str_buf.len()),
                file: source_path,
             },
             is_float,
