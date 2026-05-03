@@ -35,6 +35,7 @@ struct Opts {
    amd64: bool,
    preserve_artifacts: bool,
    wasm_executor: String,
+   quiet: bool,
 }
 
 fn parse_path(s: &std::ffi::OsStr) -> Result<std::path::PathBuf, &'static str> {
@@ -55,6 +56,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
          .opt_value_from_str("--wasm-executor")?
          .unwrap_or_else(|| "wasmtime".into()),
       test_path: pargs.free_from_os_str(parse_path)?,
+      quiet: pargs.contains("--quiet"),
    };
 
    let remaining_args = pargs.finish();
@@ -163,7 +165,9 @@ fn main() -> Result<(), &'static str> {
          Ok(captured_stderr_minus_expected) if captured_stderr_minus_expected.is_empty() => {
             num_successes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let mut out_handle = std::io::stdout().lock();
-            report_success(&mut out_handle, entry.file_name().unwrap().to_str().unwrap());
+            if !opts.quiet {
+               report_success(&mut out_handle, entry.file_name().unwrap().to_str().unwrap());
+            }
          }
          Ok(captured_stderr_minus_expected) => {
             successes_with_dribble.lock().unwrap().push(TestSuccess {
