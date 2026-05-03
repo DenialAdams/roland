@@ -224,6 +224,11 @@ pub fn lex(
    lex_for_tokens(input, source_path, err_manager, interner).map(|x| Lexer::from_tokens(x, source_path))
 }
 
+#[derive(Clone, Copy)]
+struct CopyRange {
+   start: usize,
+   end: usize,
+}
 
 pub fn lex_for_tokens(
    input: &str,
@@ -231,447 +236,409 @@ pub fn lex_for_tokens(
    err_manager: &mut ErrorManager,
    interner: &mut Interner,
 ) -> Result<Vec<SourceToken>, ()> {
-   fn clear_for_length(s: &mut String) -> usize {
-      let len = s.len();
-      s.clear();
-      len
-   }
-
    let mut tokens: Vec<SourceToken> = Vec::new();
    let mut mode = LexMode::Normal;
-
-   let mut cur_position = SourcePosition(0);
 
    // Temporary buffer we use in various parts of the lexer
    let mut str_buf = String::new();
 
-   // identifiers and string literal
-   let mut str_begin = cur_position;
+   let mut fragment_begin: usize = 0;
 
    // numeric literals
    let mut is_float = false;
 
-   let mut chars = input.chars();
+   let mut chars = input.char_indices().map(|(start, ch)| {
+      let end = start + ch.len_utf8();
+      // Naturally this should be a range start..end
+      // If Rust ranges ever implement Copy (2027 edition?)
+      // will change
+      (CopyRange{start, end}, ch)
+   });
 
    let mut next_char = chars.next();
 
-   while let Some(c) = next_char {
+   while let Some((c_byte_range, c)) = next_char {
       match mode {
          LexMode::Normal => {
             if c.is_whitespace() {
-               cur_position.0 += c.len_utf8();
                next_char = chars.next();
             } else if c == '"' {
                mode = LexMode::StringLiteral;
-               str_begin = cur_position;
-               cur_position.0 += 1;
+               fragment_begin = c_byte_range.start;
                next_char = chars.next();
             } else if c == '{' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::OpenBrace,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '}' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::CloseBrace,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '(' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::OpenParen,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == ')' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::CloseParen,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == ':' {
                next_char = chars.next();
-               if next_char == Some(':') {
+               if let Some((next_range, ':')) = next_char {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.index_plus(2),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(next_range.end),
                         file: source_path,
                      },
                      token: Token::DoubleColon,
                   });
-                  cur_position.0 += 2;
                   next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.next_index(),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(c_byte_range.end),
                         file: source_path,
                      },
                      token: Token::Colon,
                   });
-                  cur_position.0 += 1;
                }
             } else if c == ';' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::Semicolon,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '+' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::Plus,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '-' {
                next_char = chars.next();
-               if next_char == Some('>') {
+               if let Some((next_range, '>')) = next_char {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.index_plus(2),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(next_range.end),
                         file: source_path,
                      },
                      token: Token::Arrow,
                   });
-                  cur_position.0 += 2;
                   next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.next_index(),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(c_byte_range.end),
                         file: source_path,
                      },
                      token: Token::Minus,
                   });
-                  cur_position.0 += 1;
                }
             } else if c == '*' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::Multiply,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '/' {
                next_char = chars.next();
-               if next_char == Some('/') {
+               if next_char.map(|(_, ch)| ch) == Some('/') {
                   next_char = chars.next();
                   mode = LexMode::Comment;
-                  cur_position.0 += 2;
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.next_index(),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(c_byte_range.end),
                         file: source_path,
                      },
                      token: Token::Divide,
                   });
-                  cur_position.0 += 1;
                }
             } else if c == '%' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::Remainder,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '$' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::Dollar,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == ',' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::Comma,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '&' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::Amp,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '^' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::Caret,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '|' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::Pipe,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '=' {
                next_char = chars.next();
-               if next_char == Some('=') {
+               if let Some((next_range, '=')) = next_char {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.index_plus(2),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(next_range.end),
                         file: source_path,
                      },
                      token: Token::Equality,
                   });
-                  cur_position.0 += 2;
                   next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.next_index(),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(c_byte_range.end),
                         file: source_path,
                      },
                      token: Token::Assignment,
                   });
-                  cur_position.0 += 1;
                }
             } else if c == '>' {
                next_char = chars.next();
-               if next_char == Some('=') {
+               if let Some((next_range, '=')) = next_char {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.index_plus(2),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(next_range.end),
                         file: source_path,
                      },
                      token: Token::GreaterThanOrEqualTo,
                   });
-                  cur_position.0 += 2;
                   next_char = chars.next();
-               } else if next_char == Some('>') {
+               } else if let Some((next_range, '>')) = next_char {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.index_plus(2),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(next_range.end),
                         file: source_path,
                      },
                      token: Token::ShiftRight,
                   });
-                  cur_position.0 += 2;
                   next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.next_index(),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(c_byte_range.end),
                         file: source_path,
                      },
                      token: Token::GreaterThan,
                   });
-                  cur_position.0 += 1;
                }
             } else if c == '<' {
                next_char = chars.next();
-               if next_char == Some('=') {
+               if let Some((next_range, '=')) = next_char {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.index_plus(2),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(next_range.end),
                         file: source_path,
                      },
                      token: Token::LessThanOrEqualTo,
                   });
-                  cur_position.0 += 2;
                   next_char = chars.next();
-               } else if next_char == Some('<') {
+               } else if let Some((next_range, '<')) = next_char {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.index_plus(2),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(next_range.end),
                         file: source_path,
                      },
                      token: Token::ShiftLeft,
                   });
-                  cur_position.0 += 2;
                   next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.next_index(),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(c_byte_range.end),
                         file: source_path,
                      },
                      token: Token::LessThan,
                   });
-                  cur_position.0 += 1;
                }
             } else if c == '!' {
                next_char = chars.next();
-               if next_char == Some('=') {
+               if let Some((next_range, '=')) = next_char {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.index_plus(2),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(next_range.end),
                         file: source_path,
                      },
                      token: Token::NotEquality,
                   });
-                  cur_position.0 += 2;
                   next_char = chars.next();
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.next_index(),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(c_byte_range.end),
                         file: source_path,
                      },
                      token: Token::Exclam,
                   });
-                  cur_position.0 += 1;
                }
             } else if c == '.' {
                next_char = chars.next();
-               if next_char == Some('.') {
+               if let Some((next_range, '.')) = next_char {
                   next_char = chars.next();
-                  if next_char == Some('.') {
+                  if let Some((next_range, '.')) = next_char {
                      next_char = chars.next();
                      tokens.push(SourceToken {
                         source_info: SourceInfo {
-                           begin: cur_position,
-                           end: cur_position.index_plus(3),
+                           begin: SourcePosition(c_byte_range.start),
+                           end: SourcePosition(next_range.end),
                            file: source_path,
                         },
                         token: Token::TriplePeriod,
                      });
-                     cur_position.0 += 3;
                   } else {
                      tokens.push(SourceToken {
                         source_info: SourceInfo {
-                           begin: cur_position,
-                           end: cur_position.index_plus(2),
+                           begin: SourcePosition(c_byte_range.start),
+                           end: SourcePosition(next_range.end),
                            file: source_path,
                         },
                         token: Token::DoublePeriod,
                      });
-                     cur_position.0 += 2;
                   }
                } else {
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.next_index(),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(c_byte_range.end),
                         file: source_path,
                      },
                      token: Token::Period,
                   });
-                  cur_position.0 += 1;
                }
             } else if c == '[' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::OpenSquareBracket,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == ']' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::CloseSquareBracket,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c == '~' {
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::Deref,
                });
-               cur_position.0 += 1;
                next_char = chars.next();
             } else if c.is_ascii_digit() {
+               fragment_begin = c_byte_range.start;
                mode = LexMode::NumericLiteral;
             } else if is_xid_start(c) || c == '_' {
+               fragment_begin = c_byte_range.start;
                mode = LexMode::Ident;
             } else {
                rolandc_error!(
                   err_manager,
                   SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(c_byte_range.start),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   "Encountered unexpected character {}",
@@ -695,26 +662,26 @@ pub fn lex_for_tokens(
                   // manually keeping track of the byte index.
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.index_plus(str_buf.len()),
+                        begin: SourcePosition(fragment_begin),
+                        end: SourcePosition(c_byte_range.end),
                         file: source_path,
                      },
                      token: Token::TripleUnderscore,
                   });
-                  cur_position.0 += clear_for_length(&mut str_buf);
+                  str_buf.clear();
                   mode = LexMode::Normal;
                }
             } else {
                let resulting_token = extract_keyword_or_ident(&str_buf, interner);
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.index_plus(str_buf.len()),
+                     begin: SourcePosition(fragment_begin),
+                     end: SourcePosition(fragment_begin + str_buf.len()),
                      file: source_path,
                   },
                   token: resulting_token,
                });
-               cur_position.0 += clear_for_length(&mut str_buf);
+               str_buf.clear();
                mode = LexMode::Normal;
             }
          }
@@ -723,20 +690,19 @@ pub fn lex_for_tokens(
                let final_str = interner.intern(&str_buf);
                tokens.push(SourceToken {
                   source_info: SourceInfo {
-                     begin: str_begin,
-                     end: cur_position.next_index(),
+                     begin: SourcePosition(fragment_begin),
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   token: Token::StringLiteral(final_str),
                });
-               clear_for_length(&mut str_buf);
+               str_buf.clear();
                mode = LexMode::Normal;
             } else if c == '\\' {
                mode = LexMode::StringLiteralEscape;
             } else {
                str_buf.push(c);
             }
-            cur_position.0 += c.len_utf8();
             next_char = chars.next();
          }
          LexMode::StringLiteralEscape => {
@@ -753,13 +719,12 @@ pub fn lex_for_tokens(
             } else if c == '"' {
                str_buf.push('"');
             } else {
-               let escape_begin = SourcePosition(cur_position.0 - '\\'.len_utf8());
-               cur_position.0 += c.len_utf8();
+               let escape_begin = SourcePosition(c_byte_range.start - '\\'.len_utf8());
                rolandc_error!(
                   err_manager,
                   SourceInfo {
                      begin: escape_begin,
-                     end: cur_position,
+                     end: SourcePosition(c_byte_range.end),
                      file: source_path,
                   },
                   "Encountered unknown escape sequence `\\{}`",
@@ -785,32 +750,31 @@ pub fn lex_for_tokens(
                next_char = chars.next();
             } else if c == '.' {
                next_char = chars.next();
-               if next_char == Some('.') {
+               if let Some((next_range, '.')) = next_char {
                   // This is pretty hacky, but oh well
                   tokens.push(finish_numeric_literal(
                      &str_buf,
                      err_manager,
                      SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.index_plus(str_buf.len()),
+                        begin: SourcePosition(fragment_begin),
+                        end: SourcePosition(fragment_begin + str_buf.len()),
                         file: source_path,
                      },
                      is_float,
                   )?);
-                  cur_position.0 += clear_for_length(&mut str_buf);
+                  str_buf.clear();
                   is_float = false;
                   mode = LexMode::Normal;
 
                   next_char = chars.next();
                   tokens.push(SourceToken {
                      source_info: SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.index_plus(2),
+                        begin: SourcePosition(c_byte_range.start),
+                        end: SourcePosition(next_range.end),
                         file: source_path,
                      },
                      token: Token::DoublePeriod,
                   });
-                  cur_position.0 += 2;
                } else if !is_float {
                   is_float = true;
                   str_buf.push(c);
@@ -819,13 +783,13 @@ pub fn lex_for_tokens(
                      &str_buf,
                      err_manager,
                      SourceInfo {
-                        begin: cur_position,
-                        end: cur_position.index_plus(str_buf.len()),
+                        begin: SourcePosition(fragment_begin),
+                        end: SourcePosition(fragment_begin + str_buf.len()),
                         file: source_path,
                      },
                      is_float,
                   )?);
-                  cur_position.0 += clear_for_length(&mut str_buf);
+                  str_buf.clear();
                   is_float = false;
                   mode = LexMode::Normal;
                }
@@ -834,13 +798,13 @@ pub fn lex_for_tokens(
                   &str_buf,
                   err_manager,
                   SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.index_plus(str_buf.len()),
+                     begin: SourcePosition(fragment_begin),
+                     end: SourcePosition(fragment_begin + str_buf.len()),
                      file: source_path,
                   },
                   is_float,
                )?);
-               cur_position.0 += clear_for_length(&mut str_buf);
+               str_buf.clear();
                is_float = false;
                mode = LexMode::Normal;
             }
@@ -856,13 +820,13 @@ pub fn lex_for_tokens(
                   &str_buf,
                   err_manager,
                   SourceInfo {
-                     begin: cur_position,
-                     end: cur_position.index_plus(str_buf.len()),
+                     begin: SourcePosition(fragment_begin),
+                     end: SourcePosition(fragment_begin + str_buf.len()),
                      file: source_path,
                   },
                   is_float,
                )?);
-               cur_position.0 += clear_for_length(&mut str_buf);
+               str_buf.clear();
                is_float = false;
                mode = LexMode::Normal;
             }
@@ -871,7 +835,6 @@ pub fn lex_for_tokens(
             if c == '\n' {
                mode = LexMode::Normal;
             }
-            cur_position.0 += c.len_utf8();
             next_char = chars.next();
          }
       }
@@ -884,8 +847,8 @@ pub fn lex_for_tokens(
          let resulting_token = extract_keyword_or_ident(&str_buf, interner);
          tokens.push(SourceToken {
             source_info: SourceInfo {
-               begin: cur_position,
-               end: cur_position.index_plus(str_buf.len()),
+               begin: SourcePosition(fragment_begin),
+               end: SourcePosition(input.len()),
                file: source_path,
             },
             token: resulting_token,
@@ -898,8 +861,8 @@ pub fn lex_for_tokens(
             &str_buf,
             err_manager,
             SourceInfo {
-               begin: cur_position,
-               end: cur_position.index_plus(str_buf.len()),
+               begin: SourcePosition(fragment_begin),
+               end: SourcePosition(input.len()),
                file: source_path,
             },
             is_float,
@@ -908,8 +871,8 @@ pub fn lex_for_tokens(
       }
       LexMode::StringLiteral | LexMode::StringLiteralEscape => {
          let str_lit_loc = SourceInfo {
-            begin: str_begin,
-            end: cur_position,
+            begin: SourcePosition(fragment_begin),
+            end: SourcePosition(input.len()),
             file: source_path,
          };
          rolandc_error!(
