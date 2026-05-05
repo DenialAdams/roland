@@ -110,6 +110,14 @@ proc typed_malloc<T>(n: usize, alignment: usize) -> TypedMallocResult<T> {
          length: 0,
       };
    }
+   when sizeof$<T>() > 1 {
+      if (n > (USIZE_MAX / sizeof$<T>())) {
+         return TypedMallocResult$<T> {
+            buf: 0 transmute &T,
+            length: 0,
+         };
+      }
+   }
    // TODO: make alignment an optional parameter, with default value alignof$<T>();
    let new_block = malloc(sizeof$<T>() * n, alignment);
    return TypedMallocResult$<T> {
