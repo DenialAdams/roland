@@ -841,7 +841,7 @@ pub fn lex_for_tokens(
                end: SourcePosition(input.len()),
                file: source_path,
             },
-            token: extract_keyword_or_ident(&str_buf, interner),
+            token: extract_keyword_or_ident(&input[fragment_begin..], interner),
          });
          Ok(tokens)
       }
