@@ -187,7 +187,8 @@ pub fn sort_globals(program: &mut Program, target: BaseTarget) {
 }
 
 // MEMORY LAYOUT
-// 0-l literals
+// 0 reserved
+// 1-l literals
 // l-s statics
 // s+ program stack (local variables and parameters are pushed here during runtime)
 pub fn emit_wasm(
@@ -254,7 +255,7 @@ pub fn emit_wasm(
    // on wasm-4/microw8, we don't own all of the memory!
    let mut offset: u32 = match config.target {
       Target::Generic | Target::QbeFreestanding | Target::QbeHost => unreachable!(),
-      Target::Wasi => 0x0,
+      Target::Wasi => 0x1,
       Target::Wasm4 => 0x19a0,
       Target::Microw8 => 0x14000,
    };
