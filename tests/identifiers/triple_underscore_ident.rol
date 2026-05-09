@@ -1,0 +1,6 @@
+proc main() {
+    let ___x = true;
+    println_bool(___x);
+}
+__END__
+compile:

@@ -205,6 +205,7 @@ fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
       "ifx" => Token::KeywordIfx,
       "when" => Token::KeywordWhen,
       "type" => Token::KeywordTypeDef,
+      "___" => Token::TripleUnderscore,
       other => Token::Identifier(interner.intern(other)),
    }
 }
@@ -660,20 +661,6 @@ pub fn lex_for_tokens(
                   // reset the lexing mode so we don't push __END__ as a token
                   mode = LexMode::Normal;
                   break;
-               } else if current_fragment == "___" {
-                  // Looking for this token in identifier lexing is pretty hacky,
-                  // but we do it for n-lookahead (in this case, n=2.)
-                  // It would be nice if we had arbitrary lookahead, perhaps by
-                  // manually keeping track of the byte index.
-                  tokens.push(SourceToken {
-                     source_info: SourceInfo {
-                        begin: SourcePosition(fragment_begin),
-                        end: SourcePosition(c_byte_range.end),
-                        file: source_path,
-                     },
-                     token: Token::TripleUnderscore,
-                  });
-                  mode = LexMode::Normal;
                }
             } else {
                let fragment_excluding_this = &input[fragment_begin..c_byte_range.start];
