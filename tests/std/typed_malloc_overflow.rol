@@ -1,0 +1,12 @@
+proc main() {
+   let alloc_result: &u8;
+   when sizeof$<usize>() == sizeof$<u64>() {
+      alloc_result = typed_malloc$<[u8; 274177]>(67280421310721, 1).buf transmute &u8;
+   } else {
+      alloc_result = typed_malloc$<[u8; 641]>(6700417, 1).buf transmute &u8;
+   }
+   // Instead of getting a tiny amount of memory, the overflow should be detected 
+   assert(alloc_result == nullptr());
+}
+__END__
+run:
