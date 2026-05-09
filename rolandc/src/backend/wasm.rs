@@ -255,7 +255,7 @@ pub fn emit_wasm(
    // on wasm-4/microw8, we don't own all of the memory!
    let mut offset: u32 = match config.target {
       Target::Generic | Target::QbeFreestanding | Target::QbeHost => unreachable!(),
-      Target::Wasi => 0x1,
+      Target::Wasi => 0x1, // Don't put anything at 0 to allow null to be a sentinel value
       Target::Wasm4 => 0x19a0,
       Target::Microw8 => 0x14000,
    };
