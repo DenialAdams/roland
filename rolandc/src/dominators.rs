@@ -11,7 +11,7 @@ pub struct DominatorTree {
 
 pub fn compute_dominators(cfg: &Cfg, rpo: &[usize], cfg_index_to_rpo_index: &HashMap<usize, usize>) -> DominatorTree {
    let mut dominators = vec![None; rpo.len()];
-   debug_assert!(cfg_index_to_rpo_index[&cfg.start] == 0);
+   debug_assert_eq!(cfg_index_to_rpo_index[&cfg.start], 0);
    dominators[0] = Some(0);
    let mut changed = true;
    while changed {

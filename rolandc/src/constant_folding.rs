@@ -412,7 +412,7 @@ fn fold_expr_inner(
             }
          }
 
-         debug_assert!(lhs_expr.exp_type == rhs_expr.exp_type);
+         debug_assert_eq!(lhs_expr.exp_type, rhs_expr.exp_type);
 
          let lhs = extract_literal(lhs_expr, folding_context.target);
          let rhs = extract_literal(rhs_expr, folding_context.target);
@@ -863,7 +863,7 @@ pub fn fold_builtin_call(
       _ => return None,
    };
 
-   debug_assert!(proc_definition.type_parameters.len() == type_args.len());
+   debug_assert_eq!(proc_definition.type_parameters.len(), type_args.len());
 
    match interner.lookup(proc_definition.name.str) {
       "unit" => Some(Expression::UnitLiteral),

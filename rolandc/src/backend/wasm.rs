@@ -292,7 +292,7 @@ pub fn emit_wasm(
       offset = aligned_address(offset, strictest_alignment);
    }
    for (static_var, static_details) in program.non_stack_var_info.iter() {
-      debug_assert!(static_details.kind != StorageKind::Const);
+      debug_assert_ne!(static_details.kind, StorageKind::Const);
 
       if generation_context.var_to_slot.contains_key(static_var) {
          continue;
@@ -371,7 +371,7 @@ pub fn emit_wasm(
             i,
             interner.lookup(program.non_stack_var_info.get(global.0).unwrap().name),
          );
-         debug_assert!(generation_context.var_to_slot[global.0] == VarSlot::Register(i));
+         debug_assert_eq!(generation_context.var_to_slot[global.0], VarSlot::Register(i));
          i += 1;
       }
 

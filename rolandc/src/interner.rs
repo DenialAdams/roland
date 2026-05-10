@@ -39,8 +39,8 @@ impl Interner {
             v.insert(name, id);
             self.vec.push(name);
 
-            debug_assert!(self.lookup(StrId(id)) == name);
-            debug_assert!(self.intern(name) == StrId(id));
+            debug_assert_eq!(self.lookup(StrId(id)), name);
+            debug_assert_eq!(self.intern(name), StrId(id));
 
             StrId(id)
          }

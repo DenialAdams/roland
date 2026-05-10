@@ -110,7 +110,7 @@ pub fn simplify_cfg(cfg: &mut Cfg, ast: &ExpressionPool) {
                if x == node {
                   x = dest;
                } else {
-                  debug_assert!(y == node);
+                  debug_assert_eq!(y, node);
                   y = dest;
                }
                if x == y {
