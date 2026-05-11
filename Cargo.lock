@@ -132,6 +132,12 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38da2bd7a4195f03c07e3cb21d7963729722541c6b94ec245ac818eab48b2ff7"
+
+[[package]]
+name = "bumpalo"
 version = "3.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
@@ -142,7 +148,7 @@ version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c51ab7ee02d3459317cc16fec045966c9120733a10229541acaf3cc81b137c95"
 dependencies = [
- "bumpalo",
+ "bumpalo 3.20.2",
 ]
 
 [[package]]
@@ -1280,6 +1286,7 @@ version = "0.1.0"
 dependencies = [
  "arrayvec",
  "bitvec",
+ "bumpalo 1.2.0",
  "hashbrown 0.17.1",
  "include_dir",
  "indexmap",
@@ -1812,7 +1819,7 @@ version = "0.2.121"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d95a9ec35c64b2a7cb35d3fead40c4238d0940c86d107136999567a4703259f2"
 dependencies = [
- "bumpalo",
+ "bumpalo 3.20.2",
  "proc-macro2",
  "quote",
  "syn",

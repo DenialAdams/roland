@@ -166,7 +166,7 @@ impl CompilationContext {
    #[must_use]
    pub fn new() -> CompilationContext {
       CompilationContext {
-         interner: Interner::with_capacity(1024),
+         interner: Interner::new(),
          err_manager: ErrorManager::new(),
          program: Program::new(),
          source_files: IndexMap::new(),
