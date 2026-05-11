@@ -1,4 +1,5 @@
-use std::{mem::ManuallyDrop, num::NonZeroUsize};
+use std::alloc::Layout;
+use std::num::NonZeroUsize;
 
 use bumpalo::Bump;
 use hashbrown::HashMap;
@@ -18,7 +19,6 @@ unsafe impl Send for Alloc {}
 
 pub struct Interner {
    map: HashMap<&'static str, NonZeroUsize>,
-   vec: Vec<&'static str>,
    alloc: Alloc,
 }
 
@@ -27,34 +27,53 @@ impl Interner {
    pub fn new() -> Interner {
       Interner {
          map: HashMap::default(),
-         vec: vec![""],
          alloc: Alloc { bump: Bump::new() },
       }
    }
 
    pub fn intern(&mut self, name: &str) -> StrId {
-      let len = self.map.len();
       match self.map.raw_entry_mut().from_key(name) {
          hashbrown::hash_map::RawEntryMut::Occupied(o) => StrId(*o.get()),
-         hashbrown::hash_map:: RawEntryMut::Vacant(v) => {
-            let alloc = ManuallyDrop::new(bumpalo::collections::String::from_str_in(name, &self.alloc.bump));
-            let name: &'static str = unsafe { &*std::ptr::from_ref(alloc.as_str()) };
-            // Obviously safe, due to the +1
-            let id = unsafe { NonZeroUsize::new_unchecked(len.checked_add(1).unwrap()) };
-            v.insert(name, id);
-            self.vec.push(name);
+         hashbrown::hash_map::RawEntryMut::Vacant(v) => {
+            let alloc = self.alloc.bump.alloc_layout(
+               Layout::from_size_align(name.len() + std::mem::size_of::<usize>(), std::mem::align_of::<usize>())
+                  .unwrap(),
+            );
+            unsafe {
+               alloc.cast::<usize>().write(name.len());
+               std::ptr::copy_nonoverlapping(
+                  name.as_ptr(),
+                  alloc.as_ptr().add(std::mem::size_of::<usize>()),
+                  name.len(),
+               );
+            }
 
-            debug_assert_eq!(self.lookup(StrId(id)), name);
-            debug_assert_eq!(self.intern(name), StrId(id));
+            let name = unsafe {
+               std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                  alloc.as_ptr().add(std::mem::size_of::<usize>()),
+                  name.len(),
+               ))
+            };
+            // TODO: when str::from_raw_parts is stabilized
+            //let name: &'static str = unsafe { std::str::from_raw_parts(alloc.as_ptr(), name.len()) };
+            v.insert(name, alloc.addr());
 
-            StrId(id)
+            StrId(alloc.addr())
          }
       }
    }
 
    #[must_use]
    pub fn lookup(&self, id: StrId) -> &str {
-      self.vec[id.0.get()]
+      // This function is definitely not safe if the StrId came from another interner. But it's ok.
+
+      let ptr = id.0.get() as *const u8;
+      #[allow(clippy::cast_ptr_alignment)]
+      let len = unsafe { ptr.cast::<usize>().read() };
+      // TODO: when try_cast_aligned is stabilized to get rid of the clippy warning?
+      //let len = unsafe { ptr.try_cast_aligned::<usize>().unwrap_unchecked().read() };
+
+      unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(ptr.add(std::mem::size_of::<usize>()), len)) }
    }
 
    #[must_use]
