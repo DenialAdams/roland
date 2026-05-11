@@ -1,4 +1,4 @@
-use std::num::NonZeroUsize;
+use std::{mem::ManuallyDrop, num::NonZeroUsize};
 
 use bumpalo::Bump;
 use hashbrown::HashMap;
@@ -37,7 +37,7 @@ impl Interner {
       match self.map.raw_entry_mut().from_key(name) {
          hashbrown::hash_map::RawEntryMut::Occupied(o) => StrId(*o.get()),
          hashbrown::hash_map:: RawEntryMut::Vacant(v) => {
-            let alloc = bumpalo::collections::String::from_str_in(name, &self.alloc.bump);
+            let alloc = ManuallyDrop::new(bumpalo::collections::String::from_str_in(name, &self.alloc.bump));
             let name: &'static str = unsafe { &*std::ptr::from_ref(alloc.as_str()) };
             // Obviously safe, due to the +1
             let id = unsafe { NonZeroUsize::new_unchecked(len.checked_add(1).unwrap()) };
