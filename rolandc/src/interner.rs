@@ -55,7 +55,7 @@ impl Interner {
                ))
             };
             // TODO: when str::from_raw_parts is stabilized
-            //let name: &'static str = unsafe { std::str::from_raw_parts(alloc.as_ptr(), name.len()) };
+            //let name: &'static str = unsafe { std::str::from_raw_parts(alloc.as_ptr().add(std::mem::size_of::<usize>()), name.len()) };
             v.insert(name, alloc.addr());
 
             StrId(alloc.addr())
