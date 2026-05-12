@@ -34,7 +34,7 @@ pub struct SpecialProcedure {
    pub return_type: ExpressionType,
 }
 
-pub fn get_special_procedures(target: Target, interner: &mut Interner) -> Box<[SpecialProcedure]> {
+pub fn get_special_procedures(target: Target, interner: &Interner) -> Box<[SpecialProcedure]> {
    match target {
       Target::Generic => Box::new([]),
       Target::Wasm4 => Box::new([
@@ -424,7 +424,7 @@ where
 
 pub fn validate_special_procedure_signatures(
    target: Target,
-   interner: &mut Interner,
+   interner: &Interner,
    proc_name_table: &HashMap<StrId, ProcedureId>,
    udt: &UserDefinedTypeInfo,
    procedures: &SlotMap<ProcedureId, ProcedureNode>,
@@ -518,7 +518,7 @@ pub fn validate_special_procedure_signatures(
 pub fn type_and_check_validity(
    program: &mut Program,
    err_manager: &mut ErrorManager,
-   interner: &mut Interner,
+   interner: &Interner,
    owned: &mut OwnedValidationContext,
    procedures_to_check: &[ProcedureId],
 ) -> Vec<SpecializationRequest> {
@@ -2808,7 +2808,7 @@ pub fn map_generic_to_concrete<T>(
 pub fn check_globals(
    program: &mut Program,
    owned_validation_context: &mut OwnedValidationContext,
-   interner: &mut Interner,
+   interner: &Interner,
    err_manager: &mut ErrorManager,
 ) {
    let mut validation_context = ValidationContext {

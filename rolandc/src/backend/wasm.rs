@@ -193,7 +193,7 @@ pub fn sort_globals(program: &mut Program, target: BaseTarget) {
 // s+ program stack (local variables and parameters are pushed here during runtime)
 pub fn emit_wasm(
    program: &mut Program,
-   interner: &mut Interner,
+   interner: &Interner,
    config: &CompilationConfig,
    mut regalloc_result: RegallocResult,
 ) -> Vec<u8> {
@@ -1863,7 +1863,7 @@ fn emit_procedure_pointer_index(proc_id: ProcedureId, generation_context: &mut G
 
 fn name_to_procedure_index(
    name: &'static str,
-   interner: &mut Interner,
+   interner: &Interner,
    generation_context: &GenerationContext,
 ) -> Option<u32> {
    let id = generation_context.proc_name_table.get(&interner.intern(name))?;

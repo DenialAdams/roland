@@ -117,7 +117,7 @@ pub fn import_program<FR: FileResolver>(
          program_s,
          source_path,
          &mut ctx.err_manager,
-         &mut ctx.interner,
+         &ctx.interner,
          &mut ctx.program,
          links,
       )?;

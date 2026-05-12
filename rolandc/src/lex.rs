@@ -171,7 +171,7 @@ enum LexMode {
    Comment,
 }
 
-fn extract_keyword_or_ident(s: &str, interner: &mut Interner) -> Token {
+fn extract_keyword_or_ident(s: &str, interner: &Interner) -> Token {
    match s {
       "true" => Token::BoolLiteral(true),
       "false" => Token::BoolLiteral(false),
@@ -220,7 +220,7 @@ pub fn lex(
    input: &str,
    source_path: SourcePath,
    err_manager: &mut ErrorManager,
-   interner: &mut Interner,
+   interner: &Interner,
 ) -> Result<Lexer, ()> {
    lex_for_tokens(input, source_path, err_manager, interner).map(|x| Lexer::from_tokens(x, source_path))
 }
@@ -235,7 +235,7 @@ pub fn lex_for_tokens(
    input: &str,
    source_path: SourcePath,
    err_manager: &mut ErrorManager,
-   interner: &mut Interner,
+   interner: &Interner,
 ) -> Result<Vec<SourceToken>, ()> {
    let mut tokens: Vec<SourceToken> = Vec::new();
    let mut mode = LexMode::Normal;

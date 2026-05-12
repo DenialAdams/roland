@@ -23,7 +23,7 @@ struct DceCtx<'a> {
    literals: &'a mut IndexSet<StrId>,
 }
 
-pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner: &mut Interner, target: Target) {
+pub fn delete_unreachable_procedures_and_globals(program: &mut Program, interner: &Interner, target: Target) {
    let mut ctx: DceCtx<'_> = DceCtx {
       worklist: Vec::new(),
       global_info: &program.non_stack_var_info,

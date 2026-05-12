@@ -1285,6 +1285,7 @@ dependencies = [
  "include_dir",
  "indexmap",
  "memchr",
+ "parking_lot",
  "rayon",
  "slotmap",
  "unicode-ident",

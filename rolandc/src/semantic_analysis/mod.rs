@@ -104,7 +104,7 @@ pub struct OwnedValidationContext {
 pub struct ValidationContext<'a, 'b> {
    pub owned: &'b mut OwnedValidationContext,
    pub source_to_definition: &'a mut IndexMap<SourceInfo, SourceInfo>,
-   pub interner: &'a mut Interner,
+   pub interner: &'a Interner,
    pub procedures: &'a SlotMap<ProcedureId, ProcedureNode>,
    pub user_defined_type_name_table: &'a HashMap<StrId, UserDefinedTypeId>,
    pub proc_name_table: &'a HashMap<StrId, ProcedureId>,

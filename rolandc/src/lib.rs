@@ -223,7 +223,7 @@ pub fn compile_for_errors<FR: FileResolver>(
 
    semantic_analysis::validator::validate_special_procedure_signatures(
       config.target,
-      &mut ctx.interner,
+      &ctx.interner,
       &ctx.program.procedure_name_table,
       &ctx.program.user_defined_types,
       &ctx.program.procedures,
@@ -257,7 +257,7 @@ pub fn compile_for_errors<FR: FileResolver>(
    semantic_analysis::validator::check_globals(
       &mut ctx.program,
       &mut owned_validation_ctx,
-      &mut ctx.interner,
+      &ctx.interner,
       &mut ctx.err_manager,
    );
 
@@ -302,7 +302,7 @@ pub fn compile_for_errors<FR: FileResolver>(
       let specs_to_create = semantic_analysis::validator::type_and_check_validity(
          &mut ctx.program,
          &mut ctx.err_manager,
-         &mut ctx.interner,
+         &ctx.interner,
          &mut owned_validation_ctx,
          &worklist,
       );
@@ -439,7 +439,7 @@ pub fn compile<FR: FileResolver>(
       config.target.base_target(),
    );
 
-   dead_code_elimination::delete_unreachable_procedures_and_globals(&mut ctx.program, &mut ctx.interner, config.target);
+   dead_code_elimination::delete_unreachable_procedures_and_globals(&mut ctx.program, &ctx.interner, config.target);
 
    // (introduces usize types, so run this before those are lowered)
    expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::AggregateLiteralLowering);
@@ -611,7 +611,7 @@ pub fn compile<FR: FileResolver>(
          regalloc_result,
       )
    } else {
-      backend::wasm::emit_wasm(&mut ctx.program, &mut ctx.interner, config, regalloc_result)
+      backend::wasm::emit_wasm(&mut ctx.program, &ctx.interner, config, regalloc_result)
    };
 
    Ok(CompilationResult {
@@ -624,7 +624,7 @@ fn lex_and_parse(
    s: &str,
    source_path: SourcePath,
    err_manager: &mut ErrorManager,
-   interner: &mut Interner,
+   interner: &Interner,
    program: &mut Program,
    links: &mut Vec<LinkNode>,
 ) -> Result<Vec<ImportNode>, ()> {
