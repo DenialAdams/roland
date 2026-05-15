@@ -54,15 +54,15 @@ pub fn compile_wasm4(source_code: &str) -> Result<Vec<u8>, String> {
       dump_debugging_info: false,
    };
 
-   let resolver = Box::new(PlaygroundFileResolver {
+   let mut resolver = PlaygroundFileResolver {
       playground_contents: source_code,
-   });
+   };
 
-   let compile_result = rolandc::compile::<PlaygroundFileResolver>(
+   let compile_result = rolandc::compile(
       ctx,
       rolandc::CompilationEntryPoint {
          ep_path: PathBuf::from(SANDBOX_FILE_NAME),
-         resolver,
+         resolver: &mut resolver,
       },
       &config,
    );
@@ -113,15 +113,15 @@ pub fn compile_and_update_all(source_code: &str) -> Option<CompilationOutput> {
       dump_debugging_info: false,
    };
 
-   let resolver = Box::new(PlaygroundFileResolver {
+   let mut resolver = PlaygroundFileResolver {
       playground_contents: source_code,
-   });
+   };
 
-   let compile_result = rolandc::compile::<PlaygroundFileResolver>(
+   let compile_result = rolandc::compile(
       ctx,
       CompilationEntryPoint {
          ep_path: PathBuf::from(SANDBOX_FILE_NAME),
-         resolver,
+         resolver: &mut resolver,
       },
       &config,
    );

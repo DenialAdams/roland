@@ -169,7 +169,7 @@ fn main() {
       &mut ctx,
       CompilationEntryPoint {
          ep_path: opts.source_file.clone(),
-         resolver: Box::new(CliFileResolver {}),
+         resolver: &mut CliFileResolver {},
       },
       &config,
    );

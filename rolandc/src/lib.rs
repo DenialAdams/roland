@@ -145,9 +145,9 @@ pub trait FileResolver {
    fn requires_canonicalization(&self) -> bool;
 }
 
-pub struct CompilationEntryPoint {
+pub struct CompilationEntryPoint<'a> {
    pub ep_path: PathBuf,
-   pub resolver: Box<dyn FileResolver>,
+   pub resolver: &'a mut dyn FileResolver,
 }
 
 // Repeated compilations can be sped up by reusing the context
@@ -174,7 +174,7 @@ impl CompilationContext {
 
 pub fn compile_for_errors(
    ctx: &mut CompilationContext,
-   mut user_program_ep: CompilationEntryPoint,
+   user_program_ep: CompilationEntryPoint,
    config: &CompilationConfig,
 ) -> Result<IndexSet<String>, ()> {
    ctx.program.clear();
@@ -191,7 +191,7 @@ pub fn compile_for_errors(
       ctx,
       &mut link_requests,
       user_program_ep.ep_path,
-      &mut *user_program_ep.resolver,
+      user_program_ep.resolver,
       config,
    )?;
 

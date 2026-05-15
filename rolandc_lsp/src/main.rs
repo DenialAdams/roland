@@ -196,15 +196,15 @@ impl Backend {
          let (opened_versions, touched_paths) = {
             let opened_files_l = self.opened_files.read();
             let mut touched_paths = Vec::new();
-            let resolver = Resolver::new(LSPFileResolver {
+            let mut resolver = LSPFileResolver {
                file_map: &opened_files_l,
                touched_paths: &mut touched_paths,
-            });
+            };
             let _ = rolandc::compile_for_errors(
                &mut ctx_ref,
                CompilationEntryPoint {
                   ep_path: root_file_path.to_path_buf(),
-                  resolver,
+                  resolver: &mut resolver,
                },
                &config,
             );
