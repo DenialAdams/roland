@@ -82,13 +82,10 @@ impl Interner {
    pub fn lookup(&self, id: StrId) -> &str {
       // This function is definitely not safe if the StrId came from another interner. But it's ok.
 
-      let ptr = id.0.get() as *const u8;
-      #[allow(clippy::cast_ptr_alignment)]
-      let len = unsafe { ptr.cast::<usize>().read() };
-      // TODO: when try_cast_aligned is stabilized to get rid of the clippy warning?
-      //let len = unsafe { ptr.try_cast_aligned::<usize>().unwrap_unchecked().read() };
+      let ptr = id.0.get() as *const usize;
+      let len = unsafe { ptr.read() };
 
-      unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(ptr.add(std::mem::size_of::<usize>()), len)) }
+      unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(ptr.add(1).cast(), len)) }
    }
 
    #[must_use]
