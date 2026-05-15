@@ -216,15 +216,6 @@ pub struct SourceToken {
    pub source_info: SourceInfo,
 }
 
-pub fn lex(
-   input: &str,
-   source_path: SourcePath,
-   err_manager: &mut ErrorManager,
-   interner: &Interner,
-) -> Result<Lexer, ()> {
-   lex_for_tokens(input, source_path, err_manager, interner).map(|x| Lexer::from_tokens(x, source_path))
-}
-
 #[derive(Clone, Copy)]
 struct CopyRange {
    start: usize,
