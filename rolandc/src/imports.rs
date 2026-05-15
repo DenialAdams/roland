@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use include_dir::{Dir, include_dir};
 
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
-use crate::parse::{ImportNode, LinkNode};
+use crate::parse::{self, ImportNode, LinkNode};
 use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
-use crate::{CompilationContext, FileResolver, lex_and_parse};
+use crate::{CompilationContext, FileResolver, lex};
 
 static STDLIB_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../lib");
 
@@ -113,17 +113,11 @@ pub fn import_program<FR: FileResolver>(
          );
       }
 
-      let imports = lex_and_parse(
-         program_s,
-         source_path,
-         &mut ctx.err_manager,
-         &ctx.interner,
-         &mut ctx.program,
-         links,
-      )?;
+      let tokens = lex::lex(program_s, source_path, &mut ctx.err_manager, &ctx.interner)?;
+      let new_imports = parse::astify(tokens, &mut ctx.err_manager, &ctx.interner, &mut ctx.program, links);
 
       base_path.pop(); // /foo/bar/main.rol -> /foo/bar
-      for file in imports {
+      for file in new_imports {
          let file_str = ctx.interner.lookup(file.import_path.str);
          if let Some(std_path) = file_str.strip_prefix("std:") {
             import_program(ctx, links, std_path.into(), StdFileResolver)?;

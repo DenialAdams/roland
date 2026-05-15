@@ -58,14 +58,13 @@ use interner::Interner;
 use monomorphization::update_expressions_to_point_to_monomorphized_procedures;
 pub use parse::Program;
 use parse::{
-   Expression, ExpressionNode, ImportNode, ProcImplSource, ProcedureId, Statement, StatementNode, UserDefinedTypeId,
+   Expression, ExpressionNode, ProcImplSource, ProcedureId, Statement, StatementNode, UserDefinedTypeId,
    statement_always_or_never_returns,
 };
 use rayon::iter::ParallelIterator;
 use semantic_analysis::type_variables::TypeVariableManager;
 use semantic_analysis::{OwnedValidationContext, StorageKind, definite_assignment};
 use slotmap::SecondaryMap;
-use source_info::SourcePath;
 use type_data::{ExpressionType, IntWidth};
 
 use crate::backend::pointer_analysis::PointsTo;
@@ -618,16 +617,4 @@ pub fn compile<FR: FileResolver>(
       program_bytes,
       link_requests,
    })
-}
-
-fn lex_and_parse(
-   s: &str,
-   source_path: SourcePath,
-   err_manager: &mut ErrorManager,
-   interner: &Interner,
-   program: &mut Program,
-   links: &mut Vec<LinkNode>,
-) -> Result<Vec<ImportNode>, ()> {
-   let tokens = lex::lex(s, source_path, err_manager, interner)?;
-   Ok(parse::astify(tokens, err_manager, interner, program, links))
 }
