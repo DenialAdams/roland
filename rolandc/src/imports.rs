@@ -165,7 +165,7 @@ pub fn import_program(
          let (new_path, is_std) = if let Some(std_path) = file_str.strip_prefix("std:") {
             (std_path.into(), true)
          } else {
-            (base_path.with_file_name(file_str), node.is_std)
+            (base_path.parent().unwrap().join(file_str), node.is_std)
          };
          import_queue.push(ImportQueueNode {
             path: new_path,
