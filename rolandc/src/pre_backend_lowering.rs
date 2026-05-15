@@ -414,8 +414,10 @@ pub fn kill_zst_assignments(program: &mut Program, target: BaseTarget) {
                   let rhs_t = body.ast.expressions[rhs].exp_type.as_ref().unwrap();
                   if sizeof_type_mem(rhs_t, &program.user_defined_types, target) == 0 {
                      [
-                        expression_could_have_side_effects(lhs, &body.ast.expressions).then_some(CfgInstruction::Expression(lhs)),
-                        expression_could_have_side_effects(rhs, &body.ast.expressions).then_some(CfgInstruction::Expression(rhs)),
+                        expression_could_have_side_effects(lhs, &body.ast.expressions)
+                           .then_some(CfgInstruction::Expression(lhs)),
+                        expression_could_have_side_effects(rhs, &body.ast.expressions)
+                           .then_some(CfgInstruction::Expression(rhs)),
                      ]
                   } else {
                      [Some(x), None]

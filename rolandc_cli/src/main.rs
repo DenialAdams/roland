@@ -132,9 +132,12 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
 struct CliFileResolver {}
 
 impl FileResolver for CliFileResolver {
-   const REQUIRES_CANONICALIZATION: bool = true;
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'static, str>> {
       std::fs::read_to_string(path).map(Cow::Owned)
+   }
+
+   fn requires_canonicalization(&self) -> bool {
+      true
    }
 }
 
@@ -162,11 +165,11 @@ fn main() {
       dump_debugging_info: opts.dump_debugging_info,
    };
 
-   let compile_result = rolandc::compile::<CliFileResolver>(
+   let compile_result = rolandc::compile(
       &mut ctx,
       CompilationEntryPoint {
          ep_path: opts.source_file.clone(),
-         resolver: CliFileResolver {},
+         resolver: Box::new(CliFileResolver {}),
       },
       &config,
    );

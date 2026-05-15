@@ -35,7 +35,6 @@ struct LSPFileResolver<'a> {
 }
 
 impl FileResolver for LSPFileResolver<'_> {
-   const REQUIRES_CANONICALIZATION: bool = true;
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<Cow<'static, str>> {
       debug_assert_eq!(path, std::fs::canonicalize(path)?);
       let resolved = if let Some(buf) = self.file_map.get(path) {
@@ -48,6 +47,10 @@ impl FileResolver for LSPFileResolver<'_> {
       };
       self.touched_paths.push(path.to_path_buf());
       resolved
+   }
+
+   fn requires_canonicalization(&self) -> bool {
+      true
    }
 }
 
@@ -193,10 +196,10 @@ impl Backend {
          let (opened_versions, touched_paths) = {
             let opened_files_l = self.opened_files.read();
             let mut touched_paths = Vec::new();
-            let resolver = LSPFileResolver {
+            let resolver = Resolver::new(LSPFileResolver {
                file_map: &opened_files_l,
                touched_paths: &mut touched_paths,
-            };
+            });
             let _ = rolandc::compile_for_errors(
                &mut ctx_ref,
                CompilationEntryPoint {

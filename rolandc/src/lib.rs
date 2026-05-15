@@ -142,13 +142,12 @@ pub enum SourceInfoKind {
 
 pub trait FileResolver {
    fn resolve_path(&mut self, path: &Path) -> std::io::Result<Cow<'static, str>>;
-   const IS_STD: bool = false;
-   const REQUIRES_CANONICALIZATION: bool;
+   fn requires_canonicalization(&self) -> bool;
 }
 
-pub struct CompilationEntryPoint<FR: FileResolver> {
+pub struct CompilationEntryPoint {
    pub ep_path: PathBuf,
-   pub resolver: FR,
+   pub resolver: Box<dyn FileResolver>,
 }
 
 // Repeated compilations can be sped up by reusing the context
@@ -173,23 +172,14 @@ impl CompilationContext {
    }
 }
 
-pub fn compile_for_errors<FR: FileResolver>(
+pub fn compile_for_errors(
    ctx: &mut CompilationContext,
-   user_program_ep: CompilationEntryPoint<FR>,
+   mut user_program_ep: CompilationEntryPoint,
    config: &CompilationConfig,
 ) -> Result<IndexSet<String>, ()> {
    ctx.program.clear();
    ctx.err_manager.clear();
    // We don't have to clear the interner - assumption is that the context is coming from a recent version of the same source, so symbols should be relevant
-
-   let std_lib_start_path: PathBuf = match config.target {
-      Target::Wasi => "wasi.rol",
-      Target::Wasm4 => "wasm4.rol",
-      Target::Microw8 => "microw8.rol",
-      Target::Generic => "shared.rol",
-      Target::QbeFreestanding | Target::QbeHost => "amd64.rol",
-   }
-   .into();
 
    // We keep file buffers around for error reporting purposes
    // (extracing line + column from byte indices)
@@ -197,15 +187,12 @@ pub fn compile_for_errors<FR: FileResolver>(
 
    let mut link_requests: Vec<LinkNode> = vec![];
 
-   if config.include_std {
-      imports::import_program(ctx, &mut link_requests, std_lib_start_path, imports::StdFileResolver)?;
-   }
-
    imports::import_program(
       ctx,
       &mut link_requests,
       user_program_ep.ep_path,
-      user_program_ep.resolver,
+      &mut *user_program_ep.resolver,
+      config,
    )?;
 
    semantic_analysis::type_and_procedure_info::populate_type_and_procedure_info(
@@ -425,9 +412,9 @@ pub struct CompilationResult {
    pub link_requests: IndexSet<String>,
 }
 
-pub fn compile<FR: FileResolver>(
+pub fn compile(
    ctx: &mut CompilationContext,
-   user_program_ep: CompilationEntryPoint<FR>,
+   user_program_ep: CompilationEntryPoint,
    config: &CompilationConfig,
 ) -> Result<CompilationResult, ()> {
    let link_requests = compile_for_errors(ctx, user_program_ep, config)?;

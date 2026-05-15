@@ -25,7 +25,6 @@ struct PlaygroundFileResolver<'a> {
 }
 
 impl FileResolver for PlaygroundFileResolver<'_> {
-   const REQUIRES_CANONICALIZATION: bool = false;
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<Cow<'static, str>> {
       if path == Path::new(SANDBOX_FILE_NAME) {
          return Ok(Cow::Owned(self.playground_contents.to_string()));
@@ -34,6 +33,10 @@ impl FileResolver for PlaygroundFileResolver<'_> {
          std::io::ErrorKind::Unsupported,
          "Files can't be imported on the roland playground",
       ))
+   }
+
+   fn requires_canonicalization(&self) -> bool {
+      false
    }
 }
 
@@ -51,9 +54,9 @@ pub fn compile_wasm4(source_code: &str) -> Result<Vec<u8>, String> {
       dump_debugging_info: false,
    };
 
-   let resolver = PlaygroundFileResolver {
+   let resolver = Box::new(PlaygroundFileResolver {
       playground_contents: source_code,
-   };
+   });
 
    let compile_result = rolandc::compile::<PlaygroundFileResolver>(
       ctx,
@@ -110,9 +113,9 @@ pub fn compile_and_update_all(source_code: &str) -> Option<CompilationOutput> {
       dump_debugging_info: false,
    };
 
-   let resolver = PlaygroundFileResolver {
+   let resolver = Box::new(PlaygroundFileResolver {
       playground_contents: source_code,
-   };
+   });
 
    let compile_result = rolandc::compile::<PlaygroundFileResolver>(
       ctx,

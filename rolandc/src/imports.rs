@@ -7,15 +7,16 @@ use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_
 use crate::lex::Lexer;
 use crate::parse::{self, ImportNode, LinkNode};
 use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
-use crate::{CompilationContext, FileResolver, lex};
+use crate::{CompilationConfig, CompilationContext, FileResolver, Target, lex};
 
 static STDLIB_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../lib");
 
 pub struct StdFileResolver;
 
 impl FileResolver for StdFileResolver {
-   const IS_STD: bool = true;
-   const REQUIRES_CANONICALIZATION: bool = false;
+   fn requires_canonicalization(&self) -> bool {
+      false
+   }
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'static, str>> {
       Ok(Cow::Borrowed(
          STDLIB_DIR
@@ -32,18 +33,54 @@ impl FileResolver for StdFileResolver {
    }
 }
 
-pub fn import_program<FR: FileResolver>(
+struct ImportQueueNode {
+   path: PathBuf,
+   import: Option<ImportNode>,
+   is_std: bool,
+}
+
+pub fn import_program(
    ctx: &mut CompilationContext,
    links: &mut Vec<LinkNode>,
    path: PathBuf,
-   mut resolver: FR,
+   user_resolver: &mut dyn FileResolver,
+   config: &CompilationConfig,
 ) -> Result<(), ()> {
-   let mut import_queue: Vec<(PathBuf, Option<ImportNode>)> = vec![(path, None)];
+   let mut import_queue: Vec<ImportQueueNode> = Vec::new();
 
-   while let Some(pair) = import_queue.pop() {
-      let mut base_path = pair.0;
-      let import_location = pair.1;
-      let canonical_path = if FR::REQUIRES_CANONICALIZATION {
+   let mut std_resolver = StdFileResolver{};
+
+   if config.include_std {
+      let std_lib_start_path: PathBuf = match config.target {
+         Target::Wasi => "wasi.rol",
+         Target::Wasm4 => "wasm4.rol",
+         Target::Microw8 => "microw8.rol",
+         Target::Generic => "shared.rol",
+         Target::QbeFreestanding | Target::QbeHost => "amd64.rol",
+      }
+      .into();
+      import_queue.push(ImportQueueNode {
+         path: std_lib_start_path,
+         import: None,
+         is_std: true,
+      });
+   }
+
+   import_queue.push(ImportQueueNode {
+      path,
+      import: None,
+      is_std: false,
+   });
+
+   while let Some(node) = import_queue.pop() {
+      let mut base_path = node.path;
+      let import_location = node.import;
+      let resolver = if node.is_std {
+         &mut std_resolver
+      } else {
+         &mut *user_resolver
+      };
+      let canonical_path = if resolver.requires_canonicalization() {
          match std::fs::canonicalize(&base_path) {
             Ok(p) => p,
             Err(e) => {
@@ -72,7 +109,7 @@ pub fn import_program<FR: FileResolver>(
 
       let source_path: SourcePath;
       // TODO: fix this using some form of raw entry so we only clone canonical_path when we have to
-      let program_s = match ctx.source_files.entry((canonical_path.clone(), FR::IS_STD)) {
+      let program_s = match ctx.source_files.entry((canonical_path.clone(), node.is_std)) {
          indexmap::map::Entry::Occupied(_) => continue,
          indexmap::map::Entry::Vacant(vacant_entry) => {
             let program_s = match resolver.resolve_path(&canonical_path) {
@@ -126,13 +163,18 @@ pub fn import_program<FR: FileResolver>(
       base_path.pop(); // /foo/bar/main.rol -> /foo/bar
       for file in new_imports {
          let file_str = ctx.interner.lookup(file.import_path.str);
-         if let Some(std_path) = file_str.strip_prefix("std:") {
-            import_program(ctx, links, std_path.into(), StdFileResolver)?;
-            continue;
-         }
-         let mut new_path = base_path.clone();
-         new_path.push(file_str);
-         import_queue.push((new_path, Some(file)));
+         let (new_path, is_std) = if let Some(std_path) = file_str.strip_prefix("std:") {
+            (std_path.into(), true)
+         } else {
+            let mut new_path = base_path.clone();
+            new_path.push(file_str);
+            (new_path, node.is_std)
+         };
+         import_queue.push(ImportQueueNode {
+            path: new_path,
+            import: Some(file),
+            is_std,
+         });
       }
    }
 
