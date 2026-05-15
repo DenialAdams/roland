@@ -73,7 +73,7 @@ pub fn import_program(
    });
 
    while let Some(node) = import_queue.pop() {
-      let mut base_path = node.path;
+      let base_path = node.path;
       let import_location = node.import;
       let resolver = if node.is_std {
          &mut std_resolver
@@ -160,13 +160,12 @@ pub fn import_program(
          links,
       );
 
-      base_path.pop(); // /foo/bar/main.rol -> /foo/bar
       for file in new_imports {
          let file_str = ctx.interner.lookup(file.import_path.str);
          let (new_path, is_std) = if let Some(std_path) = file_str.strip_prefix("std:") {
             (std_path.into(), true)
          } else {
-            (base_path.join(file_str), node.is_std)
+            (base_path.with_file_name(file_str), node.is_std)
          };
          import_queue.push(ImportQueueNode {
             path: new_path,
