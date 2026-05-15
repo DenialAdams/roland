@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use include_dir::{Dir, include_dir};
 
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
+use crate::lex::Lexer;
 use crate::parse::{self, ImportNode, LinkNode};
 use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
 use crate::{CompilationContext, FileResolver, lex};
@@ -113,8 +114,14 @@ pub fn import_program<FR: FileResolver>(
          );
       }
 
-      let tokens = lex::lex(program_s, source_path, &mut ctx.err_manager, &ctx.interner)?;
-      let new_imports = parse::astify(tokens, &mut ctx.err_manager, &ctx.interner, &mut ctx.program, links);
+      let tokens = lex::lex_for_tokens(program_s, source_path, &mut ctx.err_manager, &ctx.interner)?;
+      let new_imports = parse::astify(
+         Lexer::from_tokens(tokens, source_path),
+         &mut ctx.err_manager,
+         &ctx.interner,
+         &mut ctx.program,
+         links,
+      );
 
       base_path.pop(); // /foo/bar/main.rol -> /foo/bar
       for file in new_imports {

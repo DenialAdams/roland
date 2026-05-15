@@ -1,4 +1,5 @@
-use std::{alloc::Layout, hash::BuildHasher};
+use std::alloc::Layout;
+use std::hash::BuildHasher;
 use std::num::NonZeroUsize;
 
 use bumpalo::Bump;
@@ -34,11 +35,13 @@ impl Interner {
          (num_threads * 2).next_power_of_two().clamp(4, 64)
       };
       let hasher = hashbrown::DefaultHashBuilder::default();
-      let shards = (0..num_shards).map(|_| Shard { bump: Bump::new(), map: Mutex::new(HashMap::with_hasher(hasher.clone())) }).collect();
-      Interner {
-         shards,
-         hasher,
-      }
+      let shards = (0..num_shards)
+         .map(|_| Shard {
+            bump: Bump::new(),
+            map: Mutex::new(HashMap::with_hasher(hasher.clone())),
+         })
+         .collect();
+      Interner { shards, hasher }
    }
 
    #[must_use]
