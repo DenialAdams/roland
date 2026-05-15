@@ -166,9 +166,7 @@ pub fn import_program(
          let (new_path, is_std) = if let Some(std_path) = file_str.strip_prefix("std:") {
             (std_path.into(), true)
          } else {
-            let mut new_path = base_path.clone();
-            new_path.push(file_str);
-            (new_path, node.is_std)
+            (base_path.join(file_str), node.is_std)
          };
          import_queue.push(ImportQueueNode {
             path: new_path,
