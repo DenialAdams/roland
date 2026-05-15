@@ -15,7 +15,7 @@ pub struct StdFileResolver;
 
 impl FileResolver for StdFileResolver {
    const IS_STD: bool = true;
-   const REQUIRES_CANONIZATION: bool = false;
+   const REQUIRES_CANONICALIZATION: bool = false;
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'static, str>> {
       Ok(Cow::Borrowed(
          STDLIB_DIR
@@ -43,7 +43,7 @@ pub fn import_program<FR: FileResolver>(
    while let Some(pair) = import_queue.pop() {
       let mut base_path = pair.0;
       let import_location = pair.1;
-      let canonical_path = if FR::REQUIRES_CANONIZATION {
+      let canonical_path = if FR::REQUIRES_CANONICALIZATION {
          match std::fs::canonicalize(&base_path) {
             Ok(p) => p,
             Err(e) => {

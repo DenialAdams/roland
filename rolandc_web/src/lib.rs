@@ -25,7 +25,7 @@ struct PlaygroundFileResolver<'a> {
 }
 
 impl FileResolver for PlaygroundFileResolver<'_> {
-   const REQUIRES_CANONIZATION: bool = false;
+   const REQUIRES_CANONICALIZATION: bool = false;
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<Cow<'static, str>> {
       if path == Path::new(SANDBOX_FILE_NAME) {
          return Ok(Cow::Owned(self.playground_contents.to_string()));

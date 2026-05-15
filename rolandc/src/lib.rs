@@ -143,7 +143,7 @@ pub enum SourceInfoKind {
 pub trait FileResolver {
    fn resolve_path(&mut self, path: &Path) -> std::io::Result<Cow<'static, str>>;
    const IS_STD: bool = false;
-   const REQUIRES_CANONIZATION: bool;
+   const REQUIRES_CANONICALIZATION: bool;
 }
 
 pub struct CompilationEntryPoint<FR: FileResolver> {

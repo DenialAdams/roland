@@ -35,7 +35,7 @@ struct LSPFileResolver<'a> {
 }
 
 impl FileResolver for LSPFileResolver<'_> {
-   const REQUIRES_CANONIZATION: bool = true;
+   const REQUIRES_CANONICALIZATION: bool = true;
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<Cow<'static, str>> {
       debug_assert_eq!(path, std::fs::canonicalize(path)?);
       let resolved = if let Some(buf) = self.file_map.get(path) {
