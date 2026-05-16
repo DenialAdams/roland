@@ -5,7 +5,7 @@ use include_dir::{Dir, include_dir};
 
 use crate::error_handling::SharedErrorManager;
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
-use crate::lex::{Lexer, SourceToken};
+use crate::lex::Lexer;
 use crate::parse::{self, ImportNode, LinkNode};
 use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
 use crate::{CompilationConfig, CompilationContext, FileResolver, Target, lex};
@@ -155,15 +155,30 @@ pub fn import_program(
       }
 
       let tokens = lex::lex_for_tokens(program_s, source_path, &err_manager, &ctx.interner)?;
-      let new_imports = parse::astify(
+      let mut parse_result = parse::astify(
          Lexer::from_tokens(tokens, source_path),
          &err_manager,
          &ctx.interner,
-         &mut ctx.program,
-         links,
+         &mut ctx.program.global_exprs,
       );
 
-      for file in new_imports {
+      for parsed_proc in parse_result.items.procedures.drain(..) {
+         let id = ctx.program.procedures.insert(parsed_proc.proc);
+         if let Some(body) = parsed_proc.body {
+            ctx.program.procedure_bodies.insert(id, body);
+         }
+      }
+
+      ctx.program.structs.append(&mut parse_result.items.structs);
+      ctx.program.unions.append(&mut parse_result.items.unions);
+      ctx.program.enums.append(&mut parse_result.items.enums);
+      ctx.program.type_aliases.append(&mut parse_result.items.type_aliases);
+      ctx.program.consts.append(&mut parse_result.items.consts);
+      ctx.program.statics.append(&mut parse_result.items.statics);
+      ctx.program.parsed_types.append(&mut parse_result.parsed_types);
+      links.append(&mut parse_result.items.links);
+
+      for file in parse_result.items.imports.drain(..) {
          let file_str = ctx.interner.lookup(file.import_path.str);
          let (new_path, is_std) = if let Some(std_path) = file_str.strip_prefix("std:") {
             (std_path.into(), true)

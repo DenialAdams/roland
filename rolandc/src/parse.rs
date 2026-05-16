@@ -587,19 +587,17 @@ fn parse_top_level_items(
             let extern_kw = lexer.next();
             expect(lexer, parse_context, Token::KeywordProc)?;
             let p = parse_external_procedure(lexer, parse_context, extern_kw.source_info, ProcImplSource::External)?;
-            top.procedures.insert(p);
+            top.procedures.push(ParsedProcedure { proc: p, body: None });
          }
          Token::KeywordBuiltin => {
             let builtin_kw = lexer.next();
             expect(lexer, parse_context, Token::KeywordProc)?;
             let p = parse_external_procedure(lexer, parse_context, builtin_kw.source_info, ProcImplSource::Builtin)?;
-            top.procedures.insert(p);
+            top.procedures.push(ParsedProcedure { proc: p, body: None });
          }
          Token::KeywordProc => {
             let def = lexer.next();
-            let p = parse_procedure(lexer, parse_context, def.source_info)?;
-            let id = top.procedures.insert(p.0);
-            top.procedure_bodies.insert(id, p.1);
+            top.procedures.push(parse_procedure(lexer, parse_context, def.source_info)?);
          }
          Token::KeywordImport => {
             let kw = lexer.next();
@@ -692,46 +690,56 @@ fn parse_top_level_items(
    Ok(())
 }
 
-struct TopLevelItems<'a> {
-   procedures: &'a mut SlotMap<ProcedureId, ProcedureNode>,
-   procedure_bodies: &'a mut SecondaryMap<ProcedureId, ProcedureBody>,
-   structs: &'a mut Vec<StructNode>,
-   unions: &'a mut Vec<UnionNode>,
-   enums: &'a mut Vec<EnumNode>,
-   type_aliases: &'a mut Vec<TypeAliasNode>,
-   consts: &'a mut Vec<ConstNode>,
-   statics: &'a mut Vec<StaticNode>,
-   imports: Vec<ImportNode>,
-   links: &'a mut Vec<LinkNode>,
+pub struct ParsedProcedure {
+   pub proc: ProcedureNode,
+   pub body: Option<ProcedureBody>,
+}
+
+pub struct TopLevelItems {
+   pub procedures: Vec<ParsedProcedure>,
+   pub structs: Vec<StructNode>,
+   pub unions: Vec<UnionNode>,
+   pub enums: Vec<EnumNode>,
+   pub type_aliases: Vec<TypeAliasNode>,
+   pub consts: Vec<ConstNode>,
+   pub statics: Vec<StaticNode>,
+   pub imports: Vec<ImportNode>,
+   pub links: Vec<LinkNode>,
+}
+
+pub struct ParseResult {
+   pub items: TopLevelItems,
+   pub parsed_types: Vec<ExpressionTypeNode>,
 }
 
 pub fn astify<'a>(
    mut lexer: Lexer,
    err_manager: &'a SharedErrorManager<'_>,
    interner: &'a Interner,
-   program: &'a mut Program,
-   links: &'a mut Vec<LinkNode>,
-) -> Vec<ImportNode> {
+   global_exprs: &'a mut ExpressionPool,
+) -> ParseResult {
+   let mut parse_result = ParseResult {
+      items: TopLevelItems {
+         procedures: vec![],
+         structs: vec![],
+         unions: vec![],
+         enums: vec![],
+         type_aliases: vec![],
+         consts: vec![],
+         statics: vec![],
+         imports: vec![],
+         links: vec![],
+      },
+      parsed_types: vec![],
+   };
+
    let mut parse_context = ParseContext {
       err_manager,
       interner,
-      parsed_types: &mut program.parsed_types,
+      parsed_types: &mut parse_result.parsed_types,
    };
 
-   let mut top = TopLevelItems {
-      procedures: &mut program.procedures,
-      procedure_bodies: &mut program.procedure_bodies,
-      structs: &mut program.structs,
-      unions: &mut program.unions,
-      enums: &mut program.enums,
-      type_aliases: &mut program.type_aliases,
-      consts: &mut program.consts,
-      statics: &mut program.statics,
-      imports: vec![],
-      links,
-   };
-
-   while parse_top_level_items(&mut lexer, &mut parse_context, &mut program.global_exprs, &mut top).is_err() {
+   while parse_top_level_items(&mut lexer, &mut parse_context, global_exprs, &mut parse_result.items).is_err() {
       // skip tokens until we get to a token that must be at the top level and continue parsing
       // in order to give the user more valid errors
       loop {
@@ -754,7 +762,7 @@ pub fn astify<'a>(
       }
    }
 
-   top.imports
+   parse_result
 }
 
 fn extract_identifier(t: Token) -> StrId {
@@ -852,13 +860,13 @@ fn parse_procedure(
    l: &mut Lexer,
    parse_context: &mut ParseContext,
    source_info: SourceInfo,
-) -> Result<(ProcedureNode, ProcedureBody), ()> {
+) -> Result<ParsedProcedure, ()> {
    let definition = parse_procedure_definition(l, parse_context)?;
    let mut ast = AstPool::new();
    let block = parse_block(l, parse_context, &mut ast)?;
    let combined_location = merge_locations(source_info, block.location);
-   Ok((
-      ProcedureNode {
+   Ok(ParsedProcedure {
+      proc: ProcedureNode {
          definition,
          impl_source: ProcImplSource::Native,
          location: combined_location,
@@ -867,7 +875,7 @@ fn parse_procedure(
          specialized_type_parameters: HashMap::new(),
          where_instantiated: Vec::new(),
       },
-      ProcedureBody {
+      body: Some(ProcedureBody {
          locals: IndexMap::new(),
          ast,
          cfg: Cfg {
@@ -875,8 +883,8 @@ fn parse_procedure(
             start: 0,
          },
          block,
-      },
-   ))
+      }),
+   })
 }
 
 fn parse_external_procedure(
