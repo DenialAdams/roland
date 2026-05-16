@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 
 use include_dir::{Dir, include_dir};
+use parking_lot::Mutex;
 
 use crate::error_handling::SharedErrorManager;
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
@@ -74,6 +75,8 @@ pub fn import_program(
    });
 
    let err_manager = SharedErrorManager::new(&mut ctx.err_manager);
+
+   let global_exprs = Mutex::new(&mut ctx.program.global_exprs);
 
    while let Some(node) = import_queue.pop() {
       let base_path = node.path;
@@ -159,7 +162,7 @@ pub fn import_program(
          Lexer::from_tokens(tokens, source_path),
          &err_manager,
          &ctx.interner,
-         &mut ctx.program.global_exprs,
+         &global_exprs,
       );
 
       for parsed_proc in parse_result.items.procedures.drain(..) {

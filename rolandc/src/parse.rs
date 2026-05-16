@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::mem::discriminant;
 
 use indexmap::{IndexMap, IndexSet};
+use parking_lot::Mutex;
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
 use super::lex::{SourceToken, Token};
@@ -577,7 +578,7 @@ struct ParseContext<'a, 'b> {
 fn parse_top_level_items(
    lexer: &mut Lexer,
    parse_context: &mut ParseContext,
-   global_ast: &mut ExpressionPool,
+   global_ast: &Mutex<&'_ mut ExpressionPool>,
    top: &mut TopLevelItems,
 ) -> Result<(), ()> {
    loop {
@@ -597,7 +598,8 @@ fn parse_top_level_items(
          }
          Token::KeywordProc => {
             let def = lexer.next();
-            top.procedures.push(parse_procedure(lexer, parse_context, def.source_info)?);
+            top.procedures
+               .push(parse_procedure(lexer, parse_context, def.source_info)?);
          }
          Token::KeywordImport => {
             let kw = lexer.next();
@@ -643,7 +645,7 @@ fn parse_top_level_items(
             expect(lexer, parse_context, Token::Colon)?;
             let const_type = parse_type(lexer, parse_context)?;
             expect(lexer, parse_context, Token::Assignment)?;
-            let exp = parse_expression(lexer, parse_context, false, global_ast)?;
+            let exp = parse_expression(lexer, parse_context, false, &mut global_ast.lock())?;
             let end_token = expect(lexer, parse_context, Token::Semicolon)?;
             top.consts.push(ConstNode {
                name: variable_name,
@@ -663,7 +665,7 @@ fn parse_top_level_items(
                let _ = lexer.next();
                None
             } else {
-               Some(parse_expression(lexer, parse_context, false, global_ast)?)
+               Some(parse_expression(lexer, parse_context, false, &mut global_ast.lock())?)
             };
             let end_token = expect(lexer, parse_context, Token::Semicolon)?;
             top.statics.push(StaticNode {
@@ -716,7 +718,7 @@ pub fn astify<'a>(
    mut lexer: Lexer,
    err_manager: &'a SharedErrorManager<'_>,
    interner: &'a Interner,
-   global_exprs: &'a mut ExpressionPool,
+   global_exprs: &Mutex<&'_ mut ExpressionPool>,
 ) -> ParseResult {
    let mut parse_result = ParseResult {
       items: TopLevelItems {
@@ -992,7 +994,7 @@ fn parse_enum(
    l: &mut Lexer,
    parse_context: &mut ParseContext,
    source_info: SourceInfo,
-   expressions: &mut ExpressionPool,
+   global_ast: &Mutex<&'_ mut ExpressionPool>,
 ) -> Result<EnumNode, ()> {
    let enum_name = extract_identifier(expect(l, parse_context, Token::Identifier(DUMMY_STR_TOKEN))?.token);
    let requested_size = if l.peek_token() == Token::Colon {
@@ -1011,7 +1013,7 @@ fn parse_enum(
       variants.push(parse_identifier(l, parse_context)?);
       if l.peek_token() == Token::Assignment {
          let _ = l.next();
-         let val = parse_expression(l, parse_context, false, expressions)?;
+         let val = parse_expression(l, parse_context, false, &mut global_ast.lock())?;
          values.push(Some(val));
       } else {
          values.push(None);
