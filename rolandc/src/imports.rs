@@ -113,9 +113,8 @@ pub fn import_program(
          base_path.clone()
       };
 
-      let source_path: SourcePath;
       // TODO: fix this using some form of raw entry so we only clone canonical_path when we have to
-      let program_s = match ctx.source_files.entry((canonical_path.clone(), node.is_std)) {
+      let (source_path, program_s) = match ctx.source_files.entry((canonical_path.clone(), node.is_std)) {
          indexmap::map::Entry::Occupied(_) => continue,
          indexmap::map::Entry::Vacant(vacant_entry) => {
             let program_s = match resolver.resolve_path(&canonical_path) {
@@ -140,8 +139,7 @@ pub fn import_program(
                   return Err(());
                }
             };
-            source_path = SourcePath(vacant_entry.index());
-            vacant_entry.insert(program_s)
+            (SourcePath(vacant_entry.index()), vacant_entry.insert(program_s))
          }
       };
 
