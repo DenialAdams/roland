@@ -6,7 +6,7 @@ use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
 use super::lex::{SourceToken, Token};
 use crate::backend::linearize::Cfg;
-use crate::error_handling::ErrorManager;
+use crate::error_handling::SharedErrorManager;
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::interner::{DUMMY_STR_TOKEN, Interner, StrId};
 use crate::lex::Lexer;
@@ -568,8 +568,8 @@ fn token_starts_expression(token: Token) -> bool {
    )
 }
 
-struct ParseContext<'a> {
-   err_manager: &'a mut ErrorManager,
+struct ParseContext<'a, 'b> {
+   err_manager: &'a SharedErrorManager<'b>,
    interner: &'a Interner,
    parsed_types: &'a mut Vec<ExpressionTypeNode>,
 }
@@ -705,12 +705,12 @@ struct TopLevelItems<'a> {
    links: &'a mut Vec<LinkNode>,
 }
 
-pub fn astify(
+pub fn astify<'a>(
    mut lexer: Lexer,
-   err_manager: &mut ErrorManager,
-   interner: &Interner,
-   program: &mut Program,
-   links: &mut Vec<LinkNode>,
+   err_manager: &'a SharedErrorManager<'_>,
+   interner: &'a Interner,
+   program: &'a mut Program,
+   links: &'a mut Vec<LinkNode>,
 ) -> Vec<ImportNode> {
    let mut parse_context = ParseContext {
       err_manager,

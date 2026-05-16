@@ -2,7 +2,7 @@ use std::num::IntErrorKind;
 
 use unicode_ident::{is_xid_continue, is_xid_start};
 
-use crate::error_handling::ErrorManager;
+use crate::error_handling::SharedErrorManager;
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::interner::{Interner, StrId};
 use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
@@ -225,7 +225,7 @@ struct CopyRange {
 pub fn lex_for_tokens(
    input: &str,
    source_path: SourcePath,
-   err_manager: &mut ErrorManager,
+   err_manager: &SharedErrorManager,
    interner: &Interner,
 ) -> Result<Vec<SourceToken>, ()> {
    let mut tokens: Vec<SourceToken> = Vec::new();
@@ -867,7 +867,7 @@ pub fn lex_for_tokens(
 
 fn finish_numeric_literal(
    s: &str,
-   err_manager: &mut ErrorManager,
+   err_manager: &SharedErrorManager,
    source_info: SourceInfo,
    is_float: bool,
 ) -> Result<SourceToken, ()> {
@@ -896,7 +896,7 @@ fn finish_numeric_literal(
    })
 }
 
-fn parse_int(s: &str, radix: u32, err_manager: &mut ErrorManager, source_info: SourceInfo) -> Result<Token, ()> {
+fn parse_int(s: &str, radix: u32, err_manager: &SharedErrorManager, source_info: SourceInfo) -> Result<Token, ()> {
    match u64::from_str_radix(s, radix) {
       Ok(v) => Ok(Token::IntLiteral(v)),
       Err(pe) if *pe.kind() == IntErrorKind::InvalidDigit => {

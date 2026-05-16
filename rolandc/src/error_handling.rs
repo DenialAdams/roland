@@ -5,6 +5,7 @@ use std::io::Write;
 use std::{env, fmt};
 
 use indexmap::IndexSet;
+use parking_lot::Mutex;
 
 use crate::FileMap;
 use crate::source_info::{SourceInfo, SourcePath};
@@ -44,6 +45,19 @@ pub struct ErrorInfo {
    pub message: String,
    pub location: ErrorLocation,
    pub came_from_stack: Vec<SourceInfo>,
+}
+
+pub struct SharedErrorManager<'a> {
+   inner: Mutex<&'a mut ErrorManager>,
+}
+
+impl SharedErrorManager<'_> {
+   pub fn new(em: &mut ErrorManager) -> SharedErrorManager<'_> {
+      SharedErrorManager { inner: Mutex::new(em) }
+   }
+   pub fn emit_error(&self, location: SourceInfo, message: fmt::Arguments) {
+      self.inner.lock().emit_error(location, message);
+   }
 }
 
 pub struct ErrorManager {

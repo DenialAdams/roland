@@ -3,8 +3,9 @@ use std::path::PathBuf;
 
 use include_dir::{Dir, include_dir};
 
+use crate::error_handling::SharedErrorManager;
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
-use crate::lex::Lexer;
+use crate::lex::{Lexer, SourceToken};
 use crate::parse::{self, ImportNode, LinkNode};
 use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
 use crate::{CompilationConfig, CompilationContext, FileResolver, Target, lex};
@@ -48,7 +49,7 @@ pub fn import_program(
 ) -> Result<(), ()> {
    let mut import_queue: Vec<ImportQueueNode> = Vec::new();
 
-   let mut std_resolver = StdFileResolver{};
+   let mut std_resolver = StdFileResolver {};
 
    if config.include_std {
       let std_lib_start_path: PathBuf = match config.target {
@@ -71,6 +72,8 @@ pub fn import_program(
       import: None,
       is_std: false,
    });
+
+   let err_manager = SharedErrorManager::new(&mut ctx.err_manager);
 
    while let Some(node) = import_queue.pop() {
       let base_path = node.path;
@@ -151,10 +154,10 @@ pub fn import_program(
          );
       }
 
-      let tokens = lex::lex_for_tokens(program_s, source_path, &mut ctx.err_manager, &ctx.interner)?;
+      let tokens = lex::lex_for_tokens(program_s, source_path, &err_manager, &ctx.interner)?;
       let new_imports = parse::astify(
          Lexer::from_tokens(tokens, source_path),
-         &mut ctx.err_manager,
+         &err_manager,
          &ctx.interner,
          &mut ctx.program,
          links,
