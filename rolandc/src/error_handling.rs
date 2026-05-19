@@ -58,6 +58,9 @@ impl SharedErrorManager<'_> {
    pub fn emit_error(&self, location: SourceInfo, message: fmt::Arguments) {
       self.inner.lock().emit_error(location, message);
    }
+   pub fn emit_error_no_location(&self, message: fmt::Arguments) {
+      self.inner.lock().emit_error_no_location(message);
+   }
 }
 
 pub struct ErrorManager {

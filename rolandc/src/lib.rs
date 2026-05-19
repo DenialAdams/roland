@@ -140,7 +140,7 @@ pub enum SourceInfoKind {
    Filesystem,
 }
 
-pub trait FileResolver {
+pub trait FileResolver: Send {
    fn resolve_path(&mut self, path: &Path) -> std::io::Result<Cow<'static, str>>;
    fn requires_canonicalization(&self) -> bool;
 }
