@@ -55,6 +55,7 @@ pub fn import_program(
 ) -> Result<(), ()> {
    // Currently the parallelism in this function is limited to waves, so if a imports {b c d}
    // we will process {b c d} in parallel, but not the imports of {b c d} until the next wave.
+   // Put simply, we process the frontier of the import graph in parallel.
    let mut import_queue: Vec<ImportQueueNode> = Vec::new();
 
    let mut std_resolver = StdFileResolver {};
