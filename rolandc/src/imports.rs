@@ -199,9 +199,7 @@ pub fn import_program(
                            parse_result,
                         })
                      })();
-                     lex_parse_results_tx
-                        .send(res)
-                        .unwrap();
+                     let _ = lex_parse_results_tx.send(res);
                   });
                }
 
