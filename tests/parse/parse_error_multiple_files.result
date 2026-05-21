@@ -1,0 +1,5 @@
+compile:
+While parsing block, encountered unexpected EOF; was expecting a statement
+↳ line 3, column 14 [tests/parse/parse_error_multiple_files.rol]
+Encountered token '{' when expecting identifier
+↳ line 3, column 8 [tests/parse/helper.txt]

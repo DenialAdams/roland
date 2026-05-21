@@ -1,0 +1,3 @@
+// Not a .rol file to avoid it being picked up as a test
+
+struct {
