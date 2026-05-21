@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
 
+use crossbeam::channel::Select;
 use include_dir::{Dir, include_dir};
 use parking_lot::Mutex;
 
@@ -53,10 +54,7 @@ pub fn import_program(
    user_resolver: &mut dyn FileResolver,
    config: &CompilationConfig,
 ) -> Result<(), ()> {
-   // Currently the parallelism in this function is limited to waves, so if a imports {b c d}
-   // we will process {b c d} in parallel, but not the imports of {b c d} until the next wave.
-   // Put simply, we process the frontier of the import graph in parallel.
-   let mut import_queue: Vec<ImportQueueNode> = Vec::new();
+   let (import_queue_tx, import_queue_rx) = crossbeam::channel::unbounded();
 
    let mut std_resolver = StdFileResolver {};
 
@@ -69,23 +67,27 @@ pub fn import_program(
          Target::QbeFreestanding | Target::QbeHost => "amd64.rol",
       }
       .into();
-      import_queue.push(ImportQueueNode {
-         path: std_lib_start_path,
-         import_location: None,
-         is_std: true,
-      });
+      import_queue_tx
+         .send(ImportQueueNode {
+            path: std_lib_start_path,
+            import_location: None,
+            is_std: true,
+         })
+         .unwrap();
    }
 
-   import_queue.push(ImportQueueNode {
-      path,
-      import_location: None,
-      is_std: false,
-   });
+   import_queue_tx
+      .send(ImportQueueNode {
+         path,
+         import_location: None,
+         is_std: false,
+      })
+      .unwrap();
 
    let err_manager = SharedErrorManager::new(&mut ctx.err_manager);
    let global_exprs = Mutex::new(&mut ctx.program.global_exprs);
 
-   let (lex_parse_results_tx, lex_parse_results_rx) = std::sync::mpsc::channel();
+   let (lex_parse_results_tx, lex_parse_results_rx) = crossbeam::channel::unbounded();
 
    {
       let interner = &ctx.interner;
@@ -102,15 +104,26 @@ pub fn import_program(
       let p_consts = &mut ctx.program.consts;
       let p_statics = &mut ctx.program.statics;
       let p_parsed_types = &mut ctx.program.parsed_types;
-      while !import_queue.is_empty() {
-         let mut num_in_flight: usize = 0;
-         rayon::scope(|s| {
-            for node in import_queue.drain(..) {
+      let include_std = config.include_std;
+
+      rayon::in_place_scope(move |s| {
+         let mut select = Select::new();
+         select.recv(&import_queue_rx);
+         select.recv(&lex_parse_results_rx);
+
+         let mut num_in_flight: usize = 1 + usize::from(include_std);
+
+         while num_in_flight > 0 {
+            let op = select.select();
+            if op.index() == 0 {
+               let node = op.recv(&import_queue_rx).unwrap();
+
                let resolver = if node.is_std {
                   &mut std_resolver
                } else {
                   &mut *user_resolver
                };
+
                let canonical_path = if resolver.requires_canonicalization() {
                   match std::fs::canonicalize(&node.path) {
                      Ok(p) => p,
@@ -140,7 +153,10 @@ pub fn import_program(
 
                // TODO: fix this using some form of raw entry so we only clone canonical_path when we have to
                let (source_path, program_s) = match source_files.entry((canonical_path.clone(), node.is_std)) {
-                  indexmap::map::Entry::Occupied(_) => continue,
+                  indexmap::map::Entry::Occupied(_) => {
+                     num_in_flight -= 1;
+                     continue;
+                  },
                   indexmap::map::Entry::Vacant(vacant_entry) => {
                      let program_s = match resolver.resolve_path(&canonical_path) {
                         Ok(s) => s,
@@ -202,54 +218,62 @@ pub fn import_program(
                      let _ = lex_parse_results_tx.send(res);
                   });
                }
+            } else if op.index() == 1 {
+               let lp_res = op.recv(&lex_parse_results_rx).unwrap();
+               let Ok(channel_result) = lp_res else {
+                  num_in_flight -= 1;
+                  continue;
+               };
+               let mut parse_result: ParseResult = channel_result.parse_result;
+               let node: ImportQueueNode = channel_result.queue_node;
 
-               num_in_flight += 1;
-            }
-            Ok(())
-         })?;
+               for parsed_proc in parse_result.items.procedures.drain(..) {
+                  let id = p_procedures.insert(parsed_proc.proc);
+                  if let Some(body) = parsed_proc.body {
+                     p_procedure_bodies.insert(id, body);
+                  }
+               }
 
-         for _ in 0..num_in_flight {
-            let a = lex_parse_results_rx.recv().unwrap()?;
-            let mut parse_result: ParseResult = a.parse_result;
-            let node: ImportQueueNode = a.queue_node;
+               p_structs.append(&mut parse_result.items.structs);
+               p_unions.append(&mut parse_result.items.unions);
+               p_enums.append(&mut parse_result.items.enums);
+               p_type_aliases.append(&mut parse_result.items.type_aliases);
+               p_consts.append(&mut parse_result.items.consts);
+               p_statics.append(&mut parse_result.items.statics);
+               p_parsed_types.append(&mut parse_result.parsed_types);
+               links.append(&mut parse_result.items.links);
 
-            for parsed_proc in parse_result.items.procedures.drain(..) {
-               let id = p_procedures.insert(parsed_proc.proc);
-               if let Some(body) = parsed_proc.body {
-                  p_procedure_bodies.insert(id, body);
+               let new_imports = parse_result.items.imports.len();
+               for file in parse_result.items.imports.drain(..) {
+                  let file_str = interner.lookup(file.import_path.str);
+                  let (new_path, is_std) = if let Some(std_path) = file_str.strip_prefix("std:") {
+                     (std_path.into(), true)
+                  } else {
+                     (
+                        node
+                           .path
+                           .parent()
+                           .map_or_else(|| PathBuf::from(file_str), |parent| parent.join(file_str)),
+                        node.is_std,
+                     )
+                  };
+                  import_queue_tx
+                     .send(ImportQueueNode {
+                        path: new_path,
+                        import_location: Some(file.import_path.location),
+                        is_std,
+                     })
+                     .unwrap();
+               }
+
+               match new_imports.checked_sub(1) {
+                  None => num_in_flight -= 1,
+                  Some(val) => num_in_flight += val,
                }
             }
-
-            p_structs.append(&mut parse_result.items.structs);
-            p_unions.append(&mut parse_result.items.unions);
-            p_enums.append(&mut parse_result.items.enums);
-            p_type_aliases.append(&mut parse_result.items.type_aliases);
-            p_consts.append(&mut parse_result.items.consts);
-            p_statics.append(&mut parse_result.items.statics);
-            p_parsed_types.append(&mut parse_result.parsed_types);
-            links.append(&mut parse_result.items.links);
-
-            for file in parse_result.items.imports.drain(..) {
-               let file_str = interner.lookup(file.import_path.str);
-               let (new_path, is_std) = if let Some(std_path) = file_str.strip_prefix("std:") {
-                  (std_path.into(), true)
-               } else {
-                  (
-                     node
-                        .path
-                        .parent()
-                        .map_or_else(|| PathBuf::from(file_str), |parent| parent.join(file_str)),
-                     node.is_std,
-                  )
-               };
-               import_queue.push(ImportQueueNode {
-                  path: new_path,
-                  import_location: Some(file.import_path.location),
-                  is_std,
-               });
-            }
          }
-      }
-      Ok(())
+
+         Ok(())
+      })
    }
 }
