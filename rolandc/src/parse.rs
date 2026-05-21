@@ -9,6 +9,7 @@ use super::lex::{SourceToken, Token};
 use crate::backend::linearize::Cfg;
 use crate::error_handling::SharedErrorManager;
 use crate::error_handling::error_handling_macros::rolandc_error;
+use crate::imports::NewImportSender;
 use crate::interner::{DUMMY_STR_TOKEN, Interner, StrId};
 use crate::lex::Lexer;
 use crate::semantic_analysis::{AliasInfo, EnumInfo, GlobalInfo, StorageKind, StructInfo, UnionInfo};
@@ -580,6 +581,7 @@ fn parse_top_level_items(
    parse_context: &mut ParseContext,
    global_ast: &Mutex<&'_ mut ExpressionPool>,
    top: &mut TopLevelItems,
+   import_sender: &NewImportSender,
 ) -> Result<(), ()> {
    loop {
       let peeked_token = lexer.peek_token();
@@ -602,13 +604,10 @@ fn parse_top_level_items(
                .push(parse_procedure(lexer, parse_context, def.source_info)?);
          }
          Token::KeywordImport => {
-            let kw = lexer.next();
+            let _kw = lexer.next();
             let import_path = parse_string(lexer, parse_context)?;
-            let sc = expect(lexer, parse_context, Token::Semicolon)?;
-            top.imports.push(ImportNode {
-               import_path,
-               location: merge_locations(kw.source_info, sc.source_info),
-            });
+            expect(lexer, parse_context, Token::Semicolon)?;
+            import_sender.send(parse_context.interner.lookup(import_path.str), import_path.location);
          }
          Token::KeywordLink => {
             let kw = lexer.next();
@@ -705,7 +704,6 @@ pub struct TopLevelItems {
    pub type_aliases: Vec<TypeAliasNode>,
    pub consts: Vec<ConstNode>,
    pub statics: Vec<StaticNode>,
-   pub imports: Vec<ImportNode>,
    pub links: Vec<LinkNode>,
 }
 
@@ -719,6 +717,7 @@ pub fn astify<'a>(
    err_manager: &'a SharedErrorManager<'_>,
    interner: &'a Interner,
    global_exprs: &Mutex<&'_ mut ExpressionPool>,
+   import_sender: &NewImportSender,
 ) -> ParseResult {
    let mut parse_result = ParseResult {
       items: TopLevelItems {
@@ -729,7 +728,6 @@ pub fn astify<'a>(
          type_aliases: vec![],
          consts: vec![],
          statics: vec![],
-         imports: vec![],
          links: vec![],
       },
       parsed_types: vec![],
@@ -741,7 +739,7 @@ pub fn astify<'a>(
       parsed_types: &mut parse_result.parsed_types,
    };
 
-   while parse_top_level_items(&mut lexer, &mut parse_context, global_exprs, &mut parse_result.items).is_err() {
+   while parse_top_level_items(&mut lexer, &mut parse_context, global_exprs, &mut parse_result.items, import_sender).is_err() {
       // skip tokens until we get to a token that must be at the top level and continue parsing
       // in order to give the user more valid errors
       loop {

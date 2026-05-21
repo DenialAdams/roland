@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crossbeam::channel::Select;
 use include_dir::{Dir, include_dir};
@@ -42,9 +43,33 @@ struct ImportQueueNode {
    is_std: bool,
 }
 
-struct LexParseResult {
-   queue_node: ImportQueueNode,
-   parse_result: ParseResult,
+pub struct NewImportSender<'a> {
+   sender: crossbeam::channel::Sender<ImportQueueNode>,
+   in_flight_count: &'a AtomicUsize,
+   currently_parsing_std: bool,
+   currently_parsing_path: PathBuf,
+}
+
+impl NewImportSender<'_> {
+   pub fn send(&self, import_str: &str, import_location: SourceInfo) {
+      self.in_flight_count.fetch_add(1, Ordering::Relaxed);
+      let (new_path, is_std) = if let Some(std_path) = import_str.strip_prefix("std:") {
+         (std_path.into(), true)
+      } else {
+         (
+            self
+               .currently_parsing_path
+               .parent()
+               .map_or_else(|| self.currently_parsing_path.clone(), |parent| parent.join(import_str)),
+            self.currently_parsing_std,
+         )
+      };
+      let _ = self.sender.send(ImportQueueNode {
+         path: new_path,
+         import_location: Some(import_location),
+         is_std,
+      });
+   }
 }
 
 pub fn import_program(
@@ -89,6 +114,8 @@ pub fn import_program(
 
    let (lex_parse_results_tx, lex_parse_results_rx) = crossbeam::channel::unbounded();
 
+   let num_in_flight: AtomicUsize = AtomicUsize::new(1 + usize::from(config.include_std));
+
    {
       let interner = &ctx.interner;
       let err_manager = &err_manager;
@@ -104,16 +131,14 @@ pub fn import_program(
       let p_consts = &mut ctx.program.consts;
       let p_statics = &mut ctx.program.statics;
       let p_parsed_types = &mut ctx.program.parsed_types;
-      let include_std = config.include_std;
+      let num_in_flight = &num_in_flight;
 
       rayon::in_place_scope(move |s| {
          let mut select = Select::new();
          select.recv(&import_queue_rx);
          select.recv(&lex_parse_results_rx);
 
-         let mut num_in_flight: usize = 1 + usize::from(include_std);
-
-         while num_in_flight > 0 {
+         while num_in_flight.load(Ordering::Relaxed) > 0 {
             let op = select.select();
             if op.index() == 0 {
                let node = op.recv(&import_queue_rx).unwrap();
@@ -154,9 +179,9 @@ pub fn import_program(
                // TODO: fix this using some form of raw entry so we only clone canonical_path when we have to
                let (source_path, program_s) = match source_files.entry((canonical_path.clone(), node.is_std)) {
                   indexmap::map::Entry::Occupied(_) => {
-                     num_in_flight -= 1;
+                     num_in_flight.fetch_sub(1, Ordering::Relaxed);
                      continue;
-                  },
+                  }
                   indexmap::map::Entry::Vacant(vacant_entry) => {
                      let program_s = match resolver.resolve_path(&canonical_path) {
                         Ok(s) => s,
@@ -200,32 +225,33 @@ pub fn import_program(
                   // to_string here is a hack to achieve parallelism. Will revisit.
                   let owned: String = program_s.to_string();
                   let lex_parse_results_tx = lex_parse_results_tx.clone();
+                  let import_sender = NewImportSender {
+                     sender: import_queue_tx.clone(),
+                     in_flight_count: num_in_flight,
+                     currently_parsing_std: node.is_std,
+                     currently_parsing_path: node.path,
+                  };
                   s.spawn(move |_| {
                      // try block would be nicer here
-                     let res = (move || -> Result<LexParseResult, ()> {
+                     let res = (move || -> Result<ParseResult, ()> {
                         let tokens = lex::lex_for_tokens(&owned, source_path, err_manager, interner)?;
-                        let parse_result = parse::astify(
+                        Ok(parse::astify(
                            Lexer::from_tokens(tokens, source_path),
                            err_manager,
                            interner,
                            global_exprs,
-                        );
-                        Ok(LexParseResult {
-                           queue_node: node,
-                           parse_result,
-                        })
+                           &import_sender,
+                        ))
                      })();
                      let _ = lex_parse_results_tx.send(res);
                   });
                }
             } else if op.index() == 1 {
                let lp_res = op.recv(&lex_parse_results_rx).unwrap();
-               let Ok(channel_result) = lp_res else {
-                  num_in_flight -= 1;
+               let Ok(mut parse_result) = lp_res else {
+                  num_in_flight.fetch_sub(1, Ordering::Relaxed);
                   continue;
                };
-               let mut parse_result: ParseResult = channel_result.parse_result;
-               let node: ImportQueueNode = channel_result.queue_node;
 
                for parsed_proc in parse_result.items.procedures.drain(..) {
                   let id = p_procedures.insert(parsed_proc.proc);
@@ -243,33 +269,7 @@ pub fn import_program(
                p_parsed_types.append(&mut parse_result.parsed_types);
                links.append(&mut parse_result.items.links);
 
-               let new_imports = parse_result.items.imports.len();
-               for file in parse_result.items.imports.drain(..) {
-                  let file_str = interner.lookup(file.import_path.str);
-                  let (new_path, is_std) = if let Some(std_path) = file_str.strip_prefix("std:") {
-                     (std_path.into(), true)
-                  } else {
-                     (
-                        node
-                           .path
-                           .parent()
-                           .map_or_else(|| PathBuf::from(file_str), |parent| parent.join(file_str)),
-                        node.is_std,
-                     )
-                  };
-                  import_queue_tx
-                     .send(ImportQueueNode {
-                        path: new_path,
-                        import_location: Some(file.import_path.location),
-                        is_std,
-                     })
-                     .unwrap();
-               }
-
-               match new_imports.checked_sub(1) {
-                  None => num_in_flight -= 1,
-                  Some(val) => num_in_flight += val,
-               }
+               num_in_flight.fetch_sub(1, Ordering::Relaxed);
             }
          }
 
