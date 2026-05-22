@@ -6,7 +6,7 @@ use bumpalo::Bump;
 use hashbrown::{DefaultHashBuilder, HashMap};
 use parking_lot::Mutex;
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct StrId(NonZeroUsize);
 
 // TODO: remove this, we only use it for a dumb reason

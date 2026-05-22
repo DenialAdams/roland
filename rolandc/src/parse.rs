@@ -739,7 +739,15 @@ pub fn astify<'a>(
       parsed_types: &mut parse_result.parsed_types,
    };
 
-   while parse_top_level_items(&mut lexer, &mut parse_context, global_exprs, &mut parse_result.items, import_sender).is_err() {
+   while parse_top_level_items(
+      &mut lexer,
+      &mut parse_context,
+      global_exprs,
+      &mut parse_result.items,
+      import_sender,
+   )
+   .is_err()
+   {
       // skip tokens until we get to a token that must be at the top level and continue parsing
       // in order to give the user more valid errors
       loop {

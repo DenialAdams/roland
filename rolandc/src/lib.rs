@@ -364,7 +364,7 @@ pub fn compile_for_errors(
 
    // must run after expression hoisting, so that re-ordering named arguments does not
    // affect side-effect order
-   named_argument_lowering::lower_named_args(&mut ctx.program);
+   named_argument_lowering::lower_named_args(&mut ctx.program, &ctx.interner);
 
    constant_folding::fold_constants(
       &mut ctx.program,

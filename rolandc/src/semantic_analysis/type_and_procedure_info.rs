@@ -643,7 +643,7 @@ pub fn populate_type_and_procedure_info(
          );
       }
 
-      let mut first_named_param = None;
+      let mut saw_named_param = false;
       let mut reported_named_error = false;
       dupe_check.clear();
       for (i, param) in proc.definition.parameters.iter().enumerate() {
@@ -657,8 +657,8 @@ pub fn populate_type_and_procedure_info(
             );
          }
 
-         if param.named && first_named_param.is_none() {
-            first_named_param = Some(i);
+         if param.named && !saw_named_param {
+            saw_named_param = true;
 
             if proc.impl_source == ProcImplSource::External {
                reported_named_error = true;
@@ -671,7 +671,7 @@ pub fn populate_type_and_procedure_info(
             }
          }
 
-         if !param.named && first_named_param.is_some() && !reported_named_error {
+         if !param.named && saw_named_param && !reported_named_error {
             reported_named_error = true;
             rolandc_error!(
                err_manager,
@@ -680,15 +680,6 @@ pub fn populate_type_and_procedure_info(
                interner.lookup(proc.definition.name.str),
             );
          }
-      }
-
-      if !reported_named_error
-         && first_named_param.is_some()
-         && let Some(i) = first_named_param
-      {
-         // It doesn't really matter how we sort these, as long as we do it consistently for arguments
-         // AND that there are no equal elements (in this case, we already check that parameters don't have the same name)
-         proc.definition.parameters[i..].sort_unstable_by_key(|x| x.name);
       }
 
       dupe_check.clear();
