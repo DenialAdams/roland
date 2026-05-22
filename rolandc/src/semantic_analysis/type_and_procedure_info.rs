@@ -646,7 +646,7 @@ pub fn populate_type_and_procedure_info(
       let mut saw_named_param = false;
       let mut reported_named_error = false;
       dupe_check.clear();
-      for (i, param) in proc.definition.parameters.iter().enumerate() {
+      for param in proc.definition.parameters.iter() {
          if !dupe_check.insert(param.name) {
             rolandc_error!(
                err_manager,
