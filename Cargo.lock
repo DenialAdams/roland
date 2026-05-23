@@ -1494,7 +1494,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 [[package]]
 name = "slotmap"
 version = "1.1.1"
-source = "git+https://github.com/DenialAdams/slotmap.git?branch=rayon#75e9f0374235b41b2d6abd948138dd366e5a24b9"
+source = "git+https://github.com/DenialAdams/slotmap.git?branch=rayon#895af017d104bf559a533012ef7837ceab6e14d1"
 dependencies = [
  "rayon",
  "version_check",
