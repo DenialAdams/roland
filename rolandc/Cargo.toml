@@ -10,7 +10,7 @@ unicode-ident = "1"
 indexmap = "2"
 include_dir = "0.7"
 wasm-encoder = "0.246"
-slotmap = { git = "https://github.com/DenialAdams/slotmap.git", branch = "rayon", features = ["rayon"] }
+slotmap = { git = "https://github.com/DenialAdams/slotmap.git", branch = "rayonFinal", features = ["rayon"] }
 bitvec = "1"
 hashbrown = "0.17"
 memchr = "2"
