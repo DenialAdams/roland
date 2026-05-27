@@ -12,4 +12,4 @@ rolandc = { path = "../rolandc" }
 memchr = "2"
 
 [target.'cfg(target_env = "musl")'.dependencies]
-mimalloc = { version = "*", features = ["v3"] }
+mimalloc = "*"

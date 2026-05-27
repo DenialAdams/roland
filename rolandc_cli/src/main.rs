@@ -353,7 +353,12 @@ fn compile_qbe(
          }
          #[cfg(target_os = "linux")]
          {
-            let args = libwild::Args::parse(|| linker_args.iter().map(|s| s.to_str().unwrap())).unwrap();
+            let args = {
+               let arg_fn = || linker_args.iter().map(|s| s.to_str().unwrap());
+               let mut args = libwild::Args::new(arg_fn).unwrap();
+               args.parse(arg_fn).unwrap();
+               args
+            };
 
             libwild::run(args).map_err(|e| {
                libwild::error::report_error(&e);
