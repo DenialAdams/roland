@@ -222,8 +222,10 @@ pub fn import_program(
                }
 
                {
-                  // to_string here is a hack to achieve parallelism. Will revisit.
-                  let owned: String = program_s.to_string();
+                  let program_s: &str = program_s.as_ref();
+                  // Extend the lifetime of the reference. This is safe as long as we don't free
+                  // the program string buffer while this task is running.
+                  let program_s: &str = unsafe { &*std::ptr::from_ref::<str>(program_s) };
                   let lex_parse_results_tx = lex_parse_results_tx.clone();
                   let import_sender = NewImportSender {
                      sender: import_queue_tx.clone(),
@@ -234,7 +236,7 @@ pub fn import_program(
                   s.spawn(move |_| {
                      // try block would be nicer here
                      let res = (move || -> Result<ParseResult, ()> {
-                        let tokens = lex::lex_for_tokens(&owned, source_path, err_manager, interner)?;
+                        let tokens = lex::lex_for_tokens(program_s, source_path, err_manager, interner)?;
                         Ok(parse::astify(
                            Lexer::from_tokens(tokens, source_path),
                            err_manager,
