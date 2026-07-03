@@ -46,9 +46,9 @@ checksum = "76a2e8124351fda1ef8aaaa3bbd7ebbcb486bbcd4225aca0aa0d84bb2db8fecb"
 
 [[package]]
 name = "arrayvec"
-version = "0.7.7"
+version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f02882884d3e1bc524fb12c79f107f6ad0e1cfd498c536ffb494301740995dfe"
+checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 
 [[package]]
 name = "atomic-polyfill"
@@ -168,9 +168,9 @@ checksum = "8ae3f5d315924270530207e2a68396c3cc547f6dca3fbdca317cfb1a51edb593"
 
 [[package]]
 name = "bytesize"
-version = "2.4.0"
+version = "2.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49e78e506b9d7633710dab98996f22f95f3d0f488e8f1aa162830556ed9fc14d"
+checksum = "3d7c8918969267b2932ffd5655509bbbea0833823058c378876953217f5fc50e"
 
 [[package]]
 name = "cc"
@@ -222,9 +222,9 @@ checksum = "370c83b49aedf022ee27942e8ae1d9de1cf40dc9653ee6550e4455d08f6406f9"
 
 [[package]]
 name = "console"
-version = "0.16.3"
+version = "0.16.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d64e8af5551369d19cf50138de61f1c42074ab970f74e99be916646777f8fc87"
+checksum = "4fe5f465a4f6fee88fad41b85d990f84c835335e85b5d9e6e63e0d06d28cba7c"
 dependencies = [
  "encode_unicode",
  "libc",
@@ -1557,9 +1557,9 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "symbolic-common"
-version = "13.6.1"
+version = "13.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba98c95b1ff25ce40400d286f5dec838097ee42ad1bbd64242cce24c2baace8c"
+checksum = "dddd4e6e0693d88f584394027d97d4c4b7748c2fa86be4441703db5fa8b78a95"
 dependencies = [
  "debugid",
  "memmap2",
@@ -1569,9 +1569,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "13.6.1"
+version = "13.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c547b0231d1794aec8e4795dbb04c1d395ff774954f18e37d46d5a70f0ce4b2"
+checksum = "6cad904b0202151337e3dca9187593aadf6b70ca1e495a2ff420b5bf287f1b3b"
 dependencies = [
  "cpp_demangle",
  "rustc-demangle",
@@ -2012,9 +2012,9 @@ dependencies = [
 
 [[package]]
 name = "zlib-rs"
-version = "0.6.4"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "977347db8caa080403f6b6b7c1cda9479a8e869316f7e13a59b19076a40f94e3"
+checksum = "5431d5661c32445236631278f27946e444ddafe4684cac70b185272d4f9c52d5"
 
 [[package]]
 name = "zmij"
