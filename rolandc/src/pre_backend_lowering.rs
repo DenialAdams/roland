@@ -360,16 +360,20 @@ pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, intern
             Expression::BinaryOperator { operator, lhs, .. } => match operator {
                BinOp::Divide => replace_div(lhs, v.location, ast, &program.procedure_name_table, interner),
                BinOp::Remainder => replace_mod(lhs, v.location, ast, &program.procedure_name_table, interner),
-               BinOp::Add if target == BaseTarget::Qbe => {
+               // qbe-wasm
+               BinOp::Add if target == BaseTarget::Qbe || true => {
                   replace_add(lhs, v.location, ast, &program.procedure_name_table, interner)
                }
-               BinOp::Subtract if target == BaseTarget::Qbe => {
+               // qbe-wasm
+               BinOp::Subtract if target == BaseTarget::Qbe || true => {
                   replace_sub(lhs, v.location, ast, &program.procedure_name_table, interner)
                }
-               BinOp::Multiply if target == BaseTarget::Qbe => {
+               // qbe-wasm
+               BinOp::Multiply if target == BaseTarget::Qbe || true => {
                   replace_mul(lhs, v.location, ast, &program.procedure_name_table, interner)
                }
-               BinOp::BitwiseLeftShift if target == BaseTarget::Qbe => {
+               // qbe-wasm
+               BinOp::BitwiseLeftShift if target == BaseTarget::Qbe || true => {
                   replace_shl(lhs, v.location, ast, &program.procedure_name_table, interner)
                }
                _ => None,

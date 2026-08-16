@@ -409,6 +409,9 @@ pub fn assign_variables_to_registers_and_mem(
       return result;
    }
 
+   // qbe-wasm
+   return result;
+
    let mut num_global_registers = 1; // Skip the stack pointer
    for global in program.non_stack_var_info.iter() {
       debug_assert!(!result.var_to_slot.contains_key(global.0));

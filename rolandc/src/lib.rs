@@ -437,7 +437,8 @@ pub fn compile(
 
    pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target.base_target());
 
-   if config.target.base_target() == BaseTarget::Qbe {
+   // qbe-wasm
+   if config.target.base_target() == BaseTarget::Qbe || true {
       expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::ThreeAddressCode);
    }
 
@@ -495,7 +496,8 @@ pub fn compile(
    };
 
    let regalloc_result = {
-      if config.target.base_target() == BaseTarget::Qbe {
+      // qbe-wasm
+      if config.target.base_target() == BaseTarget::Qbe || true {
          backend::regalloc::hoist_non_temp_loads_stores(&mut ctx.program, config.target.base_target());
       }
       let program_liveness = ctx
@@ -589,12 +591,14 @@ pub fn compile(
       linearize::simplify_cfg(&mut body.cfg, &body.ast.expressions);
    }
 
-   let program_bytes = if config.target.base_target() == BaseTarget::Qbe {
+   // qbe-wasm
+   let program_bytes = if config.target.base_target() == BaseTarget::Qbe || true {
       backend::qbe::emit_qbe(
          config.target == Target::QbeFreestanding,
          &mut ctx.program,
          &ctx.interner,
          regalloc_result,
+         config.target.base_target(),
       )
    } else {
       backend::wasm::emit_wasm(&mut ctx.program, &ctx.interner, config, regalloc_result)

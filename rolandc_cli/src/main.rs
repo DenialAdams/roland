@@ -183,13 +183,15 @@ fn main() {
 
    let output_path = if let Some(v) = &opts.output {
       let mut cloned = v.clone();
-      if config.target.base_target() == BaseTarget::Qbe {
+      // qbe-wasm
+      if config.target.base_target() == BaseTarget::Qbe || true {
          cloned.set_extension("ssa");
       }
       cloned
    } else {
       let mut output_path = opts.source_file.clone();
-      if config.target.base_target() == BaseTarget::Qbe {
+      // qbe-wasm
+      if config.target.base_target() == BaseTarget::Qbe || true {
          output_path.set_extension("ssa");
       } else {
          output_path.set_extension("wasm");
@@ -198,6 +200,27 @@ fn main() {
    };
 
    std::fs::write(&output_path, compile_result.program_bytes).unwrap();
+
+   // qbe-wasm
+   if config.target.base_target() == BaseTarget::Wasm {
+      let mut wasm_path = output_path.clone();
+      wasm_path.set_extension("wasm");
+      let res = match Command::new("qbe-wasm")
+         .arg("-o")
+         .arg(&wasm_path)
+         .arg(&output_path)
+         .status()
+      {
+         Ok(stat) if stat.success() => Ok(()),
+         Ok(stat) => Err(QbeCompilationError::QbeExecution(stat)),
+         Err(e) => Err(QbeCompilationError::QbeInvocation(e)),
+      };
+      if let Err(e) = res {
+         use std::io::Write;
+         writeln!(err_stream_l, "Failed to compile produced IR to binary: {}", e).unwrap();
+         std::process::exit(1);
+      }
+   }
 
    if config.target.base_target() == BaseTarget::Qbe
       && let Err(e) = compile_qbe(

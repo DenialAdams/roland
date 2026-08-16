@@ -33,6 +33,7 @@ struct GenerationContext<'a> {
    global_info: &'a IndexMap<VariableId, GlobalInfo>,
    aggregate_defs: IndexSet<ExpressionType>,
    unused_return_counter: usize,
+   base_target: BaseTarget,
 }
 
 fn roland_type_to_base_type(r_type: &ExpressionType) -> &'static str {
@@ -90,8 +91,9 @@ fn roland_type_to_abi_type(
    r_type: &ExpressionType,
    udt: &UserDefinedTypeInfo,
    aggregate_defs: &IndexSet<ExpressionType>,
+   base_target: BaseTarget,
 ) -> Option<QbeTypeStr> {
-   if sizeof_type_mem(r_type, udt, BaseTarget::Qbe) == 0 {
+   if sizeof_type_mem(r_type, udt, base_target) == 0 {
       return None;
    }
    Some(match r_type {
@@ -132,8 +134,9 @@ fn roland_type_to_sub_type(
    r_type: &ExpressionType,
    udt: &UserDefinedTypeInfo,
    aggregate_defs: &IndexSet<ExpressionType>,
+   base_target: BaseTarget,
 ) -> Option<QbeTypeStr> {
-   if sizeof_type_mem(r_type, udt, BaseTarget::Qbe) == 0 {
+   if sizeof_type_mem(r_type, udt, base_target) == 0 {
       return None;
    }
    Some(match r_type {
@@ -222,13 +225,13 @@ fn emit_literal_as_data(expr_index: ExpressionId, ast: &ExpressionPool, ctx: &mu
             if let Some(val) = value_of_field {
                emit_literal_as_data(val, ast, ctx);
             } else {
-               let sz = sizeof_type_mem(&field.1.e_type, ctx.udt, BaseTarget::Qbe);
+               let sz = sizeof_type_mem(&field.1.e_type, ctx.udt, ctx.base_target);
                if sz > 0 {
                   write!(ctx.buf, "z {}, ", sz).unwrap();
                }
             }
             let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
-            let padding_bytes = next_offset - this_offset - sizeof_type_mem(&field.1.e_type, ctx.udt, BaseTarget::Qbe);
+            let padding_bytes = next_offset - this_offset - sizeof_type_mem(&field.1.e_type, ctx.udt, ctx.base_target);
             if padding_bytes > 0 {
                write!(ctx.buf, "z {}, ", padding_bytes).unwrap();
             }
@@ -248,12 +251,14 @@ pub fn emit_qbe(
    program: &mut Program,
    interner: &Interner,
    regalloc_result: RegallocResult,
+   base_target: BaseTarget,
 ) -> Vec<u8> {
    fn emit_aggregate_def(
       buf: &mut Vec<u8>,
       emitted: &mut IndexSet<ExpressionType>,
       udt: &UserDefinedTypeInfo,
       et: &ExpressionType,
+      base_target: BaseTarget,
    ) {
       if !et.is_aggregate() {
          return;
@@ -263,7 +268,7 @@ pub fn emit_qbe(
          return;
       }
 
-      if sizeof_type_mem(et, udt, BaseTarget::Qbe) == 0 {
+      if sizeof_type_mem(et, udt, base_target) == 0 {
          return;
       }
 
@@ -274,7 +279,7 @@ pub fn emit_qbe(
             let si = udt.struct_info.get(*sid).unwrap();
             let ssi = si.size.as_ref().unwrap();
             for field_t in si.field_types.iter().map(|x| &x.1.e_type) {
-               emit_aggregate_def(buf, emitted, udt, field_t);
+               emit_aggregate_def(buf, emitted, udt, field_t, base_target);
             }
 
             write!(buf, "type :s{} = {{ ", index).unwrap();
@@ -285,11 +290,11 @@ pub fn emit_qbe(
                   .map(|x| ssi.field_offsets_mem[x])
                   .chain(std::iter::once(ssi.mem_size)),
             ) {
-               if let Some(ft) = roland_type_to_sub_type(&field.1.e_type, udt, emitted) {
+               if let Some(ft) = roland_type_to_sub_type(&field.1.e_type, udt, emitted, base_target) {
                   write!(buf, "{}, ", ft).unwrap();
                }
                let this_offset = ssi.field_offsets_mem.get(field.0).unwrap();
-               let padding_bytes = next_offset - this_offset - sizeof_type_mem(&field.1.e_type, udt, BaseTarget::Qbe);
+               let padding_bytes = next_offset - this_offset - sizeof_type_mem(&field.1.e_type, udt, base_target);
                if padding_bytes > 0 {
                   write!(buf, "b {}, ", padding_bytes).unwrap();
                }
@@ -299,19 +304,19 @@ pub fn emit_qbe(
          ExpressionType::Union(uid, _) => {
             let ui = udt.union_info.get(*uid).unwrap();
             for field_t in ui.field_types.iter().map(|x| &x.1.e_type) {
-               emit_aggregate_def(buf, emitted, udt, field_t);
+               emit_aggregate_def(buf, emitted, udt, field_t, base_target);
             }
             write!(buf, "type :u{} = {{ ", index).unwrap();
             for field_type in ui.field_types.values().map(|x| &x.e_type) {
-               if let Some(ft_as_qbe) = roland_type_to_sub_type(field_type, udt, emitted) {
+               if let Some(ft_as_qbe) = roland_type_to_sub_type(field_type, udt, emitted, base_target) {
                   write!(buf, "{{ {} }} ", ft_as_qbe).unwrap();
                }
             }
             writeln!(buf, " }}").unwrap();
          }
          ExpressionType::Array(base_ty, len) => {
-            emit_aggregate_def(buf, emitted, udt, base_ty);
-            let basety_as_qbe = roland_type_to_sub_type(base_ty, udt, emitted).unwrap();
+            emit_aggregate_def(buf, emitted, udt, base_ty, base_target);
+            let basety_as_qbe = roland_type_to_sub_type(base_ty, udt, emitted, base_target).unwrap();
             writeln!(buf, "type :a{} = {{ {} {} }}", index, basety_as_qbe, len).unwrap();
          }
          _ => unreachable!(),
@@ -328,6 +333,7 @@ pub fn emit_qbe(
       global_info: &program.non_stack_var_info,
       aggregate_defs: IndexSet::new(),
       unused_return_counter: 0,
+      base_target,
    };
 
    for (i, string_literal) in ctx.string_literals.iter().enumerate() {
@@ -351,7 +357,7 @@ pub fn emit_qbe(
             write!(
                ctx.buf,
                "z {} ",
-               sizeof_type_mem(&a_global.1.expr_type.e_type, ctx.udt, BaseTarget::Qbe)
+               sizeof_type_mem(&a_global.1.expr_type.e_type, ctx.udt, ctx.base_target)
             )
             .unwrap();
          }
@@ -361,13 +367,20 @@ pub fn emit_qbe(
 
    for (proc_id, procedure) in program.procedures.iter() {
       for param_type in procedure.definition.parameters.iter().map(|x| &x.p_type.e_type) {
-         emit_aggregate_def(&mut ctx.buf, &mut ctx.aggregate_defs, ctx.udt, param_type);
+         emit_aggregate_def(
+            &mut ctx.buf,
+            &mut ctx.aggregate_defs,
+            ctx.udt,
+            param_type,
+            ctx.base_target,
+         );
       }
       emit_aggregate_def(
          &mut ctx.buf,
          &mut ctx.aggregate_defs,
          ctx.udt,
          &procedure.definition.ret_type.e_type,
+         ctx.base_target,
       );
       let Some(body) = program.procedure_bodies.get(proc_id) else {
          continue;
@@ -391,6 +404,7 @@ pub fn emit_qbe(
                         &mut ctx.aggregate_defs,
                         ctx.udt,
                         ast[arg.expr].exp_type.as_ref().unwrap(),
+                        ctx.base_target,
                      );
                   }
                }
@@ -462,8 +476,13 @@ pub fn emit_qbe(
          main_proc = Some(mangled_name);
       }
 
-      let abi_ret_type = roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs)
-         .unwrap_or(QbeTypeStr::Text(""));
+      let abi_ret_type = roland_type_to_abi_type(
+         &procedure.definition.ret_type.e_type,
+         ctx.udt,
+         &ctx.aggregate_defs,
+         ctx.base_target,
+      )
+      .unwrap_or(QbeTypeStr::Text(""));
       write!(
          ctx.buf,
          "function {} ${}(",
@@ -475,7 +494,9 @@ pub fn emit_qbe(
       let mut num_unassigned_params = 0;
       let mut num_register_params = 0;
       for param in procedure.definition.parameters.iter() {
-         if let Some(p_type) = roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, &ctx.aggregate_defs) {
+         if let Some(p_type) =
+            roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, &ctx.aggregate_defs, ctx.base_target)
+         {
             match ctx.var_to_slot.get(&param.var_id).copied() {
                Some(VarSlot::Register(reg)) => {
                   write!(ctx.buf, "{} %r{}, ", p_type, reg).unwrap();
@@ -554,13 +575,20 @@ pub fn emit_qbe(
       write!(
          ctx.buf,
          "function {} ${}(",
-         roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs)
-            .unwrap_or(QbeTypeStr::Text("")),
+         roland_type_to_abi_type(
+            &procedure.definition.ret_type.e_type,
+            ctx.udt,
+            &ctx.aggregate_defs,
+            ctx.base_target
+         )
+         .unwrap_or(QbeTypeStr::Text("")),
          mangle(proc_id, &ctx.procedures[proc_id], ctx.interner)
       )
       .unwrap();
       for (p_i, param) in procedure.definition.parameters.iter().enumerate() {
-         if let Some(param_type) = roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, &ctx.aggregate_defs) {
+         if let Some(param_type) =
+            roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, &ctx.aggregate_defs, ctx.base_target)
+         {
             write!(ctx.buf, "{} %p{}, ", param_type, p_i).unwrap();
          }
       }
@@ -575,19 +603,34 @@ pub fn emit_qbe(
       writeln!(ctx.buf, "}}").unwrap();
    }
 
-   write!(
-      ctx.buf,
-      "export
+   if ctx.base_target == BaseTarget::Qbe {
+      write!(
+         ctx.buf,
+         "export
 function {}() {{
 @entry
    call ${}()
    %bye =l call $syscall1(l 231, l 0)
    hlt
 }}",
-      if freestanding { "$_start" } else { "w $main" },
-      main_proc.unwrap()
-   )
-   .unwrap();
+         if freestanding { "$_start" } else { "w $main" },
+         main_proc.unwrap()
+      )
+      .unwrap();
+   } else {
+      write!(
+         ctx.buf,
+         "export
+function {}() {{
+@entry
+   call ${}()
+   hlt
+}}",
+         if freestanding { "$_start" } else { "w $main" },
+         main_proc.unwrap()
+      )
+      .unwrap();
+   }
 
    ctx.buf
 }
@@ -642,7 +685,7 @@ fn emit_bb(cfg: &Cfg, ast: &ExpressionPool, bb: usize, ctx: &mut GenerationConte
          CfgInstruction::Assignment(lid, en) => {
             if let Some(lhs_mem) = compute_offset(*lid, ast, ctx, true) {
                if let Some(rhs_mem) = compute_offset(*en, ast, ctx, false) {
-                  let size = sizeof_type_mem(ast[*en].exp_type.as_ref().unwrap(), ctx.udt, BaseTarget::Qbe);
+                  let size = sizeof_type_mem(ast[*en].exp_type.as_ref().unwrap(), ctx.udt, ctx.base_target);
                   writeln!(ctx.buf, "   blit {}, {}, {}", rhs_mem, lhs_mem, size).unwrap();
                } else if ast[*en].exp_type.as_ref().unwrap().is_aggregate() {
                   let Expression::ProcedureCall { proc_expr, args } = &ast[*en].expression else {
@@ -651,12 +694,17 @@ fn emit_bb(cfg: &Cfg, ast: &ExpressionPool, bb: usize, ctx: &mut GenerationConte
                   write!(
                      ctx.buf,
                      "   %t ={} ",
-                     roland_type_to_abi_type(ast[*en].exp_type.as_ref().unwrap(), ctx.udt, &ctx.aggregate_defs)
-                        .unwrap(),
+                     roland_type_to_abi_type(
+                        ast[*en].exp_type.as_ref().unwrap(),
+                        ctx.udt,
+                        &ctx.aggregate_defs,
+                        ctx.base_target
+                     )
+                     .unwrap(),
                   )
                   .unwrap();
                   emit_call_expr_and_newline(*proc_expr, args, ast, ctx);
-                  let size = sizeof_type_mem(ast[*en].exp_type.as_ref().unwrap(), ctx.udt, BaseTarget::Qbe);
+                  let size = sizeof_type_mem(ast[*en].exp_type.as_ref().unwrap(), ctx.udt, ctx.base_target);
                   writeln!(ctx.buf, "   blit %t, {}, {}", lhs_mem, size).unwrap();
                } else {
                   let suffix = roland_type_to_extended_type(ast[*en].exp_type.as_ref().unwrap());
@@ -680,8 +728,13 @@ fn emit_bb(cfg: &Cfg, ast: &ExpressionPool, bb: usize, ctx: &mut GenerationConte
                   "   %r{} ={} ",
                   reg,
                   if is_call {
-                     roland_type_to_abi_type(rhs_expr_node.exp_type.as_ref().unwrap(), ctx.udt, &ctx.aggregate_defs)
-                        .unwrap()
+                     roland_type_to_abi_type(
+                        rhs_expr_node.exp_type.as_ref().unwrap(),
+                        ctx.udt,
+                        &ctx.aggregate_defs,
+                        ctx.base_target,
+                     )
+                     .unwrap()
                   } else {
                      QbeTypeStr::Text(roland_type_to_base_type(rhs_expr_node.exp_type.as_ref().unwrap()))
                   },
@@ -952,7 +1005,7 @@ fn emit_bb(cfg: &Cfg, ast: &ExpressionPool, bb: usize, ctx: &mut GenerationConte
                      let src_type = ast[*expr].exp_type.as_ref().unwrap();
                      match (src_type, target_type) {
                         (ExpressionType::Int(l), ExpressionType::Int(r))
-                           if l.width.as_num_bytes(BaseTarget::Qbe) >= r.width.as_num_bytes(BaseTarget::Qbe) =>
+                           if l.width.as_num_bytes(ctx.base_target) >= r.width.as_num_bytes(ctx.base_target) =>
                         {
                            match (l.width, r.width) {
                               (IntWidth::Eight | IntWidth::Four, IntWidth::Two) => {
@@ -991,9 +1044,9 @@ fn emit_bb(cfg: &Cfg, ast: &ExpressionPool, bb: usize, ctx: &mut GenerationConte
                            }
                         }
                         (ExpressionType::Int(l), ExpressionType::Int(r))
-                           if l.width.as_num_bytes(BaseTarget::Qbe) < r.width.as_num_bytes(BaseTarget::Qbe) =>
+                           if l.width.as_num_bytes(ctx.base_target) < r.width.as_num_bytes(ctx.base_target) =>
                         {
-                           if l.width.as_num_bytes(BaseTarget::Qbe) <= 4 && r.width == IntWidth::Eight {
+                           if l.width.as_num_bytes(ctx.base_target) <= 4 && r.width == IntWidth::Eight {
                               if l.signed {
                                  write!(ctx.buf, "extsw ")
                               } else {
@@ -1127,9 +1180,12 @@ fn emit_bb(cfg: &Cfg, ast: &ExpressionPool, bb: usize, ctx: &mut GenerationConte
                // For ABI reasons, all non-unit calls should be assigned into a temporary.
                // Per QBE documentation:
                // "Unless the called function does not return a value, a return temporary must be specified, even if it is never used afterwards."
-               if let Some(return_abi_type) =
-                  roland_type_to_abi_type(ast[*en].exp_type.as_ref().unwrap(), ctx.udt, &ctx.aggregate_defs)
-               {
+               if let Some(return_abi_type) = roland_type_to_abi_type(
+                  ast[*en].exp_type.as_ref().unwrap(),
+                  ctx.udt,
+                  &ctx.aggregate_defs,
+                  ctx.base_target,
+               ) {
                   let next_counter = ctx.unused_return_counter + 1;
                   write!(
                      ctx.buf,
@@ -1150,7 +1206,7 @@ fn emit_bb(cfg: &Cfg, ast: &ExpressionPool, bb: usize, ctx: &mut GenerationConte
             debug_assert!(!expression_could_have_side_effects(*en, ast));
             if *ast[*en].exp_type.as_ref().unwrap() == ExpressionType::Never {
                writeln!(&mut ctx.buf, "   hlt").unwrap();
-            } else if sizeof_type_mem(ast[*en].exp_type.as_ref().unwrap(), ctx.udt, BaseTarget::Qbe) == 0 {
+            } else if sizeof_type_mem(ast[*en].exp_type.as_ref().unwrap(), ctx.udt, ctx.base_target) == 0 {
                writeln!(&mut ctx.buf, "   ret").unwrap();
             } else {
                write!(&mut ctx.buf, "   ret ").unwrap();
@@ -1353,9 +1409,12 @@ fn emit_call_expr_and_newline(
    for arg in args_iter {
       match arg {
          Arg::Expr(ex) => {
-            if let Some(arg_type) =
-               roland_type_to_abi_type(ast[ex].exp_type.as_ref().unwrap(), ctx.udt, &ctx.aggregate_defs)
-            {
+            if let Some(arg_type) = roland_type_to_abi_type(
+               ast[ex].exp_type.as_ref().unwrap(),
+               ctx.udt,
+               &ctx.aggregate_defs,
+               ctx.base_target,
+            ) {
                write!(ctx.buf, "{} ", arg_type).unwrap();
                emit_expr_as_val(ex, ast, ctx).unwrap();
                write!(ctx.buf, ", ").unwrap();
