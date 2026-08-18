@@ -472,7 +472,7 @@ pub fn emit_qbe(
       )
       .unwrap();
       let mut stack_params = HashMap::new();
-      let mut p_i = 0;
+      let mut num_unassigned_params = 0;
       let mut num_register_params = 0;
       for param in procedure.definition.parameters.iter() {
          if let Some(p_type) = roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, &ctx.aggregate_defs) {
@@ -484,19 +484,20 @@ pub fn emit_qbe(
                Some(VarSlot::Stack(v)) => {
                   if param.p_type.e_type.is_aggregate() {
                      write!(ctx.buf, "{} %v{}, ", p_type, v).unwrap();
+                     stack_params.insert(v as usize, None);
                   } else {
-                     write!(ctx.buf, "{} %r{}, ", p_type, p_i).unwrap();
+                     write!(ctx.buf, "{} %r{}, ", p_type, num_register_params).unwrap();
+                     stack_params.insert(v as usize, Some((&param.p_type.e_type, num_register_params)));
                      num_register_params += 1;
                   }
-                  stack_params.insert(v as usize, (&param.p_type.e_type, p_i));
                }
                None => {
                   // This parameter was not assigned a slot - this variable MUST be unused
-                  // we'll just give it some value
-                  write!(ctx.buf, "{} %p{}, ", p_type, p_i).unwrap();
+                  // we'll just give it some unused binding
+                  write!(ctx.buf, "{} %p{}, ", p_type, num_unassigned_params).unwrap();
+                  num_unassigned_params += 1;
                }
             }
-            p_i += 1;
          }
       }
       writeln!(ctx.buf, ") {{").unwrap();
@@ -508,10 +509,10 @@ pub fn emit_qbe(
          .enumerate()
       {
          let reg_and_suffix = match stack_params.get(&i) {
-            Some((e_type, _)) if e_type.is_aggregate() => {
+            Some(None) => {
                continue;
             }
-            Some((e_type, param_index)) => Some((param_index, roland_type_to_extended_type(e_type))),
+            Some(Some((e_type, param_index))) => Some((param_index, roland_type_to_extended_type(e_type))),
             None => None,
          };
          writeln!(ctx.buf, "   %v{} =l alloc{} {}", i, alignment, sz).unwrap();

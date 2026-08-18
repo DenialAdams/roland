@@ -1,0 +1,19 @@
+struct S {
+   x: u64,
+}
+
+proc main() {
+   println(uint_to_string(foo(S { x: 1 }, 2, 3)));
+}
+
+proc foo(a: S, b: u64, c: u64) -> u64 {
+   increment(&b);
+   return a.x + b + c;
+}
+
+proc increment(x: &u64) {
+   x~ = x~ + 1;
+}
+__END__
+run:
+7
