@@ -289,9 +289,6 @@ pub fn assign_variables_to_registers_and_mem(
             continue;
          }
 
-         let reg = total_registers;
-         total_registers += 1;
-
          let sk = type_to_slot_kind(
             body.locals.get(&var).unwrap(),
             escaping_vars.contains(&var),
@@ -299,22 +296,33 @@ pub fn assign_variables_to_registers_and_mem(
             config.target.base_target(),
          );
 
-         if matches!(sk, VarSlotKind::Stack(_)) {
-            // variable must live on the stack.
-            // however, this var is a parameter, so we still need to offset
-            // the register count
-            if typ.is_aggregate() {
-               free_slots
-                  .entry(VarSlotKind::Register(
-                     if config.target.base_target().lowered_ptr_width() == IntWidth::Eight {
-                        RegisterType::I64
-                     } else {
-                        RegisterType::I32
-                     },
-                  ))
-                  .or_default()
-                  .push(VarSlot::Register(reg));
-            } else if escaping_vars.contains(&var) {
+         match sk {
+            VarSlotKind::Stack(_) if typ.is_aggregate() => {
+               match config.target.base_target() {
+                  BaseTarget::Wasm => {
+                     // The parameter is a register and we copy the data manually
+                     // After that it's free for the remainder of the procedure, so
+                     // mark it as such now
+                     free_slots
+                        .entry(VarSlotKind::Register(
+                           if config.target.base_target().lowered_ptr_width() == IntWidth::Eight {
+                              RegisterType::I64
+                           } else {
+                              RegisterType::I32
+                           },
+                        ))
+                        .or_default()
+                        .push(VarSlot::Register(total_registers));
+                     total_registers += 1;
+                  }
+                  BaseTarget::Qbe => {
+                     // The parameter is stack all the way
+                     // We'll just let it be assigned normally
+                  }
+               }
+            }
+            VarSlotKind::Stack(_) => {
+               debug_assert!(escaping_vars.contains(&var));
                // Pretend the var is not escaping
                let param_sk = type_to_slot_kind(
                   body.locals.get(&var).unwrap(),
@@ -323,13 +331,22 @@ pub fn assign_variables_to_registers_and_mem(
                   config.target.base_target(),
                );
                debug_assert!(matches!(param_sk, VarSlotKind::Register(_)));
-               free_slots.entry(param_sk).or_default().push(VarSlot::Register(reg));
+               // Again, we will copy it to memory at the function boundary.
+               // The slot is fair game to be used for the remainder of the proc.
+               free_slots
+                  .entry(param_sk)
+                  .or_default()
+                  .push(VarSlot::Register(total_registers));
+               total_registers += 1;
             }
-            continue;
+            VarSlotKind::Register(_) => {
+               // Assign the slot eagerly now. After this, all new registers
+               // will also be put in non_param_registers
+               active.push(var);
+               result.var_to_slot.insert(var, VarSlot::Register(total_registers));
+               total_registers += 1;
+            }
          }
-
-         active.push(var);
-         result.var_to_slot.insert(var, VarSlot::Register(reg));
       }
 
       let live_intervals = &program_liveness[proc_id];

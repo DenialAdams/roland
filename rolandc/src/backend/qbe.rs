@@ -473,17 +473,20 @@ pub fn emit_qbe(
       .unwrap();
       let mut stack_params = HashMap::new();
       let mut p_i = 0;
+      let mut num_register_params = 0;
       for param in procedure.definition.parameters.iter() {
          if let Some(p_type) = roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, &ctx.aggregate_defs) {
             match ctx.var_to_slot.get(&param.var_id).copied() {
                Some(VarSlot::Register(reg)) => {
                   write!(ctx.buf, "{} %r{}, ", p_type, reg).unwrap();
+                  num_register_params += 1;
                }
                Some(VarSlot::Stack(v)) => {
                   if param.p_type.e_type.is_aggregate() {
                      write!(ctx.buf, "{} %v{}, ", p_type, v).unwrap();
                   } else {
                      write!(ctx.buf, "{} %r{}, ", p_type, p_i).unwrap();
+                     num_register_params += 1;
                   }
                   stack_params.insert(v as usize, (&param.p_type.e_type, p_i));
                }
@@ -517,7 +520,7 @@ pub fn emit_qbe(
          }
       }
       for (i, typ) in regalloc_result.procedure_registers[proc_id].iter().enumerate() {
-         let i = i + procedure.definition.parameters.len();
+         let i = i + num_register_params;
          match typ {
             RegisterType::I32 => writeln!(ctx.buf, "   %r{} =w copy 0", i).unwrap(),
             RegisterType::I64 => writeln!(ctx.buf, "   %r{} =l copy 0", i).unwrap(),
