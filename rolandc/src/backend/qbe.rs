@@ -577,7 +577,7 @@ pub fn emit_qbe(
 function {}() {{
 @entry
    call ${}()
-   call $syscall1(l 231, l 0)
+   %bye =l call $syscall1(l 231, l 0)
    hlt
 }}",
       if freestanding { "$_start" } else { "w $main" },
