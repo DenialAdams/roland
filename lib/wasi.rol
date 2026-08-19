@@ -72,23 +72,25 @@ proc println_bool(value: bool) {
    println(bool_to_string(value));
 }
 
-const _WASM_PAGE_SIZE: usize = 65535;
+const _WASM_PAGE_SIZE: usize = 65536;
+const _WASM_MAX_PAGES: usize = 65536;
 
 proc brk(new_break: usize) -> usize {
    // First page is reserved for stack, statics
-   static BRK: usize = _WASM_PAGE_SIZE + 1;
+   static BRK: usize = _WASM_PAGE_SIZE;
 
    if new_break <= BRK {
       return BRK;
    }
 
    let needed_pages = new_break / _WASM_PAGE_SIZE + (new_break % _WASM_PAGE_SIZE != 0) as usize;
-   if needed_pages > 65535 {
+   if needed_pages > _WASM_MAX_PAGES {
       return BRK;
    }
 
-   wasm_memory_grow(needed_pages - wasm_memory_size());
-   BRK = new_break;
+   if wasm_memory_grow(needed_pages - wasm_memory_size()) != USIZE_MAX {
+      BRK = new_break;
+   }
 
    return BRK;
 }
