@@ -1,0 +1,9 @@
+proc main() {
+   const x: u64 = 10;
+   when x == 10 {
+      println("great");
+   }
+}
+__END__
+run:
+great

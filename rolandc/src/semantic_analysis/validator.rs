@@ -1062,12 +1062,21 @@ fn type_statement_inner(
                      global_ast,
                      validation_context,
                   );
-                  if !crate::constant_folding::is_const(&ast.expressions[*expression_id].expression, &ast.expressions)
-                     && !ast.expressions[*expression_id]
-                        .exp_type
-                        .as_ref()
-                        .unwrap()
-                        .is_or_contains_or_points_to_error()
+                  let expr_in_global_ast = clone_expr_into_dest_no_var_replacement(
+                     *expression_id,
+                     &ast.expressions,
+                     global_ast,
+                  );
+                  if crate::constant_folding::is_const(&ast.expressions[*expression_id].expression, &ast.expressions) {
+                     validation_context
+                        .owned
+                        .const_replacements
+                        .insert(*var_id, expr_in_global_ast);
+                  } else if !ast.expressions[*expression_id]
+                     .exp_type
+                     .as_ref()
+                     .unwrap()
+                     .is_or_contains_or_points_to_error()
                   {
                      rolandc_error!(
                         err_manager,
@@ -1075,12 +1084,7 @@ fn type_statement_inner(
                         "Value for const declaration could not be constant folded",
                      );
                   }
-                  // Finally, clone it so that it lives in the global ast, an invariant for all const/static expressions
-                  Some(clone_expr_into_dest_no_var_replacement(
-                     *expression_id,
-                     &ast.expressions,
-                     global_ast,
-                  ))
+                  Some(expr_in_global_ast)
                } else {
                   rolandc_error!(err_manager, *stmt_loc, "Const variables must be declared with a value",);
                   None
