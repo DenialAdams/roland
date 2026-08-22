@@ -1154,6 +1154,38 @@ fn parse_semicolon_terminated_statement(
    parse_context: &mut ParseContext,
    ast: &mut AstPool,
 ) -> Result<Option<StatementId>, ()> {
+   fn parse_var_decl(
+      l: &mut Lexer,
+      parse_context: &mut ParseContext,
+      ast: &mut AstPool,
+      storage: Option<StorageKind>,
+   ) -> Result<Statement, ()> {
+      let _ = l.next();
+      let mut declared_type = None;
+      let variable_name = parse_identifier(l, parse_context)?;
+      if l.peek_token() == Token::Colon {
+         let _ = l.next();
+         declared_type = Some(parse_type(l, parse_context)?);
+      }
+      let e = if l.peek_token() == Token::Semicolon {
+         DeclarationValue::None
+      } else {
+         expect(l, parse_context, Token::Assignment)?;
+         if l.peek_token() == Token::TripleUnderscore {
+            let _ = l.next();
+            DeclarationValue::Uninit
+         } else {
+            DeclarationValue::Expr(parse_expression(l, parse_context, false, &mut ast.expressions)?)
+         }
+      };
+      Ok(Statement::VariableDeclaration {
+         var_name: variable_name,
+         value: e,
+         declared_type,
+         var_id: VariableId::first(),
+         storage,
+      })
+   }
    let next = l.peek_token();
    let begin_source = l.peek_source();
    let stmt = match next {
@@ -1193,68 +1225,9 @@ fn parse_semicolon_terminated_statement(
          );
          return Err(());
       }
-      Token::KeywordConst => {
-         let _ = l.next();
-         let variable_name = parse_identifier(l, parse_context)?;
-         expect(l, parse_context, Token::Colon)?;
-         let const_type = parse_type(l, parse_context)?;
-         expect(l, parse_context, Token::Assignment)?;
-         let exp = parse_expression(l, parse_context, false, &mut ast.expressions)?;
-         Statement::VariableDeclaration {
-            var_name: variable_name,
-            value: DeclarationValue::Expr(exp),
-            declared_type: Some(const_type),
-            var_id: VariableId::first(),
-            storage: Some(StorageKind::Const),
-         }
-      }
-      Token::KeywordStatic => {
-         let _ = l.next();
-         let variable_name = parse_identifier(l, parse_context)?;
-         expect(l, parse_context, Token::Colon)?;
-         let static_type = parse_type(l, parse_context)?;
-         expect(l, parse_context, Token::Assignment)?;
-         let dv = if l.peek_token() == Token::TripleUnderscore {
-            let _ = l.next();
-            DeclarationValue::Uninit
-         } else {
-            DeclarationValue::Expr(parse_expression(l, parse_context, false, &mut ast.expressions)?)
-         };
-         Statement::VariableDeclaration {
-            var_name: variable_name,
-            value: dv,
-            declared_type: Some(static_type),
-            var_id: VariableId::first(),
-            storage: Some(StorageKind::Static),
-         }
-      }
-      Token::KeywordLet => {
-         let _ = l.next();
-         let mut declared_type = None;
-         let variable_name = parse_identifier(l, parse_context)?;
-         if l.peek_token() == Token::Colon {
-            let _ = l.next();
-            declared_type = Some(parse_type(l, parse_context)?);
-         }
-         let e = if l.peek_token() == Token::Semicolon {
-            DeclarationValue::None
-         } else {
-            expect(l, parse_context, Token::Assignment)?;
-            if l.peek_token() == Token::TripleUnderscore {
-               let _ = l.next();
-               DeclarationValue::Uninit
-            } else {
-               DeclarationValue::Expr(parse_expression(l, parse_context, false, &mut ast.expressions)?)
-            }
-         };
-         Statement::VariableDeclaration {
-            var_name: variable_name,
-            value: e,
-            declared_type,
-            var_id: VariableId::first(),
-            storage: None,
-         }
-      }
+      Token::KeywordConst => parse_var_decl(l, parse_context, ast, Some(StorageKind::Const))?,
+      Token::KeywordStatic => parse_var_decl(l, parse_context, ast, Some(StorageKind::Static))?,
+      Token::KeywordLet => parse_var_decl(l, parse_context, ast, None)?,
       x if token_starts_expression(x) => {
          let e = parse_expression(l, parse_context, false, &mut ast.expressions)?;
          match l.peek_token() {

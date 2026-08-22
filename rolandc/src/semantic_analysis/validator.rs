@@ -1052,7 +1052,6 @@ fn type_statement_inner(
 
          *var_id = declare_variable(err_manager, id, validation_context);
 
-         //
          match storage {
             Some(StorageKind::Const) => {
                let initializer = if let DeclarationValue::Expr(expression_id) = opt_enid {
@@ -1064,7 +1063,11 @@ fn type_statement_inner(
                      validation_context,
                   );
                   if !crate::constant_folding::is_const(&ast.expressions[*expression_id].expression, &ast.expressions)
-                     && !ast.expressions[*expression_id].exp_type.as_ref().unwrap().is_or_contains_or_points_to_error()
+                     && !ast.expressions[*expression_id]
+                        .exp_type
+                        .as_ref()
+                        .unwrap()
+                        .is_or_contains_or_points_to_error()
                   {
                      rolandc_error!(
                         err_manager,
@@ -1079,8 +1082,6 @@ fn type_statement_inner(
                      global_ast,
                   ))
                } else {
-                  // This is actually unreachable right now because it's a parse error.
-                  // I think we should allow it to parse, the semantic layer seems a more appropriate place to error.
                   rolandc_error!(err_manager, *stmt_loc, "Const variables must be declared with a value",);
                   None
                };
@@ -1096,18 +1097,27 @@ fn type_statement_inner(
                );
             }
             Some(StorageKind::Static) => {
+               let initializer = match opt_enid {
+                  DeclarationValue::Expr(expression_id) => Some(clone_expr_into_dest_no_var_replacement(
+                     *expression_id,
+                     &ast.expressions,
+                     global_ast,
+                  )),
+                  DeclarationValue::Uninit => None,
+                  DeclarationValue::None => {
+                     rolandc_error!(
+                        err_manager,
+                        *stmt_loc,
+                        "Static variables must be declared with a value or explicitly uninitialized",
+                     );
+                     None
+                  }
+               };
                validation_context.global_info.insert(
                   *var_id,
                   GlobalInfo {
                      expr_type: result_type_node,
-                     initializer: match opt_enid {
-                        DeclarationValue::Expr(expression_id) => Some(clone_expr_into_dest_no_var_replacement(
-                           *expression_id,
-                           &ast.expressions,
-                           global_ast,
-                        )),
-                        DeclarationValue::Uninit | DeclarationValue::None => None,
-                     },
+                     initializer,
                      location: *stmt_loc,
                      kind: StorageKind::Static,
                      name: id.str,

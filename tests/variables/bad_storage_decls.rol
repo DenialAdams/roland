@@ -1,0 +1,13 @@
+proc main() {
+   const x: u64 = ___;
+   const y: u64;
+   static z: u64;
+}
+__END__
+compile:
+Const variables must be declared with a value
+↳ line 2, column 4 [tests/variables/bad_storage_decls.rol]
+Const variables must be declared with a value
+↳ line 3, column 4 [tests/variables/bad_storage_decls.rol]
+Static variables must be declared with a value or explicitly uninitialized
+↳ line 4, column 4 [tests/variables/bad_storage_decls.rol]
