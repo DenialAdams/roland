@@ -1,0 +1,9 @@
+proc main() {
+   const y: u64 = x;
+   const x: u64 = 10;
+   println(uint_to_string(y));
+}
+__END__
+compile:
+Encountered undefined symbol `x`
+↳ line 2, column 19 [tests/variables/consts/wrong_assign_order.rol]

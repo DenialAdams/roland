@@ -2,10 +2,11 @@ use std::collections::HashMap;
 
 use indexmap::IndexMap;
 
+use crate::cloner::{Cloner, deep_clone_expr};
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::parse::{
-   AstPool, BlockNode, DeclarationValue, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement,
-   StatementId, StatementNode, VariableId, statement_always_or_never_returns,
+   AstPool, BlockNode, DeclarationValue, Expression, ExpressionNode, ExpressionPool, Program, Statement, StatementId,
+   StatementNode, VariableId, statement_always_or_never_returns,
 };
 use crate::type_data::ExpressionType;
 
@@ -33,24 +34,20 @@ pub fn process_defer_statements(program: &mut Program) {
       num_stmts_at_loop_begin: 0,
    };
 
-   let mut vm = VarMigrator {
+   let mut cloner = DeferCloner {
       mapping: HashMap::new(),
       next_var: &mut program.next_variable,
       local_types: &mut IndexMap::new(),
+      ast: &mut AstPool::new(),
    };
    for body in program.procedure_bodies.values_mut() {
-      vm.local_types = &mut body.locals;
-      defer_block(&mut body.block, &mut ctx, &mut body.ast, &mut vm);
+      cloner.local_types = &mut body.locals;
+      cloner.ast = &mut body.ast;
+      defer_block(&mut body.block, &mut ctx, &mut cloner);
    }
 }
 
-fn insert_deferred_stmt(
-   point: usize,
-   deferred_stmts: &[StatementId],
-   block: &mut BlockNode,
-   ast: &mut AstPool,
-   vm: &mut VarMigrator,
-) {
+fn insert_deferred_stmt(point: usize, deferred_stmts: &[StatementId], block: &mut BlockNode, cloner: &mut DeferCloner) {
    let mut inserted_stmts: usize = 0;
 
    if deferred_stmts.is_empty() {
@@ -59,37 +56,42 @@ fn insert_deferred_stmt(
       return;
    }
 
-   if let Some(Statement::Return(e)) = block.statements.get(point).map(|i| &ast.statements[*i].statement) {
+   if let Some(Statement::Return(e)) = block
+      .statements
+      .get(point)
+      .map(|i| &cloner.ast.statements[*i].statement)
+   {
       let e = *e;
-      if expression_could_have_side_effects(e, &ast.expressions) {
+      if expression_could_have_side_effects(e, &cloner.ast.expressions) {
          // We want the deferred statement to semantically execute AFTER the returned expression
          // So, we hoist before inserting the deferred stmt.
          let temp = {
-            let var_id = *vm.next_var;
-            *vm.next_var = vm.next_var.next();
-            vm.local_types
-               .insert(var_id, ast.expressions[e].exp_type.clone().unwrap());
+            let var_id = *cloner.next_var;
+            *cloner.next_var = cloner.next_var.next();
+            cloner
+               .local_types
+               .insert(var_id, cloner.ast.expressions[e].exp_type.clone().unwrap());
             var_id
          };
 
-         let location = ast.expressions[e].location;
+         let location = cloner.ast.expressions[e].location;
 
          let temp_expression_node = ExpressionNode {
             expression: Expression::Variable(temp),
-            exp_type: ast.expressions[e].exp_type.clone(),
+            exp_type: cloner.ast.expressions[e].exp_type.clone(),
             location,
          };
 
          let temp_assign = {
-            let lhs = ast.expressions.insert(temp_expression_node);
-            let rhs = ast.expressions.insert(ast.expressions[e].clone());
-            ast.statements.insert(StatementNode {
+            let lhs = cloner.ast.expressions.insert(temp_expression_node);
+            let rhs = cloner.ast.expressions.insert(cloner.ast.expressions[e].clone());
+            cloner.ast.statements.insert(StatementNode {
                statement: Statement::Assignment(lhs, rhs),
                location,
             })
          };
          block.statements.insert(point, temp_assign);
-         ast.expressions[e].expression = Expression::Variable(temp);
+         cloner.ast.expressions[e].expression = Expression::Variable(temp);
 
          inserted_stmts += 1;
       }
@@ -97,29 +99,29 @@ fn insert_deferred_stmt(
 
    for stmt in deferred_stmts.iter().rev().copied() {
       // Clearing the mapping here is correct, as long as we are going from the innermost defer out
-      vm.mapping.clear();
-      let new_stmt = deep_clone_stmt(stmt, ast, vm);
+      cloner.mapping.clear();
+      let new_stmt = deep_clone_stmt(stmt, cloner);
       block.statements.insert(point + inserted_stmts, new_stmt);
       inserted_stmts += 1;
    }
 }
 
-fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, ast: &mut AstPool, vm: &mut VarMigrator) {
+fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, cloner: &mut DeferCloner) {
    let deferred_stmts_before = defer_ctx.deferred_stmts.len();
    let insertion_points_before = defer_ctx.insertion_points.len();
    for (current_stmt, statement) in block.statements.iter().copied().enumerate() {
-      defer_statement(statement, defer_ctx, ast, current_stmt, vm);
+      defer_statement(statement, defer_ctx, current_stmt, cloner);
    }
 
    if !block
       .statements
       .last()
       .copied()
-      .is_some_and(|x| statement_always_or_never_returns(x, ast))
+      .is_some_and(|x| statement_always_or_never_returns(x, cloner.ast))
    {
       // Falling out of the scope
       let deferred_stmts = &defer_ctx.deferred_stmts[deferred_stmts_before..];
-      insert_deferred_stmt(block.statements.len(), deferred_stmts, block, ast, vm);
+      insert_deferred_stmt(block.statements.len(), deferred_stmts, block, cloner);
    }
 
    for point_details in defer_ctx.insertion_points.drain(insertion_points_before..).rev() {
@@ -127,24 +129,23 @@ fn defer_block(block: &mut BlockNode, defer_ctx: &mut DeferContext, ast: &mut As
          CfKind::Loop => &defer_ctx.deferred_stmts[defer_ctx.num_stmts_at_loop_begin..point_details.num_stmts_at_point],
          CfKind::Return => &defer_ctx.deferred_stmts[..point_details.num_stmts_at_point],
       };
-      insert_deferred_stmt(point_details.insert_at, deferred_stmts, block, ast, vm);
+      insert_deferred_stmt(point_details.insert_at, deferred_stmts, block, cloner);
    }
 
    defer_ctx.deferred_stmts.truncate(deferred_stmts_before);
 
    block
       .statements
-      .retain(|x| !matches!(ast.statements[*x].statement, Statement::Defer(_)));
+      .retain(|x| !matches!(cloner.ast.statements[*x].statement, Statement::Defer(_)));
 }
 
 fn defer_statement(
    statement: StatementId,
    defer_ctx: &mut DeferContext,
-   ast: &mut AstPool,
    current_statement: usize,
-   vm: &mut VarMigrator,
+   cloner: &mut DeferCloner,
 ) {
-   let mut the_statement = std::mem::replace(&mut ast.statements[statement].statement, Statement::Break);
+   let mut the_statement = std::mem::replace(&mut cloner.ast.statements[statement].statement, Statement::Break);
    match &mut the_statement {
       Statement::Return(_) => {
          defer_ctx.insertion_points.push(InsertionPoint {
@@ -161,7 +162,7 @@ fn defer_statement(
          });
       }
       Statement::Block(block) => {
-         defer_block(block, defer_ctx, ast, vm);
+         defer_block(block, defer_ctx, cloner);
       }
       Statement::IfElse {
          cond: _,
@@ -169,32 +170,33 @@ fn defer_statement(
          otherwise: else_statement,
          constant: _,
       } => {
-         defer_block(if_block, defer_ctx, ast, vm);
-         defer_statement(*else_statement, defer_ctx, ast, current_statement, vm);
+         defer_block(if_block, defer_ctx, cloner);
+         defer_statement(*else_statement, defer_ctx, current_statement, cloner);
       }
       Statement::Loop(block) => {
          let old = defer_ctx.num_stmts_at_loop_begin;
          defer_ctx.num_stmts_at_loop_begin = defer_ctx.deferred_stmts.len();
-         defer_block(block, defer_ctx, ast, vm);
+         defer_block(block, defer_ctx, cloner);
          defer_ctx.num_stmts_at_loop_begin = old;
       }
       Statement::Defer(the_stmt) => {
-         defer_statement(*the_stmt, defer_ctx, ast, current_statement, vm);
+         defer_statement(*the_stmt, defer_ctx, current_statement, cloner);
          defer_ctx.deferred_stmts.push(*the_stmt);
       }
       Statement::Assignment(_, _) | Statement::Expression(_) | Statement::VariableDeclaration { .. } => (),
       Statement::For { .. } | Statement::While(_, _) => unreachable!(),
    }
-   ast.statements[statement].statement = the_statement;
+   cloner.ast.statements[statement].statement = the_statement;
 }
 
-struct VarMigrator<'a> {
+struct DeferCloner<'a> {
    next_var: &'a mut VariableId,
    mapping: HashMap<VariableId, VariableId>,
    local_types: &'a mut IndexMap<VariableId, ExpressionType>,
+   ast: &'a mut AstPool,
 }
 
-impl VarMigrator<'_> {
+impl DeferCloner<'_> {
    fn new_var(&mut self, old_var: VariableId) -> VariableId {
       if let Some(existing_local_type) = self.local_types.get(&old_var) {
          let new_var = std::mem::replace(self.next_var, self.next_var.next());
@@ -210,35 +212,45 @@ impl VarMigrator<'_> {
          old_var
       }
    }
+}
 
+impl Cloner for DeferCloner<'_> {
    fn replacement_var(&self, the_var: VariableId) -> VariableId {
       self.mapping.get(&the_var).copied().unwrap_or(the_var)
    }
+
+   fn src_pool(&self) -> &ExpressionPool {
+      &self.ast.expressions
+   }
+
+   fn dst_pool(&mut self) -> &mut ExpressionPool {
+      &mut self.ast.expressions
+   }
 }
 
-fn deep_clone_block(block: &mut BlockNode, ast: &mut AstPool, vm: &mut VarMigrator) {
+fn deep_clone_block(block: &mut BlockNode, cloner: &mut DeferCloner) {
    for stmt in block.statements.iter_mut() {
-      *stmt = deep_clone_stmt(*stmt, ast, vm);
+      *stmt = deep_clone_stmt(*stmt, cloner);
    }
 }
 
 #[must_use]
-fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool, vm: &mut VarMigrator) -> StatementId {
-   let mut cloned = ast.statements[stmt].clone();
-   match &mut cloned.statement {
+fn deep_clone_stmt(stmt: StatementId, cloner: &mut DeferCloner) -> StatementId {
+   let mut cloned_stmt = cloner.ast.statements[stmt].clone();
+   match &mut cloned_stmt.statement {
       Statement::Assignment(lhs, rhs) => {
-         *lhs = deep_clone_expr(*lhs, &mut ast.expressions, vm);
-         *rhs = deep_clone_expr(*rhs, &mut ast.expressions, vm);
+         *lhs = deep_clone_expr(*lhs, cloner);
+         *rhs = deep_clone_expr(*rhs, cloner);
       }
       Statement::Block(bn) | Statement::Loop(bn) => {
-         deep_clone_block(bn, ast, vm);
+         deep_clone_block(bn, cloner);
       }
       Statement::Continue | Statement::Break => (),
       Statement::Defer(stmt) => {
-         *stmt = deep_clone_stmt(*stmt, ast, vm);
+         *stmt = deep_clone_stmt(*stmt, cloner);
       }
       Statement::Expression(expr) | Statement::Return(expr) => {
-         *expr = deep_clone_expr(*expr, &mut ast.expressions, vm);
+         *expr = deep_clone_expr(*expr, cloner);
       }
       Statement::IfElse {
          cond,
@@ -246,9 +258,9 @@ fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool, vm: &mut VarMigrator) -
          otherwise: else_s,
          constant: _,
       } => {
-         *cond = deep_clone_expr(*cond, &mut ast.expressions, vm);
-         deep_clone_block(then, ast, vm);
-         *else_s = deep_clone_stmt(*else_s, ast, vm);
+         *cond = deep_clone_expr(*cond, cloner);
+         deep_clone_block(then, cloner);
+         *else_s = deep_clone_stmt(*else_s, cloner);
       }
       Statement::VariableDeclaration {
          var_name: _,
@@ -258,65 +270,12 @@ fn deep_clone_stmt(stmt: StatementId, ast: &mut AstPool, vm: &mut VarMigrator) -
          storage: _,
       } => {
          match decl_val {
-            DeclarationValue::Expr(expr_id) => *expr_id = deep_clone_expr(*expr_id, &mut ast.expressions, vm),
+            DeclarationValue::Expr(expr_id) => *expr_id = deep_clone_expr(*expr_id, cloner),
             DeclarationValue::Uninit | DeclarationValue::None => (),
          }
-         *var_id = vm.new_var(*var_id);
+         *var_id = cloner.new_var(*var_id);
       }
       Statement::For { .. } | Statement::While(_, _) => unreachable!(),
    }
-   ast.statements.insert(cloned)
-}
-
-#[must_use]
-fn deep_clone_expr(expr: ExpressionId, expressions: &mut ExpressionPool, vm: &mut VarMigrator) -> ExpressionId {
-   let mut cloned = expressions[expr].clone();
-   match &mut cloned.expression {
-      Expression::IfX(a, b, c) => {
-         *a = deep_clone_expr(*a, expressions, vm);
-         *b = deep_clone_expr(*b, expressions, vm);
-         *c = deep_clone_expr(*c, expressions, vm);
-      }
-      Expression::ProcedureCall { proc_expr, args } => {
-         *proc_expr = deep_clone_expr(*proc_expr, expressions, vm);
-         for arg in args.iter_mut() {
-            arg.expr = deep_clone_expr(arg.expr, expressions, vm);
-         }
-      }
-      Expression::ArrayLiteral(exprs) => {
-         for expr in exprs.iter_mut() {
-            *expr = deep_clone_expr(*expr, expressions, vm);
-         }
-      }
-      Expression::Variable(x) => {
-         *x = vm.replacement_var(*x);
-      }
-      Expression::BinaryOperator { lhs: a, rhs: b, .. } | Expression::ArrayIndex { array: a, index: b } => {
-         *a = deep_clone_expr(*a, expressions, vm);
-         *b = deep_clone_expr(*b, expressions, vm);
-      }
-      Expression::UnaryOperator(_, operand) => {
-         *operand = deep_clone_expr(*operand, expressions, vm);
-      }
-      Expression::StructLiteral(_, field_exprs) => {
-         for field_expr in field_exprs.values_mut().flatten() {
-            *field_expr = deep_clone_expr(*field_expr, expressions, vm);
-         }
-      }
-      Expression::FieldAccess(_, expr) | Expression::Cast { expr, .. } => {
-         *expr = deep_clone_expr(*expr, expressions, vm);
-      }
-      Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_)
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_)
-      | Expression::UnitLiteral
-      | Expression::EnumLiteral(_, _)
-      | Expression::BoundFcnLiteral(_, _) => (),
-      Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _, _)
-      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
-   }
-   expressions.insert(cloned)
+   cloner.ast.statements.insert(cloned_stmt)
 }

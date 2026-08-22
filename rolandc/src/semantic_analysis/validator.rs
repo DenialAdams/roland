@@ -10,6 +10,7 @@ use super::type_inference::{constraint_matches_type_or_try_constrain, lower_unkn
 use super::type_variables::{TypeConstraint, TypeVariableManager};
 use super::{GlobalInfo, OwnedValidationContext, ValidationContext, VariableDetails, VariableScopeKind};
 use crate::Target;
+use crate::cloner::{Cloner, deep_clone_expr};
 use crate::constant_folding::{self, FoldingContext};
 use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::{
@@ -22,7 +23,7 @@ use crate::parse::{
    ExpressionNode, ExpressionPool, ExpressionTypeNode, ProcImplSource, ProcedureId, ProcedureNode, Program, Statement,
    StatementId, StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId, statement_always_or_never_returns,
 };
-use crate::semantic_analysis::{AliasInfo, AliasTarget};
+use crate::semantic_analysis::{AliasInfo, AliasTarget, StorageKind};
 use crate::size_info::{template_type_aware_mem_alignment, template_type_aware_mem_size};
 use crate::source_info::SourceInfo;
 use crate::type_data::{ExpressionType, F32_TYPE, F64_TYPE, I32_TYPE, IntType, U32_TYPE, U64_TYPE, USIZE_TYPE};
@@ -1051,81 +1052,104 @@ fn type_statement_inner(
 
          *var_id = declare_variable(err_manager, id, validation_context);
 
-         if let Some(storage_kind) = storage {
-            validation_context.global_info.insert(
-               *var_id,
-               GlobalInfo {
-                  expr_type: result_type_node,
-                  initializer: match opt_enid {
-                     DeclarationValue::Expr(expression_id) => {
-                        Some(deep_clone_expr(*expression_id, &ast.expressions, global_ast))
-                     }
-                     DeclarationValue::Uninit | DeclarationValue::None => None,
+         //
+         match storage {
+            Some(StorageKind::Const) => {
+               let initializer = if let DeclarationValue::Expr(expression_id) = opt_enid {
+                  fold_expr_id(
+                     *expression_id,
+                     err_manager,
+                     &mut ast.expressions,
+                     global_ast,
+                     validation_context,
+                  );
+                  if !crate::constant_folding::is_const(&ast.expressions[*expression_id].expression, &ast.expressions)
+                     && !ast.expressions[*expression_id].exp_type.as_ref().unwrap().is_or_contains_or_points_to_error()
+                  {
+                     rolandc_error!(
+                        err_manager,
+                        ast.expressions[*expression_id].location,
+                        "Value for const declaration could not be constant folded",
+                     );
+                  }
+                  // Finally, clone it so that it lives in the global ast, an invariant for all const/static expressions
+                  Some(clone_expr_into_dest_no_var_replacement(
+                     *expression_id,
+                     &ast.expressions,
+                     global_ast,
+                  ))
+               } else {
+                  // This is actually unreachable right now because it's a parse error.
+                  // I think we should allow it to parse, the semantic layer seems a more appropriate place to error.
+                  rolandc_error!(err_manager, *stmt_loc, "Const variables must be declared with a value",);
+                  None
+               };
+               validation_context.global_info.insert(
+                  *var_id,
+                  GlobalInfo {
+                     expr_type: result_type_node,
+                     initializer,
+                     location: *stmt_loc,
+                     kind: StorageKind::Const,
+                     name: id.str,
                   },
-                  location: *stmt_loc,
-                  kind: *storage_kind,
-                  name: id.str,
-               },
-            );
-         } else {
-            validation_context
-               .owned
-               .cur_procedure_locals
-               .insert(*var_id, result_type_node.e_type);
+               );
+            }
+            Some(StorageKind::Static) => {
+               validation_context.global_info.insert(
+                  *var_id,
+                  GlobalInfo {
+                     expr_type: result_type_node,
+                     initializer: match opt_enid {
+                        DeclarationValue::Expr(expression_id) => Some(clone_expr_into_dest_no_var_replacement(
+                           *expression_id,
+                           &ast.expressions,
+                           global_ast,
+                        )),
+                        DeclarationValue::Uninit | DeclarationValue::None => None,
+                     },
+                     location: *stmt_loc,
+                     kind: StorageKind::Static,
+                     name: id.str,
+                  },
+               );
+            }
+            None => {
+               validation_context
+                  .owned
+                  .cur_procedure_locals
+                  .insert(*var_id, result_type_node.e_type);
+            }
          }
       }
    }
 }
 
 #[must_use]
-fn deep_clone_expr(expr: ExpressionId, src_ast: &ExpressionPool, dest_ast: &mut ExpressionPool) -> ExpressionId {
-   let mut cloned = src_ast[expr].clone();
-   match &mut cloned.expression {
-      Expression::IfX(a, b, c) => {
-         *a = deep_clone_expr(*a, src_ast, dest_ast);
-         *b = deep_clone_expr(*b, src_ast, dest_ast);
-         *c = deep_clone_expr(*c, src_ast, dest_ast);
-      }
-      Expression::ProcedureCall { proc_expr, args } => {
-         *proc_expr = deep_clone_expr(*proc_expr, src_ast, dest_ast);
-         for arg in args.iter_mut() {
-            arg.expr = deep_clone_expr(arg.expr, src_ast, dest_ast);
-         }
-      }
-      Expression::ArrayLiteral(exprs) => {
-         for expr in exprs.iter_mut() {
-            *expr = deep_clone_expr(*expr, src_ast, dest_ast);
-         }
-      }
-      Expression::BinaryOperator { lhs: a, rhs: b, .. } | Expression::ArrayIndex { array: a, index: b } => {
-         *a = deep_clone_expr(*a, src_ast, dest_ast);
-         *b = deep_clone_expr(*b, src_ast, dest_ast);
-      }
-      Expression::UnaryOperator(_, operand) => {
-         *operand = deep_clone_expr(*operand, src_ast, dest_ast);
-      }
-      Expression::StructLiteral(_, field_exprs) => {
-         for field_expr in field_exprs.values_mut().flatten() {
-            *field_expr = deep_clone_expr(*field_expr, src_ast, dest_ast);
-         }
-      }
-      Expression::FieldAccess(_, expr) | Expression::Cast { expr, .. } => {
-         *expr = deep_clone_expr(*expr, src_ast, dest_ast);
-      }
-      Expression::Variable(_)
-      | Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_)
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_)
-      | Expression::UnitLiteral
-      | Expression::EnumLiteral(_, _)
-      | Expression::BoundFcnLiteral(_, _) => (),
-      Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _, _)
-      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+fn clone_expr_into_dest_no_var_replacement(
+   expr: ExpressionId,
+   src_ast: &ExpressionPool,
+   dst_ast: &mut ExpressionPool,
+) -> ExpressionId {
+   struct ValidationCloner<'a> {
+      src_ast: &'a ExpressionPool,
+      dst_ast: &'a mut ExpressionPool,
    }
-   dest_ast.insert(cloned)
+   impl Cloner for ValidationCloner<'_> {
+      fn replacement_var(&self, v: VariableId) -> VariableId {
+         v
+      }
+
+      fn src_pool(&self) -> &ExpressionPool {
+         self.src_ast
+      }
+
+      fn dst_pool(&mut self) -> &mut ExpressionPool {
+         self.dst_ast
+      }
+   }
+   let mut cloner = ValidationCloner { src_ast, dst_ast };
+   deep_clone_expr(expr, &mut cloner)
 }
 
 #[must_use]

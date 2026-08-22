@@ -1,0 +1,12 @@
+proc main() {
+   const x: u64 = foo();
+   println(uint_to_string(x));
+}
+
+proc foo() -> u64 {
+   return 123;
+}
+__END__
+compile:
+Value for const declaration could not be constant folded
+↳ line 2, column 19 [tests/variables/consts/const_local_is_not_const.rol]

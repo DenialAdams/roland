@@ -14,6 +14,7 @@
 #![allow(clippy::result_unit_err)] // The error semantics come from the error manager
 
 mod backend;
+mod cloner;
 mod compile_consts;
 mod constant_folding;
 mod dead_code_elimination;
