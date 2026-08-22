@@ -753,8 +753,6 @@ pub fn astify<'a>(
       loop {
          match lexer.peek_token() {
             Token::KeywordProc
-            | Token::KeywordConst
-            | Token::KeywordStatic
             | Token::KeywordImport
             | Token::KeywordLink
             | Token::KeywordStructDef
