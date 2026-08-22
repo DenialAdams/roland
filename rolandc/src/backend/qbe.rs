@@ -621,12 +621,11 @@ function {}() {{
       write!(
          ctx.buf,
          "export
-function {}() {{
+function $_start() {{
 @entry
    call ${}()
-   hlt
+   ret
 }}",
-         if freestanding { "$_start" } else { "w $main" },
          main_proc.unwrap()
       )
       .unwrap();
