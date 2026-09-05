@@ -1207,7 +1207,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
-name = "roland_test_runner"
+name = "roland-test-runner"
 version = "0.1.0"
 dependencies = [
  "os_pipe",
@@ -1237,7 +1237,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rolandc_cli"
+name = "rolandc-cli"
 version = "0.1.0"
 dependencies = [
  "dhat",
@@ -1248,7 +1248,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rolandc_lsp"
+name = "rolandc-lsp"
 version = "0.1.0"
 dependencies = [
  "memchr",

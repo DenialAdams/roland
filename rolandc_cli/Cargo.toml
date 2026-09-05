@@ -1,5 +1,5 @@
 [package]
-name = "rolandc_cli"
+name = "rolandc-cli"
 version = "0.1.0"
 authors = ["Richard McCormack <brick@brick.codes>"]
 edition = "2024"

@@ -1,5 +1,5 @@
 [package]
-name = "roland_test_runner"
+name = "roland-test-runner"
 version = "0.1.0"
 authors = ["Richard McCormack <brick@brick.codes>"]
 edition = "2024"
