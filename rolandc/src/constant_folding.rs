@@ -970,11 +970,10 @@ enum Literal {
 impl Literal {
    fn int_all_ones_value(self) -> u64 {
       match self {
-         Literal::Int8(_) | Literal::Int16(_) | Literal::Int32(_) | Literal::Int64(_) => u64::MAX,
+         Literal::Int8(_) | Literal::Int16(_) | Literal::Int32(_) | Literal::Int64(_) | Literal::Uint64(_) => u64::MAX,
          Literal::Uint8(_) => u64::from(u8::MAX),
          Literal::Uint16(_) => u64::from(u16::MAX),
          Literal::Uint32(_) => u64::from(u32::MAX),
-         Literal::Uint64(_) => u64::MAX,
          _ => unreachable!(),
       }
    }

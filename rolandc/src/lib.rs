@@ -71,6 +71,7 @@ use type_data::{ExpressionType, IntWidth};
 use crate::backend::pointer_analysis::PointsTo;
 use crate::error_handling::error_handling_macros::rolandc_warn;
 use crate::parse::LinkNode;
+use crate::semantic_analysis::symbol_table::SymbolTable;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Target {
@@ -231,7 +232,7 @@ pub fn compile_for_errors(
 
    let mut owned_validation_ctx = OwnedValidationContext {
       target: config.target,
-      variable_types: IndexMap::new(),
+      variable_types: SymbolTable::new(),
       cur_procedure: None,
       loop_depth: 0,
       type_variables: TypeVariableManager::new(),

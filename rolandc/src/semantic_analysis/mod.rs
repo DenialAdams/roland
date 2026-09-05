@@ -12,11 +12,13 @@ use crate::parse::{
    ExpressionId, ExpressionTypeNode, ProcedureId, ProcedureNode, StructId, UserDefinedTypeId, UserDefinedTypeInfo,
    VariableId,
 };
+use crate::semantic_analysis::symbol_table::SymbolTable;
 use crate::size_info::{StructSizeInfo, UnionSizeInfo};
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 
 pub mod definite_assignment;
+pub mod symbol_table;
 pub mod type_and_procedure_info;
 pub mod type_inference;
 pub mod type_variables;
@@ -82,17 +84,10 @@ pub enum VariableScopeKind {
    Global,
 }
 
-pub struct VariableDetails {
-   pub var_id: VariableId,
-   pub declaration_location: SourceInfo,
-   pub kind: VariableScopeKind,
-   pub used: bool,
-}
-
 pub struct OwnedValidationContext {
    pub target: Target,
    pub cur_procedure: Option<ProcedureId>,
-   pub variable_types: IndexMap<StrId, VariableDetails>,
+   pub variable_types: SymbolTable,
    pub loop_depth: u64,
    pub type_variables: TypeVariableManager,
    pub cur_procedure_locals: IndexMap<VariableId, ExpressionType>,

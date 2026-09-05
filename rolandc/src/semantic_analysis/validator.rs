@@ -8,7 +8,7 @@ use slotmap::SlotMap;
 
 use super::type_inference::{constraint_matches_type_or_try_constrain, lower_unknowns_in_type, try_merge_types};
 use super::type_variables::{TypeConstraint, TypeVariableManager};
-use super::{GlobalInfo, OwnedValidationContext, ValidationContext, VariableDetails, VariableScopeKind};
+use super::{GlobalInfo, OwnedValidationContext, ValidationContext, VariableScopeKind};
 use crate::Target;
 use crate::cloner::{Cloner, deep_clone_expr};
 use crate::constant_folding::{self, FoldingContext};
@@ -23,6 +23,7 @@ use crate::parse::{
    ExpressionNode, ExpressionPool, ExpressionTypeNode, ProcImplSource, ProcedureId, ProcedureNode, Program, Statement,
    StatementId, StrNode, UnOp, UserDefinedTypeId, UserDefinedTypeInfo, VariableId, statement_always_or_never_returns,
 };
+use crate::semantic_analysis::symbol_table::{ScopeMarker, VariableDetails};
 use crate::semantic_analysis::{AliasInfo, AliasTarget, StorageKind};
 use crate::size_info::{template_type_aware_mem_alignment, template_type_aware_mem_size};
 use crate::source_info::SourceInfo;
@@ -543,10 +544,10 @@ pub fn type_and_check_validity(
       let proc = &program.procedures[id];
       let body = &mut program.procedure_bodies[id];
       validation_context.owned.cur_procedure = Some(id);
-      let num_globals = validation_context.owned.variable_types.len();
+      let proc_top_scope = validation_context.owned.variable_types.start_scope();
 
       for parameter in proc.definition.parameters.iter() {
-         validation_context.owned.variable_types.insert(
+         validation_context.owned.variable_types.declare(
             parameter.name,
             VariableDetails {
                used: false,
@@ -568,7 +569,7 @@ pub fn type_and_check_validity(
          &mut body.ast,
          &mut validation_context,
       );
-      fall_out_of_scope(err_manager, &mut validation_context, num_globals);
+      fall_out_of_scope(err_manager, &mut validation_context, proc_top_scope);
 
       std::mem::swap(&mut validation_context.owned.cur_procedure_locals, &mut body.locals);
 
@@ -792,7 +793,7 @@ fn type_statement_inner(
             rolandc_error!(err_manager, *stmt_loc, "Inclusive ranges are not currently supported.");
          }
 
-         let vars_before = validation_context.owned.variable_types.len();
+         let for_scope = validation_context.owned.variable_types.start_scope();
          *var_id = declare_variable(err_manager, var, validation_context);
          validation_context
             .owned
@@ -801,7 +802,7 @@ fn type_statement_inner(
 
          type_loop_block(err_manager, bn, global_ast, ast, validation_context);
 
-         fall_out_of_scope(err_manager, validation_context, vars_before);
+         fall_out_of_scope(err_manager, validation_context, for_scope);
       }
       Statement::While(cond, bn) => {
          type_expression(err_manager, *cond, &mut ast.expressions, validation_context);
@@ -1170,7 +1171,7 @@ fn declare_variable(
    validation_context: &mut ValidationContext,
 ) -> VariableId {
    let next_var = validation_context.next_var();
-   if validation_context.owned.variable_types.contains_key(&id.str) {
+   if validation_context.owned.variable_types.is_name_in_scope(id.str) {
       rolandc_error!(
          err_manager,
          id.location,
@@ -1178,7 +1179,7 @@ fn declare_variable(
          validation_context.interner.lookup(id.str)
       );
    }
-   validation_context.owned.variable_types.insert(
+   validation_context.owned.variable_types.declare(
       id.str,
       VariableDetails {
          declaration_location: id.location,
@@ -1193,24 +1194,27 @@ fn declare_variable(
 fn fall_out_of_scope(
    err_manager: &mut ErrorManager,
    validation_context: &mut ValidationContext,
-   first_var_in_scope: usize,
+   scope_marker: ScopeMarker,
 ) {
-   for (k, v) in validation_context.owned.variable_types.drain(first_var_in_scope..) {
-      if !v.used {
-         let begin = match v.kind {
-            VariableScopeKind::Parameter => "Parameter",
-            VariableScopeKind::Local => "Local variable",
-            VariableScopeKind::Global => "Global variable",
-         };
-         rolandc_warn!(
-            err_manager,
-            v.declaration_location,
-            "{} `{}` is unused",
-            begin,
-            validation_context.interner.lookup(k),
-         );
-      }
-   }
+   validation_context
+      .owned
+      .variable_types
+      .fall_out_of_scope(scope_marker, |v: &VariableDetails, k: StrId| {
+         if !v.used {
+            let begin = match v.kind {
+               VariableScopeKind::Parameter => "Parameter",
+               VariableScopeKind::Local => "Local variable",
+               VariableScopeKind::Global => "Global variable",
+            };
+            rolandc_warn!(
+               err_manager,
+               v.declaration_location,
+               "{} `{}` is unused",
+               begin,
+               validation_context.interner.lookup(k),
+            );
+         }
+      });
 }
 
 fn type_loop_block(
@@ -1232,13 +1236,13 @@ fn type_block(
    ast: &mut AstPool,
    validation_context: &mut ValidationContext,
 ) {
-   let num_vars = validation_context.owned.variable_types.len();
+   let block_scope = validation_context.owned.variable_types.start_scope();
 
    for statement in bn.statements.iter().copied() {
       type_statement(err_manager, statement, global_ast, ast, validation_context);
    }
 
-   fall_out_of_scope(err_manager, validation_context, num_vars);
+   fall_out_of_scope(err_manager, validation_context, block_scope);
 }
 
 fn type_expression(
@@ -1270,7 +1274,7 @@ fn type_expression(
             *target_type = ExpressionType::CompileError;
          }
       }
-      Expression::UnresolvedVariable(id) => match validation_context.owned.variable_types.get_mut(&id.str) {
+      Expression::UnresolvedVariable(id) => match validation_context.owned.variable_types.get_mut(id.str) {
          Some(var_info) => {
             var_info.used = true;
             validation_context
@@ -2861,7 +2865,7 @@ pub fn check_globals(
 
    // Populate variable resolution with globals
    for gi in validation_context.global_info.iter() {
-      validation_context.owned.variable_types.insert(
+      validation_context.owned.variable_types.declare(
          gi.1.name,
          VariableDetails {
             declaration_location: gi.1.location,
