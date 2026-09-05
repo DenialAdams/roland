@@ -1,0 +1,18 @@
+proc compare(x: f64) {
+   println(uint_to_string((x == x) as u64));
+   println(uint_to_string((x >= x) as u64));
+   println(uint_to_string((x <= x) as u64));
+}
+
+proc main() {
+   compare(0.0 / 0.0);
+   compare(1.0);
+}
+__END__
+run:
+0
+0
+0
+1
+1
+1

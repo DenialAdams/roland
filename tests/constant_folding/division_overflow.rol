@@ -1,0 +1,7 @@
+proc main() {
+   println(int_to_string(-9223372036854775808 / -1));
+}
+__END__
+compile:
+During constant folding, got overflow while dividing
+↳ line 2, column 26 [tests/constant_folding/division_overflow.rol]

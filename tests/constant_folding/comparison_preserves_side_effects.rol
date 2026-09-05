@@ -1,0 +1,33 @@
+proc value() -> u8 {
+   println("called");
+   return 42;
+}
+
+proc main() {
+   println(uint_to_string((value() >= U8_MIN) as u64));
+   println(uint_to_string((value() <= U8_MAX) as u64));
+   println(uint_to_string((value() > U8_MAX) as u64));
+   println(uint_to_string((value() < U8_MIN) as u64));
+   println(uint_to_string((U8_MAX >= value()) as u64));
+   println(uint_to_string((U8_MIN <= value()) as u64));
+   println(uint_to_string((U8_MIN > value()) as u64));
+   println(uint_to_string((U8_MAX < value()) as u64));
+}
+__END__
+run:
+called
+1
+called
+1
+called
+0
+called
+0
+called
+1
+called
+1
+called
+0
+called
+0

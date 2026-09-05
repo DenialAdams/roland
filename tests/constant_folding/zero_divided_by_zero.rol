@@ -1,0 +1,7 @@
+proc main() {
+   println(int_to_string(0 / 0));
+}
+__END__
+compile:
+During constant folding, got a divide by zero
+↳ line 2, column 26 [tests/constant_folding/zero_divided_by_zero.rol]

@@ -379,12 +379,6 @@ fn fold_expr_inner(
          // For some cases, we don't care if either operand is literal
          if !lhs_could_have_side_effects && !rhs_could_have_side_effects && lhs_expr.expression == rhs_expr.expression {
             match operator {
-               BinOp::Divide if !matches!(expr_type, ExpressionType::Float(_)) => {
-                  return Some(Expression::IntLiteral {
-                     val: 1,
-                     synthetic: true,
-                  });
-               }
                BinOp::BitwiseXor => {
                   let expr = match expr_type {
                      ExpressionType::Bool => Expression::BoolLiteral(false),
@@ -396,11 +390,11 @@ fn fold_expr_inner(
                   };
                   return Some(expr);
                }
-               BinOp::GreaterThan | BinOp::LessThan if !matches!(expr_type, ExpressionType::Float(_)) => {
+               BinOp::GreaterThan | BinOp::LessThan if !matches!(lhs_expr.exp_type, Some(ExpressionType::Float(_))) => {
                   return Some(Expression::BoolLiteral(false));
                }
                BinOp::Equality | BinOp::GreaterThanOrEqualTo | BinOp::LessThanOrEqualTo
-                  if !matches!(expr_type, ExpressionType::Float(_)) =>
+                  if !matches!(lhs_expr.exp_type, Some(ExpressionType::Float(_))) =>
                {
                   return Some(Expression::BoolLiteral(true));
                }
@@ -439,32 +433,32 @@ fn fold_expr_inner(
                   let new_expr = lhs_expr.expression.clone();
                   return Some(new_expr);
                }
-               (Some(x), BinOp::GreaterThanOrEqualTo) if x.is_int_min() => {
+               (Some(x), BinOp::GreaterThanOrEqualTo) if x.is_int_min() && !lhs_could_have_side_effects => {
                   return Some(Expression::BoolLiteral(true));
                }
-               (Some(x), BinOp::LessThanOrEqualTo) if x.is_int_max() => {
+               (Some(x), BinOp::LessThanOrEqualTo) if x.is_int_max() && !lhs_could_have_side_effects => {
                   return Some(Expression::BoolLiteral(true));
                }
-               (Some(x), BinOp::GreaterThan) if x.is_int_max() => {
+               (Some(x), BinOp::GreaterThan) if x.is_int_max() && !lhs_could_have_side_effects => {
                   return Some(Expression::BoolLiteral(false));
                }
-               (Some(x), BinOp::LessThan) if x.is_int_min() => {
+               (Some(x), BinOp::LessThan) if x.is_int_min() && !lhs_could_have_side_effects => {
                   return Some(Expression::BoolLiteral(false));
                }
                _ => (),
             }
 
             match (lhs, operator) {
-               (Some(x), BinOp::GreaterThanOrEqualTo) if x.is_int_max() => {
+               (Some(x), BinOp::GreaterThanOrEqualTo) if x.is_int_max() && !rhs_could_have_side_effects => {
                   return Some(Expression::BoolLiteral(true));
                }
-               (Some(x), BinOp::LessThanOrEqualTo) if x.is_int_min() => {
+               (Some(x), BinOp::LessThanOrEqualTo) if x.is_int_min() && !rhs_could_have_side_effects => {
                   return Some(Expression::BoolLiteral(true));
                }
-               (Some(x), BinOp::GreaterThan) if x.is_int_min() => {
+               (Some(x), BinOp::GreaterThan) if x.is_int_min() && !rhs_could_have_side_effects => {
                   return Some(Expression::BoolLiteral(false));
                }
-               (Some(x), BinOp::LessThan) if x.is_int_max() => {
+               (Some(x), BinOp::LessThan) if x.is_int_max() && !rhs_could_have_side_effects => {
                   return Some(Expression::BoolLiteral(false));
                }
                _ => (),
@@ -481,9 +475,9 @@ fn fold_expr_inner(
                return Some(new_expr);
             } else if !non_literal_side_effects {
                match (one_literal, operator) {
-                  (x, BinOp::BitwiseOr) if x.is_int_max() => {
+                  (x, BinOp::BitwiseOr) if x.is_int_all_ones() => {
                      return Some(Expression::IntLiteral {
-                        val: x.int_max_value(),
+                        val: x.int_all_ones_value(),
                         synthetic: true,
                      });
                   }
@@ -568,8 +562,15 @@ fn fold_expr_inner(
                if let Some(v) = lhs.checked_div(rhs) {
                   Some(v)
                } else {
-                  // Divide by 0 handled above
-                  unreachable!();
+                  // Divide by zero is handled above; signed MIN / -1 also overflows.
+                  if let Some(em) = err_manager {
+                     rolandc_error!(
+                        em,
+                        expr_to_fold_location,
+                        "During constant folding, got overflow while dividing",
+                     );
+                  }
+                  None
                }
             }
             BinOp::Remainder => {
@@ -967,18 +968,29 @@ enum Literal {
 }
 
 impl Literal {
-   fn int_max_value(self) -> u64 {
+   fn int_all_ones_value(self) -> u64 {
       match self {
-         Literal::Int8(_) => u64::from(i8::MAX as u8),
-         Literal::Int16(_) => u64::from(i16::MAX as u16),
-         Literal::Int32(_) => u64::from(i32::MAX as u32),
-         Literal::Int64(_) => i64::MAX as u64,
+         Literal::Int8(_) | Literal::Int16(_) | Literal::Int32(_) | Literal::Int64(_) => u64::MAX,
          Literal::Uint8(_) => u64::from(u8::MAX),
          Literal::Uint16(_) => u64::from(u16::MAX),
          Literal::Uint32(_) => u64::from(u32::MAX),
          Literal::Uint64(_) => u64::MAX,
          _ => unreachable!(),
       }
+   }
+
+   fn is_int_all_ones(self) -> bool {
+      matches!(
+         self,
+         Literal::Int8(-1)
+            | Literal::Int16(-1)
+            | Literal::Int32(-1)
+            | Literal::Int64(-1)
+            | Literal::Uint8(u8::MAX)
+            | Literal::Uint16(u16::MAX)
+            | Literal::Uint32(u32::MAX)
+            | Literal::Uint64(u64::MAX)
+      )
    }
 
    fn is_int_min(self) -> bool {
@@ -1970,7 +1982,7 @@ fn is_commutative_noop(literal: Literal, op: BinOp) -> bool {
    (literal.is_int_one() & (op == BinOp::Multiply))
       || (literal.is_int_zero() & (op == BinOp::Add))
       || (literal.is_int_zero() & (op == BinOp::BitwiseOr))
-      || (literal.is_int_max() & (op == BinOp::BitwiseAnd))
+      || (literal.is_int_all_ones() & (op == BinOp::BitwiseAnd))
       || ((literal == Literal::Bool(false)) & (op == BinOp::BitwiseOr))
       || ((literal == Literal::Bool(true)) & (op == BinOp::BitwiseAnd))
       || ((literal == Literal::Bool(false)) & (op == BinOp::LogicalOr))

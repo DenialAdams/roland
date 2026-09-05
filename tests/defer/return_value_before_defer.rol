@@ -1,0 +1,12 @@
+proc value() -> u64 {
+   let x: u64 = 1;
+   defer x = 2;
+   return x;
+}
+
+proc main() {
+   println(uint_to_string(value()));
+}
+__END__
+run:
+1

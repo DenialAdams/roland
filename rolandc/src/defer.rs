@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use indexmap::IndexMap;
 
 use crate::cloner::{Cloner, deep_clone_expr};
-use crate::constant_folding::expression_could_have_side_effects;
+use crate::constant_folding::is_const;
 use crate::parse::{
    AstPool, BlockNode, DeclarationValue, Expression, ExpressionNode, ExpressionPool, Program, Statement, StatementId,
    StatementNode, VariableId, statement_always_or_never_returns,
@@ -62,8 +62,9 @@ fn insert_deferred_stmt(point: usize, deferred_stmts: &[StatementId], block: &mu
       .map(|i| &cloner.ast.statements[*i].statement)
    {
       let e = *e;
-      if expression_could_have_side_effects(e, &cloner.ast.expressions) {
+      if !is_const(&cloner.ast.expressions[e].expression, &cloner.ast.expressions) {
          // We want the deferred statement to semantically execute AFTER the returned expression
+         // Even a read of a variable must happen before a defer can change its value.
          // So, we hoist before inserting the deferred stmt.
          let temp = {
             let var_id = *cloner.next_var;
