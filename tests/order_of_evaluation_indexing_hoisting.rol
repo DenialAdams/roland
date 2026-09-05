@@ -16,10 +16,10 @@ proc b() -> [u8; 2] {
 }
 __END__
 compile:
-Parameter `x` is unused
-↳ line 5, column 10 [tests/order_of_evaluation_indexing_hoisting.rol]
 Parameter `y` is unused
 ↳ line 5, column 17 [tests/order_of_evaluation_indexing_hoisting.rol]
+Parameter `x` is unused
+↳ line 5, column 10 [tests/order_of_evaluation_indexing_hoisting.rol]
 run:
 a
 b

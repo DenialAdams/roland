@@ -4,8 +4,8 @@ proc main() {
 }
 __END__
 compile:
-Local variable `x` is unused
-↳ line 2, column 8 [tests/inference/array_type_inference.rol]
 Local variable `y` is unused
 ↳ line 3, column 8 [tests/inference/array_type_inference.rol]
+Local variable `x` is unused
+↳ line 2, column 8 [tests/inference/array_type_inference.rol]
 run:

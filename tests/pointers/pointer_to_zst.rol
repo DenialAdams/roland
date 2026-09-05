@@ -7,10 +7,10 @@ proc main() {
 }
 __END__
 compile:
-Local variable `y` is unused
-↳ line 4, column 8 [tests/pointers/pointer_to_zst.rol]
 Local variable `z` is unused
 ↳ line 5, column 8 [tests/pointers/pointer_to_zst.rol]
+Local variable `y` is unused
+↳ line 4, column 8 [tests/pointers/pointer_to_zst.rol]
 run:
 side effect
 ok

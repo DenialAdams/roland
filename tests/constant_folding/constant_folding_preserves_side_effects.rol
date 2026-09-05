@@ -9,10 +9,10 @@ proc main() {
 }
 __END__
 compile:
-Local variable `x` is unused
-↳ line 7, column 8 [tests/constant_folding/constant_folding_preserves_side_effects.rol]
 Local variable `y` is unused
 ↳ line 8, column 8 [tests/constant_folding/constant_folding_preserves_side_effects.rol]
+Local variable `x` is unused
+↳ line 7, column 8 [tests/constant_folding/constant_folding_preserves_side_effects.rol]
 run:
 Missiles fired
 Missiles fired

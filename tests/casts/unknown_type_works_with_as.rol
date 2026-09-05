@@ -5,8 +5,8 @@ proc main() {
 }
 __END__
 compile:
-Local variable `y` is unused
-↳ line 3, column 8 [tests/casts/unknown_type_works_with_as.rol]
 Local variable `z` is unused
 ↳ line 4, column 8 [tests/casts/unknown_type_works_with_as.rol]
+Local variable `y` is unused
+↳ line 3, column 8 [tests/casts/unknown_type_works_with_as.rol]
 run:
