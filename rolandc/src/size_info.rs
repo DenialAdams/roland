@@ -26,6 +26,20 @@ pub fn aligned_address(v: u32, a: u32) -> u32 {
    if rem == 0 { v } else { v + (a - rem) }
 }
 
+fn ensure_type_already_processed(
+   t: &ExpressionType,
+   udt: &mut UserDefinedTypeInfo,
+   target: BaseTarget,
+   templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
+) {
+   match t {
+      ExpressionType::Struct(s, _) => calculate_struct_size_info(*s, udt, target, templated_types),
+      ExpressionType::Union(s, _) => calculate_union_size_info(*s, udt, target, templated_types),
+      ExpressionType::Array(bt, _) => ensure_type_already_processed(bt, udt, target, templated_types),
+      _ => (),
+   }
+}
+
 pub fn calculate_union_size_info(
    id: UnionId,
    udt: &mut UserDefinedTypeInfo,
@@ -42,11 +56,7 @@ pub fn calculate_union_size_info(
 
    let ft = std::mem::take(&mut udt.union_info.get_mut(id).unwrap().field_types);
    for field_t in ft.values() {
-      match field_t.e_type {
-         ExpressionType::Struct(s, _) => calculate_struct_size_info(s, udt, target, templated_types),
-         ExpressionType::Union(s, _) => calculate_union_size_info(s, udt, target, templated_types),
-         _ => (),
-      }
+      ensure_type_already_processed(&field_t.e_type, udt, target, templated_types);
    }
    udt.union_info.get_mut(id).unwrap().field_types = ft;
 
@@ -87,11 +97,7 @@ pub fn calculate_struct_size_info(
 
    let ft = std::mem::take(&mut udt.struct_info.get_mut(id).unwrap().field_types);
    for field_t in ft.values() {
-      match field_t.e_type {
-         ExpressionType::Struct(s, _) => calculate_struct_size_info(s, udt, target, templated_types),
-         ExpressionType::Union(s, _) => calculate_union_size_info(s, udt, target, templated_types),
-         _ => (),
-      }
+      ensure_type_already_processed(&field_t.e_type, udt, target, templated_types);
    }
    udt.struct_info.get_mut(id).unwrap().field_types = ft;
 

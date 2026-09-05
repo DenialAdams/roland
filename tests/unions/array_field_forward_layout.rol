@@ -1,0 +1,14 @@
+union Outer {
+   items: [Inner; 2],
+}
+
+union Inner {
+   value: u64,
+}
+
+proc main() {
+   println(uint_to_string(sizeof$<Outer>() as u64));
+}
+__END__
+run:
+16

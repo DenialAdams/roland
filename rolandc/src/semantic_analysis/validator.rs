@@ -1062,11 +1062,8 @@ fn type_statement_inner(
                      global_ast,
                      validation_context,
                   );
-                  let expr_in_global_ast = clone_expr_into_dest_no_var_replacement(
-                     *expression_id,
-                     &ast.expressions,
-                     global_ast,
-                  );
+                  let expr_in_global_ast =
+                     clone_expr_into_dest_no_var_replacement(*expression_id, &ast.expressions, global_ast);
                   if crate::constant_folding::is_const(&ast.expressions[*expression_id].expression, &ast.expressions) {
                      validation_context
                         .owned
