@@ -1,0 +1,14 @@
+static number: u64 = 1;
+
+proc change_number() -> u64 {
+   number = 2;
+   return 3;
+}
+
+proc main() {
+   let result = number + change_number();
+   println(uint_to_string(result));
+}
+__END__
+run:
+4

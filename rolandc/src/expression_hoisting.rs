@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use indexmap::{IndexMap, IndexSet};
 
+use crate::Target;
 use crate::constant_folding::{expression_could_have_side_effects, is_non_aggregate_const};
 use crate::interner::Interner;
 use crate::parse::{
@@ -9,7 +10,7 @@ use crate::parse::{
    StatementNode, UnOp, VariableId,
 };
 use crate::semantic_analysis::GlobalInfo;
-use crate::type_data::{ExpressionType, U8_TYPE, USIZE_TYPE};
+use crate::type_data::{ExpressionType, IntType, U8_TYPE, USIZE_TYPE};
 
 #[derive(Copy, Clone, PartialEq)]
 enum HoistReason {
@@ -38,6 +39,7 @@ struct VvContext<'a> {
    statements_that_need_hoisting: Vec<usize>,
    mode: HoistingMode,
    interner: &'a Interner,
+   target: Target,
 }
 
 impl VvContext<'_> {
@@ -61,7 +63,7 @@ impl VvContext<'_> {
 // 3) Some operations don't make sense without operating on an lvalue (addressof)
 // 4) The constant folder can't fold away an entire expression with side effects, but it can if the side effect is pulled out into a separate statement
 //    - (this is of particular importance for field access - we need to lower all array length queries (which is pure type system info) before the backend)
-pub fn expression_hoisting(program: &mut Program, interner: &Interner, mode: HoistingMode) {
+pub fn expression_hoisting(program: &mut Program, interner: &Interner, mode: HoistingMode, target: Target) {
    let mut vv_context = VvContext {
       cur_procedure_locals: &mut IndexMap::new(),
       pending_hoists: IndexSet::new(),
@@ -71,6 +73,7 @@ pub fn expression_hoisting(program: &mut Program, interner: &Interner, mode: Hoi
       statements_that_need_hoisting: Vec::new(),
       mode,
       interner,
+      target,
    };
 
    for body in program.procedure_bodies.values_mut() {
@@ -112,19 +115,31 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
 
       let location = ast.expressions[expr].location;
 
-      let temp_expression_node = ExpressionNode {
-         expression: Expression::Variable(temp),
-         exp_type: ast.expressions[expr].exp_type.clone(),
-         location,
+      let temp_expression_node = if ctx.mode == HoistingMode::ThreeAddressCode {
+         ExpressionNode {
+            expression: Expression::Variable(temp),
+            exp_type: Some(ExpressionType::Int(IntType {
+               signed: false,
+               width: ctx.target.base_target().lowered_ptr_width(),
+            })),
+            location,
+         }
+      } else {
+         ExpressionNode {
+            expression: Expression::Variable(temp),
+            exp_type: ast.expressions[expr].exp_type.clone(),
+            location,
+         }
       };
 
       let replacement_expr = if ctx.mode == HoistingMode::ThreeAddressCode {
          // the IR has been lowered such that variables are not implicitly converted to rvals
          let var_node = ast.expressions.insert(ExpressionNode {
             expression: Expression::Variable(temp),
-            exp_type: Some(ExpressionType::Pointer(Box::new(
-               ast.expressions[expr].exp_type.clone().unwrap(),
-            ))),
+            exp_type: Some(ExpressionType::Int(IntType {
+               signed: false,
+               width: ctx.target.base_target().lowered_ptr_width(),
+            })),
             location,
          });
          Expression::UnaryOperator(UnOp::Dereference, var_node)
@@ -555,6 +570,8 @@ fn vv_expr(
          let is_literal = is_non_aggregate_const(&expressions[expr_index].expression);
          if is_ifx || (!is_top_level && !is_literal && !is_var && !is_var_deref) {
             ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
+         } else if !is_literal && !is_var && !is_top_level {
+            ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
          }
       }
    }
