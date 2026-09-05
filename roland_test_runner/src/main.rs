@@ -280,7 +280,7 @@ fn main() -> Result<(), &'static str> {
                   .write_all(failure.details.compilation_stderr.as_bytes())
                   .unwrap();
                if let Some(r) = test_details.result.run_output.as_ref() {
-                  test_details.file.write_all(b"\nrun:\n").unwrap();
+                  test_details.file.write_all(b"run:\n").unwrap();
                   test_details.file.write_all(r.as_bytes()).unwrap();
                }
                let current_position = test_details.file.stream_position().unwrap();
