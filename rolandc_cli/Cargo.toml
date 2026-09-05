@@ -10,7 +10,7 @@ rolandc = { path = "../rolandc" }
 dhat = { version = "0.3", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-libwild = "0.9"
+libwild = "0.10"
 
 [target.'cfg(target_env = "musl")'.dependencies]
 mimalloc = "*"
