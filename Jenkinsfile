@@ -56,8 +56,8 @@ pipeline {
                sh 'cp ../roland_site/index.html .'
                sh 'cp ../roland_site/index.js .'
                sh 'cp ../roland_site/stylesheet.css .'
-               sh 'cp ../target/x86_64-pc-windows-gnu/release/rolandc_cli.exe ./rolandc.exe'
-               sh 'cp ../target/x86_64-unknown-linux-musl/release/rolandc_cli ./rolandc'
+               sh 'cp ../target/x86_64-pc-windows-gnu/release/rolandc-cli.exe ./rolandc.exe'
+               sh 'cp ../target/x86_64-unknown-linux-musl/release/rolandc-cli ./rolandc'
                sshagent (credentials: ['jenkins-ssh-nfs']) {
                   sh 'rsync -avr -e "ssh -l flandoo_brickcodes -o StrictHostKeyChecking=no" --exclude ".git" --exclude "pkg@tmp" . ssh.nyc1.nearlyfreespeech.net:/home/public/roland'
                }
@@ -72,8 +72,8 @@ pipeline {
          steps {
             dir('roland-vscode') {
                sh 'npm install'
-               sh 'cp ../target/x86_64-pc-windows-gnu/release/rolandc_lsp.exe .'
-               sh 'cp ../target/x86_64-unknown-linux-musl/release/rolandc_lsp .'
+               sh 'cp ../target/x86_64-pc-windows-gnu/release/rolandc-lsp.exe .'
+               sh 'cp ../target/x86_64-unknown-linux-musl/release/rolandc-lsp .'
                withCredentials([string(credentialsId: 'vsce', variable: 'VSCE_PAT')]) {
                   sh 'vsce publish || true'
                }
