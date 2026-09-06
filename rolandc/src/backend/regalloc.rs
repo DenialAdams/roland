@@ -487,6 +487,10 @@ pub fn kill_self_assignments(program: &mut Program, var_to_slot: &IndexMap<Varia
             let Expression::Variable(r_var) = body.ast.expressions[deref_child].expression else {
                continue;
             };
+            // Wasm globals and locals have separate register index spaces.
+            if program.non_stack_var_info.contains_key(&l_var) != program.non_stack_var_info.contains_key(&r_var) {
+               continue;
+            }
             let lhs_slot = var_to_slot.get(&l_var);
             let rhs_slot = var_to_slot.get(&r_var);
             if lhs_slot.is_none() || lhs_slot != rhs_slot {

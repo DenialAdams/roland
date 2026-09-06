@@ -362,7 +362,12 @@ pub fn compile_for_errors(
 
    variable_declaration_lowering::lower_variable_decls(&mut ctx.program);
 
-   expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::PreConstantFold, config.target);
+   expression_hoisting::expression_hoisting(
+      &mut ctx.program,
+      &ctx.interner,
+      HoistingMode::PreConstantFold,
+      config.target,
+   );
 
    // must run after expression hoisting, so that re-ordering named arguments does not
    // affect side-effect order
@@ -430,7 +435,12 @@ pub fn compile(
    dead_code_elimination::delete_unreachable_procedures_and_globals(&mut ctx.program, &ctx.interner, config.target);
 
    // (introduces usize types, so run this before those are lowered)
-   expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::AggregateLiteralLowering, config.target);
+   expression_hoisting::expression_hoisting(
+      &mut ctx.program,
+      &ctx.interner,
+      HoistingMode::AggregateLiteralLowering,
+      config.target,
+   );
 
    explicit_lval_to_rval::make_lval_to_rval_explicit(&mut ctx.program);
 
@@ -440,7 +450,12 @@ pub fn compile(
    pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target.base_target());
 
    if config.target.base_target() == BaseTarget::Qbe {
-      expression_hoisting::expression_hoisting(&mut ctx.program, &ctx.interner, HoistingMode::ThreeAddressCode, config.target);
+      expression_hoisting::expression_hoisting(
+         &mut ctx.program,
+         &ctx.interner,
+         HoistingMode::ThreeAddressCode,
+         config.target,
+      );
    }
 
    // Convert nested, AST representation into CFG

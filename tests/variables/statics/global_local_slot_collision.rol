@@ -1,0 +1,22 @@
+static VALUE: u64 = 7;
+
+proc read_global(offset: u64) -> u64 {
+   let snapshot = VALUE;
+   return offset + snapshot;
+}
+
+proc write_global(keep: u64, value: u64) -> u64 {
+   VALUE = value;
+   return keep;
+}
+
+proc main() {
+   println(uint_to_string(read_global(0)));
+   println(uint_to_string(write_global(9, 11)));
+   println(uint_to_string(VALUE));
+}
+__END__
+run:
+7
+9
+11

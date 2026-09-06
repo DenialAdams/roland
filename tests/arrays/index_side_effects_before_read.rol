@@ -1,0 +1,17 @@
+static values: [u64; 1] = [1];
+
+proc change_index() -> usize {
+   values[0] = 2;
+   return 0;
+}
+
+proc main() {
+   let result = values[change_index()];
+   println(uint_to_string(result));
+   values[0] = 1;
+   println(uint_to_string(values[change_index()]));
+}
+__END__
+run:
+2
+2

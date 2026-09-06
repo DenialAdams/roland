@@ -1,0 +1,25 @@
+struct S { value: u64, }
+
+proc first() -> u64 {
+   println("first");
+   return 1;
+}
+
+proc second() -> u64 {
+   println("second");
+   return 2;
+}
+
+proc make(named a: u64, named b: u64) -> S {
+   return S { value: a * 10 + b };
+}
+
+proc main() {
+   let result = make(b: first(), a: second()).value;
+   println(uint_to_string(result));
+}
+__END__
+run:
+first
+second
+21

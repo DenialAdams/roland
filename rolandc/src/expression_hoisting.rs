@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::Target;
-use crate::constant_folding::{expression_could_have_side_effects, is_non_aggregate_const};
+use crate::constant_folding::{expression_could_have_side_effects, is_const, is_non_aggregate_const};
 use crate::interner::Interner;
 use crate::parse::{
    AstPool, BlockNode, Expression, ExpressionId, ExpressionNode, ExpressionPool, Program, Statement, StatementId,
@@ -359,6 +359,7 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
             &ast.expressions,
             current_statement,
             ParentCtx::AssignmentLhs,
+            true,
          );
          vv_expr(
             *rhs_expr,
@@ -366,6 +367,7 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
             &ast.expressions,
             current_statement,
             ParentCtx::AssignmentRhs,
+            false,
          );
       }
       Statement::Block(block) | Statement::Loop(block) => {
@@ -384,6 +386,7 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
             &ast.expressions,
             current_statement,
             ParentCtx::IfCondition,
+            false,
          );
          vv_block(if_block, vv_context, ast);
          vv_statement(*else_statement, vv_context, ast, current_statement);
@@ -395,6 +398,7 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
             &ast.expressions,
             current_statement,
             ParentCtx::ExprStmt,
+            false,
          );
       }
       Statement::Return(expr) => {
@@ -404,6 +408,7 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
             &ast.expressions,
             current_statement,
             ParentCtx::Return,
+            false,
          );
       }
       Statement::VariableDeclaration { .. } | Statement::For { .. } | Statement::While(_, _) | Statement::Defer(_) => {
@@ -429,34 +434,38 @@ fn vv_expr(
    expressions: &ExpressionPool,
    current_stmt: usize,
    parent_ctx: ParentCtx,
+   is_lhs_context: bool,
 ) {
    match &expressions[expr_index].expression {
       Expression::ArrayIndex { array, index } => {
-         vv_expr(*array, ctx, expressions, current_stmt, ParentCtx::Expr);
-         vv_expr(*index, ctx, expressions, current_stmt, ParentCtx::Expr);
+         vv_expr(*array, ctx, expressions, current_stmt, ParentCtx::Expr, true);
+         vv_expr(*index, ctx, expressions, current_stmt, ParentCtx::Expr, false);
       }
       Expression::ProcedureCall { args, proc_expr } => {
-         vv_expr(*proc_expr, ctx, expressions, current_stmt, ParentCtx::Expr);
+         vv_expr(*proc_expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
 
          for arg in args.iter() {
-            vv_expr(arg.expr, ctx, expressions, current_stmt, ParentCtx::Expr);
+            vv_expr(arg.expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
          }
       }
       Expression::BinaryOperator { lhs, rhs, .. } => {
-         vv_expr(*lhs, ctx, expressions, current_stmt, ParentCtx::Expr);
-         vv_expr(*rhs, ctx, expressions, current_stmt, ParentCtx::Expr);
+         vv_expr(*lhs, ctx, expressions, current_stmt, ParentCtx::Expr, false);
+         vv_expr(*rhs, ctx, expressions, current_stmt, ParentCtx::Expr, false);
       }
       Expression::StructLiteral(_, field_exprs) => {
          for expr in field_exprs.values().flatten().copied() {
-            vv_expr(expr, ctx, expressions, current_stmt, ParentCtx::Expr);
+            vv_expr(expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
          }
       }
-      Expression::FieldAccess(_, expr) | Expression::UnaryOperator(_, expr) | Expression::Cast { expr, .. } => {
-         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr);
+      Expression::FieldAccess(_, expr) | Expression::UnaryOperator(UnOp::AddressOf, expr) => {
+         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, true);
+      }
+      Expression::UnaryOperator(_, expr) | Expression::Cast { expr, .. } => {
+         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
       }
       Expression::ArrayLiteral(exprs) => {
          for expr in exprs.iter().copied() {
-            vv_expr(expr, ctx, expressions, current_stmt, ParentCtx::Expr);
+            vv_expr(expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
          }
       }
       Expression::IfX(a, b, c) => {
@@ -466,11 +475,11 @@ fn vv_expr(
          // So what we do is we descend into B/C to allow for marking "this statement needs to be hoisted"
          // but then we pretend it didn't happen. Then, during hoisting we descend into the consequent/else
          // blocks that we create to do the marking and hoisting. Simple.
-         vv_expr(*a, ctx, expressions, current_stmt, ParentCtx::Expr);
+         vv_expr(*a, ctx, expressions, current_stmt, ParentCtx::Expr, false);
          let before_len = ctx.exprs_to_hoist.len();
          let before_marked = ctx.pending_hoists.len();
-         vv_expr(*b, ctx, expressions, current_stmt, ParentCtx::Expr);
-         vv_expr(*c, ctx, expressions, current_stmt, ParentCtx::Expr);
+         vv_expr(*b, ctx, expressions, current_stmt, ParentCtx::Expr, false);
+         vv_expr(*c, ctx, expressions, current_stmt, ParentCtx::Expr, false);
          ctx.exprs_to_hoist.truncate(before_len);
          ctx.pending_hoists.truncate(before_marked);
       }
@@ -489,74 +498,83 @@ fn vv_expr(
    }
 
    match ctx.mode {
-      HoistingMode::AggregateLiteralLowering => match &expressions[expr_index].expression {
-         Expression::StringLiteral(_) | Expression::StructLiteral(_, _) | Expression::ArrayLiteral(_) => {
-            ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
-         }
-         Expression::IfX(_, _, _) => {
-            ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
-         }
-         Expression::ProcedureCall { .. } => {
-            let exp_type = expressions[expr_index].exp_type.as_ref().unwrap();
-
-            if parent_ctx == ParentCtx::Expr {
-               let reason = if exp_type.is_aggregate() {
-                  // The point here is that we need to hoist calls where an aggregate is returned, because currently
-                  // a returned aggregate is an address _in the function we just called_, so not hoisting would mean
-                  // that we clobber the aggregate if we make another call.
-                  HoistReason::Must
-               } else {
-                  HoistReason::IfOtherHoisting
-               };
-
-               ctx.mark_expr_for_hoisting(expr_index, current_stmt, reason);
+      HoistingMode::AggregateLiteralLowering => {
+         match &expressions[expr_index].expression {
+            Expression::StringLiteral(_) | Expression::StructLiteral(_, _) | Expression::ArrayLiteral(_) => {
+               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
             }
-         }
-         _ => (),
-      },
-      HoistingMode::PreConstantFold => match &expressions[expr_index].expression {
-         Expression::ProcedureCall { args, proc_expr } => {
-            let mut any_named_arg = false;
-            for arg in args.iter() {
-               any_named_arg |= arg.name.is_some();
-            }
-
-            if any_named_arg {
-               for arg in args.iter() {
-                  if expression_could_have_side_effects(arg.expr, expressions) {
-                     ctx.statements_that_need_hoisting.push(current_stmt);
-                     break;
-                  }
-               }
-            }
-
-            if matches!(
-               expressions[*proc_expr].exp_type.as_ref().unwrap(),
-               ExpressionType::ProcedurePointer { .. }
-            ) && expression_could_have_side_effects(*proc_expr, expressions)
-            {
-               ctx.statements_that_need_hoisting.push(current_stmt);
-            }
-
-            // assumption: procedure call always has side effects
-            // If we eventually decide to come up with a list of pure procedure calls, this needs to be updated
-            // @PureCalls
-            if parent_ctx == ParentCtx::Expr {
+            Expression::IfX(_, _, _) => {
                ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
             }
+            Expression::ProcedureCall { .. } => {
+               let exp_type = expressions[expr_index].exp_type.as_ref().unwrap();
+
+               if parent_ctx == ParentCtx::Expr {
+                  let reason = if exp_type.is_aggregate() {
+                     // The point here is that we need to hoist calls where an aggregate is returned, because currently
+                     // a returned aggregate is an address _in the function we just called_, so not hoisting would mean
+                     // that we clobber the aggregate if we make another call.
+                     HoistReason::Must
+                  } else {
+                     HoistReason::IfOtherHoisting
+                  };
+
+                  ctx.mark_expr_for_hoisting(expr_index, current_stmt, reason);
+               }
+            }
+            _ => (),
          }
-         Expression::UnaryOperator(UnOp::AddressOf, expr)
-         | Expression::FieldAccess(_, expr)
-         | Expression::ArrayIndex { array: expr, .. }
-            if !expressions[*expr].expression.is_lvalue(expressions, ctx.global_info) =>
+         if parent_ctx == ParentCtx::Expr
+            && !is_const(&expressions[expr_index].expression, expressions)
+            && !is_lhs_context
          {
-            ctx.mark_expr_for_hoisting(*expr, current_stmt, HoistReason::Must);
-         }
-         Expression::IfX(_, _, _) => {
             ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
          }
-         _ => (),
-      },
+      }
+      HoistingMode::PreConstantFold => {
+         match &expressions[expr_index].expression {
+            Expression::ProcedureCall { args, proc_expr } => {
+               let mut any_named_arg = false;
+               for arg in args.iter() {
+                  any_named_arg |= arg.name.is_some();
+               }
+
+               if any_named_arg {
+                  for arg in args.iter() {
+                     if expression_could_have_side_effects(arg.expr, expressions) {
+                        ctx.statements_that_need_hoisting.push(current_stmt);
+                        break;
+                     }
+                  }
+               }
+
+               if matches!(
+                  expressions[*proc_expr].exp_type.as_ref().unwrap(),
+                  ExpressionType::ProcedurePointer { .. }
+               ) && expression_could_have_side_effects(*proc_expr, expressions)
+               {
+                  ctx.statements_that_need_hoisting.push(current_stmt);
+               }
+            }
+            Expression::UnaryOperator(UnOp::AddressOf, expr)
+            | Expression::FieldAccess(_, expr)
+            | Expression::ArrayIndex { array: expr, .. }
+               if !expressions[*expr].expression.is_lvalue(expressions, ctx.global_info) =>
+            {
+               ctx.mark_expr_for_hoisting(*expr, current_stmt, HoistReason::Must);
+            }
+            Expression::IfX(_, _, _) => {
+               ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
+            }
+            _ => (),
+         }
+         if parent_ctx == ParentCtx::Expr
+            && !is_const(&expressions[expr_index].expression, expressions)
+            && !is_lhs_context
+         {
+            ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
+         }
+      }
       HoistingMode::ThreeAddressCode => {
          let is_ifx = matches!(expressions[expr_index].expression, Expression::IfX(_, _, _));
          let is_top_level = parent_ctx == ParentCtx::AssignmentRhs || parent_ctx == ParentCtx::ExprStmt;

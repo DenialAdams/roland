@@ -1,0 +1,19 @@
+static value: u64 = 1;
+
+proc change() -> u64 {
+   value = 2;
+   return 3;
+}
+
+proc receive(named a: u64, named b: u64) {
+   println(uint_to_string(a));
+   println(uint_to_string(b));
+}
+
+proc main() {
+   receive(b: value, a: change());
+}
+__END__
+run:
+3
+1

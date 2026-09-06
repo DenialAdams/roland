@@ -1,0 +1,22 @@
+static value: u64 = 1;
+struct S { value: u64, }
+
+proc change() -> u64 {
+   value = 2;
+   return 3;
+}
+
+proc make(named a: u64, named b: u64) -> S {
+   return S { value: a * 10 + b };
+}
+
+proc main() {
+   let s = make(b: value, a: change());
+   println(uint_to_string(s.value));
+   value = 1;
+   println(uint_to_string(make(b: value, a: change()).value));
+}
+__END__
+run:
+31
+31
