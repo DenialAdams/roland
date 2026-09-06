@@ -62,5 +62,10 @@
                 "path": "./syntaxes/roland.tmLanguage.json"
             }
         ]
+    },
+    "allowScripts": {
+        "keytar@7.9.0": true,
+        "esbuild@0.25.12": true,
+        "@vscode/vsce-sign@2.1.0": true
     }
 }
