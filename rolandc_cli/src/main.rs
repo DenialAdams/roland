@@ -294,15 +294,16 @@ fn compile_qbe(
       Err(e) => return Err(QbeCompilationError::QbeInvocation(e)),
    }
 
+   let stem = ssa_path.file_stem().unwrap().to_string_lossy().into_owned();
+
    let program_object_path = assemble_file(&asm_path)?;
-   let mut syscall_lib_path = asm_path.clone();
-   syscall_lib_path.set_file_name(format!("{}_syscall.s", ssa_path.file_stem().unwrap().to_string_lossy()));
-   let syscall_lib_bytes = include_bytes!("syscall.s");
-   File::create(&syscall_lib_path)
-      .unwrap()
-      .write_all(syscall_lib_bytes)
-      .unwrap();
-   let syscall_object_path = assemble_file(&syscall_lib_path)?;
+   let syscall_object_path = {
+      let mut asm_path = asm_path.clone();
+      asm_path.set_file_name(format!("{}_syscall.s", stem));
+      let asm_bytes = include_bytes!("syscall.s");
+      File::create(&asm_path).unwrap().write_all(asm_bytes).unwrap();
+      assemble_file(&asm_path)?
+   };
 
    let the_final_path = if let Some(final_path) = final_path {
       final_path
@@ -312,6 +313,14 @@ fn compile_qbe(
    };
 
    if freestanding {
+      let start_object_path = {
+         let mut asm_path = asm_path.clone();
+         asm_path.set_file_name(format!("{}_start.s", stem));
+         let asm_bytes = include_bytes!("start.s");
+         File::create(&asm_path).unwrap().write_all(asm_bytes).unwrap();
+         assemble_file(&asm_path)?
+      };
+
       let mut linker_args: Vec<OsString> = vec![
          "-nostdlib".into(),
          "--no-dynamic-linker".into(),
@@ -321,6 +330,7 @@ fn compile_qbe(
          the_final_path.into(),
          program_object_path.into(),
          syscall_object_path.into(),
+         start_object_path.into(),
       ];
 
       linker_args.push("--start-group".into());

@@ -534,17 +534,23 @@ fn cleanup_artifacts(mut prog_path: PathBuf, amd64: bool, preserve_artifacts: bo
       }
    }
 
-   // for amd64, delete the .o file. and delete the syscall junk, its always the same.
+   // for amd64, delete the .o file. and delete the .s junk, its always the same.
    if amd64 {
       prog_path.set_extension("o");
       std::fs::remove_file(&prog_path).unwrap();
-      prog_path.set_file_name(format!(
-         "{}_syscall.s",
-         prog_path.file_stem().unwrap().to_string_lossy()
-      ));
-      std::fs::remove_file(&prog_path).unwrap();
-      prog_path.set_extension("o");
-      std::fs::remove_file(&prog_path).unwrap();
+      let stem = prog_path.file_stem().unwrap().to_string_lossy().into_owned();
+      {
+         prog_path.set_file_name(format!("{}_syscall.s", stem));
+         std::fs::remove_file(&prog_path).unwrap();
+         prog_path.set_extension("o");
+         std::fs::remove_file(&prog_path).unwrap();
+      }
+      {
+         prog_path.set_file_name(format!("{}_start.s", stem));
+         std::fs::remove_file(&prog_path).unwrap();
+         prog_path.set_extension("o");
+         std::fs::remove_file(&prog_path).unwrap();
+      }
    }
 }
 

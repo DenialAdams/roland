@@ -585,13 +585,10 @@ pub fn emit_qbe(
    }
 
    if freestanding {
-      // TODO: this is technically wrong because QBE emits a function prologue for _start
-      // which should not be there.
-      // but so far this hasn't caused my any problems.
       write!(
          ctx.buf,
          "export
-function $_start() {{
+function $__roland_entry() {{
 @entry
    call ${}()
    call ${}()
