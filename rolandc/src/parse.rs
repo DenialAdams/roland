@@ -149,6 +149,7 @@ pub struct StaticNode {
    pub static_type: ExpressionTypeNode,
    pub value: Option<ExpressionId>,
    pub location: SourceInfo,
+   pub is_extern: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -588,14 +589,28 @@ fn parse_top_level_items(
       match peeked_token {
          Token::KeywordExtern => {
             let extern_kw = lexer.next();
-            expect(lexer, parse_context, Token::KeywordProc)?;
-            let p = parse_external_procedure(lexer, parse_context, extern_kw.source_info, ProcImplSource::External)?;
-            top.procedures.push(ParsedProcedure { proc: p, body: None });
+            if lexer.peek_token() == Token::KeywordStatic {
+               let _ = lexer.next();
+               let static_node = parse_static_global(lexer, parse_context, extern_kw.source_info, global_ast, true)?;
+               top.statics.push(static_node);
+            } else if lexer.peek_token() == Token::KeywordProc {
+               let _ = lexer.next();
+               let p = parse_no_body_procedure(lexer, parse_context, extern_kw.source_info, ProcImplSource::External)?;
+               top.procedures.push(ParsedProcedure { proc: p, body: None });
+            } else {
+               rolandc_error!(
+                  &mut parse_context.err_manager,
+                  lexer.peek_source(),
+                  "After extern keyword, encountered unexpected {}; was expecting a procedure or static declaration",
+                  lexer.peek_token().for_parse_err(),
+               );
+               return Err(());
+            }
          }
          Token::KeywordBuiltin => {
             let builtin_kw = lexer.next();
             expect(lexer, parse_context, Token::KeywordProc)?;
-            let p = parse_external_procedure(lexer, parse_context, builtin_kw.source_info, ProcImplSource::Builtin)?;
+            let p = parse_no_body_procedure(lexer, parse_context, builtin_kw.source_info, ProcImplSource::Builtin)?;
             top.procedures.push(ParsedProcedure { proc: p, body: None });
          }
          Token::KeywordProc => {
@@ -655,24 +670,9 @@ fn parse_top_level_items(
             });
          }
          Token::KeywordStatic => {
-            let a_static = lexer.next();
-            let variable_name = parse_identifier(lexer, parse_context)?;
-            expect(lexer, parse_context, Token::Colon)?;
-            let static_type = parse_type(lexer, parse_context)?;
-            expect(lexer, parse_context, Token::Assignment)?;
-            let exp = if lexer.peek_token() == Token::TripleUnderscore {
-               let _ = lexer.next();
-               None
-            } else {
-               Some(parse_expression(lexer, parse_context, false, &mut global_ast.lock())?)
-            };
-            let end_token = expect(lexer, parse_context, Token::Semicolon)?;
-            top.statics.push(StaticNode {
-               name: variable_name,
-               static_type,
-               location: merge_locations(a_static.source_info, end_token.source_info),
-               value: exp,
-            });
+            let static_token = lexer.next();
+            let static_node = parse_static_global(lexer, parse_context, static_token.source_info, global_ast, false)?;
+            top.statics.push(static_node);
          }
          Token::Eof => {
             break;
@@ -808,6 +808,37 @@ fn parse_string(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<StrNo
    })
 }
 
+fn parse_static_global(
+   l: &mut Lexer,
+   parse_context: &mut ParseContext,
+   start_source: SourceInfo,
+   global_ast: &Mutex<&'_ mut ExpressionPool>,
+   is_extern: bool,
+) -> Result<StaticNode, ()> {
+   let variable_name = parse_identifier(l, parse_context)?;
+   expect(l, parse_context, Token::Colon)?;
+   let static_type = parse_type(l, parse_context)?;
+   let value = if is_extern {
+      None
+   } else {
+      expect(l, parse_context, Token::Assignment)?;
+      if l.peek_token() == Token::TripleUnderscore {
+         let _ = l.next();
+         None
+      } else {
+         Some(parse_expression(l, parse_context, false, &mut global_ast.lock())?)
+      }
+   };
+   let end_token = expect(l, parse_context, Token::Semicolon)?;
+   Ok(StaticNode {
+      name: variable_name,
+      static_type,
+      location: merge_locations(start_source, end_token.source_info),
+      value,
+      is_extern,
+   })
+}
+
 fn parse_procedure_definition(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<ProcedureDefinition, ()> {
    let procedure_name = parse_identifier(l, parse_context)?;
    let generic_parameters = if l.peek_token() == Token::LessThan {
@@ -893,7 +924,7 @@ fn parse_procedure(
    })
 }
 
-fn parse_external_procedure(
+fn parse_no_body_procedure(
    l: &mut Lexer,
    parse_context: &mut ParseContext,
    source_info: SourceInfo,
@@ -1226,7 +1257,7 @@ fn parse_semicolon_terminated_statement(
          return Err(());
       }
       Token::KeywordConst => parse_var_decl(l, parse_context, ast, Some(StorageKind::Const))?,
-      Token::KeywordStatic => parse_var_decl(l, parse_context, ast, Some(StorageKind::Static))?,
+      Token::KeywordStatic => parse_var_decl(l, parse_context, ast, Some(StorageKind::Static { is_extern: false }))?,
       Token::KeywordLet => parse_var_decl(l, parse_context, ast, None)?,
       x if token_starts_expression(x) => {
          let e = parse_expression(l, parse_context, false, &mut ast.expressions)?;

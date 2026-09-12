@@ -316,6 +316,7 @@ fn compile_qbe(
          "-nostdlib".into(),
          "--no-dynamic-linker".into(),
          "-static".into(),
+         "-pie".into(),
          "-o".into(),
          the_final_path.into(),
          program_object_path.into(),

@@ -65,7 +65,7 @@ pub struct AliasInfo {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum StorageKind {
-   Static,
+   Static { is_extern: bool },
    Const,
 }
 

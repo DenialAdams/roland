@@ -158,3 +158,61 @@ proc openat2(dirfd: i32, path_name: &u8, open_how: &open_how) -> i32 {
 proc write(fd: i32, buf: &u8, nbyte: usize) -> isize {
    return syscall3(1, fd as u64, buf transmute u64, nbyte transmute u64) as isize;
 }
+
+struct Elf64DynEntry {
+   tag: i64,
+   value: u64,
+}
+
+struct Elf64RelocationAndAddend {
+   offset: u64,
+   info: u64,
+   addend: i64,
+}
+
+extern static __ehdr_start: u8;
+extern static _DYNAMIC: Elf64DynEntry;
+proc _roland_start() {
+   const DT_NULL: i64 = 0;
+   const DT_RELA: i64 = 7;
+   const DT_RELASZ: i64 = 8;
+   const DT_RELAENT: i64 = 9;
+   const R_X86_64_NONE: u64 = 0;
+   const R_X86_64_RELATIVE: u64 = 8;
+
+   let base = &__ehdr_start;
+   let dyn = &_DYNAMIC;
+
+   let rela_addr = 0;
+   let rela_size = 0;
+   let rela_ent = 24;
+
+   while (dyn~.tag != DT_NULL) {
+      if (dyn~.tag == DT_RELA) {
+         rela_addr = dyn~.value;
+      } else if (dyn~.tag == DT_RELASZ) {
+         rela_size = dyn~.value;
+      } else if (dyn~.tag == DT_RELAENT) {
+         rela_ent = dyn~.value;
+      }
+
+      dyn = (dyn transmute usize + sizeof$<Elf64DynEntry>()) transmute &Elf64DynEntry;
+   }
+
+   assert(rela_ent == 24);
+
+   let r = (base transmute usize + rela_addr as usize) transmute &Elf64RelocationAndAddend;
+   let end = (r transmute usize + rela_size as usize) transmute &Elf64RelocationAndAddend;
+
+   while (r transmute usize) < (end transmute usize) {
+      let typ = r~.info & 0xFFFFFFFF;
+      if (typ == R_X86_64_RELATIVE) {
+         let w = (base transmute usize + r~.offset as usize) transmute &u64;
+         w~ = (base transmute i64 + r~.addend) as u64;
+      } else if (typ != R_X86_64_NONE) {
+         unreachable();
+      }
+
+      r = (r transmute usize + rela_ent as usize) transmute &Elf64RelocationAndAddend;
+   }
+}

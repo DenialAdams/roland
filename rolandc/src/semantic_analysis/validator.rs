@@ -53,12 +53,26 @@ pub fn get_special_procedures(target: Target, interner: &Interner) -> Box<[Speci
             return_type: ExpressionType::Unit,
          },
       ]),
-      Target::Wasi | Target::QbeFreestanding | Target::QbeHost => Box::new([SpecialProcedure {
+      Target::Wasi | Target::QbeHost => Box::new([SpecialProcedure {
          name: interner.intern("main"),
          required: true,
          input_types: vec![],
          return_type: ExpressionType::Unit,
       }]),
+      Target::QbeFreestanding => Box::new([
+         SpecialProcedure {
+            name: interner.intern("main"),
+            required: true,
+            input_types: vec![],
+            return_type: ExpressionType::Unit,
+         },
+         SpecialProcedure {
+            name: interner.intern("_roland_start"),
+            required: true,
+            input_types: vec![],
+            return_type: ExpressionType::Unit,
+         },
+      ]),
       Target::Microw8 => Box::new([
          SpecialProcedure {
             name: interner.intern("upd"),
@@ -1098,7 +1112,7 @@ fn type_statement_inner(
                   },
                );
             }
-            Some(StorageKind::Static) => {
+            Some(StorageKind::Static { is_extern: _ }) => {
                let initializer = match opt_enid {
                   DeclarationValue::Expr(expression_id) => Some(clone_expr_into_dest_no_var_replacement(
                      *expression_id,
@@ -1121,7 +1135,7 @@ fn type_statement_inner(
                      expr_type: result_type_node,
                      initializer,
                      location: *stmt_loc,
-                     kind: StorageKind::Static,
+                     kind: StorageKind::Static { is_extern: false },
                      name: id.str,
                   },
                );

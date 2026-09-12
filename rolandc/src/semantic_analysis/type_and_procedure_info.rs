@@ -577,13 +577,25 @@ pub fn populate_type_and_procedure_info(
          &program.user_defined_types.alias_info,
       );
 
+      if static_node.is_extern && config.target.base_target() != BaseTarget::Qbe {
+         rolandc_error!(
+            err_manager,
+            static_node.location,
+            "Static `{}` is declared to be external, but external statics are not supported on this target ({})",
+            interner.lookup(static_node.name.str),
+            config.target,
+         );
+      }
+
       if let Some(old_value) = program.non_stack_var_info.insert(
          program.next_variable,
          GlobalInfo {
             expr_type: static_node.static_type,
             initializer: static_node.value,
             location: static_node.location,
-            kind: StorageKind::Static,
+            kind: StorageKind::Static {
+               is_extern: static_node.is_extern,
+            },
             name: static_node.name.str,
          },
       ) {

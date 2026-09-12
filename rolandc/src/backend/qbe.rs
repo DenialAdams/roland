@@ -15,7 +15,7 @@ use crate::parse::{
    ArgumentNode, BinOp, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureId, ProcedureNode,
    UnOp, UserDefinedTypeInfo, VariableId,
 };
-use crate::semantic_analysis::GlobalInfo;
+use crate::semantic_analysis::{GlobalInfo, StorageKind};
 use crate::size_info::sizeof_type_mem;
 use crate::type_data::{
    ExpressionType, F32_TYPE, F64_TYPE, FloatType, FloatWidth, I8_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, IntType, IntWidth,
@@ -341,6 +341,9 @@ pub fn emit_qbe(
    }
 
    for a_global in program.non_stack_var_info.iter() {
+      if matches!(a_global.1.kind, StorageKind::Static { is_extern: true }) {
+         continue;
+      }
       write!(ctx.buf, "data $.v{} = {{ ", a_global.0.0).unwrap();
       match a_global.1.initializer {
          Some(e) => {
@@ -451,6 +454,7 @@ pub fn emit_qbe(
    }
 
    let mut main_proc = None;
+   let mut start_proc = None;
    for (proc_id, procedure) in program.procedures.iter() {
       let Some(body) = program.procedure_bodies.get(proc_id) else {
          continue;
@@ -458,8 +462,13 @@ pub fn emit_qbe(
 
       let mangled_name = mangle(proc_id, &ctx.procedures[proc_id], ctx.interner);
 
-      if interner.lookup(procedure.definition.name.str) == "main" {
-         main_proc = Some(mangled_name);
+      {
+         let str_name = interner.lookup(procedure.definition.name.str);
+         if str_name == "main" {
+            main_proc = Some(mangled_name);
+         } else if str_name == "_roland_start" {
+            start_proc = Some(mangled_name);
+         }
       }
 
       let abi_ret_type = roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs)
@@ -575,19 +584,37 @@ pub fn emit_qbe(
       writeln!(ctx.buf, "}}").unwrap();
    }
 
-   write!(
-      ctx.buf,
-      "export
-function {}() {{
+   if freestanding {
+      // TODO: this is technically wrong because QBE emits a function prologue for _start
+      // which should not be there.
+      // but so far this hasn't caused my any problems.
+      write!(
+         ctx.buf,
+         "export
+function $_start() {{
 @entry
+   call ${}()
    call ${}()
    %bye =l call $syscall1(l 231, l 0)
    hlt
 }}",
-      if freestanding { "$_start" } else { "w $main" },
-      main_proc.unwrap()
-   )
-   .unwrap();
+         start_proc.unwrap(),
+         main_proc.unwrap(),
+      )
+      .unwrap();
+   } else {
+      write!(
+         ctx.buf,
+         "export
+function w $main() {{
+@entry
+   call ${}()
+   ret 0
+}}",
+         main_proc.unwrap(),
+      )
+      .unwrap();
+   }
 
    ctx.buf
 }
@@ -722,8 +749,12 @@ fn emit_bb(cfg: &Cfg, ast: &ExpressionPool, bb: usize, ctx: &mut GenerationConte
                      )
                   }
                   Expression::Variable(v) => {
-                     if ctx.global_info.contains_key(v) {
-                        writeln!(ctx.buf, "copy $.v{}", v.0)
+                     if let Some(info) = ctx.global_info.get(v) {
+                        if matches!(info.kind, StorageKind::Static { is_extern: true }) {
+                           writeln!(ctx.buf, "copy ${}", ctx.interner.lookup(info.name))
+                        } else {
+                           writeln!(ctx.buf, "copy $.v{}", v.0)
+                        }
                      } else {
                         match ctx.var_to_slot.get(v).unwrap() {
                            VarSlot::Register(_) => unreachable!(),

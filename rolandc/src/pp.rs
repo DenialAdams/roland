@@ -238,7 +238,8 @@ fn pp_stmt<W: Write>(stmt: StatementId, ast: &AstPool, pp_ctx: &mut PpCtx<W>) ->
          match storage {
             None => write!(pp_ctx.output, "let "),
             Some(StorageKind::Const) => write!(pp_ctx.output, "const "),
-            Some(StorageKind::Static) => write!(pp_ctx.output, "static "),
+            Some(StorageKind::Static { is_extern: false }) => write!(pp_ctx.output, "static "),
+            Some(StorageKind::Static { is_extern: true }) => write!(pp_ctx.output, "extern static "),
          }?;
          pp_var(*var, pp_ctx)?;
          if let Some(dt) = declared_type {
