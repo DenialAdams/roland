@@ -1,0 +1,13 @@
+proc modify(pointer: &&u64) {
+   pointer~~ = 2;
+}
+
+proc main() {
+   let value: u64 = 1;
+   let pointer = &value;
+   modify(&pointer);
+   println(uint_to_string(value));
+}
+__END__
+run:
+2

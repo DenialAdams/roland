@@ -86,7 +86,9 @@ impl PointerAnalysisData {
          }
          (Some(t1), Some(t2)) => {
             self.join(t1, t2);
-            self.points_to.insert(self.ds.find(new_rep), self.ds.find(t1));
+            // Joining targets can merge them back into this class through a cycle.
+            // Preserve any points-to edge that recursive join established.
+            self.add_points_to(new_rep, t1);
          }
       }
    }
@@ -119,7 +121,7 @@ impl PointerAnalysisData {
             }
          }
          if rep_points_to == self.ds.find(self.unknown) {
-            points_to.insert(i, PointsToOwned::Unknown);
+            points_to.insert(rep, PointsToOwned::Unknown);
          }
       }
       for i in 0..procedure_vars.len() {
@@ -172,7 +174,8 @@ pub fn steensgard<I: IntoIterator<Item = VariableId>>(
       let unknown = ds.add_new_set();
       PointerAnalysisData {
          ds,
-         points_to: HashMap::new(),
+         // Loading a pointer from unknown memory must still produce an unknown pointer.
+         points_to: HashMap::from([(unknown, unknown)]),
          unknown,
       }
    };
