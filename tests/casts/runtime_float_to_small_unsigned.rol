@@ -1,0 +1,32 @@
+proc from_f32(x: f32) {
+   println(uint_to_string((x as u8) as u64));
+   println(uint_to_string((x as u16) as u64));
+}
+
+proc from_f64(x: f64) {
+   println(uint_to_string((x as u8) as u64));
+   println(uint_to_string((x as u16) as u64));
+}
+
+proc main() {
+   from_f32(300.0);
+   from_f32(70000.0);
+   from_f32(-1.0);
+   from_f64(300.0);
+   from_f64(70000.0);
+   from_f64(-1.0);
+}
+__END__
+run:
+255
+300
+255
+65535
+0
+0
+255
+300
+255
+65535
+0
+0

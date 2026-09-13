@@ -1,0 +1,26 @@
+proc convert(x: f64) {
+   println(int_to_string(x as i32 as i64));
+   println(uint_to_string(x as u32 as u64));
+   println(int_to_string(x as i64));
+   println(uint_to_string(x as u64));
+}
+
+proc main() {
+   convert(F64_INFINITY);
+   convert(F64_NEG_INFINITY);
+   convert(0.0 / 0.0);
+}
+__END__
+run:
+2147483647
+4294967295
+9223372036854775807
+18446744073709551615
+-2147483648
+0
+-9223372036854775808
+0
+0
+0
+0
+0
