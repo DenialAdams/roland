@@ -1,0 +1,21 @@
+static target: proc(u64) = &first;
+
+proc first(x: u64) {
+   println(uint_to_string(10 + x));
+}
+
+proc second(x: u64) {
+   println(uint_to_string(20 + x));
+}
+
+proc change() -> u64 {
+   target = &second;
+   return 1;
+}
+
+proc main() {
+   target(change());
+}
+__END__
+run:
+11

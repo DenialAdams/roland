@@ -563,7 +563,10 @@ fn vv_expr(
                if matches!(
                   expressions[*proc_expr].exp_type.as_ref().unwrap(),
                   ExpressionType::ProcedurePointer { .. }
-               ) && expression_could_have_side_effects(*proc_expr, expressions)
+               ) && (expression_could_have_side_effects(*proc_expr, expressions)
+                  || args
+                     .iter()
+                     .any(|arg| expression_could_have_side_effects(arg.expr, expressions)))
                {
                   ctx.statements_that_need_hoisting.push(current_stmt);
                }
