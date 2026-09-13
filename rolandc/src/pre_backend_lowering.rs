@@ -181,6 +181,10 @@ fn replace_cast_expr(
       (&F64_TYPE, &I8_TYPE) => "f64_to_i8",
       (&F32_TYPE, &I16_TYPE) => "f32_to_i16",
       (&F64_TYPE, &I16_TYPE) => "f64_to_i16",
+      (&F32_TYPE, &U8_TYPE) => "f32_to_u8",
+      (&F64_TYPE, &U8_TYPE) => "f64_to_u8",
+      (&F32_TYPE, &U16_TYPE) => "f32_to_u16",
+      (&F64_TYPE, &U16_TYPE) => "f64_to_u16",
       _ => return None,
    };
    let proc_id = procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
