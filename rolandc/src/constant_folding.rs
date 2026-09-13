@@ -773,6 +773,18 @@ fn fold_expr_inner(
             return Some(operand.expression.clone());
          }
 
+         if let Some(literal) = extract_literal(operand, folding_context.target) {
+            return match cast_type {
+               CastType::Transmute => literal.transmute(
+                  expr_type,
+                  &folding_context.user_defined_types.enum_info,
+                  folding_context.global_expressions.unwrap_or(ast),
+                  folding_context.target,
+               ),
+               CastType::As => literal.do_as(expr_type, folding_context.target),
+            };
+         }
+
          // pure bitcasts (not quite a no-op, but we can fold the cast away as long as we preserve the type)
          if sizeof_type_mem(expr_type, folding_context.user_defined_types, folding_context.target)
             == sizeof_type_mem(
@@ -788,19 +800,7 @@ fn fold_expr_inner(
                ExpressionType::Pointer(_) | ExpressionType::Int(_)
             )
          {
-            return Some(operand.expression.clone());
-         }
-
-         if let Some(literal) = extract_literal(operand, folding_context.target) {
-            match cast_type {
-               CastType::Transmute => literal.transmute(
-                  expr_type,
-                  &folding_context.user_defined_types.enum_info,
-                  folding_context.global_expressions.unwrap_or(ast),
-                  folding_context.target,
-               ),
-               CastType::As => literal.do_as(expr_type, folding_context.target),
-            }
+            Some(operand.expression.clone())
          } else {
             None
          }
@@ -1064,48 +1064,38 @@ impl Literal {
          (Literal::Uint64(i), &F64_TYPE) => Expression::FloatLiteral(f64::from_bits(i)),
 
          // float to int/pointer
-         (Literal::Float32(f), &ExpressionType::Int(_) | &ExpressionType::Pointer(_)) => Expression::IntLiteral {
-            val: u64::from(f.to_bits()),
-            synthetic: true,
-         },
-         (Literal::Float64(f), &ExpressionType::Int(_) | &ExpressionType::Pointer(_)) => Expression::IntLiteral {
-            val: f.to_bits(),
-            synthetic: true,
-         },
+         (Literal::Float32(f), &ExpressionType::Int(_) | &ExpressionType::Pointer(_)) => {
+            integer_literal_from_bits(u64::from(f.to_bits()), target_type, target)
+         }
+         (Literal::Float64(f), &ExpressionType::Int(_) | &ExpressionType::Pointer(_)) => {
+            integer_literal_from_bits(f.to_bits(), target_type, target)
+         }
 
          // int to int/pointer
-         (Literal::Int8(i), &I8_TYPE) => Expression::IntLiteral {
-            val: u64::from(i as u8),
-            synthetic: true,
-         },
-         (Literal::Uint8(i), &U8_TYPE) => Expression::IntLiteral {
-            val: u64::from(i),
-            synthetic: true,
-         },
-         (Literal::Int16(i), &I16_TYPE) => Expression::IntLiteral {
-            val: u64::from(i as u16),
-            synthetic: true,
-         },
-         (Literal::Uint16(i), &U16_TYPE) => Expression::IntLiteral {
-            val: u64::from(i),
-            synthetic: true,
-         },
-         (Literal::Int32(i), &U32_TYPE | &I32_TYPE | &ExpressionType::Pointer(_)) => Expression::IntLiteral {
-            val: u64::from(i as u32),
-            synthetic: true,
-         },
-         (Literal::Uint32(i), &U32_TYPE | &I32_TYPE | &ExpressionType::Pointer(_)) => Expression::IntLiteral {
-            val: u64::from(i),
-            synthetic: true,
-         },
-         (Literal::Int64(i), &U64_TYPE | &I64_TYPE | &ExpressionType::Pointer(_)) => Expression::IntLiteral {
-            val: i as u64,
-            synthetic: true,
-         },
-         (Literal::Uint64(i), &U64_TYPE | &I64_TYPE | &ExpressionType::Pointer(_)) => Expression::IntLiteral {
-            val: i,
-            synthetic: true,
-         },
+         (Literal::Int8(i), &ExpressionType::Int(_) | &ExpressionType::Pointer(_)) => {
+            integer_literal_from_bits(i as u64, target_type, target)
+         }
+         (Literal::Uint8(i), &ExpressionType::Int(_) | &ExpressionType::Pointer(_)) => {
+            integer_literal_from_bits(u64::from(i), target_type, target)
+         }
+         (Literal::Int16(i), &ExpressionType::Int(_) | &ExpressionType::Pointer(_)) => {
+            integer_literal_from_bits(i as u64, target_type, target)
+         }
+         (Literal::Uint16(i), &ExpressionType::Int(_) | &ExpressionType::Pointer(_)) => {
+            integer_literal_from_bits(u64::from(i), target_type, target)
+         }
+         (Literal::Int32(i), &ExpressionType::Int(_) | &ExpressionType::Pointer(_)) => {
+            integer_literal_from_bits(i as u64, target_type, target)
+         }
+         (Literal::Uint32(i), &ExpressionType::Int(_) | &ExpressionType::Pointer(_)) => {
+            integer_literal_from_bits(u64::from(i), target_type, target)
+         }
+         (Literal::Int64(i), &ExpressionType::Int(_) | &ExpressionType::Pointer(_)) => {
+            integer_literal_from_bits(i as u64, target_type, target)
+         }
+         (Literal::Uint64(i), &ExpressionType::Int(_) | &ExpressionType::Pointer(_)) => {
+            integer_literal_from_bits(i, target_type, target)
+         }
 
          // enum to anything
          (Literal::Enum(e_id, variant_str), _) => {
@@ -1939,23 +1929,16 @@ fn extract_literal(expr_node: &ExpressionNode, target: BaseTarget) -> Option<Lit
    match &expr_node.expression {
       Expression::IntLiteral { val: x, .. } => {
          let x = *x;
-         match expr_node.exp_type.as_ref().unwrap() {
+         match make_int_type_concrete(expr_node.exp_type.as_ref().unwrap(), target) {
             &I64_TYPE => Some(Literal::Int64(x as i64)),
             &I32_TYPE => Some(Literal::Int32((x as i64).try_into().ok()?)),
             &I16_TYPE => Some(Literal::Int16((x as i64).try_into().ok()?)),
             &I8_TYPE => Some(Literal::Int8((x as i64).try_into().ok()?)),
-            &ISIZE_TYPE => {
-               if target.pointer_width() == 8 {
-                  Some(Literal::Int64(x.try_into().ok()?))
-               } else {
-                  Some(Literal::Int32(x.try_into().ok()?))
-               }
-            }
             &U64_TYPE => Some(Literal::Uint64(x)),
             &U32_TYPE => Some(Literal::Uint32(x.try_into().ok()?)),
             &U16_TYPE => Some(Literal::Uint16(x.try_into().ok()?)),
             &U8_TYPE => Some(Literal::Uint8(x.try_into().ok()?)),
-            &USIZE_TYPE | ExpressionType::Pointer(_) => {
+            ExpressionType::Pointer(_) => {
                if target.pointer_width() == 8 {
                   Some(Literal::Uint64(x))
                } else {
@@ -2071,6 +2054,22 @@ fn deep_clone_literal_expr(
       _ => unreachable!(),
    }
    cloned
+}
+
+fn integer_literal_from_bits(bits: u64, target_type: &ExpressionType, target: BaseTarget) -> Expression {
+   // Signed literals are stored sign-extended to 64 bits, even for smaller types.
+   let val = match make_int_type_concrete(target_type, target) {
+      &I8_TYPE => bits as i8 as u64,
+      &I16_TYPE => bits as i16 as u64,
+      &I32_TYPE => bits as i32 as u64,
+      &U8_TYPE => u64::from(bits as u8),
+      &U16_TYPE => u64::from(bits as u16),
+      &U32_TYPE => u64::from(bits as u32),
+      ExpressionType::Pointer(_) if target.pointer_width() == 4 => u64::from(bits as u32),
+      &I64_TYPE | &U64_TYPE | ExpressionType::Pointer(_) => bits,
+      _ => unreachable!(),
+   };
+   Expression::IntLiteral { val, synthetic: true }
 }
 
 fn make_int_type_concrete(e: &ExpressionType, target: BaseTarget) -> &ExpressionType {

@@ -269,7 +269,10 @@ fn lower_statement(statement: StatementId, ctx: &mut LowerForContext, ast: &mut 
          lower_block(block, ctx, ast);
       }
       Statement::Defer(the_stmt) => {
-         if matches!(ast.statements[*the_stmt].statement, Statement::For { .. }) {
+         if matches!(
+            ast.statements[*the_stmt].statement,
+            Statement::For { .. } | Statement::While(_, _)
+         ) {
             let location = ast.statements[*the_stmt].location;
             let new_block = ast.statements.insert(StatementNode {
                statement: Statement::Block(BlockNode {

@@ -1,0 +1,9 @@
+const NEGATIVE: isize = -2;
+const SUM: isize = NEGATIVE + 3;
+
+proc main() {
+   println(int_to_string(SUM as i64));
+}
+__END__
+run:
+1

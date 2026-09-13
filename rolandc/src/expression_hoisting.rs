@@ -548,6 +548,18 @@ fn vv_expr(
                   }
                }
 
+               // Aggregate arguments must be copied before later arguments can mutate them.
+               // Passing only their addresses would delay the copy until entry to the callee.
+               let mut later_argument_has_side_effects = false;
+               for arg in args.iter().rev() {
+                  if later_argument_has_side_effects && expressions[arg.expr].exp_type.as_ref().unwrap().is_aggregate()
+                  {
+                     ctx.statements_that_need_hoisting.push(current_stmt);
+                     break;
+                  }
+                  later_argument_has_side_effects |= expression_could_have_side_effects(arg.expr, expressions);
+               }
+
                if matches!(
                   expressions[*proc_expr].exp_type.as_ref().unwrap(),
                   ExpressionType::ProcedurePointer { .. }

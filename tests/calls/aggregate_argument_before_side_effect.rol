@@ -1,0 +1,17 @@
+static values: [u64; 1] = [1];
+
+proc change() -> u64 {
+   values[0] = 2;
+   return 0;
+}
+
+proc show(snapshot: [u64; 1], extra: u64) {
+   println(uint_to_string(snapshot[0] + extra));
+}
+
+proc main() {
+   show(values, change());
+}
+__END__
+run:
+1

@@ -1,0 +1,13 @@
+proc main() {
+   let remaining: u32 = 2;
+   defer while remaining > 0 {
+      println(uint_to_string(remaining as u64));
+      remaining = remaining - 1;
+   }
+   println("body");
+}
+__END__
+run:
+body
+2
+1

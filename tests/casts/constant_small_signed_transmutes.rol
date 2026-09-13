@@ -1,0 +1,17 @@
+const SIGNED8: i8 = U8_MAX transmute i8;
+const UNSIGNED8: u8 = SIGNED8 transmute u8;
+const SIGNED16: i16 = U16_MAX transmute i16;
+const UNSIGNED16: u16 = SIGNED16 transmute u16;
+
+proc main() {
+   println(int_to_string(SIGNED8 as i64));
+   println(uint_to_string(UNSIGNED8 as u64));
+   println(int_to_string(SIGNED16 as i64));
+   println(uint_to_string(UNSIGNED16 as u64));
+}
+__END__
+run:
+-1
+255
+-1
+65535

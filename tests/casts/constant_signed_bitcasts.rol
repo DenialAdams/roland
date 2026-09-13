@@ -1,0 +1,21 @@
+const SIGNED: i32 = U32_MAX transmute i32;
+const UNSIGNED: u32 = SIGNED transmute u32;
+const AS_SIGNED: i32 = U32_MAX as i32;
+const AS_UNSIGNED: u32 = SIGNED as u32;
+const F32_NEG: f32 = -1.0;
+const FLOAT_BITS: i32 = F32_NEG transmute i32;
+
+proc main() {
+   println(int_to_string(SIGNED as i64));
+   println(uint_to_string(UNSIGNED as u64));
+   println(int_to_string(AS_SIGNED as i64));
+   println(uint_to_string(AS_UNSIGNED as u64));
+   println(int_to_string(FLOAT_BITS as i64));
+}
+__END__
+run:
+-1
+4294967295
+-1
+4294967295
+-1082130432
