@@ -627,7 +627,7 @@ fn compute_offset(
 fn emit_bb(cfg: &Cfg, ast: &ExpressionPool, bb: usize, ctx: &mut GenerationContext) {
    writeln!(ctx.buf, "@b{}", bb).unwrap();
    for instr in cfg.bbs[bb].instructions.iter() {
-      let mut halt = false; 
+      let mut halt = false;
       match instr {
          CfgInstruction::Nop => (),
          CfgInstruction::Assignment(lid, en) => {
@@ -1312,21 +1312,23 @@ fn emit_call_expr_and_newline(
          let procedure = &ctx.procedures[*id];
          if procedure.impl_source == ProcImplSource::Builtin {
             let instruction = match ctx.interner.lookup(procedure.definition.name.str) {
-               "__f32_to_i32_unchecked" | "__f32_to_i64_unchecked" => "stosi",
-               "__f32_to_u32_unchecked" | "__f32_to_u64_unchecked" => "stoui",
-               "__f64_to_i32_unchecked" | "__f64_to_i64_unchecked" => "dtosi",
-               "__f64_to_u32_unchecked" | "__f64_to_u64_unchecked" => "dtoui",
-               "unreachable" => "hlt",
-               _ => unreachable!(),
+               "__f32_to_i32_unchecked" | "__f32_to_i64_unchecked" => Some("stosi"),
+               "__f32_to_u32_unchecked" | "__f32_to_u64_unchecked" => Some("stoui"),
+               "__f64_to_i32_unchecked" | "__f64_to_i64_unchecked" => Some("dtosi"),
+               "__f64_to_u32_unchecked" | "__f64_to_u64_unchecked" => Some("dtoui"),
+               "unreachable" => Some("hlt"),
+               _ => None,
             };
-            if args.is_empty() {
-               writeln!(ctx.buf, "{}", instruction).unwrap();
-            } else {
-               write!(ctx.buf, "{} ", instruction).unwrap();
-               emit_expr_as_val(args[0].expr, ast, ctx).unwrap();
-               writeln!(ctx.buf).unwrap();
+            if let Some(instruction) = instruction {
+               if args.is_empty() {
+                  writeln!(ctx.buf, "{}", instruction).unwrap();
+               } else {
+                  write!(ctx.buf, "{} ", instruction).unwrap();
+                  emit_expr_as_val(args[0].expr, ast, ctx).unwrap();
+                  writeln!(ctx.buf).unwrap();
+               }
+               return instruction == "hlt";
             }
-            return instruction == "hlt";
          }
          write!(ctx.buf, "call ${}(", mangle(*id, &ctx.procedures[*id], ctx.interner)).unwrap();
          let def = &ctx.procedures[*id].definition;

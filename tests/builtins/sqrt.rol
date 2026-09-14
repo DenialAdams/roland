@@ -1,0 +1,8 @@
+proc main() {
+    println(f32_to_string(sqrt_f32(10.0)));
+    println(f64_to_string(sqrt_f64(10.0)));
+}
+__END__
+run:
+3.1622777E0
+3.1622776601683795E0
