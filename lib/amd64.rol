@@ -261,7 +261,7 @@ struct Elf64RelocationAndAddend {
    addend: i64,
 }
 
-extern static __ehdr_start: u8;
+extern static __ehdr_start: unit;
 extern static _DYNAMIC: Elf64DynEntry;
 proc _roland_start() {
    const DT_NULL: i64 = 0;

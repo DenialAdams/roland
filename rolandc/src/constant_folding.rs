@@ -666,18 +666,6 @@ fn fold_expr_inner(
 
                return Some(Expression::IntLiteral { val, synthetic: true });
             }
-         } else if *op == UnOp::AddressOf
-            && sizeof_type_mem(
-               ast[*expr].exp_type.as_ref().unwrap(),
-               folding_context.user_defined_types,
-               folding_context.target,
-            ) == 0
-            && !expression_could_have_side_effects(*expr, ast)
-         {
-            return Some(Expression::IntLiteral {
-               val: 0,
-               synthetic: true,
-            });
          }
 
          try_fold_and_replace_expr(*expr, err_manager, ast, folding_context, interner);
