@@ -1,0 +1,18 @@
+proc check_f32(x: f32) {
+   assert(x transmute i32 == I32_MIN);
+   assert(x transmute u32 == 2147483648);
+}
+
+proc check_f64(x: f64) {
+   assert(x transmute i64 == I64_MIN);
+   assert(x transmute u64 == 9223372036854775808);
+}
+
+proc main() {
+   check_f32(-0.0);
+   check_f64(-0.0);
+   println("ok");
+}
+__END__
+run:
+ok

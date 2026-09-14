@@ -1,0 +1,46 @@
+proc check<T>(x: T, signed32: i32, unsigned32: u32, signed64: i64, unsigned64: u64) where T: Float {
+   assert(x as i32 == signed32);
+   assert(x as u32 == unsigned32);
+   assert(x as i64 == signed64);
+   assert(x as u64 == unsigned64);
+   when sizeof$<usize>() == 8 {
+      assert(x as isize == signed64 as isize);
+      assert(x as usize == unsigned64 as usize);
+   } else {
+      assert(x as isize == signed32 as isize);
+      assert(x as usize == unsigned32 as usize);
+   }
+}
+
+proc check_both(x: f64, signed32: i32, unsigned32: u32, signed64: i64, unsigned64: u64) {
+   check$<f32>(x as f32, signed32, unsigned32, signed64, unsigned64);
+   check$<f64>(x, signed32, unsigned32, signed64, unsigned64);
+}
+
+proc main() {
+   check_both(1.75, 1, 1, 1, 1);
+   check_both(-1.75, -1, 0, -1, 0);
+   check_both(-0.0, 0, 0, 0, 0);
+   check_both(0.0 / 0.0, 0, 0, 0, 0);
+   check_both(F64_INFINITY, I32_MAX, U32_MAX, I64_MAX, U64_MAX);
+   check_both(F64_NEG_INFINITY, I32_MIN, 0, I64_MIN, 0);
+   check_both(2147483648.0, I32_MAX, 2147483648, 2147483648, 2147483648);
+   check_both(-2147483648.0, I32_MIN, 0, -2147483648, 0);
+   check_both(4294967296.0, I32_MAX, U32_MAX, 4294967296, 4294967296);
+   check_both(9223372036854775808.0, I32_MAX, U32_MAX, I64_MAX, 9223372036854775808);
+   check_both(-9223372036854775808.0, I32_MIN, 0, I64_MIN, 0);
+   check_both(18446744073709551616.0, I32_MAX, U32_MAX, I64_MAX, U64_MAX);
+   // In-range values immediately below each upper cutoff must still truncate.
+   check$<f32>(2147483520.0, 2147483520, 2147483520, 2147483520, 2147483520);
+   check$<f32>(4294967040.0, I32_MAX, 4294967040, 4294967040, 4294967040);
+   check$<f32>(9223371487098961920.0, I32_MAX, U32_MAX, 9223371487098961920, 9223371487098961920);
+   check$<f32>(18446742974197923840.0, I32_MAX, U32_MAX, I64_MAX, 18446742974197923840);
+   check$<f64>(2147483647.75, I32_MAX, 2147483647, 2147483647, 2147483647);
+   check$<f64>(4294967295.5, I32_MAX, U32_MAX, 4294967295, 4294967295);
+   check$<f64>(9223372036854774784.0, I32_MAX, U32_MAX, 9223372036854774784, 9223372036854774784);
+   check$<f64>(18446744073709549568.0, I32_MAX, U32_MAX, I64_MAX, 18446744073709549568);
+   println("ok");
+}
+__END__
+run:
+ok

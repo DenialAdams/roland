@@ -18,8 +18,8 @@ use crate::parse::{
 use crate::semantic_analysis::{GlobalInfo, StorageKind};
 use crate::size_info::sizeof_type_mem;
 use crate::type_data::{
-   ExpressionType, F32_TYPE, F64_TYPE, FloatType, FloatWidth, I8_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, IntType, IntWidth,
-   U8_TYPE, U16_TYPE, U32_TYPE, U64_TYPE,
+   ExpressionType, F32_TYPE, F64_TYPE, FloatWidth, I8_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, IntType, IntWidth, U8_TYPE,
+   U16_TYPE, U32_TYPE, U64_TYPE,
 };
 use crate::{BaseTarget, Program};
 
@@ -550,40 +550,6 @@ pub fn emit_qbe(
       writeln!(ctx.buf, "}}").unwrap();
    }
 
-   for (proc_id, procedure) in program
-      .procedures
-      .iter()
-      .filter(|x| x.1.impl_source == ProcImplSource::Builtin)
-   {
-      if interner.lookup(procedure.definition.name.str) != "unreachable" {
-         // TODO: we should get better about pruning these dead builtins
-         continue;
-      }
-
-      write!(
-         ctx.buf,
-         "function {} ${}(",
-         roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs)
-            .unwrap_or(QbeTypeStr::Text("")),
-         mangle(proc_id, &ctx.procedures[proc_id], ctx.interner)
-      )
-      .unwrap();
-      for (p_i, param) in procedure.definition.parameters.iter().enumerate() {
-         if let Some(param_type) = roland_type_to_abi_type(&param.p_type.e_type, ctx.udt, &ctx.aggregate_defs) {
-            write!(ctx.buf, "{} %p{}, ", param_type, p_i).unwrap();
-         }
-      }
-      writeln!(ctx.buf, ") {{").unwrap();
-      writeln!(ctx.buf, "@entry").unwrap();
-      match interner.lookup(procedure.definition.name.str) {
-         "unreachable" => {
-            writeln!(ctx.buf, "   hlt").unwrap();
-         }
-         _ => unreachable!(),
-      }
-      writeln!(ctx.buf, "}}").unwrap();
-   }
-
    if freestanding {
       write!(
          ctx.buf,
@@ -661,6 +627,7 @@ fn compute_offset(
 fn emit_bb(cfg: &Cfg, ast: &ExpressionPool, bb: usize, ctx: &mut GenerationContext) {
    writeln!(ctx.buf, "@b{}", bb).unwrap();
    for instr in cfg.bbs[bb].instructions.iter() {
+      let mut halt = false; 
       match instr {
          CfgInstruction::Nop => (),
          CfgInstruction::Assignment(lid, en) => {
@@ -1039,25 +1006,9 @@ fn emit_bb(cfg: &Cfg, ast: &ExpressionPool, bb: usize, ctx: &mut GenerationConte
                         (&F32_TYPE, &F64_TYPE) => {
                            write!(ctx.buf, "exts ")
                         }
-                        (
-                           ExpressionType::Float(FloatType { width: src_width }),
-                           ExpressionType::Int(IntType { signed, .. }),
-                        ) => match src_width {
-                           FloatWidth::Eight => {
-                              if *signed {
-                                 write!(ctx.buf, "dtosi ")
-                              } else {
-                                 write!(ctx.buf, "dtoui ")
-                              }
-                           }
-                           FloatWidth::Four => {
-                              if *signed {
-                                 write!(ctx.buf, "stosi ")
-                              } else {
-                                 write!(ctx.buf, "stoui ")
-                              }
-                           }
-                        },
+                        (ExpressionType::Float(_), ExpressionType::Int(_)) => {
+                           unreachable!("float-to-int casts should have been lowered to library calls")
+                        }
                         (
                            ExpressionType::Int(IntType {
                               signed,
@@ -1166,10 +1117,10 @@ fn emit_bb(cfg: &Cfg, ast: &ExpressionPool, bb: usize, ctx: &mut GenerationConte
                      return_abi_type
                   )
                   .unwrap();
-                  emit_call_expr_and_newline(*proc_expr, args, ast, ctx);
+                  halt = emit_call_expr_and_newline(*proc_expr, args, ast, ctx);
                } else {
                   write!(ctx.buf, "   ").unwrap();
-                  emit_call_expr_and_newline(*proc_expr, args, ast, ctx);
+                  halt = emit_call_expr_and_newline(*proc_expr, args, ast, ctx);
                }
             }
             _ => debug_assert!(!expression_could_have_side_effects(*en, ast)),
@@ -1196,6 +1147,9 @@ fn emit_bb(cfg: &Cfg, ast: &ExpressionPool, bb: usize, ctx: &mut GenerationConte
             emit_expr_as_val(*expr, ast, ctx).unwrap();
             writeln!(&mut ctx.buf, ", @b{}, @b{}", then_dest, else_dest).unwrap();
          }
+      }
+      if halt {
+         break;
       }
    }
 }
@@ -1347,7 +1301,7 @@ fn emit_call_expr_and_newline(
    args: &[ArgumentNode],
    ast: &ExpressionPool,
    ctx: &mut GenerationContext,
-) {
+) -> bool {
    enum Arg {
       Expr(ExpressionId),
       VarargSep,
@@ -1355,6 +1309,25 @@ fn emit_call_expr_and_newline(
 
    let opt_num_non_variadic_args = match ast[proc_expr].exp_type.as_ref().unwrap() {
       ExpressionType::ProcedureItem(id, _) => {
+         let procedure = &ctx.procedures[*id];
+         if procedure.impl_source == ProcImplSource::Builtin {
+            let instruction = match ctx.interner.lookup(procedure.definition.name.str) {
+               "__f32_to_i32_unchecked" | "__f32_to_i64_unchecked" => "stosi",
+               "__f32_to_u32_unchecked" | "__f32_to_u64_unchecked" => "stoui",
+               "__f64_to_i32_unchecked" | "__f64_to_i64_unchecked" => "dtosi",
+               "__f64_to_u32_unchecked" | "__f64_to_u64_unchecked" => "dtoui",
+               "unreachable" => "hlt",
+               _ => unreachable!(),
+            };
+            if args.is_empty() {
+               writeln!(ctx.buf, "{}", instruction).unwrap();
+            } else {
+               write!(ctx.buf, "{} ", instruction).unwrap();
+               emit_expr_as_val(args[0].expr, ast, ctx).unwrap();
+               writeln!(ctx.buf).unwrap();
+            }
+            return instruction == "hlt";
+         }
          write!(ctx.buf, "call ${}(", mangle(*id, &ctx.procedures[*id], ctx.interner)).unwrap();
          let def = &ctx.procedures[*id].definition;
          if def.variadic { Some(def.parameters.len()) } else { None }
@@ -1395,4 +1368,5 @@ fn emit_call_expr_and_newline(
       }
    }
    writeln!(ctx.buf, ")").unwrap();
+   false
 }

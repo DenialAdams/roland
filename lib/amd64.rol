@@ -35,6 +35,97 @@ const USIZE_MAX: usize = U64_MAX transmute usize;
 const ISIZE_MIN: isize = I64_MIN transmute isize;
 const ISIZE_MAX: isize = I64_MAX transmute isize;
 
+// MARK: float to int casts
+
+builtin proc __f32_to_i32_unchecked(x: f32) -> i32;
+builtin proc __f32_to_u32_unchecked(x: f32) -> u32;
+builtin proc __f32_to_i64_unchecked(x: f32) -> i64;
+builtin proc __f32_to_u64_unchecked(x: f32) -> u64;
+builtin proc __f64_to_i32_unchecked(x: f64) -> i32;
+builtin proc __f64_to_u32_unchecked(x: f64) -> u32;
+builtin proc __f64_to_i64_unchecked(x: f64) -> i64;
+builtin proc __f64_to_u64_unchecked(x: f64) -> u64;
+
+proc f32_to_i32(x: f32) -> i32 {
+   if isnan_f32(x) {
+      return 0;
+   } else if x <= -2147483648.0 {
+      return I32_MIN;
+   } else if x >= 2147483648.0 {
+      return I32_MAX;
+   }
+   return __f32_to_i32_unchecked(x);
+}
+
+proc f32_to_u32(x: f32) -> u32 {
+   if isnan_f32(x) or x <= 0.0 {
+      return 0;
+   } else if x >= 4294967296.0 {
+      return U32_MAX;
+   }
+   return __f32_to_u32_unchecked(x);
+}
+
+proc f32_to_i64(x: f32) -> i64 {
+   if isnan_f32(x) {
+      return 0;
+   } else if x <= -9223372036854775808.0 {
+      return I64_MIN;
+   } else if x >= 9223372036854775808.0 {
+      return I64_MAX;
+   }
+   return __f32_to_i64_unchecked(x);
+}
+
+proc f32_to_u64(x: f32) -> u64 {
+   if isnan_f32(x) or x <= 0.0 {
+      return 0;
+   } else if x >= 18446744073709551616.0 {
+      return U64_MAX;
+   }
+   return __f32_to_u64_unchecked(x);
+}
+
+proc f64_to_i32(x: f64) -> i32 {
+   if isnan(x) {
+      return 0;
+   } else if x <= -2147483648.0 {
+      return I32_MIN;
+   } else if x >= 2147483648.0 {
+      return I32_MAX;
+   }
+   return __f64_to_i32_unchecked(x);
+}
+
+proc f64_to_u32(x: f64) -> u32 {
+   if isnan(x) or x <= 0.0 {
+      return 0;
+   } else if x >= 4294967296.0 {
+      return U32_MAX;
+   }
+   return __f64_to_u32_unchecked(x);
+}
+
+proc f64_to_i64(x: f64) -> i64 {
+   if isnan(x) {
+      return 0;
+   } else if x <= -9223372036854775808.0 {
+      return I64_MIN;
+   } else if x >= 9223372036854775808.0 {
+      return I64_MAX;
+   }
+   return __f64_to_i64_unchecked(x);
+}
+
+proc f64_to_u64(x: f64) -> u64 {
+   if isnan(x) or x <= 0.0 {
+      return 0;
+   } else if x >= 18446744073709551616.0 {
+      return U64_MAX;
+   }
+   return __f64_to_u64_unchecked(x);
+}
+
 // MARK: small int arithmetic
 
 proc add_u8(x: u8, y: u8) -> u8 {

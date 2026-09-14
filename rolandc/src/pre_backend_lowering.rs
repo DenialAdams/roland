@@ -7,13 +7,16 @@ use crate::backend::linearize::CfgInstruction;
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   ArgumentNode, BinOp, EnumId, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcedureId, Program, UnOp,
-   all_expression_pools_mut,
+   ArgumentNode, BinOp, CastType, EnumId, Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcedureId,
+   Program, UnOp, all_expression_pools_mut,
 };
 use crate::semantic_analysis::EnumInfo;
 use crate::size_info::sizeof_type_mem;
 use crate::source_info::SourceInfo;
-use crate::type_data::{ExpressionType, F32_TYPE, F64_TYPE, I8_TYPE, I16_TYPE, IntType, IntWidth, U8_TYPE, U16_TYPE};
+use crate::type_data::{
+   ExpressionType, F32_TYPE, F64_TYPE, I8_TYPE, I16_TYPE, I32_TYPE, I64_TYPE, ISIZE_TYPE, IntType, IntWidth, U8_TYPE,
+   U16_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE,
+};
 
 fn lower_type(the_type: &mut ExpressionType, enum_info: &SlotMap<EnumId, EnumInfo>, target: BaseTarget) {
    match the_type {
@@ -173,6 +176,7 @@ fn replace_cast_expr(
    ast: &ExpressionPool,
    procedure_name_table: &HashMap<StrId, ProcedureId>,
    interner: &Interner,
+   base_target: BaseTarget,
 ) -> Option<ExpressionNode> {
    let src_type = ast[src].exp_type.as_ref().unwrap();
    let target_type = target.exp_type.as_ref().unwrap();
@@ -185,6 +189,15 @@ fn replace_cast_expr(
       (&F64_TYPE, &U8_TYPE) => "f64_to_u8",
       (&F32_TYPE, &U16_TYPE) => "f32_to_u16",
       (&F64_TYPE, &U16_TYPE) => "f64_to_u16",
+      // WebAssembly has saturating instructions for these casts. QBE uses library helpers.
+      (&F32_TYPE, &I32_TYPE) if base_target == BaseTarget::Qbe => "f32_to_i32",
+      (&F64_TYPE, &I32_TYPE) if base_target == BaseTarget::Qbe => "f64_to_i32",
+      (&F32_TYPE, &U32_TYPE) if base_target == BaseTarget::Qbe => "f32_to_u32",
+      (&F64_TYPE, &U32_TYPE) if base_target == BaseTarget::Qbe => "f64_to_u32",
+      (&F32_TYPE, &I64_TYPE | &ISIZE_TYPE) if base_target == BaseTarget::Qbe => "f32_to_i64",
+      (&F64_TYPE, &I64_TYPE | &ISIZE_TYPE) if base_target == BaseTarget::Qbe => "f64_to_i64",
+      (&F32_TYPE, &U64_TYPE | &USIZE_TYPE) if base_target == BaseTarget::Qbe => "f32_to_u64",
+      (&F64_TYPE, &U64_TYPE | &USIZE_TYPE) if base_target == BaseTarget::Qbe => "f64_to_u64",
       _ => return None,
    };
    let proc_id = procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
@@ -355,9 +368,11 @@ pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, intern
    for ast in all_expression_pools_mut(&mut program.global_exprs, &mut program.procedure_bodies) {
       for (expression, v) in ast.iter() {
          let opt_new_expr = match v.expression {
-            Expression::Cast { expr: src_expr, .. } => {
-               replace_cast_expr(src_expr, v, ast, &program.procedure_name_table, interner)
-            }
+            Expression::Cast {
+               cast_type: CastType::As,
+               expr: src_expr,
+               ..
+            } => replace_cast_expr(src_expr, v, ast, &program.procedure_name_table, interner, target),
             Expression::UnaryOperator(UnOp::Negate, inner_expr) => {
                replace_negate(inner_expr, v.location, ast, &program.procedure_name_table, interner)
             }
