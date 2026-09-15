@@ -389,6 +389,20 @@ fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut As
             false,
          );
          vv_block(if_block, vv_context, ast);
+         
+         // Turn else-ifs into else { if {} } so that the else-if condition can be hoisted
+         // inside of the else, preserving conditional execution
+         if !matches!(ast.statements[*else_statement].statement, Statement::Block(_)) {
+            let location = ast.statements[*else_statement].location;
+            *else_statement = ast.statements.insert(StatementNode {
+               statement: Statement::Block(BlockNode {
+                  statements: vec![*else_statement],
+                  location,
+               }),
+               location,
+            });
+         }
+
          vv_statement(*else_statement, vv_context, ast, current_statement);
       }
       Statement::Expression(expr) => {

@@ -1,0 +1,22 @@
+proc side() -> [u64; 1] {
+   println("side");
+   return [0];
+}
+
+proc check(first: bool) {
+   if first {
+      println("first");
+   } else if side()[0] == 0 {
+      println("second");
+   }
+}
+
+proc main() {
+   check(true);
+   check(false);
+}
+__END__
+run:
+first
+side
+second
