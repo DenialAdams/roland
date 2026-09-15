@@ -86,7 +86,7 @@ pub fn liveness(
          // so that it's cleanly recomputed from gen. otherwise, a block with itself as a predecessor would
          // never be able to lose a bit (so this only matters for loops.)
          // because we are filling address_taken_out with false, we must conservatively mark it as changed,
-         // otherwise if went from N vars address taken => 0 vars adress taken we wouldn't know to re-propagate forward
+         // otherwise if went from N vars address taken => 0 vars address taken we wouldn't know to re-propagate forward
          // TODO: doesn't above reasoning also apply to live_out? should we be clearing that? i can't make an example.
          s.address_taken_out_changed = s.address_taken_out.any();
          s.address_taken_out.fill(false);
