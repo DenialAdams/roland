@@ -307,3 +307,7 @@ proc _roland_start() {
       r = (r transmute usize + rela_ent as usize) transmute &Elf64RelocationAndAddend;
    }
 }
+
+proc _roland_memmove_bytes(dest: &u8, src: &u8, size: usize) {
+   memmove(dest, src, size);
+}

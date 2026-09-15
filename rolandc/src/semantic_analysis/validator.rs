@@ -27,7 +27,7 @@ use crate::semantic_analysis::symbol_table::{ScopeMarker, VariableDetails};
 use crate::semantic_analysis::{AliasInfo, AliasTarget, StorageKind};
 use crate::size_info::{template_type_aware_mem_alignment, template_type_aware_mem_size};
 use crate::source_info::SourceInfo;
-use crate::type_data::{ExpressionType, F32_TYPE, F64_TYPE, I32_TYPE, IntType, U32_TYPE, U64_TYPE, USIZE_TYPE};
+use crate::type_data::{ExpressionType, F32_TYPE, F64_TYPE, I32_TYPE, IntType, U8_TYPE, U32_TYPE, U64_TYPE, USIZE_TYPE};
 
 pub struct SpecialProcedure {
    pub name: StrId,
@@ -53,12 +53,26 @@ pub fn get_special_procedures(target: Target, interner: &Interner) -> Box<[Speci
             return_type: ExpressionType::Unit,
          },
       ]),
-      Target::Wasi | Target::QbeHost => Box::new([SpecialProcedure {
+      Target::Wasi => Box::new([SpecialProcedure {
          name: interner.intern("main"),
          required: true,
          input_types: vec![],
          return_type: ExpressionType::Unit,
       }]),
+      Target::QbeHost => Box::new([
+         SpecialProcedure {
+            name: interner.intern("main"),
+            required: true,
+            input_types: vec![],
+            return_type: ExpressionType::Unit,
+         },
+         SpecialProcedure {
+            name: interner.intern("_roland_memmove_bytes"),
+            required: true,
+            input_types: vec![ExpressionType::Pointer(Box::new(U8_TYPE)), ExpressionType::Pointer(Box::new(U8_TYPE)), USIZE_TYPE],
+            return_type: ExpressionType::Unit,
+         }
+      ]),
       Target::QbeFreestanding => Box::new([
          SpecialProcedure {
             name: interner.intern("main"),
@@ -72,6 +86,12 @@ pub fn get_special_procedures(target: Target, interner: &Interner) -> Box<[Speci
             input_types: vec![],
             return_type: ExpressionType::Unit,
          },
+         SpecialProcedure {
+            name: interner.intern("_roland_memmove_bytes"),
+            required: true,
+            input_types: vec![ExpressionType::Pointer(Box::new(U8_TYPE)), ExpressionType::Pointer(Box::new(U8_TYPE)), USIZE_TYPE],
+            return_type: ExpressionType::Unit,
+         }
       ]),
       Target::Microw8 => Box::new([
          SpecialProcedure {
