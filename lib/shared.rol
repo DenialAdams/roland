@@ -209,14 +209,31 @@ proc isnan_f32(x: f32) -> bool {
 
 proc memcpy<T>(dest: &T, src: &T, length: usize) {
   for i in 0..length {
-    (((dest transmute usize) + i * sizeof$<T>()) transmute &T)~ = (((src transmute usize) + i * sizeof$<T>()) transmute &T)~;
+      (((dest transmute usize) + i * sizeof$<T>()) transmute &T)~ = (((src transmute usize) + i * sizeof$<T>()) transmute &T)~;
   }
+}
+
+proc memmove<T>(dest: &T, src: &T, length: usize) {
+   let dest_usize = dest transmute usize;
+   let src_usize = src transmute usize;
+
+   if dest_usize > src_usize {
+      for i in 0..length {
+         let j = length - 1 - i;
+
+         ((dest_usize + j * sizeof$<T>()) transmute &T)~ = ((src_usize + j * sizeof$<T>()) transmute &T)~;
+      }
+   } else {
+      for i in 0..length {
+         ((dest_usize + i * sizeof$<T>()) transmute &T)~ = ((src_usize + i * sizeof$<T>()) transmute &T)~;
+      }
+   }
 }
 
 proc memset<T>(dest: &T, fill: T, length: usize) {
    for i in 0..length {
-    (((dest transmute usize) + i * sizeof$<T>()) transmute &T)~ = fill;
-  }
+      (((dest transmute usize) + i * sizeof$<T>()) transmute &T)~ = fill;
+   }
 }
 
 proc identity<T>(x: T) -> T {
