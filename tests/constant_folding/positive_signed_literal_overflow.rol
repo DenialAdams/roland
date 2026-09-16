@@ -1,0 +1,16 @@
+proc main() {
+   let wide: i64 = 9223372036854775808;
+   let narrow: i8 = 18446744073709551615;
+   let pointer_sized: isize = 18446744073709551615;
+   println(int_to_string(wide));
+   println(int_to_string(narrow as i64));
+   println(int_to_string(pointer_sized as i64));
+}
+__END__
+compile:
+Literal of type i64 has value `9223372036854775808` which would immediately over/underflow
+↳ line 2, column 20 [tests/constant_folding/positive_signed_literal_overflow.rol]
+Literal of type i8 has value `18446744073709551615` which would immediately over/underflow
+↳ line 3, column 21 [tests/constant_folding/positive_signed_literal_overflow.rol]
+Literal of type isize has value `18446744073709551615` which would immediately over/underflow
+↳ line 4, column 31 [tests/constant_folding/positive_signed_literal_overflow.rol]

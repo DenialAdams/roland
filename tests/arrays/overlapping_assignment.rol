@@ -1,0 +1,20 @@
+proc copy(dst: &[u64; 2], src: &[u64; 2]) {
+   dst~ = src~;
+}
+
+proc main() {
+   let values: [u64; 3] = [1, 2, 3];
+   copy(&values[1] transmute &[u64; 2], &values[0] transmute &[u64; 2]);
+   println(uint_to_string(values[0]));
+   println(uint_to_string(values[1]));
+   println(uint_to_string(values[2]));
+   copy(&values[0] transmute &[u64; 2], &values[1] transmute &[u64; 2]);
+   assert(values[0] == 1 and values[1] == 2 and values[2] == 2);
+   copy(&values[0] transmute &[u64; 2], &values[0] transmute &[u64; 2]);
+   assert(values[0] == 1 and values[1] == 2 and values[2] == 2);
+}
+__END__
+run:
+1
+1
+2
