@@ -58,6 +58,20 @@ impl PointerAnalysisResult {
          .get(&self.ds.find(x))
          .map_or(PointsTo::Vars(BitSlice::empty()), |x| x.as_ref())
    }
+
+   pub fn may_alias(&self, a: usize, b: usize) -> bool {
+      match (self.points_to(a), self.points_to(b)) {
+         (PointsTo::Unknown, _) | (_, PointsTo::Unknown) => true,
+         (PointsTo::Vars(a), PointsTo::Vars(b)) => a.iter_ones().any(|i| b[i]),
+      }
+   }
+
+   pub fn may_point_to(&self, a: usize, b: usize) -> bool {
+      match self.points_to(a) {
+         PointsTo::Unknown => true,
+         PointsTo::Vars(vars) => vars.get(b).is_some_and(|x| *x),
+      }
+   }
 }
 
 struct PointerAnalysisData {

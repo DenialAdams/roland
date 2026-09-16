@@ -68,6 +68,7 @@ use semantic_analysis::{OwnedValidationContext, StorageKind, definite_assignment
 use slotmap::SecondaryMap;
 use type_data::{ExpressionType, IntWidth};
 
+use crate::backend::copy_to_memmove::lower_overlapping_copies_to_memmove;
 use crate::backend::pointer_analysis::PointsTo;
 use crate::error_handling::error_handling_macros::rolandc_warn;
 use crate::parse::LinkNode;
@@ -528,6 +529,15 @@ pub fn compile(
                   .map(|x| x.var_id);
                backend::pointer_analysis::steensgard(&body.locals, params, &mut body.cfg, &body.ast.expressions)
             };
+            if config.target.base_target() == BaseTarget::Qbe {
+               lower_overlapping_copies_to_memmove(
+                  &pointer_analysis_result,
+                  body,
+                  &ctx.program.procedure_name_table,
+                  &ctx.program.user_defined_types,
+                  &ctx.interner,
+               );
+            }
             let liveness = backend::liveness::liveness(
                &body.locals,
                &mut body.cfg,

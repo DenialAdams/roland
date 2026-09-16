@@ -601,7 +601,7 @@ impl std::fmt::Display for MemOffset {
 fn compute_offset(
    expr: ExpressionId,
    ast: &ExpressionPool,
-   ctx: &mut GenerationContext,
+   ctx: &GenerationContext,
    is_lhs: bool,
 ) -> Option<MemOffset> {
    match ast[expr].expression {

@@ -1,3 +1,4 @@
+pub mod copy_to_memmove;
 pub mod linearize;
 pub mod liveness;
 pub mod pointer_analysis;
