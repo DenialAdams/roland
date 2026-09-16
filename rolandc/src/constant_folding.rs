@@ -659,7 +659,7 @@ fn fold_expr_inner(
                   return None;
                }
                let val = (*x as i64).wrapping_neg() as u64;
-               *x = val;
+               f_expr.expression = Expression::IntLiteral { val, synthetic: true };
 
                // Run the fold anyway, for the base error check
                let _fold_result = fold_expr(*expr, err_manager, ast, folding_context, interner);
