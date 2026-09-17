@@ -300,8 +300,12 @@ fn fold_expr_inner(
 
          None
       }
-      Expression::IntLiteral { val, .. } => {
+      Expression::IntLiteral { val, synthetic } => {
          let val = *val;
+         // Source literals are positive magnitudes. Only folded literals may encode
+         // a negative signed value in the high half of u64.
+         let overflowing_positive =
+            !synthetic && matches!(expr_type, ExpressionType::Int(x) if x.signed) && val > i64::MAX as u64;
          let overflowing_literal = match expr_type {
             &I8_TYPE => (val as i64) > i64::from(i8::MAX) || (val as i64) < i64::from(i8::MIN),
             &I16_TYPE => (val as i64) > i64::from(i16::MAX) || (val as i64) < i64::from(i16::MIN),
@@ -325,7 +329,7 @@ fn fold_expr_inner(
             }
             &U64_TYPE | &I64_TYPE => false,
             _ => unreachable!(),
-         };
+         } || overflowing_positive;
 
          if overflowing_literal && let Some(em) = err_manager {
             let signed = match expr_type {
@@ -333,7 +337,7 @@ fn fold_expr_inner(
                _ => unreachable!(),
             };
 
-            if signed {
+            if signed && *synthetic {
                rolandc_error!(
                   em,
                   expr_to_fold_location,
