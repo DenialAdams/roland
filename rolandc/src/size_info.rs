@@ -33,11 +33,21 @@ fn ensure_type_already_processed(
    templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
 ) {
    match t {
-      ExpressionType::Struct(s, _) => calculate_struct_size_info(*s, udt, target, templated_types),
-      ExpressionType::Union(s, _) => calculate_union_size_info(*s, udt, target, templated_types),
+      ExpressionType::Struct(s, type_args) => {
+         for type_arg in type_args.iter() {
+            ensure_type_already_processed(type_arg, udt, target, templated_types);
+         }
+         calculate_struct_size_info(*s, udt, target, templated_types);
+      },
+      ExpressionType::Union(s, type_args) => {
+         for type_arg in type_args.iter() {
+            ensure_type_already_processed(type_arg, udt, target, templated_types);
+         }
+         calculate_union_size_info(*s, udt, target, templated_types);
+      },
       ExpressionType::Array(bt, _) => ensure_type_already_processed(bt, udt, target, templated_types),
       _ => (),
-   }
+   };
 }
 
 pub fn calculate_union_size_info(

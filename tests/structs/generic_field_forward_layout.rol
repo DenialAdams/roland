@@ -1,0 +1,10 @@
+struct Box<T> { value: T, }
+struct Outer { value: Box<Inner>, }
+struct Inner { value: u64, }
+
+proc main() {
+   println(uint_to_string(sizeof$<Outer>() as u64));
+}
+__END__
+run:
+8
