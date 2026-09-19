@@ -2316,19 +2316,6 @@ fn get_type(
             }
          }
 
-         // @U32Arrays
-         let max_elems = u32::MAX as usize;
-         if elems.len() > max_elems {
-            any_error = true;
-            rolandc_error!(
-               err_manager,
-               expr_location,
-               "Array literal has {} elements, which is more than the maximum {} elements",
-               elems.len(),
-               max_elems,
-            );
-         }
-
          if any_error {
             ExpressionType::CompileError
          } else if elems.is_empty() {
