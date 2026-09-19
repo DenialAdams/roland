@@ -1,0 +1,12 @@
+struct Box<T> { value: T, }
+struct Outer { value: Box<Outer>, }
+
+struct Other<T> { value: T, q: Other<u8> }
+
+proc main() {}
+__END__
+compile:
+Struct `Outer` contains itself, which isn't allowed as it would result in an infinitely large struct
+↳ line 2, column 1 [tests/structs/generic_recursive_struct.rol]
+Struct `Other` contains itself, which isn't allowed as it would result in an infinitely large struct
+↳ line 4, column 1 [tests/structs/generic_recursive_struct.rol]

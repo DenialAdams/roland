@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 use indexmap::{IndexMap, IndexSet};
@@ -12,7 +13,7 @@ use crate::parse::{
    AliasId, BinOp, CastType, Expression, ExpressionNode, ExpressionTypeNode, ProcImplSource, StructId, UnionId,
    UserDefinedTypeId,
 };
-use crate::semantic_analysis::validator::resolve_type;
+use crate::semantic_analysis::validator::{map_generic_to_concrete_cow, resolve_type};
 use crate::semantic_analysis::{AliasInfo, AliasTarget};
 use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
 use crate::source_info::SourceInfo;
@@ -21,53 +22,70 @@ use crate::{BaseTarget, CompilationConfig, FileMap, Program};
 
 fn recursive_struct_union_check(
    base_id: UserDefinedTypeId,
-   seen_structs_or_unions: &mut HashSet<UserDefinedTypeId>,
+   this_id: UserDefinedTypeId,
+   generic_args: &[ExpressionType],
+   seen_structs_or_unions: &mut HashSet<(UserDefinedTypeId, Box<[ExpressionType]>)>,
    struct_or_union_fields: &IndexMap<StrId, ExpressionTypeNode>,
    struct_info: &SlotMap<StructId, StructInfo>,
    union_info: &SlotMap<UnionId, UnionInfo>,
+   templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
 ) -> bool {
    let mut is_recursive = false;
 
-   for field in struct_or_union_fields.iter() {
-      let mut t = &field.1.e_type;
+   for field_t in struct_or_union_fields.values().map(|v| {
+      if generic_args.is_empty() {
+         Cow::Borrowed(&v.e_type)
+      } else {
+         map_generic_to_concrete_cow(&v.e_type, generic_args, &templated_types[&this_id])
+      }
+   }) {
+      let mut t = field_t.as_ref();
       while let ExpressionType::Array(bt, _) = t {
          t = bt;
       }
       match t {
-         ExpressionType::Struct(x, _) => {
+         ExpressionType::Struct(x, type_args) => {
             if UserDefinedTypeId::Struct(*x) == base_id {
                is_recursive = true;
                break;
             }
 
-            if !seen_structs_or_unions.insert(UserDefinedTypeId::Struct(*x)) {
+            // TODO: only clone type_args when seen_structs_or_unions doesn't contain the entry
+            if !seen_structs_or_unions.insert((UserDefinedTypeId::Struct(*x), type_args.clone())) {
                continue;
             }
 
             is_recursive |= recursive_struct_union_check(
                base_id,
+               UserDefinedTypeId::Struct(*x),
+               type_args,
                seen_structs_or_unions,
                &struct_info.get(*x).unwrap().field_types,
                struct_info,
                union_info,
+               templated_types,
             );
          }
-         ExpressionType::Union(x, _) => {
+         ExpressionType::Union(x, type_args) => {
             if UserDefinedTypeId::Union(*x) == base_id {
                is_recursive = true;
                break;
             }
 
-            if !seen_structs_or_unions.insert(UserDefinedTypeId::Union(*x)) {
+            // TODO: only clone type_args when seen_structs_or_unions doesn't contain the entry
+            if !seen_structs_or_unions.insert((UserDefinedTypeId::Union(*x), type_args.clone())) {
                continue;
             }
 
             is_recursive |= recursive_struct_union_check(
                base_id,
+               UserDefinedTypeId::Union(*x),
+               type_args,
                seen_structs_or_unions,
                &union_info.get(*x).unwrap().field_types,
                struct_info,
                union_info,
+               templated_types,
             );
          }
          _ => (),
@@ -496,10 +514,13 @@ pub fn populate_type_and_procedure_info(
       seen_structs_or_unions.clear();
       if recursive_struct_union_check(
          UserDefinedTypeId::Struct(struct_i.0),
+         UserDefinedTypeId::Struct(struct_i.0),
+         &[],
          &mut seen_structs_or_unions,
          &struct_i.1.field_types,
          &program.user_defined_types.struct_info,
          &program.user_defined_types.union_info,
+         &program.templated_types,
       ) {
          rolandc_error!(
             err_manager,
@@ -514,10 +535,13 @@ pub fn populate_type_and_procedure_info(
       seen_structs_or_unions.clear();
       if recursive_struct_union_check(
          UserDefinedTypeId::Union(union_i.0),
+         UserDefinedTypeId::Union(union_i.0),
+         &[],
          &mut seen_structs_or_unions,
          &union_i.1.field_types,
          &program.user_defined_types.struct_info,
          &program.user_defined_types.union_info,
+         &program.templated_types,
       ) {
          rolandc_error!(
             err_manager,
