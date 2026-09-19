@@ -1,0 +1,6 @@
+proc main() {
+   println(uint_to_string(sizeof$<[u64; 536870912]>() as u64));
+}
+__END__
+compile:
+Overly big array
