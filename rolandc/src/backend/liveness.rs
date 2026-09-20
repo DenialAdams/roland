@@ -20,7 +20,6 @@ struct LivenessState {
    kill: BitBox,
    gen_address_taken: BitBox,
    address_taken_out: BitBox,
-   address_taken_out_changed: bool,
 }
 
 #[must_use]
@@ -69,26 +68,27 @@ pub fn liveness(
          kill: bitbox![0; procedure_vars.len()],
          gen_address_taken: bitbox![0; procedure_vars.len()],
          address_taken_out: bitbox![0; procedure_vars.len()],
-         address_taken_out_changed: false,
       };
       cfg.bbs.len()
    ];
 
+   // DCE changes instructions but never the CFG edges, so this order stays valid.
+   let block_order = post_order(cfg);
    // we want to go backwards, which is post_order, but since we are popping we must reverse
-   let mut worklist: IndexSet<usize> = post_order(cfg).into_iter().rev().collect();
+   let mut worklist: IndexSet<usize> = IndexSet::new();
 
-   while !worklist.is_empty() {
+   let mut keep_going = true;
+   while keep_going {
+      keep_going = false;
+      debug_assert!(worklist.is_empty());
+      worklist.extend(block_order.iter().rev().copied());
+
       // Setup
       for i in worklist.iter() {
          let bb = &cfg.bbs[*i];
          let s = &mut state[*i];
-         // We need to reset s.address_taken_out (since we may have just eliminated the taking of an address)
-         // so that it's cleanly recomputed from gen. otherwise, a block with itself as a predecessor would
-         // never be able to lose a bit (so this only matters for loops.)
-         // because we are filling address_taken_out with false, we must conservatively mark it as changed,
-         // otherwise if went from N vars address taken => 0 vars address taken we wouldn't know to re-propagate forward
-         // TODO: doesn't above reasoning also apply to live_out? should we be clearing that? i can't make an example.
-         s.address_taken_out_changed = s.address_taken_out.any();
+         s.live_in.fill(false);
+         s.live_out.fill(false);
          s.address_taken_out.fill(false);
          s.gen_.fill(false);
          s.kill.fill(false);
@@ -130,10 +130,8 @@ pub fn liveness(
          for p in cfg.bbs[block_idx].predecessors.iter().copied() {
             new |= &state[p].address_taken_out;
          }
-         state[block_idx].address_taken_out_changed |= new != state[block_idx].address_taken_out;
-         if state[block_idx].address_taken_out_changed {
+         if new != state[block_idx].address_taken_out {
             state[block_idx].address_taken_out = new;
-            state[block_idx].address_taken_out_changed = false;
             address_taken_worklist.extend(cfg.bbs[block_idx].successors().iter().copied());
          }
       }
@@ -175,7 +173,7 @@ pub fn liveness(
 
       // Construct the final results (per-statement)
       // We may perform dead code elimination, putting blocks back onto the worklist
-      for (rpo_index, node_id) in post_order(cfg).iter().copied().rev().enumerate() {
+      for (rpo_index, node_id) in block_order.iter().copied().rev().enumerate() {
          let s = &state[node_id];
 
          current_live_variables.clear();
@@ -269,8 +267,7 @@ pub fn liveness(
                            *instruction = CfgInstruction::Expression(rhs);
                         } else {
                            *instruction = CfgInstruction::Nop;
-                           // Since the RHS is now dead, the liveness results may be affected, so we push this node back onto the worklist
-                           worklist.insert(node_id);
+                           keep_going = true;
                         }
                      }
                      if deref_count == 0
@@ -284,7 +281,12 @@ pub fn liveness(
                   } else {
                      update_live_variables_for_expr(lhs, &mut current_live_variables, ast, procedure_vars);
                   }
-                  update_live_variables_for_expr(rhs, &mut current_live_variables, ast, procedure_vars);
+                  // By skipping analysis of the RHS when possible, we avoid
+                  // marking anything used in the RHS as live, letting us
+                  // delete more in one iteration
+                  if !matches!(instruction, CfgInstruction::Nop) {
+                     update_live_variables_for_expr(rhs, &mut current_live_variables, ast, procedure_vars);
+                  }
                }
                CfgInstruction::Expression(expr)
                | CfgInstruction::Return(expr)
