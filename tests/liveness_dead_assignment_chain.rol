@@ -1,0 +1,27 @@
+proc effect(value: u32) -> u32 {
+    println(uint_to_string(value as u64));
+    return value;
+}
+
+proc example(x: u32) {
+    let a = x + 1;
+    let b = a + 1;
+    let c = b + 1;
+
+    // A dead result must still preserve the call and the values it reads.
+    let d = x + 1;
+    let e = d + 1;
+    let f = effect(e + 1);
+}
+
+proc main() {
+    example(40);
+}
+__END__
+compile:
+Local variable `f` is unused
+↳ line 14, column 9 [tests/liveness_dead_assignment_chain.rol]
+Local variable `c` is unused
+↳ line 9, column 9 [tests/liveness_dead_assignment_chain.rol]
+run:
+43

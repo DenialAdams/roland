@@ -1,0 +1,24 @@
+proc example(x: u32) {
+    // Deleting unused must also remove x's liveness around the back edge.
+    let i: u32 = 0;
+    loop {
+        let unused = x + 1;
+        i = i + 1;
+        println("effect");
+        if i > 2 {
+            break;
+        }
+    }
+}
+
+proc main() {
+    example(42);
+}
+__END__
+compile:
+Local variable `unused` is unused
+↳ line 5, column 13 [tests/liveness_loop_dead_use.rol]
+run:
+effect
+effect
+effect
