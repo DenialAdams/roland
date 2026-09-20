@@ -938,8 +938,8 @@ fn literal_as_bytes(
       }
       Expression::StringLiteral(str) => {
          let (offset, len) = generation_context.literal_offsets.get(str).unwrap();
-         buf.extend(offset.to_le_bytes());
-         buf.extend(len.to_le_bytes());
+         buf.extend((*offset as u32).to_le_bytes());
+         buf.extend((*len as u32).to_le_bytes());
       }
       Expression::StructLiteral(s_id, fields) => {
          let si = generation_context.user_defined_types.struct_info.get(*s_id).unwrap();
@@ -1007,7 +1007,7 @@ fn literal_as_wasm_const(
          };
          match width {
             IntWidth::Eight => ConstExpr::i64_const(*x as i64),
-            IntWidth::Four | IntWidth::Two | IntWidth::One => ConstExpr::i32_const(*x as u32 as i32),
+            IntWidth::Four | IntWidth::Two | IntWidth::One => ConstExpr::i32_const(*x as i32),
             IntWidth::Pointer => unreachable!(),
          }
       }
@@ -1689,7 +1689,7 @@ fn complement_val(t_type: &ExpressionType, wasm_type: ValType, generation_contex
       ValType::I32 => {
          generation_context
             .active_fcn
-            .instruction(&Instruction::I32Const(magic_const as u32 as i32));
+            .instruction(&Instruction::I32Const(magic_const as i32));
          generation_context.active_fcn.instruction(&Instruction::I32Xor);
       }
       ValType::I64 => {
@@ -1857,7 +1857,7 @@ fn emit_procedure_pointer_index(proc_id: ProcedureId, generation_context: &mut G
    let (my_index, _) = generation_context.procedure_to_table_index.insert_full(proc_id);
    generation_context
       .active_fcn
-      .instruction(&Instruction::I32Const(my_index as u32 as i32));
+      .instruction(&Instruction::I32Const(my_index as i32));
 }
 
 fn name_to_procedure_index(
