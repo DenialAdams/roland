@@ -289,7 +289,7 @@ pub fn emit_wasm(
          1
       };
 
-      offset = aligned_address(offset, strictest_alignment);
+      offset = aligned_address(u64::from(offset), strictest_alignment) as u32;
    }
    for (static_var, static_details) in program.non_stack_var_info.iter() {
       debug_assert_ne!(static_details.kind, StorageKind::Const);
@@ -304,7 +304,7 @@ pub fn emit_wasm(
          &static_details.expr_type.e_type,
          generation_context.user_defined_types,
          BaseTarget::Wasm,
-      );
+      ) as u32;
    }
 
    let mut buf = vec![];
@@ -324,7 +324,7 @@ pub fn emit_wasm(
    }
 
    // keep stack aligned
-   offset = aligned_address(offset, 8);
+   offset = aligned_address(u64::from(offset), 8) as u32;
 
    let (global_section, global_names) = {
       let mut globals = GlobalSection::new();
@@ -456,15 +456,15 @@ pub fn emit_wasm(
       let mut mem_info: IndexMap<usize, (u32, u32)> = regalloc_result.procedure_stack_slots[proc_id]
          .iter()
          .enumerate()
-         .map(|(i, x)| (i, (x.1, x.0)))
+         .map(|(i, x)| (i, (x.1 as u32, x.0 as u32)))
          .collect();
 
-      mem_info.sort_by(|_k_1_, v_1, _k_2_, v_2| compare_alignment(v_1.0, v_1.1, v_2.0, v_2.1));
+      mem_info.sort_by(|_k_1_, v_1, _k_2_, v_2| compare_alignment(u64::from(v_1.0), u64::from(v_1.1), u64::from(v_2.0), u64::from(v_2.1)));
 
       for local in mem_info.iter() {
          // last element could have been a struct, and so we need to pad
          generation_context.sum_sizeof_locals_mem =
-            aligned_address(generation_context.sum_sizeof_locals_mem, local.1.0);
+            aligned_address(u64::from(generation_context.sum_sizeof_locals_mem), u64::from(local.1.0)) as u32;
          generation_context
             .stack_offsets_mem
             .insert(*local.0, generation_context.sum_sizeof_locals_mem);
@@ -645,7 +645,7 @@ pub fn emit_wasm(
    module.finish()
 }
 
-fn compare_alignment(alignment_1: u32, sizeof_1: u32, alignment_2: u32, sizeof_2: u32) -> std::cmp::Ordering {
+fn compare_alignment(alignment_1: u64, sizeof_1: u64, alignment_2: u64, sizeof_2: u64) -> std::cmp::Ordering {
    let rem_1 = sizeof_1 % alignment_1;
    let required_padding_1 = if rem_1 == 0 { 0 } else { alignment_1 - rem_1 };
 
@@ -1708,7 +1708,7 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
    let Some(VarSlot::Stack(s)) = generation_context.var_to_slot.get(&id) else {
       return false;
    };
-   let offset = aligned_address(generation_context.sum_sizeof_locals_mem, 8)
+   let offset = aligned_address(u64::from(generation_context.sum_sizeof_locals_mem), 8) as u32
       - generation_context
          .stack_offsets_mem
          .get(&(*s as usize))
@@ -1846,7 +1846,7 @@ fn adjust_stack(generation_context: &mut GenerationContext, instr: &Instruction)
 
    generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
    // ensure that each stack frame is strictly aligned so that internal stack frame alignment is preserved
-   let adjust_value = aligned_address(generation_context.sum_sizeof_locals_mem, 8);
+   let adjust_value = aligned_address(u64::from(generation_context.sum_sizeof_locals_mem), 8);
    generation_context
       .active_fcn
       .instruction(&Instruction::I32Const(adjust_value as i32));

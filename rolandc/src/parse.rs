@@ -1580,20 +1580,10 @@ fn parse_type(l: &mut Lexer, parse_context: &mut ParseContext) -> Result<Express
 
          let arr_len_literal = extract_int_literal(length.token);
 
-         if let Ok(valid_arr_len) = arr_len_literal.try_into() {
-            (
-               t_close_token.source_info,
-               ExpressionType::Array(Box::new(a_inner_type.e_type), valid_arr_len),
-            )
-         } else {
-            rolandc_error!(
-               &mut parse_context.err_manager,
-               length.source_info,
-               "While parsing array type, encountered an overly big integer {}. The maximum length of an array is 4294967295.",
-               arr_len_literal
-            );
-            return Err(());
-         }
+         (
+            t_close_token.source_info,
+            ExpressionType::Array(Box::new(a_inner_type.e_type), arr_len_literal),
+         )
       }
       Token::Exclam => {
          let token = l.next();

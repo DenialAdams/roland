@@ -36,7 +36,7 @@ pub fn lower_aggregate_access(program: &mut Program, target: BaseTarget) {
                         width: IntWidth::Pointer,
                      })),
                      expression: Expression::IntLiteral {
-                        val: u64::from(mem_offset),
+                        val: mem_offset,
                         synthetic: true,
                      },
                      location: ast[e].location,
@@ -75,7 +75,7 @@ pub fn lower_aggregate_access(program: &mut Program, target: BaseTarget) {
                         width: IntWidth::Pointer,
                      })),
                      expression: Expression::IntLiteral {
-                        val: u64::from(sizeof_inner),
+                        val: sizeof_inner,
                         synthetic: true,
                      },
                      location: ast[e].location,

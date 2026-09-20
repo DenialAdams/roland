@@ -75,7 +75,7 @@ pub enum ExpressionType {
    Unit,
    Struct(StructId, Box<[ExpressionType]>),
    Union(UnionId, Box<[ExpressionType]>),
-   Array(Box<ExpressionType>, u32),
+   Array(Box<ExpressionType>, u64),
    Pointer(Box<ExpressionType>),
    CompileError,
    Enum(EnumId),

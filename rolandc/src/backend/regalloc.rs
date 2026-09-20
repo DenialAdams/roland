@@ -29,14 +29,14 @@ pub enum RegisterType {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum VarSlotKind {
-   Stack((u32, u32)), // (size, alignment)
+   Stack((u64, u64)), // (size, alignment)
    Register(RegisterType),
 }
 
 pub struct RegallocResult {
    pub var_to_slot: IndexMap<VariableId, VarSlot>,
    pub procedure_registers: SecondaryMap<ProcedureId, Vec<RegisterType>>,
-   pub procedure_stack_slots: SecondaryMap<ProcedureId, Vec<(u32, u32)>>,
+   pub procedure_stack_slots: SecondaryMap<ProcedureId, Vec<(u64, u64)>>,
 }
 
 fn mark_loads_to_hoist<F: FnMut(ExpressionId, ExpressionType, VariableId)>(

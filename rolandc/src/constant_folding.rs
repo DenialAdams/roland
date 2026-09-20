@@ -252,7 +252,7 @@ fn fold_expr_inner(
             _ => return None,
          };
 
-         if v >= u64::from(len) {
+         if v >= len {
             if let Some(em) = err_manager {
                rolandc_error!(
                   em,
@@ -725,7 +725,7 @@ fn fold_expr_inner(
                ExpressionType::Array(_, len) => {
                   // Arrays only have one possible field, length
                   return Some(Expression::IntLiteral {
-                     val: u64::from(*len),
+                     val: *len,
                      synthetic: true,
                   });
                }
@@ -870,7 +870,7 @@ pub fn fold_builtin_call(
          );
 
          Some(Expression::IntLiteral {
-            val: u64::from(type_size),
+            val: type_size,
             synthetic: true,
          })
       }
@@ -883,7 +883,7 @@ pub fn fold_builtin_call(
          );
 
          Some(Expression::IntLiteral {
-            val: u64::from(type_alignment),
+            val: type_alignment,
             synthetic: true,
          })
       }

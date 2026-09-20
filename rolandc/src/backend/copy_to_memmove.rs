@@ -85,7 +85,7 @@ pub fn lower_overlapping_copies_to_memmove(
             };
             let size_arg = body.ast.expressions.insert(ExpressionNode {
                expression: Expression::IntLiteral {
-                  val: u64::from(size),
+                  val: size,
                   synthetic: true,
                },
                exp_type: Some(U64_TYPE),

@@ -1585,7 +1585,7 @@ fn get_type(
                if size_source == size_target {
                   #[derive(PartialEq)]
                   enum AlignOrUnknown {
-                     Alignment(u32),
+                     Alignment(u64),
                      Unknown,
                   }
                   impl Display for AlignOrUnknown {

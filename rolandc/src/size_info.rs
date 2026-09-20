@@ -10,18 +10,18 @@ use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
 
 #[derive(Clone)]
 pub struct StructSizeInfo {
-   pub mem_size: u32,
-   pub strictest_alignment: u32,
-   pub field_offsets_mem: HashMap<StrId, u32>,
+   pub mem_size: u64,
+   pub strictest_alignment: u64,
+   pub field_offsets_mem: HashMap<StrId, u64>,
 }
 
 #[derive(Clone)]
 pub struct UnionSizeInfo {
-   pub mem_size: u32,
-   pub mem_alignment: u32,
+   pub mem_size: u64,
+   pub mem_alignment: u64,
 }
 
-pub fn aligned_address(v: u32, a: u32) -> u32 {
+pub fn aligned_address(v: u64, a: u64) -> u64 {
    let rem = v % a;
    if rem == 0 { v } else { v + (a - rem) }
 }
@@ -154,7 +154,7 @@ pub fn template_type_aware_mem_alignment(
    udt: &UserDefinedTypeInfo,
    target: BaseTarget,
    templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
-) -> u32 {
+) -> u64 {
    match e {
       ExpressionType::Array(a_type, _len) => template_type_aware_mem_alignment(a_type, udt, target, templated_types),
       ExpressionType::Union(union_id, generic_args) => {
@@ -199,7 +199,7 @@ pub fn template_type_aware_mem_alignment(
    }
 }
 
-pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: BaseTarget) -> u32 {
+pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: BaseTarget) -> u64 {
    match e {
       ExpressionType::Enum(x) => {
          let base_type = &udt.enum_info.get(*x).unwrap().base_type;
@@ -207,7 +207,7 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Base
       }
       ExpressionType::Int(x) => match x.width {
          IntWidth::Eight => 8,
-         IntWidth::Pointer => u32::from(target.pointer_width()),
+         IntWidth::Pointer => u64::from(target.pointer_width()),
          IntWidth::Four => 4,
          IntWidth::Two => 2,
          IntWidth::One => 1,
@@ -216,7 +216,7 @@ pub fn mem_alignment(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: Base
          FloatWidth::Eight => 8,
          FloatWidth::Four => 4,
       },
-      ExpressionType::Pointer(_) | ExpressionType::ProcedurePointer { .. } => u32::from(target.pointer_width()),
+      ExpressionType::Pointer(_) | ExpressionType::ProcedurePointer { .. } => u64::from(target.pointer_width()),
       ExpressionType::Struct(x, type_args) => {
          debug_assert!(type_args.is_empty());
          udt.struct_info
@@ -268,7 +268,7 @@ pub fn sizeof_type_values(e: &ExpressionType, udt: &UserDefinedTypeInfo, target:
 }
 
 /// The size of a type, in bytes, as it's stored in local memory (minimum size 4 bytes)
-pub fn sizeof_type_wasm(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: BaseTarget) -> u32 {
+pub fn sizeof_type_wasm(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: BaseTarget) -> u64 {
    let size_mem = sizeof_type_mem(e, udt, target);
    if size_mem == 0 { 0 } else { std::cmp::max(4, size_mem) }
 }
@@ -278,9 +278,9 @@ pub fn template_type_aware_mem_size(
    udt: &UserDefinedTypeInfo,
    target: BaseTarget,
    templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
-) -> u32 {
+) -> u64 {
    match e {
-      ExpressionType::Array(a_type, len) => template_type_aware_mem_size(a_type, udt, target, templated_types) * len,
+      ExpressionType::Array(a_type, len) => template_type_aware_mem_size(a_type, udt, target, templated_types) * *len,
       ExpressionType::Union(union_id, generic_args) => {
          if generic_args.is_empty() {
             sizeof_type_mem(e, udt, target)
@@ -342,22 +342,22 @@ pub fn template_type_aware_mem_size(
 }
 
 /// The size of a type as it's stored in memory
-pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: BaseTarget) -> u32 {
+pub fn sizeof_type_mem(e: &ExpressionType, udt: &UserDefinedTypeInfo, target: BaseTarget) -> u64 {
    match e {
       ExpressionType::Enum(x) => {
          let base_type = &udt.enum_info.get(*x).unwrap().base_type;
          sizeof_type_mem(&base_type.e_type, udt, target)
       }
-      ExpressionType::Int(x) => u32::from(x.width.as_num_bytes(target)),
-      ExpressionType::Float(x) => u32::from(x.width.as_num_bytes()),
-      ExpressionType::Pointer(_) | ExpressionType::ProcedurePointer { .. } => u32::from(target.pointer_width()),
+      ExpressionType::Int(x) => u64::from(x.width.as_num_bytes(target)),
+      ExpressionType::Float(x) => u64::from(x.width.as_num_bytes()),
+      ExpressionType::Pointer(_) | ExpressionType::ProcedurePointer { .. } => u64::from(target.pointer_width()),
       ExpressionType::Bool => 1,
       ExpressionType::Unit | ExpressionType::Never | ExpressionType::ProcedureItem(_, _) => 0,
       ExpressionType::Struct(x, type_args) => {
          debug_assert!(type_args.is_empty());
          udt.struct_info.get(*x).unwrap().size.as_ref().unwrap().mem_size
       }
-      ExpressionType::Array(a_type, len) => sizeof_type_mem(a_type, udt, target) * (*len),
+      ExpressionType::Array(a_type, len) => sizeof_type_mem(a_type, udt, target) * *len,
       ExpressionType::Union(x, type_args) => {
          debug_assert!(type_args.is_empty());
          udt.union_info.get(*x).unwrap().size.as_ref().unwrap().mem_size
