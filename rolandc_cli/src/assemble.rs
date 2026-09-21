@@ -1,3 +1,5 @@
+use std::{path::Path, process::Command};
+
 use crate::QbeCompilationError;
 
 #[cfg_attr(any(target_os = "linux", target_os = "freebsd"), path = "memfd.rs")]
@@ -15,18 +17,18 @@ fn get_output_file() -> Result<imp::FileAndPath, std::io::Error> {
 type FileAndPath = imp::FileAndPath;
 
 pub fn assemble_bytes(bytes: &[u8]) -> Result<FileAndPath, QbeCompilationError> {
-   use std::process::Command;
-
-   use crate::QbeCompilationError;
-
    let input = get_input_file(bytes).map_err(QbeCompilationError::AsInvocation)?;
 
+   assemble_file(input.path())
+}
+
+pub fn assemble_file(path: &Path) -> Result<FileAndPath, QbeCompilationError> {
    let output = get_output_file().map_err(QbeCompilationError::AsInvocation)?;
 
    match Command::new("as")
       .arg("-o")
       .arg(output.path())
-      .arg(input.path())
+      .arg(path)
       .status()
    {
       Ok(stat) if stat.success() => Ok(output),

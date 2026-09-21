@@ -13,7 +13,7 @@ use std::process::{Command, ExitStatus};
 
 use rolandc::{BaseTarget, CompilationContext, CompilationEntryPoint, FileResolver, Target};
 
-use crate::assemble::assemble_bytes;
+use crate::assemble::{assemble_bytes, assemble_file};
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
@@ -261,20 +261,6 @@ fn compile_qbe(
    link_requests: impl IntoIterator<Item = impl AsRef<str>>,
    freestanding: bool,
 ) -> std::result::Result<(), QbeCompilationError> {
-   fn assemble_file(asm_path: &Path) -> Result<PathBuf, QbeCompilationError> {
-      let mut the_object_path = asm_path.to_owned();
-      the_object_path.set_extension("o");
-      match Command::new("as")
-         .arg("-o")
-         .arg(&the_object_path)
-         .arg(asm_path)
-         .status()
-      {
-         Ok(stat) if stat.success() => Ok(the_object_path),
-         Ok(stat) => Err(QbeCompilationError::AsExecution(stat)),
-         Err(e) => Err(QbeCompilationError::AsInvocation(e)),
-      }
-   }
    let mut asm_path = ssa_path.clone();
    asm_path.set_extension("s");
    let mut qbe_command = if let Some(extant_local_qbe) = std::env::current_exe()
@@ -316,7 +302,7 @@ fn compile_qbe(
          "-pie".into(),
          "-o".into(),
          the_final_path.into(),
-         program_object_path.into(),
+         program_object_path.path().into(),
          syscall_object_path.path().into(),
          start_object_path.path().into(),
       ];
@@ -354,7 +340,7 @@ fn compile_qbe(
    } else {
       let mut cc_command = Command::new("cc");
       cc_command.arg("-o");
-      cc_command.args(&[the_final_path, program_object_path, syscall_object_path.path().into()]);
+      cc_command.args(&[the_final_path, program_object_path.path().into(), syscall_object_path.path().into()]);
       if let Some(specified_linker) = linker {
          cc_command.arg(format!("-fuse-ld={}", specified_linker.to_str().unwrap()));
       }

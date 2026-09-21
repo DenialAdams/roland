@@ -533,11 +533,6 @@ fn cleanup_artifacts(mut prog_path: PathBuf, amd64: bool, preserve_artifacts: bo
          let _ = std::fs::remove_file(&prog_path);
       }
    }
-
-   if amd64 {
-      prog_path.set_extension("o");
-      std::fs::remove_file(&prog_path).unwrap();
-   }
 }
 
 struct TestDetails {
