@@ -8,12 +8,12 @@ mod assemble;
 use std::borrow::Cow;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Display;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, ExitStatus};
 
 use rolandc::{BaseTarget, CompilationContext, CompilationEntryPoint, FileResolver, Target};
 
-use crate::assemble::{assemble_bytes, assemble_file};
+use crate::assemble::{assemble_bytes, assemble_file, invoke_qbe};
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
@@ -184,32 +184,26 @@ fn main() {
    };
 
    let output_path = if let Some(v) = &opts.output {
-      let mut cloned = v.clone();
-      if config.target.base_target() == BaseTarget::Qbe {
-         cloned.set_extension("ssa");
-      }
-      cloned
+      v.clone()
    } else {
       let mut output_path = opts.source_file.clone();
       if config.target.base_target() == BaseTarget::Qbe {
-         output_path.set_extension("ssa");
+         output_path.set_extension("");
       } else {
          output_path.set_extension("wasm");
       }
       output_path
    };
 
-   std::fs::write(&output_path, compile_result.program_bytes).unwrap();
-
-   if config.target.base_target() == BaseTarget::Qbe
-      && let Err(e) = compile_qbe(
-         opts.linker.as_ref().map(AsRef::as_ref),
-         output_path,
-         opts.output,
-         compile_result.link_requests,
-         config.target == Target::QbeFreestanding,
-      )
-   {
+   if config.target.base_target() == BaseTarget::Wasm {
+      std::fs::write(&output_path, compile_result.program_bytes).unwrap();
+   } else if let Err(e) = compile_qbe(
+      opts.linker.as_ref().map(AsRef::as_ref),
+      &compile_result.program_bytes,
+      output_path,
+      compile_result.link_requests,
+      config.target == Target::QbeFreestanding,
+   ) {
       use std::io::Write;
       writeln!(err_stream_l, "Failed to compile produced IR to binary: {}", e).unwrap();
       std::process::exit(1);
@@ -256,41 +250,15 @@ impl Display for QbeCompilationError {
 #[allow(clippy::ref_option)]
 fn compile_qbe(
    linker: Option<&OsStr>,
-   mut ssa_path: PathBuf,
-   final_path: Option<PathBuf>,
+   ssa_bytes: &[u8],
+   final_path: PathBuf,
    link_requests: impl IntoIterator<Item = impl AsRef<str>>,
    freestanding: bool,
 ) -> std::result::Result<(), QbeCompilationError> {
-   let mut asm_path = ssa_path.clone();
-   asm_path.set_extension("s");
-   let mut qbe_command = if let Some(extant_local_qbe) = std::env::current_exe()
-      .ok()
-      .map(|mut x| {
-         x.set_file_name("qbe");
-         x
-      })
-      .filter(|x| x.exists())
-   {
-      Command::new(extant_local_qbe)
-   } else {
-      Command::new("qbe")
-   };
-
-   match qbe_command.arg("-o").arg(&asm_path).arg(&ssa_path).status() {
-      Ok(stat) if stat.success() => (),
-      Ok(stat) => return Err(QbeCompilationError::QbeExecution(stat)),
-      Err(e) => return Err(QbeCompilationError::QbeInvocation(e)),
-   }
-
-   let program_object_path = assemble_file(&asm_path)?;
+   let asm_result = invoke_qbe(ssa_bytes)?;
+   let asm_path = asm_result.path();
+   let program_object_path = assemble_file(asm_path)?;
    let syscall_object_path = assemble_bytes(include_bytes!("syscall.s"))?;
-
-   let the_final_path = if let Some(final_path) = final_path {
-      final_path
-   } else {
-      ssa_path.set_extension("");
-      ssa_path
-   };
 
    if freestanding {
       let start_object_path = assemble_bytes(include_bytes!("start.s"))?;
@@ -301,7 +269,7 @@ fn compile_qbe(
          "-static".into(),
          "-pie".into(),
          "-o".into(),
-         the_final_path.into(),
+         final_path.into(),
          program_object_path.path().into(),
          syscall_object_path.path().into(),
          start_object_path.path().into(),
@@ -340,7 +308,11 @@ fn compile_qbe(
    } else {
       let mut cc_command = Command::new("cc");
       cc_command.arg("-o");
-      cc_command.args(&[the_final_path, program_object_path.path().into(), syscall_object_path.path().into()]);
+      cc_command.args(&[
+         final_path,
+         program_object_path.path().into(),
+         syscall_object_path.path().into(),
+      ]);
       if let Some(specified_linker) = linker {
          cc_command.arg(format!("-fuse-ld={}", specified_linker.to_str().unwrap()));
       }
