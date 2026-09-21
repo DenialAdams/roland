@@ -339,42 +339,26 @@ fn compile_qbe(
       }
       linker_args.push("--end-group".into());
 
-      if let Some(external_linker) = linker.or({
-         #[cfg(not(target_os = "linux"))]
-         {
-            Some(OsStr::new("ld"))
-         }
-         #[cfg(target_os = "linux")]
-         {
-            None
-         }
-      }) {
-         let mut ld_command = Command::new(external_linker);
+      if linker.is_none() && cfg!(target_os = "linux") {
+         let args = {
+            let arg_fn = || linker_args.iter().map(|s| s.to_str().unwrap());
+            let mut args = libwild::Args::new(arg_fn).unwrap();
+            args.parse(arg_fn).unwrap();
+            args
+         };
+
+         libwild::run(args).map_err(|e| {
+            libwild::error::report_error(&e);
+            QbeCompilationError::LdExecution(None)
+         })
+      } else {
+         let mut ld_command = Command::new(linker.unwrap_or(OsStr::new("ld")));
          ld_command.args(linker_args);
 
          match ld_command.status() {
             Ok(stat) if stat.success() => Ok(()),
             Ok(stat) => Err(QbeCompilationError::LdExecution(Some(stat))),
             Err(e) => Err(QbeCompilationError::LdInvocation(e)),
-         }
-      } else {
-         #[cfg(not(target_os = "linux"))]
-         {
-            unreachable!()
-         }
-         #[cfg(target_os = "linux")]
-         {
-            let args = {
-               let arg_fn = || linker_args.iter().map(|s| s.to_str().unwrap());
-               let mut args = libwild::Args::new(arg_fn).unwrap();
-               args.parse(arg_fn).unwrap();
-               args
-            };
-
-            libwild::run(args).map_err(|e| {
-               libwild::error::report_error(&e);
-               QbeCompilationError::LdExecution(None)
-            })
          }
       }
    } else {
