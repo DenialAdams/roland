@@ -12,15 +12,16 @@ fn get_output_file() -> Result<imp::FileAndPath, std::io::Error> {
    imp::get_output_file()
 }
 
-pub fn assemble_bytes(bytes: &[u8]) -> Result<Vec<u8>, QbeCompilationError> {
-   use std::io::Seek;
+type FileAndPath = imp::FileAndPath;
+
+pub fn assemble_bytes(bytes: &[u8]) -> Result<FileAndPath, QbeCompilationError> {
    use std::process::Command;
 
    use crate::QbeCompilationError;
 
    let input = get_input_file(bytes).map_err(QbeCompilationError::AsInvocation)?;
 
-   let mut output = get_output_file().map_err(QbeCompilationError::AsInvocation)?;
+   let output = get_output_file().map_err(QbeCompilationError::AsInvocation)?;
 
    match Command::new("as")
       .arg("-o")
@@ -28,18 +29,8 @@ pub fn assemble_bytes(bytes: &[u8]) -> Result<Vec<u8>, QbeCompilationError> {
       .arg(input.path())
       .status()
    {
-      Ok(stat) if stat.success() => Ok(()),
+      Ok(stat) if stat.success() => Ok(output),
       Ok(stat) => Err(QbeCompilationError::AsExecution(stat)),
       Err(e) => Err(QbeCompilationError::AsInvocation(e)),
-   }?;
-
-   output
-      .rewind()
-      .and_then(|()| {
-         use std::io::Read;
-
-         let mut buf = Vec::new();
-         output.read_to_end(&mut buf).map(|_| buf)
-      })
-      .map_err(QbeCompilationError::AsInvocation)
+   }
 }

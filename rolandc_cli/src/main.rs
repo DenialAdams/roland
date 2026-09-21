@@ -8,8 +8,6 @@ mod assemble;
 use std::borrow::Cow;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Display;
-use std::fs::File;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 
@@ -298,16 +296,8 @@ fn compile_qbe(
       Err(e) => return Err(QbeCompilationError::QbeInvocation(e)),
    }
 
-   let stem = ssa_path.file_stem().unwrap().to_string_lossy().into_owned();
-
    let program_object_path = assemble_file(&asm_path)?;
-   let syscall_object_path = {
-      let mut result_path = asm_path.clone();
-      result_path.set_file_name(format!("{}_syscall.o", stem));
-      let assembled_bytes = assemble_bytes(include_bytes!("syscall.s"))?;
-      File::create(&result_path).unwrap().write_all(&assembled_bytes).unwrap();
-      result_path
-   };
+   let syscall_object_path = assemble_bytes(include_bytes!("syscall.s"))?;
 
    let the_final_path = if let Some(final_path) = final_path {
       final_path
@@ -317,13 +307,7 @@ fn compile_qbe(
    };
 
    if freestanding {
-      let start_object_path = {
-         let mut result_path = asm_path.clone();
-         result_path.set_file_name(format!("{}_start.o", stem));
-         let assembled_bytes = assemble_bytes(include_bytes!("start.s"))?;
-         File::create(&result_path).unwrap().write_all(&assembled_bytes).unwrap();
-         result_path
-      };
+      let start_object_path = assemble_bytes(include_bytes!("start.s"))?;
 
       let mut linker_args: Vec<OsString> = vec![
          "-nostdlib".into(),
@@ -333,8 +317,8 @@ fn compile_qbe(
          "-o".into(),
          the_final_path.into(),
          program_object_path.into(),
-         syscall_object_path.into(),
-         start_object_path.into(),
+         syscall_object_path.path().into(),
+         start_object_path.path().into(),
       ];
 
       linker_args.push("--start-group".into());
@@ -370,7 +354,7 @@ fn compile_qbe(
    } else {
       let mut cc_command = Command::new("cc");
       cc_command.arg("-o");
-      cc_command.args(&[the_final_path, program_object_path, syscall_object_path]);
+      cc_command.args(&[the_final_path, program_object_path, syscall_object_path.path().into()]);
       if let Some(specified_linker) = linker {
          cc_command.arg(format!("-fuse-ld={}", specified_linker.to_str().unwrap()));
       }
