@@ -540,15 +540,11 @@ fn cleanup_artifacts(mut prog_path: PathBuf, amd64: bool, preserve_artifacts: bo
       std::fs::remove_file(&prog_path).unwrap();
       let stem = prog_path.file_stem().unwrap().to_string_lossy().into_owned();
       {
-         prog_path.set_file_name(format!("{}_syscall.s", stem));
-         std::fs::remove_file(&prog_path).unwrap();
-         prog_path.set_extension("o");
+         prog_path.set_file_name(format!("{}_syscall.o", stem));
          std::fs::remove_file(&prog_path).unwrap();
       }
       {
-         prog_path.set_file_name(format!("{}_start.s", stem));
-         std::fs::remove_file(&prog_path).unwrap();
-         prog_path.set_extension("o");
+         prog_path.set_file_name(format!("{}_start.o", stem));
          std::fs::remove_file(&prog_path).unwrap();
       }
    }

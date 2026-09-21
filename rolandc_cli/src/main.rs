@@ -3,6 +3,8 @@
 #![allow(clippy::unnecessary_wraps)] // False positives
 #![allow(clippy::too_many_lines)] // A procedure should have however many lines as it needs. More procedures is not better.
 
+mod assemble;
+
 use std::borrow::Cow;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Display;
@@ -12,6 +14,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 
 use rolandc::{BaseTarget, CompilationContext, CompilationEntryPoint, FileResolver, Target};
+
+use crate::assemble::assemble_bytes;
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
@@ -298,11 +302,11 @@ fn compile_qbe(
 
    let program_object_path = assemble_file(&asm_path)?;
    let syscall_object_path = {
-      let mut asm_path = asm_path.clone();
-      asm_path.set_file_name(format!("{}_syscall.s", stem));
-      let asm_bytes = include_bytes!("syscall.s");
-      File::create(&asm_path).unwrap().write_all(asm_bytes).unwrap();
-      assemble_file(&asm_path)?
+      let mut result_path = asm_path.clone();
+      result_path.set_file_name(format!("{}_syscall.o", stem));
+      let assembled_bytes = assemble_bytes(include_bytes!("syscall.s"))?;
+      File::create(&result_path).unwrap().write_all(&assembled_bytes).unwrap();
+      result_path
    };
 
    let the_final_path = if let Some(final_path) = final_path {
@@ -314,11 +318,11 @@ fn compile_qbe(
 
    if freestanding {
       let start_object_path = {
-         let mut asm_path = asm_path.clone();
-         asm_path.set_file_name(format!("{}_start.s", stem));
-         let asm_bytes = include_bytes!("start.s");
-         File::create(&asm_path).unwrap().write_all(asm_bytes).unwrap();
-         assemble_file(&asm_path)?
+         let mut result_path = asm_path.clone();
+         result_path.set_file_name(format!("{}_start.o", stem));
+         let assembled_bytes = assemble_bytes(include_bytes!("start.s"))?;
+         File::create(&result_path).unwrap().write_all(&assembled_bytes).unwrap();
+         result_path
       };
 
       let mut linker_args: Vec<OsString> = vec![
@@ -339,27 +343,29 @@ fn compile_qbe(
       }
       linker_args.push("--end-group".into());
 
-      if linker.is_none() && cfg!(target_os = "linux") {
+      #[cfg(target_os = "linux")]
+      if linker.is_none() {
          let args = {
             let arg_fn = || linker_args.iter().map(|s| s.to_str().unwrap());
+
             let mut args = libwild::Args::new(arg_fn).unwrap();
             args.parse(arg_fn).unwrap();
             args
          };
 
-         libwild::run(args).map_err(|e| {
+         return libwild::run(args).map_err(|e| {
             libwild::error::report_error(&e);
             QbeCompilationError::LdExecution(None)
-         })
-      } else {
-         let mut ld_command = Command::new(linker.unwrap_or(OsStr::new("ld")));
-         ld_command.args(linker_args);
+         });
+      }
 
-         match ld_command.status() {
-            Ok(stat) if stat.success() => Ok(()),
-            Ok(stat) => Err(QbeCompilationError::LdExecution(Some(stat))),
-            Err(e) => Err(QbeCompilationError::LdInvocation(e)),
-         }
+      let mut ld_command = Command::new(linker.unwrap_or(OsStr::new("ld")));
+      ld_command.args(linker_args);
+
+      match ld_command.status() {
+         Ok(stat) if stat.success() => Ok(()),
+         Ok(stat) => Err(QbeCompilationError::LdExecution(Some(stat))),
+         Err(e) => Err(QbeCompilationError::LdInvocation(e)),
       }
    } else {
       let mut cc_command = Command::new("cc");
