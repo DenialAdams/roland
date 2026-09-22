@@ -25,9 +25,9 @@ scratch *args:
    wasm2wat --no-check scratch.wasm > scratch.wat
    {{wasm_executor}} scratch.wasm
 scratch_amd64 *args:
-   cargo run {{release_flag}} --bin rolandc-cli -- scratch.rol {{args}} --target amd64 && ./scratch
+   cargo run {{release_flag}} --bin rolandc-cli -- scratch.rol {{args}} --target amd64 --preserve-intermediate-outputs && ./scratch
 scratch_amd64_host *args:
-   cargo run {{release_flag}} --bin rolandc-cli -- scratch.rol {{args}} --target amd64-host && ./scratch
+   cargo run {{release_flag}} --bin rolandc-cli -- scratch.rol {{args}} --target amd64-host --preserve-intermediate-outputs && ./scratch
 coverage:
    cargo clean
    RUSTFLAGS="-Cinstrument-coverage -Cstrip=none -Clink-dead-code -Cdebuginfo=2" cargo build --bin rolandc-cli

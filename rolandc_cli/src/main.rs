@@ -48,6 +48,7 @@ struct Opts {
    target: Option<Target>,
    linker: Option<OsString>,
    dump_debugging_info: bool,
+   preserve_intermediate_outputs: bool,
 }
 
 fn parse_path(s: &std::ffi::OsStr) -> Result<std::path::PathBuf, &'static str> {
@@ -114,6 +115,7 @@ fn parse_args() -> Result<Opts, pico_args::Error> {
    let opts = Opts {
       target,
       dump_debugging_info: pargs.contains("--dump-debugging-info"),
+      preserve_intermediate_outputs: pargs.contains("--preserve-intermediate-outputs"),
       output: pargs.opt_value_from_os_str("--output", parse_path)?,
       linker: pargs.opt_value_from_str("--linker")?,
       source_file: pargs.free_from_os_str(parse_path)?,
@@ -203,6 +205,7 @@ fn main() {
       output_path,
       compile_result.link_requests,
       config.target == Target::QbeFreestanding,
+      opts.preserve_intermediate_outputs,
    ) {
       use std::io::Write;
       writeln!(err_stream_l, "Failed to compile produced IR to binary: {}", e).unwrap();
@@ -254,9 +257,16 @@ fn compile_qbe(
    final_path: PathBuf,
    link_requests: impl IntoIterator<Item = impl AsRef<str>>,
    freestanding: bool,
+   preserve_intermediate_outputs: bool,
 ) -> std::result::Result<(), QbeCompilationError> {
+   if preserve_intermediate_outputs {
+      std::fs::write(final_path.with_extension("ssa"), ssa_bytes).unwrap();
+   }
    let asm_result = invoke_qbe(ssa_bytes)?;
    let asm_path = asm_result.path();
+   if preserve_intermediate_outputs {
+      std::fs::copy(asm_path, final_path.with_extension("s")).unwrap();
+   }
    let program_object_path = assemble_file(asm_path)?;
    let syscall_object_path = assemble_bytes(include_bytes!("syscall.s"))?;
 
