@@ -141,11 +141,15 @@ fn main() -> Result<(), &'static str> {
       let tc_output = {
          let mut cmd = Command::new(&opts.tc_path);
          if opts.amd64 {
-            cmd.arg(entry.clone()).arg("--amd64").arg("--output").arg("--preserve-intermediate-outputs").arg({
-               let mut x = entry.clone();
-               x.set_extension("out");
-               x
-            })
+            cmd.arg(entry.clone())
+               .arg("--amd64")
+               .arg("--output")
+               .arg("--preserve-intermediate-outputs")
+               .arg({
+                  let mut x = entry.clone();
+                  x.set_extension("out");
+                  x
+               })
          } else {
             cmd.arg(entry.clone())
          }

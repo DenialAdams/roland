@@ -21,9 +21,9 @@ pub struct UnionSizeInfo {
    pub mem_alignment: u64,
 }
 
-pub fn aligned_address(v: u64, a: u64) -> u64 {
+pub fn aligned_address(v: u64, a: u64) -> Option<u64> {
    let rem = v % a;
-   if rem == 0 { v } else { v + (a - rem) }
+   if rem == 0 { Some(v) } else { v.checked_add(a - rem) }
 }
 
 fn ensure_type_already_processed(
@@ -70,24 +70,38 @@ pub fn calculate_union_size_info(
    }
    udt.union_info.get_mut(id).unwrap().field_types = ft;
 
-   let mut our_mem_size = 0;
-   let mut our_mem_alignment = 1;
-   for field_t in udt.union_info.get(id).unwrap().field_types.values() {
-      let field_t = &field_t.e_type;
+   let (mem_size, mem_alignment) = {
+      let mut our_mem_size = Some(0);
+      let mut our_mem_alignment = 1;
+      for field_t in udt.union_info.get(id).unwrap().field_types.values() {
+         let field_t = &field_t.e_type;
 
-      our_mem_size = std::cmp::max(
-         our_mem_size,
-         template_type_aware_mem_size(field_t, udt, target, templated_types),
-      );
-      our_mem_alignment = std::cmp::max(
+         our_mem_size = our_mem_size.and_then(|v| {
+            Some(std::cmp::max(
+               v,
+               template_type_aware_mem_size(field_t, udt, target, templated_types)?,
+            ))
+         });
+         our_mem_alignment = std::cmp::max(
+            our_mem_alignment,
+            template_type_aware_mem_alignment(field_t, udt, target, templated_types),
+         );
+      }
+
+      (
+         our_mem_size.and_then(|v| aligned_address(v, our_mem_alignment)),
          our_mem_alignment,
-         template_type_aware_mem_alignment(field_t, udt, target, templated_types),
-      );
+      )
+   };
+
+   if mem_size.is_none() {
+      // issue an error, union is too big
+      todo!();
    }
 
    udt.union_info.get_mut(id).unwrap().size = Some(UnionSizeInfo {
-      mem_size: aligned_address(our_mem_size, our_mem_alignment),
-      mem_alignment: our_mem_alignment,
+      mem_size: mem_size.unwrap_or(0),
+      mem_alignment,
    });
 }
 
@@ -111,39 +125,51 @@ pub fn calculate_struct_size_info(
    }
    udt.struct_info.get_mut(id).unwrap().field_types = ft;
 
-   let mut sum_mem = 0;
-   let mut strictest_alignment = 1;
-   let mut field_offsets_mem = HashMap::with_capacity(udt.struct_info.get(id).unwrap().field_types.len());
-   for ((field_name, field_t), next_field_t) in udt.struct_info.get(id).unwrap().field_types.iter().zip(
-      udt.struct_info
-         .get(id)
-         .unwrap()
-         .field_types
-         .values()
-         .skip(1)
-         .map(Some)
-         .chain(std::iter::once(None)),
-   ) {
-      let field_t = &field_t.e_type;
+   let (mem_size, strictest_alignment, field_offsets_mem) = {
+      let mut sum_mem = Some(0);
+      let mut strictest_alignment = 1;
+      let mut field_offsets_mem = HashMap::with_capacity(udt.struct_info.get(id).unwrap().field_types.len());
+      for ((field_name, field_t), next_field_t) in udt.struct_info.get(id).unwrap().field_types.iter().zip(
+         udt.struct_info
+            .get(id)
+            .unwrap()
+            .field_types
+            .values()
+            .skip(1)
+            .map(Some)
+            .chain(std::iter::once(None)),
+      ) {
+         let field_t = &field_t.e_type;
 
-      field_offsets_mem.insert(*field_name, sum_mem);
+         field_offsets_mem.insert(*field_name, sum_mem.unwrap_or(0));
 
-      let next_mem_alignment = next_field_t.map_or(1, |x| {
-         template_type_aware_mem_alignment(&x.e_type, udt, target, templated_types)
-      });
-      sum_mem = aligned_address(
-         sum_mem + template_type_aware_mem_size(field_t, udt, target, templated_types),
-         next_mem_alignment,
-      );
+         let next_mem_alignment = next_field_t.map_or(1, |x| {
+            template_type_aware_mem_alignment(&x.e_type, udt, target, templated_types)
+         });
+         sum_mem = sum_mem
+            .and_then(|v| Some(v + template_type_aware_mem_size(field_t, udt, target, templated_types)?))
+            .and_then(|v| aligned_address(v, next_mem_alignment));
 
-      strictest_alignment = std::cmp::max(
+         strictest_alignment = std::cmp::max(
+            strictest_alignment,
+            template_type_aware_mem_alignment(field_t, udt, target, templated_types),
+         );
+      }
+
+      (
+         sum_mem.and_then(|v| aligned_address(v, strictest_alignment)),
          strictest_alignment,
-         template_type_aware_mem_alignment(field_t, udt, target, templated_types),
-      );
+         field_offsets_mem,
+      )
+   };
+
+   if mem_size.is_none() {
+      // issue an error, struct is too big
+      todo!();
    }
 
    udt.struct_info.get_mut(id).unwrap().size = Some(StructSizeInfo {
-      mem_size: aligned_address(sum_mem, strictest_alignment),
+      mem_size: mem_size.unwrap_or(0),
       strictest_alignment,
       field_offsets_mem,
    });
@@ -278,9 +304,11 @@ pub fn template_type_aware_mem_size(
    udt: &UserDefinedTypeInfo,
    target: BaseTarget,
    templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
-) -> u64 {
-   match e {
-      ExpressionType::Array(a_type, len) => template_type_aware_mem_size(a_type, udt, target, templated_types) * *len,
+) -> Option<u64> {
+   Some(match e {
+      ExpressionType::Array(a_type, len) => {
+         template_type_aware_mem_size(a_type, udt, target, templated_types)?.checked_mul(*len)?
+      }
       ExpressionType::Union(union_id, generic_args) => {
          if generic_args.is_empty() {
             sizeof_type_mem(e, udt, target)
@@ -296,14 +324,14 @@ pub fn template_type_aware_mem_size(
             }) {
                our_mem_size = std::cmp::max(
                   our_mem_size,
-                  template_type_aware_mem_size(&field_t, udt, target, templated_types),
+                  template_type_aware_mem_size(&field_t, udt, target, templated_types)?,
                );
                our_mem_alignment = std::cmp::max(
                   our_mem_alignment,
                   template_type_aware_mem_alignment(&field_t, udt, target, templated_types),
                );
             }
-            aligned_address(our_mem_size, our_mem_alignment)
+            aligned_address(our_mem_size, our_mem_alignment)?
          }
       }
       ExpressionType::Struct(struct_id, generic_args) => {
@@ -318,27 +346,27 @@ pub fn template_type_aware_mem_size(
                )
             });
             let zip_iter = iter.clone().skip(1).map(Some).chain(std::iter::once(None));
-            let mut sum_mem = 0;
+            let mut sum_mem: u64 = 0;
             let mut strictest_alignment = 1;
             for (field_t, next_field_t) in iter.zip(zip_iter) {
                let next_mem_alignment = next_field_t.map_or(1, |x| {
                   template_type_aware_mem_alignment(&x, udt, target, templated_types)
                });
                sum_mem = aligned_address(
-                  sum_mem + template_type_aware_mem_size(&field_t, udt, target, templated_types),
+                  sum_mem.checked_add(template_type_aware_mem_size(&field_t, udt, target, templated_types)?)?,
                   next_mem_alignment,
-               );
+               )?;
 
                strictest_alignment = std::cmp::max(
                   strictest_alignment,
                   template_type_aware_mem_alignment(&field_t, udt, target, templated_types),
                );
             }
-            aligned_address(sum_mem, strictest_alignment)
+            aligned_address(sum_mem, strictest_alignment)?
          }
       }
       _ => sizeof_type_mem(e, udt, target),
-   }
+   })
 }
 
 /// The size of a type as it's stored in memory

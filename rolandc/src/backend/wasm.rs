@@ -288,7 +288,7 @@ pub fn emit_wasm(
          1
       };
 
-      offset = aligned_address(offset, strictest_alignment);
+      offset = aligned_address(offset, strictest_alignment).unwrap();
    }
    for (static_var, static_details) in program.non_stack_var_info.iter() {
       debug_assert_ne!(static_details.kind, StorageKind::Const);
@@ -323,7 +323,7 @@ pub fn emit_wasm(
    }
 
    // keep stack aligned
-   offset = aligned_address(offset, 8);
+   offset = aligned_address(offset, 8).unwrap();
 
    let (global_section, global_names) = {
       let mut globals = GlobalSection::new();
@@ -463,7 +463,7 @@ pub fn emit_wasm(
       for local in mem_info.iter() {
          // last element could have been a struct, and so we need to pad
          generation_context.sum_sizeof_locals_mem =
-            aligned_address(generation_context.sum_sizeof_locals_mem, local.1.0);
+            aligned_address(generation_context.sum_sizeof_locals_mem, local.1.0).unwrap();
          generation_context
             .stack_offsets_mem
             .insert(*local.0, generation_context.sum_sizeof_locals_mem);
@@ -1707,7 +1707,7 @@ fn get_stack_address_of_local(id: VariableId, generation_context: &mut Generatio
    let Some(VarSlot::Stack(s)) = generation_context.var_to_slot.get(&id) else {
       return false;
    };
-   let offset = aligned_address(generation_context.sum_sizeof_locals_mem, 8)
+   let offset = aligned_address(generation_context.sum_sizeof_locals_mem, 8).unwrap()
       - generation_context
          .stack_offsets_mem
          .get(&(*s as usize))
@@ -1845,7 +1845,7 @@ fn adjust_stack(generation_context: &mut GenerationContext, instr: &Instruction)
 
    generation_context.active_fcn.instruction(&Instruction::GlobalGet(SP));
    // ensure that each stack frame is strictly aligned so that internal stack frame alignment is preserved
-   let adjust_value = aligned_address(generation_context.sum_sizeof_locals_mem, 8);
+   let adjust_value = aligned_address(generation_context.sum_sizeof_locals_mem, 8).unwrap();
    generation_context
       .active_fcn
       .instruction(&Instruction::I32Const(adjust_value as i32));

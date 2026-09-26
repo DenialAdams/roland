@@ -869,10 +869,7 @@ pub fn fold_builtin_call(
             fc.templated_types,
          );
 
-         Some(Expression::IntLiteral {
-            val: type_size,
-            synthetic: true,
-         })
+         type_size.map(|val| Expression::IntLiteral { val, synthetic: true })
       }
       "alignof" => {
          let type_alignment = crate::size_info::template_type_aware_mem_alignment(

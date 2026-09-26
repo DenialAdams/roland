@@ -1569,18 +1569,32 @@ fn get_type(
                   return ExpressionType::CompileError;
                }
 
-               let size_source = template_type_aware_mem_size(
+               let Some(size_source) = template_type_aware_mem_size(
                   e_type,
                   validation_context.user_defined_types,
                   validation_context.owned.target.base_target(),
                   validation_context.templated_types,
-               );
-               let size_target = template_type_aware_mem_size(
+               ) else {
+                  rolandc_error!(
+                     err_manager,
+                     e.location,
+                     "Transmute encountered an operand whose size is overflowing",
+                  );
+                  return ExpressionType::CompileError;
+               };
+               let Some(size_target) = template_type_aware_mem_size(
                   target_type,
                   validation_context.user_defined_types,
                   validation_context.owned.target.base_target(),
                   validation_context.templated_types,
-               );
+               ) else {
+                  rolandc_error!(
+                     err_manager,
+                     e.location,
+                     "Transmute encountered a target type whose size is overflowing",
+                  );
+                  return ExpressionType::CompileError;
+               };
 
                if size_source == size_target {
                   #[derive(PartialEq)]
