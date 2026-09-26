@@ -1,0 +1,19 @@
+static first: u64 = 1;
+static second: u64 = 2;
+static pointer: &u64 = ___;
+
+proc change() -> u64 {
+   pointer = &second;
+   return 3;
+}
+
+proc main() {
+   pointer = &first;
+   pointer~ = change();
+   println(uint_to_string(first));
+   println(uint_to_string(second));
+}
+__END__
+run:
+3
+2
