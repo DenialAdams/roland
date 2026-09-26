@@ -141,7 +141,7 @@ pub fn calculate_struct_size_info(
    udt.struct_info.get_mut(id).unwrap().field_types = ft;
 
    let (mem_size, strictest_alignment, field_offsets_mem) = {
-      let mut sum_mem = Some(0);
+      let mut sum_mem = Some(0u64);
       let mut strictest_alignment = 1;
       let mut field_offsets_mem = HashMap::with_capacity(udt.struct_info.get(id).unwrap().field_types.len());
       for ((field_name, field_t), next_field_t) in udt.struct_info.get(id).unwrap().field_types.iter().zip(
@@ -162,7 +162,14 @@ pub fn calculate_struct_size_info(
             template_type_aware_mem_alignment(&x.e_type, udt, target.base(), templated_types)
          });
          sum_mem = sum_mem
-            .and_then(|v| Some(v + template_type_aware_mem_size(field_t, udt, target.base(), templated_types)?))
+            .and_then(|v| {
+               v.checked_add(template_type_aware_mem_size(
+                  field_t,
+                  udt,
+                  target.base(),
+                  templated_types,
+               )?)
+            })
             .and_then(|v| aligned_address(v, next_mem_alignment));
 
          strictest_alignment = std::cmp::max(

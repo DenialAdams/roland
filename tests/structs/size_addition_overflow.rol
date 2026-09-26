@@ -1,0 +1,13 @@
+struct Huge {
+   a: [u8; 18446744073709551615],
+   b: u8,
+}
+
+proc main() {}
+__END__
+compile_wasi:
+Struct `Huge` is too big for this target (WASI)
+↳ line 1, column 1 [tests/structs/size_addition_overflow.rol]
+compile_amd64:
+Struct `Huge` is too big for this target (AMD64)
+↳ line 1, column 1 [tests/structs/size_addition_overflow.rol]
