@@ -5,18 +5,9 @@ use super::type_variables::{TypeConstraint, TypeVariableManager};
 use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::rolandc_error_w_details;
 use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, ProcedureId, all_expression_pools_mut};
+use crate::semantic_analysis::type_variables::constraint_compatible_with_concrete;
 use crate::source_info::SourceInfo;
-use crate::type_data::{ExpressionType, IntType};
-
-fn constraint_compatible_with_concrete(constraint: TypeConstraint, concrete: &ExpressionType) -> bool {
-   match constraint {
-      TypeConstraint::None => true,
-      TypeConstraint::Float => matches!(concrete, ExpressionType::Float(_)),
-      TypeConstraint::SignedInt => matches!(concrete, ExpressionType::Int(IntType { signed: true, .. })),
-      TypeConstraint::Int => matches!(concrete, ExpressionType::Int(_)),
-      TypeConstraint::Enum => matches!(concrete, ExpressionType::Enum(_)),
-   }
-}
+use crate::type_data::ExpressionType;
 
 pub fn constraint_matches_type_or_try_constrain(
    constraint: TypeConstraint,

@@ -1,5 +1,5 @@
 use crate::disjoint_set::DisjointSet;
-use crate::type_data::ExpressionType;
+use crate::type_data::{ExpressionType, IntType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TypeVariable(usize);
@@ -22,6 +22,16 @@ fn union_constraints(a: TypeConstraint, b: TypeConstraint) -> Result<TypeConstra
       }
       _ if a == b => Ok(a),
       _ => Err(()),
+   }
+}
+
+pub fn constraint_compatible_with_concrete(constraint: TypeConstraint, concrete: &ExpressionType) -> bool {
+   match constraint {
+      TypeConstraint::None => true,
+      TypeConstraint::Float => matches!(concrete, ExpressionType::Float(_)),
+      TypeConstraint::SignedInt => matches!(concrete, ExpressionType::Int(IntType { signed: true, .. })),
+      TypeConstraint::Int => matches!(concrete, ExpressionType::Int(_)),
+      TypeConstraint::Enum => matches!(concrete, ExpressionType::Enum(_)),
    }
 }
 
@@ -70,8 +80,8 @@ impl TypeVariableManager {
    pub fn union(&mut self, x: TypeVariable, y: TypeVariable) -> Result<(), ()> {
       let new_constraint = union_constraints(self.get_data(x).constraint, self.get_data(y).constraint)?;
       let known_type = match (
-         self.get_data_mut(x).known_type.take(),
-         self.get_data_mut(y).known_type.take(),
+         self.get_data_mut(x).known_type.clone(),
+         self.get_data_mut(y).known_type.clone(),
       ) {
          (None, None) => None,
          (None, r @ Some(_)) => r,
@@ -79,6 +89,15 @@ impl TypeVariableManager {
          (l @ Some(_), r @ Some(_)) if l == r => l,
          _ => return Err(()),
       };
+
+      if let Some(known_type) = known_type.as_ref()
+        && !constraint_compatible_with_concrete(
+            new_constraint,
+            known_type,
+        ) {
+            return Err(());
+        }
+
       self.disjoint_set.union(x.0, y.0);
       let new_data = self.get_data_mut(x);
       new_data.constraint = new_constraint;

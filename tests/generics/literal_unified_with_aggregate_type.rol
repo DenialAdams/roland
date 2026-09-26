@@ -1,0 +1,10 @@
+struct S { x: u8 }
+proc f<T>(a: T, b: T) {}
+proc main() {
+   let c: S = S { x: 0 };
+   f(c, 1);
+}
+__END__
+compile:
+Argument at position 1 is of type ?? Int when we expected Struct S
+↳ line 5, column 9 [tests/generics/literal_unified_with_aggregate_type.rol]

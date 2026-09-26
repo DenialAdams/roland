@@ -1,0 +1,18 @@
+proc make_ptr<T>() -> &T {
+    return nullptr$<T>();
+}
+
+proc id<T>(x: T) -> T {
+    return x;
+}
+
+proc same<T>(a: T, b: T) {}
+
+proc main() {
+    let a = id(make_ptr());
+    let b = id(make_ptr$<i32>());
+
+    same(a, b);
+}
+__END__
+compile:
