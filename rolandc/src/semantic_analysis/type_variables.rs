@@ -81,6 +81,11 @@ impl TypeVariableManager {
    pub fn union(&mut self, x: TypeVariable, y: TypeVariable) -> Result<(), ()> {
       let (x_rep, x_data) = self.get_rep_and_data(x);
       let (y_rep, y_data) = self.get_rep_and_data(y);
+
+      if x_rep == y_rep {
+         return Ok(());
+      }
+
       let new_constraint = union_constraints(x_data.constraint, y_data.constraint)?;
 
       if let Some(kt) = x_data.known_type.as_ref()
