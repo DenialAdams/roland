@@ -222,6 +222,18 @@ struct CopyRange {
    end: usize,
 }
 
+fn chars_from(input: &str, offset: usize) -> impl Iterator<Item = (CopyRange, char)> {
+   input[offset..].char_indices().map(move |(start, ch)| {
+      (
+         CopyRange {
+            start: offset + start,
+            end: offset + start + ch.len_utf8(),
+         },
+         ch,
+      )
+   })
+}
+
 pub fn lex_for_tokens(
    input: &str,
    source_path: SourcePath,
@@ -239,19 +251,7 @@ pub fn lex_for_tokens(
    // numeric literals
    let mut is_float = false;
 
-   let mut chars = input.char_indices().map(|(start, ch)| {
-      // Naturally this should be a range start..end
-      // If Rust ranges ever implement Copy (2027 edition?)
-      // will change
-      (
-         CopyRange {
-            start,
-            end: (start + ch.len_utf8()),
-         },
-         ch,
-      )
-   });
-
+   let mut chars = chars_from(input, 0);
    let mut next_char = chars.next();
 
    while let Some((c_byte_range, c)) = next_char {
@@ -668,23 +668,37 @@ pub fn lex_for_tokens(
             }
          }
          LexMode::StringLiteral => {
-            if c == '"' {
-               let final_str = interner.intern(&str_buf);
+            let start = c_byte_range.start;
+            let Some(delimiter) = memchr::memchr2(b'"', b'\\', &input.as_bytes()[start..]) else {
+               // Leave the mode set so the EOF diagnostic below covers the whole literal.
+               break;
+            };
+            let end = start + delimiter;
+            // ASCII delimiters are always UTF-8 boundaries, so the intervening text
+            // can be copied without decoding and re-encoding individual characters.
+            let fragment = &input[start..end];
+            if input.as_bytes()[end] == b'"' {
+               let final_str = if str_buf.is_empty() {
+                  interner.intern(fragment)
+               } else {
+                  str_buf.push_str(fragment);
+                  interner.intern(&str_buf)
+               };
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: SourcePosition(fragment_begin),
-                     end: SourcePosition(c_byte_range.end),
+                     end: SourcePosition(end + 1),
                      file: source_path,
                   },
                   token: Token::StringLiteral(final_str),
                });
                str_buf.clear();
                mode = LexMode::Normal;
-            } else if c == '\\' {
-               mode = LexMode::StringLiteralEscape;
             } else {
-               str_buf.push(c);
+               str_buf.push_str(fragment);
+               mode = LexMode::StringLiteralEscape;
             }
+            chars = chars_from(input, end + 1);
             next_char = chars.next();
          }
          LexMode::StringLiteralEscape => {
@@ -814,10 +828,11 @@ pub fn lex_for_tokens(
             }
          }
          LexMode::Comment => {
-            if c == '\n' {
-               mode = LexMode::Normal;
-            }
+            let start = c_byte_range.start;
+            let end = memchr::memchr(b'\n', &input.as_bytes()[start..]).map_or(input.len(), |i| start + i + 1);
+            chars = chars_from(input, end);
             next_char = chars.next();
+            mode = LexMode::Normal;
          }
       }
    }
@@ -985,6 +1000,138 @@ impl Lexer {
 #[cfg(test)]
 mod tests {
    use super::*;
+   use crate::error_handling::{ErrorLocation, ErrorManager};
+
+   #[test]
+   fn string_scanning_preserves_contents_and_positions() {
+      let interner = Interner::new();
+      let source_path = SourcePath(7);
+      let cases = [
+         ("\"\"", ""),
+         (r#""héllø 世界🙂""#, "héllø 世界🙂"),
+         (r#""hé\n世\t🙂\\\"\r\0""#, "hé\n世\t🙂\\\"\r\0"),
+         ("\"multi\nline\r\n世\"", "multi\nline\r\n世"),
+         (r#""\\n""#, "\\n"),
+         (r#""\n""#, "\n"),
+      ];
+      for (literal, expected) in cases {
+         let prefix = "α;";
+         let input = format!("{prefix}{literal}β");
+         let mut errors = ErrorManager::new();
+         let tokens = lex_for_tokens(&input, source_path, &SharedErrorManager::new(&mut errors), &interner).unwrap();
+         assert!(errors.errors.is_empty());
+         assert_eq!(tokens.len(), 4);
+         assert_eq!(tokens[0].token, Token::Identifier(interner.intern("α")));
+         assert_eq!(tokens[1].token, Token::Semicolon);
+         assert_eq!(
+            tokens[2],
+            SourceToken {
+               token: Token::StringLiteral(interner.intern(expected)),
+               source_info: SourceInfo {
+                  begin: SourcePosition(prefix.len()),
+                  end: SourcePosition(prefix.len() + literal.len()),
+                  file: source_path,
+               },
+            }
+         );
+         assert_eq!(tokens[3].token, Token::Identifier(interner.intern("β")));
+         assert_eq!(tokens[3].source_info.begin.0, prefix.len() + literal.len());
+         assert_eq!(tokens[3].source_info.end.0, input.len());
+      }
+   }
+
+   #[test]
+   fn string_scanning_handles_long_runs_and_adjacent_literals() {
+      let interner = Interner::new();
+      for len in [0, 1, 15, 16, 31, 32, 63, 64, 127, 1024] {
+         let text = "x".repeat(len);
+         let input = format!(r#""{text}世界""{text}\n{text}🙂""""#);
+         let mut errors = ErrorManager::new();
+         let tokens = lex_for_tokens(&input, SourcePath(0), &SharedErrorManager::new(&mut errors), &interner).unwrap();
+         let expected = [format!("{text}世界"), format!("{text}\n{text}🙂"), String::new()];
+         assert_eq!(tokens.len(), expected.len());
+         for (token, expected) in tokens.iter().zip(expected) {
+            assert_eq!(token.token, Token::StringLiteral(interner.intern(&expected)));
+         }
+      }
+   }
+
+   #[test]
+   fn comments_preserve_following_tokens_and_positions() {
+      let interner = Interner::new();
+      for len in [0, 1, 15, 16, 31, 32, 63, 64, 127, 1024] {
+         let text = "x".repeat(len);
+         let comment = format!(r#"{text}世界🙂 "\q __END__"#);
+         let input = format!("α;//{comment}\r\n//\nβ/2//{comment}");
+         let mut errors = ErrorManager::new();
+         let tokens = lex_for_tokens(&input, SourcePath(0), &SharedErrorManager::new(&mut errors), &interner).unwrap();
+         assert!(errors.errors.is_empty());
+         assert_eq!(
+            tokens.iter().map(|x| x.token).collect::<Vec<_>>(),
+            [
+               Token::Identifier(interner.intern("α")),
+               Token::Semicolon,
+               Token::Identifier(interner.intern("β")),
+               Token::Divide,
+               Token::IntLiteral(2),
+            ]
+         );
+         let beta = input.find('β').unwrap();
+         assert_eq!(tokens[2].source_info.begin.0, beta);
+         assert_eq!(tokens[2].source_info.end.0, beta + 'β'.len_utf8());
+         assert_eq!(tokens[3].source_info.begin.0, beta + 'β'.len_utf8());
+      }
+      for input in ["//", "//\n", "//\r", "//世界🙂", "//\n//", "//\n//\n"] {
+         let mut errors = ErrorManager::new();
+         assert!(
+            lex_for_tokens(input, SourcePath(0), &SharedErrorManager::new(&mut errors), &interner)
+               .unwrap()
+               .is_empty()
+         );
+      }
+   }
+
+   #[test]
+   fn string_scanning_preserves_error_locations() {
+      let interner = Interner::new();
+      let prefix = "// comment 世界\nα;";
+      for literal in [
+         "\"",
+         "\"世界",
+         "\"世界\\",
+         "\"世界\\nrest",
+         "\"\\n",
+         "\"世界\\q\"",
+         "\"世界\\🙂\"",
+      ] {
+         let input = format!("{prefix}{literal}");
+         let mut errors = ErrorManager::new();
+         assert!(lex_for_tokens(&input, SourcePath(0), &SharedErrorManager::new(&mut errors), &interner).is_err());
+         assert_eq!(errors.errors.len(), 1);
+         let error = &errors.errors[0];
+         let ErrorLocation::Simple(location) = error.location else {
+            panic!("expected a single error location");
+         };
+         if literal.ends_with('"') && literal.len() > 1 {
+            let begin = input.find('\\').unwrap();
+            let escaped = input[begin + 1..].chars().next().unwrap();
+            assert_eq!(
+               error.message,
+               format!("Encountered unknown escape sequence `\\{escaped}`")
+            );
+            assert_eq!(location.begin.0, begin);
+            assert_eq!(location.end.0, begin + 1 + escaped.len_utf8());
+         } else {
+            assert!(
+               error
+                  .message
+                  .starts_with("Encountered EOF while parsing string literal")
+            );
+            assert_eq!(location.begin.0, prefix.len());
+            assert_eq!(location.end.0, input.len());
+         }
+      }
+   }
 
    // TODO: replace with static assert when rust can support it without a feature
    #[test]

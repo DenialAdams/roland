@@ -22,6 +22,38 @@ struct LivenessState {
    address_taken_out: BitBox,
 }
 
+impl LivenessState {
+   fn update_live_in(&mut self) -> bool {
+      // These owned bitsets all start at bit zero and have the same length.
+      // Work on whole words so LLVM can vectorize the transfer and change detection.
+      let full_words = self.live_in.len() / usize::BITS as usize;
+      let tail_bits = self.live_in.len() % usize::BITS as usize;
+      let live_out = self.live_out.as_raw_slice();
+      let kill = self.kill.as_raw_slice();
+      let gen_ = self.gen_.as_raw_slice();
+      let live_in = self.live_in.as_raw_mut_slice();
+      let mut difference = 0;
+      // Bound the destination slice here to keep a single loop bound for vectorization.
+      for (((out, kill), gen_), dst) in live_out
+         .iter()
+         .zip(kill)
+         .zip(gen_)
+         .zip(live_in[..full_words].iter_mut())
+      {
+         let next = gen_ | (out & !kill);
+         difference |= next ^ *dst;
+         *dst = next;
+      }
+      if tail_bits != 0 {
+         let mask = usize::MAX >> (usize::BITS as usize - tail_bits);
+         let next = (gen_[full_words] | (live_out[full_words] & !kill[full_words])) & mask;
+         difference |= (next ^ live_in[full_words]) & mask;
+         live_in[full_words] = next;
+      }
+      difference != 0
+   }
+}
+
 #[must_use]
 pub fn compute_live_intervals(
    body: &ProcedureBody,
@@ -150,24 +182,8 @@ pub fn liveness(
          }
 
          // Update live_in
-         {
-            let s = &mut state[node_id];
-            let old_live_in = std::mem::replace(&mut s.live_in, s.gen_.clone());
-
-            // s.live_in |= s.live_out & !s.kill;
-            for ((lhs, rhs), mut dst) in s
-               .live_out
-               .iter()
-               .by_vals()
-               .zip(s.kill.iter().by_vals())
-               .zip(s.live_in.iter_mut())
-            {
-               *dst |= lhs & !rhs;
-            }
-
-            if old_live_in != s.live_in {
-               worklist.extend(&cfg.bbs[node_id].predecessors);
-            }
+         if state[node_id].update_live_in() {
+            worklist.extend(&cfg.bbs[node_id].predecessors);
          }
       }
 
@@ -561,5 +577,68 @@ fn mark_address_taken_expr(
       | Expression::UnresolvedProcLiteral(_, _)
       | Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+   }
+}
+
+#[cfg(test)]
+mod tests {
+   use super::*;
+
+   fn empty_state(len: usize) -> LivenessState {
+      LivenessState {
+         live_in: bitbox![0; len],
+         live_out: bitbox![0; len],
+         gen_: bitbox![0; len],
+         kill: bitbox![0; len],
+         gen_address_taken: bitbox![0; len],
+         address_taken_out: bitbox![0; len],
+      }
+   }
+
+   #[test]
+   fn live_in_transfer_matches_individual_bits() {
+      let word_bits = usize::BITS as usize;
+      for len in [
+         0,
+         1,
+         word_bits - 1,
+         word_bits,
+         word_bits + 1,
+         4 * word_bits,
+         4 * word_bits + 3,
+      ] {
+         let mut state = empty_state(len);
+         for i in 0..len {
+            state.live_in.set(i, i % 7 == 0);
+            state.live_out.set(i, i % 3 == 0);
+            state.kill.set(i, i % 5 == 0);
+            state.gen_.set(i, i % 11 == 0);
+         }
+         let expected: BitBox = (0..len)
+            .map(|i| state.gen_[i] || (state.live_out[i] && !state.kill[i]))
+            .collect();
+         let expected_change = state.live_in != expected;
+         assert_eq!(state.update_live_in(), expected_change, "length {len}");
+         assert_eq!(state.live_in, expected, "length {len}");
+         assert!(!state.update_live_in(), "length {len}");
+
+         // A later DCE iteration can also remove live bits.
+         state.gen_.fill(false);
+         state.live_out.fill(false);
+         let expected_change = state.live_in.any();
+         assert_eq!(state.update_live_in(), expected_change, "length {len}");
+         assert!(state.live_in.not_any());
+      }
+   }
+
+   #[test]
+   fn live_in_transfer_ignores_padding() {
+      let mut state = empty_state(usize::BITS as usize + 3);
+      for bits in [&mut state.live_in, &mut state.live_out, &mut state.gen_] {
+         *bits.as_raw_mut_slice().last_mut().unwrap() = !0b111;
+      }
+      assert!(!state.update_live_in());
+      assert!(state.live_in.not_any());
+      assert_eq!(*state.live_in.as_raw_slice().last().unwrap(), 0);
    }
 }
