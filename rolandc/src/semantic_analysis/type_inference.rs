@@ -52,6 +52,9 @@ pub fn try_merge_types(
          if current_base != incoming_base {
             return false;
          }
+         if current_type_arguments.len() != incoming_type_arguments.len() {
+            return false;
+         }
          current_type_arguments
             .iter()
             .zip(incoming_type_arguments)
@@ -64,6 +67,9 @@ pub fn try_merge_types(
          if current_base != incoming_base {
             return false;
          }
+         if current_type_arguments.len() != incoming_type_arguments.len() {
+            return false;
+         }
          current_type_arguments
             .iter()
             .zip(incoming_type_arguments)
@@ -73,15 +79,18 @@ pub fn try_merge_types(
          ExpressionType::ProcedurePointer {
             parameters: current_parameters,
             ret_type: current_ret_type,
-            variadic: _,
+            variadic: current_variadic,
          },
          ExpressionType::ProcedurePointer {
             parameters: incoming_parameters,
             ret_type: incoming_ret_type,
-            variadic: _,
+            variadic: incoming_variadic,
          },
       ) => {
          if current_parameters.len() != incoming_parameters.len() {
+            return false;
+         }
+         if *current_variadic != *incoming_variadic {
             return false;
          }
          current_parameters
