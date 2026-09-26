@@ -1,0 +1,18 @@
+proc make<T>() -> T {
+    let x: T = ___;
+    return x;
+}
+
+proc same<T>(a: &T, b: &T) {}
+
+proc main() {
+    let x = make();
+    let y = make();
+
+    same(&x, &&y);
+    same(&x, &y);
+}
+__END__
+compile:
+Argument at position 1 is of type &?? when we expected &&??
+↳ line 13, column 14 [tests/inference/occurs_check_two.rol]

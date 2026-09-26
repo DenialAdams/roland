@@ -1,5 +1,5 @@
 use crate::disjoint_set::DisjointSet;
-use crate::semantic_analysis::type_inference::try_merge_types;
+use crate::semantic_analysis::type_inference::{occurs_check, try_merge_types};
 use crate::type_data::{ExpressionType, IntType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -79,10 +79,23 @@ impl TypeVariableManager {
    }
 
    pub fn union(&mut self, x: TypeVariable, y: TypeVariable) -> Result<(), ()> {
-      let new_constraint = union_constraints(self.get_data(x).constraint, self.get_data(y).constraint)?;
+      let (x_rep, x_data) = self.get_rep_and_data(x);
+      let (y_rep, y_data) = self.get_rep_and_data(y);
+      let new_constraint = union_constraints(x_data.constraint, y_data.constraint)?;
+
+      if let Some(kt) = x_data.known_type.as_ref()
+         && occurs_check(y_rep, kt, self) {
+            return Err(());
+         }
+
+      if let Some(kt) = y_data.known_type.as_ref()
+         && occurs_check(x_rep, kt, self) {
+            return Err(());
+         }
+
       let known_type = match (
-         self.get_data_mut(x).known_type.clone(),
-         self.get_data_mut(y).known_type.clone(),
+         x_data.known_type.clone(),
+         y_data.known_type.clone(),
       ) {
          (None, None) => None,
          (None, r @ Some(_)) => r,
@@ -96,13 +109,11 @@ impl TypeVariableManager {
          }
       };
 
-      if let Some(known_type) = known_type.as_ref()
-         && !constraint_compatible_with_concrete(new_constraint, known_type)
-      {
+      if let Some(known_type) = known_type.as_ref() && !constraint_compatible_with_concrete(new_constraint, known_type) {
          return Err(());
       }
 
-      self.disjoint_set.union(x.0, y.0);
+      self.disjoint_set.union(x_rep.0, y_rep.0);
       let new_data = self.get_data_mut(x);
       new_data.constraint = new_constraint;
       new_data.known_type = known_type;
