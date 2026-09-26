@@ -1,4 +1,5 @@
 use crate::disjoint_set::DisjointSet;
+use crate::semantic_analysis::type_inference::try_merge_types;
 use crate::type_data::{ExpressionType, IntType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -86,17 +87,20 @@ impl TypeVariableManager {
          (None, None) => None,
          (None, r @ Some(_)) => r,
          (l @ Some(_), None) => l,
-         (l @ Some(_), r @ Some(_)) if l == r => l,
-         _ => return Err(()),
+         (Some(l), Some(r)) => {
+            if !try_merge_types(&l, &r, self) {
+               return Err(());
+            }
+
+            Some(l)
+         }
       };
 
       if let Some(known_type) = known_type.as_ref()
-        && !constraint_compatible_with_concrete(
-            new_constraint,
-            known_type,
-        ) {
-            return Err(());
-        }
+         && !constraint_compatible_with_concrete(new_constraint, known_type)
+      {
+         return Err(());
+      }
 
       self.disjoint_set.union(x.0, y.0);
       let new_data = self.get_data_mut(x);
@@ -113,5 +117,10 @@ impl TypeVariableManager {
    pub fn get_data_mut(&mut self, x: TypeVariable) -> &mut TypeVariableData {
       let rep = self.find(x);
       &mut self.type_variable_data[rep.0]
+   }
+
+   pub fn get_rep_and_data(&self, x: TypeVariable) -> (TypeVariable, &TypeVariableData) {
+      let rep = self.find(x);
+      (rep, &self.type_variable_data[rep.0])
    }
 }

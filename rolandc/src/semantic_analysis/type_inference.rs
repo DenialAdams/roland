@@ -5,7 +5,7 @@ use super::type_variables::{TypeConstraint, TypeVariableManager};
 use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::rolandc_error_w_details;
 use crate::parse::{Expression, ExpressionId, ExpressionPool, ProcedureBody, ProcedureId, all_expression_pools_mut};
-use crate::semantic_analysis::type_variables::constraint_compatible_with_concrete;
+use crate::semantic_analysis::type_variables::{TypeVariable, constraint_compatible_with_concrete};
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 
@@ -94,10 +94,57 @@ pub fn try_merge_types(
          type_variables.union(*current_tv, *incoming_tv).is_ok()
       }
       (ExpressionType::Unknown(tv), known_type) | (known_type, ExpressionType::Unknown(tv)) => {
-         let data = type_variables.get_data_mut(*tv);
+         fn occurs_check(needle: TypeVariable, ty: &ExpressionType, type_variables: &TypeVariableManager) -> bool {
+            match ty {
+               ExpressionType::Unknown(type_variable) => {
+                  let (rep, data) = type_variables.get_rep_and_data(*type_variable);
+
+                  if rep == needle {
+                     return true;
+                  }
+
+                  data
+                     .known_type
+                     .as_ref()
+                     .is_some_and(|kt| occurs_check(needle, kt, type_variables))
+               }
+               ExpressionType::Struct(_, type_arguments) | ExpressionType::Union(_, type_arguments) => {
+                  type_arguments.iter().any(|ta| occurs_check(needle, ta, type_variables))
+               }
+               ExpressionType::Array(base_t, _) | ExpressionType::Pointer(base_t) => {
+                  occurs_check(needle, base_t, type_variables)
+               }
+               ExpressionType::ProcedurePointer {
+                  parameters,
+                  ret_type,
+                  variadic: _,
+               } => parameters
+                  .iter()
+                  .chain(std::iter::once(ret_type.as_ref()))
+                  .any(|pp_ty| occurs_check(needle, pp_ty, type_variables)),
+               ExpressionType::Bool
+               | ExpressionType::Unit
+               | ExpressionType::GenericParam(_)
+               | ExpressionType::Unresolved { .. }
+               | ExpressionType::Never
+               | ExpressionType::CompileError
+               | ExpressionType::Enum(_)
+               | ExpressionType::ProcedureItem(_, _)
+               | ExpressionType::Int(_)
+               | ExpressionType::Float(_) => false,
+            }
+         }
+
+         let (tv_rep, data) = type_variables.get_rep_and_data(*tv);
          if let Some(kt) = data.known_type.clone() {
             return try_merge_types(&kt, known_type, type_variables);
          }
+
+         if occurs_check(tv_rep, known_type, type_variables) {
+            return false;
+         }
+
+         let data = type_variables.get_data_mut(*tv);
          if !constraint_compatible_with_concrete(data.constraint, known_type) {
             return false;
          }
