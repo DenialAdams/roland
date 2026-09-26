@@ -104,8 +104,8 @@ pub fn try_merge_types(
       }
       (ExpressionType::Unknown(tv), known_type) | (known_type, ExpressionType::Unknown(tv)) => {
          let data = type_variables.get_data_mut(*tv);
-         if let Some(kt) = data.known_type.as_ref() {
-            return kt == known_type;
+         if let Some(kt) = data.known_type.clone() {
+            return try_merge_types(&kt, known_type, type_variables);
          }
          if !constraint_compatible_with_concrete(data.constraint, known_type) {
             return false;

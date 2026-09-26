@@ -1,0 +1,10 @@
+struct Box<T> { v: T }
+
+proc main() {
+   let one: u8 = 1;
+   let a: Box<Box<u8>> = Box { v: Box { v: one } };
+   println(uint_to_string(a.v.v as u64));
+}
+__END__
+run:
+1
