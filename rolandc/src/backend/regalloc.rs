@@ -285,7 +285,7 @@ pub fn assign_variables_to_registers_and_mem(
          let var = param.var_id;
          let typ = &param.p_type.e_type;
 
-         if sizeof_type_mem(typ, &program.user_defined_types, config.target.base_target()) == 0 {
+         if sizeof_type_mem(typ, &program.user_defined_types, config.target.base()) == 0 {
             continue;
          }
 
@@ -293,19 +293,19 @@ pub fn assign_variables_to_registers_and_mem(
             body.locals.get(&var).unwrap(),
             escaping_vars.contains(&var),
             &program.user_defined_types,
-            config.target.base_target(),
+            config.target.base(),
          );
 
          match sk {
             VarSlotKind::Stack(_) if typ.is_aggregate() => {
-               match config.target.base_target() {
+               match config.target.base() {
                   BaseTarget::Wasm => {
                      // The parameter is a register and we copy the data manually
                      // After that it's free for the remainder of the procedure, so
                      // mark it as such now
                      free_slots
                         .entry(VarSlotKind::Register(
-                           if config.target.base_target().lowered_ptr_width() == IntWidth::Eight {
+                           if config.target.base().lowered_ptr_width() == IntWidth::Eight {
                               RegisterType::I64
                            } else {
                               RegisterType::I32
@@ -328,7 +328,7 @@ pub fn assign_variables_to_registers_and_mem(
                   body.locals.get(&var).unwrap(),
                   false,
                   &program.user_defined_types,
-                  config.target.base_target(),
+                  config.target.base(),
                );
                debug_assert!(matches!(param_sk, VarSlotKind::Register(_)));
                // Again, we will copy it to memory at the function boundary.
@@ -363,7 +363,7 @@ pub fn assign_variables_to_registers_and_mem(
                body.locals.get(&expired_var).unwrap(),
                escaping_vars.contains(&expired_var),
                &program.user_defined_types,
-               config.target.base_target(),
+               config.target.base(),
             );
             let newly_free_slot = result.var_to_slot.get(&expired_var).copied().unwrap();
             debug_assert!(
@@ -377,7 +377,7 @@ pub fn assign_variables_to_registers_and_mem(
             body.locals.get(var).unwrap(),
             escaping_vars.contains(var),
             &program.user_defined_types,
-            config.target.base_target(),
+            config.target.base(),
          );
 
          let slot = if let Some(slot) = free_slots.entry(sk).or_default().pop() {
@@ -404,7 +404,7 @@ pub fn assign_variables_to_registers_and_mem(
       }
    }
 
-   if config.target.base_target() != BaseTarget::Wasm {
+   if config.target.base() != BaseTarget::Wasm {
       // Only WASM has the concept of global registers
       return result;
    }
@@ -421,7 +421,7 @@ pub fn assign_variables_to_registers_and_mem(
          || sizeof_type_mem(
             &global.1.expr_type.e_type,
             &program.user_defined_types,
-            config.target.base_target(),
+            config.target.base(),
          ) == 0
       {
          continue;

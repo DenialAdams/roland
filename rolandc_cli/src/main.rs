@@ -189,7 +189,7 @@ fn main() {
       v.clone()
    } else {
       let mut output_path = opts.source_file.clone();
-      if config.target.base_target() == BaseTarget::Qbe {
+      if config.target.base() == BaseTarget::Qbe {
          output_path.set_extension("");
       } else {
          output_path.set_extension("wasm");
@@ -197,7 +197,7 @@ fn main() {
       output_path
    };
 
-   if config.target.base_target() == BaseTarget::Wasm {
+   if config.target.base() == BaseTarget::Wasm {
       std::fs::write(&output_path, compile_result.program_bytes).unwrap();
    } else if let Err(e) = compile_qbe(
       opts.linker.as_ref().map(AsRef::as_ref),

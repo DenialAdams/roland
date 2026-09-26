@@ -2,5 +2,10 @@ proc main() {
    println(uint_to_string(sizeof$<[u64; 536870912]>() as u64));
 }
 __END__
-compile:
-Overly big array
+compile_wasi:
+Array is too big for this target (WASI)
+↳ line 2, column 35 [tests/arrays/array_size_overflow.rol]
+Array is too big for this target (WASI)
+↳ line 2, column 27 [tests/arrays/array_size_overflow.rol]
+run_amd64:
+4294967296

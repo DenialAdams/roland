@@ -120,7 +120,7 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
             expression: Expression::Variable(temp),
             exp_type: Some(ExpressionType::Int(IntType {
                signed: false,
-               width: ctx.target.base_target().lowered_ptr_width(),
+               width: ctx.target.base().lowered_ptr_width(),
             })),
             location,
          }
@@ -138,7 +138,7 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
             expression: Expression::Variable(temp),
             exp_type: Some(ExpressionType::Int(IntType {
                signed: false,
-               width: ctx.target.base_target().lowered_ptr_width(),
+               width: ctx.target.base().lowered_ptr_width(),
             })),
             location,
          });

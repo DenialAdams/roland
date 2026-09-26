@@ -2,11 +2,13 @@ use std::collections::HashMap;
 
 use indexmap::IndexSet;
 
-use crate::BaseTarget;
-use crate::interner::StrId;
+use crate::error_handling::ErrorManager;
+use crate::error_handling::error_handling_macros::rolandc_error;
+use crate::interner::{Interner, StrId};
 use crate::parse::{StructId, UnionId, UserDefinedTypeId, UserDefinedTypeInfo};
 use crate::semantic_analysis::validator::map_generic_to_concrete_cow;
 use crate::type_data::{ExpressionType, FloatWidth, IntWidth};
+use crate::{BaseTarget, Target};
 
 #[derive(Clone)]
 pub struct StructSizeInfo {
@@ -29,23 +31,27 @@ pub fn aligned_address(v: u64, a: u64) -> Option<u64> {
 fn ensure_type_already_processed(
    t: &ExpressionType,
    udt: &mut UserDefinedTypeInfo,
-   target: BaseTarget,
+   target: Target,
    templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
+   err_manager: &mut ErrorManager,
+   interner: &Interner,
 ) {
    match t {
       ExpressionType::Struct(s, type_args) => {
          for type_arg in type_args.iter() {
-            ensure_type_already_processed(type_arg, udt, target, templated_types);
+            ensure_type_already_processed(type_arg, udt, target, templated_types, err_manager, interner);
          }
-         calculate_struct_size_info(*s, udt, target, templated_types);
+         calculate_struct_size_info(*s, udt, target, templated_types, err_manager, interner);
       }
       ExpressionType::Union(s, type_args) => {
          for type_arg in type_args.iter() {
-            ensure_type_already_processed(type_arg, udt, target, templated_types);
+            ensure_type_already_processed(type_arg, udt, target, templated_types, err_manager, interner);
          }
-         calculate_union_size_info(*s, udt, target, templated_types);
+         calculate_union_size_info(*s, udt, target, templated_types, err_manager, interner);
       }
-      ExpressionType::Array(bt, _) => ensure_type_already_processed(bt, udt, target, templated_types),
+      ExpressionType::Array(bt, _) => {
+         ensure_type_already_processed(bt, udt, target, templated_types, err_manager, interner);
+      }
       _ => (),
    }
 }
@@ -53,8 +59,10 @@ fn ensure_type_already_processed(
 pub fn calculate_union_size_info(
    id: UnionId,
    udt: &mut UserDefinedTypeInfo,
-   target: BaseTarget,
+   target: Target,
    templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
+   err_manager: &mut ErrorManager,
+   interner: &Interner,
 ) {
    if udt.union_info.get(id).unwrap().size.is_some() {
       return;
@@ -66,7 +74,7 @@ pub fn calculate_union_size_info(
 
    let ft = std::mem::take(&mut udt.union_info.get_mut(id).unwrap().field_types);
    for field_t in ft.values() {
-      ensure_type_already_processed(&field_t.e_type, udt, target, templated_types);
+      ensure_type_already_processed(&field_t.e_type, udt, target, templated_types, err_manager, interner);
    }
    udt.union_info.get_mut(id).unwrap().field_types = ft;
 
@@ -79,12 +87,12 @@ pub fn calculate_union_size_info(
          our_mem_size = our_mem_size.and_then(|v| {
             Some(std::cmp::max(
                v,
-               template_type_aware_mem_size(field_t, udt, target, templated_types)?,
+               template_type_aware_mem_size(field_t, udt, target.base(), templated_types)?,
             ))
          });
          our_mem_alignment = std::cmp::max(
             our_mem_alignment,
-            template_type_aware_mem_alignment(field_t, udt, target, templated_types),
+            template_type_aware_mem_alignment(field_t, udt, target.base(), templated_types),
          );
       }
 
@@ -94,9 +102,14 @@ pub fn calculate_union_size_info(
       )
    };
 
-   if mem_size.is_none() {
-      // issue an error, union is too big
-      todo!();
+   if mem_size.is_none() || mem_size.unwrap() > target.base().max_size() {
+      rolandc_error!(
+         err_manager,
+         udt.union_info[id].location,
+         "Union `{}` is too big for this target ({})",
+         interner.lookup(udt.union_info[id].name),
+         target
+      );
    }
 
    udt.union_info.get_mut(id).unwrap().size = Some(UnionSizeInfo {
@@ -108,8 +121,10 @@ pub fn calculate_union_size_info(
 pub fn calculate_struct_size_info(
    id: StructId,
    udt: &mut UserDefinedTypeInfo,
-   target: BaseTarget,
+   target: Target,
    templated_types: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
+   err_manager: &mut ErrorManager,
+   interner: &Interner,
 ) {
    if udt.struct_info.get(id).unwrap().size.is_some() {
       return;
@@ -121,7 +136,7 @@ pub fn calculate_struct_size_info(
 
    let ft = std::mem::take(&mut udt.struct_info.get_mut(id).unwrap().field_types);
    for field_t in ft.values() {
-      ensure_type_already_processed(&field_t.e_type, udt, target, templated_types);
+      ensure_type_already_processed(&field_t.e_type, udt, target, templated_types, err_manager, interner);
    }
    udt.struct_info.get_mut(id).unwrap().field_types = ft;
 
@@ -144,15 +159,15 @@ pub fn calculate_struct_size_info(
          field_offsets_mem.insert(*field_name, sum_mem.unwrap_or(0));
 
          let next_mem_alignment = next_field_t.map_or(1, |x| {
-            template_type_aware_mem_alignment(&x.e_type, udt, target, templated_types)
+            template_type_aware_mem_alignment(&x.e_type, udt, target.base(), templated_types)
          });
          sum_mem = sum_mem
-            .and_then(|v| Some(v + template_type_aware_mem_size(field_t, udt, target, templated_types)?))
+            .and_then(|v| Some(v + template_type_aware_mem_size(field_t, udt, target.base(), templated_types)?))
             .and_then(|v| aligned_address(v, next_mem_alignment));
 
          strictest_alignment = std::cmp::max(
             strictest_alignment,
-            template_type_aware_mem_alignment(field_t, udt, target, templated_types),
+            template_type_aware_mem_alignment(field_t, udt, target.base(), templated_types),
          );
       }
 
@@ -163,9 +178,14 @@ pub fn calculate_struct_size_info(
       )
    };
 
-   if mem_size.is_none() {
-      // issue an error, struct is too big
-      todo!();
+   if mem_size.is_none() || mem_size.unwrap() > target.base().max_size() {
+      rolandc_error!(
+         err_manager,
+         udt.struct_info[id].location,
+         "Struct `{}` is too big for this target ({})",
+         interner.lookup(udt.struct_info[id].name),
+         target
+      );
    }
 
    udt.struct_info.get_mut(id).unwrap().size = Some(StructSizeInfo {

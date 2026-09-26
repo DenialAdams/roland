@@ -601,7 +601,7 @@ pub fn populate_type_and_procedure_info(
          &program.user_defined_types.alias_info,
       );
 
-      if static_node.is_extern && config.target.base_target() != BaseTarget::Qbe {
+      if static_node.is_extern && config.target.base() != BaseTarget::Qbe {
          rolandc_error!(
             err_manager,
             static_node.location,
@@ -655,7 +655,7 @@ pub fn populate_type_and_procedure_info(
                "Procedure `{}` is declared to be variadic, but only external or builtin procedures can be variadic",
                interner.lookup(proc.definition.name.str),
             );
-         } else if proc.impl_source == ProcImplSource::External && config.target.base_target() != BaseTarget::Qbe {
+         } else if proc.impl_source == ProcImplSource::External && config.target.base() != BaseTarget::Qbe {
             rolandc_error!(
                err_manager,
                proc.location,
@@ -668,7 +668,7 @@ pub fn populate_type_and_procedure_info(
 
       if proc.impl_source == ProcImplSource::External
          && interner.lookup(proc.definition.name.str).len() > 78
-         && config.target.base_target() == BaseTarget::Qbe
+         && config.target.base() == BaseTarget::Qbe
       {
          rolandc_error!(
             err_manager,
@@ -855,8 +855,10 @@ pub fn populate_type_and_procedure_info(
       calculate_struct_size_info(
          id,
          &mut program.user_defined_types,
-         config.target.base_target(),
+         config.target,
          &program.templated_types,
+         err_manager,
+         interner,
       );
    }
 
@@ -865,8 +867,10 @@ pub fn populate_type_and_procedure_info(
       calculate_union_size_info(
          id,
          &mut program.user_defined_types,
-         config.target.base_target(),
+         config.target,
          &program.templated_types,
+         err_manager,
+         interner,
       );
    }
 }

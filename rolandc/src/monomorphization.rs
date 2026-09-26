@@ -2,17 +2,19 @@ use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::interner::StrId;
+use crate::error_handling::ErrorManager;
+use crate::error_handling::error_handling_macros::rolandc_error;
+use crate::interner::{Interner, StrId};
 use crate::parse::{
    Expression, ProcedureBody, ProcedureId, ProcedureNode, StructId, UnionId, UserDefinedTypeId, UserDefinedTypeInfo,
    all_expression_pools_mut,
 };
 use crate::semantic_analysis::validator::map_generic_to_concrete;
 use crate::semantic_analysis::{StructInfo, UnionInfo};
-use crate::size_info::{calculate_struct_size_info, calculate_union_size_info};
+use crate::size_info::{calculate_struct_size_info, calculate_union_size_info, sizeof_type_mem};
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
-use crate::{BaseTarget, Program};
+use crate::{Program, Target};
 
 pub const DEPTH_LIMIT: u64 = 100;
 
@@ -131,13 +133,16 @@ fn clone_procedure(
    (cloned_proc, template_body.clone())
 }
 
-pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
+pub fn monomorphize_types(program: &mut Program, target: Target, err_manager: &mut ErrorManager, interner: &Interner) {
    fn lower_type(
       e: &mut ExpressionType,
+      location: SourceInfo,
       udt: &mut UserDefinedTypeInfo,
       tt: &HashMap<UserDefinedTypeId, IndexSet<StrId>>,
-      target: BaseTarget,
+      target: Target,
       already_lowered: &mut HashMap<(UserDefinedTypeId, Box<[ExpressionType]>), UserDefinedTypeId>,
+      err_manager: &mut ErrorManager,
+      interner: &Interner,
    ) {
       match e {
          ExpressionType::Unknown(_)
@@ -190,14 +195,23 @@ pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
                      type_arguments,
                      &tt[&UserDefinedTypeId::Struct(*s_id)],
                   );
-                  lower_type(&mut new_ft.1.e_type, udt, tt, target, already_lowered);
+                  lower_type(
+                     &mut new_ft.1.e_type,
+                     new_ft.1.location,
+                     udt,
+                     tt,
+                     target,
+                     already_lowered,
+                     err_manager,
+                     interner,
+                  );
                }
                udt.struct_info[new_sid].field_types = new_field_types;
 
                *s_id = new_sid;
                *type_arguments = Box::new([]);
 
-               calculate_struct_size_info(*s_id, udt, target, tt);
+               calculate_struct_size_info(*s_id, udt, target, tt, err_manager, interner);
             }
          }
          ExpressionType::Union(u_id, type_arguments) => {
@@ -237,22 +251,58 @@ pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
                      type_arguments,
                      &tt[&UserDefinedTypeId::Union(*u_id)],
                   );
-                  lower_type(&mut new_ft.1.e_type, udt, tt, target, already_lowered);
+                  lower_type(
+                     &mut new_ft.1.e_type,
+                     new_ft.1.location,
+                     udt,
+                     tt,
+                     target,
+                     already_lowered,
+                     err_manager,
+                     interner,
+                  );
                }
                udt.union_info[new_uid].field_types = new_field_types;
 
                *u_id = new_uid;
                *type_arguments = Box::new([]);
 
-               calculate_union_size_info(*u_id, udt, target, tt);
+               calculate_union_size_info(*u_id, udt, target, tt, err_manager, interner);
             }
          }
-         ExpressionType::Array(base_type, _) | ExpressionType::Pointer(base_type) => {
-            lower_type(base_type, udt, tt, target, already_lowered);
+         ExpressionType::Pointer(base_type) => {
+            lower_type(
+               base_type,
+               location,
+               udt,
+               tt,
+               target,
+               already_lowered,
+               err_manager,
+               interner,
+            );
+         }
+         ExpressionType::Array(base_type, length) => {
+            lower_type(
+               base_type,
+               location,
+               udt,
+               tt,
+               target,
+               already_lowered,
+               err_manager,
+               interner,
+            );
+
+            let mem_size = sizeof_type_mem(base_type, udt, target.base()).checked_mul(*length);
+
+            if mem_size.is_none() || mem_size.unwrap() > target.base().max_size() {
+               rolandc_error!(err_manager, location, "Array is too big for this target ({})", target);
+            }
          }
          ExpressionType::ProcedureItem(_, type_arguments) => {
             for a in type_arguments.iter_mut() {
-               lower_type(a, udt, tt, target, already_lowered);
+               lower_type(a, location, udt, tt, target, already_lowered, err_manager, interner);
             }
          }
          ExpressionType::ProcedurePointer {
@@ -261,9 +311,18 @@ pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
             variadic: _,
          } => {
             for p in parameters.iter_mut() {
-               lower_type(p, udt, tt, target, already_lowered);
+               lower_type(p, location, udt, tt, target, already_lowered, err_manager, interner);
             }
-            lower_type(ret_type, udt, tt, target, already_lowered);
+            lower_type(
+               ret_type,
+               location,
+               udt,
+               tt,
+               target,
+               already_lowered,
+               err_manager,
+               interner,
+            );
          }
       }
    }
@@ -277,20 +336,26 @@ pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
                for n in type_arg_nodes.iter_mut() {
                   lower_type(
                      &mut n.e_type,
+                     n.location,
                      &mut program.user_defined_types,
                      &program.templated_types,
                      target,
                      &mut lowered,
+                     err_manager,
+                     interner,
                   );
                }
             }
             Expression::Cast { target_type, .. } => {
                lower_type(
                   target_type,
+                  exp.location,
                   &mut program.user_defined_types,
                   &program.templated_types,
                   target,
                   &mut lowered,
+                  err_manager,
+                  interner,
                );
             }
             _ => (),
@@ -298,10 +363,13 @@ pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
 
          lower_type(
             exp.exp_type.as_mut().unwrap(),
+            exp.location,
             &mut program.user_defined_types,
             &program.templated_types,
             target,
             &mut lowered,
+            err_manager,
+            interner,
          );
       }
    }
@@ -320,10 +388,13 @@ pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
       for field_type in fts.values_mut() {
          lower_type(
             &mut field_type.e_type,
+            field_type.location,
             &mut program.user_defined_types,
             &program.templated_types,
             target,
             &mut lowered,
+            err_manager,
+            interner,
          );
       }
       program.user_defined_types.struct_info[struct_id].field_types = fts;
@@ -343,10 +414,13 @@ pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
       for field_type in fts.values_mut() {
          lower_type(
             &mut field_type.e_type,
+            field_type.location,
             &mut program.user_defined_types,
             &program.templated_types,
             target,
             &mut lowered,
+            err_manager,
+            interner,
          );
       }
       program.user_defined_types.union_info[union_id].field_types = fts;
@@ -355,18 +429,24 @@ pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
    for procedure in program.procedures.values_mut() {
       lower_type(
          &mut procedure.definition.ret_type.e_type,
+         procedure.definition.ret_type.location,
          &mut program.user_defined_types,
          &program.templated_types,
          target,
          &mut lowered,
+         err_manager,
+         interner,
       );
       for param in procedure.definition.parameters.iter_mut() {
          lower_type(
             &mut param.p_type.e_type,
+            param.p_type.location,
             &mut program.user_defined_types,
             &program.templated_types,
             target,
             &mut lowered,
+            err_manager,
+            interner,
          );
       }
    }
@@ -375,10 +455,13 @@ pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
       for var_type in body.locals.values_mut() {
          lower_type(
             var_type,
+            body.block.location, // Not the best location...
             &mut program.user_defined_types,
             &program.templated_types,
             target,
             &mut lowered,
+            err_manager,
+            interner,
          );
       }
    }
@@ -386,10 +469,13 @@ pub fn monomorphize_types(program: &mut Program, target: BaseTarget) {
    for a_global in program.non_stack_var_info.iter_mut() {
       lower_type(
          &mut a_global.1.expr_type.e_type,
+         a_global.1.expr_type.location,
          &mut program.user_defined_types,
          &program.templated_types,
          target,
          &mut lowered,
+         err_manager,
+         interner,
       );
    }
 

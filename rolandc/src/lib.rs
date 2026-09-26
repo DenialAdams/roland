@@ -104,11 +104,18 @@ impl BaseTarget {
          BaseTarget::Wasm => IntWidth::Four,
       }
    }
+
+   fn max_size(self) -> u64 {
+      match self {
+         BaseTarget::Qbe => u64::MAX,
+         BaseTarget::Wasm => u64::from(u32::MAX),
+      }
+   }
 }
 
 impl Target {
    #[must_use]
-   pub fn base_target(self) -> BaseTarget {
+   pub fn base(self) -> BaseTarget {
       match self {
          // Generic handling is obviously wrong here. But it's hard to do it better.
          // When we introduce a way to indicate that we want to produce a library (and therefore don't need a main)
@@ -254,7 +261,7 @@ pub fn compile_for_errors(
       &mut ctx.program,
       &ctx.interner,
       &mut ctx.err_manager,
-      config.target.base_target(),
+      config.target.base(),
       &owned_validation_ctx.type_variables,
    );
 
@@ -322,7 +329,7 @@ pub fn compile_for_errors(
       ctx.program.procedures.contains_key(k)
    });
 
-   monomorphization::monomorphize_types(&mut ctx.program, config.target.base_target());
+   monomorphization::monomorphize_types(&mut ctx.program, config.target, &mut ctx.err_manager, &ctx.interner);
 
    lower_transmutes_requiring_load::lower(&mut ctx.program.global_exprs, &mut ctx.program.procedure_bodies);
 
@@ -378,13 +385,13 @@ pub fn compile_for_errors(
       &mut ctx.program,
       &mut ctx.err_manager,
       &ctx.interner,
-      config.target.base_target(),
+      config.target.base(),
    );
    ctx.program
       .non_stack_var_info
       .retain(|_, v| v.kind != StorageKind::Const);
 
-   let link_requests = if config.target.base_target() == BaseTarget::Qbe {
+   let link_requests = if config.target.base() == BaseTarget::Qbe {
       link_requests
          .into_iter()
          .map(|x| ctx.interner.lookup(x.link_name.str).to_string())
@@ -430,7 +437,7 @@ pub fn compile(
    pre_backend_lowering::replace_nonnative_casts_and_unique_overflow(
       &mut ctx.program,
       &ctx.interner,
-      config.target.base_target(),
+      config.target.base(),
    );
 
    dead_code_elimination::delete_unreachable_procedures_and_globals(&mut ctx.program, &ctx.interner, config.target);
@@ -445,12 +452,12 @@ pub fn compile(
 
    explicit_lval_to_rval::make_lval_to_rval_explicit(&mut ctx.program);
 
-   lower_aggregate_access::lower_aggregate_access(&mut ctx.program, config.target.base_target());
+   lower_aggregate_access::lower_aggregate_access(&mut ctx.program, config.target.base());
    // TODO: add an optimization pass here that fuses stuff like x * 4 * 2 => x * 8 to clean up the lower_aggregate_access
 
-   pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target.base_target());
+   pre_backend_lowering::lower_enums_and_pointers(&mut ctx.program, config.target.base());
 
-   if config.target.base_target() == BaseTarget::Qbe {
+   if config.target.base() == BaseTarget::Qbe {
       expression_hoisting::expression_hoisting(
          &mut ctx.program,
          &ctx.interner,
@@ -484,7 +491,7 @@ pub fn compile(
       .unwrap();
    }
 
-   propagation::propagate(&mut ctx.program, &ctx.interner, config.target.base_target());
+   propagation::propagate(&mut ctx.program, &ctx.interner, config.target.base());
 
    if config.dump_debugging_info {
       pp::pp(
@@ -497,10 +504,10 @@ pub fn compile(
 
    // It would be nice to run this before deleting unreachable procedures,
    // but doing so would currently delete procedures that we take pointers to
-   pre_backend_lowering::kill_zst_assignments(&mut ctx.program, config.target.base_target());
+   pre_backend_lowering::kill_zst_assignments(&mut ctx.program, config.target.base());
 
-   if config.target.base_target() == BaseTarget::Wasm {
-      backend::wasm::sort_globals(&mut ctx.program, config.target.base_target());
+   if config.target.base() == BaseTarget::Wasm {
+      backend::wasm::sort_globals(&mut ctx.program, config.target.base());
    }
 
    let debugging_files = if config.dump_debugging_info {
@@ -513,8 +520,8 @@ pub fn compile(
    };
 
    let regalloc_result = {
-      if config.target.base_target() == BaseTarget::Qbe {
-         backend::regalloc::hoist_non_temp_loads_stores(&mut ctx.program, config.target.base_target());
+      if config.target.base() == BaseTarget::Qbe {
+         backend::regalloc::hoist_non_temp_loads_stores(&mut ctx.program, config.target.base());
       }
       let program_liveness = ctx
          .program
@@ -529,7 +536,7 @@ pub fn compile(
                   .map(|x| x.var_id);
                backend::pointer_analysis::steensgard(&body.locals, params, &mut body.cfg, &body.ast.expressions)
             };
-            if config.target.base_target() == BaseTarget::Qbe {
+            if config.target.base() == BaseTarget::Qbe {
                lower_overlapping_copies_to_memmove(
                   &pointer_analysis_result,
                   body,
@@ -542,7 +549,7 @@ pub fn compile(
                &body.locals,
                &mut body.cfg,
                &body.ast.expressions,
-               config.target.base_target(),
+               config.target.base(),
                &ctx.program.user_defined_types,
                &pointer_analysis_result,
             );
@@ -616,7 +623,7 @@ pub fn compile(
       linearize::simplify_cfg(&mut body.cfg, &body.ast.expressions);
    }
 
-   let program_bytes = if config.target.base_target() == BaseTarget::Qbe {
+   let program_bytes = if config.target.base() == BaseTarget::Qbe {
       backend::qbe::emit_qbe(
          config.target == Target::QbeFreestanding,
          &mut ctx.program,

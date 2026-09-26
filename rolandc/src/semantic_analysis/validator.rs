@@ -1572,7 +1572,7 @@ fn get_type(
                let Some(size_source) = template_type_aware_mem_size(
                   e_type,
                   validation_context.user_defined_types,
-                  validation_context.owned.target.base_target(),
+                  validation_context.owned.target.base(),
                   validation_context.templated_types,
                ) else {
                   rolandc_error!(
@@ -1585,7 +1585,7 @@ fn get_type(
                let Some(size_target) = template_type_aware_mem_size(
                   target_type,
                   validation_context.user_defined_types,
-                  validation_context.owned.target.base_target(),
+                  validation_context.owned.target.base(),
                   validation_context.templated_types,
                ) else {
                   rolandc_error!(
@@ -1626,7 +1626,7 @@ fn get_type(
                         AlignOrUnknown::Alignment(template_type_aware_mem_alignment(
                            a_type,
                            ctx.user_defined_types,
-                           ctx.owned.target.base_target(),
+                           ctx.owned.target.base(),
                            ctx.templated_types,
                         ))
                      }
@@ -3060,7 +3060,7 @@ fn fold_expr_id(
       global_expressions: Some(globals_ast),
       const_replacements: Some(&validation_context.owned.const_replacements),
       current_proc_name,
-      target: validation_context.owned.target.base_target(),
+      target: validation_context.owned.target.base(),
       templated_types: validation_context.templated_types,
    };
    constant_folding::try_fold_and_replace_expr(
