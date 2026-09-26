@@ -78,14 +78,13 @@ proc hm_insert<K, V>(m: &HashMap<K, V>, k: K, v: V) {
                 if slot~.state == _hm_Cell_State::Absent {
                     slot~ = _hm_Cell$<K, V> {
                         state: _hm_Cell_State::Present,
-                        key: _hm_offset_ptr_items(malloc_result.buf, slot_index)~.key,
-                        val: _hm_offset_ptr_items(malloc_result.buf, slot_index)~.val,
+                        key: _hm_offset_ptr_items(m~._cells, i)~.key,
+                        val: _hm_offset_ptr_items(m~._cells, i)~.val,
                     };
                     break;
                 }
-                if slot_index == m~._capacity - 1 {
-                    slot_index = slot_index + 1;
-                } else {
+                slot_index = slot_index + 1;
+                if slot_index == malloc_result.length {
                     slot_index = 0;
                 }
             }
@@ -110,9 +109,8 @@ proc hm_insert<K, V>(m: &HashMap<K, V>, k: K, v: V) {
             };
             break;
         }
-        if slot_index == m~._capacity - 1 {
-            slot_index = slot_index + 1;
-        } else {
+        slot_index = slot_index + 1;
+        if slot_index == m~._capacity {
             slot_index = 0;
         }
     }
@@ -134,9 +132,8 @@ proc hm_remove<K, V>(m: &HashMap<K, V>, k: &K) {
             slot~.state = _hm_Cell_State::Deleted;
             m~.length = m~.length - 1;
         }
-        if slot_index == m~._capacity - 1 {
-            slot_index = slot_index + 1;
-        } else {
+        slot_index = slot_index + 1;
+        if slot_index == m~._capacity {
             slot_index = 0;
         }
     }
@@ -155,9 +152,8 @@ proc hm_lookup<K, V>(m: &HashMap<K, V>, k: &K) -> &V {
         if slot~.state == _hm_Cell_State::Present and m~._eq(&slot~.key, k){
             return &slot~.val;
         }
-        if slot_index == m~._capacity - 1 {
-            slot_index = slot_index + 1;
-        } else {
+        slot_index = slot_index + 1;
+        if slot_index == m~._capacity {
             slot_index = 0;
         }
     }

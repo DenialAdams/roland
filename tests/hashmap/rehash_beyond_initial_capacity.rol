@@ -1,0 +1,24 @@
+import "std:hashmap.rol";
+
+proc main() {
+   let m = hm_init$<u64, u64>(&hash_bytes, &eq_bytes);
+   for i in 0..9 {
+      let k: u64 = i;
+      hm_insert(&m, k, k * 2);
+   }
+   println("inserted 9");
+   for i in 0..9 {
+      let k: u64 = i;
+      let p = hm_lookup(&m, &k);
+      if p == 0 transmute &u64 {
+         println("MISSING");
+      } else if p~ != k * 2 {
+         println("WRONG");
+      }
+   }
+   println("checked");
+}
+__END__
+run:
+inserted 9
+checked
