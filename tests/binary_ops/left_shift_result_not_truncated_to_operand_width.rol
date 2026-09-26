@@ -1,0 +1,40 @@
+proc main() {
+   {
+      // 205 & 7 == 5, 100 << 5 == 3200, 3200 & 0xFF == 128
+      let e: u8 = 205;
+      let a: [u8; 2] = [e, e];
+      let x: u8 = a[0];
+      x = 100 << (x & 7);
+      println(uint_to_string(x as u64));
+   }
+   {
+      // 61515 & 15 == 11, 25750 << 11 == 52736000, 52736000 & 0xFFFF == 45056
+      let e: u16 = 61515;
+      let a: [u16; 2] = [e, e];
+      let x: u16 = a[0];
+      x = 25750 << (x & 15);
+      println(uint_to_string(x as u64));
+   }
+   {
+      // 100 & 7 == 4, 100 << 4 == 1600, truncated to i8 is 64
+      let e: i8 = 100;
+      let a: [i8; 2] = [e, e];
+      let x: i8 = a[0];
+      x = 100 << (x & 7);
+      println(uint_to_string(x as u64));
+   }
+   {
+      // 30003 & 15 == 3, 30000 << 3 == 240000, truncated to i16 is -22144
+      let e: i16 = 30003;
+      let a: [i16; 2] = [e, e];
+      let x: i16 = a[0];
+      x = 30000 << (x & 15);
+      println(uint_to_string(x as u64));
+   }
+}
+__END__
+run:
+128
+45056
+64
+18446744073709529472

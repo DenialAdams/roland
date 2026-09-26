@@ -1271,7 +1271,7 @@ fn do_emit(expr_index: ExpressionId, ast: &ExpressionPool, generation_context: &
             BinOp::LogicalAnd | BinOp::LogicalOr => unreachable!(),
          }
 
-         if matches!(operator, BinOp::Add | BinOp::Multiply | BinOp::Subtract) {
+         if matches!(operator, BinOp::Add | BinOp::Multiply | BinOp::Subtract | BinOp::BitwiseLeftShift) {
             let op_type = ast[*lhs].exp_type.as_ref().unwrap();
             if let ExpressionType::Int(x) = op_type {
                // Emulate overflow for necessary types
