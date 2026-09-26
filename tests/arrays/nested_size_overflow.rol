@@ -1,0 +1,10 @@
+static values: [[u64; 2305843009213693952]; 1] = ___;
+
+proc main() {}
+__END__
+compile_wasi:
+Array is too big for this target (WASI)
+↳ line 1, column 16 [tests/arrays/nested_size_overflow.rol]
+compile_amd64:
+Array is too big for this target (AMD64)
+↳ line 1, column 16 [tests/arrays/nested_size_overflow.rol]

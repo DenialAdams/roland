@@ -11,7 +11,7 @@ use crate::parse::{
 };
 use crate::semantic_analysis::validator::map_generic_to_concrete;
 use crate::semantic_analysis::{StructInfo, UnionInfo};
-use crate::size_info::{calculate_struct_size_info, calculate_union_size_info, sizeof_type_mem};
+use crate::size_info::{calculate_struct_size_info, calculate_union_size_info, template_type_aware_mem_size};
 use crate::source_info::SourceInfo;
 use crate::type_data::ExpressionType;
 use crate::{Program, Target};
@@ -294,7 +294,12 @@ pub fn monomorphize_types(program: &mut Program, target: Target, err_manager: &m
                interner,
             );
 
-            let mem_size = sizeof_type_mem(base_type, udt, target.base()).checked_mul(*length);
+            let Some(base_mem_size) = template_type_aware_mem_size(base_type, udt, target.base(), tt) else {
+               // We must have already issued an error
+               return;
+            };
+
+            let mem_size = base_mem_size.checked_mul(*length);
 
             if mem_size.is_none() || mem_size.unwrap() > target.base().max_size() {
                rolandc_error!(err_manager, location, "Array is too big for this target ({})", target);
