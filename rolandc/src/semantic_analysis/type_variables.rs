@@ -113,7 +113,7 @@ impl TypeVariableManager {
          return Err(());
       }
 
-      self.disjoint_set.union(x_rep.0, y_rep.0);
+      self.disjoint_set.union_representatives(x_rep.0, y_rep.0);
       let new_data = self.get_data_mut(x);
       new_data.constraint = new_constraint;
       new_data.known_type = known_type;

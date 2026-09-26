@@ -89,7 +89,7 @@ impl PointerAnalysisData {
          return;
       }
 
-      let new_rep = self.ds.union(rx, ry);
+      let new_rep = self.ds.union_representatives(rx, ry);
 
       let x_target = self.points_to.remove(&rx).map(|t| self.ds.find(t));
       let y_target = self.points_to.remove(&ry).map(|t| self.ds.find(t));

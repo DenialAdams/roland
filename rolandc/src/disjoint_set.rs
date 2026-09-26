@@ -40,10 +40,7 @@ impl DisjointSet {
    }
 
    // union by rank
-   pub fn union(&self, x: usize, y: usize) -> usize {
-      let x_root = self.find(x);
-      let y_root = self.find(y);
-
+   pub fn union_representatives(&self, x_root: usize, y_root: usize) -> usize {
       if x_root == y_root {
          return x_root;
       }
