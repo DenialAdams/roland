@@ -336,6 +336,17 @@ pub fn monomorphize_types(program: &mut Program, target: Target, err_manager: &m
 
    for ast in all_expression_pools_mut(&mut program.global_exprs, &mut program.procedure_bodies) {
       for exp in ast.values_mut() {
+         lower_type(
+            exp.exp_type.as_mut().unwrap(),
+            exp.location,
+            &mut program.user_defined_types,
+            &program.templated_types,
+            target,
+            &mut lowered,
+            err_manager,
+            interner,
+         );
+
          match &mut exp.expression {
             Expression::BoundFcnLiteral(_, type_arg_nodes) => {
                for n in type_arg_nodes.iter_mut() {
@@ -363,19 +374,18 @@ pub fn monomorphize_types(program: &mut Program, target: Target, err_manager: &m
                   interner,
                );
             }
+            Expression::StructLiteral(s_id, _) => {
+               let lowered_type = exp.exp_type.as_ref().unwrap();
+               match lowered_type {
+                  ExpressionType::Struct(lowered_s_id, type_args) => {
+                     debug_assert!(type_args.is_empty());
+                     *s_id = *lowered_s_id;
+                  }
+                  _ => unreachable!(),
+               }
+            }
             _ => (),
          }
-
-         lower_type(
-            exp.exp_type.as_mut().unwrap(),
-            exp.location,
-            &mut program.user_defined_types,
-            &program.templated_types,
-            target,
-            &mut lowered,
-            err_manager,
-            interner,
-         );
       }
    }
 

@@ -1,0 +1,10 @@
+struct Box<T> { value: T }
+
+static BOX: Box<u64> = Box { value: 10 };
+
+proc main() {
+   println(uint_to_string(BOX.value));
+}
+__END__
+run:
+10
