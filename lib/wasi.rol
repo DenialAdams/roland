@@ -80,7 +80,14 @@ proc brk(new_break: usize) -> usize {
    static BRK_initialized: bool = false;
 
    if !BRK_initialized {
-      BRK = wasm_memory_size() * _WASM_PAGE_SIZE;
+      let cur_pages = wasm_memory_size();
+
+      if cur_pages == _WASM_MAX_PAGES {
+         BRK = USIZE_MAX;
+      } else {
+         BRK = cur_pages * _WASM_PAGE_SIZE;
+      }
+
       BRK_initialized = true;
    }
 
