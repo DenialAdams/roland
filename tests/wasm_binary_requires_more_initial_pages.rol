@@ -1,0 +1,10 @@
+
+static big: [u8; 65536] = ___;
+
+proc main() {
+   big[65535] = 7;
+   println(uint_to_string(big[65535] as u64));
+}
+__END__
+run:
+7

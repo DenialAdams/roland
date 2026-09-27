@@ -197,6 +197,9 @@ pub fn emit_wasm(
    config: &CompilationConfig,
    mut regalloc_result: RegallocResult,
 ) -> Vec<u8> {
+   const WASM_PAGE_SIZE: u64 = 65536;
+   const WASM_MAX_PAGES: u64 = 65536;
+
    let mut generation_context = GenerationContext {
       active_fcn: wasm_encoder::Function::new_with_locals_types([]),
       type_manager: TypeManager::new(&program.user_defined_types),
@@ -230,7 +233,6 @@ pub fn emit_wasm(
          .type_manager
          .register_or_find_type_by_definition(&external_procedure.definition);
       match config.target {
-         Target::QbeFreestanding | Target::QbeHost | Target::Generic => unreachable!(),
          Target::Wasm4 | Target::Microw8 => {
             import_section.import(
                "env",
@@ -245,85 +247,113 @@ pub fn emit_wasm(
                EntityType::Function(type_index),
             );
          }
+         _ => unreachable!(),
       }
       generation_context.procedure_indices.insert(id);
    }
 
    // Data section
 
-   // the base memory offset varies per platform;
-   // on wasm-4/microw8, we don't own all of the memory!
-   let mut offset: u64 = match config.target {
-      Target::Generic | Target::QbeFreestanding | Target::QbeHost => unreachable!(),
-      Target::Wasi => 0x1, // Don't put anything at 0 to allow null to be a sentinel value
-      Target::Wasm4 => 0x19a0,
-      Target::Microw8 => 0x14000,
-   };
-
-   for s in program.literals.iter() {
-      let str_value = interner.lookup(*s);
-      data_section.active(
-         0,
-         &ConstExpr::i32_const(offset as i32),
-         str_value.as_bytes().iter().copied(),
-      );
-      let s_len = str_value.len() as u64;
-      generation_context.literal_offsets.insert(*s, (offset, s_len));
-      offset += s_len;
-   }
-
-   // Handle alignment of statics
-   {
-      let strictest_alignment = if let Some(v) = program
-         .non_stack_var_info
-         .iter()
-         .find(|x| !matches!(generation_context.var_to_slot.get(x.0), Some(VarSlot::Register(_))))
-      {
-         mem_alignment(
-            &v.1.expr_type.e_type,
-            generation_context.user_defined_types,
-            BaseTarget::Wasm,
-         )
-      } else {
-         1
+   let stack_start = {
+      // the base memory offset varies per platform;
+      // on wasm-4/microw8, we don't own all of the memory!
+      let mut offset: u64 = match config.target {
+         Target::Wasi => 0x1, // Don't put anything at 0 to allow null to be a sentinel value
+         Target::Wasm4 => 0x19a0,
+         Target::Microw8 => 0x14000,
+         _ => unreachable!(),
       };
 
-      offset = aligned_address(offset, strictest_alignment).unwrap();
-   }
-   for (static_var, static_details) in program.non_stack_var_info.iter() {
-      debug_assert_ne!(static_details.kind, StorageKind::Const);
-
-      if generation_context.var_to_slot.contains_key(static_var) {
-         continue;
+      for s in program.literals.iter() {
+         let str_value = interner.lookup(*s);
+         data_section.active(
+            0,
+            &ConstExpr::i32_const(offset as i32),
+            str_value.as_bytes().iter().copied(),
+         );
+         let s_len = str_value.len() as u64;
+         generation_context.literal_offsets.insert(*s, (offset, s_len));
+         offset += s_len;
       }
 
-      generation_context.static_addresses.insert(*static_var, offset);
+      // Handle alignment of statics
+      {
+         let strictest_alignment = if let Some(v) = program
+            .non_stack_var_info
+            .iter()
+            .find(|x| !matches!(generation_context.var_to_slot.get(x.0), Some(VarSlot::Register(_))))
+         {
+            mem_alignment(
+               &v.1.expr_type.e_type,
+               generation_context.user_defined_types,
+               BaseTarget::Wasm,
+            )
+         } else {
+            1
+         };
 
-      offset += sizeof_type_mem(
-         &static_details.expr_type.e_type,
-         generation_context.user_defined_types,
-         BaseTarget::Wasm,
-      );
-   }
+         offset = aligned_address(offset, strictest_alignment).unwrap();
+      }
+      for (static_var, static_details) in program.non_stack_var_info.iter() {
+         debug_assert_ne!(static_details.kind, StorageKind::Const);
 
-   let mut buf = vec![];
-   for (p_var, p_static) in program.non_stack_var_info.iter().filter(|x| x.1.initializer.is_some()) {
-      if generation_context.var_to_slot.contains_key(p_var) {
-         continue;
+         if generation_context.var_to_slot.contains_key(static_var) {
+            continue;
+         }
+
+         generation_context.static_addresses.insert(*static_var, offset);
+
+         offset += sizeof_type_mem(
+            &static_details.expr_type.e_type,
+            generation_context.user_defined_types,
+            BaseTarget::Wasm,
+         );
       }
 
-      literal_as_bytes(
-         &mut buf,
-         p_static.initializer.unwrap(),
-         &program.global_exprs,
-         &mut generation_context,
-      );
-      let static_address = generation_context.static_addresses.get(p_var).copied().unwrap();
-      data_section.active(0, &ConstExpr::i32_const(static_address as i32), buf.drain(..));
-   }
+      let mut buf = vec![];
+      for (p_var, p_static) in program.non_stack_var_info.iter().filter(|x| x.1.initializer.is_some()) {
+         if generation_context.var_to_slot.contains_key(p_var) {
+            continue;
+         }
 
-   // keep stack aligned
-   offset = aligned_address(offset, 8).unwrap();
+         literal_as_bytes(
+            &mut buf,
+            p_static.initializer.unwrap(),
+            &program.global_exprs,
+            &mut generation_context,
+         );
+         let static_address = generation_context.static_addresses.get(p_var).copied().unwrap();
+         data_section.active(0, &ConstExpr::i32_const(static_address as i32), buf.drain(..));
+      }
+
+      // keep stack aligned
+      aligned_address(offset, 8).unwrap()
+   };
+
+   let requested_pages = {
+      let needed_pages = stack_start.div_ceil(WASM_PAGE_SIZE);
+
+      let max_pages = match config.target {
+         Target::Wasm4 => 1,
+         Target::Microw8 => 4,
+         Target::Wasi => WASM_MAX_PAGES,
+         _ => unreachable!(),
+      };
+
+      if needed_pages > max_pages {
+         // Error here
+         todo!()
+      }
+
+      if config.target == Target::Wasi {
+         // Let the stack breathe a bit
+         const WASI_EXTRA_STACK_PAGES: u64 = 1;
+         (needed_pages + WASI_EXTRA_STACK_PAGES).min(WASM_MAX_PAGES)
+      } else {
+         needed_pages
+      }
+   };
+
 
    let (global_section, global_names) = {
       let mut globals = GlobalSection::new();
@@ -334,7 +364,7 @@ pub fn emit_wasm(
             mutable: true,
             shared: false,
          },
-         &ConstExpr::i32_const(offset as i32),
+         &ConstExpr::i32_const(stack_start as i32),
       );
       global_names.append(0, "stack_pointer");
 
@@ -594,7 +624,7 @@ pub fn emit_wasm(
       }
       Target::Wasi => {
          memory_section.memory(MemoryType {
-            minimum: 1,
+            minimum: requested_pages,
             maximum: None,
             memory64: false,
             shared: false,

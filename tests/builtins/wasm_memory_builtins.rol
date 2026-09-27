@@ -1,7 +1,7 @@
 proc main() {
-   println_bool(wasm_memory_size() == 1);
-   println_bool(wasm_memory_grow(2) == 1);
-   println_bool(wasm_memory_size() == 3);
+   println_bool(wasm_memory_size() == 2);
+   println_bool(wasm_memory_grow(2) == 2);
+   println_bool(wasm_memory_size() == 4);
 }
 __END__
 compile_amd64:
