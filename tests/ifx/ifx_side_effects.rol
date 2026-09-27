@@ -4,13 +4,13 @@ struct Foo {
 }
 
 proc main () {
-   ifx a() b() else c();
-   ifx !a() b() else c();
+   ifx a() then b() else c();
+   ifx !a() then b() else c();
    // d().y requires hoisting, so lets make sure we dont mess that up
-   ifx true 10 else d().y;
+   ifx true then 10 else d().y;
 
    // nested ifx
-   ifx !a() b() else ifx e() b() else c();
+   ifx !a() then b() else ifx e() then b() else c();
 }
 
 proc a() -> bool {

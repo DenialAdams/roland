@@ -1,10 +1,10 @@
 proc main () {
    let x: u8 = 10;
-   let val = ifx true x else 0;
-   let other_val = ifx true 0 else x;
+   let val = ifx true then x else 0;
+   let other_val = ifx true then 0 else x;
 
-   let val_nested = ifx false x else ifx true 11 else 10;
-   let val_nested_swap = ifx true ifx true 11 else 10 else x;
+   let val_nested = ifx false then x else ifx true then 11 else 10;
+   let val_nested_swap = ifx true then ifx true then 11 else 10 else x;
 }
 __END__
 compile:

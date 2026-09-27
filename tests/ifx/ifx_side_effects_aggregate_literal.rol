@@ -4,7 +4,7 @@ struct S {
 
 proc main() {
    let x: bool = true;
-   ifx x S { f: println("A") } else S { f: println("B") };
+   ifx x then S { f: println("A") } else S { f: println("B") };
 }
 __END__
 compile:

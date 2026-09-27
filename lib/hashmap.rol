@@ -62,7 +62,7 @@ proc hm_init<K, V>(hash: proc(&K) -> usize, eq: proc(&K, &K) -> bool) -> HashMap
 proc hm_insert<K, V>(m: &HashMap<K, V>, k: K, v: V) {
     if m~._load * 2 >= m~._capacity {
         // Rehash
-        let desired_capacity = ifx m~._capacity == 0 16 else m~._capacity * 2;
+        let desired_capacity = ifx m~._capacity == 0 then 16 else m~._capacity * 2;
         let malloc_result = typed_malloc$<_hm_Cell<K, V>>(desired_capacity, alignof$<_hm_Cell<K, V>>());
         assert(malloc_result.length >= desired_capacity);
         for i in 0..malloc_result.length {

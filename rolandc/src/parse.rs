@@ -1810,6 +1810,7 @@ fn pratt(
       Token::KeywordIfx => {
          let _ = l.next();
          let condition = parse_expression(l, parse_context, false, expressions)?;
+         expect(l, parse_context, Token::KeywordThen)?;
          let consequent = parse_expression(l, parse_context, false, expressions)?;
          expect(l, parse_context, Token::KeywordElse)?;
          let otherwise = parse_expression(l, parse_context, if_head, expressions)?;

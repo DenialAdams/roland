@@ -1,6 +1,6 @@
 proc main() {
     let x = [];
-    let z = ifx x[gimme()] "foo" else "bar";
+    let z = ifx x[gimme()] then "foo" else "bar";
     println(z);
 }
 

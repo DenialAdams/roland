@@ -4,13 +4,13 @@ struct F {
 
 proc main() {
    let x: bool = true;
-   ifx F { x: true}.x F { x: true}.x else F { x: true}.x;
-   if ifx F { x: true}.x F { x: true}.x else x { 
+   ifx F { x: true}.x then F { x: true}.x else F { x: true}.x;
+   if ifx F { x: true}.x then F { x: true}.x else x { 
       loop {
          break;
       }
    }
-   if ifx F { x: true}.x F { x: true}.x else (F { x: true}.x) { 
+   if ifx F { x: true}.x then F { x: true}.x else (F { x: true}.x) { 
       loop {
          break;
       }
