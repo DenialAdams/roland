@@ -35,9 +35,10 @@ impl SourceInfo {
 }
 
 impl SourceInfo {
+   #[must_use]
    pub fn cmp_with_filemap(&self, other: &Self, files: &FileMap) -> std::cmp::Ordering {
       let ((this_path, _this_is_std), _) = files.get_index(self.file.0).unwrap();
-      let ((other_path, _other_is_std), _) = files.get_index(self.file.0).unwrap();
+      let ((other_path, _other_is_std), _) = files.get_index(other.file.0).unwrap();
       this_path
          .cmp(other_path)
          .then_with(|| self.begin.cmp(&other.begin))

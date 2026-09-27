@@ -58,6 +58,7 @@ pub struct ErrorInfo {
 }
 
 impl ErrorInfo {
+   #[must_use]
    pub fn cmp_with_filemap(&self, other: &Self, user_files: &FileMap) -> std::cmp::Ordering {
       let location_cmp = match (self.location.first_source(), other.location.first_source()) {
          (Some(a), Some(b)) => a.cmp_with_filemap(b, user_files),
