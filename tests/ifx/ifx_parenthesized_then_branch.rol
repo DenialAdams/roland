@@ -1,0 +1,9 @@
+proc main() {
+   let a: u8 = 1;
+   let b: bool = true;
+   let z: u8 = ifx b then (a) else a;
+   println(uint_to_string(z as u64));
+}
+__END__
+run:
+1
