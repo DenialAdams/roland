@@ -16,9 +16,9 @@ proc main() {
 }
 __END__
 compile:
-Parameter `b` is unused
-↳ line 9, column 20 [tests/inference/complicated_inference_union_must_merge_types.rol]
-↳ instantiation @ line 15, column 5 [tests/inference/complicated_inference_union_must_merge_types.rol]
 Parameter `a` is unused
 ↳ line 9, column 14 [tests/inference/complicated_inference_union_must_merge_types.rol]
+↳ instantiation @ line 15, column 5 [tests/inference/complicated_inference_union_must_merge_types.rol]
+Parameter `b` is unused
+↳ line 9, column 20 [tests/inference/complicated_inference_union_must_merge_types.rol]
 ↳ instantiation @ line 15, column 5 [tests/inference/complicated_inference_union_must_merge_types.rol]

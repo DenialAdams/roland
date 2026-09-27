@@ -7,9 +7,9 @@ proc main() {
 }
 __END__
 compile:
-Local variable `z` is unused
-↳ line 4, column 10 [tests/inference/inference_for_loop_complex.rol]
 Local variable `i` is unused
 ↳ line 3, column 8 [tests/inference/inference_for_loop_complex.rol]
+Local variable `z` is unused
+↳ line 4, column 10 [tests/inference/inference_for_loop_complex.rol]
 run:
 OK

@@ -14,10 +14,10 @@ proc main() {
 }
 __END__
 compile:
-Undeclared type `adsad`
-↳ line 2, column 17 [tests/when/when_type_argument_issue.rol]
 Value of when condition can't be constant folded
 ↳ line 2, column 9 [tests/when/when_type_argument_issue.rol]
+Undeclared type `adsad`
+↳ line 2, column 17 [tests/when/when_type_argument_issue.rol]
 Value of when condition can't be constant folded
 ↳ line 5, column 9 [tests/when/when_type_argument_issue.rol]
 Value of when condition can't be constant folded

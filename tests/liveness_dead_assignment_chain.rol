@@ -19,9 +19,9 @@ proc main() {
 }
 __END__
 compile:
-Local variable `f` is unused
-↳ line 14, column 9 [tests/liveness_dead_assignment_chain.rol]
 Local variable `c` is unused
 ↳ line 9, column 9 [tests/liveness_dead_assignment_chain.rol]
+Local variable `f` is unused
+↳ line 14, column 9 [tests/liveness_dead_assignment_chain.rol]
 run:
 43

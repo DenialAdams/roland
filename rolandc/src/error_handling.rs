@@ -40,11 +40,52 @@ pub enum ErrorLocation {
    NoLocation,
 }
 
+impl ErrorLocation {
+   fn first_source(&self) -> Option<&SourceInfo> {
+      match self {
+         ErrorLocation::Simple(source) => Some(source),
+         ErrorLocation::WithDetails(details) => details.first().map(|(source, _)| source),
+         ErrorLocation::NoLocation => None,
+      }
+   }
+}
+
 #[derive(Hash, PartialEq, Eq, Clone)]
 pub struct ErrorInfo {
    pub message: String,
    pub location: ErrorLocation,
    pub came_from_stack: Vec<SourceInfo>,
+}
+
+impl ErrorInfo {
+   pub fn cmp_with_filemap(&self, other: &Self, user_files: &FileMap) -> std::cmp::Ordering {
+      let location_cmp = match (self.location.first_source(), other.location.first_source()) {
+         (Some(a), Some(b)) => a.cmp_with_filemap(b, user_files),
+         (Some(_), None) => std::cmp::Ordering::Greater,
+         (None, Some(_)) => std::cmp::Ordering::Less,
+         (None, None) => std::cmp::Ordering::Equal,
+      };
+
+      if location_cmp != std::cmp::Ordering::Equal {
+         return location_cmp;
+      }
+
+      for (a, b) in self.came_from_stack.iter().zip(&other.came_from_stack) {
+         let cmp = a.cmp_with_filemap(b, user_files);
+
+         if cmp != std::cmp::Ordering::Equal {
+            return cmp;
+         }
+      }
+
+      let stack_cmp = self.came_from_stack.len().cmp(&other.came_from_stack.len());
+
+      if stack_cmp != std::cmp::Ordering::Equal {
+         return stack_cmp;
+      }
+
+      self.message.cmp(&other.message)
+   }
 }
 
 pub struct SharedErrorManager<'a> {
@@ -131,11 +172,13 @@ impl ErrorManager {
    pub fn write_out_errors<W: Write>(&self, err_stream: &mut W, show_file_paths: bool, user_files: &FileMap) {
       let res = self.map_all_err_locations_to_line_col::<{ ColumnCountingCodeUnits::Utf32 }, false>(user_files);
 
-      let errs_unique: IndexSet<ErrorInfo> = self.errors.iter().cloned().collect();
+      let mut errs_unique: IndexSet<ErrorInfo> = self.errors.iter().cloned().collect();
+      errs_unique.sort_unstable_by(|x, y| x.cmp_with_filemap(y, user_files));
       write_out_error_buf(err_stream, errs_unique.iter(), show_file_paths, user_files, &res);
 
       if self.errors.is_empty() {
-         let warns_unique: IndexSet<ErrorInfo> = self.warnings.iter().cloned().collect();
+         let mut warns_unique: IndexSet<ErrorInfo> = self.warnings.iter().cloned().collect();
+         warns_unique.sort_unstable_by(|x, y| x.cmp_with_filemap(y, user_files));
          write_out_error_buf(err_stream, warns_unique.iter(), show_file_paths, user_files, &res);
       }
    }

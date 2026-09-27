@@ -89,19 +89,18 @@ impl TypeVariableManager {
       let new_constraint = union_constraints(x_data.constraint, y_data.constraint)?;
 
       if let Some(kt) = x_data.known_type.as_ref()
-         && occurs_check(y_rep, kt, self) {
-            return Err(());
-         }
+         && occurs_check(y_rep, kt, self)
+      {
+         return Err(());
+      }
 
       if let Some(kt) = y_data.known_type.as_ref()
-         && occurs_check(x_rep, kt, self) {
-            return Err(());
-         }
+         && occurs_check(x_rep, kt, self)
+      {
+         return Err(());
+      }
 
-      let known_type = match (
-         x_data.known_type.clone(),
-         y_data.known_type.clone(),
-      ) {
+      let known_type = match (x_data.known_type.clone(), y_data.known_type.clone()) {
          (None, None) => None,
          (None, r @ Some(_)) => r,
          (l @ Some(_), None) => l,
@@ -114,7 +113,9 @@ impl TypeVariableManager {
          }
       };
 
-      if let Some(known_type) = known_type.as_ref() && !constraint_compatible_with_concrete(new_constraint, known_type) {
+      if let Some(known_type) = known_type.as_ref()
+         && !constraint_compatible_with_concrete(new_constraint, known_type)
+      {
          return Err(());
       }
 
