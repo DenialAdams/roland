@@ -631,7 +631,13 @@ pub fn compile(
          regalloc_result,
       )
    } else {
-      backend::wasm::emit_wasm(&mut ctx.program, &ctx.interner, config, regalloc_result)
+      backend::wasm::emit_wasm(
+         &mut ctx.program,
+         &ctx.interner,
+         config,
+         regalloc_result,
+         &mut ctx.err_manager,
+      )?
    };
 
    Ok(CompilationResult {

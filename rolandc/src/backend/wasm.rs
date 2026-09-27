@@ -10,6 +10,8 @@ use wasm_encoder::{
 use super::linearize::{CFG_END_NODE, Cfg, CfgInstruction, post_order};
 use super::regalloc::{RegallocResult, RegisterType, VarSlot};
 use crate::dominators::{DominatorTree, compute_dominators};
+use crate::error_handling::ErrorManager;
+use crate::error_handling::error_handling_macros::rolandc_error_no_loc;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
    BinOp, CastType, Expression, ExpressionId, ExpressionPool, ProcImplSource, ProcedureDefinition, ProcedureId,
@@ -196,7 +198,8 @@ pub fn emit_wasm(
    interner: &Interner,
    config: &CompilationConfig,
    mut regalloc_result: RegallocResult,
-) -> Vec<u8> {
+   err_manager: &mut ErrorManager,
+) -> Result<Vec<u8>, ()> {
    const WASM_PAGE_SIZE: u64 = 65536;
    const WASM_MAX_PAGES: u64 = 65536;
 
@@ -341,8 +344,14 @@ pub fn emit_wasm(
       };
 
       if needed_pages > max_pages {
-         // Error here
-         todo!()
+         rolandc_error_no_loc!(
+            err_manager,
+            "Compilation failed because the resulting WASM binary requires {} pages of memory, greater than the maximum {} supported on this target ({}).",
+            needed_pages,
+            max_pages,
+            config.target,
+         );
+         return Err(());
       }
 
       if config.target == Target::Wasi {
@@ -353,7 +362,6 @@ pub fn emit_wasm(
          needed_pages
       }
    };
-
 
    let (global_section, global_names) = {
       let mut globals = GlobalSection::new();
@@ -671,7 +679,7 @@ pub fn emit_wasm(
 
    module.section(&name_section);
 
-   module.finish()
+   Ok(module.finish())
 }
 
 fn compare_alignment(alignment_1: u64, sizeof_1: u64, alignment_2: u64, sizeof_2: u64) -> std::cmp::Ordering {
