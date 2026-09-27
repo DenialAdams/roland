@@ -116,24 +116,16 @@ pub fn import_program(
 
    let num_in_flight: AtomicUsize = AtomicUsize::new(1 + usize::from(config.include_std));
 
-   {
+   let mut parse_results = {
       let interner = &ctx.interner;
       let err_manager = &err_manager;
       let source_files = &mut ctx.source_files;
       let global_exprs = &global_exprs;
       let p_source_to_definition = &mut ctx.program.source_to_definition;
-      let p_procedures = &mut ctx.program.procedures;
-      let p_procedure_bodies = &mut ctx.program.procedure_bodies;
-      let p_structs = &mut ctx.program.structs;
-      let p_unions = &mut ctx.program.unions;
-      let p_enums = &mut ctx.program.enums;
-      let p_type_aliases = &mut ctx.program.type_aliases;
-      let p_consts = &mut ctx.program.consts;
-      let p_statics = &mut ctx.program.statics;
-      let p_parsed_types = &mut ctx.program.parsed_types;
       let num_in_flight = &num_in_flight;
 
       rayon::in_place_scope(move |s| {
+         let mut parse_results = Vec::new();
          let mut select = Select::new();
          select.recv(&import_queue_rx);
          select.recv(&lex_parse_results_rx);
@@ -245,37 +237,46 @@ pub fn import_program(
                            &import_sender,
                         ))
                      })();
-                     let _ = lex_parse_results_tx.send(res);
+                     let _ = lex_parse_results_tx.send((source_path, res));
                   });
                }
             } else if op.index() == 1 {
-               let lp_res = op.recv(&lex_parse_results_rx).unwrap();
-               let Ok(mut parse_result) = lp_res else {
-                  num_in_flight.fetch_sub(1, Ordering::Relaxed);
-                  continue;
-               };
-
-               for parsed_proc in parse_result.items.procedures.drain(..) {
-                  let id = p_procedures.insert(parsed_proc.proc);
-                  if let Some(body) = parsed_proc.body {
-                     p_procedure_bodies.insert(id, body);
-                  }
+               let (source_path, lp_res) = op.recv(&lex_parse_results_rx).unwrap();
+               if let Ok(parse_result) = lp_res {
+                  parse_results.push((source_path, parse_result));
                }
-
-               p_structs.append(&mut parse_result.items.structs);
-               p_unions.append(&mut parse_result.items.unions);
-               p_enums.append(&mut parse_result.items.enums);
-               p_type_aliases.append(&mut parse_result.items.type_aliases);
-               p_consts.append(&mut parse_result.items.consts);
-               p_statics.append(&mut parse_result.items.statics);
-               p_parsed_types.append(&mut parse_result.parsed_types);
-               links.append(&mut parse_result.items.links);
 
                num_in_flight.fetch_sub(1, Ordering::Relaxed);
             }
          }
 
-         Ok(())
+         Ok(parse_results)
       })
+   }?;
+
+   parse_results.sort_unstable_by(|(a, _), (b, _)| {
+      let ((a_path, a_is_std), _) = ctx.source_files.get_index(a.0).unwrap();
+      let ((b_path, b_is_std), _) = ctx.source_files.get_index(b.0).unwrap();
+      b_is_std.cmp(a_is_std).then_with(|| a_path.cmp(b_path))
+   });
+
+   for (_, mut parse_result) in parse_results {
+      for parsed_proc in parse_result.items.procedures {
+         let id = ctx.program.procedures.insert(parsed_proc.proc);
+         if let Some(body) = parsed_proc.body {
+            ctx.program.procedure_bodies.insert(id, body);
+         }
+      }
+
+      ctx.program.structs.append(&mut parse_result.items.structs);
+      ctx.program.unions.append(&mut parse_result.items.unions);
+      ctx.program.enums.append(&mut parse_result.items.enums);
+      ctx.program.type_aliases.append(&mut parse_result.items.type_aliases);
+      ctx.program.consts.append(&mut parse_result.items.consts);
+      ctx.program.statics.append(&mut parse_result.items.statics);
+      ctx.program.parsed_types.append(&mut parse_result.parsed_types);
+      links.append(&mut parse_result.items.links);
    }
+
+   Ok(())
 }
