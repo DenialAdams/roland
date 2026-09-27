@@ -76,8 +76,13 @@ const _WASM_PAGE_SIZE: usize = 65536;
 const _WASM_MAX_PAGES: usize = 65536;
 
 proc brk(new_break: usize) -> usize {
-   // First page is reserved for stack, statics
-   static BRK: usize = _WASM_PAGE_SIZE;
+   static BRK: usize = 0;
+   static BRK_initialized: bool = false;
+
+   if !BRK_initialized {
+      BRK = wasm_memory_size() * _WASM_PAGE_SIZE;
+      BRK_initialized = true;
+   }
 
    if new_break <= BRK {
       return BRK;
