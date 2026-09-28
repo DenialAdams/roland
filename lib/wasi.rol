@@ -32,7 +32,10 @@ proc print(s: String) {
 
    let written: usize = 0;
    loop {
-      fd_write(1, &data[0], data.length, &written);
+      let ret = fd_write(1, &data[0], data.length, &written);
+      if ret < 0 {
+         unreachable();
+      }
       let remaining_len = &data[0].buf_len;
       if written >= remaining_len~ {
          break;
@@ -57,7 +60,10 @@ proc println(s: String) {
 
    let written: usize = 0;
    loop {
-      fd_write(1, &data[0], data.length, &written);
+      let ret = fd_write(1, &data[0], data.length, &written);
+      if ret < 0 {
+         unreachable();
+      }
       let remaining_len = &data[0].buf_len;
       if written > remaining_len~ {
          break;
