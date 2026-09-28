@@ -82,7 +82,7 @@ proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
 }
 
 proc free(ptr: &u8) {
-   if ptr transmute usize == 0 {
+   if ptr == nullptr() {
       return;
    }
 

@@ -9,9 +9,7 @@ proc print(s: String) {
    let buf: &u8 = s.pointer;
    loop {
       let ret = write(1, buf, s.length);
-      if ret < 0 {
-         unreachable();
-      }
+      assert(ret >= 0);
       written = written + ret as usize;
       if written >= s.length {
          break;
