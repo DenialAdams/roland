@@ -55,7 +55,7 @@ proc hm_init<K, V>(hash: proc(&K) -> usize, eq: proc(&K, &K) -> bool) -> HashMap
         _eq: eq,
         _load: 0,
         _capacity: 0,
-        _cells: 0 transmute &_hm_Cell<K, V>,
+        _cells: nullptr(),
     };
 }
 
@@ -122,6 +122,9 @@ proc hm_insert<K, V>(m: &HashMap<K, V>, k: K, v: V) {
 }
 
 proc hm_remove<K, V>(m: &HashMap<K, V>, k: &K) {
+    if m~._capacity == 0 {
+        return;
+    }
     let slot_index = m~._hash(k) % m~._capacity;
     loop {
         let slot = _hm_offset_ptr_items(m~._cells, slot_index);
@@ -141,13 +144,13 @@ proc hm_remove<K, V>(m: &HashMap<K, V>, k: &K) {
 
 proc hm_lookup<K, V>(m: &HashMap<K, V>, k: &K) -> &V {
     if m~._capacity == 0 {
-        return 0 transmute &V;
+        return nullptr();
     }
     let slot_index = m~._hash(k) % m~._capacity;
     loop {
         let slot = _hm_offset_ptr_items(m~._cells, slot_index);
         if slot~.state == _hm_Cell_State::Absent {
-            return 0 transmute &V;
+            return nullptr();
         }
         if slot~.state == _hm_Cell_State::Present and m~._eq(&slot~.key, k){
             return &slot~.val;
@@ -161,6 +164,9 @@ proc hm_lookup<K, V>(m: &HashMap<K, V>, k: &K) -> &V {
 
 proc hm_free<K, V>(m: &HashMap<K, V>) {
     free(m~._cells transmute &u8);
+    m~._cells = nullptr();
+    m~._capacity = 0;
+    m~.length = 0;
 }
 
 proc _hm_offset_ptr_items<T>(ptr: &T, items: usize) -> &T {
