@@ -35,6 +35,12 @@ proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
    // ALLOCATED: [size, 0xFF, <padding>, XXXX]
    // FREE: [_free_list_node, 0xFF, ____]
 
+   if bytes > USIZE_MAX - PREFIX_SIZE {
+      return MemoryBlock {
+         buf: 0 transmute &u8,
+         size: 0,
+      };
+   }
    bytes = bytes + PREFIX_SIZE;
 
    let cur_link: &&_free_list_node = &free_list_head;
@@ -65,8 +71,21 @@ proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
 
    // No suitable node. Allocate a new one.
    let cur_address = brk(0);
+   // This also ensures that cur_address + PREFIX_SIZE cannot overflow.
+   if bytes > USIZE_MAX - cur_address {
+      return MemoryBlock {
+         buf: 0 transmute &u8,
+         size: 0,
+      };
+   }
    // Adjust allocation request for alignment
    let padding = _compute_padding(cur_address + PREFIX_SIZE, alignment);
+   if padding > USIZE_MAX - bytes {
+      return MemoryBlock {
+         buf: 0 transmute &u8,
+         size: 0,
+      };
+   }
    bytes = bytes + padding;
    // Ensure that we are allocating enough space such that when we free it we can record metadata
    if bytes < sizeof$<_free_list_node>() {
@@ -81,8 +100,15 @@ proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
       };
    }
    bytes = bytes + trailing_padding;
-   let new_address = brk((cur_address + bytes) as usize);
-   if new_address < cur_address + bytes {
+   if bytes > USIZE_MAX - cur_address {
+      return MemoryBlock {
+         buf: 0 transmute &u8,
+         size: 0,
+      };
+   }
+   let requested_address = cur_address + bytes;
+   let new_address = brk(requested_address);
+   if new_address < requested_address {
       return MemoryBlock {
          buf: 0 transmute &u8,
          size: 0,
