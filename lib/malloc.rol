@@ -72,6 +72,15 @@ proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
    if bytes < sizeof$<_free_list_node>() {
       bytes = sizeof$<_free_list_node>();
    }
+   // We need to keep brk aligned to _free_list_node
+   let trailing_padding = _compute_padding(bytes, alignof$<_free_list_node>());
+   if trailing_padding > USIZE_MAX - bytes {
+      return MemoryBlock {
+         buf: 0 transmute &u8,
+         size: 0,
+      };
+   }
+   bytes = bytes + trailing_padding;
    let new_address = brk((cur_address + bytes) as usize);
    if new_address < cur_address + bytes {
       return MemoryBlock {
