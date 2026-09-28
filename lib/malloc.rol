@@ -43,7 +43,7 @@ proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
       let buf_start = node transmute usize + PREFIX_SIZE;
       let padding = _compute_padding(buf_start, alignment);
 
-      if node~.size >= (bytes + padding) {
+      if node~.size >= bytes and node~.size - bytes >= padding {
          let saved_size = node~.size;
          let next = node~.next;
 
