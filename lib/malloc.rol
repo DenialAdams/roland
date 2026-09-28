@@ -39,22 +39,28 @@ proc malloc(bytes: usize, alignment: usize) -> MemoryBlock {
 
    let cur_link: &&_free_list_node = &free_list_head;
    while cur_link~ != nullptr() {
-      let buf_start = (cur_link~ transmute usize + PREFIX_SIZE);
+      let node = cur_link~;
+      let buf_start = node transmute usize + PREFIX_SIZE;
       let padding = _compute_padding(buf_start, alignment);
-      if cur_link~~.size >= (bytes + padding) {
-         // We assume that fresh memory is zeroed, and so won't conflict with our marker byte.
-         // But we can assume no such thing for re-used memory. Zero them.
+
+      if node~.size >= (bytes + padding) {
+         let saved_size = node~.size;
+         let next = node~.next;
+
+         cur_link~ = next;
+
+         ((node transmute usize + sizeof$<usize>()) transmute &u8)~ = 0xFF;
+
+         // We assume that fresh memory is zeroed, and so won't conflict with our marker byte,
+         // but we can assume no such thing for re-used memory.
          memset(buf_start transmute &u8, 0, padding);
-         let saved = MemoryBlock {
+
+         return MemoryBlock {
             buf: (buf_start + padding) transmute &u8,
-            size: cur_link~~.size - PREFIX_SIZE - padding,
+            size: saved_size - PREFIX_SIZE - padding,
          };
-
-         cur_link~ = cur_link~~.next;
-
-         return saved;
       }
-      cur_link = &cur_link~~.next;
+      cur_link = &node~.next;
    }
 
    // No suitable node. Allocate a new one.
