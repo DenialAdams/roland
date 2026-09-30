@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::process::Command;
+use std::process::{Child, Command};
 
 use crate::QbeCompilationError;
 
@@ -17,20 +17,45 @@ fn get_output_file() -> Result<imp::FileAndPath, std::io::Error> {
 
 type FileAndPath = imp::FileAndPath;
 
-pub fn assemble_bytes(bytes: &[u8]) -> Result<FileAndPath, QbeCompilationError> {
-   let input = get_input_file(bytes).map_err(QbeCompilationError::AsInvocation)?;
-
-   assemble_file(input.path())
+pub struct PendingAssemblyInvocation {
+   child: Child,
+   output: FileAndPath,
+   input: Option<FileAndPath>,
 }
 
-pub fn assemble_file(path: &Path) -> Result<FileAndPath, QbeCompilationError> {
+impl PendingAssemblyInvocation {
+   pub fn wait(mut self) -> Result<FileAndPath, QbeCompilationError> {
+      match self.child.wait() {
+         Ok(stat) if stat.success() => Ok(self.output),
+         Ok(stat) => Err(QbeCompilationError::AsExecution(stat)),
+         Err(e) => Err(QbeCompilationError::AsInvocation(e)),
+      }
+   }
+}
+
+pub fn assemble_bytes(bytes: &[u8]) -> Result<PendingAssemblyInvocation, QbeCompilationError> {
+   let input = get_input_file(bytes).map_err(QbeCompilationError::AsInvocation)?;
+
+   let mut pending = assemble_file(input.path())?;
+   pending.input = Some(input);
+   Ok(pending)
+}
+
+pub fn assemble_file(path: &Path) -> Result<PendingAssemblyInvocation, QbeCompilationError> {
    let output = get_output_file().map_err(QbeCompilationError::AsInvocation)?;
 
-   match Command::new("as").arg("-o").arg(output.path()).arg(path).status() {
-      Ok(stat) if stat.success() => Ok(output),
-      Ok(stat) => Err(QbeCompilationError::AsExecution(stat)),
-      Err(e) => Err(QbeCompilationError::AsInvocation(e)),
-   }
+   let child = Command::new("as")
+      .arg("-o")
+      .arg(output.path())
+      .arg(path)
+      .spawn()
+      .map_err(QbeCompilationError::AsInvocation)?;
+
+   Ok(PendingAssemblyInvocation {
+      child,
+      output,
+      input: None,
+   })
 }
 
 pub fn invoke_qbe(program_bytes: &[u8]) -> Result<FileAndPath, QbeCompilationError> {

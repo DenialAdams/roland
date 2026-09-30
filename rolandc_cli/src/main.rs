@@ -13,7 +13,7 @@ use std::process::{Command, ExitStatus};
 
 use rolandc::{BaseTarget, CompilationContext, CompilationEntryPoint, FileResolver, Target};
 
-use crate::assemble::{assemble_bytes, assemble_file, invoke_qbe};
+use crate::assemble::{PendingAssemblyInvocation, assemble_bytes, assemble_file, invoke_qbe};
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
@@ -267,12 +267,19 @@ fn compile_qbe(
    if preserve_intermediate_outputs {
       std::fs::copy(asm_path, final_path.with_extension("s")).unwrap();
    }
-   let program_object_path = assemble_file(asm_path)?;
-   let syscall_object_path = assemble_bytes(include_bytes!("syscall.s"))?;
+   let program_object_asm = assemble_file(asm_path);
+   let syscall_object_asm = assemble_bytes(include_bytes!("syscall.s"));
 
    if freestanding {
-      let start_object_path = assemble_bytes(include_bytes!("start.s"))?;
+      let start_object_asm = assemble_bytes(include_bytes!("start.s"));
 
+      let start_object_res = start_object_asm.and_then(PendingAssemblyInvocation::wait);
+      let syscall_object_res = syscall_object_asm.and_then(PendingAssemblyInvocation::wait);
+      let program_object_res = program_object_asm.and_then(PendingAssemblyInvocation::wait);
+
+      let start_object_path = start_object_res?;
+      let syscall_object_path = syscall_object_res?;
+      let program_object_path = program_object_res?;
       let mut linker_args: Vec<OsString> = vec![
          "-nostdlib".into(),
          "--no-dynamic-linker".into(),
@@ -317,6 +324,11 @@ fn compile_qbe(
          Err(e) => Err(QbeCompilationError::LdInvocation(e)),
       }
    } else {
+      let syscall_object_res = syscall_object_asm.and_then(PendingAssemblyInvocation::wait);
+      let program_object_res = program_object_asm.and_then(PendingAssemblyInvocation::wait);
+
+      let syscall_object_path = syscall_object_res?;
+      let program_object_path = program_object_res?;
       let mut cc_command = Command::new("cc");
       cc_command.arg("-o");
       cc_command.args(&[
