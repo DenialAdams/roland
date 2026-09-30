@@ -301,7 +301,8 @@ fn compile_qbe(
             args
          };
 
-         return libwild::run(args).map_err(|e| {
+         let linker = libwild::Linker::new();
+         return linker.run(&args).map(|_| ()).map_err(|e| {
             libwild::error::report_error(&e);
             QbeCompilationError::LdExecution(None)
          });
