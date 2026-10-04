@@ -508,19 +508,21 @@ fn reaching_definitions(
       block_gen.sort_unstable();
    }
 
-   // A word-sized bitset costs about as much to visit as one sparse definition.
-   // Try sparse storage when the bitset is wider than the initial reaching set;
-   // abandon it if unions grow beyond that size (for example, around a loop).
-   let words = num_definitions.div_ceil(usize::BITS as usize);
-   let sparse = if words > procedure_vars.len() {
-      try_solve_sparse(cfg, &rpo, &definition_ranges, &gen_, words)
-   } else {
-      None
-   };
-   let state = if let Some(sparse) = sparse {
-      ReachingDefsStorage::Sparse(sparse)
-   } else {
-      ReachingDefsStorage::Dense(solve_dense(cfg, &rpo, &definition_ranges, &gen_, num_definitions))
+   let state = {
+      // A word-sized bitset costs about as much to visit as one sparse definition.
+      // Try sparse storage when the bitset is wider than the initial reaching set;
+      // abandon it if unions grow beyond that size (for example, around a loop).
+      let words = num_definitions.div_ceil(usize::BITS as usize);
+      let sparse = if words > procedure_vars.len() {
+         try_solve_sparse(cfg, &rpo, &definition_ranges, &gen_, words)
+      } else {
+         None
+      };
+      if let Some(sparse) = sparse {
+         ReachingDefsStorage::Sparse(sparse)
+      } else {
+         ReachingDefsStorage::Dense(solve_dense(cfg, &rpo, &definition_ranges, &gen_, num_definitions))
+      }
    };
 
    ReachingDefs {
