@@ -545,13 +545,15 @@ pub fn compile(
                   &ctx.interner,
                );
             }
-            let liveness = backend::liveness::liveness(
+            let mut liveness = IndexMap::new();
+            let intervals = compute_live_intervals(
                &body.locals,
                &mut body.cfg,
                &body.ast.expressions,
                config.target.base(),
                &ctx.program.user_defined_types,
                &pointer_analysis_result,
+               debugging_files.as_ref().map(|_| &mut liveness),
             );
             if let Some(dbg_files_mutex) = debugging_files.as_ref() {
                let mut dbg_files = dbg_files_mutex.lock().unwrap();
@@ -605,7 +607,7 @@ pub fn compile(
                   writeln!(f, "}}").unwrap();
                }
             }
-            liveness_result.insert(id, compute_live_intervals(body, &liveness));
+            liveness_result.insert(id, intervals);
             liveness_result
          })
          .reduce(SecondaryMap::new, |mut a, b| {

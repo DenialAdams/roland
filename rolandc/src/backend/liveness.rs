@@ -6,9 +6,7 @@ use crate::BaseTarget;
 use crate::backend::linearize::post_order;
 use crate::backend::pointer_analysis::{PointerAnalysisResult, PointsTo, PointsToOwned};
 use crate::constant_folding::expression_could_have_side_effects;
-use crate::parse::{
-   BinOp, Expression, ExpressionId, ExpressionPool, ProcedureBody, UnOp, UserDefinedTypeInfo, VariableId,
-};
+use crate::parse::{BinOp, Expression, ExpressionId, ExpressionPool, UnOp, UserDefinedTypeInfo, VariableId};
 use crate::size_info::sizeof_type_mem;
 use crate::type_data::ExpressionType;
 
@@ -22,50 +20,32 @@ struct LivenessState {
    address_taken_out: BitBox,
 }
 
-#[must_use]
-pub fn compute_live_intervals(
-   body: &ProcedureBody,
-   proc_liveness: &IndexMap<ProgramIndex, BitBox>,
-) -> IndexMap<VariableId, LiveInterval> {
-   let mut dense_live_intervals: Vec<Option<LiveInterval>> = vec![None; body.locals.len()];
-   for (pi, live_vars) in proc_liveness.iter() {
-      for local_index in live_vars.iter_ones() {
-         let existing_range_opt = &mut dense_live_intervals[local_index];
-         if let Some(existing_range) = existing_range_opt {
-            existing_range.begin = std::cmp::min(existing_range.begin, *pi);
-            existing_range.end = std::cmp::max(existing_range.end, *pi);
-         } else {
-            *existing_range_opt = Some(LiveInterval { begin: *pi, end: *pi });
-         }
-      }
+fn extend_live_interval(intervals: &mut [Option<LiveInterval>], local_index: usize, here: ProgramIndex) {
+   if let Some(interval) = &mut intervals[local_index] {
+      interval.begin = std::cmp::min(interval.begin, here);
+      interval.end = std::cmp::max(interval.end, here);
+   } else {
+      intervals[local_index] = Some(LiveInterval { begin: here, end: here });
    }
-   let mut live_intervals: IndexMap<VariableId, LiveInterval> = dense_live_intervals
-      .into_iter()
-      .enumerate()
-      .filter_map(|(i, v)| {
-         if let Some(v) = v {
-            let var = body.locals.get_index(i).map(|x| *x.0).unwrap();
-            Some((var, v))
-         } else {
-            None
-         }
-      })
-      .collect();
-   live_intervals.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
-
-   live_intervals
 }
 
 #[must_use]
-pub fn liveness(
+pub fn compute_live_intervals(
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
    cfg: &mut Cfg,
    ast: &ExpressionPool,
    target: BaseTarget,
    udt: &UserDefinedTypeInfo,
    pointer_analysis_result: &PointerAnalysisResult,
-) -> IndexMap<ProgramIndex, BitBox> {
-   let mut all_liveness: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
+   mut instruction_liveness: Option<&mut IndexMap<ProgramIndex, BitBox>>,
+) -> IndexMap<VariableId, LiveInterval> {
+   let mut dense_live_intervals: Vec<Option<LiveInterval>> = vec![None; procedure_vars.len()];
+   let tail_bits = procedure_vars.len() % usize::BITS as usize;
+   let tail_mask = if tail_bits == 0 {
+      usize::MAX
+   } else {
+      usize::MAX >> (usize::BITS as usize - tail_bits)
+   };
    let mut block_address_taken: BitVec = BitVec::new();
    // Keep each snapshot word-aligned, and reuse the storage across blocks and DCE iterations.
    let address_taken_stride = procedure_vars.len().next_multiple_of(usize::BITS as usize);
@@ -95,6 +75,8 @@ pub fn liveness(
    let mut keep_going = true;
    while keep_going {
       keep_going = false;
+      // Discard ranges from earlier iterations: DCE can remove their last use.
+      dense_live_intervals.fill(None);
       debug_assert!(worklist.is_empty());
       worklist.extend(block_order.iter().rev().copied());
 
@@ -212,7 +194,13 @@ pub fn liveness(
          }
 
          let bb = &mut cfg.bbs[node_id];
-         all_liveness.reserve(bb.instructions.len());
+         // The forwards fixed point is finished, so its scratch can track the previous
+         // instruction's live set while we walk backwards through this block.
+         let previous_live_variables = &mut new_address_taken;
+         previous_live_variables.fill(false);
+         if let Some(all_liveness) = instruction_liveness.as_deref_mut() {
+            all_liveness.reserve(bb.instructions.len());
+         }
          block_address_taken.resize(bb.instructions.len() * address_taken_stride, false);
 
          // Set address taken for all points in this block
@@ -362,19 +350,62 @@ pub fn liveness(
                current_live_variables.set(a_taken_address_var, el);
             }
 
-            match all_liveness.entry(here) {
-               indexmap::map::Entry::Occupied(mut entry) => {
-                  entry.get_mut().clone_from_bitslice(&current_live_variables);
+            // Once another DCE iteration is needed, these ranges will be discarded.
+            if !keep_going {
+               let words = current_live_variables.as_raw_slice();
+               for (word_index, (&current, previous)) in
+                  words.iter().zip(previous_live_variables.as_raw_mut_slice()).enumerate()
+               {
+                  let current = if word_index + 1 == words.len() {
+                     current & tail_mask
+                  } else {
+                     current
+                  };
+                  let mut changes = current ^ *previous;
+                  while changes != 0 {
+                     let bit = changes.trailing_zeros() as usize;
+                     let local_index = word_index * usize::BITS as usize + bit;
+                     // A newly live variable ends here. One that just died started
+                     // at the previous instruction, since this walk is backwards.
+                     let point = if current & (1 << bit) != 0 {
+                        here
+                     } else {
+                        ProgramIndex(rpo_index, i + 1)
+                     };
+                     extend_live_interval(&mut dense_live_intervals, local_index, point);
+                     changes &= changes - 1;
+                  }
+                  *previous = current;
                }
-               indexmap::map::Entry::Vacant(entry) => {
-                  entry.insert(current_live_variables.clone().into_boxed_bitslice());
+            }
+
+            if let Some(all_liveness) = instruction_liveness.as_deref_mut() {
+               match all_liveness.entry(here) {
+                  indexmap::map::Entry::Occupied(mut entry) => {
+                     entry.get_mut().clone_from_bitslice(&current_live_variables);
+                  }
+                  indexmap::map::Entry::Vacant(entry) => {
+                     entry.insert(current_live_variables.clone().into_boxed_bitslice());
+                  }
                }
+            }
+         }
+         if !keep_going && !bb.instructions.is_empty() {
+            for local_index in current_live_variables.iter_ones() {
+               extend_live_interval(&mut dense_live_intervals, local_index, ProgramIndex(rpo_index, 0));
             }
          }
       }
    }
 
-   all_liveness
+   let mut live_intervals: IndexMap<VariableId, LiveInterval> = dense_live_intervals
+      .into_iter()
+      .enumerate()
+      .filter_map(|(i, v)| v.map(|v| (*procedure_vars.get_index(i).unwrap().0, v)))
+      .collect();
+   live_intervals.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
+
+   live_intervals
 }
 
 fn update_live_variables_for_expr(
