@@ -152,20 +152,32 @@ pub fn liveness(
          // Update live_in
          {
             let s = &mut state[node_id];
-            let old_live_in = std::mem::replace(&mut s.live_in, s.gen_.clone());
-
-            // s.live_in |= s.live_out & !s.kill;
-            for ((lhs, rhs), mut dst) in s
-               .live_out
+            // We work on whole words so that this vectorizes
+            let full_words = s.live_in.len() / usize::BITS as usize;
+            let tail_bits = s.live_in.len() % usize::BITS as usize;
+            let live_out = s.live_out.as_raw_slice();
+            let kill = s.kill.as_raw_slice();
+            let gen_ = s.gen_.as_raw_slice();
+            let live_in = s.live_in.as_raw_mut_slice();
+            let mut difference = 0;
+            for (((out, kill), gen_), dst) in live_out
                .iter()
-               .by_vals()
-               .zip(s.kill.iter().by_vals())
-               .zip(s.live_in.iter_mut())
+               .zip(s.kill.as_raw_slice())
+               .zip(s.gen_.as_raw_slice())
+               .zip(live_in[..full_words].iter_mut())
             {
-               *dst |= lhs & !rhs;
+               let next = gen_ | (out & !kill);
+               difference |= next ^ *dst;
+               *dst = next;
+            }
+            if tail_bits != 0 {
+               let mask = usize::MAX >> (usize::BITS as usize - tail_bits);
+               let next = (gen_[full_words] | (live_out[full_words] & !kill[full_words])) & mask;
+               difference |= (next ^ live_in[full_words]) & mask;
+               live_in[full_words] = next;
             }
 
-            if old_live_in != s.live_in {
+            if difference != 0 {
                worklist.extend(&cfg.bbs[node_id].predecessors);
             }
          }
