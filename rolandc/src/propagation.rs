@@ -1,7 +1,7 @@
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::iter;
+use std::ops::Range;
 
+use bitvec::prelude::*;
 use indexmap::{IndexMap, IndexSet};
 use rayon::iter::ParallelIterator;
 use slotmap::SlotMap;
@@ -195,44 +195,37 @@ fn propagate_vals(
 
 // Conditional Copy/Constant Propagation
 pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget) {
-   let empty_definitions = HashSet::new();
    program.procedure_bodies.par_values_mut().for_each(|proc| {
       let mut escaping_vars = HashSet::new();
       mark_escaping_vars_cfg(&proc.cfg, &mut escaping_vars, &proc.ast.expressions);
 
       let mut reaching_values: HashMap<VariableId, Option<ReachingVal>> = HashMap::new();
 
-      let mut reaching_defs_here: HashMap<VariableId, Cow<HashSet<Definition>>> = HashMap::new();
-
       'outer: loop {
          let all_reaching_defs = reaching_definitions(&proc.locals, &proc.cfg, &proc.ast.expressions);
-         let rpo = {
-            let mut x = post_order(&proc.cfg);
-            x.reverse();
-            x
-         };
+         let rpo = &all_reaching_defs.rpo;
+         let mut assignments_here = vec![None; proc.locals.len()];
+         let mut assigned_variables = Vec::new();
          for (rpo_index, bb_index) in rpo.iter().enumerate() {
-            reaching_defs_here.extend(
-               all_reaching_defs[*bb_index]
-                  .r_in
-                  .iter()
-                  .map(|(k, v)| (*k, Cow::Borrowed(v))),
-            );
             for (i, instr) in proc.cfg.bbs[*bb_index].instructions.iter().enumerate() {
                reaching_values.clear();
                let get_reaching_val = |v: VariableId, ast: &ExpressionPool| -> Option<ReachingVal> {
+                  // The analysis models direct assignments. Address-taken locals
+                  // also participate, but alias writes make them unsafe to substitute.
                   if escaping_vars.contains(&v) {
                      return None;
                   }
-                  let var_rd = reaching_defs_here.get(&v)?;
+                  let variable_index = proc.locals.get_index_of(&v)?;
+                  let var_rd =
+                     all_reaching_defs.at_statement(*bb_index, variable_index, assignments_here[variable_index]);
                   let the_reaching_val = var_rd
                      .iter()
                      .next()
-                     .and_then(|x| find_reaching_val(*x, &proc.cfg, &rpo, ast))?;
+                     .and_then(|x| find_reaching_val(x, &proc.cfg, rpo, ast))?;
                   if !var_rd
                      .iter()
                      .skip(1)
-                     .all(|x| find_reaching_val(*x, &proc.cfg, &rpo, ast) == Some(the_reaching_val))
+                     .all(|x| find_reaching_val(x, &proc.cfg, rpo, ast) == Some(the_reaching_val))
                   {
                      return None;
                   }
@@ -244,19 +237,25 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget)
                      if escaping_vars.contains(&reaching_var) {
                         return None;
                      }
-                     if !proc.locals.contains_key(&reaching_var) {
-                        return None;
-                     }
                      // The reaching def of this var must not have changed between this use and the def
-                     let empty_def_cow = Cow::Borrowed(&empty_definitions);
-                     let reaching_defs_of_reaching_var_here =
-                        reaching_defs_here.get(&reaching_var).unwrap_or(&empty_def_cow);
+                     let reaching_var_index = proc.locals.get_index_of(&reaching_var)?;
+                     let reaching_defs_of_reaching_var_here = all_reaching_defs.at_statement(
+                        *bb_index,
+                        reaching_var_index,
+                        assignments_here[reaching_var_index],
+                     );
                      if !var_rd.iter().all(|def_this_val_came_from| {
                         let Definition::DefinedAt(def_loc) = def_this_val_came_from else {
                            unreachable!()
                         };
-                        get_reaching_defs_for_var_at_loc(&all_reaching_defs, *def_loc, reaching_var, &proc.cfg, ast)
-                           == *reaching_defs_of_reaching_var_here
+                        get_reaching_defs_for_var_at_loc(
+                           &all_reaching_defs,
+                           def_loc,
+                           reaching_var_index,
+                           &proc.locals,
+                           &proc.cfg,
+                           ast,
+                        ) == reaching_defs_of_reaching_var_here
                      }) {
                         return None;
                      }
@@ -280,16 +279,18 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget)
 
                if let CfgInstruction::Assignment(lhs, _) = instr
                   && let Expression::Variable(v) = proc.ast.expressions[*lhs].expression
-                  && proc.locals.contains_key(&v)
-               {
-                  let reaching_defs_of_v_here = reaching_defs_here.entry(v).or_default().to_mut();
-                  reaching_defs_of_v_here.clear();
-                  reaching_defs_of_v_here.insert(Definition::DefinedAt(ProgramIndex(rpo_index, i)));
-               }
+                  && let Some(variable_index) = proc.locals.get_index_of(&v)
+                  && assignments_here[variable_index]
+                     .replace(ProgramIndex(rpo_index, i))
+                     .is_none()
+                  {
+                     assigned_variables.push(variable_index);
+                  }
             }
 
-            reaching_defs_here.clear();
-            reaching_defs_here = reaching_defs_here.into_iter().map(|_| unreachable!()).collect();
+            for variable_index in assigned_variables.drain(..) {
+               assignments_here[variable_index] = None;
+            }
 
             // If we are conditionally jumping, try to prune it now that we have propagated constants.
             // This may prune reaching definitions, making our optimization more precise.
@@ -326,44 +327,123 @@ enum Definition {
    DefinedAt(ProgramIndex),
 }
 
-type DefinitionMap = HashMap<VariableId, Definition>;
-type MultiDefMap = HashMap<VariableId, HashSet<Definition>>;
-
 #[derive(Clone)]
 struct ReachingDefsState {
-   r_in: MultiDefMap,
-   r_out: MultiDefMap,
-   gen_: DefinitionMap,
-   // kill is implicit from gen
+   r_in: BitBox,
+   r_out: BitBox,
+   gen_: BitBox,
+   kill: BitBox,
 }
 
-type ReachingDefs = Vec<ReachingDefsState>;
+#[derive(Clone, Default)]
+struct SparseReachingDefsState {
+   r_in: Vec<usize>,
+   r_out: Vec<usize>,
+}
+
+enum ReachingDefsStorage {
+   Dense(Vec<ReachingDefsState>),
+   Sparse(Vec<SparseReachingDefsState>),
+}
+
+struct ReachingDefs {
+   state: ReachingDefsStorage,
+   // Indexed exactly like procedure locals, including address-taken variables.
+   // Each local's definitions occupy one contiguous range of IDs.
+   definition_ranges: Vec<Range<usize>>,
+   definitions: Vec<Definition>,
+   rpo: Vec<usize>,
+}
+
+impl ReachingDefs {
+   fn at_statement(
+      &self,
+      block: usize,
+      variable_index: usize,
+      assignment: Option<ProgramIndex>,
+   ) -> VariableDefinitions<'_> {
+      if let Some(loc) = assignment {
+         VariableDefinitions::Assigned(loc)
+      } else {
+         self.at_block_entry(block, &self.definition_ranges[variable_index])
+      }
+   }
+
+   fn at_block_entry(&self, block: usize, range: &Range<usize>) -> VariableDefinitions<'_> {
+      match &self.state {
+         ReachingDefsStorage::Dense(state) => VariableDefinitions::BlockEntry {
+            bits: &state[block].r_in[range.clone()],
+            definitions: &self.definitions[range.clone()],
+         },
+         ReachingDefsStorage::Sparse(state) => {
+            let input = &state[block].r_in;
+            let start = input.partition_point(|id| *id < range.start);
+            let end = input.partition_point(|id| *id < range.end);
+            VariableDefinitions::SparseEntry {
+               indices: &input[start..end],
+               definitions: &self.definitions,
+            }
+         }
+      }
+   }
+}
+
+#[derive(Clone, Copy)]
+enum VariableDefinitions<'a> {
+   BlockEntry {
+      bits: &'a BitSlice,
+      definitions: &'a [Definition],
+   },
+   SparseEntry {
+      indices: &'a [usize],
+      definitions: &'a [Definition],
+   },
+   Assigned(ProgramIndex),
+}
+
+impl VariableDefinitions<'_> {
+   fn iter(&self) -> impl Iterator<Item = Definition> {
+      let (single, bits, indices, definitions) = match *self {
+         Self::BlockEntry { bits, definitions } => (None, bits, &[][..], definitions),
+         Self::SparseEntry { indices, definitions } => (None, BitSlice::empty(), indices, definitions),
+         Self::Assigned(loc) => (Some(Definition::DefinedAt(loc)), BitSlice::empty(), &[][..], &[][..]),
+      };
+      single.into_iter().chain(
+         bits
+            .iter_ones()
+            .chain(indices.iter().copied())
+            .map(move |i| definitions[i]),
+      )
+   }
+}
+
+impl PartialEq for VariableDefinitions<'_> {
+   fn eq(&self, other: &Self) -> bool {
+      // Bit indices within each variable's range have a canonical definition order.
+      self.iter().eq(other.iter())
+   }
+}
 
 fn get_reaching_defs_for_var_at_loc<'r>(
    reaching_defs: &'r ReachingDefs,
    loc: ProgramIndex,
-   var: VariableId,
+   variable_index: usize,
+   procedure_vars: &IndexMap<VariableId, ExpressionType>,
    cfg: &Cfg,
    ast: &ExpressionPool,
-) -> Cow<'r, HashSet<Definition>> {
-   // TODO: map_or_default when that is stable
-   let bb_index = post_order(cfg).iter().rev().nth(loc.0).copied().unwrap();
-   let mut reaching_defs_of_var_here: Cow<HashSet<Definition>> = reaching_defs[bb_index]
-      .r_in
-      .get(&var)
-      .map_or_else(|| Cow::Owned(HashSet::new()), Cow::Borrowed);
-   for (i, instr) in cfg.bbs[bb_index].instructions.iter().enumerate().take(loc.1) {
+) -> VariableDefinitions<'r> {
+   let (var, _) = procedure_vars.get_index(variable_index).unwrap();
+   let bb_index = reaching_defs.rpo[loc.0];
+   for (i, instr) in cfg.bbs[bb_index].instructions[..loc.1].iter().enumerate().rev() {
       if let CfgInstruction::Assignment(lhs, _) = instr
          && let Expression::Variable(v) = ast[*lhs].expression
-         && v == var
+         && v == *var
       {
-         let reaching_defs_of_var_here_mut = reaching_defs_of_var_here.to_mut();
-         reaching_defs_of_var_here_mut.clear();
-         reaching_defs_of_var_here_mut.insert(Definition::DefinedAt(ProgramIndex(loc.0, i)));
+         return VariableDefinitions::Assigned(ProgramIndex(loc.0, i));
       }
    }
 
-   reaching_defs_of_var_here
+   reaching_defs.at_block_entry(bb_index, &reaching_defs.definition_ranges[variable_index])
 }
 
 #[must_use]
@@ -372,52 +452,118 @@ fn reaching_definitions(
    cfg: &Cfg,
    ast: &ExpressionPool,
 ) -> ReachingDefs {
-   // Dataflow Analyis on the CFG
-   let mut state = vec![
-      ReachingDefsState {
-         r_in: MultiDefMap::new(),
-         r_out: MultiDefMap::new(),
-         gen_: DefinitionMap::new(),
-      };
-      cfg.bbs.len()
-   ];
+   let mut definition_ranges = vec![0..1; procedure_vars.len()];
+   let rpo: Vec<_> = post_order(cfg).into_iter().rev().collect();
 
-   // Setup
-   for (i, bb_index) in post_order(cfg).iter().rev().enumerate() {
-      // The last definition is the one we care about; so go back to front
-      for (j, instruction) in cfg.bbs[*bb_index].instructions.iter().enumerate().rev() {
+   let mut block_definitions = vec![Vec::new(); cfg.bbs.len()];
+   let mut last_definition = vec![None; procedure_vars.len()];
+   let mut generated_variables = Vec::new();
+   for (rpo_index, bb) in rpo.iter().copied().enumerate() {
+      for (i, instruction) in cfg.bbs[bb].instructions.iter().enumerate() {
          if let CfgInstruction::Assignment(lhs, _) = instruction
             && let Expression::Variable(v) = ast[*lhs].expression
-            && procedure_vars.contains_key(&v)
-         {
-            state[*bb_index]
-               .gen_
-               .entry(v)
-               .or_insert(Definition::DefinedAt(ProgramIndex(i, j)));
-         }
+            && let Some(variable_index) = procedure_vars.get_index_of(&v)
+            && last_definition[variable_index]
+               .replace(ProgramIndex(rpo_index, i))
+               .is_none()
+            {
+               generated_variables.push(variable_index);
+            }
+      }
+      for variable_index in generated_variables.drain(..) {
+         definition_ranges[variable_index].end += 1;
+         block_definitions[bb].push((variable_index, last_definition[variable_index].take().unwrap()));
+      }
+   }
+   let mut num_definitions = 0;
+   for range in definition_ranges.iter_mut() {
+      let count = range.end;
+      *range = num_definitions..num_definitions + count;
+      num_definitions += count;
+   }
+   let mut definitions = vec![Definition::NoDefinitionInProc; num_definitions];
+   let mut next_definition: Vec<_> = definition_ranges.iter().map(|range| range.start + 1).collect();
+   let mut gen_: Vec<Vec<(usize, usize)>> = vec![Vec::new(); cfg.bbs.len()];
+   for bb_index in rpo.iter().copied() {
+      for (variable_index, loc) in block_definitions[bb_index].drain(..) {
+         let definition_index = next_definition[variable_index];
+         next_definition[variable_index] += 1;
+         definitions[definition_index] = Definition::DefinedAt(loc);
+         gen_[bb_index].push((variable_index, definition_index));
       }
    }
    // Uninitialized and input variables need a pseudo definition so that
    // if the var is used and then assigned in a loop we don't propagate
    // the value backwards
-   for proc_var in procedure_vars.keys().copied() {
-      state[cfg.start]
-         .gen_
-         .entry(proc_var)
-         .or_insert(Definition::NoDefinitionInProc);
+   let mut defined_at_start = bitvec![0; procedure_vars.len()];
+   for (variable_index, _) in gen_[cfg.start].iter() {
+      defined_at_start.set(*variable_index, true);
+   }
+   for (variable_index, range) in definition_ranges.iter().enumerate() {
+      if !defined_at_start[variable_index] {
+         gen_[cfg.start].push((variable_index, range.start));
+      }
+   }
+   for block_gen in gen_.iter_mut() {
+      block_gen.sort_unstable();
+   }
+
+   // A word-sized bitset costs about as much to visit as one sparse definition.
+   // Try sparse storage when the bitset is wider than the initial reaching set;
+   // abandon it if unions grow beyond that size (for example, around a loop).
+   let words = num_definitions.div_ceil(usize::BITS as usize);
+   let sparse = if words > procedure_vars.len() {
+      try_solve_sparse(cfg, &rpo, &definition_ranges, &gen_, words)
+   } else {
+      None
+   };
+   let state = if let Some(sparse) = sparse {
+      ReachingDefsStorage::Sparse(sparse)
+   } else {
+      ReachingDefsStorage::Dense(solve_dense(cfg, &rpo, &definition_ranges, &gen_, num_definitions))
+   };
+
+   ReachingDefs {
+      state,
+      definition_ranges,
+      definitions,
+      rpo,
+   }
+}
+
+fn solve_dense(
+   cfg: &Cfg,
+   rpo: &[usize],
+   definition_ranges: &[Range<usize>],
+   gen_: &[Vec<(usize, usize)>],
+   num_definitions: usize,
+) -> Vec<ReachingDefsState> {
+   let mut state = vec![
+      ReachingDefsState {
+         r_in: bitbox![0; num_definitions],
+         r_out: bitbox![0; num_definitions],
+         gen_: bitbox![0; num_definitions],
+         kill: bitbox![0; num_definitions],
+      };
+      cfg.bbs.len()
+   ];
+   for (bb_index, block_gen) in gen_.iter().enumerate() {
+      for (variable_index, definition_index) in block_gen {
+         let range = &definition_ranges[*variable_index];
+         state[bb_index].kill[range.clone()].fill(true);
+         state[bb_index].gen_.set(*definition_index, true);
+      }
    }
    // Forwards analysis, which is RPO - the R comes from popping off the worlist
-   let mut worklist: IndexSet<usize> = post_order(cfg).into_iter().collect();
+   let mut worklist: IndexSet<usize> = rpo.iter().rev().copied().collect();
    while let Some(node_id) = worklist.pop() {
       // Update in
       {
-         let mut new_r_in = std::mem::take(&mut state[node_id].r_in);
-         new_r_in.clear();
+         let mut new_r_in = std::mem::replace(&mut state[node_id].r_in, bitbox![0; 0]);
+         // Reaching sets only grow within one solve, so the predecessor union can
+         // accumulate in place. A CFG change starts a fresh solve.
          for predecessor in cfg.bbs[node_id].predecessors.iter().copied() {
-            let pred_out = &state[predecessor].r_out;
-            for (var, defs) in pred_out {
-               new_r_in.entry(*var).or_default().extend(defs.iter());
-            }
+            new_r_in |= &state[predecessor].r_out;
          }
          state[node_id].r_in = new_r_in;
       }
@@ -425,25 +571,96 @@ fn reaching_definitions(
       // Update out
       {
          let s = &mut state[node_id];
-         let old_r_out = std::mem::replace(
-            &mut s.r_out,
-            s.gen_.iter().map(|(k, v)| (*k, iter::once(*v).collect())).collect(),
-         );
-
-         for (var, defs) in s.r_in.iter() {
-            if s.gen_.contains_key(var) {
-               continue;
-            }
-            s.r_out.entry(*var).or_default().extend(defs);
+         let mut difference = 0;
+         for (((input, kill), gen_), output) in s
+            .r_in
+            .as_raw_slice()
+            .iter()
+            .zip(s.kill.as_raw_slice())
+            .zip(s.gen_.as_raw_slice())
+            .zip(s.r_out.as_raw_mut_slice())
+         {
+            let next = gen_ | (input & !kill);
+            difference |= next ^ *output;
+            *output = next;
          }
-
-         if old_r_out != s.r_out {
+         if difference != 0 {
             worklist.extend(&cfg.bbs[node_id].successors());
          }
       }
    }
 
    state
+}
+
+fn try_solve_sparse(
+   cfg: &Cfg,
+   rpo: &[usize],
+   definition_ranges: &[Range<usize>],
+   gen_: &[Vec<(usize, usize)>],
+   max_definitions: usize,
+) -> Option<Vec<SparseReachingDefsState>> {
+   let mut definition_variables = Vec::new();
+   for (variable_index, range) in definition_ranges.iter().enumerate() {
+      definition_variables.resize(range.end, variable_index);
+   }
+   let mut state = vec![SparseReachingDefsState::default(); cfg.bbs.len()];
+   let mut worklist: IndexSet<usize> = rpo.iter().rev().copied().collect();
+   let mut scratch = Vec::new();
+   while let Some(node_id) = worklist.pop() {
+      let mut input = std::mem::take(&mut state[node_id].r_in);
+      input.clear();
+      for predecessor in cfg.bbs[node_id].predecessors.iter().copied() {
+         union_sorted_definitions(&mut input, &state[predecessor].r_out, &mut scratch);
+         if input.len() > max_definitions {
+            return None;
+         }
+      }
+      let block_gen = &gen_[node_id];
+      scratch.clear();
+      scratch.extend(input.iter().copied().filter(|id| {
+         block_gen
+            .binary_search_by_key(&definition_variables[*id], |(variable_index, _)| *variable_index)
+            .is_err()
+      }));
+      scratch.extend(block_gen.iter().map(|(_, definition_index)| *definition_index));
+      if scratch.len() > max_definitions {
+         return None;
+      }
+      // Killed variables were removed, so generated definitions cannot be duplicates.
+      scratch.sort_unstable();
+      state[node_id].r_in = input;
+      if scratch != state[node_id].r_out {
+         std::mem::swap(&mut scratch, &mut state[node_id].r_out);
+         worklist.extend(cfg.bbs[node_id].successors());
+      }
+   }
+   Some(state)
+}
+
+fn union_sorted_definitions(left: &mut Vec<usize>, right: &[usize], scratch: &mut Vec<usize>) {
+   scratch.clear();
+   let (mut l, mut r) = (0, 0);
+   while l < left.len() && r < right.len() {
+      match left[l].cmp(&right[r]) {
+         std::cmp::Ordering::Less => {
+            scratch.push(left[l]);
+            l += 1;
+         }
+         std::cmp::Ordering::Greater => {
+            scratch.push(right[r]);
+            r += 1;
+         }
+         std::cmp::Ordering::Equal => {
+            scratch.push(left[l]);
+            l += 1;
+            r += 1;
+         }
+      }
+   }
+   scratch.extend_from_slice(&left[l..]);
+   scratch.extend_from_slice(&right[r..]);
+   std::mem::swap(left, scratch);
 }
 
 // MARK: Escape Analysis

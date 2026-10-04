@@ -1,0 +1,48 @@
+proc check(seed: u64) {
+   let source = seed;
+   let copied = source;
+   source = 99;
+   assert(copied == seed);
+
+   let joined = seed;
+   if (seed & 1) == 0 {
+      joined = seed + 10;
+   } else {
+      joined = seed + 20;
+   }
+   let joined_copy = joined;
+   joined = 123;
+   assert(joined_copy == (ifx (seed & 1) == 0 then seed + 10 else seed + 20));
+
+   let rounds: u64 = 3;
+   let total = seed;
+   while rounds > 0 {
+      let before = total;
+      total = total + rounds;
+      assert(before + rounds == total);
+      if (rounds & 1) == 0 {
+         total = total + 1;
+      } else {
+         total = total + 2;
+      }
+      rounds = rounds - 1;
+   }
+   assert(total == seed + 11);
+
+   let addressed = seed;
+   let pointer = &addressed;
+   let before_write = addressed;
+   pointer~ = seed + 3;
+   assert(addressed == seed + 3);
+   assert(before_write == seed);
+}
+
+proc main() {
+   check(0);
+   check(1);
+   check(7);
+   println("OK");
+}
+__END__
+run:
+OK
