@@ -1,0 +1,47 @@
+struct Callbacks {
+   tag: u8,
+   first: proc() -> u32,
+   second: proc() -> u32,
+   unused: proc() -> u32,
+}
+
+struct Data {
+   callbacks: [[Callbacks; 2]; 1],
+   label: String,
+   bytes: [u8; 3],
+   empty: [u8; 0],
+}
+
+static DATA: Data = Data {
+   label: "static callbacks",
+   callbacks: [[
+      Callbacks { tag: 1, second: &second, first: &first, unused: ___ },
+      Callbacks { tag: 2, second: &first, first: &second, unused: ___ },
+   ]],
+   bytes: [0, 127, 255],
+   empty: [],
+};
+static CHOICE: bool = true;
+
+proc first() -> u32 { return 11; }
+proc second() -> u32 { return 22; }
+proc third() -> u32 { return 33; }
+proc fourth() -> u32 { return 44; }
+
+proc main() {
+   let local: proc() -> u32 = ifx CHOICE then &third else &fourth;
+   assert(local() == 33);
+   assert(DATA.callbacks[0][0].first() == 11);
+   assert(DATA.callbacks[0][0].second() == 22);
+   assert(DATA.callbacks[0][1].first() == 22);
+   assert(DATA.callbacks[0][1].second() == 11);
+   assert(DATA.callbacks[0][0].tag == 1);
+   assert(DATA.callbacks[0][1].tag == 2);
+   assert(DATA.bytes[0] == 0);
+   assert(DATA.bytes[1] == 127);
+   assert(DATA.bytes[2] == 255);
+   println(DATA.label);
+}
+__END__
+run:
+static callbacks

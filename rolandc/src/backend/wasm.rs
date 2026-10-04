@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
 use wasm_encoder::{
-   BlockType, CodeSection, ConstExpr, ElementSection, Elements, EntityType, ExportSection, Function,
+   BlockType, CodeSection, ConstExpr, ElementSection, Elements, Encode, EntityType, ExportSection, Function,
    FunctionSection, GlobalSection, GlobalType, ImportSection, Instruction, MemArg, MemorySection, MemoryType, Module,
-   NameMap, NameSection, RefType, TableSection, TableType, TypeSection, ValType,
+   NameMap, NameSection, RefType, Section, SectionId, TableSection, TableType, TypeSection, ValType,
 };
 
 use super::linearize::{CFG_END_NODE, Cfg, CfgInstruction, post_order};
@@ -224,7 +224,6 @@ pub fn emit_wasm(
    let mut export_section = ExportSection::new();
    let mut function_section = FunctionSection::new();
    let mut memory_section = MemorySection::new();
-   let mut data_section = BorrowedDataSection::new();
    let mut code_section = CodeSection::new();
 
    for (id, external_procedure) in program
@@ -255,8 +254,6 @@ pub fn emit_wasm(
       generation_context.procedure_indices.insert(id);
    }
 
-   // Data section
-
    let stack_start = {
       // the base memory offset varies per platform;
       // on wasm-4/microw8, we don't own all of the memory!
@@ -269,7 +266,6 @@ pub fn emit_wasm(
 
       for s in program.literals.iter() {
          let str_value = interner.lookup(*s);
-         data_section.active(offset as i32, std::borrow::Cow::Borrowed(str_value.as_bytes()));
          let s_len = str_value.len() as u64;
          generation_context.literal_offsets.insert(*s, (offset, s_len));
          offset += s_len;
@@ -309,21 +305,16 @@ pub fn emit_wasm(
          );
       }
 
-      let mut buf = vec![];
       for (p_var, p_static) in program.non_stack_var_info.iter().filter(|x| x.1.initializer.is_some()) {
          if generation_context.var_to_slot.contains_key(p_var) {
             continue;
          }
 
-         literal_as_bytes(
-            &mut buf,
+         register_literal_procedure_pointers(
             p_static.initializer.unwrap(),
             &program.global_exprs,
             &mut generation_context,
          );
-         let static_address = generation_context.static_addresses.get(p_var).copied().unwrap();
-         data_section.active(static_address as i32, std::borrow::Cow::Owned(buf.clone()));
-         buf.clear();
       }
 
       // keep stack aligned
@@ -672,11 +663,12 @@ pub fn emit_wasm(
    module.section(&element_section);
    // datacount section
    module.section(&code_section);
-   module.section(&data_section);
 
-   module.section(&name_section);
+   let mut bytes = module.finish();
+   emit_data_section(&mut bytes, program, interner, &generation_context);
+   name_section.append_to(&mut bytes);
 
-   Ok(module.finish())
+   Ok(bytes)
 }
 
 fn compare_alignment(alignment_1: u64, sizeof_1: u64, alignment_2: u64, sizeof_2: u64) -> std::cmp::Ordering {
@@ -923,12 +915,15 @@ fn literal_as_bytes(
    buf: &mut Vec<u8>,
    expr_index: ExpressionId,
    ast: &ExpressionPool,
-   generation_context: &mut GenerationContext,
+   generation_context: &GenerationContext,
 ) {
    let expr_node = &ast[expr_index];
    match &expr_node.expression {
       Expression::BoundFcnLiteral(proc_id, _) => {
-         let (my_index, _) = generation_context.procedure_to_table_index.insert_full(*proc_id);
+         let my_index = generation_context
+            .procedure_to_table_index
+            .get_index_of(proc_id)
+            .unwrap();
          // todo: truncation
          buf.extend((my_index as u32).to_le_bytes());
       }
@@ -1907,44 +1902,125 @@ fn name_to_procedure_index(
    Some(generation_context.procedure_indices.get_index_of(id).unwrap() as u32)
 }
 
-// This is a workaround for wasm_encoder's data section not providing a zero-copy API
-struct BorrowedDataSection<'a> {
-   segments: Vec<(Vec<u8>, std::borrow::Cow<'a, [u8]>)>,
-   payload_len: usize,
+fn unsigned_leb_len(value: usize) -> usize {
+   value.bit_width().div_ceil(7).max(1) as usize
 }
 
-impl<'a> BorrowedDataSection<'a> {
-   fn new() -> Self {
-      Self { segments: Vec::new(), payload_len: 0 }
+fn active_data_segment_len(offset: i32, data_len: usize) -> usize {
+   let magnitude = if offset < 0 { !offset } else { offset };
+   let signed_bits = magnitude.cast_unsigned().bit_width() + 1;
+   // Active-memory-zero flag, i32.const opcode, signed offset, end opcode, length, payload.
+   3 + signed_bits.div_ceil(7) as usize + unsigned_leb_len(data_len) + data_len
+}
+
+fn emit_active_data_segment_header(bytes: &mut Vec<u8>, offset: i32, data_len: usize) {
+   bytes.push(0); // Active segment in memory zero.
+   Instruction::I32Const(offset).encode(bytes);
+   Instruction::End.encode(bytes);
+   data_len.encode(bytes);
+}
+
+fn emit_data_section(
+   bytes: &mut Vec<u8>,
+   program: &Program,
+   interner: &Interner,
+   generation_context: &GenerationContext,
+) {
+   let initialized_statics = program
+      .non_stack_var_info
+      .iter()
+      .filter(|(id, info)| info.initializer.is_some() && !generation_context.var_to_slot.contains_key(*id));
+   let count = program.literals.len() + initialized_statics.clone().count();
+   let mut payload_len = unsigned_leb_len(count);
+   for literal in &program.literals {
+      let (offset, len) = generation_context.literal_offsets[literal];
+      payload_len += active_data_segment_len(offset as i32, len as usize);
+   }
+   for (id, info) in initialized_statics.clone() {
+      let offset = generation_context.static_addresses[id];
+      let len = sizeof_type_mem(
+         &info.expr_type.e_type,
+         generation_context.user_defined_types,
+         BaseTarget::Wasm,
+      );
+      payload_len += active_data_segment_len(offset as i32, len as usize);
    }
 
-   fn active(&mut self, offset: i32, data: std::borrow::Cow<'a, [u8]>) {
-      use wasm_encoder::Encode;
-      let mut header = Vec::with_capacity(16);
-      header.push(0); // active segment in memory zero
-      ConstExpr::i32_const(offset).encode(&mut header);
-      data.len().encode(&mut header);
-      self.payload_len += header.len() + data.len();
-      self.segments.push((header, data));
+   bytes.reserve(1 + unsigned_leb_len(payload_len) + payload_len);
+   bytes.push(SectionId::Data.into());
+   payload_len.encode(bytes);
+   count.encode(bytes);
+   for literal in &program.literals {
+      let (offset, len) = generation_context.literal_offsets[literal];
+      emit_active_data_segment_header(bytes, offset as i32, len as usize);
+      bytes.extend_from_slice(interner.lookup(*literal).as_bytes());
+   }
+   for (id, info) in initialized_statics {
+      let offset = generation_context.static_addresses[id];
+      let len = sizeof_type_mem(
+         &info.expr_type.e_type,
+         generation_context.user_defined_types,
+         BaseTarget::Wasm,
+      );
+      emit_active_data_segment_header(bytes, offset as i32, len as usize);
+      let begin = bytes.len();
+      literal_as_bytes(
+         bytes,
+         info.initializer.unwrap(),
+         &program.global_exprs,
+         generation_context,
+      );
+      debug_assert_eq!(bytes.len() - begin, len as usize);
    }
 }
 
-impl wasm_encoder::Encode for BorrowedDataSection<'_> {
-   fn encode(&self, sink: &mut Vec<u8>) {
-      let mut count = Vec::new();
-      (self.segments.len() as u32).encode(&mut count);
-      (count.len() + self.payload_len).encode(sink);
-      sink.extend_from_slice(&count);
-      sink.reserve(self.payload_len);
-      for (header, data) in &self.segments {
-         sink.extend_from_slice(header);
-         sink.extend_from_slice(data);
+fn type_contains_procedure_pointer(expr_type: &ExpressionType, types: &UserDefinedTypeInfo) -> bool {
+   match expr_type {
+      ExpressionType::ProcedurePointer { .. } | ExpressionType::ProcedureItem(..) => true,
+      ExpressionType::Array(element, _) => type_contains_procedure_pointer(element, types),
+      ExpressionType::Struct(id, _) => types.struct_info[*id]
+         .field_types
+         .values()
+         .any(|field| type_contains_procedure_pointer(&field.e_type, types)),
+      ExpressionType::Union(id, _) => types.union_info[*id]
+         .field_types
+         .values()
+         .any(|field| type_contains_procedure_pointer(&field.e_type, types)),
+      _ => false,
+   }
+}
+
+fn register_literal_procedure_pointers(
+   expr_index: ExpressionId,
+   ast: &ExpressionPool,
+   generation_context: &mut GenerationContext,
+) {
+   match &ast[expr_index].expression {
+      Expression::BoundFcnLiteral(proc_id, _) => {
+         generation_context.procedure_to_table_index.insert(*proc_id);
       }
-   }
-}
-
-impl wasm_encoder::Section for BorrowedDataSection<'_> {
-   fn id(&self) -> u8 {
-      wasm_encoder::SectionId::Data.into()
+      Expression::StructLiteral(id, fields) => {
+         // Match literal_as_bytes' field order, including reordered named initializers.
+         for name in generation_context.user_defined_types.struct_info[*id]
+            .field_types
+            .keys()
+         {
+            if let Some(value) = fields[name] {
+               register_literal_procedure_pointers(value, ast, generation_context);
+            }
+         }
+      }
+      Expression::ArrayLiteral(elements) => {
+         // Byte/numeric arrays cannot contain procedure pointers; avoid traversing their payload.
+         if type_contains_procedure_pointer(
+            ast[expr_index].exp_type.as_ref().unwrap(),
+            generation_context.user_defined_types,
+         ) {
+            for element in elements {
+               register_literal_procedure_pointers(*element, ast, generation_context);
+            }
+         }
+      }
+      _ => (),
    }
 }
