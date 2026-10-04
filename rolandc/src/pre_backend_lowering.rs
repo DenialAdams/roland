@@ -420,32 +420,47 @@ pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, intern
 }
 
 pub fn kill_zst_assignments(program: &mut Program, target: BaseTarget) {
+   let mut instructions = Vec::new();
    for body in program.procedure_bodies.values_mut() {
       for bb in body.cfg.bbs.iter_mut() {
-         // This feels pretty inefficient :(
-         // do this at cfg construction time?
-         // at the very least, most basic blocks have no such assignments
-         bb.instructions = bb
-            .instructions
-            .drain(..)
-            .flat_map(|x| match x {
-               CfgInstruction::Assignment(lhs, rhs) => {
-                  let rhs_t = body.ast.expressions[rhs].exp_type.as_ref().unwrap();
-                  if sizeof_type_mem(rhs_t, &program.user_defined_types, target) == 0 {
-                     [
-                        expression_could_have_side_effects(lhs, &body.ast.expressions)
-                           .then_some(CfgInstruction::Expression(lhs)),
-                        expression_could_have_side_effects(rhs, &body.ast.expressions)
-                           .then_some(CfgInstruction::Expression(rhs)),
-                     ]
-                  } else {
-                     [Some(x), None]
+         if !bb.instructions.iter().any(|instruction| {
+            if let CfgInstruction::Assignment(_, rhs) = instruction {
+               sizeof_type_mem(
+                  body.ast.expressions[*rhs].exp_type.as_ref().unwrap(),
+                  &program.user_defined_types,
+                  target,
+               ) == 0
+            } else {
+               false
+            }
+         }) {
+            continue;
+         }
+
+         instructions.reserve(bb.instructions.len());
+         instructions.extend(
+            bb.instructions
+               .drain(..)
+               .flat_map(|x| match x {
+                  CfgInstruction::Assignment(lhs, rhs) => {
+                     let rhs_t = body.ast.expressions[rhs].exp_type.as_ref().unwrap();
+                     if sizeof_type_mem(rhs_t, &program.user_defined_types, target) == 0 {
+                        [
+                           expression_could_have_side_effects(lhs, &body.ast.expressions)
+                              .then_some(CfgInstruction::Expression(lhs)),
+                           expression_could_have_side_effects(rhs, &body.ast.expressions)
+                              .then_some(CfgInstruction::Expression(rhs)),
+                        ]
+                     } else {
+                        [Some(x), None]
+                     }
                   }
-               }
-               _ => [Some(x), None],
-            })
-            .flatten()
-            .collect();
+                  _ => [Some(x), None],
+               })
+               .flatten(),
+         );
+         // Draining leaves an empty allocation to reuse for the next changed block.
+         std::mem::swap(&mut bb.instructions, &mut instructions);
       }
    }
 }
