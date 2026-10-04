@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
 use wasm_encoder::{
-   BlockType, CodeSection, ConstExpr, DataSection, ElementSection, Elements, EntityType, ExportSection, Function,
+   BlockType, CodeSection, ConstExpr, ElementSection, Elements, EntityType, ExportSection, Function,
    FunctionSection, GlobalSection, GlobalType, ImportSection, Instruction, MemArg, MemorySection, MemoryType, Module,
    NameMap, NameSection, RefType, TableSection, TableType, TypeSection, ValType,
 };
@@ -224,7 +224,7 @@ pub fn emit_wasm(
    let mut export_section = ExportSection::new();
    let mut function_section = FunctionSection::new();
    let mut memory_section = MemorySection::new();
-   let mut data_section = DataSection::new();
+   let mut data_section = BorrowedDataSection::new();
    let mut code_section = CodeSection::new();
 
    for (id, external_procedure) in program
@@ -269,11 +269,7 @@ pub fn emit_wasm(
 
       for s in program.literals.iter() {
          let str_value = interner.lookup(*s);
-         data_section.active(
-            0,
-            &ConstExpr::i32_const(offset as i32),
-            str_value.as_bytes().iter().copied(),
-         );
+         data_section.active(offset as i32, std::borrow::Cow::Borrowed(str_value.as_bytes()));
          let s_len = str_value.len() as u64;
          generation_context.literal_offsets.insert(*s, (offset, s_len));
          offset += s_len;
@@ -326,7 +322,8 @@ pub fn emit_wasm(
             &mut generation_context,
          );
          let static_address = generation_context.static_addresses.get(p_var).copied().unwrap();
-         data_section.active(0, &ConstExpr::i32_const(static_address as i32), buf.drain(..));
+         data_section.active(static_address as i32, std::borrow::Cow::Owned(buf.clone()));
+         buf.clear();
       }
 
       // keep stack aligned
@@ -1908,4 +1905,46 @@ fn name_to_procedure_index(
 ) -> Option<u32> {
    let id = generation_context.proc_name_table.get(&interner.intern(name))?;
    Some(generation_context.procedure_indices.get_index_of(id).unwrap() as u32)
+}
+
+// This is a workaround for wasm_encoder's data section not providing a zero-copy API
+struct BorrowedDataSection<'a> {
+   segments: Vec<(Vec<u8>, std::borrow::Cow<'a, [u8]>)>,
+   payload_len: usize,
+}
+
+impl<'a> BorrowedDataSection<'a> {
+   fn new() -> Self {
+      Self { segments: Vec::new(), payload_len: 0 }
+   }
+
+   fn active(&mut self, offset: i32, data: std::borrow::Cow<'a, [u8]>) {
+      use wasm_encoder::Encode;
+      let mut header = Vec::with_capacity(16);
+      header.push(0); // active segment in memory zero
+      ConstExpr::i32_const(offset).encode(&mut header);
+      data.len().encode(&mut header);
+      self.payload_len += header.len() + data.len();
+      self.segments.push((header, data));
+   }
+}
+
+impl wasm_encoder::Encode for BorrowedDataSection<'_> {
+   fn encode(&self, sink: &mut Vec<u8>) {
+      let mut count = Vec::new();
+      (self.segments.len() as u32).encode(&mut count);
+      (count.len() + self.payload_len).encode(sink);
+      sink.extend_from_slice(&count);
+      sink.reserve(self.payload_len);
+      for (header, data) in &self.segments {
+         sink.extend_from_slice(header);
+         sink.extend_from_slice(data);
+      }
+   }
+}
+
+impl wasm_encoder::Section for BorrowedDataSection<'_> {
+   fn id(&self) -> u8 {
+      wasm_encoder::SectionId::Data.into()
+   }
 }
