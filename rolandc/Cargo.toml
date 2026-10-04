@@ -11,7 +11,7 @@ indexmap = "2"
 include_dir = "0.7"
 wasm-encoder = "0.259"
 slotmap = { git = "https://github.com/DenialAdams/slotmap.git", branch = "rayonFinal", features = ["rayon"] }
-bitvec = "1"
+bitvec = { git = "https://github.com/DenialAdams/bitvec.git" , branch = "fix_fast_path" }
 hashbrown = "0.17"
 memchr = "2"
 rayon = "1"
