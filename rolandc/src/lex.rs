@@ -225,6 +225,21 @@ struct CopyRange {
    end: usize,
 }
 
+fn chars_from(input: &str, offset: usize) -> impl Iterator<Item = (CopyRange, char)> {
+   input[offset..].char_indices().map(move |(start, ch)| {
+      (
+         // Naturally this should be a range start..end
+         // If Rust ranges ever implement Copy (2027 edition?)
+         // will change
+         CopyRange {
+            start: offset + start,
+            end: offset + start + ch.len_utf8(),
+         },
+         ch,
+      )
+   })
+}
+
 pub fn lex_for_tokens(
    input: &str,
    source_path: SourcePath,
@@ -242,19 +257,7 @@ pub fn lex_for_tokens(
    // numeric literals
    let mut is_float = false;
 
-   let mut chars = input.char_indices().map(|(start, ch)| {
-      // Naturally this should be a range start..end
-      // If Rust ranges ever implement Copy (2027 edition?)
-      // will change
-      (
-         CopyRange {
-            start,
-            end: (start + ch.len_utf8()),
-         },
-         ch,
-      )
-   });
-
+   let mut chars = chars_from(input, 0);
    let mut next_char = chars.next();
 
    while let Some((c_byte_range, c)) = next_char {
@@ -671,23 +674,35 @@ pub fn lex_for_tokens(
             }
          }
          LexMode::StringLiteral => {
-            if c == '"' {
-               let final_str = interner.intern(&str_buf);
+            let start = c_byte_range.start;
+            let Some(delimiter) = memchr::memchr2(b'"', b'\\', &input.as_bytes()[start..]) else {
+               // Leave the mode set so the EOF diagnostic below covers the whole literal.
+               break;
+            };
+            let end = start + delimiter;
+            let fragment = &input[start..end];
+            if input.as_bytes()[end] == b'"' {
+               let final_str = if str_buf.is_empty() {
+                  interner.intern(fragment)
+               } else {
+                  str_buf.push_str(fragment);
+                  interner.intern(&str_buf)
+               };
                tokens.push(SourceToken {
                   source_info: SourceInfo {
                      begin: SourcePosition(fragment_begin),
-                     end: SourcePosition(c_byte_range.end),
+                     end: SourcePosition(end + 1),
                      file: source_path,
                   },
                   token: Token::StringLiteral(final_str),
                });
                str_buf.clear();
                mode = LexMode::Normal;
-            } else if c == '\\' {
-               mode = LexMode::StringLiteralEscape;
             } else {
-               str_buf.push(c);
+               str_buf.push_str(fragment);
+               mode = LexMode::StringLiteralEscape;
             }
+            chars = chars_from(input, end + 1);
             next_char = chars.next();
          }
          LexMode::StringLiteralEscape => {
@@ -817,10 +832,11 @@ pub fn lex_for_tokens(
             }
          }
          LexMode::Comment => {
-            if c == '\n' {
-               mode = LexMode::Normal;
-            }
+            let start = c_byte_range.start;
+            let end = memchr::memchr(b'\n', &input.as_bytes()[start..]).map_or(input.len(), |i| start + i + 1);
+            chars = chars_from(input, end);
             next_char = chars.next();
+            mode = LexMode::Normal;
          }
       }
    }
