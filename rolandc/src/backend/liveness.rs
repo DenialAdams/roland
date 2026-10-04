@@ -27,18 +27,30 @@ pub fn compute_live_intervals(
    body: &ProcedureBody,
    proc_liveness: &IndexMap<ProgramIndex, BitBox>,
 ) -> IndexMap<VariableId, LiveInterval> {
-   let mut live_intervals: IndexMap<VariableId, LiveInterval> = IndexMap::with_capacity(body.locals.len());
+   let mut dense_live_intervals: Vec<Option<LiveInterval>> = vec![None; body.locals.len()];
    for (pi, live_vars) in proc_liveness.iter() {
       for local_index in live_vars.iter_ones() {
-         let var = body.locals.get_index(local_index).map(|x| *x.0).unwrap();
-         if let Some(existing_range) = live_intervals.get_mut(&var) {
+         let existing_range_opt = &mut dense_live_intervals[local_index];
+         if let Some(existing_range) = existing_range_opt {
             existing_range.begin = std::cmp::min(existing_range.begin, *pi);
             existing_range.end = std::cmp::max(existing_range.end, *pi);
          } else {
-            live_intervals.insert(var, LiveInterval { begin: *pi, end: *pi });
+            *existing_range_opt = Some(LiveInterval { begin: *pi, end: *pi });
          }
       }
    }
+   let mut live_intervals: IndexMap<VariableId, LiveInterval> = dense_live_intervals
+      .into_iter()
+      .enumerate()
+      .filter_map(|(i, v)| {
+         if let Some(v) = v {
+            let var = body.locals.get_index(i).map(|x| *x.0).unwrap();
+            Some((var, v))
+         } else {
+            None
+         }
+      })
+      .collect();
    live_intervals.sort_unstable_by(|_, v1, _, v2| v1.begin.cmp(&v2.begin));
 
    live_intervals
