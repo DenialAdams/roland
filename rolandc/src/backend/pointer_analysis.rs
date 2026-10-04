@@ -127,7 +127,7 @@ impl PointerAnalysisData {
          };
          match reverse_points_to
             .entry(rep_points_to)
-            .or_insert(PointsToOwned::Vars(bitbox![0; procedure_vars.len()]))
+            .or_insert_with(|| PointsToOwned::Vars(bitbox![0; procedure_vars.len()]))
          {
             PointsToOwned::Unknown => (),
             PointsToOwned::Vars(bit_vec) => {
