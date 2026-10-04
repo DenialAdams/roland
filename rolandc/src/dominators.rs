@@ -17,19 +17,16 @@ pub fn compute_dominators(cfg: &Cfg, rpo: &[usize], cfg_index_to_rpo_index: &Has
    while changed {
       changed = false;
       for b in 1..rpo.len() {
-         let preds: Vec<usize> = cfg.bbs[rpo[b]]
+         let mut preds = cfg.bbs[rpo[b]]
             .predecessors
             .iter()
             .copied()
             .filter_map(|x| cfg_index_to_rpo_index.get(&x))
             .copied()
-            .collect();
-         let mut new_idom = preds.iter().copied().find(|x| dominators[*x].is_some()).unwrap();
-         let first_p = new_idom;
-         for p in preds.iter().copied().filter(|x| *x != first_p) {
-            if dominators[p].is_some() {
-               new_idom = intersect(p, new_idom, &dominators);
-            }
+            .filter(|x| dominators[*x].is_some());
+         let mut new_idom = preds.next().unwrap();
+         for p in preds {
+            new_idom = intersect(p, new_idom, &dominators);
          }
          if dominators[b] != Some(new_idom) {
             dominators[b] = Some(new_idom);
