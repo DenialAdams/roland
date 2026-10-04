@@ -66,9 +66,12 @@ pub fn liveness(
    pointer_analysis_result: &PointerAnalysisResult,
 ) -> IndexMap<ProgramIndex, BitBox> {
    let mut all_liveness: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
-   let mut all_address_taken: IndexMap<ProgramIndex, BitBox> = IndexMap::new();
+   let mut block_address_taken: BitVec = BitVec::new();
+   // Keep each snapshot word-aligned, and reuse the storage across blocks and DCE iterations.
+   let address_taken_stride = procedure_vars.len().next_multiple_of(usize::BITS as usize);
    let mut current_live_variables = BitVec::new();
    let mut current_address_taken = bitvec![0; procedure_vars.len()];
+   let mut new_address_taken = bitbox![0; procedure_vars.len()];
    let mut visit_in_progress = bitbox![0; procedure_vars.len()];
 
    // Dataflow Analyis on the CFG
@@ -138,12 +141,12 @@ pub fn liveness(
       // get a forwards worklist, then compute address_taken for each block
       let mut address_taken_worklist: IndexSet<usize> = worklist.iter().rev().copied().collect();
       while let Some(block_idx) = address_taken_worklist.pop() {
-         let mut new = state[block_idx].gen_address_taken.clone();
+         new_address_taken.clone_from_bitslice(&state[block_idx].gen_address_taken);
          for p in cfg.bbs[block_idx].predecessors.iter().copied() {
-            new |= &state[p].address_taken_out;
+            new_address_taken |= &state[p].address_taken_out;
          }
-         if new != state[block_idx].address_taken_out {
-            state[block_idx].address_taken_out = new;
+         if new_address_taken != state[block_idx].address_taken_out {
+            std::mem::swap(&mut state[block_idx].address_taken_out, &mut new_address_taken);
             address_taken_worklist.extend(cfg.bbs[block_idx].successors().iter().copied());
          }
       }
@@ -210,7 +213,7 @@ pub fn liveness(
 
          let bb = &mut cfg.bbs[node_id];
          all_liveness.reserve(bb.instructions.len());
-         all_address_taken.reserve(bb.instructions.len());
+         block_address_taken.resize(bb.instructions.len() * address_taken_stride, false);
 
          // Set address taken for all points in this block
          for (i, instruction) in bb.instructions.iter().enumerate() {
@@ -228,10 +231,8 @@ pub fn liveness(
                }
                _ => (),
             }
-            all_address_taken.insert(
-               ProgramIndex(rpo_index, i),
-               current_address_taken.clone().into_boxed_bitslice(),
-            );
+            let start = i * address_taken_stride;
+            block_address_taken[start..start + procedure_vars.len()].clone_from_bitslice(&current_address_taken);
          }
 
          // Set liveness for all points in this block
@@ -320,7 +321,8 @@ pub fn liveness(
                _ => (),
             }
 
-            for a_taken_address_var in all_address_taken[&here].iter_ones() {
+            let start = i * address_taken_stride;
+            for a_taken_address_var in block_address_taken[start..start + procedure_vars.len()].iter_ones() {
                fn var_is_effectively_live(
                   v: usize,
                   visit_in_progress: &mut BitSlice,
@@ -360,7 +362,14 @@ pub fn liveness(
                current_live_variables.set(a_taken_address_var, el);
             }
 
-            all_liveness.insert(here, current_live_variables.clone().into_boxed_bitslice());
+            match all_liveness.entry(here) {
+               indexmap::map::Entry::Occupied(mut entry) => {
+                  entry.get_mut().clone_from_bitslice(&current_live_variables);
+               }
+               indexmap::map::Entry::Vacant(entry) => {
+                  entry.insert(current_live_variables.clone().into_boxed_bitslice());
+               }
+            }
          }
       }
    }
