@@ -125,7 +125,14 @@ pub fn compute_live_intervals(
       while let Some(block_idx) = address_taken_worklist.pop() {
          new_address_taken.clone_from_bitslice(&state[block_idx].gen_address_taken);
          for p in cfg.bbs[block_idx].predecessors.iter().copied() {
-            new_address_taken |= &state[p].address_taken_out;
+            // These owned bitsets have equal lengths and start at bit zero.
+            for (dst, src) in new_address_taken
+               .as_raw_mut_slice()
+               .iter_mut()
+               .zip(state[p].address_taken_out.as_raw_slice())
+            {
+               *dst |= *src;
+            }
          }
          if new_address_taken != state[block_idx].address_taken_out {
             std::mem::swap(&mut state[block_idx].address_taken_out, &mut new_address_taken);
@@ -141,7 +148,14 @@ pub fn compute_live_intervals(
             new_live_out.fill(false);
             for successor in cfg.bbs[node_id].successors() {
                let successor_s = &state[successor];
-               new_live_out |= &successor_s.live_in;
+               // These owned bitsets have equal lengths and start at bit zero.
+               for (dst, src) in new_live_out
+                  .as_raw_mut_slice()
+                  .iter_mut()
+                  .zip(successor_s.live_in.as_raw_slice())
+               {
+                  *dst |= *src;
+               }
             }
             state[node_id].live_out = new_live_out;
          }
@@ -190,7 +204,14 @@ pub fn compute_live_intervals(
 
          current_address_taken.fill(false);
          for p in cfg.bbs[node_id].predecessors.iter().copied() {
-            current_address_taken |= &state[p].address_taken_out;
+            // These owned bitsets have equal lengths and start at bit zero.
+            for (dst, src) in current_address_taken
+               .as_raw_mut_slice()
+               .iter_mut()
+               .zip(state[p].address_taken_out.as_raw_slice())
+            {
+               *dst |= *src;
+            }
          }
 
          let bb = &mut cfg.bbs[node_id];

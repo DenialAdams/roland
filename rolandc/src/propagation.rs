@@ -565,7 +565,14 @@ fn solve_dense(
          // Reaching sets only grow within one solve, so the predecessor union can
          // accumulate in place. A CFG change starts a fresh solve.
          for predecessor in cfg.bbs[node_id].predecessors.iter().copied() {
-            new_r_in |= &state[predecessor].r_out;
+            // These owned bitsets have equal lengths and start at bit zero.
+            for (dst, src) in new_r_in
+               .as_raw_mut_slice()
+               .iter_mut()
+               .zip(state[predecessor].r_out.as_raw_slice())
+            {
+               *dst |= *src;
+            }
          }
          state[node_id].r_in = new_r_in;
       }
