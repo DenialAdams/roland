@@ -283,9 +283,9 @@ pub fn propagate(program: &mut Program, interner: &Interner, target: BaseTarget)
                   && assignments_here[variable_index]
                      .replace(ProgramIndex(rpo_index, i))
                      .is_none()
-                  {
-                     assigned_variables.push(variable_index);
-                  }
+               {
+                  assigned_variables.push(variable_index);
+               }
             }
 
             for variable_index in assigned_variables.drain(..) {
@@ -466,9 +466,9 @@ fn reaching_definitions(
             && last_definition[variable_index]
                .replace(ProgramIndex(rpo_index, i))
                .is_none()
-            {
-               generated_variables.push(variable_index);
-            }
+         {
+            generated_variables.push(variable_index);
+         }
       }
       for variable_index in generated_variables.drain(..) {
          definition_ranges[variable_index].end += 1;

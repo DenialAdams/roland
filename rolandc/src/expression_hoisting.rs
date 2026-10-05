@@ -37,6 +37,7 @@ struct VvContext<'a> {
    next_variable: VariableId,
    exprs_to_hoist: Vec<ExprWithContainingStmtIndex>,
    statements_that_need_hoisting: Vec<usize>,
+   hoisted_statements: Vec<(usize, StatementId)>,
    mode: HoistingMode,
    interner: &'a Interner,
    target: Target,
@@ -71,6 +72,7 @@ pub fn expression_hoisting(program: &mut Program, interner: &Interner, mode: Hoi
       next_variable: program.next_variable,
       exprs_to_hoist: Vec::new(),
       statements_that_need_hoisting: Vec::new(),
+      hoisted_statements: Vec::new(),
       mode,
       interner,
       target,
@@ -88,6 +90,7 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
    let before_vv_len = ctx.exprs_to_hoist.len();
    let before_pending_hoists = ctx.pending_hoists.len();
    let before_stmts_that_need_hoisting = ctx.statements_that_need_hoisting.len();
+   let before_hoisted_statements = ctx.hoisted_statements.len();
    for (current_stmt, statement) in block.statements.iter().copied().enumerate() {
       vv_statement(statement, ctx, ast, current_stmt);
    }
@@ -191,7 +194,7 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
                })
             };
             new_ifs.push(if_stmt);
-            block.statements.insert(vv.stmt_anchor, if_stmt);
+            ctx.hoisted_statements.push((vv.stmt_anchor, if_stmt));
          }
          Expression::StringLiteral(s_val) if ctx.mode == HoistingMode::AggregateLiteralLowering => {
             // length
@@ -218,7 +221,7 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
                   location,
                   statement: Statement::Assignment(field_access, rhs),
                });
-               block.statements.insert(vv.stmt_anchor, assignment);
+               ctx.hoisted_statements.push((vv.stmt_anchor, assignment));
             }
 
             // Pointer
@@ -242,7 +245,7 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
                   location,
                   statement: Statement::Assignment(field_access, rhs),
                });
-               block.statements.insert(vv.stmt_anchor, assignment);
+               ctx.hoisted_statements.push((vv.stmt_anchor, assignment));
             }
          }
          Expression::StructLiteral(_, fields) if ctx.mode == HoistingMode::AggregateLiteralLowering => {
@@ -265,7 +268,7 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
                   location,
                   statement: Statement::Assignment(field_access, rhs),
                });
-               block.statements.insert(vv.stmt_anchor, assignment);
+               ctx.hoisted_statements.push((vv.stmt_anchor, assignment));
             }
          }
          Expression::ArrayLiteral(children) if ctx.mode == HoistingMode::AggregateLiteralLowering => {
@@ -295,7 +298,7 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
                   location,
                   statement: Statement::Assignment(arr_index, *child),
                });
-               block.statements.insert(vv.stmt_anchor, assignment);
+               ctx.hoisted_statements.push((vv.stmt_anchor, assignment));
             }
          }
          _ => {
@@ -311,9 +314,29 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
                   location,
                })
             };
-            block.statements.insert(vv.stmt_anchor, temp_assign);
+            ctx.hoisted_statements.push((vv.stmt_anchor, temp_assign));
          }
       }
+   }
+
+   let num_hoisted_statements = ctx.hoisted_statements.len() - before_hoisted_statements;
+   if num_hoisted_statements != 0 {
+      let old_len = block.statements.len();
+      let new_len = old_len + num_hoisted_statements;
+      block.statements.resize(new_len, block.statements[old_len - 1]);
+
+      let mut hoists = ctx.hoisted_statements.drain(before_hoisted_statements..).peekable();
+      let mut next_statement = new_len;
+      for current_stmt in (0..old_len).rev() {
+         next_statement -= 1;
+         block.statements[next_statement] = block.statements[current_stmt];
+         while hoists.peek().is_some_and(|(anchor, _)| *anchor == current_stmt) {
+            next_statement -= 1;
+            block.statements[next_statement] = hoists.next().unwrap().1;
+         }
+      }
+      debug_assert_eq!(next_statement, 0);
+      debug_assert!(hoists.next().is_none());
    }
 
    // The same expression id shouldn't appear in the AST twice,
