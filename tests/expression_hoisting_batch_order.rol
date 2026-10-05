@@ -1,0 +1,43 @@
+struct Pair {
+   first: u64,
+   second: u64,
+}
+
+static TRACE: u64 = 0;
+
+proc step(digit: u64) -> u64 {
+   TRACE = TRACE * 10 + digit;
+   return digit;
+}
+
+proc main() {
+   let pair = Pair { second: step(1), first: step(2) };
+   assert(TRACE == 12);
+   let array = [step(3), step(4)];
+   let chosen = ifx step(5) == 5
+      then Pair { second: step(6), first: step(7) }
+      else Pair { first: step(8), second: step(9) };
+   assert(TRACE == 1234567);
+   assert(pair.first == 2 and pair.second == 1);
+   assert(array[0] == 3 and array[1] == 4);
+   assert(chosen.first == 7 and chosen.second == 6);
+
+   TRACE = 0;
+   let nested = [
+      ifx step(1) == 1 then step(2) else step(9),
+      ifx step(3) == 0 then step(9) else step(4),
+   ];
+   assert(nested[0] == 2 and nested[1] == 4);
+   assert(TRACE == 1234);
+   if step(5) == 5 {
+      let local = Pair { first: step(6), second: step(7) };
+      assert(local.first == 6 and local.second == 7);
+   } else if step(8) == 8 {
+      assert(false);
+   }
+   assert(TRACE == 1234567);
+   println("ok");
+}
+__END__
+run:
+ok

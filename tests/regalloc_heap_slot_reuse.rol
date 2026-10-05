@@ -1,0 +1,47 @@
+struct Pair {
+   first: u64,
+   second: u64,
+}
+
+static INPUT: u64 = 7;
+
+proc read_u32(value: &u32) -> u32 {
+   return value~;
+}
+
+proc exercise(seed: u64, unused: u64) -> u64 {
+   // This read disappears before liveness, leaving a parameter without an interval.
+   if false {
+      assert(unused == 0);
+   }
+
+   // Lifetimes end in a different order from their declarations.
+   let held = seed + 100;
+   let first = seed + 1;
+   let overlap = first + held;
+   let second = seed + 2;
+   assert(overlap == seed * 2 + 101);
+
+   // Exercise register classes and a scalar whose address escapes to a call.
+   let narrow: u32 = (seed as u32) + 9;
+   let floating: f64 = (seed as f64) + 0.5;
+   assert(read_u32(&narrow) == (seed as u32) + 9);
+   assert(floating == (seed as f64) + 0.5);
+   let pair = Pair { first: overlap, second: second };
+   let after = pair.first + pair.second;
+   return held + after;
+}
+
+proc main() {
+   while INPUT < 100 {
+      assert(exercise(INPUT, 99) == INPUT * 4 + 203);
+      INPUT = INPUT + 1;
+   }
+   println("ok");
+}
+__END__
+compile:
+This condition will always be false
+↳ line 14, column 7 [tests/regalloc_heap_slot_reuse.rol]
+run:
+ok

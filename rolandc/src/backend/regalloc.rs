@@ -1,10 +1,11 @@
-use std::collections::HashSet;
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashSet};
 
 use indexmap::IndexMap;
 use slotmap::SecondaryMap;
 
 use super::linearize::{Cfg, CfgInstruction, post_order};
-use super::liveness::LiveInterval;
+use super::liveness::{LiveInterval, ProgramIndex};
 use crate::constant_folding::is_non_aggregate_const;
 use crate::parse::{
    Expression, ExpressionId, ExpressionNode, ExpressionPool, ProcedureId, UnOp, UserDefinedTypeInfo, VariableId,
@@ -264,7 +265,8 @@ pub fn assign_variables_to_registers_and_mem(
       procedure_stack_slots: SecondaryMap::with_capacity(program.procedures.len()),
    };
 
-   let mut active: Vec<VariableId> = Vec::new();
+   // Reverse makes the earliest-ending interval the root. The variable ID breaks ties.
+   let mut active: BinaryHeap<Reverse<(ProgramIndex, u64)>> = BinaryHeap::new();
    let mut free_slots: IndexMap<VarSlotKind, Vec<VarSlot>> = IndexMap::new();
 
    for (proc_id, body) in program.procedure_bodies.iter() {
@@ -277,6 +279,7 @@ pub fn assign_variables_to_registers_and_mem(
       let all_stack_slots = result.procedure_stack_slots.get_mut(proc_id).unwrap();
       let mut total_registers = 0;
       let mut total_stack_slots = 0;
+      let live_intervals = &program_liveness[proc_id];
 
       mark_escaping_vars_cfg(&body.cfg, &mut escaping_vars, &body.ast.expressions);
 
@@ -342,23 +345,32 @@ pub fn assign_variables_to_registers_and_mem(
             VarSlotKind::Register(_) => {
                // Assign the slot eagerly now. After this, all new registers
                // will also be put in non_param_registers
-               active.push(var);
-               result.var_to_slot.insert(var, VarSlot::Register(total_registers));
+               let slot = VarSlot::Register(total_registers);
+               result.var_to_slot.insert(var, slot);
+               if let Some(range) = live_intervals.get(&var) {
+                  active.push(Reverse((range.end, var.0)));
+               } else {
+                  // An unused parameter has no interval, so its register is already free
+                  // (an unused local would have been removed)
+                  free_slots.entry(sk).or_default().push(slot);
+               }
                total_registers += 1;
             }
          }
       }
 
-      let live_intervals = &program_liveness[proc_id];
       for (var, range) in live_intervals.iter() {
          if result.var_to_slot.contains_key(var) {
             // We have already assigned this var, which means it must be a non-stack parameter
             continue;
          }
 
-         // note that live_intervals may not contain an active var, since an unused parameter is active
-         // but has no lifetime
-         for expired_var in active.extract_if(.., |v| live_intervals.get(v).is_none_or(|x| x.end < range.begin)) {
+         while let Some(&Reverse((end, _))) = active.peek() {
+            if end >= range.begin {
+               break;
+            }
+            let Reverse((_, expired_var)) = active.pop().unwrap();
+            let expired_var = VariableId(expired_var);
             let sk = type_to_slot_kind(
                body.locals.get(&expired_var).unwrap(),
                escaping_vars.contains(&expired_var),
@@ -400,7 +412,7 @@ pub fn assign_variables_to_registers_and_mem(
          };
 
          result.var_to_slot.insert(*var, slot);
-         active.push(*var);
+         active.push(Reverse((range.end, var.0)));
       }
    }
 
