@@ -9,7 +9,7 @@ arrayvec = "0.7"
 unicode-ident = "1"
 indexmap = "2"
 include_dir = "0.7"
-wasm-encoder = "0.259"
+wasm-encoder = "0.262"
 slotmap = { git = "https://github.com/DenialAdams/slotmap.git", branch = "rayonFinal", features = ["rayon"] }
 bitvec = { git = "https://github.com/DenialAdams/bitvec.git" , branch = "fix_fast_path" }
 hashbrown = "0.17"
