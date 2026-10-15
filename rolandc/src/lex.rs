@@ -706,32 +706,29 @@ pub fn lex_for_tokens(
             next_char = chars.next();
          }
          LexMode::StringLiteralEscape => {
-            if c == '\\' {
-               str_buf.push('\\');
-            } else if c == 'n' {
-               str_buf.push('\n');
-            } else if c == 'r' {
-               str_buf.push('\r');
-            } else if c == 't' {
-               str_buf.push('\t');
-            } else if c == '0' {
-               str_buf.push('\0');
-            } else if c == '"' {
-               str_buf.push('"');
-            } else {
-               let escape_begin = SourcePosition(c_byte_range.start - '\\'.len_utf8());
-               rolandc_error!(
-                  err_manager,
-                  SourceInfo {
-                     begin: escape_begin,
-                     end: SourcePosition(c_byte_range.end),
-                     file: source_path,
-                  },
-                  "Encountered unknown escape sequence `\\{}`",
-                  c
-               );
-               return Err(());
-            }
+            let escaped = match c {
+               '\\' => '\\',
+               'n' => '\n',
+               'r' => '\r',
+               't' => '\t',
+               '0' => '\0',
+               '"' => '"',
+               _ => {
+                  let escape_begin = SourcePosition(c_byte_range.start - '\\'.len_utf8());
+                  rolandc_error!(
+                     err_manager,
+                     SourceInfo {
+                        begin: escape_begin,
+                        end: SourcePosition(c_byte_range.end),
+                        file: source_path,
+                     },
+                     "Encountered unknown escape sequence `\\{}`",
+                     c
+                  );
+                  return Err(());
+               }
+            };
+            str_buf.push(escaped);
             next_char = chars.next();
             mode = LexMode::StringLiteral;
          }
