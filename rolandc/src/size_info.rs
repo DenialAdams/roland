@@ -144,38 +144,20 @@ pub fn calculate_struct_size_info(
       let mut sum_mem = Some(0u64);
       let mut strictest_alignment = 1;
       let mut field_offsets_mem = HashMap::with_capacity(udt.struct_info.get(id).unwrap().field_types.len());
-      for ((field_name, field_t), next_field_t) in udt.struct_info.get(id).unwrap().field_types.iter().zip(
-         udt.struct_info
-            .get(id)
-            .unwrap()
-            .field_types
-            .values()
-            .skip(1)
-            .map(Some)
-            .chain(std::iter::once(None)),
-      ) {
+      for (field_name, field_t) in &udt.struct_info.get(id).unwrap().field_types {
          let field_t = &field_t.e_type;
-
+         let alignment = template_type_aware_mem_alignment(field_t, udt, target.base(), templated_types);
+         sum_mem = sum_mem.and_then(|v| aligned_address(v, alignment));
          field_offsets_mem.insert(*field_name, sum_mem.unwrap_or(0));
-
-         let next_mem_alignment = next_field_t.map_or(1, |x| {
-            template_type_aware_mem_alignment(&x.e_type, udt, target.base(), templated_types)
+         sum_mem = sum_mem.and_then(|v| {
+            v.checked_add(template_type_aware_mem_size(
+               field_t,
+               udt,
+               target.base(),
+               templated_types,
+            )?)
          });
-         sum_mem = sum_mem
-            .and_then(|v| {
-               v.checked_add(template_type_aware_mem_size(
-                  field_t,
-                  udt,
-                  target.base(),
-                  templated_types,
-               )?)
-            })
-            .and_then(|v| aligned_address(v, next_mem_alignment));
-
-         strictest_alignment = std::cmp::max(
-            strictest_alignment,
-            template_type_aware_mem_alignment(field_t, udt, target.base(), templated_types),
-         );
+         strictest_alignment = std::cmp::max(strictest_alignment, alignment);
       }
 
       (
@@ -365,29 +347,22 @@ pub fn template_type_aware_mem_size(
          if generic_args.is_empty() {
             sizeof_type_mem(e, udt, target)
          } else {
-            let iter = udt.struct_info[*struct_id].field_types.values().map(|x| {
-               map_generic_to_concrete_cow(
-                  &x.e_type,
-                  generic_args,
-                  &templated_types[&UserDefinedTypeId::Struct(*struct_id)],
-               )
-            });
-            let zip_iter = iter.clone().skip(1).map(Some).chain(std::iter::once(None));
             let mut sum_mem: u64 = 0;
             let mut strictest_alignment = 1;
-            for (field_t, next_field_t) in iter.zip(zip_iter) {
-               let next_mem_alignment = next_field_t.map_or(1, |x| {
-                  template_type_aware_mem_alignment(&x, udt, target, templated_types)
-               });
-               sum_mem = aligned_address(
-                  sum_mem.checked_add(template_type_aware_mem_size(&field_t, udt, target, templated_types)?)?,
-                  next_mem_alignment,
-               )?;
-
-               strictest_alignment = std::cmp::max(
-                  strictest_alignment,
-                  template_type_aware_mem_alignment(&field_t, udt, target, templated_types),
+            for field_t in udt.struct_info[*struct_id].field_types.values() {
+               let field_t = map_generic_to_concrete_cow(
+                  &field_t.e_type,
+                  generic_args,
+                  &templated_types[&UserDefinedTypeId::Struct(*struct_id)],
                );
+               let alignment = template_type_aware_mem_alignment(&field_t, udt, target, templated_types);
+               sum_mem = aligned_address(sum_mem, alignment)?.checked_add(template_type_aware_mem_size(
+                  &field_t,
+                  udt,
+                  target,
+                  templated_types,
+               )?)?;
+               strictest_alignment = std::cmp::max(strictest_alignment, alignment);
             }
             aligned_address(sum_mem, strictest_alignment)?
          }
