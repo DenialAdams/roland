@@ -77,12 +77,14 @@ enum QbeTypeStr {
 
 impl std::fmt::Display for QbeTypeStr {
    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      match self {
-         QbeTypeStr::Text(str) => f.write_str(str),
-         QbeTypeStr::Struct(u) => write!(f, ":s{}", u),
-         QbeTypeStr::Union(u) => write!(f, ":u{}", u),
-         QbeTypeStr::Array(u) => write!(f, ":a{}", u),
-      }
+      let (prefix, index) = match self {
+         QbeTypeStr::Text(str) => return f.write_str(str),
+         QbeTypeStr::Struct(u) => (":s", u),
+         QbeTypeStr::Union(u) => (":u", u),
+         QbeTypeStr::Array(u) => (":a", u),
+      };
+      f.write_str(prefix)?;
+      write!(f, "{}", index)
    }
 }
 
@@ -590,11 +592,13 @@ enum MemOffset {
 
 impl std::fmt::Display for MemOffset {
    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      match self {
-         MemOffset::DerefRegister(reg) => write!(f, "%r{}", reg),
-         MemOffset::StackSlot(slot) => write!(f, "%v{}", slot),
-         MemOffset::Global(var_id) => write!(f, "$.v{}", var_id),
-      }
+      let (prefix, index) = match self {
+         MemOffset::DerefRegister(reg) => ("%r", u64::from(*reg)),
+         MemOffset::StackSlot(slot) => ("%v", u64::from(*slot)),
+         MemOffset::Global(var_id) => ("$.v", *var_id),
+      };
+      f.write_str(prefix)?;
+      write!(f, "{}", index)
    }
 }
 

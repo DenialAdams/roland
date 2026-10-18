@@ -128,13 +128,13 @@ impl Target {
 
 impl Display for Target {
    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      match self {
-         Target::Wasi => write!(f, "WASI"),
-         Target::Wasm4 => write!(f, "WASM-4"),
-         Target::Microw8 => write!(f, "Microw8"),
-         Target::Generic => write!(f, "generic"),
-         Target::QbeFreestanding | Target::QbeHost => write!(f, "AMD64"),
-      }
+      f.write_str(match self {
+         Target::Wasi => "WASI",
+         Target::Wasm4 => "WASM-4",
+         Target::Microw8 => "Microw8",
+         Target::Generic => "generic",
+         Target::QbeFreestanding | Target::QbeHost => "AMD64",
+      })
    }
 }
 
