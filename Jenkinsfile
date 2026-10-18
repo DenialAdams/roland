@@ -15,21 +15,10 @@ pipeline {
          }
       }
 
-      stage('Build CLI') {
+      stage('Build CLI and LSP') {
          steps {
-            dir('rolandc_cli') {
-               sh 'cargo build --release --target=x86_64-unknown-linux-musl'
-               sh 'cargo build --release --target x86_64-pc-windows-gnu'
-            }
-         }
-      }
-
-      stage('Build LSP') {
-         steps {
-            dir('rolandc_lsp') {
-               sh 'cargo build --release --target=x86_64-unknown-linux-musl'
-               sh 'cargo build --release --target x86_64-pc-windows-gnu'
-            }
+            sh 'cargo build --release --target=x86_64-unknown-linux-musl -p rolandc-cli -p rolandc-lsp'
+            sh 'cargo build --release --target x86_64-pc-windows-gnu -p rolandc-cli -p rolandc-lsp'
          }
       }
 
