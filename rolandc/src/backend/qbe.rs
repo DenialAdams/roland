@@ -463,25 +463,15 @@ pub fn emit_qbe(
       };
 
       let mangled_name = mangle(proc_id, &ctx.procedures[proc_id], ctx.interner);
-
-      {
-         let str_name = interner.lookup(procedure.definition.name.str);
-         if str_name == "main" {
-            main_proc = Some(mangled_name);
-         } else if str_name == "_roland_start" {
-            start_proc = Some(mangled_name);
-         }
-      }
-
       let abi_ret_type = roland_type_to_abi_type(&procedure.definition.ret_type.e_type, ctx.udt, &ctx.aggregate_defs)
          .unwrap_or(QbeTypeStr::Text(""));
-      write!(
-         ctx.buf,
-         "function {} ${}(",
-         abi_ret_type,
-         mangle(proc_id, &ctx.procedures[proc_id], ctx.interner)
-      )
-      .unwrap();
+      write!(ctx.buf, "function {} ${}(", abi_ret_type, mangled_name).unwrap();
+      let str_name = interner.lookup(procedure.definition.name.str);
+      if str_name == "main" {
+         main_proc = Some(mangled_name);
+      } else if str_name == "_roland_start" {
+         start_proc = Some(mangled_name);
+      }
       let mut stack_params = HashMap::new();
       let mut num_unassigned_params = 0;
       let mut num_register_params = 0;
