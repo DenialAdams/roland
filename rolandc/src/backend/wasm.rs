@@ -1132,7 +1132,7 @@ fn do_emit(expr_index: ExpressionId, ast: &ExpressionPool, generation_context: &
             _ => unreachable!(),
          };
 
-         if matches!(operator, BinOp::BitwiseLeftShift) {
+         if matches!(operator, BinOp::BitwiseLeftShift | BinOp::BitwiseRightShift) {
             let op_type = ast[*rhs].exp_type.as_ref().unwrap();
             if let ExpressionType::Int(x) = op_type {
                match x.width {

@@ -363,6 +363,29 @@ fn replace_shl(
    })
 }
 
+fn replace_shr(
+   operand: ExpressionId,
+   location: SourceInfo,
+   ast: &ExpressionPool,
+   procedure_name_table: &HashMap<StrId, ProcedureId>,
+   interner: &Interner,
+) -> Option<ExpressionNode> {
+   let operand_type = ast[operand].exp_type.as_ref().unwrap();
+   let proc_name = match *operand_type {
+      I8_TYPE => "shr_i8",
+      I16_TYPE => "shr_i16",
+      U8_TYPE => "shr_u8",
+      U16_TYPE => "shr_u16",
+      _ => return None,
+   };
+   let proc_id = procedure_name_table[&interner.reverse_lookup(proc_name).unwrap()];
+   Some(ExpressionNode {
+      expression: Expression::BoundFcnLiteral(proc_id, Box::new([])),
+      exp_type: Some(ExpressionType::ProcedureItem(proc_id, Box::new([]))),
+      location,
+   })
+}
+
 pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, interner: &Interner, target: BaseTarget) {
    let mut replacements = vec![];
    for ast in all_expression_pools_mut(&mut program.global_exprs, &mut program.procedure_bodies) {
@@ -390,6 +413,9 @@ pub fn replace_nonnative_casts_and_unique_overflow(program: &mut Program, intern
                }
                BinOp::BitwiseLeftShift if target == BaseTarget::Qbe => {
                   replace_shl(lhs, v.location, ast, &program.procedure_name_table, interner)
+               }
+               BinOp::BitwiseRightShift if target == BaseTarget::Qbe => {
+                  replace_shr(lhs, v.location, ast, &program.procedure_name_table, interner)
                }
                _ => None,
             },

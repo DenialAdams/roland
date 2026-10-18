@@ -1,0 +1,67 @@
+proc main() {
+    let u8_m = U8_MAX;
+    let u16_m = U16_MAX;
+    let i8_m = I8_MAX;
+    let i8_min = I8_MIN;
+    let i16_m = I16_MAX;
+    let i16_min = I16_MIN;
+    let u32_m = U32_MAX;
+    let u64_m = U64_MAX;
+    let i32_m = I32_MAX;
+    let i64_m = I64_MAX;
+    {
+        // A shift count equal to (or larger than) the operand width is reduced
+        // modulo the width, exactly like left shift. See overflowing_left_shift.rol.
+        println("--- u8 ---");
+        println(uint_to_string((u8_m >> 8) as u64));
+        println(uint_to_string((u8_m >> 9) as u64));
+        println(uint_to_string((u8_m >> 16) as u64));
+        println(uint_to_string((u8_m >> 20) as u64));
+        println("--- u16 ---");
+        println(uint_to_string((u16_m >> 16) as u64));
+        println(uint_to_string((u16_m >> 17) as u64));
+        println("--- i8 ---");
+        println(int_to_string((i8_m >> 8) as i64));
+        println(int_to_string((i8_min >> 8) as i64));
+        println(int_to_string((i8_min >> 9) as i64));
+        println("--- i16 ---");
+        println(int_to_string((i16_m >> 16) as i64));
+        println(int_to_string((i16_min >> 16) as i64));
+        println(int_to_string((i16_min >> 17) as i64));
+        // Not tested for left shift, but these should already reduce mod the word size.
+        println("--- u32/u64/i32/i64 ---");
+        println(uint_to_string((u32_m >> 32) as u64));
+        println(uint_to_string(u64_m >> 64));
+        println(int_to_string((i32_m >> 32) as i64));
+        println(int_to_string((i64_m >> 64) as i64));
+        // Exercise a non-constant shift count so this isn't solely a constant folding path.
+        let count: u8 = 9;
+        println("--- u8 variable shift ---");
+        println(uint_to_string((u8_m >> count) as u64));
+    }
+}
+__END__
+run:
+--- u8 ---
+255
+127
+255
+15
+--- u16 ---
+65535
+32767
+--- i8 ---
+127
+-128
+-64
+--- i16 ---
+32767
+-32768
+-16384
+--- u32/u64/i32/i64 ---
+4294967295
+18446744073709551615
+2147483647
+9223372036854775807
+--- u8 variable shift ---
+127

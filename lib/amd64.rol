@@ -190,6 +190,22 @@ proc shl_i16(x: i16, y: i16) -> i16 {
    return (x as i32 << (y & 0b1111) as i32) as i16;
 }
 
+proc shr_u8(x: u8, y: u8) -> u8 {
+   return (x as u32 >> (y & 0b111) as u32) as u8;
+}
+
+proc shr_i8(x: i8, y: i8) -> i8 {
+   return (x as i32 >> (y & 0b111) as i32) as i8;
+}
+
+proc shr_u16(x: u16, y: u16) -> u16 {
+   return (x as u32 >> (y & 0b1111) as u32) as u16;
+}
+
+proc shr_i16(x: i16, y: i16) -> i16 {
+   return (x as i32 >> (y & 0b1111) as i32) as i16;
+}
+
 // MARK: System Calls
 
 extern proc syscall1(code: u64, a1: u64) -> u64;
