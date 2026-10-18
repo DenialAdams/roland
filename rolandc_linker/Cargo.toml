@@ -1,0 +1,8 @@
+[package]
+name = "rolandc-linker"
+version = "0.1.0"
+authors = ["Richard McCormack <brick@brick.codes>"]
+edition = "2024"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libwild = "0.10"

@@ -300,19 +300,7 @@ fn compile_qbe(
 
       #[cfg(target_os = "linux")]
       if linker.is_none() {
-         let args = {
-            let arg_fn = || linker_args.iter().map(|s| s.to_str().unwrap());
-
-            let mut args = libwild::Args::new(arg_fn).unwrap();
-            args.parse(arg_fn).unwrap();
-            args
-         };
-
-         let linker = libwild::Linker::new();
-         return linker.run(&args).map(|_| ()).map_err(|e| {
-            libwild::error::report_error(&e);
-            QbeCompilationError::LdExecution(None)
-         });
+         return rolandc_linker::link(&linker_args).map_err(|()| QbeCompilationError::LdExecution(None));
       }
 
       let mut ld_command = Command::new(linker.unwrap_or(OsStr::new("ld")));

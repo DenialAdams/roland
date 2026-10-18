@@ -1262,12 +1262,19 @@ name = "rolandc-cli"
 version = "0.1.0"
 dependencies = [
  "dhat",
- "libwild",
  "mimalloc",
  "nix",
  "pico-args",
  "rolandc",
+ "rolandc-linker",
  "tempfile",
+]
+
+[[package]]
+name = "rolandc-linker"
+version = "0.1.0"
+dependencies = [
+ "libwild",
 ]
 
 [[package]]
