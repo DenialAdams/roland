@@ -1628,79 +1628,33 @@ impl Literal {
    }
 
    fn checked_shl(self, rhs: Self) -> Option<Expression> {
-      Some(match (self, rhs) {
-         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral {
-            val: (i.checked_shl(j.try_into().ok()?)?) as u64,
-            synthetic: true,
-         },
-         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral {
-            val: i64::from(i.checked_shl(j.try_into().ok()?)?) as u64,
-            synthetic: true,
-         },
-         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral {
-            val: i64::from(i.checked_shl(j.try_into().ok()?)?) as u64,
-            synthetic: true,
-         },
-         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral {
-            val: i64::from(i.checked_shl(j.try_into().ok()?)?) as u64,
-            synthetic: true,
-         },
-         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral {
-            val: i.checked_shl(j.try_into().ok()?)?,
-            synthetic: true,
-         },
-         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral {
-            val: u64::from(i.checked_shl(j)?),
-            synthetic: true,
-         },
-         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral {
-            val: u64::from(i.checked_shl(u32::from(j))?),
-            synthetic: true,
-         },
-         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral {
-            val: u64::from(i.checked_shl(u32::from(j))?),
-            synthetic: true,
-         },
+      let val = match (self, rhs) {
+         (Literal::Int64(i), Literal::Int64(j)) => (i.checked_shl(j.try_into().ok()?)?) as u64,
+         (Literal::Int32(i), Literal::Int32(j)) => i64::from(i.checked_shl(j.try_into().ok()?)?) as u64,
+         (Literal::Int16(i), Literal::Int16(j)) => i64::from(i.checked_shl(j.try_into().ok()?)?) as u64,
+         (Literal::Int8(i), Literal::Int8(j)) => i64::from(i.checked_shl(j.try_into().ok()?)?) as u64,
+         (Literal::Uint64(i), Literal::Uint64(j)) => i.checked_shl(j.try_into().ok()?)?,
+         (Literal::Uint32(i), Literal::Uint32(j)) => u64::from(i.checked_shl(j)?),
+         (Literal::Uint16(i), Literal::Uint16(j)) => u64::from(i.checked_shl(u32::from(j))?),
+         (Literal::Uint8(i), Literal::Uint8(j)) => u64::from(i.checked_shl(u32::from(j))?),
          _ => unreachable!(),
-      })
+      };
+      Some(Expression::IntLiteral { val, synthetic: true })
    }
 
    fn checked_shr(self, rhs: Self) -> Option<Expression> {
-      Some(match (self, rhs) {
-         (Literal::Int64(i), Literal::Int64(j)) => Expression::IntLiteral {
-            val: (i.checked_shr(j.try_into().ok()?)?) as u64,
-            synthetic: true,
-         },
-         (Literal::Int32(i), Literal::Int32(j)) => Expression::IntLiteral {
-            val: i64::from(i.checked_shr(j.try_into().ok()?)?) as u64,
-            synthetic: true,
-         },
-         (Literal::Int16(i), Literal::Int16(j)) => Expression::IntLiteral {
-            val: i64::from(i.checked_shr(j.try_into().ok()?)?) as u64,
-            synthetic: true,
-         },
-         (Literal::Int8(i), Literal::Int8(j)) => Expression::IntLiteral {
-            val: i64::from(i.checked_shr(j.try_into().ok()?)?) as u64,
-            synthetic: true,
-         },
-         (Literal::Uint64(i), Literal::Uint64(j)) => Expression::IntLiteral {
-            val: i.checked_shr(j.try_into().ok()?)?,
-            synthetic: true,
-         },
-         (Literal::Uint32(i), Literal::Uint32(j)) => Expression::IntLiteral {
-            val: u64::from(i.checked_shr(j)?),
-            synthetic: true,
-         },
-         (Literal::Uint16(i), Literal::Uint16(j)) => Expression::IntLiteral {
-            val: u64::from(i.checked_shr(u32::from(j))?),
-            synthetic: true,
-         },
-         (Literal::Uint8(i), Literal::Uint8(j)) => Expression::IntLiteral {
-            val: u64::from(i.checked_shr(u32::from(j))?),
-            synthetic: true,
-         },
+      let val = match (self, rhs) {
+         (Literal::Int64(i), Literal::Int64(j)) => (i.checked_shr(j.try_into().ok()?)?) as u64,
+         (Literal::Int32(i), Literal::Int32(j)) => i64::from(i.checked_shr(j.try_into().ok()?)?) as u64,
+         (Literal::Int16(i), Literal::Int16(j)) => i64::from(i.checked_shr(j.try_into().ok()?)?) as u64,
+         (Literal::Int8(i), Literal::Int8(j)) => i64::from(i.checked_shr(j.try_into().ok()?)?) as u64,
+         (Literal::Uint64(i), Literal::Uint64(j)) => i.checked_shr(j.try_into().ok()?)?,
+         (Literal::Uint32(i), Literal::Uint32(j)) => u64::from(i.checked_shr(j)?),
+         (Literal::Uint16(i), Literal::Uint16(j)) => u64::from(i.checked_shr(u32::from(j))?),
+         (Literal::Uint8(i), Literal::Uint8(j)) => u64::from(i.checked_shr(u32::from(j))?),
          _ => unreachable!(),
-      })
+      };
+      Some(Expression::IntLiteral { val, synthetic: true })
    }
 
    fn checked_negate(self) -> Option<Expression> {
@@ -1915,38 +1869,38 @@ impl PartialOrd for Literal {
 }
 
 fn extract_literal(expr_node: &ExpressionNode, target: BaseTarget) -> Option<Literal> {
-   match &expr_node.expression {
+   Some(match &expr_node.expression {
       Expression::IntLiteral { val: x, .. } => {
          let x = *x;
          match make_int_type_concrete(expr_node.exp_type.as_ref().unwrap(), target) {
-            &I64_TYPE => Some(Literal::Int64(x as i64)),
-            &I32_TYPE => Some(Literal::Int32((x as i64).try_into().ok()?)),
-            &I16_TYPE => Some(Literal::Int16((x as i64).try_into().ok()?)),
-            &I8_TYPE => Some(Literal::Int8((x as i64).try_into().ok()?)),
-            &U64_TYPE => Some(Literal::Uint64(x)),
-            &U32_TYPE => Some(Literal::Uint32(x.try_into().ok()?)),
-            &U16_TYPE => Some(Literal::Uint16(x.try_into().ok()?)),
-            &U8_TYPE => Some(Literal::Uint8(x.try_into().ok()?)),
+            &I64_TYPE => Literal::Int64(x as i64),
+            &I32_TYPE => Literal::Int32((x as i64).try_into().ok()?),
+            &I16_TYPE => Literal::Int16((x as i64).try_into().ok()?),
+            &I8_TYPE => Literal::Int8((x as i64).try_into().ok()?),
+            &U64_TYPE => Literal::Uint64(x),
+            &U32_TYPE => Literal::Uint32(x.try_into().ok()?),
+            &U16_TYPE => Literal::Uint16(x.try_into().ok()?),
+            &U8_TYPE => Literal::Uint8(x.try_into().ok()?),
             ExpressionType::Pointer(_) => {
                if target.pointer_width() == 8 {
-                  Some(Literal::Uint64(x))
+                  Literal::Uint64(x)
                } else {
-                  Some(Literal::Uint32(x.try_into().ok()?))
+                  Literal::Uint32(x.try_into().ok()?)
                }
             }
             _ => unreachable!(),
          }
       }
       Expression::FloatLiteral(x) => match *expr_node.exp_type.as_ref().unwrap() {
-         F64_TYPE => Some(Literal::Float64(*x)),
-         F32_TYPE => Some(Literal::Float32(*x as f32)),
+         F64_TYPE => Literal::Float64(*x),
+         F32_TYPE => Literal::Float32(*x as f32),
          _ => unreachable!(),
       },
-      Expression::BoolLiteral(x) => Some(Literal::Bool(*x)),
-      Expression::EnumLiteral(x, y) => Some(Literal::Enum(*x, *y)),
-      Expression::UnitLiteral => Some(Literal::Unit),
-      _ => None,
-   }
+      Expression::BoolLiteral(x) => Literal::Bool(*x),
+      Expression::EnumLiteral(x, y) => Literal::Enum(*x, *y),
+      Expression::UnitLiteral => Literal::Unit,
+      _ => return None,
+   })
 }
 
 fn is_commutative_noop(literal: Literal, op: BinOp) -> bool {
