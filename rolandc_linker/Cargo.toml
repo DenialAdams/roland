@@ -5,4 +5,4 @@ authors = ["Richard McCormack <brick@brick.codes>"]
 edition = "2024"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-libwild = "0.11"
+libwild = { version = "0.11", default-features = false }
