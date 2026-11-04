@@ -777,7 +777,7 @@ fn fold_expr_inner(
             };
          }
 
-         // pure bitcasts (not quite a no-op, but we can fold the cast away as long as we preserve the type)
+         // A same-size load can be read with another signedness or pointer type
          if sizeof_type_mem(expr_type, folding_context.user_defined_types, folding_context.target)
             == sizeof_type_mem(
                operand.exp_type.as_ref().unwrap(),
@@ -791,6 +791,7 @@ fn fold_expr_inner(
                operand.exp_type.as_ref().unwrap(),
                ExpressionType::Pointer(_) | ExpressionType::Int(_)
             )
+            && operand.expression.is_lvalue_disregard_consts(ast)
          {
             Some(operand.expression.clone())
          } else {

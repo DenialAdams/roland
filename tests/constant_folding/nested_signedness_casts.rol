@@ -1,0 +1,21 @@
+// Folding the outer signedness cast must preserve the inner float conversion.
+// Parameters keep these conversions from being folded as float literals.
+proc check<T>(negative: T, unsigned32: T, unsigned64: T) where T: Float {
+   // Convert to a signed integer first, then reinterpret its bits as unsigned.
+   assert((negative as i32) as u32 == U32_MAX - 11);
+   assert((negative as i64) as u64 == U64_MAX - 11);
+
+   // These values fit unsigned integers but exceed the corresponding signed max.
+   // Converting straight to signed would saturate instead of setting the sign bit.
+   assert((unsigned32 as u32) as i32 == I32_MIN);
+   assert((unsigned64 as u64) as i64 == I64_MIN);
+}
+
+proc main() {
+   check$<f32>(-12.0, 2147483648.0, 9223372036854775808.0);
+   check$<f64>(-12.0, 2147483648.0, 9223372036854775808.0);
+   println("ok");
+}
+__END__
+run:
+ok
