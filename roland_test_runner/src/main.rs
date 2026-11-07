@@ -511,6 +511,7 @@ fn execute_program<'b>(
       Some(_status) => (),
       None => {
          handle.kill().unwrap();
+         handle.wait().unwrap();
          return Err(TestFailureDetails {
             reason: TestFailureReason::ExecutionTimeout,
             compilation_stderr: stderr_text.into_owned(),
