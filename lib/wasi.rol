@@ -33,9 +33,7 @@ proc print(s: String) {
    let written: usize = 0;
    loop {
       let ret = fd_write(1, &data[0], data.length, &written);
-      if ret < 0 {
-         unreachable();
-      }
+      assert(ret == 0);
       let remaining_len = &data[0].buf_len;
       if written >= remaining_len~ {
          break;
@@ -60,7 +58,7 @@ proc println(s: String) {
 
    let written: usize = 0;
    loop {
-      assert(fd_write(1, &data[0], data.length, &written) >= 0);
+      assert(fd_write(1, &data[0], data.length, &written) == 0);
       let remaining_len = &data[0].buf_len;
       if written > remaining_len~ {
          break;
