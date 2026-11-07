@@ -8,7 +8,7 @@ proc print(s: String) {
    let written: usize = 0;
    let buf: &u8 = s.pointer;
    loop {
-      let ret = write(1, buf, s.length);
+      let ret = write(1, buf, s.length - written);
       assert(ret >= 0);
       written = written + ret as usize;
       if written >= s.length {
