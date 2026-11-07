@@ -53,7 +53,7 @@ export async function activate(context: vscode.ExtensionContext) {
       await startServer(local_path);
    } else {
       log.info("Launching embedded rolandc...");
-      let extension_path = context.asAbsolutePath("rolandc_lsp");
+      let extension_path = context.asAbsolutePath("rolandc-lsp");
       if (process.platform == "win32") {
          extension_path += ".exe";
       }
