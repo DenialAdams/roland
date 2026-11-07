@@ -167,6 +167,7 @@ proc hm_free<K, V>(m: &HashMap<K, V>) {
     m~._cells = nullptr();
     m~._capacity = 0;
     m~.length = 0;
+    m~._load = 0;
 }
 
 proc _hm_offset_ptr_items<T>(ptr: &T, items: usize) -> &T {
