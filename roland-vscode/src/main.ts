@@ -7,7 +7,7 @@ import { existsSync, watchFile } from 'fs';
 let client: lc.LanguageClient;
 
 function getLocalPath(): string {
-   let path = os.homedir() + "/roland/target/release/rolandc_lsp";
+   let path = os.homedir() + "/roland/target/release/rolandc-lsp";
    if (process.platform == "win32") {
       path += ".exe";
    }
