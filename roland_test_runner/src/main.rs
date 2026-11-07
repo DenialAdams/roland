@@ -6,7 +6,7 @@ use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, ExitCode, Output};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -120,7 +120,7 @@ fn report_success(out_handle: &mut std::io::StdoutLock<'_>, name: &str) {
    color_reset(out_handle).unwrap();
 }
 
-fn main() -> Result<(), &'static str> {
+fn main() -> ExitCode {
    let opts = parse_args().unwrap();
 
    let (entries, prefix): (Vec<PathBuf>, PathBuf) = if opts.test_path.is_dir() {
@@ -353,7 +353,11 @@ fn main() -> Result<(), &'static str> {
    } else {
       writeln!(out_handle, "failures").unwrap();
    }
-   Ok(())
+   if num_failures == 0 {
+      ExitCode::SUCCESS
+   } else {
+      ExitCode::FAILURE
+   }
 }
 
 fn print_diff<W: Write>(t: &mut W, expected: &str, actual: &str) {
