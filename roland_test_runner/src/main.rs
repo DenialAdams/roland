@@ -636,12 +636,9 @@ fn parse_test_content(mut content: &str, amd64: bool) -> ExpectedTestResult {
    }
 
    let mut mode = Mode::ExpectingAnchor;
-   let mut content_view = content.as_bytes();
-
-   'outer: while !content_view.is_empty() {
+   'outer: for line in content.split_inclusive('\n') {
       for anchor in anchors.iter() {
-         if content_view.starts_with(anchor.0) {
-            content_view = &content_view[anchor.0.len()..];
+         if line.as_bytes() == anchor.0 {
             match (amd64, anchor.1) {
                (true, TargetSpec::Wasi) | (false, TargetSpec::Amd64) => {
                   mode = Mode::ExpectingAnchor;
@@ -662,10 +659,9 @@ fn parse_test_content(mut content: &str, amd64: bool) -> ExpectedTestResult {
       match mode {
          Mode::ExpectingAnchor => (),
          Mode::ParsingAnchor(ref mut buf) => {
-            buf.push(content_view[0]);
+            buf.extend_from_slice(line.as_bytes());
          }
       }
-      content_view = &content_view[1..];
    }
 
    ExpectedTestResult {
