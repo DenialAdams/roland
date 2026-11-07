@@ -131,7 +131,19 @@ pub fn import_program(
          select.recv(&lex_parse_results_rx);
 
          while num_in_flight.load(Ordering::Relaxed) > 0 {
-            let op = select.select();
+            let op = if let Ok(op) = select.try_select() {
+               op
+            } else {
+               // Because we are using in_place_scope, blocking on select is typically fine
+               // as that happens on the main thread and even if there is only one rayon worker
+               // it can keep making progress. However, someone could theoretically use rolandc
+               // as a library and run it on a lone rayon thread, in which cause we need
+               // to cooperate in order to make progress.
+               if rayon::yield_now() == Some(rayon::Yield::Executed) {
+                  continue;
+               }
+               select.select()
+            };
             if op.index() == 0 {
                let node = op.recv(&import_queue_rx).unwrap();
 
