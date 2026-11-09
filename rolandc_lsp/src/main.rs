@@ -407,18 +407,36 @@ impl LanguageServer for Backend {
 
       let source_pos: SourcePosition = {
          let opened_files = self.opened_files.read();
-         let buf = opened_files.get(&canon_path).map_or("", |x| &x.0).as_bytes();
-
+         let Some((buf, _)) = opened_files.get(&canon_path) else {
+            return Ok(None);
+         };
          let start_of_line_idx = if given_location.line == 0 {
             0
          } else {
-            match memchr::memchr_iter(b'\n', buf).nth((given_location.line - 1) as usize) {
+            match memchr::memchr_iter(b'\n', buf.as_bytes()).nth(given_location.line as usize - 1) {
                Some(nl_idx) => nl_idx + 1,
                None => return Ok(None),
             }
          };
-
-         SourcePosition(start_of_line_idx + given_location.character as usize)
+         let tail = &buf[start_of_line_idx..];
+         let end = memchr::memchr(b'\n', tail.as_bytes()).unwrap_or(tail.len());
+         let line = tail[..end].trim_end_matches('\r');
+         let character = given_location.character as usize;
+         let offset = if *self.column_encoding.read() == PositionEncodingKind::UTF8 {
+            character.min(line.len())
+         } else {
+            let mut units = 0;
+            let mut offset = line.len();
+            for (byte, ch) in line.char_indices() {
+               if units == character {
+                  offset = byte;
+                  break;
+               }
+               units += ch.len_utf16();
+            }
+            offset
+         };
+         SourcePosition(start_of_line_idx + offset)
       };
       let ctx = self.ctx.lock();
       if let Some(si) = find_definition(source_pos, &canon_path, &ctx) {
