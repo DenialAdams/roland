@@ -23,7 +23,7 @@ const HELLO_WORLD =
 }
 `;
 
-let instance = null;
+let compilation_request = 0;
 let code_editor = null;
 let disasm_viewer = null;
 
@@ -54,6 +54,8 @@ window.addEventListener('DOMContentLoaded', (event) => {
 });
 
 window.compileUpdateAll = async function compileUpdateAll() {
+   const request = ++compilation_request;
+   let instance = null;
    let output_frame = document.getElementById("out_frame");
    output_frame.textContent = "Compiling...";
    disasm_viewer.dispatch({
@@ -68,11 +70,16 @@ window.compileUpdateAll = async function compileUpdateAll() {
          'Content-Type': 'application/wasm'
       });
       let response = new Response(compilation_output.bytes, { "headers": headers });
-      let wasi_polyfill = { fd_write: fd_write_polyfill };
+      let wasi_polyfill = {
+         fd_write: (...args) => fd_write_polyfill(instance, output_frame, ...args)
+      };
       let result;
       try {
          result = await WebAssembly.instantiateStreaming(response, { wasi_snapshot_preview1: wasi_polyfill });
       } catch (err) {
+         if (request !== compilation_request) {
+            return;
+         }
          if (err instanceof WebAssembly.LinkError) {
             output_frame.textContent = err.message;
             output_frame.textContent += "\n---\n";
@@ -86,6 +93,9 @@ window.compileUpdateAll = async function compileUpdateAll() {
          }
          throw err;
       };
+      if (request !== compilation_request) {
+         return;
+      }
       instance = result.instance;
       output_frame.textContent = '';
       try {
@@ -108,7 +118,7 @@ window.toggleDisassembly = async function toggleDisassembly() {
    disasm_viewer.requestMeasure();
 }
 
-function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
+function fd_write_polyfill(instance, output_frame, fd, iovs, iovsLen, nwritten) {
 
    let view = new DataView(instance.exports.memory.buffer);
 
@@ -132,7 +142,7 @@ function fd_write_polyfill(fd, iovs, iovsLen, nwritten) {
       }
    });
 
-   document.getElementById("out_frame").textContent += new TextDecoder("utf-8").decode(bufferBytes);
+   output_frame.textContent += new TextDecoder("utf-8").decode(bufferBytes);
 
    view.setUint32(nwritten, sum, true);
 
