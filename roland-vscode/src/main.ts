@@ -3,8 +3,17 @@ import * as vscode from 'vscode';
 import * as os from "os";
 import { inspect } from "util";
 import { existsSync, watchFile } from 'fs';
+import { Mutex } from 'async-mutex';
 
-let client: lc.LanguageClient;
+let client: lc.LanguageClient | undefined;
+const serverMutex = new Mutex();
+
+async function stopServer(): Promise<void> {
+   if (client) {
+      await client.stop();
+      client = undefined;
+   }
+}
 
 function getLocalPath(): string {
    let path = os.homedir() + "/roland/target/release/rolandc-lsp";
@@ -36,38 +45,36 @@ async function startServer(path: string) {
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-   log.info("Starting language client...");
-
-   let local_path = getLocalPath();
-   if (local_path != "") {
-      log.info("Launching local copy of rolandc...");
-      watchFile(local_path, { persistent: false }, async function(current, _prev) {
-         if (current.isFile()) {
-            log.info("Detected change to language server, restarting..");
-            await deactivate();
-            await startServer(local_path)
-            log.info("Finished restarting language server");
+   await serverMutex.runExclusive(async () => {
+      log.info("Starting language client...");
+      const local_path = getLocalPath();
+      let server_path = local_path;
+      if (local_path != "") {
+         log.info("Launching local copy of rolandc...");
+         watchFile(local_path, { persistent: false }, current => {
+            if (!current.isFile()) return;
+            void serverMutex.runExclusive(async () => {
+               log.info("Detected change to language server, restarting..");
+               await stopServer();
+               await startServer(local_path);
+               log.info("Finished restarting language server");
+            }).catch(error => log.error("Failed to restart language server", error));
+         });
+      } else {
+         log.info("Launching embedded rolandc...");
+         server_path = context.asAbsolutePath("rolandc-lsp");
+         if (process.platform == "win32") {
+            server_path += ".exe";
          }
-      });
-      await deactivate(); // just in case the watcher triggered before we got here? seems reasonable
-      await startServer(local_path);
-   } else {
-      log.info("Launching embedded rolandc...");
-      let extension_path = context.asAbsolutePath("rolandc-lsp");
-      if (process.platform == "win32") {
-         extension_path += ".exe";
       }
-      await startServer(extension_path);
-   }
-
-   log.info("Finished starting language client");
+      await stopServer();
+      await startServer(server_path);
+      log.info("Finished starting language client");
+   });
 }
 
 export async function deactivate(): Promise<void> {
-   if (!client) {
-      return;
-   }
-   return client.stop();
+   return serverMutex.runExclusive(stopServer);
 }
 
 const log = new class {
