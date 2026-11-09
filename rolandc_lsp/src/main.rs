@@ -289,6 +289,7 @@ impl LanguageServer for Backend {
          // allegedly always supported
          PositionEncodingKind::UTF16
       };
+      *self.column_encoding.write() = chosen_column_encoding.clone();
 
       // TODO: this just takes the first root path
       #[allow(clippy::never_loop)]
@@ -333,7 +334,6 @@ impl LanguageServer for Backend {
             WorkspaceMode::LooseFiles
          };
          *self.mode.write() = mode;
-         *self.column_encoding.write() = chosen_column_encoding.clone();
          return Ok(InitializeResult {
             capabilities: ServerCapabilities {
                definition_provider: Some(OneOf::Right(DefinitionOptions {
