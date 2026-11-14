@@ -31,22 +31,24 @@ enum WorkspaceMode {
 
 struct LSPFileResolver<'a> {
    file_map: &'a HashMap<PathBuf, (String, i32)>,
-   touched_paths: &'a mut Vec<PathBuf>,
+   diagnostic_buckets: &'a mut HashMap<Uri, Vec<Diagnostic>>,
 }
 
 impl FileResolver for LSPFileResolver<'_> {
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<Cow<'static, str>> {
       debug_assert_eq!(path, std::fs::canonicalize(path)?);
-      let resolved = if let Some(buf) = self.file_map.get(path) {
+      self
+         .diagnostic_buckets
+         .entry(Uri::from_file_path(path).unwrap())
+         .or_default();
+      if let Some(buf) = self.file_map.get(path) {
          Ok(Cow::Owned(buf.0.clone()))
       } else {
          match std::fs::read_to_string(path) {
             Ok(s) => Ok(Cow::Owned(s)),
             Err(e) => Err(e),
          }
-      };
-      self.touched_paths.push(path.to_path_buf());
-      resolved
+      }
    }
 
    fn requires_canonicalization(&self) -> bool {
@@ -193,12 +195,19 @@ impl Backend {
          (root_file_path, config)
       };
       let (opened_versions, diagnostic_buckets) = {
-         let (opened_versions, touched_paths) = {
+         let mut diagnostic_buckets: HashMap<Uri, Vec<Diagnostic>> = HashMap::new();
+         if matches!(*self.mode.read(), WorkspaceMode::EntryPointAndTarget(..)) {
+            for ((path, is_std), _) in &ctx.source_files {
+               if !*is_std {
+                  diagnostic_buckets.insert(Uri::from_file_path(path).unwrap(), Vec::new());
+               }
+            }
+         }
+         let opened_versions = {
             let opened_files_l = self.opened_files.read();
-            let mut touched_paths = Vec::new();
             let mut resolver = LSPFileResolver {
                file_map: &opened_files_l,
-               touched_paths: &mut touched_paths,
+               diagnostic_buckets: &mut diagnostic_buckets,
             };
             let _ = rolandc::compile_for_errors(
                ctx,
@@ -208,21 +217,11 @@ impl Backend {
                },
                &config,
             );
-            (
-               opened_files_l
-                  .iter()
-                  .map(|(key, v)| (Uri::from_file_path(key).unwrap(), v.1))
-                  .collect::<HashMap<Uri, i32>>(),
-               touched_paths,
-            )
+            opened_files_l
+               .iter()
+               .map(|(key, v)| (Uri::from_file_path(key).unwrap(), v.1))
+               .collect::<HashMap<Uri, i32>>()
          };
-
-         let mut diagnostic_buckets: HashMap<Uri, Vec<Diagnostic>> = HashMap::with_capacity(touched_paths.len() + 1);
-
-         for path in touched_paths.into_iter() {
-            // By doing this, we ensure that we will clear errors for files we touched that no longer have any issues
-            diagnostic_buckets.insert(Uri::from_file_path(path).unwrap(), Vec::new());
-         }
 
          let file_map = &ctx.source_files;
 
@@ -516,7 +515,7 @@ impl LanguageServer for Backend {
    }
 
    async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
-      // We use full synchronization, so we only need to look at the last change 
+      // We use full synchronization, so we only need to look at the last change
       let Some(change) = params.content_changes.pop() else {
          return;
       };
