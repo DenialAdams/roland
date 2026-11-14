@@ -62,13 +62,13 @@ struct Backend {
    ctx: Mutex<CompilationContext>,
 }
 
-fn roland_source_path_to_canon_path(source_path: &SourcePath, file_map: &FileMap) -> Option<std::io::Result<PathBuf>> {
+fn roland_source_path_to_uri(source_path: &SourcePath, file_map: &FileMap) -> Option<Uri> {
    let ((path, is_std), _file_contents) = file_map.get_index(source_path.0).unwrap();
    if *is_std {
       // Hit when rolandc provides a reference to a standard library defined type
       return None;
    }
-   Some(std::fs::canonicalize(path))
+   Some(Uri::from_file_path(path).unwrap())
 }
 
 fn roland_error_to_lsp_error(
@@ -78,12 +78,12 @@ fn roland_error_to_lsp_error(
    err_locations: &HashMap<(SourcePath, usize), ExpandedErrorLocation>,
    severity: DiagnosticSeverity,
 ) -> (Uri, Diagnostic) {
-   let (report_path, range, mut related_info) = match re.location {
+   let (report_uri, range, mut related_info) = match re.location {
       ErrorLocation::Simple(x) => {
          let (begin_line, begin_col) = err_locations[&(x.file, x.begin.0)];
          let (end_line, end_col) = err_locations[&(x.file, x.end.0)];
          (
-            roland_source_path_to_canon_path(&x.file, file_map).map(|x| x.unwrap()),
+            roland_source_path_to_uri(&x.file, file_map),
             Range {
                start: Position {
                   line: begin_line as u32,
@@ -101,7 +101,7 @@ fn roland_error_to_lsp_error(
          let (begin_line, begin_col) = err_locations[&(x[0].0.file, x[0].0.begin.0)];
          let (end_line, end_col) = err_locations[&(x[0].0.file, x[0].0.end.0)];
          (
-            roland_source_path_to_canon_path(&x[0].0.file, file_map).map(|x| x.unwrap()),
+            roland_source_path_to_uri(&x[0].0.file, file_map),
             Range {
                start: Position {
                   line: begin_line as u32,
@@ -138,9 +138,7 @@ fn roland_error_to_lsp_error(
    }
 
    (
-      report_path
-         .map(|path| Uri::from_file_path(path).unwrap())
-         .unwrap_or_else(|| doc_uri.clone()),
+      report_uri.unwrap_or_else(|| doc_uri.clone()),
       Diagnostic {
          range,
          severity: Some(severity),
@@ -158,10 +156,10 @@ fn rolandc_detail_to_diagnostic_detail(
 ) -> Option<DiagnosticRelatedInformation> {
    let (begin_line, begin_col) = err_locations[&(y.0.file, y.0.begin.0)];
    let (end_line, end_col) = err_locations[&(y.0.file, y.0.end.0)];
-   let path = roland_source_path_to_canon_path(&y.0.file, file_map).map(|x| x.unwrap());
-   path.map(|sp| DiagnosticRelatedInformation {
+   let uri = roland_source_path_to_uri(&y.0.file, file_map);
+   uri.map(|uri| DiagnosticRelatedInformation {
       location: Location {
-         uri: Uri::from_file_path(sp).unwrap(),
+         uri,
          range: Range {
             start: Position {
                line: begin_line as u32,
@@ -473,11 +471,11 @@ impl LanguageServer for Backend {
                character: end_col as u32,
             },
          };
-         let target_path = roland_source_path_to_canon_path(&si.file, &ctx.source_files);
-         Ok(target_path.map(|x| {
+         let target_uri = roland_source_path_to_uri(&si.file, &ctx.source_files);
+         Ok(target_uri.map(|uri| {
             GotoDefinitionResponse::Link(vec![LocationLink {
                origin_selection_range: None,
-               target_uri: Uri::from_file_path(x.unwrap()).unwrap(),
+               target_uri: uri,
                target_range: dest_range,
                target_selection_range: dest_range,
             }])

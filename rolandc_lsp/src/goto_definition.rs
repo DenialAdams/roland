@@ -5,18 +5,13 @@ use rolandc::source_info::{SourceInfo, SourcePosition};
 use rolandc::type_data::ExpressionType;
 use rolandc::{CompilationContext, FileMap};
 
-use crate::roland_source_path_to_canon_path;
-
 #[must_use]
 fn span_contains(span: SourceInfo, location: SourcePosition, document: &Path, file_map: &FileMap) -> bool {
    let in_range_of_span = location.0 >= span.begin.0 && location.0 <= span.end.0;
 
    if in_range_of_span {
-      // now verify the document matches (allocates)
-      let canon_path = roland_source_path_to_canon_path(&span.file, file_map);
-      canon_path
-         .map(|x| x.map(|x| x == document).unwrap_or(false))
-         .unwrap_or(false)
+      let ((path, _), _) = file_map.get_index(span.file.0).unwrap();
+      path.as_path() == document
    } else {
       false
    }
