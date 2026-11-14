@@ -73,10 +73,11 @@ fn roland_source_path_to_canon_path(source_path: &SourcePath, file_map: &FileMap
 
 fn roland_error_to_lsp_error(
    re: ErrorInfo,
+   doc_uri: &Uri,
    file_map: &FileMap,
    err_locations: &HashMap<(SourcePath, usize), ExpandedErrorLocation>,
    severity: DiagnosticSeverity,
-) -> (Option<PathBuf>, Diagnostic) {
+) -> (Uri, Diagnostic) {
    let (report_path, range, mut related_info) = match re.location {
       ErrorLocation::Simple(x) => {
          let (begin_line, begin_col) = err_locations[&(x.file, x.begin.0)];
@@ -137,7 +138,9 @@ fn roland_error_to_lsp_error(
    }
 
    (
-      report_path,
+      report_path
+         .map(|path| Uri::from_file_path(path).unwrap())
+         .unwrap_or_else(|| doc_uri.clone()),
       Diagnostic {
          range,
          severity: Some(severity),
@@ -210,18 +213,17 @@ impl Backend {
             (
                opened_files_l
                   .iter()
-                  .map(|(key, v)| (key.clone(), v.1))
-                  .collect::<HashMap<PathBuf, i32>>(),
+                  .map(|(key, v)| (Uri::from_file_path(key).unwrap(), v.1))
+                  .collect::<HashMap<Uri, i32>>(),
                touched_paths,
             )
          };
 
-         let mut diagnostic_buckets: HashMap<Option<PathBuf>, Vec<Diagnostic>> =
-            HashMap::with_capacity(touched_paths.len() + 1);
+         let mut diagnostic_buckets: HashMap<Uri, Vec<Diagnostic>> = HashMap::with_capacity(touched_paths.len() + 1);
 
          for path in touched_paths.into_iter() {
             // By doing this, we ensure that we will clear errors for files we touched that no longer have any issues
-            diagnostic_buckets.insert(Some(path), Vec::new());
+            diagnostic_buckets.insert(Uri::from_file_path(path).unwrap(), Vec::new());
          }
 
          let file_map = &ctx.source_files;
@@ -239,7 +241,7 @@ impl Backend {
 
          for err in errs.drain(..) {
             let (bucket, lsp_error) =
-               roland_error_to_lsp_error(err, file_map, &err_location_map, DiagnosticSeverity::ERROR);
+               roland_error_to_lsp_error(err, doc_uri, file_map, &err_location_map, DiagnosticSeverity::ERROR);
             diagnostic_buckets
                .entry(bucket)
                .or_insert_with(Vec::new)
@@ -247,8 +249,13 @@ impl Backend {
          }
 
          for warning in warnings.drain(..) {
-            let (bucket, lsp_error) =
-               roland_error_to_lsp_error(warning, file_map, &err_location_map, DiagnosticSeverity::WARNING);
+            let (bucket, lsp_error) = roland_error_to_lsp_error(
+               warning,
+               doc_uri,
+               file_map,
+               &err_location_map,
+               DiagnosticSeverity::WARNING,
+            );
             diagnostic_buckets
                .entry(bucket)
                .or_insert_with(Vec::new)
@@ -258,13 +265,12 @@ impl Backend {
          (opened_versions, diagnostic_buckets)
       };
 
-      for (pb, diagnostics) in diagnostic_buckets.into_iter() {
-         let version = pb
-            .as_ref()
-            .map_or(Some(doc_version), |x| opened_versions.get(x).copied());
-         let url = pb
-            .map(|x| Uri::from_file_path(x).unwrap())
-            .unwrap_or_else(|| doc_uri.clone());
+      for (url, diagnostics) in diagnostic_buckets.into_iter() {
+         let version = if &url == doc_uri {
+            Some(doc_version)
+         } else {
+            opened_versions.get(&url).copied()
+         };
          self.client.publish_diagnostics(url, diagnostics, version).await;
       }
    }
