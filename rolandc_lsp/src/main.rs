@@ -516,19 +516,17 @@ impl LanguageServer for Backend {
    }
 
    async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
+      // We use full synchronization, so we only need to look at the last change 
+      let Some(change) = params.content_changes.pop() else {
+         return;
+      };
       let mut ctx = self.ctx.lock().await;
       let doc_uri = params.text_document.uri;
       if let Some(p) = doc_uri.to_file_path()
          && let Ok(canon_path) = std::fs::canonicalize(p)
       {
          let mut lock = self.opened_files.write();
-         lock.insert(
-            canon_path,
-            (
-               std::mem::take(&mut params.content_changes[0].text),
-               params.text_document.version,
-            ),
-         );
+         lock.insert(canon_path, (change.text, params.text_document.version));
       }
       self
          .compile_and_publish_diagnostics(&mut ctx, &doc_uri, params.text_document.version)
