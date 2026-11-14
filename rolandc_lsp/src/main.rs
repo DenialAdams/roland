@@ -29,8 +29,14 @@ enum WorkspaceMode {
    StdLib,
 }
 
+struct OpenedFile {
+   uri: Uri,
+   text: String,
+   version: i32,
+}
+
 struct LSPFileResolver<'a> {
-   file_map: &'a HashMap<PathBuf, (String, i32)>,
+   file_map: &'a HashMap<PathBuf, OpenedFile>,
    diagnostic_buckets: &'a mut HashMap<Uri, Vec<Diagnostic>>,
 }
 
@@ -42,7 +48,7 @@ impl FileResolver for LSPFileResolver<'_> {
          .entry(Uri::from_file_path(path).unwrap())
          .or_default();
       if let Some(buf) = self.file_map.get(path) {
-         Ok(Cow::Owned(buf.0.clone()))
+         Ok(Cow::Owned(buf.text.clone()))
       } else {
          match std::fs::read_to_string(path) {
             Ok(s) => Ok(Cow::Owned(s)),
@@ -60,7 +66,7 @@ struct Backend {
    client: Client,
    mode: RwLock<WorkspaceMode>,
    column_encoding: RwLock<PositionEncodingKind>,
-   opened_files: RwLock<HashMap<PathBuf, (String, i32)>>,
+   opened_files: RwLock<HashMap<PathBuf, OpenedFile>>,
    ctx: Mutex<CompilationContext>,
 }
 
@@ -219,7 +225,7 @@ impl Backend {
             );
             opened_files_l
                .iter()
-               .map(|(key, v)| (Uri::from_file_path(key).unwrap(), v.1))
+               .map(|(key, v)| (Uri::from_file_path(key).unwrap(), v.version))
                .collect::<HashMap<Uri, i32>>()
          };
 
@@ -383,36 +389,12 @@ impl LanguageServer for Backend {
       let given_document = params.text_document_position_params.text_document;
       let given_location = params.text_document_position_params.position;
 
-      let Some(p) = given_document.uri.to_file_path() else {
-         self
-            .client
-            .log_message(
-               MessageType::WARNING,
-               format!(
-                  "Hopelessly bailing on document uri as we can't convert it to a local path: {:?}",
-                  given_document.uri
-               ),
-            )
-            .await;
-         return Ok(None);
-      };
-
-      let Ok(canon_path) = std::fs::canonicalize(p) else {
-         self
-            .client
-            .log_message(
-               MessageType::WARNING,
-               format!("Can't canonicalize path: {:?}", given_document.uri),
-            )
-            .await;
-         return Ok(None);
-      };
-
-      let source_pos: SourcePosition = {
+      let (canon_path, source_pos) = {
          let opened_files = self.opened_files.read();
-         let Some((buf, _)) = opened_files.get(&canon_path) else {
+         let Some((canon_path, file)) = opened_files.iter().find(|(_, file)| file.uri == given_document.uri) else {
             return Ok(None);
          };
+         let buf = &file.text;
          let start_of_line_idx = if given_location.line == 0 {
             0
          } else {
@@ -439,7 +421,7 @@ impl LanguageServer for Backend {
             }
             offset
          };
-         SourcePosition(start_of_line_idx + offset)
+         (canon_path.clone(), SourcePosition(start_of_line_idx + offset))
       };
       if let Some(si) = find_definition(source_pos, &canon_path, &ctx) {
          let mut res: HashMap<(SourcePath, usize), ExpandedErrorLocation> = HashMap::new();
@@ -490,7 +472,14 @@ impl LanguageServer for Backend {
       if let Some(p) = doc_uri.to_file_path() {
          if let Ok(canon_path) = std::fs::canonicalize(p) {
             let mut lock = self.opened_files.write();
-            lock.insert(canon_path, (params.text_document.text, params.text_document.version));
+            lock.insert(
+               canon_path,
+               OpenedFile {
+                  uri: doc_uri.clone(),
+                  text: params.text_document.text,
+                  version: params.text_document.version,
+               },
+            );
          } else {
             self
                .client
@@ -521,11 +510,13 @@ impl LanguageServer for Backend {
       };
       let mut ctx = self.ctx.lock().await;
       let doc_uri = params.text_document.uri;
-      if let Some(p) = doc_uri.to_file_path()
-         && let Ok(canon_path) = std::fs::canonicalize(p)
       {
-         let mut lock = self.opened_files.write();
-         lock.insert(canon_path, (change.text, params.text_document.version));
+         let mut files = self.opened_files.write();
+         let Some(file) = files.values_mut().find(|file| file.uri == doc_uri) else {
+            return;
+         };
+         file.text = change.text;
+         file.version = params.text_document.version;
       }
       self
          .compile_and_publish_diagnostics(&mut ctx, &doc_uri, params.text_document.version)
@@ -539,12 +530,7 @@ impl LanguageServer for Backend {
       // not to publish those diagnostics.
       let _ctx = self.ctx.lock().await;
       let doc_uri = params.text_document.uri;
-      if let Some(p) = doc_uri.to_file_path()
-         && let Ok(canon_path) = std::fs::canonicalize(p)
-      {
-         let mut lock = self.opened_files.write();
-         lock.remove(&canon_path);
-      }
+      self.opened_files.write().retain(|_, file| file.uri != doc_uri);
       self.client.publish_diagnostics(doc_uri, vec![], None).await;
    }
 }
