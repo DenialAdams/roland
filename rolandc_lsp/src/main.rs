@@ -3,16 +3,16 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::ops::DerefMut;
 use std::path::PathBuf;
 
 use goto_definition::find_definition;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 use rolandc::error_handling::{
    ColumnCountingCodeUnits, ErrorInfo, ErrorLocation, ExpandedErrorLocation, convert_positions_to_line_column,
 };
 use rolandc::source_info::{SourceInfo, SourcePath, SourcePosition};
 use rolandc::*;
+use tokio::sync::Mutex;
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::*;
 use tower_lsp_server::{Client, LanguageServer, LspService, Server};
@@ -175,7 +175,7 @@ fn rolandc_detail_to_diagnostic_detail(
 }
 
 impl Backend {
-   async fn compile_and_publish_diagnostics(&self, doc_uri: &Uri, doc_version: i32) {
+   async fn compile_and_publish_diagnostics(&self, ctx: &mut CompilationContext, doc_uri: &Uri, doc_version: i32) {
       let (root_file_path, config) = {
          let mode = &*self.mode.read();
          let (root_file_path, target) = match mode {
@@ -192,7 +192,6 @@ impl Backend {
          (root_file_path, config)
       };
       let (opened_versions, diagnostic_buckets) = {
-         let mut ctx_ref = self.ctx.lock();
          let (opened_versions, touched_paths) = {
             let opened_files_l = self.opened_files.read();
             let mut touched_paths = Vec::new();
@@ -201,7 +200,7 @@ impl Backend {
                touched_paths: &mut touched_paths,
             };
             let _ = rolandc::compile_for_errors(
-               &mut ctx_ref,
+               ctx,
                CompilationEntryPoint {
                   ep_path: root_file_path.to_path_buf(),
                   resolver: &mut resolver,
@@ -225,20 +224,18 @@ impl Backend {
             diagnostic_buckets.insert(Some(path), Vec::new());
          }
 
-         // This obj local allows the subsequent split borrow to succeed
-         let obj = ctx_ref.deref_mut();
-         let file_map = &obj.source_files;
+         let file_map = &ctx.source_files;
 
          let err_location_map = if *self.column_encoding.read() == PositionEncodingKind::UTF8 {
-            obj.err_manager
+            ctx.err_manager
                .map_all_err_locations_to_line_col::<{ ColumnCountingCodeUnits::Utf8 }, true>(file_map)
          } else {
-            obj.err_manager
+            ctx.err_manager
                .map_all_err_locations_to_line_col::<{ ColumnCountingCodeUnits::Utf16 }, true>(file_map)
          };
 
-         let errs = &mut obj.err_manager.errors;
-         let warnings = &mut obj.err_manager.warnings;
+         let errs = &mut ctx.err_manager.errors;
+         let warnings = &mut ctx.err_manager.warnings;
 
          for err in errs.drain(..) {
             let (bucket, lsp_error) =
@@ -275,6 +272,8 @@ impl Backend {
 
 impl LanguageServer for Backend {
    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+      // Serialize configuration changes with document operations.
+      let _ctx = self.ctx.lock().await;
       let chosen_column_encoding = if params
          .capabilities
          .general
@@ -377,6 +376,7 @@ impl LanguageServer for Backend {
    }
 
    async fn goto_definition(&self, params: GotoDefinitionParams) -> Result<Option<GotoDefinitionResponse>> {
+      let ctx = self.ctx.lock().await;
       let given_document = params.text_document_position_params.text_document;
       let given_location = params.text_document_position_params.position;
 
@@ -438,7 +438,6 @@ impl LanguageServer for Backend {
          };
          SourcePosition(start_of_line_idx + offset)
       };
-      let ctx = self.ctx.lock();
       if let Some(si) = find_definition(source_pos, &canon_path, &ctx) {
          let mut res: HashMap<(SourcePath, usize), ExpandedErrorLocation> = HashMap::new();
          if *self.column_encoding.read() == PositionEncodingKind::UTF8 {
@@ -483,6 +482,7 @@ impl LanguageServer for Backend {
    }
 
    async fn did_open(&self, params: DidOpenTextDocumentParams) {
+      let mut ctx = self.ctx.lock().await;
       let doc_uri = params.text_document.uri;
       if let Some(p) = doc_uri.to_file_path() {
          if let Ok(canon_path) = std::fs::canonicalize(p) {
@@ -507,11 +507,12 @@ impl LanguageServer for Backend {
             .await;
       }
       self
-         .compile_and_publish_diagnostics(&doc_uri, params.text_document.version)
+         .compile_and_publish_diagnostics(&mut ctx, &doc_uri, params.text_document.version)
          .await;
    }
 
    async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
+      let mut ctx = self.ctx.lock().await;
       let doc_uri = params.text_document.uri;
       if let Some(p) = doc_uri.to_file_path()
          && let Ok(canon_path) = std::fs::canonicalize(p)
@@ -526,11 +527,16 @@ impl LanguageServer for Backend {
          );
       }
       self
-         .compile_and_publish_diagnostics(&doc_uri, params.text_document.version)
+         .compile_and_publish_diagnostics(&mut ctx, &doc_uri, params.text_document.version)
          .await;
    }
 
    async fn did_close(&self, params: DidCloseTextDocumentParams) {
+      // Wait for earlier diagnostic publications before closing (or else they could be republished erroneously)
+      // This is a bad solution - we should improve this in the future such that closing a tab always
+      // clears diagnostics immediately and if a compilation comes in afterwards it would just know (somehow)
+      // not to publish those diagnostics.
+      let _ctx = self.ctx.lock().await;
       let doc_uri = params.text_document.uri;
       if let Some(p) = doc_uri.to_file_path()
          && let Ok(canon_path) = std::fs::canonicalize(p)
