@@ -2,15 +2,18 @@ import * as lc from 'vscode-languageclient/node';
 import * as vscode from 'vscode';
 import * as os from "os";
 import { inspect } from "util";
-import { existsSync, watchFile } from 'fs';
+import { existsSync, unwatchFile, watchFile, type Stats } from 'fs';
 import { Mutex } from 'async-mutex';
 
 let client: lc.LanguageClient | undefined;
+let watcher: vscode.Disposable | undefined;
 const serverMutex = new Mutex();
 
 async function stopServer(): Promise<void> {
+   watcher?.dispose();
+   watcher = undefined;
    if (client) {
-      await client.stop();
+      await client.dispose();
       client = undefined;
    }
 }
@@ -26,7 +29,7 @@ function getLocalPath(): string {
    return "";
 }
 
-async function startServer(path: string) {
+function createClient(path: string): lc.LanguageClient {
    const run: lc.Executable = {
       command: path,
       transport: lc.TransportKind.stdio,
@@ -39,9 +42,7 @@ async function startServer(path: string) {
       documentSelector: [{ scheme: 'file', language: 'roland' }],
    }
 
-   client = new lc.LanguageClient('roland', 'Roland Language Server', serverOptions, clientOptions);
-
-   await client.start();
+   return new lc.LanguageClient('roland', 'Roland Language Server', serverOptions, clientOptions);
 }
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -51,15 +52,6 @@ export async function activate(context: vscode.ExtensionContext) {
       let server_path = local_path;
       if (local_path != "") {
          log.info("Launching local copy of rolandc...");
-         watchFile(local_path, { persistent: false }, current => {
-            if (!current.isFile()) return;
-            void serverMutex.runExclusive(async () => {
-               log.info("Detected change to language server, restarting..");
-               await stopServer();
-               await startServer(local_path);
-               log.info("Finished restarting language server");
-            }).catch(error => log.error("Failed to restart language server", error));
-         });
       } else {
          log.info("Launching embedded rolandc...");
          server_path = context.asAbsolutePath("rolandc-lsp");
@@ -68,7 +60,23 @@ export async function activate(context: vscode.ExtensionContext) {
          }
       }
       await stopServer();
-      await startServer(server_path);
+      const currentClient = createClient(server_path);
+      client = currentClient;
+      if (local_path != "") {
+         const onChange = (current: Stats) => {
+            if (!current.isFile()) return;
+            void serverMutex.runExclusive(async () => {
+               if (client !== currentClient) return;
+               log.info("Detected change to language server, restarting..");
+               await currentClient.restart();
+               log.info("Finished restarting language server");
+            }).catch(error => log.error("Failed to restart language server", error));
+         };
+         watchFile(local_path, { persistent: false }, onChange);
+         watcher = new vscode.Disposable(() => unwatchFile(local_path, onChange));
+         context.subscriptions.push(watcher);
+      }
+      await currentClient.start();
       log.info("Finished starting language client");
    });
 }
