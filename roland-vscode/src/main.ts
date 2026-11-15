@@ -12,10 +12,9 @@ const serverMutex = new Mutex();
 async function stopServer(): Promise<void> {
    watcher?.dispose();
    watcher = undefined;
-   if (client) {
-      await client.dispose();
-      client = undefined;
-   }
+   const stoppingClient = client;
+   client = undefined;
+   await stoppingClient?.dispose();
 }
 
 function getLocalPath(): string {
