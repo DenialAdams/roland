@@ -30,22 +30,31 @@ enum WorkspaceMode {
 }
 
 struct OpenedFile {
-   uri: Uri,
    text: String,
-   version: i32,
+   versions: HashMap<Uri, i32>,
+}
+
+struct CompilerState {
+   context: CompilationContext,
+   published_uris: HashMap<PathBuf, Vec<Uri>>,
+}
+
+fn document_uris(path: &Path, opened_files: &HashMap<PathBuf, OpenedFile>) -> Vec<Uri> {
+   if let Some(file) = opened_files.get(path) {
+      file.versions.keys().cloned().collect()
+   } else {
+      vec![Uri::from_file_path(path).unwrap()]
+   }
 }
 
 struct LSPFileResolver<'a> {
    file_map: &'a HashMap<PathBuf, OpenedFile>,
-   diagnostic_buckets: &'a mut HashMap<Uri, Vec<Diagnostic>>,
+   diagnostic_buckets: &'a mut HashMap<PathBuf, Vec<Diagnostic>>,
 }
 
 impl FileResolver for LSPFileResolver<'_> {
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<Cow<'static, str>> {
-      self
-         .diagnostic_buckets
-         .entry(Uri::from_file_path(path).unwrap())
-         .or_default();
+      self.diagnostic_buckets.entry(path.to_path_buf()).or_default();
       if let Some(buf) = self.file_map.get(path) {
          Ok(Cow::Owned(buf.text.clone()))
       } else {
@@ -70,31 +79,32 @@ struct Backend {
    mode: RwLock<WorkspaceMode>,
    column_encoding: RwLock<PositionEncodingKind>,
    opened_files: RwLock<HashMap<PathBuf, OpenedFile>>,
-   ctx: Mutex<CompilationContext>,
+   ctx: Mutex<CompilerState>,
 }
 
-fn roland_source_path_to_uri(source_path: &SourcePath, file_map: &FileMap) -> Option<Uri> {
+fn roland_source_path_to_file_path<'a>(source_path: &SourcePath, file_map: &'a FileMap) -> Option<&'a Path> {
    let ((path, is_std), _file_contents) = file_map.get_index(source_path.0).unwrap();
    if *is_std {
       // Hit when rolandc provides a reference to a standard library defined type
       return None;
    }
-   Some(Uri::from_file_path(path).unwrap())
+   Some(path)
 }
 
 fn roland_error_to_lsp_error(
    re: ErrorInfo,
-   doc_uri: &Uri,
+   fallback_path: &Path,
    file_map: &FileMap,
+   opened_files: &HashMap<PathBuf, OpenedFile>,
    err_locations: &HashMap<(SourcePath, usize), ExpandedErrorLocation>,
    severity: DiagnosticSeverity,
-) -> (Uri, Diagnostic) {
-   let (report_uri, range, mut related_info) = match re.location {
+) -> (PathBuf, Diagnostic) {
+   let (report_path, range, mut related_info) = match re.location {
       ErrorLocation::Simple(x) => {
          let (begin_line, begin_col) = err_locations[&(x.file, x.begin.0)];
          let (end_line, end_col) = err_locations[&(x.file, x.end.0)];
          (
-            roland_source_path_to_uri(&x.file, file_map),
+            roland_source_path_to_file_path(&x.file, file_map),
             Range {
                start: Position {
                   line: begin_line as u32,
@@ -112,7 +122,7 @@ fn roland_error_to_lsp_error(
          let (begin_line, begin_col) = err_locations[&(x[0].0.file, x[0].0.begin.0)];
          let (end_line, end_col) = err_locations[&(x[0].0.file, x[0].0.end.0)];
          (
-            roland_source_path_to_uri(&x[0].0.file, file_map),
+            roland_source_path_to_file_path(&x[0].0.file, file_map),
             Range {
                start: Position {
                   line: begin_line as u32,
@@ -124,7 +134,7 @@ fn roland_error_to_lsp_error(
                },
             },
             x.into_iter()
-               .flat_map(|x| rolandc_detail_to_diagnostic_detail(x, file_map, err_locations))
+               .flat_map(|x| rolandc_detail_to_diagnostic_detail(x, file_map, opened_files, err_locations))
                .collect(),
          )
       }
@@ -142,14 +152,16 @@ fn roland_error_to_lsp_error(
    };
 
    for came_from in re.came_from_stack {
-      if let Some(d) = rolandc_detail_to_diagnostic_detail((came_from, "instantiation".into()), file_map, err_locations)
-      {
-         related_info.push(d);
-      }
+      related_info.extend(rolandc_detail_to_diagnostic_detail(
+         (came_from, "instantiation".into()),
+         file_map,
+         opened_files,
+         err_locations,
+      ));
    }
 
    (
-      report_uri.unwrap_or_else(|| doc_uri.clone()),
+      report_path.unwrap_or(fallback_path).to_path_buf(),
       Diagnostic {
          range,
          severity: Some(severity),
@@ -163,37 +175,60 @@ fn roland_error_to_lsp_error(
 fn rolandc_detail_to_diagnostic_detail(
    y: (SourceInfo, String),
    file_map: &FileMap,
+   opened_files: &HashMap<PathBuf, OpenedFile>,
    err_locations: &HashMap<(SourcePath, usize), ExpandedErrorLocation>,
-) -> Option<DiagnosticRelatedInformation> {
+) -> Vec<DiagnosticRelatedInformation> {
    let (begin_line, begin_col) = err_locations[&(y.0.file, y.0.begin.0)];
    let (end_line, end_col) = err_locations[&(y.0.file, y.0.end.0)];
-   let uri = roland_source_path_to_uri(&y.0.file, file_map);
-   uri.map(|uri| DiagnosticRelatedInformation {
-      location: Location {
-         uri,
-         range: Range {
-            start: Position {
-               line: begin_line as u32,
-               character: begin_col as u32,
-            },
-            end: Position {
-               line: end_line as u32,
-               character: end_col as u32,
+   let Some(path) = roland_source_path_to_file_path(&y.0.file, file_map) else {
+      return Vec::new();
+   };
+   document_uris(path, opened_files)
+      .into_iter()
+      .map(|uri| DiagnosticRelatedInformation {
+         location: Location {
+            uri,
+            range: Range {
+               start: Position {
+                  line: begin_line as u32,
+                  character: begin_col as u32,
+               },
+               end: Position {
+                  line: end_line as u32,
+                  character: end_col as u32,
+               },
             },
          },
-      },
-      message: y.1,
-   })
+         message: y.1.clone(),
+      })
+      .collect()
 }
 
 impl Backend {
-   async fn compile_and_publish_diagnostics(&self, ctx: &mut CompilationContext, doc_uri: &Uri, doc_version: i32) {
+   async fn compile_and_publish_diagnostics(&self, state: &mut CompilerState, changed_document_uri: &Uri) {
+      let CompilerState {
+         context: ctx,
+         published_uris,
+      } = state;
       let (root_file_path, config) = {
          let mode = &*self.mode.read();
          let (root_file_path, target) = match mode {
-            WorkspaceMode::LooseFiles => (doc_uri.to_file_path().unwrap(), Target::Wasi),
-            WorkspaceMode::StdLib => (doc_uri.to_file_path().unwrap(), Target::Generic),
-            WorkspaceMode::EntryPointAndTarget(x, t) => (Cow::Owned(x.clone()), *t),
+            WorkspaceMode::LooseFiles | WorkspaceMode::StdLib => {
+               let opened_files = self.opened_files.read();
+               let Some((path, _)) = opened_files
+                  .iter()
+                  .find(|(_, file)| file.versions.contains_key(changed_document_uri))
+               else {
+                  return;
+               };
+               let target = if matches!(mode, WorkspaceMode::LooseFiles) {
+                  Target::Wasi
+               } else {
+                  Target::Generic
+               };
+               (path.clone(), target)
+            }
+            WorkspaceMode::EntryPointAndTarget(x, t) => (x.clone(), *t),
          };
          let config = rolandc::CompilationConfig {
             target,
@@ -204,16 +239,14 @@ impl Backend {
          (root_file_path, config)
       };
       let (opened_versions, diagnostic_buckets) = {
-         let mut diagnostic_buckets: HashMap<Uri, Vec<Diagnostic>> = HashMap::new();
+         let opened_files_l = self.opened_files.read();
+         let mut diagnostic_buckets: HashMap<PathBuf, Vec<Diagnostic>> = HashMap::new();
          if matches!(*self.mode.read(), WorkspaceMode::EntryPointAndTarget(..)) {
-            for ((path, is_std), _) in &ctx.source_files {
-               if !*is_std {
-                  diagnostic_buckets.insert(Uri::from_file_path(path).unwrap(), Vec::new());
-               }
+            for path in published_uris.keys() {
+               diagnostic_buckets.insert(path.clone(), Vec::new());
             }
          }
          let opened_versions = {
-            let opened_files_l = self.opened_files.read();
             let mut resolver = LSPFileResolver {
                file_map: &opened_files_l,
                diagnostic_buckets: &mut diagnostic_buckets,
@@ -221,14 +254,14 @@ impl Backend {
             let _ = rolandc::compile_for_errors(
                ctx,
                CompilationEntryPoint {
-                  ep_path: root_file_path.to_path_buf(),
+                  ep_path: root_file_path.clone(),
                   resolver: &mut resolver,
                },
                &config,
             );
             opened_files_l
-               .iter()
-               .map(|(key, v)| (Uri::from_file_path(key).unwrap(), v.version))
+               .values()
+               .flat_map(|file| file.versions.iter().map(|(uri, version)| (uri.clone(), *version)))
                .collect::<HashMap<Uri, i32>>()
          };
 
@@ -246,8 +279,14 @@ impl Backend {
          let warnings = &mut ctx.err_manager.warnings;
 
          for err in errs.drain(..) {
-            let (bucket, lsp_error) =
-               roland_error_to_lsp_error(err, doc_uri, file_map, &err_location_map, DiagnosticSeverity::ERROR);
+            let (bucket, lsp_error) = roland_error_to_lsp_error(
+               err,
+               &root_file_path,
+               file_map,
+               &opened_files_l,
+               &err_location_map,
+               DiagnosticSeverity::ERROR,
+            );
             diagnostic_buckets
                .entry(bucket)
                .or_insert_with(Vec::new)
@@ -257,8 +296,9 @@ impl Backend {
          for warning in warnings.drain(..) {
             let (bucket, lsp_error) = roland_error_to_lsp_error(
                warning,
-               doc_uri,
+               &root_file_path,
                file_map,
+               &opened_files_l,
                &err_location_map,
                DiagnosticSeverity::WARNING,
             );
@@ -268,15 +308,26 @@ impl Backend {
                .push(lsp_error);
          }
 
-         (opened_versions, diagnostic_buckets)
+         let mut publications = HashMap::new();
+         for (path, diagnostics) in diagnostic_buckets {
+            let uris = document_uris(&path, &opened_files_l);
+            for uri in &uris {
+               publications.insert(uri.clone(), diagnostics.clone());
+            }
+            if let Some(previous) = published_uris.remove(&path) {
+               for uri in previous {
+                  publications.entry(uri).or_insert_with(Vec::new);
+               }
+            }
+            if !diagnostics.is_empty() {
+               published_uris.insert(path, uris);
+            }
+         }
+         (opened_versions, publications)
       };
 
       for (url, diagnostics) in diagnostic_buckets.into_iter() {
-         let version = if &url == doc_uri {
-            Some(doc_version)
-         } else {
-            opened_versions.get(&url).copied()
-         };
+         let version = opened_versions.get(&url).copied();
          self.client.publish_diagnostics(url, diagnostics, version).await;
       }
    }
@@ -310,33 +361,33 @@ impl LanguageServer for Backend {
          .into_iter()
          .flat_map(|x| x.uri.to_file_path().map(|x| x.to_path_buf()))
       {
-         let mode = if root_path.join("cart.rol").exists() {
+         let mode = if let Ok(entrypoint) = std::fs::canonicalize(root_path.join("cart.rol")) {
             if root_path.join(".microw8").exists() {
                self
                   .client
                   .log_message(MessageType::INFO, "detected microw8 project")
                   .await;
-               WorkspaceMode::EntryPointAndTarget(root_path.join("cart.rol"), Target::Microw8)
+               WorkspaceMode::EntryPointAndTarget(entrypoint, Target::Microw8)
             } else {
                self
                   .client
                   .log_message(MessageType::INFO, "detected wasm4 project")
                   .await;
-               WorkspaceMode::EntryPointAndTarget(root_path.join("cart.rol"), Target::Wasm4)
+               WorkspaceMode::EntryPointAndTarget(entrypoint, Target::Wasm4)
             }
-         } else if root_path.join("main.rol").exists() {
+         } else if let Ok(entrypoint) = std::fs::canonicalize(root_path.join("main.rol")) {
             if root_path.join(".amd64").exists() {
                self
                   .client
                   .log_message(MessageType::INFO, "detected amd64 project")
                   .await;
-               WorkspaceMode::EntryPointAndTarget(root_path.join("main.rol"), Target::QbeFreestanding)
+               WorkspaceMode::EntryPointAndTarget(entrypoint, Target::QbeFreestanding)
             } else {
                self
                   .client
                   .log_message(MessageType::INFO, "detected wasi project")
                   .await;
-               WorkspaceMode::EntryPointAndTarget(root_path.join("main.rol"), Target::Wasi)
+               WorkspaceMode::EntryPointAndTarget(entrypoint, Target::Wasi)
             }
          } else if root_path.join(".i_assure_you_we're_std").exists() {
             self.client.log_message(MessageType::INFO, "detected stdlib").await;
@@ -388,13 +439,18 @@ impl LanguageServer for Backend {
    }
 
    async fn goto_definition(&self, params: GotoDefinitionParams) -> Result<Option<GotoDefinitionResponse>> {
-      let ctx = self.ctx.lock().await;
+      let state = self.ctx.lock().await;
+      let ctx = &state.context;
       let given_document = params.text_document_position_params.text_document;
+      let doc_uri = given_document.uri;
       let given_location = params.text_document_position_params.position;
 
       let (canon_path, source_pos) = {
          let opened_files = self.opened_files.read();
-         let Some((canon_path, file)) = opened_files.iter().find(|(_, file)| file.uri == given_document.uri) else {
+         let Some((canon_path, file)) = opened_files
+            .iter()
+            .find(|(_, file)| file.versions.contains_key(&doc_uri))
+         else {
             return Ok(None);
          };
          let buf = &file.text;
@@ -426,7 +482,7 @@ impl LanguageServer for Backend {
          };
          (canon_path.clone(), SourcePosition(start_of_line_idx + offset))
       };
-      if let Some(si) = find_definition(source_pos, &canon_path, &ctx) {
+      if let Some(si) = find_definition(source_pos, &canon_path, ctx) {
          let mut res: HashMap<(SourcePath, usize), ExpandedErrorLocation> = HashMap::new();
          if *self.column_encoding.read() == PositionEncodingKind::UTF8 {
             convert_positions_to_line_column::<{ ColumnCountingCodeUnits::Utf8 }, _>(
@@ -455,14 +511,19 @@ impl LanguageServer for Backend {
                character: end_col as u32,
             },
          };
-         let target_uri = roland_source_path_to_uri(&si.file, &ctx.source_files);
-         Ok(target_uri.map(|uri| {
-            GotoDefinitionResponse::Link(vec![LocationLink {
-               origin_selection_range: None,
-               target_uri: uri,
-               target_range: dest_range,
-               target_selection_range: dest_range,
-            }])
+         let target_path = roland_source_path_to_file_path(&si.file, &ctx.source_files);
+         Ok(target_path.map(|path| {
+            GotoDefinitionResponse::Link(
+               document_uris(path, &self.opened_files.read())
+                  .into_iter()
+                  .map(|uri| LocationLink {
+                     origin_selection_range: None,
+                     target_uri: uri,
+                     target_range: dest_range,
+                     target_selection_range: dest_range,
+                  })
+                  .collect(),
+            )
          }))
       } else {
          Ok(None)
@@ -475,19 +536,18 @@ impl LanguageServer for Backend {
       if let Some(p) = doc_uri.to_file_path() {
          if let Ok(canon_path) = std::fs::canonicalize(p) {
             let mut lock = self.opened_files.write();
-            lock.insert(
-               canon_path,
-               OpenedFile {
-                  uri: doc_uri.clone(),
-                  text: params.text_document.text,
-                  version: params.text_document.version,
-               },
-            );
+            let file = lock.entry(canon_path).or_insert_with(|| OpenedFile {
+               text: String::new(),
+               versions: HashMap::new(),
+            });
+            file.versions.insert(doc_uri.clone(), params.text_document.version);
+            file.text = params.text_document.text;
          } else {
             self
                .client
                .log_message(MessageType::WARNING, format!("Can't canonicalize path: {:?}", doc_uri))
                .await;
+            return;
          }
       } else {
          self
@@ -500,10 +560,9 @@ impl LanguageServer for Backend {
                ),
             )
             .await;
+         return;
       }
-      self
-         .compile_and_publish_diagnostics(&mut ctx, &doc_uri, params.text_document.version)
-         .await;
+      self.compile_and_publish_diagnostics(&mut ctx, &doc_uri).await;
    }
 
    async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
@@ -515,18 +574,17 @@ impl LanguageServer for Backend {
       let doc_uri = params.text_document.uri;
       {
          let mut files = self.opened_files.write();
-         let Some(file) = files.values_mut().find(|file| file.uri == doc_uri) else {
+         let Some(file) = files.values_mut().find(|file| file.versions.contains_key(&doc_uri)) else {
             return;
          };
-         if params.text_document.version <= file.version {
+         let version = file.versions.get_mut(&doc_uri).unwrap();
+         if params.text_document.version <= *version {
             return;
          }
+         *version = params.text_document.version;
          file.text = change.text;
-         file.version = params.text_document.version;
       }
-      self
-         .compile_and_publish_diagnostics(&mut ctx, &doc_uri, params.text_document.version)
-         .await;
+      self.compile_and_publish_diagnostics(&mut ctx, &doc_uri).await;
    }
 
    async fn did_close(&self, params: DidCloseTextDocumentParams) {
@@ -534,9 +592,16 @@ impl LanguageServer for Backend {
       // This is a bad solution - we should improve this in the future such that closing a tab always
       // clears diagnostics immediately and if a compilation comes in afterwards it would just know (somehow)
       // not to publish those diagnostics.
-      let _ctx = self.ctx.lock().await;
+      let mut state = self.ctx.lock().await;
       let doc_uri = params.text_document.uri;
-      self.opened_files.write().retain(|_, file| file.uri != doc_uri);
+      self.opened_files.write().retain(|_, file| {
+         file.versions.remove(&doc_uri);
+         !file.versions.is_empty()
+      });
+      state.published_uris.retain(|_, uris| {
+         uris.retain(|uri| *uri != doc_uri);
+         !uris.is_empty()
+      });
       self.client.publish_diagnostics(doc_uri, vec![], None).await;
    }
 }
@@ -549,7 +614,10 @@ async fn main() {
       column_encoding: RwLock::new(PositionEncodingKind::UTF8),
       mode: RwLock::new(WorkspaceMode::LooseFiles),
       opened_files: RwLock::new(HashMap::new()),
-      ctx: Mutex::new(CompilationContext::new()),
+      ctx: Mutex::new(CompilerState {
+         context: CompilationContext::new(),
+         published_uris: HashMap::new(),
+      }),
    });
    Server::new(stdin, stdout, socket).serve(service).await;
 }
