@@ -35,8 +35,8 @@ impl FileResolver for PlaygroundFileResolver<'_> {
       ))
    }
 
-   fn requires_canonicalization(&self) -> bool {
-      false
+   fn canonicalize_path<'a>(&'a self, path: &'a Path) -> std::io::Result<Cow<'a, Path>> {
+      Ok(Cow::Borrowed(path))
    }
 }
 

@@ -152,7 +152,9 @@ pub enum SourceInfoKind {
 
 pub trait FileResolver: Send {
    fn resolve_path(&mut self, path: &Path) -> std::io::Result<Cow<'static, str>>;
-   fn requires_canonicalization(&self) -> bool;
+   fn canonicalize_path<'a>(&'a self, path: &'a Path) -> std::io::Result<Cow<'a, Path>> {
+      std::fs::canonicalize(path).map(Cow::Owned)
+   }
 }
 
 pub struct CompilationEntryPoint<'a> {

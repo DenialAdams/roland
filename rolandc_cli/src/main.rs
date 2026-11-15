@@ -139,10 +139,6 @@ impl FileResolver for CliFileResolver {
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'static, str>> {
       std::fs::read_to_string(path).map(Cow::Owned)
    }
-
-   fn requires_canonicalization(&self) -> bool {
-      true
-   }
 }
 
 fn main() {

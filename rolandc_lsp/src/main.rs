@@ -3,7 +3,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use goto_definition::find_definition;
 use parking_lot::RwLock;
@@ -42,7 +42,6 @@ struct LSPFileResolver<'a> {
 
 impl FileResolver for LSPFileResolver<'_> {
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<Cow<'static, str>> {
-      debug_assert_eq!(path, std::fs::canonicalize(path)?);
       self
          .diagnostic_buckets
          .entry(Uri::from_file_path(path).unwrap())
@@ -57,8 +56,12 @@ impl FileResolver for LSPFileResolver<'_> {
       }
    }
 
-   fn requires_canonicalization(&self) -> bool {
-      true
+   fn canonicalize_path<'a>(&'a self, path: &'a Path) -> std::io::Result<Cow<'a, Path>> {
+      if let Some((path, _)) = self.file_map.get_key_value(path) {
+         Ok(Cow::Borrowed(path))
+      } else {
+         std::fs::canonicalize(path).map(Cow::Owned)
+      }
    }
 }
 

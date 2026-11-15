@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crossbeam::channel::Select;
@@ -18,8 +18,8 @@ static STDLIB_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../lib");
 pub struct StdFileResolver;
 
 impl FileResolver for StdFileResolver {
-   fn requires_canonicalization(&self) -> bool {
-      false
+   fn canonicalize_path<'a>(&'a self, path: &'a Path) -> std::io::Result<Cow<'a, Path>> {
+      Ok(Cow::Borrowed(path))
    }
    fn resolve_path(&mut self, path: &std::path::Path) -> std::io::Result<std::borrow::Cow<'static, str>> {
       Ok(Cow::Borrowed(
@@ -153,31 +153,27 @@ pub fn import_program(
                   &mut *user_resolver
                };
 
-               let canonical_path = if resolver.requires_canonicalization() {
-                  match std::fs::canonicalize(&node.path) {
-                     Ok(p) => p,
-                     Err(e) => {
-                        if let Some(l) = node.import_location {
-                           rolandc_error!(
-                              err_manager,
-                              l,
-                              "Failed to canonicalize path '{}': {}",
-                              node.path.as_os_str().to_string_lossy(),
-                              e
-                           );
-                        } else {
-                           rolandc_error_no_loc!(
-                              err_manager,
-                              "Failed to canonicalize path '{}': {}",
-                              node.path.as_os_str().to_string_lossy(),
-                              e
-                           );
-                        }
-                        return Err(());
+               let canonical_path = match resolver.canonicalize_path(&node.path) {
+                  Ok(p) => p.into_owned(),
+                  Err(e) => {
+                     if let Some(l) = node.import_location {
+                        rolandc_error!(
+                           err_manager,
+                           l,
+                           "Failed to canonicalize path '{}': {}",
+                           node.path.as_os_str().to_string_lossy(),
+                           e
+                        );
+                     } else {
+                        rolandc_error_no_loc!(
+                           err_manager,
+                           "Failed to canonicalize path '{}': {}",
+                           node.path.as_os_str().to_string_lossy(),
+                           e
+                        );
                      }
+                     return Err(());
                   }
-               } else {
-                  node.path.clone()
                };
 
                // TODO: fix this using some form of raw entry so we only clone canonical_path when we have to
