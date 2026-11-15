@@ -515,6 +515,9 @@ impl LanguageServer for Backend {
          let Some(file) = files.values_mut().find(|file| file.uri == doc_uri) else {
             return;
          };
+         if params.text_document.version <= file.version {
+            return;
+         }
          file.text = change.text;
          file.version = params.text_document.version;
       }
