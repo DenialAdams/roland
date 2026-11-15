@@ -14,10 +14,10 @@ tempfile = "3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rolandc-linker = { path = "../rolandc_linker" }
-nix = "0.31"
+nix = { version = "0.32", features = ["fs"] }
 
 [target.'cfg(target_os = "freebsd")'.dependencies]
-nix = "0.31"
+nix = { version = "0.32", features = ["fs"] }
 
 [target.'cfg(target_env = "musl")'.dependencies]
 mimalloc = "*"

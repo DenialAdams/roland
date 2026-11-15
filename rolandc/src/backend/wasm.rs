@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use indexmap::{IndexMap, IndexSet};
 use wasm_encoder::{
    BlockType, CodeSection, ConstExpr, ElementSection, Elements, Encode, EntityType, ExportSection, Function,
-   FunctionSection, GlobalSection, GlobalType, ImportSection, Instruction, MemArg, MemorySection, MemoryType, Module,
-   NameMap, NameSection, RefType, Section, SectionId, TableSection, TableType, TypeSection, ValType,
+   FunctionSection, GlobalSection, GlobalType, ImportSection, Instruction, MemArg, MemArgTarget, MemorySection,
+   MemoryType, Module, NameMap, NameSection, RefType, Section, SectionId, TableSection, TableType, TypeSection,
+   ValType,
 };
 
 use super::linearize::{CFG_END_NODE, Cfg, CfgInstruction, post_order};
@@ -27,7 +28,8 @@ use crate::{BaseTarget, CompilationConfig, Target};
 const NULL_MEM_ARG: MemArg = MemArg {
    offset: 0,
    align: 0,
-   memory_index: 0,
+   target: MemArgTarget::Memory(0),
+   ordering: None,
 };
 
 impl From<RegisterType> for ValType {
