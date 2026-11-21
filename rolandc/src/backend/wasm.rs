@@ -545,10 +545,12 @@ pub fn emit_wasm(
       let mut table = TableSection::new();
       let mut elem = ElementSection::new();
 
+      // Start at slot 1 so that nullptr can't be a valid function handle
+      let table_size = generation_context.procedure_to_table_index.len() as u64 + 1;
       let table_type = TableType {
          element_type: RefType::FUNCREF,
-         minimum: generation_context.procedure_to_table_index.len() as u64,
-         maximum: Some(generation_context.procedure_to_table_index.len() as u64),
+         minimum: table_size,
+         maximum: Some(table_size),
          table64: false,
          shared: false,
       };
@@ -567,7 +569,7 @@ pub fn emit_wasm(
             .collect::<Vec<_>>();
          elem.active(
             Some(0),
-            &ConstExpr::i32_const(0),
+            &ConstExpr::i32_const(1),
             Elements::Functions(std::borrow::Cow::Owned(elements)),
          );
       }
@@ -927,7 +929,7 @@ fn literal_as_bytes(
             .get_index_of(proc_id)
             .unwrap();
          // todo: truncation
-         buf.extend((my_index as u32).to_le_bytes());
+         buf.extend((my_index as u32 + 1).to_le_bytes());
       }
       Expression::UnitLiteral => (),
       Expression::BoolLiteral(x) => {
@@ -1029,7 +1031,7 @@ fn literal_as_wasm_const(
       Expression::BoundFcnLiteral(proc_id, _) => {
          let (my_index, _) = generation_context.procedure_to_table_index.insert_full(*proc_id);
          // todo: truncation
-         ConstExpr::i32_const(my_index as i32)
+         ConstExpr::i32_const(my_index as i32 + 1)
       }
       Expression::BoolLiteral(x) => ConstExpr::i32_const(i32::from(*x)),
       Expression::IntLiteral { val: x, .. } => {
@@ -1892,7 +1894,7 @@ fn emit_procedure_pointer_index(proc_id: ProcedureId, generation_context: &mut G
    let (my_index, _) = generation_context.procedure_to_table_index.insert_full(proc_id);
    generation_context
       .active_fcn
-      .instruction(&Instruction::I32Const(my_index as i32));
+      .instruction(&Instruction::I32Const(my_index as i32 + 1));
 }
 
 fn name_to_procedure_index(
