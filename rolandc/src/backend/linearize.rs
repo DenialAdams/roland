@@ -93,6 +93,9 @@ pub fn simplify_cfg(cfg: &mut Cfg, ast: &ExpressionPool) {
       } else {
          continue;
       };
+      if dest == node {
+         continue;
+      }
 
       if cfg.start == node {
          cfg.start = dest;
@@ -100,10 +103,6 @@ pub fn simplify_cfg(cfg: &mut Cfg, ast: &ExpressionPool) {
 
       let preds = std::mem::take(&mut cfg.bbs[node].predecessors);
       for pred in preds {
-         if pred == node {
-            cfg.bbs[node].predecessors.insert(pred);
-            continue;
-         }
          let last_in_pred = cfg.bbs[pred].instructions.pop().unwrap();
          match last_in_pred {
             CfgInstruction::ConditionalJump(cond_expr, mut x, mut y) => {

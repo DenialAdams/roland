@@ -1,0 +1,13 @@
+proc spin_if(flag: bool) {
+   if flag {
+      loop {}
+   }
+}
+
+proc main() {
+   spin_if(false);
+   println("ok");
+}
+__END__
+run:
+ok
