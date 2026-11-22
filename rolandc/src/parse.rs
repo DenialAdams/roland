@@ -1463,22 +1463,8 @@ fn parse_generic_arguments(
       expect(l, parse_context, Token::Comma)?;
    }
 
-   let close_position = if let Some(SourceToken {
-      token: tok @ Token::ShiftRight,
-      source_info,
-   }) = l.peek_mut()
-   {
-      // Turn the upcoming ">>" into ">", including adjusting the position
-      // Preeeety hacky, but should be correct because whitespace would have terminated the tokens
-
-      let mut cur_source = *source_info;
-      // update next token
-      *tok = Token::GreaterThan;
-      source_info.begin.0 += 1;
-
-      // adjust the location of this "token"
-      cur_source.end.0 -= 1;
-      cur_source
+   let close_position = if let Some(first) = l.split_shift_right() {
+      first
    } else {
       expect(l, parse_context, Token::GreaterThan)?.source_info
    };

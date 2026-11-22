@@ -225,6 +225,31 @@ struct CopyRange {
    end: usize,
 }
 
+impl CopyRange {
+   fn source_info(self, file: SourcePath) -> SourceInfo {
+      SourceInfo {
+         begin: SourcePosition(self.start),
+         end: SourcePosition(self.end),
+         file,
+      }
+   }
+}
+
+#[derive(Clone, Copy)]
+struct LexedToken {
+   token: Token,
+   span: CopyRange,
+}
+
+impl LexedToken {
+   fn new(token: Token, start: usize, end: usize) -> Self {
+      Self {
+         token,
+         span: CopyRange { start, end },
+      }
+   }
+}
+
 fn chars_from(input: &str, offset: usize) -> impl Iterator<Item = (CopyRange, char)> {
    input[offset..].char_indices().map(move |(start, ch)| {
       (
@@ -240,13 +265,13 @@ fn chars_from(input: &str, offset: usize) -> impl Iterator<Item = (CopyRange, ch
    })
 }
 
-pub fn lex_for_tokens(
+pub fn lex_file(
    input: &str,
    source_path: SourcePath,
    err_manager: &SharedErrorManager,
    interner: &Interner,
-) -> Result<Vec<SourceToken>, ()> {
-   let mut tokens: Vec<SourceToken> = Vec::new();
+) -> Result<Lexer, ()> {
+   let mut tokens = Vec::new();
    let mut mode = LexMode::Normal;
 
    // Temporary buffer we use for string and numeric literals
@@ -416,24 +441,13 @@ pub fn lex_for_tokens(
             } else {
                rolandc_error!(
                   err_manager,
-                  SourceInfo {
-                     begin: SourcePosition(c_byte_range.start),
-                     end: SourcePosition(c_byte_range.end),
-                     file: source_path,
-                  },
+                  c_byte_range.source_info(source_path),
                   "Encountered unexpected character {}",
                   c,
                );
                return Err(());
             };
-            tokens.push(SourceToken {
-               source_info: SourceInfo {
-                  begin: SourcePosition(c_byte_range.start),
-                  end: SourcePosition(token_end),
-                  file: source_path,
-               },
-               token,
-            });
+            tokens.push(LexedToken::new(token, c_byte_range.start, token_end));
          }
          LexMode::Ident => {
             let current_fragment = &input[fragment_begin..c_byte_range.end];
@@ -447,14 +461,7 @@ pub fn lex_for_tokens(
             } else {
                let fragment_excluding_this = &input[fragment_begin..c_byte_range.start];
                let resulting_token = extract_keyword_or_ident(fragment_excluding_this, interner);
-               tokens.push(SourceToken {
-                  source_info: SourceInfo {
-                     begin: SourcePosition(fragment_begin),
-                     end: SourcePosition(fragment_begin + fragment_excluding_this.len()),
-                     file: source_path,
-                  },
-                  token: resulting_token,
-               });
+               tokens.push(LexedToken::new(resulting_token, fragment_begin, c_byte_range.start));
                mode = LexMode::Normal;
             }
          }
@@ -473,14 +480,11 @@ pub fn lex_for_tokens(
                   str_buf.push_str(fragment);
                   interner.intern(&str_buf)
                };
-               tokens.push(SourceToken {
-                  source_info: SourceInfo {
-                     begin: SourcePosition(fragment_begin),
-                     end: SourcePosition(end + 1),
-                     file: source_path,
-                  },
-                  token: Token::StringLiteral(final_str),
-               });
+               tokens.push(LexedToken::new(
+                  Token::StringLiteral(final_str),
+                  fragment_begin,
+                  end + 1,
+               ));
                str_buf.clear();
                mode = LexMode::Normal;
             } else {
@@ -549,14 +553,7 @@ pub fn lex_for_tokens(
                   mode = LexMode::Normal;
 
                   next_char = chars.next();
-                  tokens.push(SourceToken {
-                     source_info: SourceInfo {
-                        begin: SourcePosition(c_byte_range.start),
-                        end: SourcePosition(next_range.end),
-                        file: source_path,
-                     },
-                     token: Token::DoublePeriod,
-                  });
+                  tokens.push(LexedToken::new(Token::DoublePeriod, c_byte_range.start, next_range.end));
                } else if !is_float {
                   is_float = true;
                   str_buf.push(c);
@@ -624,18 +621,11 @@ pub fn lex_for_tokens(
    }
 
    match mode {
-      LexMode::Normal | LexMode::Comment => Ok(tokens),
+      LexMode::Normal | LexMode::Comment => (),
       // Probably no valid program ends with a keyword or identifier, but we'll let the parser determine that
       LexMode::Ident => {
-         tokens.push(SourceToken {
-            source_info: SourceInfo {
-               begin: SourcePosition(fragment_begin),
-               end: SourcePosition(input.len()),
-               file: source_path,
-            },
-            token: extract_keyword_or_ident(&input[fragment_begin..], interner),
-         });
-         Ok(tokens)
+         let token = extract_keyword_or_ident(&input[fragment_begin..], interner);
+         tokens.push(LexedToken::new(token, fragment_begin, input.len()));
       }
       // Same for numbers
       LexMode::NumericLiteral | LexMode::FloatLiteralAfterE => {
@@ -649,7 +639,6 @@ pub fn lex_for_tokens(
             },
             is_float,
          )?);
-         Ok(tokens)
       }
       LexMode::StringLiteral | LexMode::StringLiteralEscape => {
          rolandc_error!(
@@ -661,9 +650,10 @@ pub fn lex_for_tokens(
             },
             "Encountered EOF while parsing string literal. Hint: Are you missing a closing \"?"
          );
-         Err(())
+         return Err(());
       }
    }
+   Ok(Lexer::from_tokens(tokens, source_path))
 }
 
 fn finish_numeric_literal(
@@ -671,7 +661,7 @@ fn finish_numeric_literal(
    err_manager: &SharedErrorManager,
    source_info: SourceInfo,
    is_float: bool,
-) -> Result<SourceToken, ()> {
+) -> Result<LexedToken, ()> {
    let resulting_token = if is_float {
       let Ok(float_value) = s.parse::<f64>() else {
          rolandc_error!(
@@ -691,10 +681,7 @@ fn finish_numeric_literal(
    } else {
       parse_int(s, 10, err_manager, source_info)?
    };
-   Ok(SourceToken {
-      source_info,
-      token: resulting_token,
-   })
+   Ok(LexedToken::new(resulting_token, source_info.begin.0, source_info.end.0))
 }
 
 fn parse_int(s: &str, radix: u32, err_manager: &SharedErrorManager, source_info: SourceInfo) -> Result<Token, ()> {
@@ -725,28 +712,17 @@ fn parse_int(s: &str, radix: u32, err_manager: &SharedErrorManager, source_info:
 }
 
 pub struct Lexer {
-   tokens: Vec<SourceToken>,
+   tokens: Vec<LexedToken>,
    eof_location: SourceInfo,
    cur_position: usize,
 }
 
 impl Lexer {
-   pub fn from_tokens(tokens: Vec<SourceToken>, file: SourcePath) -> Lexer {
-      let eof_location = tokens.last().map_or(
-         SourceInfo {
-            begin: SourcePosition(0),
-            end: SourcePosition(0),
-            file,
-         },
-         |x| SourceInfo {
-            begin: x.source_info.end,
-            end: x.source_info.end,
-            file: x.source_info.file,
-         },
-      );
+   fn from_tokens(tokens: Vec<LexedToken>, file: SourcePath) -> Lexer {
+      let end = SourcePosition(tokens.last().map_or(0, |x| x.span.end));
       Lexer {
          tokens,
-         eof_location,
+         eof_location: SourceInfo { begin: end, end, file },
          cur_position: 0,
       }
    }
@@ -755,7 +731,7 @@ impl Lexer {
       self
          .tokens
          .get(self.cur_position)
-         .map_or(self.eof_location, |x| x.source_info)
+         .map_or(self.eof_location, |x| x.span.source_info(self.eof_location.file))
    }
 
    pub fn peek_token(&self) -> Token {
@@ -766,8 +742,18 @@ impl Lexer {
       self.tokens.get(self.cur_position + 1).map_or(Token::Eof, |x| x.token)
    }
 
-   pub fn peek_mut(&mut self) -> Option<&mut SourceToken> {
-      self.tokens.get_mut(self.cur_position)
+   pub fn split_shift_right(&mut self) -> Option<SourceInfo> {
+      let next = self.tokens.get_mut(self.cur_position)?;
+      if next.token != Token::ShiftRight {
+         return None;
+      }
+
+      // Consume the first '>' of a nested generic argument list, leaving the second for the caller.
+      let mut first = next.span;
+      first.end -= 1;
+      next.token = Token::GreaterThan;
+      next.span.start += 1;
+      Some(first.source_info(self.eof_location.file))
    }
 
    pub fn next(&mut self) -> SourceToken {
@@ -777,8 +763,12 @@ impl Lexer {
             source_info: self.eof_location,
          }
       } else {
+         let next = self.tokens[self.cur_position];
          self.cur_position += 1;
-         self.tokens[self.cur_position - 1]
+         SourceToken {
+            token: next.token,
+            source_info: next.span.source_info(self.eof_location.file),
+         }
       }
    }
 }
@@ -790,6 +780,9 @@ mod tests {
    // TODO: replace with static assert when rust can support it without a feature
    #[test]
    fn no_token_bloat() {
-      assert_eq!(std::mem::size_of::<SourceToken>(), 40);
+      assert_eq!(
+         std::mem::size_of::<LexedToken>(),
+         std::mem::size_of::<Token>() + 2 * std::mem::size_of::<usize>()
+      );
    }
 }

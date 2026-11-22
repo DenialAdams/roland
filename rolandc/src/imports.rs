@@ -8,7 +8,6 @@ use parking_lot::Mutex;
 
 use crate::error_handling::SharedErrorManager;
 use crate::error_handling::error_handling_macros::{rolandc_error, rolandc_error_no_loc};
-use crate::lex::Lexer;
 use crate::parse::{self, LinkNode, ParseResult};
 use crate::source_info::{SourceInfo, SourcePath, SourcePosition};
 use crate::{CompilationConfig, CompilationContext, FileResolver, Target, lex};
@@ -236,9 +235,9 @@ pub fn import_program(
                   s.spawn(move |_| {
                      // try block would be nicer here
                      let res = (move || -> Result<ParseResult, ()> {
-                        let tokens = lex::lex_for_tokens(program_s, source_path, err_manager, interner)?;
+                        let lexer = lex::lex_file(program_s, source_path, err_manager, interner)?;
                         Ok(parse::astify(
-                           Lexer::from_tokens(tokens, source_path),
+                           lexer,
                            err_manager,
                            interner,
                            global_exprs,
