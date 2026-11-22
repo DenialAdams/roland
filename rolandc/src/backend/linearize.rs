@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use arrayvec::ArrayVec;
+use bitvec::slice::BitSlice;
+use bitvec::vec::BitVec;
 
 use crate::constant_folding::expression_could_have_side_effects;
 use crate::interner::Interner;
@@ -212,8 +214,8 @@ fn bb_id_to_label(bb_id: usize) -> String {
 }
 
 pub fn post_order(cfg: &Cfg) -> Vec<usize> {
-   fn post_order_inner(cfg: &[BasicBlock], node: usize, visited: &mut HashSet<usize>, post_order: &mut Vec<usize>) {
-      if !visited.insert(node) {
+   fn post_order_inner(cfg: &[BasicBlock], node: usize, visited: &mut BitSlice<u8>, post_order: &mut Vec<usize>) {
+      if visited.replace(node, true) {
          return;
       }
 
@@ -224,7 +226,7 @@ pub fn post_order(cfg: &Cfg) -> Vec<usize> {
       post_order.push(node);
    }
 
-   let mut visited = HashSet::with_capacity(cfg.bbs.len());
+   let mut visited = BitVec::<u8>::repeat(false, cfg.bbs.len());
    let mut post_order = Vec::with_capacity(cfg.bbs.len());
    post_order_inner(&cfg.bbs, cfg.start, &mut visited, &mut post_order);
    post_order
