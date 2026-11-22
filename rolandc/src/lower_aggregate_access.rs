@@ -1,6 +1,6 @@
 use crate::parse::{BinOp, Expression, ExpressionId, ExpressionNode, all_expression_pools_mut};
 use crate::size_info::sizeof_type_mem;
-use crate::type_data::{ExpressionType, IntType, IntWidth};
+use crate::type_data::{ExpressionType, IntType, IntWidth, USIZE_TYPE};
 use crate::{BaseTarget, Program};
 
 pub fn lower_aggregate_access(program: &mut Program, target: BaseTarget) {
@@ -68,6 +68,15 @@ pub fn lower_aggregate_access(program: &mut Program, target: BaseTarget) {
                };
                let offset_node = if sizeof_inner == 1 {
                   index
+               } else if let Expression::IntLiteral { val, .. } = ast[index].expression {
+                  ast.insert(ExpressionNode {
+                     exp_type: Some(USIZE_TYPE),
+                     expression: Expression::IntLiteral {
+                        val: val.wrapping_mul(sizeof_inner) & target.max_size(),
+                        synthetic: true,
+                     },
+                     location: ast[e].location,
+                  })
                } else {
                   let sizeof_literal_node = ast.insert(ExpressionNode {
                      exp_type: Some(ExpressionType::Int(IntType {
