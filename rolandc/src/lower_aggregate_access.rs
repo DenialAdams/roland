@@ -1,12 +1,16 @@
-use crate::parse::{BinOp, Expression, ExpressionId, ExpressionNode, all_expression_pools_mut};
+use crate::parse::{BinOp, Expression, ExpressionNode, all_expression_pools_mut};
 use crate::size_info::sizeof_type_mem;
 use crate::type_data::{ExpressionType, IntType, IntWidth, USIZE_TYPE};
 use crate::{BaseTarget, Program};
 
 pub fn lower_aggregate_access(program: &mut Program, target: BaseTarget) {
+   let mut accesses = Vec::new();
    for ast in all_expression_pools_mut(&mut program.global_exprs, &mut program.procedure_bodies) {
-      let expression_ids: Vec<ExpressionId> = ast.keys().collect();
-      for e in expression_ids {
+      accesses.extend(ast.iter().filter_map(|(id, node)| match node.expression {
+         Expression::FieldAccess(..) | Expression::ArrayIndex { .. } => Some(id),
+         _ => None,
+      }));
+      for e in accesses.drain(..) {
          match &ast[e].expression {
             Expression::FieldAccess(f, base) => {
                let f = *f;
