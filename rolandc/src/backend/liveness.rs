@@ -20,6 +20,38 @@ struct LivenessState {
    address_taken_out: BitBox,
 }
 
+enum LiveDependencies {
+   Unknown,
+   Locals(Vec<usize>),
+}
+
+fn collect_live_dependencies(
+   local: usize,
+   pointer_analysis_result: &PointerAnalysisResult,
+   visited: &mut BitSlice,
+   pending: &mut Vec<usize>,
+) -> LiveDependencies {
+   visited.fill(false);
+   visited.set(local, true);
+   pending.clear();
+   pending.push(local);
+
+   let mut locals = Vec::new();
+   while let Some(local) = pending.pop() {
+      let PointsTo::Vars(pointers) = pointer_analysis_result.who_points_to(local) else {
+         return LiveDependencies::Unknown;
+      };
+      for pointer in pointers.iter_ones() {
+         if !visited[pointer] {
+            visited.set(pointer, true);
+            locals.push(pointer);
+            pending.push(pointer);
+         }
+      }
+   }
+   LiveDependencies::Locals(locals)
+}
+
 fn extend_live_interval(intervals: &mut [Option<LiveInterval>], local_index: usize, here: ProgramIndex) {
    if let Some(interval) = &mut intervals[local_index] {
       interval.begin = std::cmp::min(interval.begin, here);
@@ -52,7 +84,12 @@ pub fn compute_live_intervals(
    let mut current_live_variables = BitVec::new();
    let mut current_address_taken = bitvec![0; procedure_vars.len()];
    let mut new_address_taken = bitbox![0; procedure_vars.len()];
-   let mut visit_in_progress = bitbox![0; procedure_vars.len()];
+   // Pointer analysis stays fixed across DCE iterations, so cache the reverse reachability
+   // of each local and test it against the live set at the current instruction.
+   let mut live_dependencies = Vec::new();
+   live_dependencies.resize_with(procedure_vars.len(), || None);
+   let mut visited_dependencies = bitbox![0; procedure_vars.len()];
+   let mut pending_dependencies = Vec::new();
 
    // Dataflow Analyis on the CFG
    let mut state = vec![
@@ -331,44 +368,24 @@ pub fn compute_live_intervals(
             }
 
             let start = i * address_taken_stride;
-            for a_taken_address_var in block_address_taken[start..start + procedure_vars.len()].iter_ones() {
-               fn var_is_effectively_live(
-                  v: usize,
-                  visit_in_progress: &mut BitSlice,
-                  live_vars: &BitSlice,
-                  pointer_analysis_result: &PointerAnalysisResult,
-               ) -> bool {
-                  if live_vars[v] {
-                     // If a var was marked live, it's definitely live.
-                     return true;
-                  }
-
-                  // Otherwise, a var is still live if a var pointing to it is effectively live
-
-                  if visit_in_progress[v] {
-                     // Indicates there is a cycle, X -> ... -> X
-                     return false;
-                  }
-                  visit_in_progress.set(v, true);
-
-                  let res = match pointer_analysis_result.who_points_to(v) {
-                     PointsTo::Unknown => true,
-                     PointsTo::Vars(bit_slice) => bit_slice
-                        .iter_ones()
-                        .any(|x| var_is_effectively_live(x, visit_in_progress, live_vars, pointer_analysis_result)),
-                  };
-
-                  visit_in_progress.set(v, false);
-
-                  res
+            for local in block_address_taken[start..start + procedure_vars.len()].iter_ones() {
+               if current_live_variables[local] {
+                  continue;
                }
-               let el = var_is_effectively_live(
-                  a_taken_address_var,
-                  &mut visit_in_progress,
-                  &current_live_variables,
-                  pointer_analysis_result,
-               );
-               current_live_variables.set(a_taken_address_var, el);
+
+               let dependencies = live_dependencies[local].get_or_insert_with(|| {
+                  collect_live_dependencies(
+                     local,
+                     pointer_analysis_result,
+                     &mut visited_dependencies,
+                     &mut pending_dependencies,
+                  )
+               });
+               let live = match dependencies {
+                  LiveDependencies::Unknown => true,
+                  LiveDependencies::Locals(pointers) => pointers.iter().any(|&pointer| current_live_variables[pointer]),
+               };
+               current_live_variables.set(local, live);
             }
 
             // Once another DCE iteration is needed, these ranges will be discarded.
