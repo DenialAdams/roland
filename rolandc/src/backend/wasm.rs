@@ -711,12 +711,11 @@ fn do_tree(
    ast: &ExpressionPool,
    generation_context: &mut GenerationContext,
 ) {
-   let empty_children = IndexSet::new();
    let merge_node_children: Vec<usize> = dominator_tree
       .children
       .get(&rpo_index)
-      .unwrap_or(&empty_children)
-      .iter()
+      .into_iter()
+      .flatten()
       .copied()
       .filter(|child| is_merge_node(*child, rpo, cfg, &generation_context.cfg_index_to_rpo_index))
       .collect();

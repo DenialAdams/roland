@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 
-use indexmap::IndexSet;
-
 use crate::backend::linearize::Cfg;
 
 #[derive(Debug)]
 pub struct DominatorTree {
-   pub children: HashMap<usize, IndexSet<usize>>,
+   pub children: HashMap<usize, Vec<usize>>,
 }
 
 pub fn compute_dominators(cfg: &Cfg, rpo: &[usize], cfg_index_to_rpo_index: &HashMap<usize, usize>) -> DominatorTree {
@@ -37,11 +35,9 @@ pub fn compute_dominators(cfg: &Cfg, rpo: &[usize], cfg_index_to_rpo_index: &Has
    let mut dt = DominatorTree {
       children: HashMap::with_capacity(dominators.len()),
    };
+   // Each child appears once, in ascending reverse-postorder index.
    for (i, elem) in dominators.into_iter().map(|x| x.unwrap()).enumerate().skip(1) {
-      dt.children.entry(elem).or_default().insert(i);
-   }
-   for children_list in dt.children.values_mut() {
-      children_list.sort_unstable();
+      dt.children.entry(elem).or_default().push(i);
    }
    dt
 }
