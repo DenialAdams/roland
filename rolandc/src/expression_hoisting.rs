@@ -39,6 +39,7 @@ struct VvContext<'a> {
    statements_that_need_hoisting: Vec<usize>,
    hoisted_statements: Vec<(usize, StatementId)>,
    mode: HoistingMode,
+   statement_has_side_effects: bool,
    interner: &'a Interner,
    target: Target,
 }
@@ -74,6 +75,7 @@ pub fn expression_hoisting(program: &mut Program, interner: &Interner, mode: Hoi
       statements_that_need_hoisting: Vec::new(),
       hoisted_statements: Vec::new(),
       mode,
+      statement_has_side_effects: false,
       interner,
       target,
    };
@@ -372,8 +374,23 @@ fn vv_block(block: &mut BlockNode, ctx: &mut VvContext, ast: &mut AstPool) {
    }
 }
 
+fn statement_could_have_side_effects(statement: &Statement, expressions: &ExpressionPool) -> bool {
+   match statement {
+      Statement::Assignment(lhs, rhs) => {
+         expression_could_have_side_effects(*lhs, expressions) || expression_could_have_side_effects(*rhs, expressions)
+      }
+      Statement::IfElse { cond, .. } | Statement::Expression(cond) | Statement::Return(cond) => {
+         expression_could_have_side_effects(*cond, expressions)
+      }
+      _ => false,
+   }
+}
+
 fn vv_statement(statement: StatementId, vv_context: &mut VvContext, ast: &mut AstPool, current_statement: usize) {
    let mut the_statement = std::mem::replace(&mut ast.statements[statement].statement, Statement::Break);
+   if vv_context.mode == HoistingMode::ThreeAddressCode {
+      vv_context.statement_has_side_effects = statement_could_have_side_effects(&the_statement, &ast.expressions);
+   }
    match &mut the_statement {
       Statement::Assignment(lhs_expr, rhs_expr) => {
          vv_expr(
@@ -640,7 +657,8 @@ fn vv_expr(
          let is_literal = is_non_aggregate_const(&expressions[expr_index].expression);
          if is_ifx || (!is_top_level && !is_literal && !is_var && !is_var_deref) {
             ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::Must);
-         } else if !is_literal && !is_var && !is_top_level {
+         } else if is_var_deref && !is_top_level && ctx.statement_has_side_effects {
+            // A hoisted call can change the value before the original read.
             ctx.mark_expr_for_hoisting(expr_index, current_stmt, HoistReason::IfOtherHoisting);
          }
       }
