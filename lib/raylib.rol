@@ -1,12 +1,12 @@
-// raylib 6.0 bindings generated from raylib.h
-// source sha256: 047e7255f93f8c34039cab906ad76136706b5c7b4c5b5b065d84141963ee9b6b
+// raylib 6.2 bindings generated from raylib.h
+// source sha256: 7cb38915fa10786af6284abb68d56f1508bf3da2e74d93b9874950981c1fbab9
 
 link "raylib";
 
 const RAYLIB_VERSION_MAJOR: u64 = 6;
-const RAYLIB_VERSION_MINOR: u64 = 0;
+const RAYLIB_VERSION_MINOR: u64 = 2;
 const RAYLIB_VERSION_PATCH: u64 = 0;
-const RAYLIB_VERSION: String = "6.0";
+const RAYLIB_VERSION: String = "6.2";
 
 const PI: f32 = 3.14159265358979323846;
 proc DEG2RAD<T>(x: T) -> T where T: Float {
@@ -217,7 +217,7 @@ struct BoneInfo {
 }
 
 struct ModelSkeleton {
-   boneCount: i32,
+   boneCount: u32,
    bones: &BoneInfo,
    bindPose: ModelAnimPose,
 }
@@ -236,7 +236,7 @@ struct Model {
 
 struct ModelAnimation {
    name: [i8; 32],
-   boneCount: i32,
+   boneCount: u32,
    keyframeCount: i32,
    keyframePoses: &ModelAnimPose,
 }
@@ -811,9 +811,6 @@ extern proc SetShaderValueMatrix(shader: Shader, locIndex: i32, mat: Matrix);
 extern proc SetShaderValueTexture(shader: Shader, locIndex: i32, texture: Texture2D);
 extern proc UnloadShader(shader: Shader);
 extern proc GetScreenToWorldRay(position: Vector2, camera: Camera) -> Ray;
-proc GetMouseRay(position: Vector2, camera: Camera) -> Ray {
-   return GetScreenToWorldRay(position, camera);
-}
 extern proc GetScreenToWorldRayEx(position: Vector2, camera: Camera, width: i32, height: i32) -> Ray;
 extern proc GetWorldToScreen(position: Vector3, camera: Camera) -> Vector2;
 extern proc GetWorldToScreenEx(position: Vector3, camera: Camera, width: i32, height: i32) -> Vector2;
@@ -861,6 +858,7 @@ extern proc FileTextFindIndex(fileName: &i8, search: &i8) -> i32;
 extern proc FileExists(fileName: &i8) -> bool;
 extern proc DirectoryExists(dirPath: &i8) -> bool;
 extern proc IsFileExtension(fileName: &i8, ext: &i8) -> bool;
+extern proc IsFileHidden(filePath: &i8) -> bool;
 extern proc GetFileLength(fileName: &i8) -> i32;
 extern proc GetFileModTime(fileName: &i8) -> i64;
 extern proc GetFileExtension(fileName: &i8) -> &i8;
@@ -871,8 +869,10 @@ extern proc GetPrevDirectoryPath(dirPath: &i8) -> &i8;
 extern proc GetWorkingDirectory() -> &i8;
 extern proc GetApplicationDirectory() -> &i8;
 extern proc MakeDirectory(dirPath: &i8) -> i32;
-extern proc ChangeDirectory(dirPath: &i8) -> bool;
+extern proc ChangeDirectory(dirPath: &i8) -> i32;
 extern proc IsPathFile(path: &i8) -> bool;
+extern proc IsPathDirectory(path: &i8) -> bool;
+extern proc IsPathAbsolute(path: &i8) -> bool;
 extern proc IsFileNameValid(fileName: &i8) -> bool;
 extern proc LoadDirectoryFiles(dirPath: &i8) -> FilePathList;
 extern proc LoadDirectoryFilesEx(basePath: &i8, filter: &i8, scanSubdirs: bool) -> FilePathList;
@@ -947,7 +947,7 @@ extern proc GetGesturePinchVector() -> Vector2;
 extern proc GetGesturePinchAngle() -> f32;
 extern proc UpdateCamera(camera: &Camera, mode: i32);
 extern proc UpdateCameraPro(camera: &Camera, movement: Vector3, rotation: Vector3, zoom: f32);
-extern proc SetShapesTexture(texture: Texture2D, source: Rectangle);
+extern proc SetShapesTexture(texture: Texture2D, rec: Rectangle);
 extern proc GetShapesTexture() -> Texture2D;
 extern proc GetShapesTextureRectangle() -> Rectangle;
 extern proc DrawPixel(posX: i32, posY: i32, color: Color);
@@ -958,38 +958,44 @@ extern proc DrawLineEx(startPos: Vector2, endPos: Vector2, thick: f32, color: Co
 extern proc DrawLineStrip(points: &Vector2, pointCount: i32, color: Color);
 extern proc DrawLineBezier(startPos: Vector2, endPos: Vector2, thick: f32, color: Color);
 extern proc DrawLineDashed(startPos: Vector2, endPos: Vector2, dashSize: i32, spaceSize: i32, color: Color);
-extern proc DrawCircle(centerX: i32, centerY: i32, radius: f32, color: Color);
-extern proc DrawCircleV(center: Vector2, radius: f32, color: Color);
-extern proc DrawCircleGradient(center: Vector2, radius: f32, inner: Color, outer: Color);
-extern proc DrawCircleSector(center: Vector2, radius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color);
-extern proc DrawCircleSectorLines(center: Vector2, radius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color);
-extern proc DrawCircleLines(centerX: i32, centerY: i32, radius: f32, color: Color);
-extern proc DrawCircleLinesV(center: Vector2, radius: f32, color: Color);
-extern proc DrawEllipse(centerX: i32, centerY: i32, radiusH: f32, radiusV: f32, color: Color);
-extern proc DrawEllipseV(center: Vector2, radiusH: f32, radiusV: f32, color: Color);
-extern proc DrawEllipseLines(centerX: i32, centerY: i32, radiusH: f32, radiusV: f32, color: Color);
-extern proc DrawEllipseLinesV(center: Vector2, radiusH: f32, radiusV: f32, color: Color);
-extern proc DrawRing(center: Vector2, innerRadius: f32, outerRadius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color);
-extern proc DrawRingLines(center: Vector2, innerRadius: f32, outerRadius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color);
+extern proc DrawTriangle(v1: Vector2, v2: Vector2, v3: Vector2, color: Color);
+extern proc DrawTriangleGradient(v1: Vector2, v2: Vector2, v3: Vector2, c1: Color, c2: Color, c3: Color);
+extern proc DrawTriangleLines(v1: Vector2, v2: Vector2, v3: Vector2, color: Color);
+extern proc DrawTriangleLinesEx(v1: Vector2, v2: Vector2, v3: Vector2, thick: f32, color: Color);
+extern proc DrawTriangleFan(points: &Vector2, pointCount: i32, color: Color);
+extern proc DrawTriangleStrip(points: &Vector2, pointCount: i32, color: Color);
 extern proc DrawRectangle(posX: i32, posY: i32, width: i32, height: i32, color: Color);
 extern proc DrawRectangleV(position: Vector2, size: Vector2, color: Color);
 extern proc DrawRectangleRec(rec: Rectangle, color: Color);
 extern proc DrawRectanglePro(rec: Rectangle, origin: Vector2, rotation: f32, color: Color);
 extern proc DrawRectangleGradientV(posX: i32, posY: i32, width: i32, height: i32, top: Color, bottom: Color);
 extern proc DrawRectangleGradientH(posX: i32, posY: i32, width: i32, height: i32, left: Color, right: Color);
-extern proc DrawRectangleGradientEx(rec: Rectangle, topLeft: Color, bottomLeft: Color, bottomRight: Color, topRight: Color);
+extern proc DrawRectangleGradientEx(rec: Rectangle, col1: Color, col2: Color, col3: Color, col4: Color);
 extern proc DrawRectangleLines(posX: i32, posY: i32, width: i32, height: i32, color: Color);
-extern proc DrawRectangleLinesEx(rec: Rectangle, lineThick: f32, color: Color);
+extern proc DrawRectangleLinesEx(rec: Rectangle, thick: f32, color: Color);
 extern proc DrawRectangleRounded(rec: Rectangle, roundness: f32, segments: i32, color: Color);
 extern proc DrawRectangleRoundedLines(rec: Rectangle, roundness: f32, segments: i32, color: Color);
-extern proc DrawRectangleRoundedLinesEx(rec: Rectangle, roundness: f32, segments: i32, lineThick: f32, color: Color);
-extern proc DrawTriangle(v1: Vector2, v2: Vector2, v3: Vector2, color: Color);
-extern proc DrawTriangleLines(v1: Vector2, v2: Vector2, v3: Vector2, color: Color);
-extern proc DrawTriangleFan(points: &Vector2, pointCount: i32, color: Color);
-extern proc DrawTriangleStrip(points: &Vector2, pointCount: i32, color: Color);
+extern proc DrawRectangleRoundedLinesEx(rec: Rectangle, roundness: f32, segments: i32, thick: f32, color: Color);
 extern proc DrawPoly(center: Vector2, sides: i32, radius: f32, rotation: f32, color: Color);
 extern proc DrawPolyLines(center: Vector2, sides: i32, radius: f32, rotation: f32, color: Color);
-extern proc DrawPolyLinesEx(center: Vector2, sides: i32, radius: f32, rotation: f32, lineThick: f32, color: Color);
+extern proc DrawPolyLinesEx(center: Vector2, sides: i32, radius: f32, rotation: f32, thick: f32, color: Color);
+extern proc DrawCircle(centerX: i32, centerY: i32, radius: f32, color: Color);
+extern proc DrawCircleV(center: Vector2, radius: f32, color: Color);
+extern proc DrawCircleGradient(center: Vector2, radius: f32, inner: Color, outer: Color);
+extern proc DrawCircleSector(center: Vector2, radius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color);
+extern proc DrawCircleSectorLines(center: Vector2, radius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color);
+extern proc DrawCircleSectorLinesEx(center: Vector2, radius: f32, startAngle: f32, endAngle: f32, segments: i32, thick: f32, color: Color);
+extern proc DrawCircleLines(centerX: i32, centerY: i32, radius: f32, color: Color);
+extern proc DrawCircleLinesV(center: Vector2, radius: f32, color: Color);
+extern proc DrawCircleLinesEx(center: Vector2, radius: f32, thick: f32, color: Color);
+extern proc DrawEllipse(centerX: i32, centerY: i32, radiusH: f32, radiusV: f32, color: Color);
+extern proc DrawEllipseV(center: Vector2, radiusH: f32, radiusV: f32, color: Color);
+extern proc DrawEllipseLines(centerX: i32, centerY: i32, radiusH: f32, radiusV: f32, color: Color);
+extern proc DrawEllipseLinesV(center: Vector2, radiusH: f32, radiusV: f32, color: Color);
+extern proc DrawEllipseLinesEx(center: Vector2, radiusH: f32, radiusV: f32, thick: f32, color: Color);
+extern proc DrawRing(center: Vector2, innerRadius: f32, outerRadius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color);
+extern proc DrawRingLines(center: Vector2, innerRadius: f32, outerRadius: f32, startAngle: f32, endAngle: f32, segments: i32, color: Color);
+extern proc DrawRingLinesEx(center: Vector2, innerRadius: f32, outerRadius: f32, startAngle: f32, endAngle: f32, segments: i32, thick: f32, color: Color);
 extern proc DrawSplineLinear(points: &Vector2, pointCount: i32, thick: f32, color: Color);
 extern proc DrawSplineBasis(points: &Vector2, pointCount: i32, thick: f32, color: Color);
 extern proc DrawSplineCatmullRom(points: &Vector2, pointCount: i32, thick: f32, color: Color);
@@ -1003,7 +1009,7 @@ extern proc DrawSplineSegmentBezierCubic(p1: Vector2, c2: Vector2, c3: Vector2, 
 extern proc GetSplinePointLinear(startPos: Vector2, endPos: Vector2, t: f32) -> Vector2;
 extern proc GetSplinePointBasis(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, t: f32) -> Vector2;
 extern proc GetSplinePointCatmullRom(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, t: f32) -> Vector2;
-extern proc GetSplinePointBezierQuad(p1: Vector2, c2: Vector2, p3: Vector2, t: f32) -> Vector2;
+extern proc GetSplinePointBezierQuadratic(p1: Vector2, c2: Vector2, p3: Vector2, t: f32) -> Vector2;
 extern proc GetSplinePointBezierCubic(p1: Vector2, c2: Vector2, c3: Vector2, p4: Vector2, t: f32) -> Vector2;
 extern proc CheckCollisionRecs(rec1: Rectangle, rec2: Rectangle) -> bool;
 extern proc CheckCollisionCircles(center1: Vector2, radius1: f32, center2: Vector2, radius2: f32) -> bool;
@@ -1064,7 +1070,7 @@ extern proc ImageRotateCCW(image: &Image);
 extern proc ImageColorTint(image: &Image, color: Color);
 extern proc ImageColorInvert(image: &Image);
 extern proc ImageColorGrayscale(image: &Image);
-extern proc ImageColorContrast(image: &Image, contrast: f32);
+extern proc ImageColorContrast(image: &Image, contrast: i32);
 extern proc ImageColorBrightness(image: &Image, brightness: i32);
 extern proc ImageColorReplace(image: &Image, color: Color, replace: Color);
 extern proc LoadImageColors(image: Image) -> &Color;
@@ -1079,26 +1085,36 @@ extern proc ImageDrawPixelV(dst: &Image, position: Vector2, color: Color);
 extern proc ImageDrawLine(dst: &Image, startPosX: i32, startPosY: i32, endPosX: i32, endPosY: i32, color: Color);
 extern proc ImageDrawLineV(dst: &Image, start: Vector2, end: Vector2, color: Color);
 extern proc ImageDrawLineEx(dst: &Image, start: Vector2, end: Vector2, thick: i32, color: Color);
+extern proc ImageDrawLineStrip(dst: &Image, points: &Vector2, pointCount: i32, color: Color);
+extern proc ImageDrawTriangle(dst: &Image, v1: Vector2, v2: Vector2, v3: Vector2, color: Color);
+extern proc ImageDrawTriangleGradient(dst: &Image, v1: Vector2, v2: Vector2, v3: Vector2, c1: Color, c2: Color, c3: Color);
+extern proc ImageDrawTriangleLines(dst: &Image, v1: Vector2, v2: Vector2, v3: Vector2, color: Color);
+extern proc ImageDrawTriangleFan(dst: &Image, points: &Vector2, pointCount: i32, color: Color);
+extern proc ImageDrawTriangleStrip(dst: &Image, points: &Vector2, pointCount: i32, color: Color);
+extern proc ImageDrawRectangle(dst: &Image, posX: i32, posY: i32, width: i32, height: i32, color: Color);
+extern proc ImageDrawRectangleV(dst: &Image, position: Vector2, size: Vector2, color: Color);
+extern proc ImageDrawRectangleRec(dst: &Image, rec: Rectangle, color: Color);
+extern proc ImageDrawRectanglePro(dst: &Image, rec: Rectangle, origin: Vector2, rotation: f32, color: Color);
+extern proc ImageDrawRectangleLines(dst: &Image, posX: i32, posY: i32, width: i32, height: i32, color: Color);
+extern proc ImageDrawRectangleLinesEx(dst: &Image, rec: Rectangle, thick: i32, color: Color);
+extern proc ImageDrawRectangleGradientEx(dst: &Image, rec: Rectangle, col1: Color, col2: Color, col3: Color, col4: Color);
 extern proc ImageDrawCircle(dst: &Image, centerX: i32, centerY: i32, radius: i32, color: Color);
 extern proc ImageDrawCircleV(dst: &Image, center: Vector2, radius: i32, color: Color);
 extern proc ImageDrawCircleLines(dst: &Image, centerX: i32, centerY: i32, radius: i32, color: Color);
 extern proc ImageDrawCircleLinesV(dst: &Image, center: Vector2, radius: i32, color: Color);
-extern proc ImageDrawRectangle(dst: &Image, posX: i32, posY: i32, width: i32, height: i32, color: Color);
-extern proc ImageDrawRectangleV(dst: &Image, position: Vector2, size: Vector2, color: Color);
-extern proc ImageDrawRectangleRec(dst: &Image, rec: Rectangle, color: Color);
-extern proc ImageDrawRectangleLines(dst: &Image, rec: Rectangle, thick: i32, color: Color);
-extern proc ImageDrawTriangle(dst: &Image, v1: Vector2, v2: Vector2, v3: Vector2, color: Color);
-extern proc ImageDrawTriangleEx(dst: &Image, v1: Vector2, v2: Vector2, v3: Vector2, c1: Color, c2: Color, c3: Color);
-extern proc ImageDrawTriangleLines(dst: &Image, v1: Vector2, v2: Vector2, v3: Vector2, color: Color);
-extern proc ImageDrawTriangleFan(dst: &Image, points: &Vector2, pointCount: i32, color: Color);
-extern proc ImageDrawTriangleStrip(dst: &Image, points: &Vector2, pointCount: i32, color: Color);
-extern proc ImageDraw(dst: &Image, src: Image, srcRec: Rectangle, dstRec: Rectangle, tint: Color);
+extern proc ImageDrawCircleGradient(dst: &Image, center: Vector2, radius: f32, inner: Color, outer: Color);
+extern proc ImageDrawImage(dst: &Image, src: Image, posX: i32, posY: i32, tint: Color);
+extern proc ImageDrawImageEx(dst: &Image, src: Image, position: Vector2, rotation: f32, scale: f32, tint: Color);
+extern proc ImageDrawImageRec(dst: &Image, src: Image, srcRec: Rectangle, position: Vector2, tint: Color);
+extern proc ImageDrawImagePro(dst: &Image, src: Image, srcRec: Rectangle, dstRec: Rectangle, origin: Vector2, rotation: f32, tint: Color);
 extern proc ImageDrawText(dst: &Image, text: &i8, posX: i32, posY: i32, fontSize: i32, color: Color);
 extern proc ImageDrawTextEx(dst: &Image, font: Font, text: &i8, position: Vector2, fontSize: f32, spacing: f32, tint: Color);
+extern proc ImageDrawTextPro(dst: &Image, font: Font, text: &i8, position: Vector2, origin: Vector2, rotation: f32, fontSize: f32, spacing: f32, tint: Color);
 extern proc LoadTexture(fileName: &i8) -> Texture2D;
 extern proc LoadTextureFromImage(image: Image) -> Texture2D;
 extern proc LoadTextureCubemap(image: Image, layout: i32) -> TextureCubemap;
 extern proc LoadRenderTexture(width: i32, height: i32) -> RenderTexture2D;
+extern proc LoadRenderTextureEx(width: i32, height: i32, format: i32) -> RenderTexture2D;
 extern proc IsTextureValid(texture: Texture2D) -> bool;
 extern proc UnloadTexture(texture: Texture2D);
 extern proc IsRenderTextureValid(target: RenderTexture2D) -> bool;
@@ -1111,9 +1127,9 @@ extern proc SetTextureWrap(texture: Texture2D, wrap: i32);
 extern proc DrawTexture(texture: Texture2D, posX: i32, posY: i32, tint: Color);
 extern proc DrawTextureV(texture: Texture2D, position: Vector2, tint: Color);
 extern proc DrawTextureEx(texture: Texture2D, position: Vector2, rotation: f32, scale: f32, tint: Color);
-extern proc DrawTextureRec(texture: Texture2D, source: Rectangle, position: Vector2, tint: Color);
-extern proc DrawTexturePro(texture: Texture2D, source: Rectangle, dest: Rectangle, origin: Vector2, rotation: f32, tint: Color);
-extern proc DrawTextureNPatch(texture: Texture2D, nPatchInfo: NPatchInfo, dest: Rectangle, origin: Vector2, rotation: f32, tint: Color);
+extern proc DrawTextureRec(texture: Texture2D, rec: Rectangle, position: Vector2, tint: Color);
+extern proc DrawTexturePro(texture: Texture2D, srcrec: Rectangle, dstrec: Rectangle, origin: Vector2, rotation: f32, tint: Color);
+extern proc DrawTextureNPatch(texture: Texture2D, nPatchInfo: NPatchInfo, dstrec: Rectangle, origin: Vector2, rotation: f32, tint: Color);
 extern proc ColorIsEqual(col1: Color, col2: Color) -> bool;
 extern proc Fade(color: Color, alpha: f32) -> Color;
 extern proc ColorToInt(color: Color) -> i32;
@@ -1202,12 +1218,12 @@ extern proc DrawCubeWiresV(position: Vector3, size: Vector3, color: Color);
 extern proc DrawSphere(centerPos: Vector3, radius: f32, color: Color);
 extern proc DrawSphereEx(centerPos: Vector3, radius: f32, rings: i32, slices: i32, color: Color);
 extern proc DrawSphereWires(centerPos: Vector3, radius: f32, rings: i32, slices: i32, color: Color);
-extern proc DrawCylinder(position: Vector3, radiusTop: f32, radiusBottom: f32, height: f32, slices: i32, color: Color);
+extern proc DrawCylinder(position: Vector3, radiusTop: f32, radiusBottom: f32, height: f32, sides: i32, color: Color);
 extern proc DrawCylinderEx(startPos: Vector3, endPos: Vector3, startRadius: f32, endRadius: f32, sides: i32, color: Color);
-extern proc DrawCylinderWires(position: Vector3, radiusTop: f32, radiusBottom: f32, height: f32, slices: i32, color: Color);
+extern proc DrawCylinderWires(position: Vector3, radiusTop: f32, radiusBottom: f32, height: f32, sides: i32, color: Color);
 extern proc DrawCylinderWiresEx(startPos: Vector3, endPos: Vector3, startRadius: f32, endRadius: f32, sides: i32, color: Color);
-extern proc DrawCapsule(startPos: Vector3, endPos: Vector3, radius: f32, slices: i32, rings: i32, color: Color);
-extern proc DrawCapsuleWires(startPos: Vector3, endPos: Vector3, radius: f32, slices: i32, rings: i32, color: Color);
+extern proc DrawCapsule(startPos: Vector3, endPos: Vector3, radius: f32, rings: i32, slices: i32, color: Color);
+extern proc DrawCapsuleWires(startPos: Vector3, endPos: Vector3, radius: f32, rings: i32, slices: i32, color: Color);
 extern proc DrawPlane(centerPos: Vector3, size: Vector2, color: Color);
 extern proc DrawRay(ray: Ray, color: Color);
 extern proc DrawGrid(slices: i32, spacing: f32);
@@ -1222,8 +1238,8 @@ extern proc DrawModelWires(model: Model, position: Vector3, scale: f32, tint: Co
 extern proc DrawModelWiresEx(model: Model, position: Vector3, rotationAxis: Vector3, rotationAngle: f32, scale: Vector3, tint: Color);
 extern proc DrawBoundingBox(box: BoundingBox, color: Color);
 extern proc DrawBillboard(camera: Camera, texture: Texture2D, position: Vector3, scale: f32, tint: Color);
-extern proc DrawBillboardRec(camera: Camera, texture: Texture2D, source: Rectangle, position: Vector3, size: Vector2, tint: Color);
-extern proc DrawBillboardPro(camera: Camera, texture: Texture2D, source: Rectangle, position: Vector3, up: Vector3, size: Vector2, origin: Vector2, rotation: f32, tint: Color);
+extern proc DrawBillboardRec(camera: Camera, texture: Texture2D, rec: Rectangle, position: Vector3, size: Vector2, tint: Color);
+extern proc DrawBillboardPro(camera: Camera, texture: Texture2D, rec: Rectangle, position: Vector3, up: Vector3, size: Vector2, origin: Vector2, rotation: f32, tint: Color);
 extern proc UploadMesh(mesh: &Mesh, dynamic: bool);
 extern proc UpdateMeshBuffer(mesh: Mesh, index: i32, data: &unit, dataSize: i32, offset: i32);
 extern proc UnloadMesh(mesh: Mesh);
@@ -1275,7 +1291,7 @@ extern proc LoadSound(fileName: &i8) -> Sound;
 extern proc LoadSoundFromWave(wave: Wave) -> Sound;
 extern proc LoadSoundAlias(source: Sound) -> Sound;
 extern proc IsSoundValid(sound: Sound) -> bool;
-extern proc UpdateSound(sound: Sound, data: &unit, sampleCount: i32);
+extern proc UpdateSound(sound: Sound, data: &unit, frameCount: i32);
 extern proc UnloadWave(wave: Wave);
 extern proc UnloadSound(sound: Sound);
 extern proc UnloadSoundAlias(alias: Sound);
