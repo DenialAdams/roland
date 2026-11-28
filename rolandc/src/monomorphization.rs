@@ -6,8 +6,8 @@ use crate::error_handling::ErrorManager;
 use crate::error_handling::error_handling_macros::rolandc_error;
 use crate::interner::{Interner, StrId};
 use crate::parse::{
-   Expression, ProcedureBody, ProcedureId, ProcedureNode, StructId, UnionId, UserDefinedTypeId, UserDefinedTypeInfo,
-   all_expression_pools_mut,
+   Expression, ProcedureBody, ProcedureDefinition, ProcedureId, ProcedureNode, StructId, UnionId, UserDefinedTypeId,
+   UserDefinedTypeInfo, all_expression_pools_mut,
 };
 use crate::semantic_analysis::validator::map_generic_to_concrete;
 use crate::semantic_analysis::{StructInfo, UnionInfo};
@@ -110,7 +110,26 @@ fn clone_procedure(
    concrete_types: &[ExpressionType],
    type_parameters: &IndexMap<StrId, IndexSet<StrId>>,
 ) -> (ProcedureNode, ProcedureBody) {
-   let mut cloned_proc = template_procedure.clone();
+   let mut cloned_proc = ProcedureNode {
+      definition: ProcedureDefinition {
+         name: template_procedure.definition.name.clone(),
+         type_parameters: Vec::new(),
+         constraints: IndexMap::new(),
+         parameters: template_procedure.definition.parameters.clone(),
+         ret_type: template_procedure.definition.ret_type.clone(),
+         variadic: template_procedure.definition.variadic,
+      },
+      location: template_procedure.location,
+      impl_source: template_procedure.impl_source.clone(),
+      named_parameters: template_procedure.named_parameters.clone(),
+      type_parameters: IndexMap::new(),
+      specialized_type_parameters: type_parameters
+         .keys()
+         .copied()
+         .zip(concrete_types.iter().cloned())
+         .collect(),
+      where_instantiated: template_procedure.where_instantiated.clone(),
+   };
 
    for param in cloned_proc.definition.parameters.iter_mut() {
       map_generic_to_concrete(&mut param.p_type.e_type, concrete_types, type_parameters);
@@ -120,15 +139,6 @@ fn clone_procedure(
       concrete_types,
       type_parameters,
    );
-
-   cloned_proc.definition.type_parameters.clear();
-   cloned_proc.type_parameters.clear();
-
-   cloned_proc.specialized_type_parameters = type_parameters
-      .keys()
-      .copied()
-      .zip(concrete_types.iter().cloned())
-      .collect();
 
    (cloned_proc, template_body.clone())
 }
