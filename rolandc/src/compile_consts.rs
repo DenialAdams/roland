@@ -266,55 +266,9 @@ fn cg_enum_variant(
 fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &mut ErrorManager) {
    let the_expr = std::mem::replace(&mut cg_context.ast[expr_index].expression, Expression::UnitLiteral);
    match &the_expr {
-      Expression::IfX(a, b, c) => {
-         cg_expr(*a, cg_context, err_manager);
-         cg_expr(*b, cg_context, err_manager);
-         cg_expr(*c, cg_context, err_manager);
-      }
       Expression::Variable(x) => {
          if cg_context.all_consts.contains_key(x) {
             cg_const(*x, cg_context, err_manager);
-         }
-      }
-      Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _, _)
-      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
-      Expression::ArrayIndex { array, index } => {
-         cg_expr(*array, cg_context, err_manager);
-         cg_expr(*index, cg_context, err_manager);
-      }
-      Expression::ProcedureCall { args, proc_expr } => {
-         cg_expr(*proc_expr, cg_context, err_manager);
-         for arg in args.iter() {
-            cg_expr(arg.expr, cg_context, err_manager);
-         }
-      }
-      Expression::BinaryOperator {
-         operator: _operator,
-         lhs,
-         rhs,
-      } => {
-         cg_expr(*lhs, cg_context, err_manager);
-         cg_expr(*rhs, cg_context, err_manager);
-      }
-      Expression::UnaryOperator(_op, expr) => {
-         cg_expr(*expr, cg_context, err_manager);
-      }
-      Expression::StructLiteral(_, field_exprs) => {
-         for expr in field_exprs.values().flatten() {
-            cg_expr(*expr, cg_context, err_manager);
-         }
-      }
-      Expression::FieldAccess(_field_names, expr) => {
-         cg_expr(*expr, cg_context, err_manager);
-      }
-      Expression::Cast { expr, .. } => {
-         cg_expr(*expr, cg_context, err_manager);
-      }
-      Expression::ArrayLiteral(exprs) => {
-         for expr in exprs.iter() {
-            cg_expr(*expr, cg_context, err_manager);
          }
       }
       Expression::EnumLiteral(e_id, variant_str) => {
@@ -322,12 +276,7 @@ fn cg_expr(expr_index: ExpressionId, cg_context: &mut CgContext, err_manager: &m
          let variant_index = enum_info.variants.get_index_of(variant_str).unwrap();
          cg_enum_variant(*e_id, enum_info, variant_index, cg_context, err_manager);
       }
-      Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_)
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_)
-      | Expression::UnitLiteral
-      | Expression::BoundFcnLiteral(_, _) => (),
+      expr => expr.for_each_child_assuming_resolved(|child| cg_expr(child, cg_context, err_manager)),
    }
    cg_context.ast[expr_index].expression = the_expr;
 }

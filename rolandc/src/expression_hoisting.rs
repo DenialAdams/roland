@@ -495,32 +495,8 @@ fn vv_expr(
          vv_expr(*array, ctx, expressions, current_stmt, ParentCtx::Expr, true);
          vv_expr(*index, ctx, expressions, current_stmt, ParentCtx::Expr, false);
       }
-      Expression::ProcedureCall { args, proc_expr } => {
-         vv_expr(*proc_expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
-
-         for arg in args.iter() {
-            vv_expr(arg.expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
-         }
-      }
-      Expression::BinaryOperator { lhs, rhs, .. } => {
-         vv_expr(*lhs, ctx, expressions, current_stmt, ParentCtx::Expr, false);
-         vv_expr(*rhs, ctx, expressions, current_stmt, ParentCtx::Expr, false);
-      }
-      Expression::StructLiteral(_, field_exprs) => {
-         for expr in field_exprs.values().flatten().copied() {
-            vv_expr(expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
-         }
-      }
       Expression::FieldAccess(_, expr) | Expression::UnaryOperator(UnOp::AddressOf, expr) => {
          vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, true);
-      }
-      Expression::UnaryOperator(_, expr) | Expression::Cast { expr, .. } => {
-         vv_expr(*expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
-      }
-      Expression::ArrayLiteral(exprs) => {
-         for expr in exprs.iter().copied() {
-            vv_expr(expr, ctx, expressions, current_stmt, ParentCtx::Expr, false);
-         }
       }
       Expression::IfX(a, b, c) => {
          // IfX is hoisted specially, because it needs to become an if statement.
@@ -537,18 +513,9 @@ fn vv_expr(
          ctx.exprs_to_hoist.truncate(before_len);
          ctx.pending_hoists.truncate(before_marked);
       }
-      Expression::StringLiteral(_)
-      | Expression::EnumLiteral(_, _)
-      | Expression::BoolLiteral(_)
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_)
-      | Expression::BoundFcnLiteral(_, _)
-      | Expression::UnitLiteral
-      | Expression::Variable(_) => (),
-      Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _, _)
-      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      expr => expr.for_each_child_assuming_resolved(|child| {
+         vv_expr(child, ctx, expressions, current_stmt, ParentCtx::Expr, false);
+      }),
    }
 
    match ctx.mode {

@@ -1918,38 +1918,7 @@ fn is_commutative_noop(literal: Literal, op: BinOp) -> bool {
 pub fn expression_could_have_side_effects(expr_id: ExpressionId, expressions: &ExpressionPool) -> bool {
    match &expressions[expr_id].expression {
       Expression::ProcedureCall { .. } => true, // @PureCalls
-      Expression::ArrayLiteral(arr) => arr.iter().any(|x| expression_could_have_side_effects(*x, expressions)),
-      Expression::ArrayIndex { array, index } => {
-         expression_could_have_side_effects(*array, expressions)
-            || expression_could_have_side_effects(*index, expressions)
-      }
-      Expression::BinaryOperator { lhs, rhs, .. } => {
-         expression_could_have_side_effects(*lhs, expressions) || expression_could_have_side_effects(*rhs, expressions)
-      }
-      Expression::StructLiteral(_, fields) => fields
-         .iter()
-         .flat_map(|(_, x)| x)
-         .any(|x| expression_could_have_side_effects(*x, expressions)),
-      Expression::UnaryOperator(_, expr) | Expression::FieldAccess(_, expr) | Expression::Cast { expr, .. } => {
-         expression_could_have_side_effects(*expr, expressions)
-      }
-      Expression::IfX(a, b, c) => {
-         expression_could_have_side_effects(*a, expressions)
-            || expression_could_have_side_effects(*b, expressions)
-            || expression_could_have_side_effects(*c, expressions)
-      }
-      Expression::EnumLiteral(_, _)
-      | Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_)
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_)
-      | Expression::UnitLiteral
-      | Expression::BoundFcnLiteral(_, _)
-      | Expression::Variable(_) => false,
-      Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _, _)
-      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      expr => !expr.all_children_assuming_resolved(|child| !expression_could_have_side_effects(child, expressions)),
    }
 }
 

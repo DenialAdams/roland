@@ -271,50 +271,17 @@ pub fn tree_is_well_typed(
 ) -> bool {
    let mut the_expr = std::mem::replace(&mut expressions[expr_id].expression, Expression::UnitLiteral);
    let children_ok = match &mut the_expr {
-      Expression::ProcedureCall { proc_expr, args } => args
-         .iter_mut()
-         .map(|x| x.expr)
-         .chain(std::iter::once(*proc_expr))
-         .all(|x| tree_is_well_typed(x, expressions, type_variable_info)),
-      Expression::ArrayLiteral(expression_ids) => expression_ids
-         .iter_mut()
-         .all(|x| tree_is_well_typed(*x, expressions, type_variable_info)),
-      Expression::BinaryOperator { operator: _, lhs, rhs } | Expression::ArrayIndex { array: lhs, index: rhs } => {
-         tree_is_well_typed(*lhs, expressions, type_variable_info)
-            && tree_is_well_typed(*rhs, expressions, type_variable_info)
+      Expression::Cast { target_type, expr, .. } => {
+         well_typed(target_type, type_variable_info) && tree_is_well_typed(*expr, expressions, type_variable_info)
       }
-      Expression::UnaryOperator(_, expression_id) | Expression::FieldAccess(_, expression_id) => {
-         tree_is_well_typed(*expression_id, expressions, type_variable_info)
-      }
-      Expression::StructLiteral(_, vals) => vals
-         .values()
-         .flatten()
-         .all(|x| tree_is_well_typed(*x, expressions, type_variable_info)),
-      Expression::Cast {
-         cast_type: _,
-         target_type,
-         expr,
-      } => well_typed(target_type, type_variable_info) && tree_is_well_typed(*expr, expressions, type_variable_info),
       Expression::BoundFcnLiteral(_, expression_type_nodes) => expression_type_nodes
          .iter_mut()
-         .map(|x| &mut x.e_type)
-         .all(|t| well_typed(t, type_variable_info)),
-      Expression::IfX(a, b, c) => {
-         tree_is_well_typed(*a, expressions, type_variable_info)
-            && tree_is_well_typed(*b, expressions, type_variable_info)
-            && tree_is_well_typed(*c, expressions, type_variable_info)
-      }
+         .all(|node| well_typed(&mut node.e_type, type_variable_info)),
       Expression::UnresolvedStructLiteral(_, _, _)
       | Expression::UnresolvedVariable(_)
       | Expression::UnresolvedEnumLiteral(_, _)
       | Expression::UnresolvedProcLiteral(_, _) => false,
-      Expression::Variable(_)
-      | Expression::EnumLiteral(_, _)
-      | Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_)
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_)
-      | Expression::UnitLiteral => true,
+      expr => expr.all_children_assuming_resolved(|child| tree_is_well_typed(child, expressions, type_variable_info)),
    };
    expressions[expr_id].expression = the_expr;
    children_ok && well_typed(expressions[expr_id].exp_type.as_mut().unwrap(), type_variable_info)

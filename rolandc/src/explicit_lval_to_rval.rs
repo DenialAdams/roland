@@ -50,55 +50,16 @@ fn do_expr(e: ExpressionId, ast: &mut ExpressionPool, is_lhs_context: bool) {
    // MUST save this before we mutate children (answer can change)
    let expr_is_lhs = the_expr.is_lvalue_disregard_consts(ast);
    match &the_expr {
-      Expression::ProcedureCall { proc_expr, args } => {
-         do_expr(*proc_expr, ast, false);
-         for arg in args.iter() {
-            do_expr(arg.expr, ast, false);
-         }
-      }
       Expression::ArrayIndex { array, index } => {
          do_expr(*array, ast, true);
          do_expr(*index, ast, false);
-      }
-      Expression::BinaryOperator { lhs, rhs, .. } => {
-         do_expr(*lhs, ast, false);
-         do_expr(*rhs, ast, false);
       }
       Expression::UnaryOperator(unop, ex) => {
          deref_with_rval_child = *unop == UnOp::Dereference && !ast[*ex].expression.is_lvalue_disregard_consts(ast);
          do_expr(*ex, ast, *unop == UnOp::AddressOf || *unop == UnOp::Dereference);
       }
       Expression::FieldAccess(_, base) => do_expr(*base, ast, true),
-      Expression::Cast { expr, .. } => {
-         do_expr(*expr, ast, false);
-      }
-      Expression::IfX(a, b, c) => {
-         do_expr(*a, ast, false);
-         do_expr(*b, ast, false);
-         do_expr(*c, ast, false);
-      }
-      Expression::ArrayLiteral(exprs) => {
-         for expr in exprs.iter().copied() {
-            do_expr(expr, ast, false);
-         }
-      }
-      Expression::StructLiteral(_, exprs) => {
-         for expr in exprs.values().flatten().copied() {
-            do_expr(expr, ast, false);
-         }
-      }
-      Expression::Variable(_)
-      | Expression::EnumLiteral(_, _)
-      | Expression::BoundFcnLiteral(_, _)
-      | Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_)
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_)
-      | Expression::UnitLiteral => (),
-      Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedStructLiteral(_, _, _)
-      | Expression::UnresolvedEnumLiteral(_, _)
-      | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+      expr => expr.for_each_child_assuming_resolved(|child| do_expr(child, ast, false)),
    }
    if let Expression::UnaryOperator(UnOp::AddressOf, child_id) = the_expr {
       ast[e].location = ast[child_id].location;

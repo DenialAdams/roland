@@ -46,21 +46,6 @@ fn mark_loads_to_hoist<F: FnMut(ExpressionId, ExpressionType, VariableId)>(
    mark_expr_fcn: &mut F,
 ) {
    match &ast[root].expression {
-      Expression::ProcedureCall { proc_expr, args } => {
-         mark_loads_to_hoist(*proc_expr, ast, mark_expr_fcn);
-         for arg in args.iter() {
-            mark_loads_to_hoist(arg.expr, ast, mark_expr_fcn);
-         }
-      }
-      Expression::ArrayLiteral(children) => {
-         for child in children.iter().copied() {
-            mark_loads_to_hoist(child, ast, mark_expr_fcn);
-         }
-      }
-      Expression::ArrayIndex { array: lhs, index: rhs } | Expression::BinaryOperator { operator: _, lhs, rhs } => {
-         mark_loads_to_hoist(*lhs, ast, mark_expr_fcn);
-         mark_loads_to_hoist(*rhs, ast, mark_expr_fcn);
-      }
       Expression::UnaryOperator(operator, child) => {
          mark_loads_to_hoist(*child, ast, mark_expr_fcn);
          if *operator == UnOp::Dereference
@@ -69,30 +54,8 @@ fn mark_loads_to_hoist<F: FnMut(ExpressionId, ExpressionType, VariableId)>(
             mark_expr_fcn(*child, ast[root].exp_type.clone().unwrap(), v);
          }
       }
-      Expression::FieldAccess(_, child)
-      | Expression::Cast {
-         cast_type: _,
-         target_type: _,
-         expr: child,
-      } => mark_loads_to_hoist(*child, ast, mark_expr_fcn),
-      Expression::IfX(a, b, c) => {
-         mark_loads_to_hoist(*a, ast, mark_expr_fcn);
-         mark_loads_to_hoist(*b, ast, mark_expr_fcn);
-         mark_loads_to_hoist(*c, ast, mark_expr_fcn);
-      }
-      Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_)
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_)
-      | Expression::UnitLiteral
-      | Expression::Variable(_)
-      | Expression::StructLiteral(_, _)
-      | Expression::EnumLiteral(_, _)
-      | Expression::BoundFcnLiteral(_, _) => (),
-      Expression::UnresolvedStructLiteral(_, _, _)
-      | Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedEnumLiteral(_, _)
-      | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+      Expression::StructLiteral(_, _) => (),
+      expr => expr.for_each_child_assuming_resolved(|child| mark_loads_to_hoist(child, ast, mark_expr_fcn)),
    }
 }
 
@@ -537,25 +500,6 @@ fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, as
 
 fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<VariableId>, ast: &ExpressionPool) {
    match &ast[in_expr].expression {
-      Expression::ProcedureCall { proc_expr, args } => {
-         mark_escaping_vars_expr(*proc_expr, escaping_vars, ast);
-
-         for val in args.iter().map(|x| x.expr) {
-            mark_escaping_vars_expr(val, escaping_vars, ast);
-         }
-      }
-      Expression::BinaryOperator { lhs, rhs, .. } => {
-         mark_escaping_vars_expr(*lhs, escaping_vars, ast);
-         mark_escaping_vars_expr(*rhs, escaping_vars, ast);
-      }
-      Expression::IfX(a, b, c) => {
-         mark_escaping_vars_expr(*a, escaping_vars, ast);
-         mark_escaping_vars_expr(*b, escaping_vars, ast);
-         mark_escaping_vars_expr(*c, escaping_vars, ast);
-      }
-      Expression::Cast { expr, .. } => {
-         mark_escaping_vars_expr(*expr, escaping_vars, ast);
-      }
       Expression::UnaryOperator(op, expr) => {
          let is_variable_load = *op == UnOp::Dereference && matches!(ast[*expr].expression, Expression::Variable(_));
          let loads_as_aggregate = ast[in_expr].exp_type.as_ref().unwrap().is_aggregate();
@@ -566,20 +510,10 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
       Expression::Variable(v) => {
          escaping_vars.insert(*v);
       }
-      Expression::EnumLiteral(_, _)
-      | Expression::BoundFcnLiteral(_, _)
-      | Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_)
-      | Expression::UnitLiteral
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_) => (),
       Expression::ArrayIndex { .. }
       | Expression::FieldAccess(_, _)
       | Expression::ArrayLiteral(_)
-      | Expression::StructLiteral(_, _)
-      | Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _, _)
-      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      | Expression::StructLiteral(_, _) => unreachable!(),
+      expr => expr.for_each_child_assuming_resolved(|child| mark_escaping_vars_expr(child, escaping_vars, ast)),
    }
 }

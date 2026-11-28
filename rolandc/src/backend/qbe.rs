@@ -385,12 +385,12 @@ pub fn emit_qbe(
          .iter()
          .flat_map(|x| body.cfg.bbs[*x].instructions.iter())
       {
-         fn recurse(e: ExpressionId, ast: &ExpressionPool, ctx: &mut GenerationContext) {
+         fn emit_call_argument_aggregate_defs(e: ExpressionId, ast: &ExpressionPool, ctx: &mut GenerationContext) {
             match &ast[e].expression {
                Expression::ProcedureCall { proc_expr, args } => {
-                  recurse(*proc_expr, ast, ctx);
+                  emit_call_argument_aggregate_defs(*proc_expr, ast, ctx);
                   for arg in args {
-                     recurse(arg.expr, ast, ctx);
+                     emit_call_argument_aggregate_defs(arg.expr, ast, ctx);
                      emit_aggregate_def(
                         &mut ctx.buf,
                         &mut ctx.aggregate_defs,
@@ -399,57 +399,21 @@ pub fn emit_qbe(
                      );
                   }
                }
-               Expression::ArrayLiteral(expression_ids) => {
-                  for expr in expression_ids.iter().copied() {
-                     recurse(expr, ast, ctx);
-                  }
+               expr => {
+                  expr.for_each_child_assuming_resolved(|child| emit_call_argument_aggregate_defs(child, ast, ctx));
                }
-               Expression::ArrayIndex { array: lhs, index: rhs }
-               | Expression::BinaryOperator { operator: _, lhs, rhs } => {
-                  recurse(*lhs, ast, ctx);
-                  recurse(*rhs, ast, ctx);
-               }
-               Expression::StructLiteral(_, index_map) => {
-                  for expr in index_map.values().flat_map(|x| x.iter()) {
-                     recurse(*expr, ast, ctx);
-                  }
-               }
-               Expression::UnaryOperator(_, expr)
-               | Expression::FieldAccess(_, expr)
-               | Expression::Cast {
-                  cast_type: _,
-                  target_type: _,
-                  expr,
-               } => {
-                  recurse(*expr, ast, ctx);
-               }
-               Expression::IfX(a, b, c) => {
-                  recurse(*a, ast, ctx);
-                  recurse(*b, ast, ctx);
-                  recurse(*c, ast, ctx);
-               }
-               Expression::BoolLiteral(_)
-               | Expression::StringLiteral(_)
-               | Expression::IntLiteral { .. }
-               | Expression::FloatLiteral(_)
-               | Expression::UnitLiteral
-               | Expression::Variable(_)
-               | Expression::EnumLiteral(_, _)
-               | Expression::BoundFcnLiteral(_, _) => (),
-               Expression::UnresolvedEnumLiteral(_, _)
-               | Expression::UnresolvedProcLiteral(_, _)
-               | Expression::UnresolvedVariable(_)
-               | Expression::UnresolvedStructLiteral(_, _, _) => unreachable!(),
             }
          }
          match instr {
             CfgInstruction::Assignment(lhs, rhs) => {
-               recurse(*lhs, &body.ast.expressions, &mut ctx);
-               recurse(*rhs, &body.ast.expressions, &mut ctx);
+               emit_call_argument_aggregate_defs(*lhs, &body.ast.expressions, &mut ctx);
+               emit_call_argument_aggregate_defs(*rhs, &body.ast.expressions, &mut ctx);
             }
             CfgInstruction::Expression(expression_id)
             | CfgInstruction::ConditionalJump(expression_id, _, _)
-            | CfgInstruction::Return(expression_id) => recurse(*expression_id, &body.ast.expressions, &mut ctx),
+            | CfgInstruction::Return(expression_id) => {
+               emit_call_argument_aggregate_defs(*expression_id, &body.ast.expressions, &mut ctx);
+            }
             CfgInstruction::Jump(_) | CfgInstruction::Nop => (),
          }
       }

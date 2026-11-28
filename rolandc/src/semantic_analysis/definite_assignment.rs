@@ -192,61 +192,8 @@ fn ensure_expression_does_not_use_unassigned_variable(
             assigned_vars.set(index, true);
          }
       }
-      Expression::ProcedureCall { proc_expr, args } => {
-         ensure_expression_does_not_use_unassigned_variable(
-            *proc_expr,
-            assigned_vars,
-            procedure_vars,
-            pool,
-            err_manager,
-         );
-         for arg in args.iter() {
-            ensure_expression_does_not_use_unassigned_variable(
-               arg.expr,
-               assigned_vars,
-               procedure_vars,
-               pool,
-               err_manager,
-            );
-         }
-      }
-      Expression::ArrayLiteral(items) => {
-         for item in items.iter().copied() {
-            ensure_expression_does_not_use_unassigned_variable(item, assigned_vars, procedure_vars, pool, err_manager);
-         }
-      }
-      Expression::ArrayIndex { array: a, index: b }
-      | Expression::BinaryOperator {
-         operator: _,
-         lhs: a,
-         rhs: b,
-      } => {
-         ensure_expression_does_not_use_unassigned_variable(*a, assigned_vars, procedure_vars, pool, err_manager);
-         ensure_expression_does_not_use_unassigned_variable(*b, assigned_vars, procedure_vars, pool, err_manager);
-      }
-      Expression::IfX(a, b, c) => {
-         ensure_expression_does_not_use_unassigned_variable(*a, assigned_vars, procedure_vars, pool, err_manager);
-         ensure_expression_does_not_use_unassigned_variable(*b, assigned_vars, procedure_vars, pool, err_manager);
-         ensure_expression_does_not_use_unassigned_variable(*c, assigned_vars, procedure_vars, pool, err_manager);
-      }
-      Expression::StructLiteral(_, fields) => {
-         for e in fields.iter().flat_map(|x| x.1) {
-            ensure_expression_does_not_use_unassigned_variable(*e, assigned_vars, procedure_vars, pool, err_manager);
-         }
-      }
-      Expression::FieldAccess(_, e) | Expression::UnaryOperator(_, e) | Expression::Cast { expr: e, .. } => {
-         ensure_expression_does_not_use_unassigned_variable(*e, assigned_vars, procedure_vars, pool, err_manager);
-      }
-      Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_)
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_)
-      | Expression::UnitLiteral
-      | Expression::EnumLiteral(_, _)
-      | Expression::BoundFcnLiteral(_, _) => (),
-      Expression::UnresolvedEnumLiteral(_, _)
-      | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedStructLiteral(_, _, _) => unreachable!(),
+      expr => expr.for_each_child_assuming_resolved(|child| {
+         ensure_expression_does_not_use_unassigned_variable(child, assigned_vars, procedure_vars, pool, err_manager);
+      }),
    }
 }

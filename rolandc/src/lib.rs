@@ -24,6 +24,7 @@ mod dominators;
 pub mod error_handling;
 mod explicit_lval_to_rval;
 mod expression_hoisting;
+mod expression_visitor;
 mod imports;
 pub mod interner;
 mod lex;

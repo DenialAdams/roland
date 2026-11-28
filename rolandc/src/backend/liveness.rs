@@ -453,55 +453,16 @@ fn update_live_variables_for_expr(
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
 ) {
    match &ast[expr].expression {
-      Expression::ProcedureCall { proc_expr, args } => {
-         update_live_variables_for_expr(*proc_expr, current_live_variables, ast, procedure_vars);
-
-         for val in args.iter().map(|x| x.expr) {
-            update_live_variables_for_expr(val, current_live_variables, ast, procedure_vars);
-         }
-      }
-      Expression::ArrayLiteral(vals) => {
-         for val in vals.iter().copied() {
-            update_live_variables_for_expr(val, current_live_variables, ast, procedure_vars);
-         }
-      }
-      Expression::ArrayIndex { array, index } => {
-         update_live_variables_for_expr(*array, current_live_variables, ast, procedure_vars);
-         update_live_variables_for_expr(*index, current_live_variables, ast, procedure_vars);
-      }
-      Expression::BinaryOperator { lhs, rhs, .. } => {
-         update_live_variables_for_expr(*lhs, current_live_variables, ast, procedure_vars);
-         update_live_variables_for_expr(*rhs, current_live_variables, ast, procedure_vars);
-      }
-      Expression::IfX(a, b, c) => {
-         update_live_variables_for_expr(*a, current_live_variables, ast, procedure_vars);
-         update_live_variables_for_expr(*b, current_live_variables, ast, procedure_vars);
-         update_live_variables_for_expr(*c, current_live_variables, ast, procedure_vars);
-      }
-      Expression::StructLiteral(_, exprs) => {
-         for expr in exprs.values().flatten() {
-            update_live_variables_for_expr(*expr, current_live_variables, ast, procedure_vars);
-         }
-      }
-      Expression::FieldAccess(_, expr) | Expression::Cast { expr, .. } | Expression::UnaryOperator(_, expr) => {
-         update_live_variables_for_expr(*expr, current_live_variables, ast, procedure_vars);
-      }
       Expression::Variable(var) => {
          if let Some(di) = procedure_vars.get_index_of(var) {
             current_live_variables.set(di, true);
          }
       }
-      Expression::EnumLiteral(_, _)
-      | Expression::BoundFcnLiteral(_, _)
-      | Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_)
-      | Expression::UnitLiteral
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_) => (),
-      Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _, _)
-      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      expr => {
+         expr.for_each_child_assuming_resolved(|child| {
+            update_live_variables_for_expr(child, current_live_variables, ast, procedure_vars);
+         });
+      }
    }
 }
 
@@ -513,52 +474,13 @@ fn gen_for_expr(
    procedure_vars: &IndexMap<VariableId, ExpressionType>,
 ) {
    match &ast[expr].expression {
-      Expression::ProcedureCall { proc_expr, args } => {
-         gen_for_expr(*proc_expr, gen_, kill, ast, procedure_vars);
-
-         for val in args.iter().map(|x| x.expr) {
-            gen_for_expr(val, gen_, kill, ast, procedure_vars);
-         }
-      }
-      Expression::ArrayLiteral(vals) => {
-         for val in vals.iter().copied() {
-            gen_for_expr(val, gen_, kill, ast, procedure_vars);
-         }
-      }
-      Expression::ArrayIndex { array: a, index: b } | Expression::BinaryOperator { lhs: a, rhs: b, .. } => {
-         gen_for_expr(*a, gen_, kill, ast, procedure_vars);
-         gen_for_expr(*b, gen_, kill, ast, procedure_vars);
-      }
-      Expression::IfX(a, b, c) => {
-         gen_for_expr(*a, gen_, kill, ast, procedure_vars);
-         gen_for_expr(*b, gen_, kill, ast, procedure_vars);
-         gen_for_expr(*c, gen_, kill, ast, procedure_vars);
-      }
-      Expression::StructLiteral(_, exprs) => {
-         for expr in exprs.values().flatten() {
-            gen_for_expr(*expr, gen_, kill, ast, procedure_vars);
-         }
-      }
-      Expression::FieldAccess(_, expr) | Expression::Cast { expr, .. } | Expression::UnaryOperator(_, expr) => {
-         gen_for_expr(*expr, gen_, kill, ast, procedure_vars);
-      }
       Expression::Variable(var) => {
          if let Some(di) = procedure_vars.get_index_of(var) {
             gen_.set(di, true);
             kill.set(di, false);
          }
       }
-      Expression::EnumLiteral(_, _)
-      | Expression::BoundFcnLiteral(_, _)
-      | Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_)
-      | Expression::UnitLiteral
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_) => (),
-      Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _, _)
-      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      expr => expr.for_each_child_assuming_resolved(|child| gen_for_expr(child, gen_, kill, ast, procedure_vars)),
    }
 }
 

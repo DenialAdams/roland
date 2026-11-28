@@ -106,21 +106,6 @@ fn mark_reachable_stmt(stmt: StatementId, ast: &AstPool, ctx: &mut DceCtx) {
 
 fn mark_reachable_expr(expr: ExpressionId, ast: &ExpressionPool, ctx: &mut DceCtx) {
    match &ast[expr].expression {
-      Expression::ProcedureCall { proc_expr, args } => {
-         mark_reachable_expr(*proc_expr, ast, ctx);
-         for arg in args.iter() {
-            mark_reachable_expr(arg.expr, ast, ctx);
-         }
-      }
-      Expression::ArrayLiteral(exprs) => {
-         for expr in exprs.iter() {
-            mark_reachable_expr(*expr, ast, ctx);
-         }
-      }
-      Expression::ArrayIndex { array, index } => {
-         mark_reachable_expr(*array, ast, ctx);
-         mark_reachable_expr(*index, ast, ctx);
-      }
       Expression::StringLiteral(lit) => {
          ctx.literals.insert(*lit);
       }
@@ -130,40 +115,9 @@ fn mark_reachable_expr(expr: ExpressionId, ast: &ExpressionPool, ctx: &mut DceCt
          }
          // Local variables will be eliminated later
       }
-      Expression::BinaryOperator { lhs, rhs, .. } => {
-         mark_reachable_expr(*lhs, ast, ctx);
-         mark_reachable_expr(*rhs, ast, ctx);
-      }
-      Expression::UnaryOperator(_, operand) => {
-         mark_reachable_expr(*operand, ast, ctx);
-      }
-      Expression::StructLiteral(_, field_exprs) => {
-         for field_expr in field_exprs.values().flatten() {
-            mark_reachable_expr(*field_expr, ast, ctx);
-         }
-      }
-      Expression::FieldAccess(_, base) => {
-         mark_reachable_expr(*base, ast, ctx);
-      }
-      Expression::Cast { expr, .. } => {
-         mark_reachable_expr(*expr, ast, ctx);
-      }
-      Expression::IfX(a, b, c) => {
-         mark_reachable_expr(*a, ast, ctx);
-         mark_reachable_expr(*b, ast, ctx);
-         mark_reachable_expr(*c, ast, ctx);
-      }
       Expression::BoundFcnLiteral(id, _) => {
          ctx.worklist.push(WorkItem::Procedure(*id));
       }
-      Expression::BoolLiteral(_)
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_)
-      | Expression::UnitLiteral
-      | Expression::EnumLiteral(_, _) => (),
-      Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _, _)
-      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      expr => expr.for_each_child_assuming_resolved(|child| mark_reachable_expr(child, ast, ctx)),
    }
 }

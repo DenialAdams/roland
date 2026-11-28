@@ -108,45 +108,10 @@ fn propagate_vals(
                propagated_const |= propagate_val_expr(*child, ast, get_reaching_val);
             }
          }
-         Expression::UnaryOperator(_, child) | Expression::Cast { expr: child, .. } => {
-            propagated_const |= propagate_val_expr(*child, ast, get_reaching_val);
-         }
-         Expression::ArrayIndex { array, index } => {
-            propagated_const |= propagate_val_expr(*array, ast, get_reaching_val);
-            propagated_const |= propagate_val_expr(*index, ast, get_reaching_val);
-         }
-         Expression::ProcedureCall { proc_expr, args } => {
-            propagated_const |= propagate_val_expr(*proc_expr, ast, get_reaching_val);
-            for arg in args.iter() {
-               propagated_const |= propagate_val_expr(arg.expr, ast, get_reaching_val);
-            }
-         }
-         Expression::BinaryOperator { lhs, rhs, .. } => {
-            propagated_const |= propagate_val_expr(*lhs, ast, get_reaching_val);
-            propagated_const |= propagate_val_expr(*rhs, ast, get_reaching_val);
-         }
-         Expression::FieldAccess(_, base) => {
-            propagated_const |= propagate_val_expr(*base, ast, get_reaching_val);
-         }
-         Expression::IfX(a, b, c) => {
-            propagated_const |= propagate_val_expr(*a, ast, get_reaching_val);
-            propagated_const |= propagate_val_expr(*b, ast, get_reaching_val);
-            propagated_const |= propagate_val_expr(*c, ast, get_reaching_val);
-         }
-         Expression::Variable(_)
-         | Expression::BoolLiteral(_)
-         | Expression::StringLiteral(_)
-         | Expression::IntLiteral { .. }
-         | Expression::FloatLiteral(_)
-         | Expression::UnitLiteral
-         | Expression::EnumLiteral(_, _)
-         | Expression::BoundFcnLiteral(_, _) => (),
-         Expression::ArrayLiteral(_)
-         | Expression::StructLiteral(_, _)
-         | Expression::UnresolvedVariable(_)
-         | Expression::UnresolvedStructLiteral(_, _, _)
-         | Expression::UnresolvedEnumLiteral(_, _)
-         | Expression::UnresolvedProcLiteral(_, _) => unreachable!(),
+         Expression::ArrayLiteral(_) | Expression::StructLiteral(_, _) => unreachable!(),
+         expr => expr.for_each_child_assuming_resolved(|child| {
+            propagated_const |= propagate_val_expr(child, ast, get_reaching_val);
+         }),
       }
       ast[e].expression = the_expression;
       propagated_const
@@ -695,25 +660,6 @@ fn mark_escaping_vars_cfg(cfg: &Cfg, escaping_vars: &mut HashSet<VariableId>, as
 
 fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<VariableId>, ast: &ExpressionPool) {
    match &ast[in_expr].expression {
-      Expression::ProcedureCall { proc_expr, args } => {
-         mark_escaping_vars_expr(*proc_expr, escaping_vars, ast);
-
-         for val in args.iter().map(|x| x.expr) {
-            mark_escaping_vars_expr(val, escaping_vars, ast);
-         }
-      }
-      Expression::BinaryOperator { lhs, rhs, .. } => {
-         mark_escaping_vars_expr(*lhs, escaping_vars, ast);
-         mark_escaping_vars_expr(*rhs, escaping_vars, ast);
-      }
-      Expression::IfX(a, b, c) => {
-         mark_escaping_vars_expr(*a, escaping_vars, ast);
-         mark_escaping_vars_expr(*b, escaping_vars, ast);
-         mark_escaping_vars_expr(*c, escaping_vars, ast);
-      }
-      Expression::Cast { expr, .. } => {
-         mark_escaping_vars_expr(*expr, escaping_vars, ast);
-      }
       Expression::UnaryOperator(op, expr) => {
          let is_variable_load = *op == UnOp::Dereference && matches!(ast[*expr].expression, Expression::Variable(_));
          if !is_variable_load {
@@ -723,20 +669,10 @@ fn mark_escaping_vars_expr(in_expr: ExpressionId, escaping_vars: &mut HashSet<Va
       Expression::Variable(v) => {
          escaping_vars.insert(*v);
       }
-      Expression::EnumLiteral(_, _)
-      | Expression::BoundFcnLiteral(_, _)
-      | Expression::BoolLiteral(_)
-      | Expression::StringLiteral(_)
-      | Expression::UnitLiteral
-      | Expression::IntLiteral { .. }
-      | Expression::FloatLiteral(_) => (),
       Expression::ArrayIndex { .. }
       | Expression::FieldAccess(_, _)
       | Expression::StructLiteral(_, _)
-      | Expression::ArrayLiteral(_)
-      | Expression::UnresolvedVariable(_)
-      | Expression::UnresolvedProcLiteral(_, _)
-      | Expression::UnresolvedStructLiteral(_, _, _)
-      | Expression::UnresolvedEnumLiteral(_, _) => unreachable!(),
+      | Expression::ArrayLiteral(_) => unreachable!(),
+      expr => expr.for_each_child_assuming_resolved(|child| mark_escaping_vars_expr(child, escaping_vars, ast)),
    }
 }
